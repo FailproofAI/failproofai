@@ -1,30 +1,82 @@
 /**
- * LlamaIndex.TS (`llamaindex` / `@llamaindex/core`).
+ * LlamaIndex.TS (`llamaindex`, `@llamaindex/core`, `@llamaindex/workflow`).
  *
- * ## Where it attaches
+ * The TypeScript counterpart of the Python SDK's `integrations/llama_index.py`,
+ * and it must draw the same tree for the same program:
  *
- * `Settings.callbackManager`, LlamaIndex's own instrumentation bus. This is the
- * only adapter here that patches nothing at all: LlamaIndex publishes a typed
- * event surface and a `.on()` / `.off()` pair, so instrumenting is subscribing
- * and uninstrumenting is unsubscribing. Nothing this adapter does can change
- * what the library returns or throws, because it is never on the call path.
+ * | LlamaIndex.TS                         | FailproofAI                                   |
+ * |---------------------------------------|-----------------------------------------------|
+ * | `AgentWorkflow` run (`agent()`)       | session + `agent_start`/`agent_end`           |
+ * | nested run (inside a tool, a scope)   | nested `agent_start`/`agent_end`              |
+ * | `multiAgent()` handoff                | nested agent per agent holding the turn       |
+ * | workflow step                         | `hook_triggered`/`hook_completed`, `trigger_event="workflow_step"` |
+ * | legacy `LLMAgent` / `AgentRunner` task| `agent_start`/`agent_end` across ALL its steps |
+ * | LLM chat                              | `model_request`/`model_response` on `request_id` |
+ * | tool call                             | `tool_use`/`tool_result`, the model's call id |
+ * | retrieval                             | `tool_use`/`tool_result`, output summarised   |
+ * | bare `llm.chat()` / tool / query      | its own root run, named after its class       |
  *
- * Handlers receive a `CustomEvent`, so the payload is on `.detail` — with a
- * fallback to the event object itself, because older builds dispatched the
- * payload directly and a version that did would otherwise record events whose
- * every field is undefined.
+ * `agent_id` is the agent's `name` (`"Agent"` when unnamed, as in Python), the
+ * class name for a multi-agent workflow or a legacy runner — never an id.
  *
- * ## Correlation
+ * ## Two extension points, because LlamaIndex.TS has two halves
  *
- * LlamaIndex pairs its own start/end events by an `id` on the payload. Where it
- * supplies one we use it; where it does not (`llm-tool-call` /
- * `llm-tool-result` identify the pair by the tool call object itself) we key on
- * the tool call's id. A pair that cannot be correlated is emitted anyway
- * without a duration rather than dropped — a tool call with no measured
- * latency is still a tool call.
+ * **The callback bus** (`Settings.callbackManager`, from `@llamaindex/core/global`)
+ * carries everything below the agent: `llm-start`/`llm-stream`/`llm-end`,
+ * `llm-tool-call`/`llm-tool-result`, `retrieve-*`, `query-*`, and the legacy
+ * runner's `agent-start`/`agent-end`. Subscribing is the whole integration for
+ * that half, and uninstrumenting is unsubscribing.
+ *
+ * **The workflow runtime** (`@llamaindex/workflow` ≥1.1, on
+ * `@llamaindex/workflow-core`) emits NOTHING on that bus: an `agent().run()`
+ * has no run boundary and no step events there at all. What it does have is the
+ * middleware surface its own first-party middleware is built on — a context's
+ * `__internal__call_context` (wraps every step handler invocation; this is how
+ * `withTraceEvents` works) and `__internal__call_send_event` (sees every event
+ * a step sends; this is how `withState` works). So `AgentWorkflow.prototype.runStream`
+ * — which `run()` also goes through — is wrapped to open the run and to attach
+ * those two subscriptions to the context it creates. That is a prototype patch,
+ * so it records agents built before `instrument()` too.
+ *
+ * ## Correlation, which LlamaIndex.TS does not give us
+ *
+ * The bus events carry an id that pairs start with end and nothing that says
+ * which run they belong to. Two signals do, and we use both:
+ *
+ *   * our own `AsyncLocalStorage` frame, bound around every workflow step we
+ *     wrap. The bus dispatches in a `queueMicrotask`, which Node runs in the
+ *     dispatcher's async context, so a handler sees the step that caused it;
+ *   * LlamaIndex's own `EventCaller` chain (`event.reason.computedCallers`),
+ *     set by `@wrapEventCaller` — on `AgentRunner.chat`, `BaseQueryEngine.query`
+ *     and every first-party provider's `chat`. A legacy task or a query run
+ *     registers the object that owns it, and anything whose chain includes that
+ *     object belongs to it.
+ *
+ * When both match, the deeper run wins. When neither does, the call is a root
+ * run of its own — the LangChain/Python precedent for a bare model call — and
+ * nests under an enclosing `failproofai.session()`/`agent()` scope if there is one.
+ *
+ * ## Known gaps, each one the framework's and each one documented, not faked
+ *
+ *   * No failure signal for a model call or a legacy task: `wrapLLMEvent` has no
+ *     error path (no `llm-end` when `chat()` throws) and a failed legacy step
+ *     never dispatches `agent-end`. Inside a workflow the step failure closes
+ *     both, marked failed; outside one the leaf stays open until the reaper
+ *     (`staleAfter`) or `uninstrument()` closes it.
+ *   * `callTool` dispatches no `llm-tool-result` when a tool throws. In a
+ *     workflow the runtime's own tool-result event closes it with the error; in
+ *     a legacy agent the next model call does, from the tool-result message.
+ *   * No embedding events exist on the TS bus, so `embeddings: true` has
+ *     nothing to record.
+ *   * A plain `createWorkflow()` workflow has no run boundary to observe (its
+ *     context is created and fed by the caller, and never "ends"); only
+ *     `AgentWorkflow` — every `agent()`/`multiAgent()` — is a run.
+ *   * No human-in-the-loop pairs: the TS runtime has no waiting-for-event signal.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 
 import { logger } from "../logger.js";
 import * as compat from "./compat.js";
@@ -32,29 +84,79 @@ import * as core from "./core.js";
 import type { Adapter } from "./core.js";
 
 const NAME = "llamaindex";
-const PACKAGES = ["llamaindex", "@llamaindex/core"] as const;
+const PACKAGE = "llamaindex";
+const CORE_PACKAGE = "@llamaindex/core";
+const WORKFLOW_PACKAGE = "@llamaindex/workflow";
+const INSTALL = "npm install llamaindex";
 
-interface CallbackManagerLike {
-  on: (event: string, handler: (payload: unknown) => void) => unknown;
-  off?: (event: string, handler: (payload: unknown) => void) => unknown;
+/**
+ * 0.11.4 is a CAPABILITY floor: it is the first `llamaindex` whose agent API
+ * (`agent()` / `multiAgent()`) runs on the `@llamaindex/workflow` 1.1 runtime
+ * this adapter wraps. 0.9–0.11.3 ship workflow 1.0, a different class-based
+ * runtime with none of the surfaces above — their workflow agents would record
+ * no run and no steps, only loose model and tool calls.
+ */
+export const MIN_VERSION = "0.11.4";
+export const BELOW_VERSION = "1.0.0";
+const WORKFLOW_MIN = "1.1.0";
+const WORKFLOW_BELOW = "2.0.0";
+
+const MAX_NODES_IN_SUMMARY = 5;
+/**
+ * Open runs and leaves are bounded, oldest evicted first: orphans are normal (a
+ * stream nobody consumed, a legacy task whose step threw and so never sent
+ * `agent-end`) and a long-lived server must not keep every one of them.
+ */
+const MAX_OPEN = 10_000;
+
+// Token key aliases, widest first. LlamaIndex normalises nothing, so this is
+// the union of what the provider packages actually put in `raw` — the Python
+// adapter's list, plus the camelCase spellings TS providers use.
+const INPUT_TOKEN_KEYS = [
+  "prompt_tokens",
+  "input_tokens",
+  "inputTokens",
+  "promptTokens",
+  "prompt_token_count",
+  "promptTokenCount",
+] as const;
+const OUTPUT_TOKEN_KEYS = [
+  "completion_tokens",
+  "output_tokens",
+  "outputTokens",
+  "completionTokens",
+  "candidates_token_count",
+  "candidatesTokenCount",
+] as const;
+
+// ---------------------------------------------------------------------------
+// Pure helpers — no framework import in any of these
+// ---------------------------------------------------------------------------
+
+type Json = Record<string, unknown>;
+
+function isObject(value: unknown): value is Json {
+  return typeof value === "object" && value !== null;
 }
 
-let tracker: core.RunTracker | null = null;
-let manager: CallbackManagerLike | null = null;
-const subscriptions: Array<[string, (payload: unknown) => void]> = [];
-/** Tool call ids we opened a `tool_use` for, with the name the pair must carry. */
-const openTools = new Map<string, string>();
-/** Retriever/query run ids we opened a `tool_use` for. */
-const openRuns = new Map<string, string>();
+/** A property read that cannot throw (getters on framework classes can). */
+function read(target: unknown, key: string): unknown {
+  if (!isObject(target) && typeof target !== "function") return undefined;
+  try {
+    return (target as Json)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
 
 /**
  * A correlation id out of a payload field whose type the framework does not
- * promise.
- *
- * `String(value)` would turn an object into `[object Object]`, and every event
- * carrying one would then correlate with every other — one flat bucket that
- * looks like data and is not. A value that is not already an id gets a fresh
- * one instead, so the pair is merely unpaired rather than wrongly paired.
+ * promise. An object would render as `[object Object]` and correlate with every
+ * other one; a fresh id leaves the pair merely unpaired instead.
  */
 function asId(...candidates: unknown[]): string {
   for (const candidate of candidates) {
@@ -64,257 +166,1311 @@ function asId(...candidates: unknown[]): string {
   return randomUUID();
 }
 
-/** A tool error as text, without rendering an object as `[object Object]`. */
-function describeToolError(result: { error?: unknown; output?: unknown } | undefined): string {
-  for (const candidate of [result?.error, result?.output]) {
-    if (typeof candidate === "string" && candidate !== "") return candidate;
-    if (candidate !== undefined && candidate !== null) {
+function firstInt(source: Json, keys: readonly string[]): number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  }
+  return undefined;
+}
+
+export interface Usage {
+  usage?: Json;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+/**
+ * Token usage from a `ChatResponse`, streaming or not.
+ *
+ * Conservative on purpose, like the Python adapter: the token numbers are set
+ * ONLY when a key we recognise is present, while the raw usage object always
+ * ships as `usage` so a provider that names its counters something new still
+ * reports something the server can fall back to.
+ *
+ * A streamed response is the case that used to lose everything: `wrapLLMEvent`
+ * hands `llm-end` a `raw` that is the ARRAY of chunks, and providers put the
+ * usage on one chunk — OpenAI on the last, content-less one — so reading
+ * `raw.usage` found nothing on every streamed call, which is every
+ * `FunctionAgent` call.
+ */
+export function usageOf(response: unknown): Usage {
+  const raw = read(response, "raw");
+  const candidates: unknown[] = [];
+  const fromChunk = (chunk: unknown): void => {
+    const chunkRaw = read(chunk, "raw");
+    candidates.push(
+      read(chunkRaw, "usage"),
+      read(chunkRaw, "usage_metadata"),
+      read(chunkRaw, "usageMetadata"),
+      read(read(chunk, "options"), "usage"),
+    );
+  };
+  if (Array.isArray(raw)) {
+    // Newest chunk first: providers that report running totals end with the final one.
+    for (let i = raw.length - 1; i >= 0; i -= 1) fromChunk(raw[i]);
+  } else {
+    candidates.push(read(raw, "usage"), read(raw, "usage_metadata"), read(raw, "usageMetadata"));
+  }
+  candidates.push(read(read(read(response, "message"), "options"), "usage"), read(response, "usage"));
+  for (const candidate of candidates) {
+    if (!isObject(candidate) || Array.isArray(candidate) || Object.keys(candidate).length === 0) continue;
+    return {
+      usage: candidate,
+      inputTokens: firstInt(candidate, INPUT_TOKEN_KEYS),
+      outputTokens: firstInt(candidate, OUTPUT_TOKEN_KEYS),
+    };
+  }
+  return {};
+}
+
+function stopReasonOf(response: unknown): string | undefined {
+  const raw = read(response, "raw");
+  const sources = Array.isArray(raw) ? [...raw].reverse().map((chunk) => read(chunk, "raw")) : [raw];
+  for (const source of sources) {
+    const choice = (read(source, "choices") as unknown[] | undefined)?.[0];
+    const value =
+      nonEmpty(read(choice, "finish_reason")) ??
+      nonEmpty(read(source, "stop_reason")) ??
+      nonEmpty(read(source, "finishReason"));
+    if (value) return value;
+  }
+  return undefined;
+}
+
+/** A retrieval result small enough to store: count, scores, a prefix of the top few. */
+export function summarizeNodes(nodes: unknown): { num_nodes: number; top: Json[] } {
+  const items = Array.isArray(nodes) ? nodes : [];
+  const top = items.slice(0, MAX_NODES_IN_SUMMARY).map((item) => {
+    const node = read(item, "node") ?? item;
+    let text: unknown;
+    const getContent = read(node, "getContent");
+    if (typeof getContent === "function") {
       try {
-        return JSON.stringify(candidate) ?? "tool reported an error";
+        text = (getContent as () => unknown).call(node);
       } catch {
-        break;
+        text = undefined;
       }
     }
+    text ??= read(node, "text");
+    const score = read(item, "score");
+    return {
+      id: nonEmpty(read(node, "id_")) ?? nonEmpty(read(node, "id")),
+      score: typeof score === "number" ? score : undefined,
+      text: core.truncate(typeof text === "string" ? text : "", 200),
+    };
+  });
+  return { num_nodes: items.length, top };
+}
+
+function messagesOf(messages: unknown): Json[] | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  return messages.map((message) => ({
+    role: nonEmpty(read(message, "role")) ?? "user",
+    content: read(message, "content"),
+  }));
+}
+
+/** The text of a query or a `QueryBundle`. */
+function queryText(query: unknown): unknown {
+  if (typeof query === "string") return query;
+  return read(query, "query") ?? read(query, "queryStr") ?? query;
+}
+
+/** The text of whatever a run returned — `EngineResponse`, a message, a string. */
+function textOf(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  const content = read(read(value, "message"), "content") ?? read(value, "response") ?? read(value, "content");
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const parts = content.map((part) => read(part, "text")).filter((part) => typeof part === "string");
+    if (parts.length > 0) return parts.join("");
   }
-  return "tool reported an error";
+  return undefined;
 }
 
-function detail(event: unknown): Record<string, unknown> {
-  const value = event as { detail?: unknown };
-  const payload = value?.detail ?? event;
-  return typeof payload === "object" && payload !== null
-    ? (payload as Record<string, unknown>)
-    : {};
+function errorText(error: unknown): string {
+  if (error instanceof Error) return `${error.name || "Error"}: ${error.message}`;
+  return String(error);
 }
 
-function asInt(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? Math.round(value)
+function className(value: unknown): string | undefined {
+  const name = read(read(value, "constructor"), "name");
+  return typeof name === "string" && name !== "" && name !== "Object" && name !== "Function"
+    ? name
     : undefined;
 }
 
-function messagesOf(payload: Record<string, unknown>): Array<Record<string, unknown>> | undefined {
-  const messages = payload.messages;
-  if (!Array.isArray(messages)) return undefined;
-  return messages.map((message) => {
-    const value = (message ?? {}) as Record<string, unknown>;
-    return { role: value.role ?? "user", content: value.content };
-  });
+/** `event.reason.computedCallers` — the objects inside whose `@wrapEventCaller` calls this ran. */
+function callersOf(event: unknown): unknown[] {
+  const callers = read(read(event, "reason"), "computedCallers");
+  return Array.isArray(callers) ? callers : [];
 }
 
-function usageOf(response: unknown): { inputTokens?: number; outputTokens?: number } {
-  const raw = (response as { raw?: Record<string, unknown> })?.raw;
-  const usage = (raw?.usage ?? (response as { usage?: unknown })?.usage) as
-    | Record<string, unknown>
-    | undefined;
-  if (!usage) return {};
+/**
+ * The model name for a bus event.
+ *
+ * `llm-start` carries only `{id, messages}`: `wrapLLMEvent` never passes the
+ * model. Every first-party provider decorates `chat` with `@wrapEventCaller`
+ * too, so the LLM instance itself is the nearest caller, and its
+ * `metadata.model` is the name. A legacy runner above it has the LLM as `.llm`.
+ */
+function modelFromCallers(event: unknown): string | undefined {
+  for (const caller of callersOf(event)) {
+    const model = nonEmpty(read(read(caller, "metadata"), "model"));
+    if (model) return model;
+    const viaLlm = nonEmpty(read(read(read(caller, "llm"), "metadata"), "model"));
+    if (viaLlm) return viaLlm;
+  }
+  return undefined;
+}
+
+function detail(event: unknown): Json {
+  // A `CustomEvent`, so the payload is on `.detail` — with a fallback to the
+  // event itself, for a build that dispatched the payload directly.
+  const payload = read(event, "detail") ?? event;
+  return isObject(payload) ? payload : {};
+}
+
+function numberOption(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+/** One agent span we opened: a workflow run, a sub-agent, a legacy task, a bare call. */
+interface Run {
+  key: string;
+  agentId: string;
+  depth: number;
+  /** The run this one is nested in, when it is a multi-agent sub-agent. */
+  root: Run | null;
+  leaves: Set<string>;
+  usedToolIds: Map<string, number>;
+  /** Sub-agent currently holding the turn (multi-agent workflows only). */
+  sub: Run | null;
+  subSeq: number;
+  /** The object whose `@wrapEventCaller` calls belong to this run, if any. */
+  owner: object | null;
+  /** Legacy runs have no end signal until their last step; bare runs end with their leaf. */
+  bare: boolean;
+  /** A run whose end arrived while a streamed leaf was still open. */
+  ending: { outcome: string; summary?: string } | null;
+  lastContent?: string;
+  model?: string;
+  ended: boolean;
+  /** `performance.now()` of the last event that touched this run; what the reaper reads. */
+  lastActivity: number;
+  /** Drops this run from whichever index found it (legacy tasks, queries). */
+  forget?: () => void;
+}
+
+interface Leaf {
+  key: string;
+  kind: "model" | "tool" | "retrieval";
+  run: Run;
+  parentKey: string;
+  name: string;
+  callId: string;
+  rawId?: string;
+  /** Who opened a tool leaf: the callback bus, or the workflow runtime's own event. */
+  source?: "bus" | "workflow";
+  started: number;
+  model?: string;
+  firstChunk?: number;
+}
+
+/** What the adapter's `AsyncLocalStorage` carries through a workflow step. */
+interface Frame {
+  key: string;
+  run: Run;
+  model?: string;
+}
+
+interface Located {
+  parentKey: string;
+  run: Run;
+}
+
+export interface LlamaIndexOptions {
+  captureMessages: boolean;
+  steps: boolean;
+  embeddings: boolean;
+  staleAfter: number;
+  reaperInterval: number;
+  captureLimit?: number;
+}
+
+export function parseOptions(options: Record<string, unknown>): LlamaIndexOptions {
   return {
-    inputTokens: asInt(usage.prompt_tokens ?? usage.promptTokens ?? usage.input_tokens),
-    outputTokens: asInt(usage.completion_tokens ?? usage.completionTokens ?? usage.output_tokens),
+    captureMessages: options.captureMessages !== false,
+    steps: options.steps !== false,
+    embeddings: options.embeddings === true,
+    staleAfter: numberOption(options.staleAfter, 600),
+    reaperInterval: numberOption(options.reaperInterval, 30),
+    captureLimit: typeof options.captureLimit === "number" ? options.captureLimit : undefined,
   };
 }
 
-function toolCallOf(payload: Record<string, unknown>): {
-  id: string;
+interface Bus {
+  on: (event: string, handler: (event: unknown) => void) => unknown;
+  off?: (event: string, handler: (event: unknown) => void) => unknown;
+}
+
+/** One loaded copy of `@llamaindex/core/global` (or of the umbrella re-exporting it). */
+export interface GlobalModule {
+  Settings?: { callbackManager?: unknown };
+  getEventCaller?: () => unknown;
+}
+
+/** One loaded copy of `@llamaindex/workflow`. */
+export interface WorkflowModule {
+  AgentWorkflow?: { prototype: object; name?: string };
+  stopAgentEvent?: { include: (event: unknown) => boolean };
+  agentToolCallEvent?: { include: (event: unknown) => boolean };
+  agentToolCallResultEvent?: { include: (event: unknown) => boolean };
+}
+
+interface Subscribable {
+  subscribe: (callback: (...args: never[]) => unknown) => unknown;
+}
+
+interface HandlerContext {
+  handler: (...args: unknown[]) => unknown;
+  [key: string]: unknown;
+}
+
+class State {
+  readonly options: LlamaIndexOptions;
+  readonly tracker: core.RunTracker;
+  readonly frames = new AsyncLocalStorage<Frame>();
+  private readonly runs = new Map<string, Run>();
+  private readonly leaves = new Map<string, Leaf>();
+  private readonly owners = new WeakMap<object, Run[]>();
+  /** Legacy task: first step id -> run. */
+  private readonly tasks = new Map<string, Run>();
+  /** Root query-engine runs, by `query-start` id. */
+  private readonly queries = new Map<string, Run>();
+  private readonly globals: GlobalModule[];
+  private reaper: ReturnType<typeof setInterval> | null = null;
+  private seq = 0;
+  active = true;
+
+  constructor(options: LlamaIndexOptions, globals: GlobalModule[], frameworkPackage: string) {
+    this.options = options;
+    this.globals = globals;
+    this.tracker = new core.RunTracker(NAME, {
+      baseFields: core.frameworkFields(NAME, frameworkPackage),
+      fieldLimit: options.captureLimit,
+    });
+  }
+
+  /** The one gate every payload goes through — `captureMessages: false` drops them all. */
+  capture<T>(value: T): T | undefined {
+    return this.options.captureMessages ? value : undefined;
+  }
+
+  private nextKey(prefix: string): string {
+    this.seq += 1;
+    return `${prefix}#${this.seq}`;
+  }
+
+  // -- where does this event belong -----------------------------------------
+
+  private live(run: Run | undefined | null): Run | null {
+    return run && !run.ended ? run : null;
+  }
+
+  private ownerRun(callers: unknown[]): Run | null {
+    for (const caller of callers) {
+      if (!isObject(caller)) continue;
+      const stack = this.owners.get(caller);
+      const run = this.live(stack?.[stack.length - 1]);
+      if (run) return run;
+    }
+    return null;
+  }
+
+  /**
+   * The run an event belongs to: our step frame or LlamaIndex's caller chain,
+   * whichever is deeper. `callers` defaults to the chain bound right now, for
+   * callers (a workflow starting) that have no event to read it from.
+   */
+  locate(callers?: unknown[]): Located | null {
+    const frame = this.frames.getStore();
+    const fromFrame = frame && this.live(frame.run) ? { parentKey: frame.key, run: frame.run } : null;
+    const owner = this.ownerRun(callers ?? this.boundCallers());
+    const fromOwner = owner ? { parentKey: (owner.sub ?? owner).key, run: owner.sub ?? owner } : null;
+    if (fromFrame && fromOwner) return fromOwner.run.depth > fromFrame.run.depth ? fromOwner : fromFrame;
+    return fromFrame ?? fromOwner;
+  }
+
+  private boundCallers(): unknown[] {
+    for (const module of this.globals) {
+      try {
+        const caller = module.getEventCaller?.();
+        const callers = read(caller, "computedCallers");
+        if (Array.isArray(callers) && callers.length > 0) return callers;
+      } catch {
+        // An older build without `getEventCaller`; the frame is still consulted.
+      }
+    }
+    return [];
+  }
+
+  // -- runs ---------------------------------------------------------------
+
+  openRun(
+    prefix: string,
+    agentId: string,
+    options: { parent?: Located | null; owner?: object | null; bare?: boolean; goal?: unknown; root?: Run | null; fields?: Json },
+  ): Run {
+    while (this.runs.size >= MAX_OPEN) {
+      const oldest = this.runs.values().next();
+      if (oldest.done) break;
+      this.finishRun(oldest.value, "cancelled", undefined, "evicted");
+    }
+    const key = this.nextKey(prefix);
+    const identity = this.tracker.startAgent(key, {
+      agentId,
+      parentKey: options.parent?.parentKey,
+      goal: this.options.captureMessages && typeof options.goal === "string" ? options.goal : undefined,
+      ...core.fwFields({ run_id: key, ...(options.fields ?? {}) }),
+    });
+    const run: Run = {
+      key,
+      agentId: identity.agentId ?? agentId,
+      depth: identity.depth,
+      root: options.root ?? null,
+      leaves: new Set(),
+      usedToolIds: new Map(),
+      sub: null,
+      subSeq: 0,
+      owner: options.owner ?? null,
+      bare: options.bare ?? false,
+      ending: null,
+      ended: false,
+      lastActivity: performance.now(),
+    };
+    this.runs.set(key, run);
+    if (run.owner) {
+      const stack = this.owners.get(run.owner) ?? [];
+      stack.push(run);
+      this.owners.set(run.owner, stack);
+    }
+    return run;
+  }
+
+  /**
+   * End a run. A success whose streamed model call is still being consumed is
+   * DEFERRED until that leaf closes, so the tokens are not lost; anything else
+   * force-closes what is open first, because an `agent_end` with an open leaf
+   * under it leaves the session `ongoing` forever.
+   */
+  finishRun(run: Run, outcome: string, summary?: string, reason = "run_ended"): void {
+    if (run.ended) return;
+    if (run.sub) this.finishRun(run.sub, outcome, undefined, reason);
+    if (outcome === "success" && run.leaves.size > 0 && reason === "run_ended") {
+      run.ending = { outcome, summary };
+      return;
+    }
+    // Ended BEFORE its leaves are force-closed: closing the last leaf of a bare
+    // run would otherwise settle it as a success in the middle of this.
+    run.ended = true;
+    for (const key of [...run.leaves]) {
+      const leaf = this.leaves.get(key);
+      if (leaf) this.closeLeaf(leaf, { closedBy: reason });
+    }
+    this.runs.delete(run.key);
+    run.forget?.();
+    if (run.owner) {
+      const stack = this.owners.get(run.owner);
+      const index = stack?.lastIndexOf(run) ?? -1;
+      if (stack && index !== -1) stack.splice(index, 1);
+    }
+    if (run.root && run.root.sub === run) run.root.sub = null;
+    const text = summary ?? (outcome === "success" ? run.lastContent : undefined);
+    this.tracker.endAgent(run.key, {
+      outcome,
+      summary: this.options.captureMessages || outcome !== "success" ? text : undefined,
+      ...core.fwFields({ run_id: run.key }),
+    });
+  }
+
+  /**
+   * A deferred or bare run whose last leaf just closed. A bare run IS its one
+   * call, so it ends the way that call did: a failure, a reaped orphan
+   * (`cancelled` — we never learned how it ended), or a success.
+   */
+  private settle(run: Run, outcome: string): void {
+    if (run.ended || run.leaves.size > 0) return;
+    if (run.ending) this.finishRun(run, run.ending.outcome, run.ending.summary);
+    else if (run.bare) this.finishRun(run, outcome, undefined, outcome === "success" ? "run_ended" : "leaf");
+  }
+
+  // -- leaves -------------------------------------------------------------
+
+  private openLeaf(leaf: Leaf): void {
+    while (this.leaves.size >= MAX_OPEN) {
+      const oldest = this.leaves.values().next();
+      if (oldest.done) break;
+      this.closeLeaf(oldest.value, { closedBy: "evicted" });
+    }
+    this.leaves.set(leaf.key, leaf);
+    leaf.run.leaves.add(leaf.key);
+    leaf.run.lastActivity = performance.now();
+  }
+
+  closeLeaf(leaf: Leaf, result: { output?: unknown; error?: string; response?: unknown; closedBy?: string }): void {
+    if (!this.leaves.delete(leaf.key)) return;
+    leaf.run.leaves.delete(leaf.key);
+    leaf.run.lastActivity = performance.now();
+    const extras = core.fwFields({ run_id: leaf.run.key, closed_by: result.closedBy });
+    if (leaf.kind === "model") {
+      const response = result.response;
+      const usage = usageOf(response);
+      const content = read(read(response, "message"), "content");
+      if (typeof content === "string" && content !== "") leaf.run.lastContent = content;
+      const now = performance.now();
+      this.tracker.emit("modelResponse", leaf.key, {
+        parentKey: leaf.parentKey,
+        model: leaf.model,
+        requestId: leaf.callId,
+        role: response === undefined ? undefined : "assistant",
+        content: this.capture(content),
+        stopReason: stopReasonOf(response),
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        usage: usage.usage,
+        error: result.error,
+        // Always an int: `modelResponse` does not measure its own duration.
+        duration_ms: core.ms(now - leaf.started),
+        ...extras,
+        ...core.fwFields({
+          ttft_ms: leaf.firstChunk === undefined ? undefined : core.ms(leaf.firstChunk - leaf.started),
+          chunks: Array.isArray(read(response, "raw")) ? (read(response, "raw") as unknown[]).length : undefined,
+        }),
+      });
+    } else {
+      this.tracker.emit("toolResult", leaf.key, {
+        parentKey: leaf.parentKey,
+        toolName: leaf.name,
+        toolCallId: leaf.callId,
+        output: result.error === undefined ? this.capture(result.output) : undefined,
+        error: result.error,
+        ...extras,
+      });
+    }
+    this.settle(leaf.run, result.error !== undefined ? "failed" : result.closedBy ? "cancelled" : "success");
+  }
+
+  // -- the bus --------------------------------------------------------------
+
+  /** Where a bus event goes; opens a bare root run when it belongs to nothing. */
+  private placeOrOpen(event: unknown, prefix: string, agentId: () => string): Located {
+    const located = this.locate(callersOf(event));
+    if (located) return located;
+    const run = this.openRun(prefix, agentId(), { parent: null, bare: true });
+    return { parentKey: run.key, run };
+  }
+
+  llmStart(event: unknown): void {
+    const payload = detail(event);
+    const id = asId(payload.id);
+    const frame = this.frames.getStore();
+    const place = this.placeOrOpen(event, "llm", () => className(callersOf(event)[0]) ?? "llm");
+    this.closeAnsweredTools(place.run, payload.messages);
+    const model = modelFromCallers(event) ?? (frame && frame.run === place.run ? frame.model : undefined) ?? place.run.model;
+    const leaf: Leaf = {
+      key: `llm:${id}`,
+      kind: "model",
+      run: place.run,
+      parentKey: place.parentKey,
+      name: model ?? "llm",
+      callId: id,
+      started: performance.now(),
+      model,
+    };
+    this.openLeaf(leaf);
+    this.tracker.emit("modelRequest", leaf.key, {
+      parentKey: leaf.parentKey,
+      model,
+      requestId: id,
+      messages: this.capture(messagesOf(payload.messages)),
+      ...core.fwFields({ run_id: place.run.key }),
+    });
+  }
+
+  llmStream(event: unknown): void {
+    const leaf = this.leaves.get(`llm:${asId(detail(event).id)}`);
+    if (leaf && leaf.firstChunk === undefined) leaf.firstChunk = performance.now();
+  }
+
+  llmEnd(event: unknown): void {
+    const payload = detail(event);
+    const leaf = this.leaves.get(`llm:${asId(payload.id)}`);
+    if (leaf) this.closeLeaf(leaf, { response: payload.response });
+  }
+
+  /**
+   * Close tool leaves the model has already been shown the result of.
+   *
+   * `callTool` dispatches no `llm-tool-result` when a tool throws, so without
+   * this a failing tool in a legacy agent stays open for the life of the run.
+   * The next model call carries the result as a `toolResult` message — with
+   * `isError` — which is the framework's own record of how the tool ended.
+   */
+  private closeAnsweredTools(run: Run, messages: unknown): void {
+    if (run.leaves.size === 0 || !Array.isArray(messages)) return;
+    const answers = new Map<string, Json>();
+    for (const message of messages) {
+      const result = read(read(message, "options"), "toolResult");
+      const id = nonEmpty(read(result, "id"));
+      if (id && isObject(result)) answers.set(id, result);
+    }
+    for (const key of [...run.leaves]) {
+      const leaf = this.leaves.get(key);
+      if (!leaf || leaf.kind !== "tool" || !leaf.rawId) continue;
+      const answer = answers.get(leaf.rawId);
+      if (!answer) continue;
+      this.closeLeaf(leaf, answer.isError === true ? { error: String(answer.result) } : { output: answer.result });
+    }
+  }
+
+  private toolCallId(run: Run, rawId: string | undefined): string {
+    if (!rawId) return randomUUID();
+    const seen = run.usedToolIds.get(rawId) ?? 0;
+    run.usedToolIds.set(rawId, seen + 1);
+    // A repeat of the same provider id within a run would pair wrongly.
+    return seen === 0 ? rawId : `${rawId}#${seen}`;
+  }
+
+  toolCall(event: unknown): void {
+    const call = read(detail(event), "toolCall");
+    const name = nonEmpty(read(call, "name")) ?? "tool";
+    const rawId = nonEmpty(read(call, "id"));
+    const located = this.locate(callersOf(event));
+    // Inside a workflow the runtime's own `agentToolCallEvent` opened this call
+    // already, synchronously and before the tool ran; this is the same call.
+    if (located && this.findTool(rawId, located.run, "workflow")) return;
+    const place = located ?? this.placeOrOpen(event, "tool", () => name);
+    this.openTool(place, name, rawId, read(call, "input"), "bus");
+  }
+
+  private openTool(place: Located, name: string, rawId: string | undefined, input: unknown, source: Leaf["source"]): void {
+    const leaf: Leaf = {
+      key: this.nextKey("tool"),
+      kind: "tool",
+      run: place.run,
+      parentKey: place.parentKey,
+      name,
+      callId: this.toolCallId(place.run, rawId),
+      rawId,
+      source,
+      started: performance.now(),
+    };
+    this.openLeaf(leaf);
+    this.tracker.emit("toolUse", leaf.key, {
+      parentKey: leaf.parentKey,
+      toolName: name,
+      toolCallId: leaf.callId,
+      input: this.capture(isObject(input) && !Array.isArray(input) ? input : input === undefined ? undefined : { input }),
+      ...core.fwFields({ run_id: place.run.key, tool_id: rawId !== leaf.callId ? rawId : undefined }),
+    });
+  }
+
+  /** The open tool leaf for a provider tool call id, in the run this event belongs to first. */
+  private findTool(rawId: string | undefined, run: Run | null, source?: Leaf["source"]): Leaf | undefined {
+    if (!rawId) return undefined;
+    const search = (keys: Iterable<string>): Leaf | undefined => {
+      for (const key of keys) {
+        const leaf = this.leaves.get(key);
+        if (leaf?.kind === "tool" && leaf.rawId === rawId && (!source || leaf.source === source)) return leaf;
+      }
+      return undefined;
+    };
+    if (source) return run ? search(run.leaves) : undefined;
+    return (run ? search(run.leaves) : undefined) ?? search(this.leaves.keys());
+  }
+
+  toolResult(event: unknown): void {
+    const payload = detail(event);
+    const leaf = this.findTool(nonEmpty(read(read(payload, "toolCall"), "id")), this.locate(callersOf(event))?.run ?? null);
+    if (!leaf) return;
+    const result = read(payload, "toolResult");
+    const failed = read(result, "isError") === true;
+    this.closeLeaf(leaf, failed ? { error: String(read(result, "output")) } : { output: read(result, "output") });
+  }
+
+  retrieveStart(event: unknown): void {
+    const payload = detail(event);
+    const id = asId(payload.id);
+    const place = this.placeOrOpen(event, "retrieve", () => "retriever");
+    const leaf: Leaf = {
+      key: `retrieve:${id}`,
+      kind: "retrieval",
+      run: place.run,
+      parentKey: place.parentKey,
+      name: "retriever",
+      callId: id,
+      started: performance.now(),
+    };
+    this.openLeaf(leaf);
+    this.tracker.emit("toolUse", leaf.key, {
+      parentKey: leaf.parentKey,
+      toolName: leaf.name,
+      toolCallId: id,
+      input: this.capture({ query: queryText(payload.query) }),
+      ...core.fwFields({ run_id: place.run.key, kind: "retrieval" }),
+    });
+  }
+
+  retrieveEnd(event: unknown): void {
+    const payload = detail(event);
+    const leaf = this.leaves.get(`retrieve:${asId(payload.id)}`);
+    if (leaf) this.closeLeaf(leaf, { output: summarizeNodes(payload.nodes) });
+  }
+
+  /**
+   * A query engine call is a root run when nothing encloses it — Python's
+   * top-level `query_engine.query()` — and nothing at all inside a run, where
+   * its retrievals and model calls are what is worth seeing.
+   */
+  queryStart(event: unknown): void {
+    if (this.locate(callersOf(event))) return;
+    const payload = detail(event);
+    const owner = callersOf(event)[0];
+    const run = this.openRun(`query:${asId(payload.id)}`, className(owner) ?? "query_engine", {
+      owner: isObject(owner) ? owner : null,
+      goal: queryText(payload.query),
+    });
+    const id = asId(payload.id);
+    this.queries.set(id, run);
+    run.forget = () => this.queries.delete(id);
+  }
+
+  queryEnd(event: unknown): void {
+    const payload = detail(event);
+    const id = asId(payload.id);
+    const run = this.queries.get(id);
+    if (!run) return;
+    this.finishRun(run, "success", this.options.captureMessages ? textOf(payload.response) : undefined);
+  }
+
+  /**
+   * Legacy `AgentRunner` (`LLMAgent`, `OpenAIAgent`, `ReActAgent`, …).
+   *
+   * `agent-start` fires for EVERY step and `agent-end` only after the last one,
+   * both carrying the step. Pairing them by step id — what this adapter used to
+   * do — opened a span per step and closed one, so every multi-step run left
+   * one agent open forever and split into two sessions. A task is identified by
+   * its FIRST step instead, reached by walking `prevStep`.
+   */
+  agentStart(event: unknown): void {
+    const step = read(detail(event), "startStep");
+    if (!isObject(step)) return;
+    const first = firstStep(step);
+    const firstId = asId(read(first, "id"));
+    const running = this.tasks.get(firstId);
+    if (running) {
+      running.lastActivity = performance.now();
+      return;
+    }
+    const owner = callersOf(event)[0];
+    const run = this.openRun(`task:${firstId}`, className(owner) ?? "AgentRunner", {
+      parent: this.locate(callersOf(event)),
+      owner: isObject(owner) ? owner : null,
+      goal: textOf((read(read(read(step, "context"), "store"), "messages") as unknown[] | undefined)?.at(-1)),
+    });
+    run.model = nonEmpty(read(read(read(read(step, "context"), "llm"), "metadata"), "model"));
+    this.tasks.set(firstId, run);
+    run.forget = () => this.tasks.delete(firstId);
+  }
+
+  agentEnd(event: unknown): void {
+    const step = read(detail(event), "endStep");
+    if (!isObject(step)) return;
+    const firstId = asId(read(firstStep(step), "id"));
+    const run = this.tasks.get(firstId);
+    if (run) this.finishRun(run, "success");
+  }
+
+  // -- workflows ------------------------------------------------------------
+
+  /**
+   * Open the run for an `AgentWorkflow.runStream()` call and return the hook to
+   * attach to the context it is about to create.
+   */
+  beginWorkflow(
+    workflow: Json,
+    userInput: unknown,
+    module: WorkflowModule,
+  ): { run: Run; attach: (context: unknown) => void } {
+    const agents = read(workflow, "agents");
+    const size = agents instanceof Map ? agents.size : 1;
+    const rootName = nonEmpty(read(workflow, "rootAgentName"));
+    const agentId = size <= 1 && rootName ? rootName : (className(workflow) ?? "AgentWorkflow");
+    const run = this.openRun("workflow", agentId, {
+      parent: this.locate(),
+      goal: typeof userInput === "string" ? userInput : textOf(userInput),
+      fields: { workflow: className(workflow), agent_name: size <= 1 ? rootName : undefined },
+    });
+    return {
+      run,
+      attach: (context: unknown) => {
+        this.attachContext(run, workflow, context, module);
+      },
+    };
+  }
+
+  failWorkflow(run: Run | null, error: unknown): void {
+    if (!run) return;
+    // Nothing below the run saw this failure, so the run reports it — once.
+    this.reportError(run, error);
+    this.finishRun(run, "failed", errorText(error));
+  }
+
+  /**
+   * An `error` event, for a failure no leaf or hook already carries. The
+   * Python adapter's rule: a second report of one failure double-counts on the
+   * session's error total, so only the innermost place that saw it reports it.
+   */
+  private reportError(run: Run, error: unknown): void {
+    this.tracker.emit("error", run.key, {
+      errorType: error instanceof Error ? error.name || "Error" : typeof error,
+      message: error instanceof Error ? error.message || error.name : String(error),
+      traceback: error instanceof Error ? error.stack : undefined,
+      ...core.fwFields({ run_id: run.key }),
+    });
+  }
+
+  private attachContext(run: Run, workflow: Json, context: unknown, module: WorkflowModule): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- the subscriber is a named function (its name is its degradation site)
+    const state = this;
+    const callContext = read(context, "__internal__call_context") as Subscribable | undefined;
+    const sendEvent = read(context, "__internal__call_send_event") as Subscribable | undefined;
+    if (typeof sendEvent?.subscribe === "function") {
+      sendEvent.subscribe(
+        core.safe(NAME, function workflowEvent(this: void, sent: unknown): void {
+          state.workflowEvent(run, sent, module);
+        }),
+      );
+    }
+    if (typeof callContext?.subscribe !== "function") {
+      compat.warn(
+        "this @llamaindex/workflow context has no __internal__call_context, so workflow steps " +
+          "are not recorded (the run, its model calls and its tool calls still are).",
+        `${NAME}:call_context`,
+      );
+      return;
+    }
+    const names = handlerNames(workflow);
+    callContext.subscribe(((handlerContext: HandlerContext, next: (context: HandlerContext) => void) => {
+      // `next` MUST be called exactly once whatever happens here: a subscriber
+      // that throws before it would silently stop the customer's workflow.
+      let wrapped: HandlerContext = handlerContext;
+      try {
+        const original = handlerContext.handler;
+        if (typeof original === "function") {
+          const name = names.get(original) ?? nonEmpty(original.name) ?? "step";
+          const inputs = handlerContext.inputs;
+          const input = Array.isArray(inputs) ? (inputs[0] as unknown) : undefined;
+          wrapped = { ...handlerContext, handler: this.wrapStep(run, workflow, name, original, input) };
+        }
+      } catch (error) {
+        core.callSafely(
+          () => {
+            throw error;
+          },
+          [],
+          `${NAME}.wrapStep`,
+        );
+      }
+      next(wrapped);
+    }));
+  }
+
+  workflowEvent(run: Run, sent: unknown, module: WorkflowModule): void {
+    // A context outlives uninstall(); its subscriptions cannot be removed.
+    if (!this.active) return;
+    if (module.stopAgentEvent?.include(sent)) {
+      const data = read(sent, "data");
+      const result = read(data, "result");
+      this.finishRun(run, "success", this.options.captureMessages ? (textOf(result) ?? textOf(read(data, "message"))) : undefined);
+      return;
+    }
+    if (module.agentToolCallEvent?.include(sent)) {
+      // The runtime announces every tool call before running it — the only
+      // signal on releases whose `AgentWorkflow` calls tools directly rather
+      // than through `callTool` (workflow 1.1.5 dispatches nothing on the bus).
+      const data = read(sent, "data");
+      const owner = run.sub ?? run;
+      const frame = this.frames.getStore();
+      const place = frame && frame.run === owner ? { parentKey: frame.key, run: owner } : { parentKey: owner.key, run: owner };
+      const name = nonEmpty(read(data, "toolName")) ?? "tool";
+      this.openTool(place, name, nonEmpty(read(data, "toolId")), read(data, "toolKwargs"), "workflow");
+      return;
+    }
+    if (module.agentToolCallResultEvent?.include(sent)) {
+      // The runtime's own record of how a tool ended. It is the ONLY signal for
+      // a tool that threw: `callTool` dispatches no `llm-tool-result` then.
+      const data = read(sent, "data");
+      const leaf = this.findTool(nonEmpty(read(data, "toolId")), run.sub ?? run);
+      if (!leaf) return;
+      const output = read(data, "toolOutput");
+      if (read(output, "isError") === true) {
+        this.closeLeaf(leaf, { error: cleanToolError(read(output, "result")) });
+      } else {
+        this.closeLeaf(leaf, { output: read(data, "raw") ?? read(output, "result") });
+      }
+    }
+  }
+
+  private wrapStep(
+    run: Run,
+    workflow: Json,
+    name: string,
+    original: (...args: unknown[]) => unknown,
+    input: unknown,
+  ): (...args: unknown[]) => unknown {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- the wrapper needs its own `this`
+    const state = this;
+    return function failproofaiStep(this: unknown, ...args: unknown[]): unknown {
+      if (!state.active) return original.apply(this, args);
+      const step = core.callSafely(() => state.stepStart(run, workflow, name, input), [], `${NAME}.stepStart`);
+      if (!step) return original.apply(this, args);
+      const finish = (value: unknown, error?: unknown): void => {
+        core.callSafely(() => {
+          state.stepEnd(step, value, error);
+        }, [], `${NAME}.stepEnd`);
+      };
+      let result: unknown;
+      try {
+        result = state.frames.run(step.frame, () => original.apply(this, args));
+      } catch (error) {
+        finish(undefined, error);
+        throw error;
+      }
+      if (isObject(result) && typeof (result as { then?: unknown }).then === "function") {
+        return (result as unknown as PromiseLike<unknown>).then(
+          (value) => {
+            finish(value);
+            return value;
+          },
+          (error: unknown) => {
+            finish(undefined, error);
+            throw error;
+          },
+        );
+      }
+      finish(result);
+      return result;
+    };
+  }
+
+  private stepStart(run: Run, workflow: Json, name: string, event: unknown): Step | null {
+    if (run.ended) return null;
+    const data = read(event, "data");
+    const agentName = nonEmpty(read(data, "currentAgentName")) ?? nonEmpty(read(data, "agentName"));
+    const owner = this.subAgent(run, agentName);
+    run.lastActivity = owner.lastActivity = performance.now();
+    const key = this.nextKey(`${run.key}:step`);
+    this.tracker.link(key, owner.key);
+    const agents = read(workflow, "agents");
+    const agent = agents instanceof Map ? agents.get(agentName ?? read(workflow, "rootAgentName")) : undefined;
+    const model = nonEmpty(read(read(read(agent, "llm"), "metadata"), "model"));
+    if (this.options.steps) {
+      this.tracker.emit("hookTriggered", key, {
+        parentKey: owner.key,
+        hookName: name,
+        hookId: key,
+        triggerEvent: "workflow_step",
+        input: this.capture(eventData(data)),
+        ...core.fwFields({ run_id: run.key, step: name, input_event: eventLabel(event), agent_name: agentName }),
+      });
+    }
+    return { key, name, run, owner, frame: { key, run: owner, model } };
+  }
+
+  private stepEnd(step: Step, value: unknown, error?: unknown): void {
+    step.run.lastActivity = step.owner.lastActivity = performance.now();
+    const failed = error !== undefined;
+    let reported = false;
+    if (failed) {
+      // Whatever this step had open failed with it — a model call that threw
+      // has no `llm-end` at all.
+      for (const key of [...step.owner.leaves]) {
+        const leaf = this.leaves.get(key);
+        if (leaf && leaf.parentKey === step.key) {
+          this.closeLeaf(leaf, { error: errorText(error) });
+          reported = true;
+        }
+      }
+    }
+    if (this.options.steps) {
+      this.tracker.emit("hookCompleted", step.key, {
+        parentKey: step.owner.key,
+        hookName: step.name,
+        hookId: step.key,
+        outcome: failed ? "failed" : "success",
+        output: failed ? undefined : this.capture(eventData(read(value, "data") ?? value)),
+        error: failed ? errorText(error) : undefined,
+        ...core.fwFields({ run_id: step.run.key, step: step.name, output_event: eventLabel(value) }),
+      });
+    }
+    // An AgentWorkflow is a single chain of steps: a step that throws ends the
+    // run, and the runtime never settles `run()` to tell us so. Under
+    // `steps: false` there is no failed hook, so unless a leaf carried it the
+    // run reports it — as the Python adapter does.
+    if (failed) {
+      if (!reported && !this.options.steps) this.reportError(step.owner, error);
+      this.finishRun(step.run, "failed", errorText(error));
+    }
+  }
+
+  /**
+   * The nested agent a multi-agent step belongs to, or the run itself.
+   *
+   * The Python adapter's rule: each distinct agent name opens a nested agent
+   * under the workflow and a handoff closes the previous one. The name is
+   * sticky — tool steps carry `agentName`, not `currentAgentName`, and a step
+   * with neither keeps whichever agent holds the turn.
+   */
+  private subAgent(run: Run, name: string | undefined): Run {
+    if (!name || name === run.agentId || (run.sub && run.sub.agentId === name)) return run.sub ?? run;
+    if (run.sub) this.finishRun(run.sub, "success");
+    run.subSeq += 1;
+    const sub = this.openRun(`${run.key}:sub${run.subSeq}`, name, {
+      parent: { parentKey: run.key, run },
+      root: run,
+      fields: { agent_name: name, workflow: run.agentId },
+    });
+    run.sub = sub;
+    return sub;
+  }
+
+  // -- teardown -------------------------------------------------------------
+
+  /**
+   * Close what nobody is going to close. Returns how many leaves and runs.
+   *
+   * Leaves first — a model call that threw has no `llm-end` — then runs that
+   * have been silent for `staleAfter`: LlamaIndex.TS never signals a legacy
+   * task whose step threw (no `agent-end`) or a `runStream()` nobody drained,
+   * and a run left open is a session the dashboard shows as `ongoing` forever.
+   * Python reaps only leaves because its span handler sees every drop; here
+   * the run-level signal genuinely does not exist.
+   */
+  sweep(now = performance.now()): number {
+    const cutoff = now - this.options.staleAfter * 1000;
+    let closed = 0;
+    for (const leaf of [...this.leaves.values()]) {
+      if (leaf.started > cutoff) continue;
+      this.closeLeaf(leaf, { closedBy: "stale" });
+      closed += 1;
+    }
+    for (const run of [...this.runs.values()].reverse()) {
+      if (run.ended || run.root !== null || run.leaves.size > 0 || run.lastActivity > cutoff) continue;
+      this.finishRun(run, "cancelled", undefined, "stale");
+      closed += 1;
+    }
+    return closed;
+  }
+
+  startReaper(): void {
+    if (this.options.reaperInterval <= 0 || this.reaper !== null) return;
+    this.reaper = setInterval(() => {
+      core.callSafely(() => this.sweep(), [], `${NAME}.reaper`);
+    }, this.options.reaperInterval * 1000);
+    this.reaper.unref();
+  }
+
+  shutdown(): void {
+    this.active = false;
+    if (this.reaper !== null) clearInterval(this.reaper);
+    this.reaper = null;
+    // Newest first, so a sub-agent closes before the workflow that opened it.
+    for (const run of [...this.runs.values()].reverse()) this.finishRun(run, "cancelled", undefined, "uninstrument");
+    this.leaves.clear();
+    this.tasks.clear();
+    this.queries.clear();
+    this.tracker.reset();
+  }
+}
+
+interface Step {
+  key: string;
   name: string;
-  input: Record<string, unknown> | undefined;
-} {
-  const call = (payload.toolCall ?? payload) as Record<string, unknown>;
-  const id = typeof call.id === "string" && call.id ? call.id : randomUUID();
-  const name =
-    (typeof call.name === "string" && call.name ? call.name : undefined) ??
-    (typeof payload.name === "string" ? payload.name : undefined) ??
-    "tool";
-  const input = (call.input ?? call.args ?? call.parameters) as Record<string, unknown> | undefined;
-  return { id, name, input };
+  run: Run;
+  owner: Run;
+  frame: Frame;
 }
 
-function subscribe(event: string, handler: (payload: Record<string, unknown>) => void): void {
-  const bound = core.safe(NAME, (raw: unknown) => {
-    handler(detail(raw));
-  });
-  manager!.on(event, bound);
-  subscriptions.push([event, bound]);
+function firstStep(step: Json): Json {
+  let current = step;
+  const seen = new Set<unknown>();
+  for (;;) {
+    const previous = read(current, "prevStep");
+    if (!isObject(previous) || seen.has(previous)) return current;
+    seen.add(previous);
+    current = previous;
+  }
 }
 
-function install(options: Record<string, unknown>, settings: { callbackManager?: unknown }): void {
-  const bus = settings.callbackManager as CallbackManagerLike | undefined;
-  if (!bus || typeof bus.on !== "function") {
+/** Step handler functions are instance arrow fields, so they are named by the field. */
+function handlerNames(workflow: Json): Map<unknown, string> {
+  const names = new Map<unknown, string>();
+  try {
+    for (const key of Object.keys(workflow)) {
+      const value = read(workflow, key);
+      if (typeof value === "function") names.set(value, key);
+    }
+  } catch {
+    // A frozen or exotic object; unnamed steps fall back to the function name.
+  }
+  return names;
+}
+
+/** A workflow event's label: workflow-core tags each event with `Symbol.toStringTag`. */
+function eventLabel(event: unknown): string | undefined {
+  if (!isObject(event)) return undefined;
+  try {
+    const tag = /^\[object (.+)\]$/.exec(Object.prototype.toString.call(event))?.[1];
+    return tag !== undefined && tag !== "Object" && !tag.startsWith("WorkflowEvent") ? tag : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A workflow event's payload, minus the run's whole state object. */
+function eventData(data: unknown): unknown {
+  if (!isObject(data) || Array.isArray(data)) return data;
+  const rest = { ...data };
+  delete rest.state;
+  return rest;
+}
+
+/**
+ * `AgentWorkflow` stores a thrown tool as `Error: ${new Error(String(output))}`,
+ * where `output` is already `prettifyError`'s `Error: <message>` — three nested
+ * prefixes for one failure. Keep the innermost.
+ */
+function cleanToolError(result: unknown): string {
+  let text = typeof result === "string" ? result : String(result);
+  while (/^Error: \w*Error: /.test(text)) text = text.slice("Error: ".length);
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// Attachment
+// ---------------------------------------------------------------------------
+
+interface Installed {
+  state: State;
+  unsubscribe: Array<() => void>;
+  patcher: core.Patcher;
+}
+
+let installed: Installed | null = null;
+
+const BUS_EVENTS: Array<[string, keyof State]> = [
+  ["llm-start", "llmStart"],
+  ["llm-stream", "llmStream"],
+  ["llm-end", "llmEnd"],
+  ["llm-tool-call", "toolCall"],
+  ["llm-tool-result", "toolResult"],
+  ["retrieve-start", "retrieveStart"],
+  ["retrieve-end", "retrieveEnd"],
+  ["query-start", "queryStart"],
+  ["query-end", "queryEnd"],
+  ["agent-start", "agentStart"],
+  ["agent-end", "agentEnd"],
+];
+
+/**
+ * Subscribe to every copy of the bus and patch every copy of `AgentWorkflow`.
+ *
+ * Separate from `install()` so a test can hand it stand-ins for the framework
+ * modules; `install()` is only about FINDING the right copies.
+ *
+ * @internal
+ */
+export function attach(
+  rawOptions: Record<string, unknown>,
+  modules: { globals: GlobalModule[]; workflows: WorkflowModule[]; frameworkPackage?: string },
+): { sweep: (now?: number) => number } {
+  const options = parseOptions(rawOptions);
+  const state = new State(options, modules.globals, modules.frameworkPackage ?? PACKAGE);
+  const current: Installed = { state, unsubscribe: [], patcher: new core.Patcher() };
+  installed = current;
+
+  const buses = new Set<Bus>();
+  for (const module of modules.globals) {
+    const bus = module.Settings?.callbackManager as Bus | undefined;
+    if (bus && typeof bus.on === "function") buses.add(bus);
+  }
+  if (buses.size === 0) {
     throw new Error(
-      "Settings.callbackManager is missing or has no `on` — this build of LlamaIndex does " +
-        "not expose the instrumentation bus this adapter subscribes to.",
+      "Settings.callbackManager is missing or has no `on` — this build of LlamaIndex does not " +
+        "expose the callback bus this adapter subscribes to.",
     );
   }
-  manager = bus;
-  const t = (tracker = new core.RunTracker(NAME, {
-    baseFields: core.frameworkFields(NAME, PACKAGES[0]),
-    fieldLimit: typeof options.captureLimit === "number" ? options.captureLimit : undefined,
-  }));
-
-  if (typeof bus.off !== "function") {
-    // Not fatal — subscribing is still the whole integration — but say so, or
-    // an `uninstrument()` that silently leaves handlers attached looks like it
-    // worked and keeps recording.
-    compat.warn(
-      "this build of LlamaIndex has no `callbackManager.off`, so uninstrument() cannot " +
-        "detach the handlers. They will stay subscribed for the life of the process; the " +
-        "adapter stops emitting, so no events are recorded after uninstrument().",
-      `${NAME}:off`,
+  for (const bus of buses) {
+    if (typeof bus.off !== "function") {
+      compat.warn(
+        "this build of LlamaIndex has no `callbackManager.off`, so uninstrument() cannot detach " +
+          "the handlers. They stay subscribed for the life of the process and emit nothing.",
+        `${NAME}:off`,
+      );
+    }
+    for (const [event, method] of BUS_EVENTS) {
+      // Named per event BEFORE `safe()` reads the name: the name is the
+      // degradation site, and one shared site would let a handler that keeps
+      // failing on, say, `retrieve-end` switch off `llm-start` with it.
+      const named = {
+        [method](raw: unknown): void {
+          if (!state.active) return;
+          (state[method] as (event: unknown) => void).call(state, raw);
+        },
+      }[method]!;
+      const handler = core.safe(NAME, named);
+      bus.on(event, handler);
+      current.unsubscribe.push(() => {
+        bus.off?.(event, handler);
+      });
+    }
+  }
+  if (options.embeddings) {
+    logger.debug(
+      "llamaindex: embeddings=true has nothing to record — LlamaIndex.TS dispatches no embedding events.",
     );
   }
 
-  subscribe("llm-start", (payload) => {
-    const id = asId(payload.id);
-    t.emit("modelRequest", id, {
-      model: typeof payload.model === "string" ? payload.model : undefined,
-      messages: messagesOf(payload),
-      requestId: id,
-      ...core.fwFields({ run_id: id }),
-    });
-  });
-
-  subscribe("llm-end", (payload) => {
-    const id = asId(payload.id);
-    const response = payload.response as { message?: { content?: unknown } } | undefined;
-    const usage = usageOf(response);
-    t.emit("modelResponse", id, {
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      content: response?.message?.content,
-      role: "assistant",
-      requestId: id,
-      ...core.fwFields({ run_id: id }),
-    });
-  });
-
-  subscribe("llm-tool-call", (payload) => {
-    const call = toolCallOf(payload);
-    openTools.set(call.id, call.name);
-    t.emit("toolUse", call.id, {
-      toolName: call.name,
-      toolCallId: call.id,
-      input: call.input,
-    });
-  });
-
-  subscribe("llm-tool-result", (payload) => {
-    const call = toolCallOf(payload);
-    const toolName = openTools.get(call.id) ?? call.name;
-    openTools.delete(call.id);
-    const result = payload.toolResult as
-      | { output?: unknown; isError?: unknown; error?: unknown }
-      | undefined;
-    const failed = Boolean(result?.isError ?? result?.error);
-    t.emit("toolResult", call.id, {
-      toolName,
-      toolCallId: call.id,
-      output: failed ? undefined : result?.output,
-      error: failed ? describeToolError(result) : undefined,
-    });
-  });
-
-  subscribe("agent-start", (payload) => {
-    const step = (payload.startStep ?? payload) as Record<string, unknown>;
-    const id = asId(step.id, payload.id);
-    t.startAgent(id, {
-      agentId: core.normalizeAgentId(step.agentName ?? step.name, "llamaindex-agent"),
-      ...core.fwFields({ run_id: id, input: step.input }),
-    });
-  });
-
-  subscribe("agent-end", (payload) => {
-    const step = (payload.endStep ?? payload) as Record<string, unknown>;
-    const id = asId(step.id, payload.id);
-    t.endAgent(id, { outcome: "success", ...core.fwFields({ output: step.output }) });
-  });
-
-  for (const [startEvent, endEvent, label] of [
-    ["retrieve-start", "retrieve-end", "retrieve"],
-    ["query-start", "query-end", "query"],
-    ["synthesize-start", "synthesize-end", "synthesize"],
-  ] as const) {
-    subscribe(startEvent, (payload) => {
-      const id = asId(payload.id);
-      openRuns.set(id, label);
-      t.emit("toolUse", id, {
-        toolName: label,
-        toolCallId: id,
-        input: { query: payload.query },
-        ...core.fwFields({ run_id: id, kind: label }),
-      });
-    });
-    subscribe(endEvent, (payload) => {
-      const id = asId(payload.id);
-      if (!openRuns.delete(id)) return;
-      const nodes = payload.nodes;
-      t.emit("toolResult", id, {
-        toolName: label,
-        toolCallId: id,
-        output: nodes ?? payload.response,
-        ...core.fwFields({ node_count: Array.isArray(nodes) ? nodes.length : undefined }),
-      });
-    });
+  for (const module of modules.workflows) {
+    patchWorkflow(current, module);
   }
+  state.startReaper();
+  logger.debug(`llamaindex adapter subscribed on ${buses.size} bus(es), ${current.patcher.size} patch(es)`);
+  return { sweep: (now?: number) => state.sweep(now) };
+}
 
-  logger.debug(`llamaindex adapter subscribed to ${subscriptions.length} events`);
+function patchWorkflow(current: Installed, module: WorkflowModule): void {
+  const proto = module.AgentWorkflow?.prototype as Record<string, unknown> | undefined;
+  const ok = compat.probe(NAME, "AgentWorkflow.runStream", () => typeof proto?.runStream === "function");
+  if (!ok || !proto) return;
+  const original = proto.runStream as (...args: unknown[]) => unknown;
+  const state = current.state;
+  const replacement = function runStream(this: Json, ...args: unknown[]): unknown {
+    if (!state.active) return original.apply(this, args);
+    const wf = read(this, "workflow") as Json | undefined;
+    const createContext = read(wf, "createContext");
+    const own = wf ? Object.getOwnPropertyDescriptor(wf, "createContext") : undefined;
+    // Without the context there is no end signal, so an opened run would stay
+    // open until the reaper: record the calls inside it as loose runs instead.
+    const observable = compat.probe(
+      NAME,
+      "AgentWorkflow.workflow.createContext",
+      () => typeof createContext === "function" && own?.writable === true,
+    );
+    if (!observable) return original.apply(this, args);
+    let attach: ((context: unknown) => void) | undefined;
+    let run: Run | null = null;
+    core.callSafely(
+      () => {
+        ({ run, attach } = state.beginWorkflow(this, args[0], module));
+      },
+      [],
+      `${NAME}.beginWorkflow`,
+    );
+    const intercept = attach !== undefined;
+    if (intercept) {
+      // `runStream` creates the context and sends the start event in one
+      // synchronous call, and the first step runs inside that send. So the
+      // subscriptions go on the context the moment it exists, for exactly the
+      // duration of this call.
+      wf!.createContext = function createContextOnce(this: unknown, ...inner: unknown[]): unknown {
+        const context = (createContext as (...a: unknown[]) => unknown).apply(this, inner);
+        core.callSafely(() => attach!(context), [], `${NAME}.attachContext`);
+        return context;
+      };
+    }
+    try {
+      return original.apply(this, args);
+    } catch (error) {
+      core.callSafely(() => state.failWorkflow(run, error), [], `${NAME}.failWorkflow`);
+      throw error;
+    } finally {
+      if (intercept && own) Object.defineProperty(wf!, "createContext", own);
+    }
+  };
+  current.patcher.patch(proto, "runStream", replacement);
+}
+
+// ---------------------------------------------------------------------------
+// The adapter
+// ---------------------------------------------------------------------------
+
+async function loadCopies(specifier: string): Promise<unknown[] | null> {
+  try {
+    return await compat.requireModuleCopies(specifier, INSTALL);
+  } catch {
+    return null;
+  }
 }
 
 export const adapter: Adapter = {
   name: NAME,
 
   async install(options: Record<string, unknown> = {}): Promise<void> {
-    compat.checkVersion(NAME, PACKAGES[0], {
-      minimum: "0.9.0",
-      below: "1.0.0",
-      reason: "the callbackManager event names below are the 0.9+ shape",
+    compat.checkVersion(NAME, PACKAGE, {
+      minimum: MIN_VERSION,
+      below: BELOW_VERSION,
+      reason: "the first release whose agent() runs on the @llamaindex/workflow 1.1 runtime",
     });
 
-    // Either package serves: an application on the umbrella `llamaindex` and
-    // one on `@llamaindex/core` share the same `Settings` singleton, and a
-    // build that split them still re-exports it.
-    let settings: { callbackManager?: unknown } | null = null;
-    let lastError: unknown = null;
-    for (const pkg of PACKAGES) {
-      try {
-        const module = (await compat.requireModule(pkg, "npm install llamaindex")) as {
-          Settings?: { callbackManager?: unknown };
-        };
-        if (module.Settings) {
-          settings = module.Settings;
-          break;
-        }
-      } catch (error) {
-        lastError = error;
-      }
+    // `@llamaindex/core/global` is where the bus singleton lives, and it is the
+    // one module every LlamaIndex install has — an app on `@llamaindex/core` +
+    // `@llamaindex/workflow` alone never installs the umbrella. The umbrella
+    // re-exports the same `Settings`, so it is only the fallback for a layout
+    // (pnpm, strict) where the app cannot resolve the scoped package itself.
+    let globals = (await loadCopies("@llamaindex/core/global")) as GlobalModule[] | null;
+    let frameworkPackage = compat.versionString(PACKAGE) !== null ? PACKAGE : CORE_PACKAGE;
+    if (!globals?.some((module) => module.Settings)) {
+      globals = (await compat.requireModuleCopies(PACKAGE, INSTALL)) as GlobalModule[];
+      frameworkPackage = PACKAGE;
     }
-    if (settings === null) {
-      throw new Error(
-        "could not reach LlamaIndex's Settings singleton from either `llamaindex` or " +
-          "`@llamaindex/core`. Install it with:  npm install llamaindex",
-        { cause: lastError },
-      );
+
+    // The workflow package is optional: a legacy-agent or query-engine app does
+    // not have it, and that is not a reason to record nothing.
+    let workflows: WorkflowModule[] = [];
+    if (compat.versionString(WORKFLOW_PACKAGE) !== null) {
+      compat.checkVersion(NAME, WORKFLOW_PACKAGE, {
+        minimum: WORKFLOW_MIN,
+        below: WORKFLOW_BELOW,
+        reason: "1.1 moved agent workflows onto @llamaindex/workflow-core",
+      });
+      workflows = ((await loadCopies(WORKFLOW_PACKAGE)) ?? []) as WorkflowModule[];
     }
-    install(options, settings);
+    attach(options, { globals, workflows, frameworkPackage });
   },
 
   uninstall(): void {
-    const off = manager?.off;
-    if (manager && typeof off === "function") {
-      for (const [event, handler] of subscriptions) {
-        try {
-          off.call(manager, event, handler);
-        } catch {
-          // Detaching is best-effort; the tracker teardown below is what
-          // actually stops events being recorded.
-        }
+    const current = installed;
+    installed = null;
+    if (current === null) return;
+    for (const unsubscribe of current.unsubscribe) {
+      try {
+        unsubscribe();
+      } catch {
+        // Detaching is best-effort; `state.active = false` below is what
+        // actually stops events being recorded.
       }
     }
-    subscriptions.length = 0;
-    manager = null;
-    tracker?.closeOpenAgents();
-    tracker?.reset();
-    tracker = null;
-    openTools.clear();
-    openRuns.clear();
+    current.patcher.restoreAll();
+    core.callSafely(() => {
+      current.state.shutdown();
+    }, [], `${NAME}.shutdown`);
   },
 };

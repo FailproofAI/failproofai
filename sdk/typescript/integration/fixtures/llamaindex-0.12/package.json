@@ -1,0 +1,15 @@
+{
+  "name": "failproofai-it-llamaindex-0.12",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: LlamaIndex.TS 0.12 (+ @llamaindex/workflow 1.1) against the packed @failproofai/sdk.",
+  "dependencies": {
+    "@llamaindex/core": "0.6.22",
+    "@llamaindex/workflow": "1.1.24",
+    "llamaindex": "0.12.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

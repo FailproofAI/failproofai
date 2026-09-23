@@ -428,12 +428,30 @@ describe("a reviewable deny", () => {
     expect(enforced.outcome.exitCode).toBe(plain.outcome.exitCode);
   });
 
-  it("stands when its reviewer was never asked (outside home: the precondition is false)", async () => {
+  // CORRECTED: this used to assert the opposite — that a path outside the
+  // project but outside HOME too (`/etc/hosts`, `/tmp/claude-*`) was never put
+  // to Jev, so `block-read-outside-cwd`'s deny stood. That was the
+  // precondition's bug, not a property worth keeping: the regex partner denies
+  // ANY path outside the project, so 106 of its 154 denials on the 1,332-case
+  // corpus had no paired question and could not be cleared by construction.
+  // The invariant the old name claimed — a reviewer that was NOT asked keeps
+  // the regex verdict standing — is `clears()` in combine.ts and is pinned by
+  // combine.test.ts; it is not reachable from here through this policy any more.
+  it("is cleared for a path outside the project but outside home too (/etc, /tmp)", async () => {
     jevConfig = CFG;
     const { outcome, row } = await readFile("/etc/hosts");
-    expect(jevCalls.length).toBeLessThanOrEqual(1);
-    if (jevCalls[0]) expect(Object.keys(jevCalls[0].request.questions)).not.toContain("read-outside-workspace.reads_outside");
+    expect(jevCalls).toHaveLength(1);
+    expect(Object.keys(jevCalls[0].request.questions)).toContain("read-outside-workspace.reads_outside");
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
+  });
+
+  it("…and still stands there when the reviewer comes back flagged", async () => {
+    jevConfig = CFG;
+    respond = answers({ "read-outside-workspace": 0.95 });
+    const { outcome, row } = await readFile("/etc/hosts");
     expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
     expect(row.jevCleared).toBeUndefined();
   });
 

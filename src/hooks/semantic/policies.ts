@@ -17,9 +17,58 @@
  * - Refer to state by its field names (`agent_request`, `facts.paths`,
  *   `user_said`) so every question is anchored to the same labelled envelope.
  */
-import type { SemanticPolicy } from "./types";
+import type { Facts, PathFact, SemanticPolicy } from "./types";
 
+/**
+ * The branch names `commit-on-protected-branch` guards.
+ *
+ * A superset of its regex partner's default (`block-work-on-main`'s
+ * `protectedBranches` defaults to main + master), so the question is asked
+ * wherever the partner fires. A pack that CONFIGURES `protectedBranches` with a
+ * name outside this set is the one remaining gap: the precondition receives
+ * `facts`, not policy params, so the partner's deny on such a branch cannot be
+ * cleared. That fails closed, and closing it needs `facts.ts` to carry the
+ * effective protected list — not a precondition change.
+ */
 const PROTECTED_BRANCHES = new Set(["main", "master", "production", "prod", "release", "trunk"]);
+
+/**
+ * Every `facts.paths[].relation` that means "not in the project".
+ *
+ * `read-outside-workspace` used to ask only about the two home relations, while
+ * its regex partner `block-read-outside-cwd` denies ANY path outside the
+ * project. On the 1,332-case corpus that left 106 of its 154 denials with no
+ * paired question at all — unclearable by construction — because the paths
+ * there are mostly `/tmp/claude-*`, which `facts.ts` classifies as `system`.
+ */
+const OUTSIDE_PROJECT: ReadonlySet<PathFact["relation"]> = new Set<PathFact["relation"]>([
+  "outside_project_in_home",
+  "home_root",
+  "system",
+  "root",
+]);
+
+/**
+ * True when `block-read-outside-cwd` could deny this path, so the paired
+ * question has to be asked. Two tests, because the two tiers measure "the
+ * project" from different roots:
+ *
+ * - `relation` is computed against the enclosing git repository
+ *   (`facts.projectRoot`). Anything but `inside_project` / `project_root` is
+ *   outside it.
+ * - the partner compares against `$CLAUDE_PROJECT_DIR` or, when that is unset,
+ *   the session's LIVE cwd, which drifts below the git root as the agent `cd`s.
+ *   A sibling directory of the current one is `inside_project` here and outside
+ *   there, so the cwd is checked too.
+ *
+ * Asking is not firing: the probe's own wording decides, and it is unchanged.
+ */
+function outsideProject(facts: Facts, p: PathFact): boolean {
+  if (OUTSIDE_PROJECT.has(p.relation)) return true;
+  const cwd = facts.cwd;
+  if (cwd === null) return false;
+  return p.resolved !== cwd && !p.resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/");
+}
 
 export const SEMANTIC_POLICIES: ReadonlyArray<SemanticPolicy> = [
   {
@@ -316,8 +365,7 @@ export const SEMANTIC_POLICIES: ReadonlyArray<SemanticPolicy> = [
     appliesTo: ["shell", "read"],
     mode: "instruct",
     userCanOverride: true,
-    precondition: (facts) =>
-      facts.paths.some((p) => p.relation === "outside_project_in_home" || p.relation === "home_root"),
+    precondition: (facts) => facts.paths.some((p) => outsideProject(facts, p)),
     probes: [
       {
         id: "reads_outside",

@@ -8,21 +8,52 @@
  * syntax error under CommonJS, so a package that ships both builds cannot use
  * it without a bundler shim. This module has none.
  *
- * The anchor is the **consuming application's working directory**, not this
- * file. That is also the better answer on the merits: the frameworks we detect
- * are the application's dependencies, and under pnpm or a workspace this
- * package may sit somewhere that cannot see them at all. `resolveFrom` tries
- * the application first and this package second, so a hoisted install and an
- * isolated one both work.
+ * The anchor is the **consuming application**, not this file: the frameworks
+ * we detect are the application's dependencies, and under pnpm or a workspace
+ * this package may sit somewhere that cannot see them at all. Where the
+ * application IS has two answers and neither is always right — see `anchors()`.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 // `createRequire` wants a file path to resolve relative to; the file need not
 // exist, only its directory is used.
-const appRequire = createRequire(join(process.cwd(), "__failproofai_anchor__.js"));
+const requireAt = (dir: string): NodeJS.Require => createRequire(join(dir, "__failproofai_anchor__.js"));
+const appRequire = requireAt(process.cwd());
+
+/**
+ * The directories to resolve the application's dependencies from, best first.
+ *
+ * The working directory alone was the first answer, and it is wrong twice: a
+ * service started with no working directory set runs from `/`, where nothing
+ * resolves and `instrument()` reports it found no framework; and in a monorepo
+ * whose root hoists a different `@langchain/core` than the app's own nested
+ * one, it resolved the ROOT copy — patched a class the app never loads, and
+ * reported success.
+ *
+ * The entry script's directory is the better anchor whenever the entry is the
+ * application's own code. It is not when the entry is a launcher living in
+ * `node_modules` (`next start`, a process manager's wrapper): resolving from
+ * there finds whatever the launcher's package sits beside, so the working
+ * directory keeps precedence in that case. Both are always tried; which one is
+ * asked FIRST only matters when they disagree.
+ */
+function anchors(): string[] {
+  const cwd = process.cwd();
+  const entry = process.argv[1];
+  const dirs: string[] = [];
+  if (typeof entry === "string" && entry !== "" && isAbsolute(entry)) {
+    const dir = dirname(entry);
+    const launcher = dir.split(/[\\/]/).includes("node_modules");
+    if (launcher) dirs.push(cwd, dir);
+    else dirs.push(dir, cwd);
+  } else {
+    dirs.push(cwd);
+  }
+  return [...new Set(dirs)];
+}
 
 export const nodeRequire: NodeJS.Require = appRequire;
 
@@ -37,16 +68,19 @@ export function loadedModulePaths(): string[] {
 
 /** The resolved filename for `specifier`, or null when it cannot be found. */
 export function resolveFrom(specifier: string): string | null {
-  const roots: (string[] | undefined)[] = [undefined, [process.cwd()]];
-  for (const paths of roots) {
+  const found: string[] = [];
+  for (const dir of anchors()) {
     try {
-      return appRequire.resolve(specifier, paths ? { paths } : undefined);
+      const path = requireAt(dir).resolve(specifier);
+      if (!found.includes(path)) found.push(path);
     } catch {
-      // Either the package is absent or its `exports` map does not expose this
-      // subpath. Both are ordinary; try the next root.
+      // Either the package is absent from here or its `exports` map does not
+      // expose this subpath. Both are ordinary; try the next anchor.
     }
   }
-  return null;
+  // A copy something has already `require`d is the one in use, whichever
+  // anchor found it.
+  return found.find(isRequired) ?? found[0] ?? null;
 }
 
 /**
@@ -134,7 +168,7 @@ function splitSpecifier(specifier: string): { name: string | null; subpath: stri
  * under pnpm, a workspace, or nested `node_modules` alike — and then walked up
  * to the manifest that names it. Only when CommonJS cannot resolve it at all
  * (an ESM-only package whose `exports` has no `require` condition) does this
- * fall back to walking `node_modules` up from the working directory.
+ * fall back to walking `node_modules` up from each of `anchors()`.
  */
 function packageRoot(name: string, specifier: string): string | null {
   for (const candidate of [specifier, name, `${name}/package.json`]) {
@@ -148,14 +182,17 @@ function packageRoot(name: string, specifier: string): string | null {
       dir = parent;
     }
   }
-  let dir = process.cwd();
-  for (;;) {
-    const candidate = join(dir, "node_modules", name);
-    if (manifestNames(join(candidate, "package.json"), name)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+  for (const anchor of anchors()) {
+    let dir = anchor;
+    for (;;) {
+      const candidate = join(dir, "node_modules", name);
+      if (manifestNames(join(candidate, "package.json"), name)) return candidate;
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
   }
+  return null;
 }
 
 function manifestNames(path: string, name: string): boolean {

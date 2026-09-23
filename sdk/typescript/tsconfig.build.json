@@ -5,7 +5,11 @@
     "outDir": "dist/esm",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": false
+    "noEmit": false,
+    // `@internal` exports (test hooks such as `_stats`, `_internals`,
+    // `attach`) stay out of the published declarations: a name in a `.d.ts`
+    // is a name a customer can come to depend on.
+    "stripInternal": true
   },
   "include": ["src/**/*.ts"]
 }

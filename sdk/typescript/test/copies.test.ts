@@ -121,12 +121,12 @@ describe("resolveEsm", () => {
 
 describe("requireModuleCopies", () => {
   /** Run `body` in a fresh process whose ENTRY is an ES module or CommonJS. */
-  const run = (entry: "esm" | "cjs", body: string): string[] => {
+  const run = (entry: "esm" | "cjs", body: string, where: { dir?: string; cwd?: string } = {}): string[] => {
     const compat =
       entry === "esm"
         ? pathToFileURL(join(root, "dist", "esm", "integrations", "compat.js")).href
         : join(root, "dist", "cjs", "integrations", "compat.js");
-    const file = join(app, entry === "esm" ? "main.mjs" : "main.cjs");
+    const file = join(where.dir ?? app, entry === "esm" ? "main.mjs" : "main.cjs");
     const header =
       entry === "esm"
         ? `import { createRequire } from "node:module";\nimport * as compat from ${JSON.stringify(compat)};\nconst require = createRequire(import.meta.url);\n`
@@ -135,7 +135,7 @@ describe("requireModuleCopies", () => {
       file,
       `${header}(async () => {\n${body}\nconsole.log(JSON.stringify({ result, loaded: globalThis.__loaded ?? [] }));\n})().catch((e) => { console.log(JSON.stringify({ error: String(e.message) })); });\n`,
     );
-    const child = spawnSync(process.execPath, [file], { cwd: app, encoding: "utf8" });
+    const child = spawnSync(process.execPath, [file], { cwd: where.cwd ?? app, encoding: "utf8" });
     expect(child.stderr).toBe("");
     const parsed = JSON.parse(child.stdout.trim()) as { result?: string[]; loaded?: string[]; error?: string };
     if (parsed.error !== undefined) return [`error: ${parsed.error}`];
@@ -166,6 +166,35 @@ describe("requireModuleCopies", () => {
     expect(run("esm", markers.replace("SPEC", '"@scope/esmonly"'))).toEqual(["esmonly", "|", "esmonly"]);
     expect(run("cjs", markers.replace("SPEC", '"@scope/esmonly"'))).toEqual(["esmonly", "|", "esmonly"]);
     expect(run("esm", markers.replace("SPEC", '"plainfw"'))).toEqual(["plain", "|", "plain"]);
+  });
+
+  it("finds the framework from the entry script when the service runs from /", () => {
+    // systemd with no WorkingDirectory=, a container with WORKDIR unset.
+    expect(run("esm", markers.replace("SPEC", '"dualfw"'), { cwd: "/" })).toEqual(["esm", "|", "esm"]);
+    expect(run("cjs", markers.replace("SPEC", '"dualfw"'), { cwd: "/" })).toEqual(["cjs", "|", "cjs"]);
+  });
+
+  it("patches the app's own nested copy, not the one a monorepo root hoists", () => {
+    // root/node_modules/dualfw is the hoisted copy; root/apps/web has its own.
+    const web = join(app, "apps", "web");
+    const nested = join(web, "node_modules", "dualfw");
+    write(
+      join(nested, "package.json"),
+      JSON.stringify({ name: "dualfw", exports: { ".": { import: "./esm.js", require: "./cjs.cjs" } } }),
+    );
+    write(join(nested, "esm.js"), copy("nested-esm", true));
+    write(join(nested, "cjs.cjs"), copy("nested-cjs", false));
+    // Started from the monorepo root, as a root-level script runner does.
+    expect(run("esm", markers.replace("SPEC", '"dualfw"'), { dir: web, cwd: app })).toEqual([
+      "nested-esm",
+      "|",
+      "nested-esm",
+    ]);
+    expect(run("cjs", markers.replace("SPEC", '"dualfw"'), { dir: web, cwd: app })).toEqual([
+      "nested-cjs",
+      "|",
+      "nested-cjs",
+    ]);
   });
 
   it("throws with the install command when the framework is absent", () => {

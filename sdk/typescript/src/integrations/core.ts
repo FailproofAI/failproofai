@@ -831,6 +831,9 @@ export type EventMethod =
  * crashed run, a stream nobody consumed, a framework that forgot an end
  * callback. Unbounded, that is a memory leak in a long-lived server.
  */
+/** The event methods that end the run they are keyed on. */
+const CLOSING_METHODS: ReadonlySet<string> = new Set(["toolResult", "modelResponse", "hookCompleted"]);
+
 export class RunTracker {
   readonly name: string;
   private readonly maxOpen: number;
@@ -943,8 +946,28 @@ export class RunTracker {
   link(key: unknown, parentKey: unknown): void {
     if (key === undefined || key === null) return;
     if (parentKey === undefined || parentKey === null || key === parentKey) return;
+    // Delete first so a re-link refreshes the entry's age: the FIFO cap below
+    // must evict the runs that have been around longest, not the ones that
+    // happened to be linked first.
+    this.links.delete(key);
     this.evict(this.links);
     this.links.set(key, parentKey);
+  }
+
+  /**
+   * Forget a run's link. Call it when the run ENDS.
+   *
+   * A link is only needed while the run is live — it is how that run's own
+   * closing event, and its children's, find the agent above. Kept past that,
+   * the table fills to its cap with runs that finished long ago, and the FIFO
+   * cap then evicts the links of runs that are STILL RUNNING: on a busy server
+   * a model call that outlived ~10k other runs lost its `model_response` to
+   * "could not resolve a session". `emit()` does this itself for the closing
+   * event types; an adapter that links a run which emits nothing (an
+   * intermediate chain) must call it.
+   */
+  unlink(key: unknown): void {
+    this.links.delete(key);
   }
 
   /** FIFO — a `Map` keeps insertion order. */
@@ -978,12 +1001,10 @@ export class RunTracker {
       parentId: parent?.agentId ?? null,
       depth: parent ? parent.depth + 1 : 1,
     };
+    this.runs.delete(key);
     this.evict(this.runs);
     this.runs.set(key, { identity, parentKey });
-    if (parentKey !== undefined && parentKey !== null) {
-      this.evict(this.links);
-      this.links.set(key, parentKey);
-    }
+    this.link(key, parentKey);
     this.emitWith("agentStart", identity, {
       goal: goal === undefined ? undefined : truncate(goal, this.fieldLimit),
       parentId: identity.parentId,
@@ -1006,6 +1027,7 @@ export class RunTracker {
     const run = this.runs.get(key);
     this.runs.delete(key);
     const identity = run?.identity ?? this.identity(key);
+    this.links.delete(key);
     if (identity === null) return;
     this.emitWith("agentEnd", identity, {
       outcome,
@@ -1016,6 +1038,29 @@ export class RunTracker {
 
   openAgents(): unknown[] {
     return [...this.runs.keys()];
+  }
+
+  /** Whether `key` is an open agent. O(1) — `openAgents()` copies every key. */
+  isOpen(key: unknown): boolean {
+    return this.runs.has(key);
+  }
+
+  /**
+   * Drop an agent and its link WITHOUT emitting anything.
+   *
+   * For an agent this process will never close but must stop holding: a run
+   * paused on a human and resumed by another worker. Closing it here would put
+   * a second `agent_end` into a session the other worker ends; keeping it
+   * would hold a slot in the table live runs need.
+   */
+  forget(key: unknown): void {
+    this.runs.delete(key);
+    this.links.delete(key);
+  }
+
+  /** @internal Table sizes, for the tests that prove nothing is retained. */
+  stats(): { runs: number; links: number } {
+    return { runs: this.runs.size, links: this.links.size };
   }
 
   /**
@@ -1050,6 +1095,10 @@ export class RunTracker {
     const { parentKey, ...rest } = fields;
     if (parentKey !== undefined && parentKey !== null) this.link(key, parentKey);
     const identity = this.identity(key, parentKey);
+    // A closing event ends the run it is keyed on, so its link is done with.
+    // Its children closed before it, and anything later that still names it
+    // resolves through its parent chain or the ambient scope — see `unlink`.
+    if (CLOSING_METHODS.has(method)) this.links.delete(key);
     if (identity === null) return;
     this.emitWith(method, identity, rest);
   }

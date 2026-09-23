@@ -271,6 +271,8 @@ interface Session {
   /** pause id -> the prompt it asked, for `human_input.fw_prompt`. */
   openPauses: Map<string, string | undefined>;
   reportedError: boolean;
+  /** When its root ended with a pause still open; null while running. */
+  pausedAt: number | null;
 }
 
 /**
@@ -343,6 +345,20 @@ const MAX_RUNS = 10_000;
 const MAX_SESSIONS = 1_000;
 
 /**
+ * How long this process keeps a run that paused on a human.
+ *
+ * An interrupted graph deliberately leaves its agent open so the resume can
+ * continue it — but the resume usually lands on ANOTHER worker, which already
+ * handles it (`closeRemotePause`), and then this process would hold the agent
+ * forever: a slot in the tracker that live runs need, plus a linear cost on
+ * every lookup that scanned open agents. After this long it is forgotten
+ * without emitting anything. A resume that does arrive here later takes the
+ * same path a cross-worker resume does, so nothing is lost but the in-process
+ * shortcut.
+ */
+export const PAUSED_SESSION_TTL_MS = 15 * 60_000;
+
+/**
  * All cross-callback state, module level on purpose: one handler object serves
  * every callback manager in the process, and a start and its end are separate
  * calls on possibly different async branches.
@@ -384,16 +400,39 @@ class State {
    * — and unbounded, each table is a memory leak in a long-lived server.
    */
   evict(): void {
-    for (const [table, cap] of [
-      [this.runs, MAX_RUNS],
-      [this.sessions, MAX_SESSIONS],
-    ] as Array<[Map<string, unknown>, number]>) {
-      while (table.size >= cap) {
-        const oldest = table.keys().next();
-        if (oldest.done) break;
-        table.delete(oldest.value);
-      }
+    while (this.runs.size >= MAX_RUNS) {
+      const oldest = this.runs.keys().next();
+      if (oldest.done) break;
+      this.runs.delete(oldest.value);
+      this.tracker.unlink(oldest.value);
     }
+    while (this.sessions.size >= MAX_SESSIONS) {
+      const oldest = this.sessions.keys().next();
+      if (oldest.done) break;
+      this.dropSession(oldest.value);
+    }
+  }
+
+  /**
+   * Forget sessions paused longer than `PAUSED_SESSION_TTL_MS`.
+   *
+   * Paused sessions are the only ones that outlive their root, and a `Map`
+   * keeps insertion order, so a sweep from the front stops at the first one
+   * that is either not paused or not yet stale.
+   */
+  sweepPaused(now: number): void {
+    for (const [id, session] of this.sessions) {
+      if (session.pausedAt === null) continue;
+      if (now - session.pausedAt <= PAUSED_SESSION_TTL_MS) break;
+      this.dropSession(id);
+    }
+  }
+
+  /** Remove a session; a paused one's agent is forgotten, never closed. */
+  dropSession(id: string): void {
+    const session = this.sessions.get(id);
+    this.sessions.delete(id);
+    if (session !== undefined && session.pausedAt !== null) this.tracker.forget(session.agentKey);
   }
 }
 
@@ -678,6 +717,7 @@ function fwCommon(info: RunInfo): Record<string, unknown> {
 function onStart(args: StartArgs): void {
   if (!state.enabled) return;
   state.evict();
+  if (args.parent === null) state.sweepPaused(Date.now());
   const info: RunInfo = {
     id: args.id,
     parent: args.parent,
@@ -769,7 +809,7 @@ function startRoot(info: RunInfo, args: StartArgs): void {
   if (
     existing !== undefined &&
     existing.openPauses.size > 0 &&
-    state.tracker.openAgents().includes(existing.agentKey) &&
+    state.tracker.isOpen(existing.agentKey) &&
     isContinuation(args.inputs, info.meta)
   ) {
     // A resume: the previous `.invoke()` interrupted, we deliberately left its
@@ -800,6 +840,7 @@ function startRoot(info: RunInfo, args: StartArgs): void {
     agentId: identity.agentId ?? "agent",
     openPauses: new Map(),
     reportedError: false,
+    pausedAt: null,
   };
   info.session = session;
   state.sessions.set(session.sessionId, session);
@@ -884,7 +925,7 @@ function startNode(info: RunInfo, args: StartArgs): void {
 
 function ensureSubgraphAgent(info: RunInfo, prefix: string[]): void {
   const key = info.parent;
-  if (key === null || state.tracker.openAgents().includes(key)) return;
+  if (key === null || state.tracker.isOpen(key)) return;
   const holder = state.runs.get(key);
   const session = info.session;
   if (holder === undefined || session === null) return;
@@ -1107,7 +1148,7 @@ function onEnd(id: string, end: EndArgs): void {
 
   state.runs.delete(id);
 
-  if (info.kind === "subgraph" || state.tracker.openAgents().includes(id)) {
+  if (info.kind === "subgraph" || state.tracker.isOpen(id)) {
     state.tracker.endAgent(id, { outcome: outcomeOf(error), summary: errorText(error) });
   }
   // `owned` records whether a SPAN was actually emitted for this run, which is
@@ -1144,6 +1185,8 @@ function onEnd(id: string, end: EndArgs): void {
   }
 
   if (isCancellation(error) && info.root !== null) reapIfAbandoned(info.root);
+  // Last, after every event above has resolved through it. See `RunTracker.unlink`.
+  state.tracker.unlink(id);
 }
 
 function touch(rootId: string | null): void {
@@ -1392,12 +1435,18 @@ function endRoot(info: RunInfo, error: unknown): void {
   const session = info.session;
   state.runs.delete(info.id);
   closeOpenLeaves(info.id);
+  // A resumed root is linked to the session's agent rather than being one, so
+  // `endAgent` below would not clear its link.
+  state.tracker.unlink(info.id);
   if (session === null) return;
 
   if (session.openPauses.size > 0) {
     // Interrupted, waiting on a human. Deliberately no `agent_end`: closing the
     // agent force-closes the open pause, zeroing the one interval that
-    // measures how long the human took. The resuming `.invoke()` closes it.
+    // measures how long the human took. The resuming `.invoke()` closes it —
+    // here, or on another worker, in which case this process forgets it after
+    // `PAUSED_SESSION_TTL_MS` (see `State.sweepPaused`).
+    session.pausedAt = Date.now();
     return;
   }
 
@@ -1436,7 +1485,10 @@ function closeOpenLeaves(rootId: string): void {
   const stale = [...state.runs.values()].filter((info) => info.root === rootId && info.id !== rootId);
   for (const info of stale.reverse()) {
     state.runs.delete(info.id);
-    if (info.hidden || !info.kind) continue;
+    if (info.hidden || !info.kind) {
+      state.tracker.unlink(info.id);
+      continue;
+    }
     const marker = core.fwFields({ incomplete: true });
     core.callSafely(
       () => {
@@ -1468,6 +1520,7 @@ function closeOpenLeaves(rootId: string): void {
       [],
       `${NAME}.closeOpenLeaves`,
     );
+    state.tracker.unlink(info.id);
   }
 }
 
@@ -1550,6 +1603,7 @@ export function promptOf(value: unknown): { prompt?: string; options?: string[] 
 
 /** `agent_resume` + `human_input`, in that order, one pair per open pause. */
 function resume(session: Session, inputs: unknown): void {
+  session.pausedAt = null;
   if (session.openPauses.size === 0) return;
   const answers = resumeValue(inputs);
   const capture = state.options.captureContent;
@@ -2144,6 +2198,11 @@ let warnedOptions = false;
  * `configure` sees the handler is already on the manager and adds nothing.
  * `uninstrument()` disables it too, until it is asked for again.
  */
+/** @internal Table sizes, for the tests that prove a finished request leaves nothing behind. */
+export function _stats(): { runs: number; sessions: number; tracker: { runs: number; links: number } } {
+  return { runs: state.runs.size, sessions: state.sessions.size, tracker: state.tracker.stats() };
+}
+
 export function langchainHandler(options?: LangChainOptions): Record<string, unknown> {
   if (state.installed) {
     if (options !== undefined && !warnedOptions) {

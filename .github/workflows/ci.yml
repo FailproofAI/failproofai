@@ -669,17 +669,42 @@ jobs:
   # dual-published framework. A fixture that fails to install fails the job —
   # there is no skip path to read as green.
   failproofai-ts-sdk-integrations:
+    name: failproofai-ts-sdk-integrations (${{ matrix.shard }}, node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: sdk/typescript
     strategy:
       fail-fast: false
       matrix:
-        # Node's oldest and newest supported majors: the ESM/CJS split this job
-        # exists for behaves differently once `require(esm)` is unflagged.
-        node-version: ["20.x", "24.x"]
+        # Sharded by what a shard needs installed, because the whole suite —
+        # four frameworks at both ends of their ranges, Bun and Deno parity over
+        # every fixture, and five real `next build`s — is ~23 CPU-minutes, too
+        # much for one runner inside a timeout. Each shard installs only its own
+        # fixtures (FAILPROOFAI_IT_FIXTURES) and runs only its own files.
+        #
+        # frameworks: Node's oldest and newest supported majors — the ESM/CJS
+        # split this job exists for behaves differently once `require(esm)` is
+        # unflagged. runtimes and nextjs: one Node, because what they vary is
+        # the runtime or the bundler, not Node.
+        include:
+          - shard: frameworks
+            node-version: "20.x"
+            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types
+            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts
+          - shard: frameworks
+            node-version: "24.x"
+            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types
+            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts
+          - shard: runtimes
+            node-version: "24.x"
+            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,runtimes
+            files: integration/runtimes.core.test.ts integration/runtimes.bun.test.ts integration/runtimes.deno.test.ts
+          - shard: nextjs
+            node-version: "24.x"
+            fixtures: nextjs,langchain-1,ai-7,mastra-1,llamaindex-0.12
+            files: integration/nextjs.test.ts
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -698,15 +723,17 @@ jobs:
           timeout_minutes: 5
           command: cd sdk/typescript && npm ci --no-audit --no-fund
 
-      # `test:integration` builds, packs, `npm ci`s every fixture and runs the
-      # suite; the fixture installs are the network-heavy part, so retry them as
-      # a whole rather than failing the job on a registry blip.
-      - name: Test the framework adapters against real releases
+      # `test:integration` builds, packs, `npm ci`s this shard's fixtures and
+      # runs its files; the fixture installs are the network-heavy part, so
+      # retry them as a whole rather than failing the job on a registry blip.
+      - name: Test against real releases (${{ matrix.shard }})
         uses: nick-fields/retry@v4
+        env:
+          FAILPROOFAI_IT_FIXTURES: ${{ matrix.fixtures }}
         with:
           max_attempts: 2
-          timeout_minutes: 20
-          command: cd sdk/typescript && npm run test:integration
+          timeout_minutes: 25
+          command: cd sdk/typescript && npm run test:integration -- ${{ matrix.files }}
 
   test:
     runs-on: ubuntu-latest

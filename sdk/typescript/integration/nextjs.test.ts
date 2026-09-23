@@ -150,6 +150,12 @@ describe.each(VARIANTS)("Next.js 16, $name", (variant) => {
   let stderr = "";
 
   beforeAll(async () => {
+    // Build from scratch. The harness extracts the freshly PACKED SDK into
+    // node_modules, and `npm pack` stamps every file with the same fixed mtime —
+    // so webpack's persistent cache (in the distDir) saw an unchanged SDK and
+    // kept compiling the previous run's copy into the bundle. Turbopack hashes
+    // content and was not fooled; webpack silently tested stale SDK code.
+    rmSync(join(APP, variant.dist), { recursive: true, force: true });
     const args = [NEXT, "build", ...(variant.bundler === "webpack" ? ["--webpack"] : [])];
     const build = spawnSync(process.execPath, args, {
       cwd: APP,

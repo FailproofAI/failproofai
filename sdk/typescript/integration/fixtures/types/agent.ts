@@ -23,6 +23,7 @@ import { adapter as mastraAdapter, workflow } from "@failproofai/sdk/mastra";
 import { adapter as langchainAdapter, langchainHandler } from "@failproofai/sdk/langchain";
 import { adapter as llamaindexAdapter } from "@failproofai/sdk/llamaindex";
 import { EvalResult, Evaluator, Score } from "@failproofai/sdk/evaluator";
+import { withFailproofai } from "@failproofai/sdk/next";
 import * as sandboxWorker from "@failproofai/sdk/sandbox-worker";
 
 configure({});
@@ -53,11 +54,20 @@ evaluator.eval("score", { version: "1" }, () => new EvalResult({ score: new Scor
 // @ts-expect-error a Score's value is a number.
 new Score("high");
 
+const nextConfig = withFailproofai({ reactStrictMode: true });
+const externals: string[] = nextConfig.serverExternalPackages;
+const strict: boolean = nextConfig.reactStrictMode;
+// @ts-expect-error the wrapped config keeps its own field types.
+const notStrict: string = nextConfig.reactStrictMode;
+
 export type SandboxWorker = typeof sandboxWorker;
 export {
   adapterNames,
   answer,
   disposers,
+  externals,
+  notStrict,
+  strict,
   flushed,
   frameworks,
   handler,

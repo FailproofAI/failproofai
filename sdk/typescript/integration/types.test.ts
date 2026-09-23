@@ -59,7 +59,7 @@ const MODES: Record<string, Mode> = {
 /** The installed compiler packages, and the release each must be. */
 const COMPILERS = { typescript: "5.9.3", "typescript-min": "5.4.5" } as const;
 
-const ENTRYPOINTS = [".", "./ai", "./mastra", "./langchain", "./llamaindex", "./evaluator", "./sandbox-worker"];
+const ENTRYPOINTS = [".", "./ai", "./mastra", "./langchain", "./llamaindex", "./next", "./evaluator", "./sandbox-worker"];
 
 function writeMode(name: string, mode: Mode): string {
   const dir = join(DIR, ".run", "types", name.replace(/[^a-z0-9]+/gi, "-").toLowerCase());

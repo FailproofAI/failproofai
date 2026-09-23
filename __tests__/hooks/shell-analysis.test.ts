@@ -19,6 +19,7 @@ import {
   literalText,
   normalizeName,
   resolveWord,
+  splitsOnIfs,
   type ShellAnalysis,
 } from "../../src/hooks/shell-analysis";
 
@@ -42,6 +43,27 @@ describe("lexShell", () => {
     expect(b.pipedFrom).toBe(a);
     expect(c.pipedFrom).toBeUndefined();
     expect(d.pipedFrom).toBeUndefined();
+  });
+
+  it("carries a pipe across a boundary that ends no command of its own", () => {
+    // The `|` arrives with no words of its own when a `)` or a newline already
+    // ended the command, and the relation used to be dropped there \u2014 so
+    // `ps -e | ( xargs kill )` read as two unrelated commands.
+    const [a, b] = lexShell("ps -e |\n xargs kill");
+    expect(b.pipedFrom).toBe(a);
+    const [c, d] = lexShell("(ps -e) | xargs kill");
+    expect(d.pipedFrom).toBe(c);
+    const [e, f] = lexShell("ps -e | ( xargs kill )");
+    expect(f.pipedFrom).toBe(e);
+    // A `;` still ends the pipeline.
+    const [, , h] = lexShell("ps -e | grep x; kill 1");
+    expect(h.pipedFrom).toBeUndefined();
+  });
+
+  it("records whether an expansion sits inside quotes, which is what the shell splits on", () => {
+    const [cmd] = lexShell(`git $A "$B" \`c\` "\`d\`" $(e) "$(f)"`);
+    expect(cmd.words.slice(1).map((w) => splitsOnIfs(w))).toEqual([true, false, true, false, true, false]);
+    expect(splitsOnIfs(lexShell("git commit")[0].words[1])).toBe(false);
   });
 
   it("keeps quoted text as one word and removes the quotes", () => {

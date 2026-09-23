@@ -47,12 +47,16 @@ import { posix } from "node:path";
 export type WordPart =
   /** Literal text. `quoted` when it came from quotes or a backslash escape. `ansi` for `$'…'` with escapes. */
   | { kind: "lit"; text: string; quoted: boolean; ansi?: boolean }
-  /** `$X`, `${X}`, `${X:-default}`, `${!X}`, `${X[@]}`. `op` is "" for a plain reference. */
-  | { kind: "param"; name: string; op: string; arg: string; indirect: boolean; source: string }
-  /** `$( … )`, backticks, or a process substitution. */
-  | { kind: "sub"; body: string; source: string }
-  /** `$(( … ))`. */
-  | { kind: "arith"; source: string };
+  /**
+   * `$X`, `${X}`, `${X:-default}`, `${!X}`, `${X[@]}`. `op` is "" for a plain
+   * reference. `quoted` when it sits inside double quotes, which is the whole
+   * of whether the shell splits its value into several words.
+   */
+  | { kind: "param"; name: string; op: string; arg: string; indirect: boolean; source: string; quoted?: boolean }
+  /** `$( … )`, backticks, or a process substitution. `quoted` as for a param. */
+  | { kind: "sub"; body: string; source: string; quoted?: boolean }
+  /** `$(( … ))`. `quoted` as for a param. */
+  | { kind: "arith"; source: string; quoted?: boolean };
 
 export interface ShellWord {
   parts: WordPart[];
@@ -348,8 +352,12 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       if (pipeNext && out.length > 0) cmd.pipedFrom = out[out.length - 1];
       out.push(cmd);
       pipeNext = pipe;
-    } else if (!pipe) {
-      pipeNext = false;
+    } else if (pipe) {
+      // The `|` ended no command of its own, because a `)` or a newline already
+      // did: `ps -e | ( xargs kill )`, `ps -e |\n xargs kill`. The pipe still
+      // joins the two sides, so the relation is carried across the boundary
+      // rather than dropped.
+      pipeNext = true;
     }
     words = [];
     leadingOnly = true;
@@ -360,7 +368,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     leadingOnly = false;
   };
 
-  const readBacktick = (i: number): number => {
+  const readBacktick = (i: number, quoted: boolean): number => {
     let body = "";
     let j = i + 1;
     while (j < n && src[j] !== "`") {
@@ -374,7 +382,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     }
     nested.push(body);
     inWord = true;
-    parts.push({ kind: "sub", body, source: src.slice(i, Math.min(j + 1, n)) });
+    parts.push({ kind: "sub", body, source: src.slice(i, Math.min(j + 1, n)), quoted });
     return j + 1;
   };
 
@@ -391,7 +399,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     if (c === "(" && src[i + 2] === "(") {
       const end = matchClose(src, i + 1, "(", ")", false);
       inWord = true;
-      parts.push({ kind: "arith", source: src.slice(i, Math.min(end + 1, n)) });
+      parts.push({ kind: "arith", source: src.slice(i, Math.min(end + 1, n)), quoted });
       return end + 1;
     }
     if (c === "(") {
@@ -399,7 +407,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       const body = src.slice(i + 2, end);
       nested.push(body);
       inWord = true;
-      parts.push({ kind: "sub", body, source: src.slice(i, Math.min(end + 1, n)) });
+      parts.push({ kind: "sub", body, source: src.slice(i, Math.min(end + 1, n)), quoted });
       return end + 1;
     }
     if (c === "{") {
@@ -409,7 +417,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       // `${X:-$(cmd)}` runs cmd when X is unset.
       if (part.kind === "param" && /\$\(|`/.test(part.arg)) nested.push(part.arg);
       inWord = true;
-      parts.push(part);
+      parts.push(quoted ? { ...part, quoted } : part);
       return end + 1;
     }
     const m = c === undefined ? null : PARAM_NAME_RE.exec(src.slice(i + 1, i + 1 + 256));
@@ -417,7 +425,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       // `$10` is `${1}0` in POSIX; a single digit is enough for what this reads.
       const name = /^[0-9]/.test(m[0]) ? m[0][0] : m[0];
       inWord = true;
-      parts.push({ kind: "param", name, op: "", arg: "", indirect: false, source: "$" + name });
+      parts.push({ kind: "param", name, op: "", arg: "", indirect: false, source: "$" + name, quoted });
       return i + 1 + name.length;
     }
     addLit("$", quoted);
@@ -449,7 +457,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
         continue;
       }
       if (c === "`") {
-        j = readBacktick(j);
+        j = readBacktick(j, true);
         continue;
       }
       addLit(c, true);
@@ -566,7 +574,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       continue;
     }
     if (c === "`") {
-      i = readBacktick(i);
+      i = readBacktick(i, false);
       continue;
     }
     if (c === "#" && !inWord) {
@@ -736,6 +744,18 @@ export function literalPrefix(word: ShellWord): string {
     out += p.text;
   }
   return out;
+}
+
+/**
+ * Whether the shell splits this word's expansions into several argv words.
+ *
+ * bash splits an UNQUOTED expansion on whitespace and leaves a quoted one
+ * whole, and that one rule is the whole of it: `A='commit --no-verify'; git $A`
+ * really does hand git two arguments, while `git commit -m "$MSG"` hands it one
+ * message however many spaces the message holds.
+ */
+export function splitsOnIfs(word: ShellWord): boolean {
+  return word.parts.some((p) => p.kind !== "lit" && !p.quoted);
 }
 
 /** The word with its first `n` literal characters removed (for `of=…`-style operands). */

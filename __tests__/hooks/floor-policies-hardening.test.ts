@@ -401,7 +401,7 @@ describe("block-chmod-777: world-writable in every spelling", () => {
   });
 });
 
-describe("block-no-verify: a core.hooksPath override is judged by its value", () => {
+describe("block-no-verify: a core.hooksPath a commit brings with it", () => {
   it.each([
     "git -c core.hooksPath=/dev/null commit -m x",
     "git -c core.hooksPath= commit -m x",
@@ -414,13 +414,27 @@ describe("block-no-verify: a core.hooksPath override is judged by its value", ()
     "git am --no-verify fix.patch",
     "git cherry-pick --no-verify abc123",
     "git revert --no-verify abc123",
+    // ROUND 7 REVERSAL: the VALUE of a `core.hooksPath` a commit or a push
+    // brings with it is no longer read. Pointing it at ANY directory that does
+    // not hold the repo's hooks is the standard one-command skip — checked
+    // against git 2.43 in a throwaway HOME: a repo whose `pre-commit` rejected
+    // `git commit -m x` committed under `-c core.hooksPath=<empty dir>`. A
+    // static read cannot tell an empty hooks directory from a populated one,
+    // and the one spelling that was both readable and effective was the one
+    // that passed. These four were pinned as allows.
+    "git -c core.hooksPath=.husky commit -m x",
+    "git -c core.hooksPath=.githooks push origin x",
+    "git -c core.hooksPath=/tmp/nohooks commit -m x",
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=.husky git commit -m x",
   ])("denies %s", async (command) => {
     expect(await decide("block-no-verify", command)).toBe("deny");
   });
 
   it.each([
-    "git -c core.hooksPath=.husky commit -m x",
-    "git -c core.hooksPath=.githooks push origin x",
+    // A PERSISTENT write is not a commit, and `git config core.hooksPath
+    // .husky` is how hook managers install themselves.
+    "git config core.hooksPath .husky",
+    "git config --global core.hooksPath .githooks",
     "GIT_CONFIG_PARAMETERS=\"'user.name'='x'\" git commit -m x",
     "declare HUSKY=0; git commit -m x",
     "git show --no-verify",
@@ -686,14 +700,20 @@ describe("block-mass-kill: a loop body is not a per-process filter", () => {
   });
 
   it.each([
-    // An argument that looks like an assignment does not assign.
-    "echo P=$(pgrep node); kill $P",
     "P=$(cat server.pid); if true; then kill $P; fi",
     // The lister named one thing, which is the only exemption left.
     "for p in $(pgrep -f my-worker); do kill $p; done",
     "for p in $(ps -C my-daemon -o pid=); do kill $p; done",
   ])("allows %s", async (command) => {
     expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+
+  // ROUND 7 REVERSAL: which words the kill's PIDs travelled through is no
+  // longer read at all, so a broad listing and a kill that names no target in
+  // ONE command deny each other whether or not one feeds the other. The
+  // `pgrep node` here really runs. This was pinned as an allow.
+  it("denies a broad listing beside a kill that names no target", async () => {
+    expect(await decide("block-mass-kill", "echo P=$(pgrep node); kill $P")).toBe("deny");
   });
 
   // Reading the source off the PID variable is per kill, so it must not rescan
@@ -762,10 +782,15 @@ describe("block-no-verify: an inline alias runs under what the invocation around
     "git -c alias.b=st -c alias.st=status b",
     "git -c alias.ci='commit -s' ci -m x",
     "git -c alias.p='!git push origin HEAD' p",
-    "git -c core.hooksPath=.githooks -c alias.a=commit a -m x",
     "HUSKY=1 git -c alias.a=commit a -m x",
   ])("allows %s", async (command) => {
     expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+
+  // ROUND 7 REVERSAL: the enclosing `core.hooksPath` reaches the alias, and its
+  // value is no longer read (see "a core.hooksPath a commit brings with it").
+  it("denies an alias that commits under a hooksPath the command sets", async () => {
+    expect(await decide("block-no-verify", "git -c core.hooksPath=.githooks -c alias.a=commit a -m x")).toBe("deny");
   });
 
   it("names every level it walked through", async () => {
@@ -1245,7 +1270,6 @@ describe("block-no-verify: a setting the command does not state fails closed", (
     // whether hooks run is harmless whatever its value.
     'git -c user.name="$NAME" commit -m x',
     "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m y",
-    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=.husky git commit -m x",
     "GIT_CONFIG_PARAMETERS=\"'user.name'='x'\" git commit -m x",
     // Only the alias the command actually INVOKES has to be readable.
     'git -c alias.zz="$B" st',
@@ -1282,5 +1306,218 @@ describe("block-no-verify: a setting the command does not state fails closed", (
     expect(r.reason).toContain("alias.ci=… (body not in the command)");
     const h = await policy("block-no-verify").fn(bash("git -c core.hooksPath=$H commit -m x"));
     expect(h.reason).toContain("value not in the command");
+  });
+});
+
+// ── ROUND 7: the two ends, and nothing in between ───────────────────────────
+//
+// Round 6 stopped reading what a pipeline DOES to a listing, and the next
+// review found the same class one rewrite wide in what it still read: the
+// ROUTE from the listing to the kill, and the WORD a program's argument
+// travelled in. Both are gone. `block-mass-kill` now reads the lister and the
+// kill's own operands, and `block-no-verify` reads the argv git is really
+// handed, with a `-c`, an alias or a `core.hooksPath` it cannot state failing
+// closed.
+
+describe("block-mass-kill: the route from the listing to the kill is not read", () => {
+  it.each([
+    // A group around either end used to drop the pipe relation entirely.
+    "(ps -e -o pid=) | xargs kill",
+    "ps -e -o pid= | ( xargs kill )",
+    "{ ps -e -o pid=; } | xargs kill",
+    // A loop body, which is how this is actually written.
+    "ps aux | while read u p rest; do kill -9 $p; done",
+    "ps -e -o pid= | while read p; do kill $p; done",
+    'ps -e -o pid= | while IFS= read -r p; do kill "$p"; done',
+    "ps aux | awk '{print $2}' | while read p; do kill $p; done",
+    "ps -e -o pid= | { read p; kill $p; }",
+    "ps -e -o pid= | if true; then xargs kill; fi",
+    // A downstream stage that re-sources its own command template.
+    "ps -eo pid= | parallel kill",
+    "ps -eo pid= | parallel -j4 kill",
+    "ps -eo pid= | parallel 'kill {}'",
+    'ps aux | xargs sh -c \'kill "$@"\' _',
+    // A redirect, a process substitution, or a file written and read back.
+    "xargs kill < <(ps -e -o pid=)",
+    'mapfile -t pids < <(ps -e -o pid=); kill "${pids[@]}"',
+    'readarray -t pids < <(ps -e -o pid=); kill "${pids[@]}"',
+    "ps -e -o pid= > /tmp/p; xargs kill < /tmp/p",
+    "ps -e -o pid= > /tmp/p && kill $(cat /tmp/p)",
+    // A lister this knows, however the listing is then carried.
+    "pstree -p | grep -o '[0-9]*' | xargs kill",
+    "ls /proc | grep -E '^[0-9]+$' | xargs kill",
+    "awk '{print}' /proc/*/cmdline | xargs kill",
+    "for p in /proc/[0-9]*; do kill $(basename $p); done",
+    // One more assignment between the listing and the kill.
+    "P=$(ps -e -o pid=); Q=$P; kill $Q",
+    "P=$(pgrep node); Q=$P; kill $Q",
+    "pids=$(pgrep node); for p in $pids; do kill $p; done",
+    "pids=$(ps -e -o pid=); for p in $pids; do kill $p; done",
+  ])("denies %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("deny");
+  });
+
+  it.each([
+    // The same routes, out of a lister that NAMED what it wanted.
+    "(pgrep -f my-worker) | xargs kill",
+    "pgrep -f my-worker | while read p; do kill $p; done",
+    "ps -C my-daemon -o pid= | parallel kill",
+    "xargs kill < <(pgrep -f my-worker)",
+    "P=$(pgrep -f my-worker); Q=$P; kill $Q",
+    // A kill that names the PIDs the user typed runs whatever else is around it.
+    "ps aux | head -20; kill 4242",
+    "ps aux; kill -9 4242 4243",
+    "ps aux | grep node; kill %1",
+    "top -b -n1 | head; kill -s TERM 4242",
+    "ps aux | grep node; kill -l",
+    // A `/proc` path the command spells out names ONE thing, and is not a listing.
+    "cat /proc/1234/status; kill $PID",
+    "cat /proc/self/status; kill $PID",
+    "cat /proc/meminfo; kill $PID",
+    "pstree -p 4242 | xargs kill",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+
+  it("names the listing and the kill it paired", async () => {
+    const r = await policy("block-mass-kill").fn(bash("ps aux | while read u p; do kill $p; done"));
+    expect(r.reason).toContain("kill naming no PID beside ps listing every process");
+  });
+});
+
+describe("block-mass-kill: an option carried in a variable is still an option", () => {
+  it.each([
+    "X=aux; ps $X | xargs kill",
+    "X='-e -o pid='; ps $X | xargs kill",
+    "X=e; ps -$X | xargs kill",
+    "X=ax; ps $X | xargs kill",
+    "A='-f node'; pkill $A",
+    "A='-9 node'; killall $A",
+    "N='-1'; kill -9 $N",
+    "A='-u root'; pkill $A",
+    // `ps x` and `ps a` each drop one of the two restrictions on a bare `ps`.
+    "ps x | xargs kill",
+    "ps a | xargs kill",
+    // An option the command cannot read could be `aux`; the narrow one can say so.
+    "ps $OPTS | xargs kill",
+  ])("denies %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("deny");
+  });
+
+  it.each([
+    "X='-p 4242'; ps $X | xargs kill",
+    "P=my-worker; pkill -f $P",
+    "S=my-daemon; ps -C $S -o pid= | xargs kill",
+    "ps -p $$ -o ppid= | xargs kill",
+    "ps -u alice -o pid= | xargs kill",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+});
+
+describe("block-no-verify: the argv git is really handed", () => {
+  it.each([
+    // bash splits an unquoted expansion, so all three hand git a real skip.
+    "A='commit --no-verify'; git $A -m x",
+    "F='-m x --no-verify'; git commit $F",
+    "F='--no-verify -m x'; git commit $F",
+    "O='-c core.hooksPath=/dev/null'; git $O commit -m x",
+    'O="-c core.hooksPath=/dev/null"; git $O push',
+    "O='-c alias.ci=commit --no-verify'; git $O ci -m x",
+    // The resolver reads the FIRST word of a `${X:-default}` and no more, so a
+    // default of several words states nothing about this position.
+    "git ${O:--c core.hooksPath=/dev/null} commit -m x",
+    // An unreadable word where a `-c` lives, in front of a subcommand git ships.
+    "git $OPTS commit -m x",
+    "git $OPTS push",
+    "export HUSKY=0; git $OPTS commit -m x",
+    'git "$OPTS" commit -m x',
+  ])("denies %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("deny");
+  });
+
+  it.each([
+    // A quoted expansion is ONE argument however many spaces it holds.
+    'MSG="fix: stop passing --no-verify"; git commit -m "$MSG"',
+    'git commit -m "$MSG"',
+    'M="--no-verify is banned"; git commit -m "$M" --author="a <a@b>"',
+    // A long option that states its own name carries no setting.
+    "git --git-dir=$D commit -m x",
+    "git --work-tree=$W commit -m x",
+    "git --no-pager commit -m x",
+    // The unreadable word could BE the subcommand, so a name git does not ship
+    // after it is not read as an alias.
+    "git $S -m x",
+    "git $S st",
+    // Still unresolvable, still left alone.
+    "git commit $F -m x",
+    "git commit -m x $FLAGS",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+});
+
+describe("block-no-verify: a definition the command writes or pads out of reach", () => {
+  it.each([
+    // `git config` NAMES and writes the file the next git reads (checked
+    // against git 2.43 in a throwaway HOME: the plain commit was rejected by a
+    // failing pre-commit, and `git nv` committed).
+    "git config alias.nv 'commit --no-verify' && git nv -m x",
+    "git config --global alias.nv 'commit --no-verify'; git nv -m x",
+    "git config alias.nv '!git commit --no-verify'; git nv -m x",
+    "git config --add alias.nv 'commit --no-verify'",
+    "git config --replace-all alias.nv 'commit -n'",
+    "git config alias.nv 'commit --no-verify'",
+    // A definition the command writes but does not state.
+    'git config alias.nv "$BODY"; git nv -m x',
+  ])("denies %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("deny");
+  });
+
+  it.each([
+    "git config alias.st status; git st",
+    "git config alias.lg 'log --oneline -20' && git lg",
+    "git config --get alias.nv",
+    "git config --unset alias.nv",
+    "git config --list",
+    "git config user.email a@b.com && git commit -m x",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+
+  it("reads every GIT_CONFIG_COUNT slot or none", async () => {
+    const pad = (n: number) =>
+      Array.from({ length: n }, (_, i) => `GIT_CONFIG_KEY_${i}=user.name GIT_CONFIG_VALUE_${i}=A`).join(" ");
+    // Sixteen junk slots in front of the payload used to hide it: git honours
+    // every slot it counts (checked against git 2.43), and the policy read 16.
+    for (const [total, key, value] of [
+      [17, "alias.ci", "commit --no-verify"],
+      [17, "core.hooksPath", "/dev/null"],
+      [20, "alias.ci", "commit --no-verify"],
+      [40, "core.hooksPath", "/dev/null"],
+    ] as const) {
+      const cmd = `GIT_CONFIG_COUNT=${total} ${pad(total - 1)} GIT_CONFIG_KEY_${total - 1}=${key} ` +
+        `GIT_CONFIG_VALUE_${total - 1}='${value}' git commit -m x`;
+      expect(await decide("block-no-verify", cmd)).toBe("deny");
+    }
+    expect(await decide("block-no-verify", `GIT_CONFIG_COUNT=16 ${pad(16)} git commit -m x`)).toBe("allow");
+  });
+});
+
+describe("the floor's cost stays bounded on a command built to be expensive", () => {
+  // A hook that times out lets the call through, so every shape below has to
+  // stay in milliseconds. Run under node, whose regex engine is the one the
+  // shipped CLI uses.
+  it.each([
+    ["a selector built to backtrack", "ps aux | awk '/myapp|((.)*)*X/{print $2}' | xargs kill"],
+    ["a pattern built to backtrack", "pkill -f '((a+)+)+$'"],
+    ["many kill stages in one pipeline", "ps aux | " + Array.from({ length: 400 }, () => "xargs kill").join(" | ")],
+    ["many kills in one command", "ps aux; " + Array.from({ length: 2000 }, (_, i) => `kill $P${i}`).join("; ")],
+    ["many settings on one git", Array.from({ length: 500 }, (_, i) => `git -c a${i}.b=c commit -m x`).join("; ")],
+    ["a very long argument", "ps aux | xargs kill " + "a".repeat(200_000)],
+  ])("%s", async (_label, command) => {
+    const started = Date.now();
+    for (const name of FLOOR) await decide(name, command);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });

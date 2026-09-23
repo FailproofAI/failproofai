@@ -43,6 +43,10 @@ describe("floor policies through evaluatePolicies, each enabled alone", () => {
     ["block-mass-kill", "constructor -x; killall node"],
     ["block-mass-kill", nestBashC(7, "echo hi")],
     ["block-no-verify", "constructor -x; git commit --no-verify"],
+    // ROUND 7: the VALUE of a `core.hooksPath` a commit brings with it is no
+    // longer read — an empty hooks directory skips every hook exactly as
+    // `/dev/null` does. Pinned as an allow before.
+    ["block-no-verify", "git -c core.hooksPath=.husky commit -m x"],
     ["block-chmod-777", "constructor -x; chmod 777 /etc/passwd"],
     ["block-chmod-777", "chmod 1777 secrets.txt"],
     ["block-gh-destructive", "constructor -x; gh release delete v1"],
@@ -56,7 +60,8 @@ describe("floor policies through evaluatePolicies, each enabled alone", () => {
     ["block-disk-destruction", "diskutil list"],
     ["block-disk-destruction", "dd if=/dev/zero of=../disk.img"],
     ["block-chmod-777", "mkdir -m 1777 /tmp/shared"],
-    ["block-no-verify", "git -c core.hooksPath=.husky commit -m x"],
+    // A PERSISTENT write is not a commit: this is how hook managers install.
+    ["block-no-verify", "git config core.hooksPath .husky"],
   ])("%s allows %s", async (name, command) => {
     expect(await verdict(name, command)).toBe("allow");
   });

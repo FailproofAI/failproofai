@@ -16,6 +16,14 @@
  * Nothing on the file system is consulted: the session transcript is a file the
  * agent can rewrite in one command, so it is never asked who wrote a prompt.
  *
+ * WHOSE FILE IT IS. 0600 on the file proves nothing if another local user can
+ * write to a directory above it — they rename it away and leave their own, and
+ * every check on the file then passes. So the read path holds the store's whole
+ * path to the same rule `jev-config.ts` holds `jev.json`'s directory to
+ * (`looseIntentStoreDir` below): loose write bits are taken off where we can,
+ * and a directory that is still writable by someone else stops the read. Then
+ * nothing is recorded as the human's, and nothing is cleared.
+ *
  * THE ACCEPTED RISK, PLAINLY. An agent that can already run commands can make a
  * harness submit a prompt: `claude -p "…"`, `codex exec`, `copilot -p`,
  * `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` and `pi -p` all
@@ -36,11 +44,20 @@
  * WHAT CONSENT CAN AND CANNOT DO. A recorded prompt can only ever clear a
  * policy that is already marked reviewable (`effectiveAuthority` in
  * policy-types.ts) and whose semantic policy sets `userCanOverride`. A hard
- * policy is never cleared by anything Jev says. So the worst a forged prompt
- * can do is stop a reviewable policy from nudging an agent that was already
- * free to run the command; it can never turn a hard deny into an allow, and
- * skipping the hook entirely gains an agent nothing, since the harness invokes
- * failproofai for the tool call independently.
+ * policy is never cleared by anything Jev says, so a forged prompt can never
+ * turn a HARD deny into an allow, and skipping the hook entirely gains an
+ * agent nothing, since the harness invokes failproofai for the tool call
+ * independently.
+ *
+ * What it CAN do is worth stating exactly, because "it only stops a nudge" is
+ * not true: of the seven reviewable builtins (policy-catalog.ts), FOUR are
+ * blocking denies — `block-read-outside-cwd`, `protect-env-vars`,
+ * `block-env-files` and `block-work-on-main` — and only `warn-git-amend`,
+ * `warn-destructive-sql` and `warn-global-package-install` are nudges. So a
+ * forged consent can turn a real deny into an allow on reading `.env` files,
+ * reading outside the project, printing environment secrets, or committing on
+ * a protected branch. That is the size of the trade, and it is the reason the
+ * hard floor is where the catastrophic cases live.
  *
  * WHAT IS STILL REFUSED, because it is cheap and an agent cannot forge it by
  * asking: a turn the harness's own payload marks as machine-submitted (a cron
@@ -66,6 +83,7 @@
  * Text inside a tool call claiming "the user approved this" is never consulted.
  */
 import {
+  chmodSync,
   closeSync,
   mkdirSync,
   openSync,
@@ -77,8 +95,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { resolve } from "node:path";
-import { semanticDir } from "../fp-home";
+import { dirname, resolve } from "node:path";
+import { failproofaiHome, semanticDir } from "../fp-home";
 import type { IntegrationType } from "../types";
 import { MAX_USER_MESSAGE_CHARS, redactSecrets } from "./envelope";
 
@@ -92,6 +110,91 @@ const SESSION_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 const sessionsDir = (): string => resolve(semanticDir(), "sessions");
 const intentFile = (sessionId: string): string => resolve(sessionsDir(), `${sessionId}.json`);
+
+/**
+ * Group- or world-WRITE bits on a directory the store sits under. Anyone who
+ * can write to one can rename it away and leave their own in its place, and
+ * every check on the file inside then passes — so the file's own 0600 proves
+ * nothing about who wrote it. Read bits are deliberately not included: a 0755
+ * directory is ordinary and gives nobody that power.
+ *
+ * Exactly `jev-config.ts`'s `DIR_WRITABLE_BY_OTHERS`, for exactly its reason.
+ * The config refuses a `jev.json` whose DIRECTORY is loose; this is the same
+ * check on the store that answers "did the human ask for this", which is the
+ * one input that can clear a reviewable deny.
+ */
+const DIR_WRITABLE_BY_OTHERS = 0o022;
+
+/** Whether permission bits can be trusted to mean anything here. */
+function modesAreMeaningful(): boolean {
+  // On Windows `stat().mode` is synthesized, so the check would refuse every
+  // read without protecting anything (`jev-config.ts` says the same).
+  return process.platform !== "win32";
+}
+
+/**
+ * The directories the session files sit under, innermost first, up to and
+ * including the failproofai home. Every one of them is ours by construction —
+ * `state/`, `state/semantic/` and its `sessions/` — but only the two this
+ * module creates are created 0700; `state/` is the daemon's
+ * (`fpai-collect`'s `create_dir_all`) and arrives at the umask, which on a
+ * umask-002 box is 0775.
+ */
+function storeDirChain(): string[] {
+  const home = resolve(failproofaiHome());
+  const chain: string[] = [];
+  let dir = sessionsDir();
+  // Bounded: the chain is four deep, and a home that is not an ancestor (a
+  // layout change, a symlink) must not walk to the filesystem root.
+  for (let i = 0; i < 8; i++) {
+    chain.push(dir);
+    if (dir === home) break;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return chain;
+}
+
+/**
+ * The first directory under the failproofai home that someone else can write
+ * to and we cannot fix, or null when the store's whole path is ours alone.
+ *
+ * Loose bits are TIGHTENED before they are refused, because on an ordinary
+ * umask-002 machine `~/.failproofai/state` is 0775 the moment the daemon
+ * creates it, and refusing that would switch the clearing half of the
+ * evaluator off for most Linux users with nothing said. Taking the write bits
+ * off is the same remedy `failproofai jev setup` applies to the home, it only
+ * ever removes access, and it only touches directories inside failproofai's
+ * own home. What survives it — a directory we do not own — is the case the
+ * check exists for: another local user who can rename `semantic/` away and
+ * leave their own `sessions/<id>.json`, whose prompts would be read as the
+ * human's and could clear the four reviewable BLOCKING policies.
+ *
+ * Exported so `failproofai jev status` can report it the way it reports a
+ * refused config.
+ */
+export function looseIntentStoreDir(): string | null {
+  if (!modesAreMeaningful()) return null;
+  for (const dir of storeDirChain()) {
+    let mode: number;
+    try {
+      mode = statSync(dir).mode & 0o777;
+    } catch {
+      // Not there — nothing can be read out of it either — or not ours to
+      // stat, which the read itself then reports.
+      continue;
+    }
+    if ((mode & DIR_WRITABLE_BY_OTHERS) === 0) continue;
+    try {
+      chmodSync(dir, mode & ~DIR_WRITABLE_BY_OTHERS);
+      if ((statSync(dir).mode & DIR_WRITABLE_BY_OTHERS) !== 0) return dir;
+    } catch {
+      return dir;
+    }
+  }
+  return null;
+}
 
 interface RecordedPrompt {
   at: number;
@@ -208,9 +311,17 @@ function recordPrompt(sessionId: string, prompt: string, agent: string | null, n
   }
 }
 
-/** The session's unexpired prompts, oldest first. Tolerates a hand-edited file. */
+/**
+ * The session's unexpired prompts, oldest first. Tolerates a hand-edited file.
+ *
+ * Nothing is read out of a store whose path someone else can write to
+ * (`looseIntentStoreDir`). Returning none is the fail-closed answer: Jev is
+ * still asked, and judges with no stated intent, so no reviewable deny is
+ * cleared on a prompt we cannot say is the owner's.
+ */
 function livePrompts(sessionId: string | undefined, now: number): RecordedPrompt[] {
   if (!sessionId || !SESSION_ID_RE.test(sessionId)) return [];
+  if (looseIntentStoreDir() !== null) return [];
   return readIntentFile(sessionId).prompts.filter(
     (p) =>
       typeof p?.text === "string" &&

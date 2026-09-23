@@ -1,7 +1,7 @@
 /**
  * The `state` object sent to Jev.
  *
- * Four rules shape it:
+ * Five rules shape it:
  *
  * 1. Trust is structural. What the human typed (`user_said`) and what code
  *    computed (`facts`) sit in their own labelled fields, ahead of the one
@@ -57,6 +57,22 @@
  *    thrown away because of how the caller shaped its input, which is the same
  *    attack in another spelling.
  *
+ * 5. Building the envelope is LINEAR in what it is given. This runs
+ *    synchronously on `PreToolUse`, before the first `await`, so Jev's own
+ *    timeout does not bound it and a slow build is the agent's tool call
+ *    stalling. Everything here is a single pass except the shared
+ *    `SECRET_PATTERNS`, which are written as detectors for short command
+ *    strings and are used here as a TRANSFORM over a whole envelope: two of
+ *    them run an open-ended quantifier that backtracks to find a delimiter,
+ *    retried at every position where a three-character prefix occurs, which is
+ *    quadratic. At the current caps that measured 1,267 ms for one Bash
+ *    command of `eyJ` repeated. They are therefore compiled into a SCAN FORM
+ *    here — see {@link NOT_MID_WORD} and {@link boundDelimitedRuns} — rather
+ *    than edited at the source, where the same patterns are a detector that
+ *    wants neither change. The same input now measures 13 ms, and the test
+ *    file pins the COST, so a future pattern that reintroduces the blow-up
+ *    fails there rather than in production.
+ *
  * ## The one rule about a cut, and why it is a rule rather than a mitigation
  *
  * A bounded projection of an unbounded string necessarily drops something, and
@@ -89,11 +105,28 @@
  *     it withdraw clears, which turned a 1,200-character prompt into the
  *     difference between an allow and a deny on identical work.
  *
- * That makes padding useless BY CONSTRUCTION rather than by spelling: hiding
- * anything requires a cut, every cut inside `agent_request` or `facts` sets
- * `requestCut`, and `requestCut` can only make the outcome stricter. A caller
- * can spend the budget, but spending it only ever costs the call its clears —
- * it can never buy one.
+ * That makes padding useless for the CALL'S OWN TEXT, by construction rather
+ * than by spelling: every character of `agent_request` is either carried or
+ * reported, because every way of dropping bytes there goes through
+ * {@link markCut}, and `requestCut` can only make the outcome stricter. A
+ * caller can spend the budget, but spending it only ever costs the call its
+ * clears — it can never buy one.
+ *
+ * The same sentence is NOT true of the derived `facts`, and it is qualified
+ * here rather than quietly left standing. `scanCommand` reads the first
+ * `MAX_SCAN_CHARS` characters and `extractPaths` stops at its own path cap, so
+ * a long enough command, or a call naming more paths than that, yields facts
+ * computed from a PREFIX with neither flag set. What that can cost is a
+ * QUESTION, not a clear: the command text itself is carried whole and judged,
+ * so nothing is hidden from Jev — the narrower evidence just means
+ * `selectPolicies` may pick fewer probes, so a policy that would have fired
+ * goes unasked. Flagging it from here was measured and rejected: it costs a
+ * 20,000-character heredoc, and a `prettier --write` over thirteen files,
+ * their clears — ordinary work paying for a gap that hides nothing. The narrow
+ * fix belongs where the evidence is computed (`facts.ts` reports that it
+ * stopped; `policies.ts` treats incomplete evidence as a reason to ASK MORE,
+ * never to drop a probe), and until that lands this paragraph is the honest
+ * statement of what holds.
  *
  * Redaction removes text without the caller asking for it, so it has to be
  * unable to hide anything either. Almost every shape in `SECRET_PATTERNS` is
@@ -106,13 +139,24 @@
  *     {@link redactPrivateKeyBodies}): anything inside a
  *     `-----BEGIN … PRIVATE KEY-----` block that is not base64 is kept and
  *     judged, so wrapping a command in a fake key block hides nothing;
- *   - a connection string, whose userinfo run is `[^@\s]+` — an UNBOUNDED span
- *     of anything but `@` and a space, which `$(rm${IFS}-rf${IFS}/srv)` fits
+ *   - a connection string, whose userinfo run is `[^@\s]+` — a span of
+ *     anything but `@` and a space, which `$(rm${IFS}-rf${IFS}/srv)` fits
  *     inside. It is still redacted (a password is not worth leaking to argue
- *     about), but {@link couldNotBeSecret} notices that the span carries shell
- *     metacharacters no credential has, and the removal is then reported as
- *     the cut it is. A real `user:pass@` carries none, so ordinary work pays
- *     nothing for this.
+ *     about), and {@link couldNotBeSecret} asks the one question that decides
+ *     whether the removal hid anything — could the span have STARTED
+ *     something? — so a removal is reported as a cut exactly when the answer
+ *     is yes.
+ *
+ *     That question has to stay narrow, and an earlier revision's did not. It
+ *     asked "does the span carry shell metacharacters", with `{`, `}`, `(`,
+ *     `)`, `'` and `"` in the class — which is the spelling of every
+ *     TEMPLATED connection string there is: `${DB_USER}:${DB_PASS}@` in a
+ *     compose file, `{user}:{password}@` in a Python f-string, `${u}:${p}@`
+ *     in a JS template literal, `${var.user}@` in Terraform. Every one of
+ *     them was reported as a cut of the call, which withdrew every clear, so
+ *     writing the SAFER spelling of a config file was denied while the
+ *     hardcoded password beside it was allowed. See
+ *     {@link SHELL_METACHARACTERS}.
  *
  * `__tests__/hooks/semantic/envelope-budget.test.ts` pins both from the
  * outside: a command inside a fake PEM block still reaches Jev, and a command
@@ -224,10 +268,117 @@ const TOO_DEEP = "<nested value omitted>";
 /** Stands in for a value JSON cannot carry (bigint, symbol, function, a throwing getter). */
 const UNREPRESENTABLE = "<value omitted>";
 
-const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [
-  new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"),
-  label,
-]);
+/**
+ * How far an open-ended run of a NEGATED character class — `[^@\s]+`, the
+ * userinfo of a connection string — is followed before the pattern gives up.
+ *
+ * A negated class is the expensive shape: it admits anything, so the engine
+ * scans to the end of the string and backtracks looking for the delimiter, at
+ * EVERY position where the pattern's prefix occurs. `postgres://` repeated to
+ * 56,000 characters is 5,000 such positions over a 56,000-character run, and
+ * cost 217 ms of synchronous hook time per string.
+ *
+ * 256 is two orders of magnitude more than a real `user:pass@` and an order of
+ * magnitude more than a long generated password. Past it the connection string
+ * is not redacted — which is a leak of a credential nobody writes, not a hole
+ * in the review: an unredacted span removes nothing, so it hides nothing, and
+ * {@link couldNotBeSecret} is not reached either.
+ */
+const MAX_DELIMITED_RUN = 256;
+
+/**
+ * A secret does not start in the middle of a word.
+ *
+ * This is what makes the POSITIVE runs linear, and it is worth stating why,
+ * because the bound above cannot do it: `JWT_RE`'s segments are
+ * `[A-Za-z0-9_-]{10,}` and a JWT payload really can be thousands of characters
+ * long, so bounding them either misses live tokens or leaves the cost in.
+ * `eyJ` repeated to 56,000 characters put 18,000 candidate starts inside one
+ * 56,000-character run: 934 ms.
+ *
+ * With this lookbehind a candidate must be preceded by a character OUTSIDE the
+ * run's charset — and such a character ENDS the run. So each candidate owns a
+ * disjoint stretch of the string, the total work is one pass, and the measured
+ * cost of the same input is 2 ms. What it gives up is a secret glued to the
+ * end of a word with no delimiter of any kind (`...abceyJhbGci...`), which no
+ * real token, header, URL, assignment or JSON string produces.
+ */
+const NOT_MID_WORD = "(?<![A-Za-z0-9_-])";
+
+/** `+`, `*` or `{n,}` — a quantifier with no upper bound. */
+const OPEN_ENDED = /^(?:(\+)|(\*)|\{(\d+),\})/;
+
+/**
+ * Bound every open-ended run of a negated character class in a pattern source.
+ *
+ * A linear scan of the source, not a regex over it: it copies escapes and
+ * character classes whole, and only rewrites a quantifier that directly
+ * follows a `[^…]` class. A positive class is left alone — {@link NOT_MID_WORD}
+ * is what bounds those, and a bound would cost live tokens (see above).
+ *
+ * Deliberately narrow: a quantifier applied to a GROUP containing a negated
+ * class (`(?:[^@\s])+`) is not rewritten, because unwrapping groups is where a
+ * source rewriter starts changing what a pattern means. No shape in
+ * `SECRET_PATTERNS` is written that way today, and
+ * `__tests__/hooks/semantic/envelope-budget.test.ts` pins the COST rather than
+ * the spelling, so a future pattern that reintroduces the blow-up fails there
+ * rather than in production.
+ */
+function boundDelimitedRuns(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === "\\") {
+      out += source.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c !== "[") {
+      out += c;
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    const negated = source[j] === "^";
+    if (negated) j += 1;
+    // A `]` as the first member of a class is a literal `]`, not the end of it.
+    if (source[j] === "]") j += 1;
+    while (j < source.length && source[j] !== "]") j += source[j] === "\\" ? 2 : 1;
+    out += source.slice(i, j + 1);
+    i = j + 1;
+    if (!negated) continue;
+    const open = OPEN_ENDED.exec(source.slice(i));
+    if (!open) continue;
+    const min = open[3] !== undefined ? Number(open[3]) : open[1] !== undefined ? 1 : 0;
+    // Never narrower than the pattern's own floor: a `{500,}` stays satisfiable.
+    out += `{${min},${Math.max(min, MAX_DELIMITED_RUN)}}`;
+    i += open[0].length;
+  }
+  return out;
+}
+
+/**
+ * The SCAN FORM of a shared pattern: the same matches on anything anyone
+ * writes, at a cost that is linear in the length of the string.
+ *
+ * `SECRET_PATTERNS` is shared with the `sanitize-*` builtins, where it is a
+ * detector run over short command strings. Here it is a TRANSFORM run over
+ * every string in an envelope, up to the whole budget, on the synchronous hook
+ * path before any `await` — so the 1,500 ms Jev timeout does not bound it and
+ * an agent's own tool call stalls behind it. The patterns are left as the
+ * builtins' authors wrote them and adapted here, rather than edited there,
+ * because the two call sites want different things from them.
+ *
+ * The source is wrapped in a non-capturing group so the lookbehind applies to
+ * the whole pattern rather than to the first branch of a top-level
+ * alternation.
+ */
+function scanForm(re: RegExp): RegExp {
+  return new RegExp(`${NOT_MID_WORD}(?:${boundDelimitedRuns(re.source)})`, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+}
+
+const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [scanForm(re), label]);
 
 export interface Redacted {
   text: string;
@@ -240,20 +391,31 @@ export interface Redacted {
 }
 
 /**
- * What a shell needs in order to RUN something inside a span with no
- * whitespace in it: command substitution (`` ` ``, `$(`…`)`), parameter
- * expansion (`${IFS}` is how a whitespace-free payload gets its word breaks),
- * brace expansion (`{a,b,c}`), command separators, redirection, quoting.
+ * What a shell needs in order to START something inside a span that has no
+ * whitespace in it: command substitution (a backtick, or `$(`), a command
+ * separator (`;`, `|`, `&`, a newline), a redirection (`<`, `>`).
  *
- * Deliberately NOT a bare `$`. `postgres://$DB_USER:$DB_PASS@host/db` is how
- * people write a connection string, and `$VAR` on its own expands to a value;
- * it cannot run anything without one of the characters below. Treating every
- * `$` as suspicious would have charged ordinary work for it.
+ * Everything else an interpolated URL is written with is deliberately absent,
+ * because each of them is how ordinary work spells a connection string and
+ * none of them can run anything on its own:
  *
- * A plain character class, no quantifier: one linear pass, nothing to
- * backtrack.
+ *   - `{` and `}` — `${DB_USER}:${DB_PASS}@` (compose, shell), `{user}:{pw}@`
+ *     (a Python f-string), `${u}:${p}@` (a JS template literal),
+ *     `${var.user}@` (Terraform). A parameter expansion substitutes a value;
+ *     a brace expansion `{a,b,c}` multiplies a WORD. Neither starts a command
+ *     without one of the characters above, and `$(` — the one spelling that
+ *     does — is matched as the two-character sequence it is.
+ *   - `(` and `)` on their own — a password with parentheses in it, and a
+ *     bare paren cannot open a subshell in the middle of a word anyway.
+ *   - `'` and `"` — a quote can only end a quoting context the same span
+ *     already opened, and the span is bounded by two `@`-free runs.
+ *   - a bare `$` — `postgres://$DB_USER:$DB_PASS@host/db` is how people write
+ *     a connection string, and `$VAR` expands to a value.
+ *
+ * A plain character class plus one two-character sequence, no quantifier: one
+ * linear pass, nothing to backtrack.
  */
-const SHELL_METACHARACTERS = /[`(){};|&<>\\'"\n\r]/;
+const SHELL_METACHARACTERS = /[`;|&<>\n\r]|\$\(/;
 
 /**
  * Whether a span some pattern matched is text a redaction may remove silently.
@@ -261,11 +423,18 @@ const SHELL_METACHARACTERS = /[`(){};|&<>\\'"\n\r]/;
  * The question is not "is this a secret" — it is redacted either way, because
  * the cost of being wrong in that direction is a live credential on the wire.
  * The question is whether removing it can HIDE anything, and the answer is no
- * exactly when the span could not have been executable. Every API key, JWT and
- * bearer token is drawn from an alphanumeric charset; a real `user:pass@` is
- * too (a URL percent-encodes anything else). Only a span carrying shell
- * metacharacters can be an operation, and `CONNECTION_STRING_RE`'s unbounded
- * `[^@\s]+` is the one pattern that admits them.
+ * unless the span could have STARTED something. Every API key, JWT and bearer
+ * token is drawn from an alphanumeric charset, so no span of those can;
+ * `CONNECTION_STRING_RE`'s `[^@\s]+` is the one run that admits arbitrary
+ * characters, and it is the reason this check exists.
+ *
+ * Both directions of being wrong here cost real work, which is why
+ * {@link SHELL_METACHARACTERS} is the short list it is rather than "anything
+ * unusual". Saying yes too often denies ordinary interpolated URLs — a cut
+ * withdraws every clear, so a reviewable deny then stands on a file whose
+ * whole point was NOT to hardcode the password. Saying no too often lets a
+ * command be posted inside a `scheme://…@` span and reviewed as
+ * `<redacted:database credentials>`.
  */
 function couldNotBeSecret(span: string): boolean {
   return SHELL_METACHARACTERS.test(span);

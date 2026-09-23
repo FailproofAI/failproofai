@@ -48,6 +48,7 @@ import {
   MAX_STATE_CHARS,
   MAX_STRING_CHARS,
   buildEnvelope,
+  redactSecrets,
 } from "../../../src/hooks/semantic/envelope";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { evaluateSemantic, prepareSemantic, verdictLogRow, type SemanticOptions } from "../../../src/hooks/semantic/evaluator";
@@ -670,16 +671,35 @@ describe("padding around the dangerous part cannot buy permission", () => {
     });
 
     /**
-     * And the other side of the same rule: a REAL credential costs ordinary
-     * work nothing. `postgres://$DB_USER:$DB_PASS@host` is how people write a
-     * connection string, and a bare `$VAR` cannot run anything, so it is
-     * redacted silently like every other secret.
+     * And the other side of the same rule, which is the side that decides
+     * whether this product is usable: a REAL credential, and every ordinary
+     * way of writing a connection string WITHOUT one, costs nothing.
+     *
+     * This list is a control table, not a list of spellings — its job is to
+     * fail when the cut class widens onto ordinary work. It did widen once: an
+     * earlier revision put `{`, `}`, `(`, `)`, `'` and `"` in the class, which
+     * is exactly how a templated URL is written in a compose file, a Python
+     * f-string, a JS template literal and a Terraform variable. Every one of
+     * them was reported as a cut of the CALL, so writing the safer spelling of
+     * a config file lost its clears and a reviewable deny stood — while the
+     * hardcoded-password spelling one line up was cleared. The interpolation
+     * cases below are here so that cannot come back unnoticed.
      */
     const ordinary: Array<[string, string]> = [
       ["a literal user:pass", `psql ${PG}appuser:hunter2hunter2@db.example.com:5432/app`],
       ["shell variables", `psql ${PG}$DB_USER:$DB_PASS@db.example.com:5432/app`],
       ["a bearer token", `curl -H "Authorization: Bearer ${"A1b2C3d4E5f6G7h8I9j0".repeat(3)}" https://api.example.com`],
       ["an AWS key id", `aws configure set aws_access_key_id AKIA${"ABCDEFGH12345678"}`],
+      // A compose file / shell parameter expansion: braces, no command.
+      ["a compose ${DB_USER} expansion", `psql ${PG}\${DB_USER}:\${DB_PASS}@db.example.com:5432/app`],
+      // A Python f-string: single braces.
+      ["a python f-string", `psql "${PG}{user}:{password}@{host}:5432/{db}"`],
+      // A JS template literal.
+      ["a js template literal", "node -e 'connect(`" + PG + "${u}:${p}@${host}/app`)'"],
+      // Terraform, which spells a variable with a dot inside the braces.
+      ["a terraform variable", `psql "${PG}\${var.user}:\${var.pass}@\${var.host}/db"`],
+      // Parentheses and quotes are password characters, not operations.
+      ["a password with parentheses", `psql "${PG}app:p(a)ss@localhost/app"`],
     ];
 
     it.each(ordinary)("%s is redacted with no cut", (_label, command) => {
@@ -695,6 +715,184 @@ describe("padding around the dangerous part cannot buy permission", () => {
       const env = built({ command: "npm run build && npm test" });
       expect({ redactions: env.redactions, requestCut: env.requestCut }).toEqual({ redactions: 0, requestCut: false });
     });
+  });
+});
+
+/**
+ * The control table above, carried through to the verdict.
+ *
+ * A flag on the envelope is not the harm; the harm is the deny a user sees. A
+ * revision of the cut class charged every interpolated connection string a
+ * cut, which withdrew the clears, which left a reviewable regex deny standing
+ * on a `Write` of a docker-compose file — while the same file with the
+ * password typed into it was cleared. That is the product inverted, so it is
+ * pinned end to end rather than at the envelope only.
+ */
+describe("writing a templated connection string is not denied for being templated", () => {
+  const PG = ["postgres", "://"].join("");
+
+  /** Nothing alarms Jev; the human asked for exactly this. */
+  const calm = async (request: JevRequest): Promise<JevResponse> => ({
+    model: request.model,
+    answers: Object.fromEntries(
+      Object.keys(request.questions).map((id) => [id, { noul: id === "op_requested" || id === "task_step" ? 0.95 : 0.02 }]),
+    ),
+  });
+
+  const write = (content: string, path: string): SemanticInput => ({
+    eventType: "PreToolUse",
+    toolName: "Write",
+    toolInput: { file_path: path, content },
+    cwd: "/work/project",
+    userSaid: ["wire the database url up from the environment"],
+    agentLastMessage: null,
+  });
+
+  /** The kind of policy that fires on a file with a DB URL in it, and is reviewable. */
+  const reviewable: RegexVerdict = {
+    policyName: "failproofai/block-env-files",
+    decision: "deny",
+    reason: "a database URL in a tracked file",
+    authority: "reviewable",
+    reviewedBy: ["secret-exposure"],
+  };
+
+  const files: Array<[string, SemanticInput]> = [
+    ["a compose file with ${DB_USER}", write(`      DATABASE_URL: ${PG}\${DB_USER}:\${DB_PASS}@\${DB_HOST}:5432/\${DB_NAME}\n`, "/work/project/docker-compose.yml")],
+    ["a TS template literal", write("export const url = `" + PG + "${user}:${pass}@${host}:5432/app`;\n", "/work/project/src/db.ts")],
+    ["a Python f-string", write(`engine = create_engine(f"${PG}{user}:{pw}@{host}/{db}")\n`, "/work/project/src/db.py")],
+    ["a password with parentheses", write(`DATABASE_URL=${PG}app:p(a)ss@localhost/app\n`, "/work/project/.env.example")],
+    // The control that makes the others mean something: the spelling this
+    // whole class was supposed to be WORSE than must not come out better.
+    ["a hardcoded password", write(`      DATABASE_URL: ${PG}appuser:hunter2@db:5432/appdb\n`, "/work/project/docker-compose.yml")],
+  ];
+
+  it.each(files)("%s is reviewed like any other call, and Jev's clear stands", async (_label, input) => {
+    const calmOpts: SemanticOptions = { ...opts, transport: calm };
+    const prepared = prepareSemantic(input, calmOpts);
+    expect({ truncated: prepared.truncated, requestCut: prepared.requestCut }).toEqual({ truncated: false, requestCut: false });
+
+    const out = combineTwoTier([reviewable], toReview(await evaluateSemantic(input, calmOpts)), "enforce");
+    expect(out.cleared).toEqual([reviewable.policyName]);
+    expect(out.final.decision).toBe("allow");
+    expect(out.activity.evaluator).toBe("jev");
+  });
+});
+
+/**
+ * Making the redactor linear meant rewriting the shared patterns into a SCAN
+ * FORM — a lookbehind so a candidate cannot start in the middle of a word, and
+ * an upper bound on the one open-ended run of a NEGATED class. A rewrite of a
+ * detector is a place to leak a credential, so the other direction is pinned
+ * too: every shape `SECRET_PATTERNS` knows about, in every ordinary way it is
+ * written, still comes out redacted.
+ *
+ * Fixtures are assembled at runtime and never written as literals — the repo's
+ * own hooks read this file.
+ */
+describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
+  const A = (n: number) => "A1b2C3d4E5f6G7h8I9j0".repeat(Math.ceil(n / 20)).slice(0, n);
+  const U = (n: number) => "ABCDEFGHIJKLMNOP".repeat(Math.ceil(n / 16)).slice(0, n);
+
+  const secrets: Array<[string, string]> = [
+    ["an Anthropic key", ["sk", "ant", A(30)].join("-")],
+    ["an OpenAI project key", ["sk", "proj", A(30)].join("-")],
+    ["an OpenAI key", ["sk", A(30)].join("-")],
+    ["a GitHub PAT", `ghp_${A(36)}`],
+    ["a GitHub fine-grained token", `github_pat_${A(82)}`],
+    ["an AWS key id", `AKIA${U(16)}`],
+    ["a Stripe live key", `sk_live_${A(24)}`],
+    ["a Stripe test key", `sk_test_${A(24)}`],
+    ["a Google key", `AIza${A(35)}`],
+    ["a JWT", `eyJ${A(40)}.${A(80)}.${A(43)}`],
+    // The reason the positive runs are NOT bounded: a real payload is long.
+    ["a JWT with an 8,000-character payload", `eyJ${A(40)}.${A(8_000)}.${A(43)}`],
+    ["a bearer token", `Authorization: Bearer ${A(40)}`],
+    ["a connection string", `${["postgres", "://"].join("")}appuser:hunter2hunter2@db.example.com:5432/app`],
+    ["a mongodb+srv URL", `${["mongodb+srv", "://"].join("")}u:hunter2hunter2@cluster0.example.net/app`],
+    ["a PEM header", "-----BEGIN RSA PRIVATE KEY-----"],
+  ];
+
+  /** Every ordinary way a secret is preceded in a command, a file or a payload. */
+  const wrappers: Array<[string, (s: string) => string]> = [
+    ["bare", (s) => s],
+    ["an assignment", (s) => `API_KEY=${s}`],
+    ["an export", (s) => `export TOKEN=${s}`],
+    ["double quotes", (s) => `curl -H "${s}"`],
+    ["single quotes", (s) => `curl -H '${s}'`],
+    ["JSON", (s) => `{"token":"${s}"}`],
+    ["YAML", (s) => `token: ${s}`],
+    ["a long flag", (s) => `--api-key=${s}`],
+    ["after a newline", (s) => `line one\n${s}`],
+  ];
+
+  it.each(secrets)("%s is redacted in every ordinary spelling", (_label, secret) => {
+    for (const [how, wrap] of wrappers) {
+      const out = redactSecrets(wrap(secret));
+      expect({ how, redacted: out.count > 0 }).toEqual({ how, redacted: true });
+      expect({ how, leaked: out.text.includes(secret.slice(0, 30)) }).toEqual({ how, leaked: false });
+    }
+  });
+});
+
+/**
+ * The hook is synchronous and runs before every tool call, so a pathological
+ * string is a stall of the agent, not a slow request: `prepareSemantic` sits
+ * ahead of the first `await`, so Jev's own timeout does not bound it.
+ *
+ * What made it pathological was the shape of the shared `SECRET_PATTERNS`,
+ * which are written as detectors for short command strings and are used here
+ * as a TRANSFORM over a whole envelope. Two of them run an open-ended run that
+ * has to backtrack to find a delimiter, retried at every position where a
+ * three-character prefix occurs: quadratic. At the current 56,000-character
+ * cap that measured 1,267 ms for one Bash command of `eyJ` repeated.
+ *
+ * This pins the COST, not the spelling, so a future pattern that reintroduces
+ * the blow-up fails here rather than in production. The bar is the directive's:
+ * a 500 KB call, well under 100 ms. Generous against the measured numbers
+ * (13–32 ms) so it does not flake on a loaded machine, and tight enough that a
+ * return to quadratic (1,267 ms) cannot pass.
+ */
+describe("every path is linear: no input buys itself a stall", () => {
+  const BUDGET_MS = 100;
+  const PG = ["postgres", "://"].join("");
+  const REDIS = ["redis", "://"].join("");
+
+  /** Median of three, after three warm-ups: a JIT-warm number, not a first-call one. */
+  const millis = (fn: () => void): number => {
+    for (let i = 0; i < 3; i++) fn();
+    const runs: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const t0 = performance.now();
+      fn();
+      runs.push(performance.now() - t0);
+    }
+    return runs.sort((a, b) => a - b)[1];
+  };
+
+  const inputs: Array<[string, SemanticInput]> = [
+    // A JWT prefix at every position: 18,000 candidate starts in one run.
+    ["a command of 'eyJ' repeated to the string cap", call({ command: "eyJ".repeat(18_667) })],
+    ["a command of 'eyJ' repeated to 500 KB", call({ command: "eyJ".repeat(166_667) })],
+    ["file content of 'eyJ' repeated to the string cap", { ...call({ file_path: "/work/project/a.txt", content: "eyJ".repeat(18_667) }), toolName: "Write" }],
+    // A connection-string prefix at every position, with no `@` to find.
+    [`a command of '${PG}' repeated to the string cap`, call({ command: PG.repeat(5_091) })],
+    [`a command of '${REDIS}' repeated to the string cap`, call({ command: REDIS.repeat(6_875) })],
+    // Many strings rather than one: the section budget has to bound the total.
+    [`200 strings of 56,000 '${PG}' characters`, call({ command: "ls", pad: Array.from({ length: 200 }, () => PG.repeat(5_091)) })],
+    // Ordinary bulk, which is what the cap is actually generous for.
+    ["a 500 KB ordinary command", call({ command: `echo ${"abcdefgh ".repeat(55_000)}` })],
+    // Controls: the same volume of text the patterns really do match.
+    ["300 well-formed JWTs", call({ command: Array.from({ length: 300 }, () => `eyJ${"A".repeat(60)}.${"B".repeat(60)}.${"C".repeat(60)}`).join(" ") })],
+    ["1,200 comma-separated connection strings", { ...call({ file_path: "/work/project/a.txt", content: Array.from({ length: 1_200 }, (_, i) => `${REDIS}u${i}:p${i}@h${i}:6379`).join(",") }), toolName: "Write" }],
+  ];
+
+  it.each(inputs)("%s is prepared well inside the hook's budget", (_label, input) => {
+    expect(millis(() => void prepareSemantic(input, opts))).toBeLessThan(BUDGET_MS);
+  });
+
+  it("an ordinary call is not measurably slower than it was", () => {
+    expect(millis(() => void prepareSemantic(call({ command: "npm run build && npm test" }), opts))).toBeLessThan(5);
   });
 });
 

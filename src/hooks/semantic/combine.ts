@@ -39,14 +39,28 @@
  * unless a clear fired, and a clear fires only when the call was read whole,
  * injection was asked about, and the answer was no.
  *
- * That is what makes padding useless. Five review rounds tried to prevent the
- * hiding instead — a head-and-tail window, a token skeleton, per-field caps —
- * and each time the next spelling walked through it, because a bounded
- * projection of an unbounded string always drops SOMETHING and the attacker
- * picks what. So this rule does not try: hiding requires a cut, every cut
- * inside `agent_request` or `facts` sets `requestCut` (`envelope.ts`), and a
- * call with `requestCut` can clear nothing. Spending the budget can cost a
- * call its clears; it can never buy one.
+ * That is what makes padding useless AGAINST THE CALL'S OWN TEXT. Five review
+ * rounds tried to prevent the hiding instead — a head-and-tail window, a token
+ * skeleton, per-field caps — and each time the next spelling walked through
+ * it, because a bounded projection of an unbounded string always drops
+ * SOMETHING and the attacker picks what. So this rule does not try: dropping a
+ * byte of `agent_request` requires a cut, every such cut sets `requestCut`
+ * (`envelope.ts`), and a call with `requestCut` can clear nothing. Spending the
+ * budget can cost a call its clears; it can never buy one.
+ *
+ * The same sentence is NOT true of the derived `facts`, and saying so is
+ * better than asserting a property the code does not have. `facts` are
+ * computed from the first `MAX_SCAN_CHARS` characters of a command and from a
+ * capped number of paths (`facts.ts`), and neither bound sets a flag. What a
+ * long enough command can therefore cost is a QUESTION — `selectPolicies` may
+ * not pick a probe whose precondition reads those facts — not a clear on
+ * evidence Jev never saw: the command text itself is carried whole and judged.
+ * Flagging it from here was measured and rejected (it charges an ordinary
+ * 20,000-character heredoc, and `prettier --write` over thirteen files, their
+ * clears); the narrow fix is for `facts.ts` to report that it stopped and for
+ * `policies.ts` to read incomplete evidence as a reason to ASK MORE. Until
+ * that lands, this paragraph — not the one above it — is what holds. See
+ * `envelope.ts`'s header for the same statement at the source.
  *
  * ## What size may NOT do
  *

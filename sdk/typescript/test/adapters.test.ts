@@ -34,11 +34,13 @@ describe("the Vercel AI SDK tracer", () => {
 
     await session({ sessionId: "s1" }, async () => {
       // Exactly the shape `generateText` produces: a root span, a doGenerate
-      // span inside it, and a toolCall span beside that.
+      // span inside it, and a toolCall span beside that. Each callback ends
+      // its own span, as the SDK's `recordSpan` does — OpenTelemetry's
+      // `startActiveSpan` never ends one for you.
       await tracer.startActiveSpan(
         "ai.generateText",
         { attributes: { "ai.operationId": "ai.generateText", "ai.telemetry.functionId": "answer-question" } },
-        async (root: { setAttribute: (k: string, v: unknown) => unknown }) => {
+        async (root: { setAttribute: (k: string, v: unknown) => unknown; end: () => void }) => {
           await tracer.startActiveSpan(
             "ai.generateText.doGenerate",
             {
@@ -49,13 +51,14 @@ describe("the Vercel AI SDK tracer", () => {
                 "ai.prompt.messages": JSON.stringify([{ role: "user", content: "hi" }]),
               },
             },
-            (span: { setAttributes: (a: Record<string, unknown>) => unknown }) => {
+            (span: { setAttributes: (a: Record<string, unknown>) => unknown; end: () => void }) => {
               span.setAttributes({
                 "ai.response.text": "hello",
                 "ai.response.finishReason": "stop",
                 "ai.usage.inputTokens": 11,
                 "ai.usage.outputTokens": 22,
               });
+              span.end();
             },
           );
           await tracer.startActiveSpan(
@@ -68,11 +71,13 @@ describe("the Vercel AI SDK tracer", () => {
                 "ai.toolCall.args": JSON.stringify({ city: "Faro" }),
               },
             },
-            (span: { setAttribute: (k: string, v: unknown) => unknown }) => {
+            (span: { setAttribute: (k: string, v: unknown) => unknown; end: () => void }) => {
               span.setAttribute("ai.toolCall.result", JSON.stringify({ celsius: 21 }));
+              span.end();
             },
           );
           root.setAttribute("ai.response.text", "hello");
+          root.end();
         },
       );
     });
@@ -123,7 +128,7 @@ describe("the Vercel AI SDK tracer", () => {
             "ai.usage.completionTokens": 7,
           },
         },
-        () => undefined,
+        (span: { end: () => void }) => span.end(),
       );
     });
     const response = (await flushed(spool)).find((event) => event.type === "model_response")!;
@@ -138,8 +143,13 @@ describe("the Vercel AI SDK tracer", () => {
         t.startActiveSpan(
           "ai.generateText",
           { attributes: { "ai.operationId": "ai.generateText" } },
-          () => {
-            throw new Error("provider is down");
+          (span: { recordException: (e: unknown) => void; setStatus: (s: { code: number }) => unknown; end: () => void }) => {
+            // What the SDK's `recordSpan` does with an error it catches.
+            const error = new Error("provider is down");
+            span.recordException(error);
+            span.setStatus({ code: 2 });
+            span.end();
+            throw error;
           },
         ),
       ).toThrow("provider is down");
@@ -174,10 +184,18 @@ describe("the AI SDK middleware", () => {
     });
 
     const events = await flushed(spool);
-    expect(events.map((event) => event.type)).toEqual(["model_request", "model_response"]);
-    expect(events[0]!.model).toBe("claude-opus-5");
-    expect(events[1]!.input_tokens).toBe(3);
-    expect(events[1]!.request_id).toBe(events[0]!.request_id);
+    // A bare session has no agent to attribute the call to, so the call is a
+    // run of its own, named after the model (see the adapter's mapping).
+    expect(events.map((event) => event.type)).toEqual([
+      "agent_start",
+      "model_request",
+      "model_response",
+      "agent_end",
+    ]);
+    expect(events[0]!.agent_id).toBe("claude-opus-5");
+    expect(events[1]!.model).toBe("claude-opus-5");
+    expect(events[2]!.input_tokens).toBe(3);
+    expect(events[2]!.request_id).toBe(events[1]!.request_id);
   });
 
   it("emits the response only when a STREAM finishes, so usage is not lost", async () => {
@@ -213,7 +231,7 @@ describe("the AI SDK middleware", () => {
 
     // Before the consumer reads it, only the request exists: a stream's usage
     // and finish reason live in its FINAL part.
-    expect((await flushed(spool)).map((event) => event.type)).toEqual(["model_request"]);
+    expect((await flushed(spool)).map((event) => event.type)).toEqual(["agent_start", "model_request"]);
 
     const chunks: unknown[] = [];
     for await (const chunk of result.stream as unknown as AsyncIterable<unknown>) chunks.push(chunk);

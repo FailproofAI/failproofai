@@ -28,7 +28,10 @@ describe("semantic/envelope", () => {
   });
 
   it("keeps the head and the tail of a long string, so padding cannot push the dangerous part out", () => {
-    const long = "echo safe ".repeat(1000) + "&& sudo rm -rf /";
+    // Sized off the cap itself, so it keeps testing the cut rather than the
+    // constant: `MAX_STRING_CHARS` is the whole request budget now, and a
+    // 10,000-character command is carried whole.
+    const long = "echo safe ".repeat(Math.ceil(MAX_STRING_CHARS / 10) + 100) + "&& sudo rm -rf /";
     const c = capHeadTail(long, MAX_STRING_CHARS);
     expect(c.truncated).toBe(true);
     expect(c.text).toContain("sudo rm -rf /");
@@ -90,12 +93,46 @@ describe("semantic/compile", () => {
     expect(owners.get("scope")).toBeNull();
   });
 
-  it("skips user_asked and the injection probe when nothing was typed", () => {
-    const selected = selectPolicies(SEMANTIC_POLICIES, facts());
-    const { request } = compileRequest(selected, {}, []);
+  /**
+   * The v0 path's probe gate, which used to hang the injection probe off
+   * `anyOverridable` — true only when a SELECTED policy may be overridden AND
+   * a human message was recorded.
+   *
+   * Two live shapes therefore never asked it: a call with no prompt recorded
+   * (the first call of a session, or a CLI with no prompt event at all), and a
+   * call where every applicable policy is non-overridable. Both are where
+   * planted text has the most room to speak for a user who has not, and the
+   * answer is read for more than an override — `decide` ESCALATES on it, and
+   * `combine` reads `injectionAsked` as "the request was sent", so an unasked
+   * probe also cost those calls every clear. v1 settled this; v0 had not.
+   *
+   * `user_asked` and `scope` stay gated, and the asymmetry is the point:
+   * `decide` reads `scope` only inside the override branch, which cannot be
+   * entered without a `user_asked` answer compiled under the same condition,
+   * so with nothing overridable that answer is one nobody reads.
+   */
+  const v0Gate: Array<[string, ReturnType<typeof selectPolicies>, string[]]> = (() => {
+    const all = selectPolicies(SEMANTIC_POLICIES, facts());
+    const nonOverridable = all.filter((p) => !p.userCanOverride);
+    return [
+      ["nothing was typed", all, []],
+      ["nothing was typed and nothing is overridable", nonOverridable, []],
+      ["a prompt exists but no selected policy is overridable", nonOverridable, ["clean the build folder"]],
+    ];
+  })();
+
+  it.each(v0Gate)("asks the injection probe when %s, and still skips user_asked and scope", (_label, selected, userSaid) => {
+    expect(selected.length).toBeGreaterThan(0);
+    const { request, owners } = compileRequest(selected, {}, userSaid);
+    expect(request.questions.injection).toBeDefined();
+    expect(owners.get("injection")).toBeNull();
     expect(Object.keys(request.questions).some((k) => k.endsWith(".user_asked"))).toBe(false);
-    expect(request.questions.injection).toBeUndefined();
     expect(request.questions.scope).toBeUndefined();
+  });
+
+  it("asks nothing at all when no policy applies: there is no request to send", () => {
+    const { request } = compileRequest([], {}, ["clean the build folder"]);
+    expect(Object.keys(request.questions)).toEqual([]);
   });
 
   it("keeps a real call comfortably inside Jev's request budget", () => {

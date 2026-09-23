@@ -562,6 +562,14 @@ export class EventWriter {
 
   /** Drain and write any buffered entries immediately. */
   async flushNow(): Promise<void> {
+    // Twice, on purpose. `flush()` hands back a flush that is ALREADY running
+    // if there is one, and that flush drained the queue before any event
+    // emitted since — so awaiting it alone resolves with those events still in
+    // memory. The second call either drains what is left or joins a newer
+    // flush that started after this call, which drained it too. Either way,
+    // every event submitted before `flushNow()` was called is on disk when it
+    // resolves; with nothing queued the second pass returns immediately.
+    await this.flush();
     await this.flush();
   }
 

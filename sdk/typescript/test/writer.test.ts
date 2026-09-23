@@ -75,6 +75,20 @@ describe("durability", () => {
     expect(statSync(join(eventsDir, spool.files()[0]!)).mode & 0o777).toBe(0o600);
   });
 
+  it("flushNow() writes an event emitted while another flush was already writing", async () => {
+    // The interval timer (or a second caller) can be mid-write when you call
+    // `flush()`. That flush drained the queue BEFORE this event arrived, so
+    // returning it — what flushNow() used to do — resolved with the newest
+    // event still in memory, breaking "resolves once your events are on disk"
+    // for exactly the emit-flush-exit script it exists for.
+    runtime.event.agentStart({ sessionId: "s" });
+    const alreadyWriting = runtime.writer.flushNow();
+    runtime.event.agentEnd({ sessionId: "s" });
+    await runtime.writer.flushNow();
+    expect(spool.events().map((e) => e.type)).toEqual(["agent_start", "agent_end"]);
+    await alreadyWriting;
+  });
+
   it("ends every batch file with a newline, as the collector's line reader expects", async () => {
     runtime.event.agentStart({ sessionId: "s" });
     await runtime.writer.flushNow();

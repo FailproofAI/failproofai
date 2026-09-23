@@ -204,17 +204,50 @@ describe("what is judged is the window that was sent, uncut", () => {
     for (const [i, sent] of said.entries()) expect(isSameTurn(prepared.userSaid[i], sent)).toBe(true);
     // Same inclusion decision for the agent message …
     expect(prepared.agentLastMessage === null).toBe(typeof agent !== "string");
-    // … and its text uncut too.
-    if (typeof agent === "string") expect(isSameTurn(prepared.agentLastMessage as string, agent)).toBe(true);
+    // … and, unlike the human's turns, its text is the SENT text exactly. The
+    // agent writes that channel and it repeats file, web and tool-output text
+    // a third party controls, so consent found only in a part of it Jev never
+    // read is the subtraction this design refuses everywhere else.
+    if (typeof agent === "string") expect(prepared.agentLastMessage).toBe(agent);
     // Never MORE than the window: nothing local that was not sent.
     expect(prepared.userSaid.length).toBeLessThanOrEqual(MAX_USER_MESSAGES);
   });
 
-  it("every judged turn is at least as long as the turn that was sent", () => {
+  it("every judged HUMAN turn is at least as long as the turn that was sent", () => {
     const prepared = prepareSemantic(call([LONG_TURN], LONG_AGENT), v1);
     const said = prepared.envelope.state.user_said as string[];
     expect(said[0].length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
     expect(prepared.userSaid[0].length).toBeGreaterThan(said[0].length);
+    // The agent's is not: it is exactly the capped string.
+    expect((prepared.agentLastMessage as string).length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+  });
+
+  /**
+   * The defect the uncut-evidence rule caused when it was applied to BOTH
+   * channels: a target named only in the cut middle of a 5,000-character
+   * AGENT message satisfied the local `targetNamedByUser` check, and Jev's own
+   * deny was downgraded to allow on text Jev never read — in the one channel
+   * the design treats as hostile.
+   */
+  it("a target named only in the cut middle of the AGENT message does not override", async () => {
+    const middle = `${"Here is the plan in detail. ".repeat(60)} I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(60)}`;
+    const prepared = prepareSemantic(call(["yes, go ahead"], middle), v1);
+    const sentAgent = prepared.envelope.state.agent_last_message as string;
+    // The premise: the target is in the message, but not in what was sent.
+    expect(middle).toContain("analytics_events");
+    expect(sentAgent).not.toContain("analytics_events");
+
+    const r = await run(call(["yes, go ahead"], middle), v1);
+    expect(r.named).toBe(false);
+    expect(r.verdict).not.toBe("overridden");
+    expect(r.combined.cleared).toEqual([]);
+    expect(r.combined.final.decision).toBe("deny");
+
+    // Control: the same target in the HEAD of the message, which was sent.
+    const head = `I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(120)}`;
+    const control = await run(call(["yes, go ahead"], head), v1);
+    expect(control.named).toBe(true);
+    expect(control.verdict).toBe("overridden");
   });
 });
 

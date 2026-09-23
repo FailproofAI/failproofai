@@ -16,11 +16,18 @@
  * 1. However the tool input is shaped, `JSON.stringify(state)` is inside
  *    `MAX_STATE_CHARS` and the compiled request is inside `MAX_REQUEST_CHARS`.
  * 2. However the tool input is shaped, `buildEnvelope` returns rather than
- *    throws, and what it drops is flagged `truncated`.
+ *    throws, and what it drops is flagged — `truncated` for anything, and
+ *    `requestCut` when what was dropped was part of the CALL.
  * 3. No string anywhere in the state — VALUE or KEY — is over its cap, and
  *    every one has been through the redaction path.
- * 4. Therefore a padded call is `answered` with `truncated`, never a fallback:
- *    Jev's own deny still reaches `combineTwoTier`.
+ * 4. Therefore a padded call is `answered`, never a fallback: Jev's own deny
+ *    still reaches `combineTwoTier`.
+ * 5. And the one that closes the class rather than mitigating it: padding can
+ *    only ever make a call STRICTER. Either the padded call still fits, and
+ *    the dangerous part is in front of Jev whatever the padding is spelled
+ *    like; or it does not fit, and then `requestCut` means the call is denied
+ *    rather than allowed. There is no third outcome, so there is no spelling
+ *    of padding left to find.
  *
  * Each `shape` below is one of the reported repros, or the obvious next one.
  */
@@ -29,11 +36,10 @@ import { combineTwoTier } from "../../../src/hooks/semantic/combine";
 import { MAX_REQUEST_CHARS, compileRequest, selectPolicies } from "../../../src/hooks/semantic/compile";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import {
-  MAX_KEYS,
+  MAX_AGENT_REQUEST_CHARS,
   MAX_KEY_CHARS,
   MAX_STATE_CHARS,
   MAX_STRING_CHARS,
-  MAX_TOKEN_CHARS,
   buildEnvelope,
 } from "../../../src/hooks/semantic/envelope";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
@@ -118,17 +124,32 @@ const shapes: Array<[string, Record<string, unknown>]> = [
   ["nesting 25,000 deep", parsedNesting(25_000)],
   ["nesting 200,000 deep", parsedNesting(200_000)],
   ["20,000 control characters", { command: DANGEROUS, blob: "\u0000\u0001\u0002".repeat(20_000) }],
-  ["20,000 unpaired surrogates", { command: DANGEROUS, blob: "\ud800".repeat(20_000) }],
   ["a 2,000,000-character command", { command: `echo ${"x".repeat(1_000_000)} ; ${DANGEROUS} ; echo ${"y".repeat(1_000_000)}` }],
   ["a cyclic object", cyclic()],
   ["a getter that throws", throwingGetter()],
   ["values JSON cannot carry", { command: DANGEROUS, a: BigInt("10000000000000000000000000000000000000000"), b: Symbol("s"), c: () => 1, d: undefined, e: NaN }],
 ];
 
-/** Odd but LOSSLESS: carried whole, so `truncated` must stay false. */
+/**
+ * Inside the budget, so nothing is reported cut — including shapes that used
+ * to be reported cut for being merely wide or deep, which is the false
+ * positive the entry and depth caps caused: an ordinary MCP request body is
+ * four to six levels deep and a MultiEdit routinely carries dozens of edits,
+ * and reporting those as "evidence missing" withdrew every clear on the calls
+ * the reviewable authority exists for.
+ */
 const benign: Array<[string, Record<string, unknown>]> = [
   ["a __proto__ key", JSON.parse(`{"command":${JSON.stringify(DANGEROUS)},"__proto__":{"polluted":true}}`)],
   ["an ordinary call", { command: DANGEROUS, file_path: "/work/project/notes.md" }],
+  ["a 20,000-character command", { command: `echo ${"x".repeat(9_000)} ; ${DANGEROUS} ; echo ${"y".repeat(9_000)}` }],
+  ["a 20,000-character Write", { file_path: "/work/project/a.ts", content: "const x = 1;\n".repeat(1_500) }],
+  ["a MultiEdit of 40 edits", { file_path: "/work/project/a.ts", edits: Array.from({ length: 40 }, (_, i) => ({ old_string: `a${i}`, new_string: `b${i}` })) }],
+  ["40 top-level keys", { command: DANGEROUS, ...Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`k${i}`, i])) }],
+  ["an array of 60 strings", { command: DANGEROUS, items: Array.from({ length: 60 }, (_, i) => `v${i}`) }],
+  ["a 6-deep MCP request body", { method: "POST", body: { filter: { where: { id: { eq: 3 } } } } }],
+  // Sanitised, not cut: unpaired surrogates carry no meaning and `sanitise`
+  // replaces each with a space, which is visible rather than missing.
+  ["20,000 unpaired surrogates", { command: DANGEROUS, blob: "\ud800".repeat(20_000) }],
 ];
 
 /** Every string in the state, keys included. */
@@ -151,16 +172,21 @@ function built(toolInput: Record<string, unknown>, userSaid = ["clean up the tem
 }
 
 describe("the envelope's size is a function of its caps, not of the input", () => {
-  it.each(shapes)("%s: the state stays inside MAX_STATE_CHARS", (_label, toolInput) => {
+  it.each(shapes)("%s: the state stays inside MAX_STATE_CHARS, and the cut is reported", (_label, toolInput) => {
     const env = built(toolInput);
     expect(JSON.stringify(env.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
     expect(env.truncated).toBe(true);
+    // Every one of these cuts is inside the call, so every one of them also
+    // costs the call its allow. That is the property, not a detail: there is
+    // no way to drop request bytes that only sets the weaker flag.
+    expect(env.requestCut).toBe(true);
   });
 
   it.each(benign)("%s: is carried whole and is not flagged cut", (_label, toolInput) => {
     const env = built(toolInput);
     expect(JSON.stringify(env.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
     expect(env.truncated).toBe(false);
+    expect(env.requestCut).toBe(false);
   });
 
   it.each([...shapes, ...benign])("%s: the compiled request stays inside MAX_REQUEST_CHARS", (_label, toolInput) => {
@@ -186,7 +212,9 @@ describe("the envelope's size is a function of its caps, not of the input", () =
     };
     const prepared = prepareSemantic(call(worst, ["a".repeat(50_000), "b".repeat(50_000), "c".repeat(50_000)]), opts);
     expect(JSON.stringify(prepared.envelope.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
-    expect(JSON.stringify(prepared.compiled.request).length).toBeLessThan(MAX_REQUEST_CHARS / 2);
+    // The margin the constants were chosen for: the worst possible state plus
+    // the whole question set, with room left for the policy set to grow.
+    expect(JSON.stringify(prepared.compiled.request).length).toBeLessThan(MAX_REQUEST_CHARS - 20_000);
     expect(prepared.oversized).toBe(false);
   });
 
@@ -227,18 +255,11 @@ describe("building the envelope never throws, whatever the input looks like", ()
 });
 
 describe("no string in the state is over its cap", () => {
-  it.each(shapes)("%s", (_label, toolInput) => {
+  it.each([...shapes, ...benign])("%s", (_label, toolInput) => {
     const env = built(toolInput);
-    const tokens = new Set(
-      ((env.state.agent_request as { command_tokens?: string[] }).command_tokens ?? []) as string[],
-    );
     for (const s of walkStrings(env.state)) {
       // `how_to_read` is ours and fixed; the rest is the caller's.
       if (s.startsWith("A coding agent has REQUESTED")) continue;
-      if (tokens.has(s)) {
-        expect(s.length).toBeLessThanOrEqual(MAX_TOKEN_CHARS + 24);
-        continue;
-      }
       expect(s.length).toBeLessThanOrEqual(MAX_STRING_CHARS);
     }
   });
@@ -266,11 +287,24 @@ describe("no string in the state is over its cap", () => {
     expect(env.truncated).toBe(true);
   });
 
-  it("more keys than the cap are dropped and flagged", () => {
-    const env = built(wide(MAX_KEYS * 3, 10));
-    const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
-    expect(Object.keys(input).length).toBeLessThanOrEqual(MAX_KEYS);
-    expect(env.truncated).toBe(true);
+  /**
+   * There is no cap on how MANY entries a container may have, on purpose. One
+   * used to drop the 25th key and the 4th level of nesting and report the call
+   * as cut, which withdrew every clear on shapes that are not padding at all —
+   * an MCP request body is routinely four levels deep. The byte budget is the
+   * only bound, so a wide-but-small input is carried whole and a wide-and-huge
+   * one runs out of budget like anything else.
+   */
+  it("a wide input is carried whole while it fits, and cut when it does not", () => {
+    const small = built(wide(200, 10));
+    const smallInput = (small.state.agent_request as { input: Record<string, unknown> }).input;
+    expect(Object.keys(smallInput).length).toBe(201);
+    expect(small.truncated).toBe(false);
+
+    const huge = built(wide(200, 2_000));
+    expect(huge.truncated).toBe(true);
+    expect(huge.requestCut).toBe(true);
+    expect(JSON.stringify(huge.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
   });
 });
 
@@ -293,10 +327,10 @@ describe("a padded call still carries Jev's deny to the combine", () => {
     const outcome = await evaluateSemantic(call(toolInput), opts);
     expect(outcome.status).toBe("ok");
     const review = toReview(outcome);
-    expect(review).toMatchObject({ kind: "answered", truncated: true, decision: "deny" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: true, decision: "deny" });
     const out = combineTwoTier([], review, "enforce");
     expect(out.final.decision).toBe("deny");
-    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
   });
 
   it("control: the same command unpadded is a plain `jev` deny", async () => {
@@ -308,18 +342,32 @@ describe("a padded call still carries Jev's deny to the combine", () => {
 });
 
 /**
- * The evidence half: when the judged command is cut, its token skeleton keeps
- * the WHOLE command in front of Jev, so padding on BOTH sides of the dangerous
- * part no longer hides it. This is the one open blocker whose repro was
- * `echo <1,250 x> ; find . -name '*.sqlite' -delete ; echo <850 y>`, which the
- * head-and-tail cap dropped into its cut middle — Jev answered about padding
- * and the deny disappeared.
+ * The evidence half, and the one that five rounds of review kept re-opening:
+ * padding must not be able to hide the dangerous part of a call.
+ *
+ * Every previous attempt tried to survive the hiding — a head-and-tail window,
+ * then a deduplicated token skeleton — and each one was defeated by the next
+ * spelling, because a bounded projection of an unbounded string always drops
+ * something and the attacker chooses what. The repros that landed, in order:
+ * 2,147 characters of two-sided bulk padding; then 2,445 characters of two
+ * hundred DISTINCT short tokens per side, which a dedup cannot collapse; then
+ * 2,830 characters of plain repetition on any field other than `command`,
+ * which the command-only skeleton never covered.
+ *
+ * There are now exactly two outcomes, and neither is an allow:
+ *
+ *   A. the padded call still fits the request budget — so the dangerous part
+ *      is in front of Jev, whatever the padding is spelled like; or
+ *   B. it does not fit — so `requestCut` is set, and the call is denied.
  *
  * The transport here answers from what it can actually SEE in `request.state`;
- * the other fakes in this suite answer the same whatever they were sent, which
- * is why none of them could catch this.
+ * a fake that answers the same whatever it was sent cannot tell A from a miss,
+ * which is why the earlier suites could not see any of these repros.
  */
-describe("padding around the dangerous part does not hide it", () => {
+describe("padding around the dangerous part cannot buy permission", () => {
+  const DELETE = "find . -name '*.sqlite' -delete";
+
+  /** Answers the destructive-deletion probes only when `-delete` was actually sent. */
   const seeing = async (request: JevRequest): Promise<JevResponse> => {
     const visible = JSON.stringify(request.state).includes("-delete");
     return {
@@ -333,44 +381,81 @@ describe("padding around the dangerous part does not hide it", () => {
     };
   };
   const seen: SemanticOptions = { ...opts, transport: seeing };
-  const DELETE = "find . -name '*.sqlite' -delete";
-  const around = (n: number) => `echo ${"x".repeat(n)} ; ${DELETE} ; echo ${"y".repeat(n)}`;
 
-  it.each([[1_250], [5_000], [100_000]])("padded with %i characters on each side, it is still denied", async (n) => {
-    const input = call({ command: around(n) });
+  const mcp = (toolName: string, toolInput: Record<string, unknown>): SemanticInput => ({
+    ...call(toolInput),
+    toolName,
+  });
+
+  /** n DISTINCT short tokens — the spelling a deduplicating skeleton cannot collapse. */
+  const distinct = (n: number, prefix: string): string =>
+    Array.from({ length: n }, (_, i) => `${prefix}/mod-${String(i).padStart(4, "0")}.txt`).join(" ");
+
+  /** Case A: the call fits, so the middle is in front of Jev and the deny lands. */
+  const visibleCases: Array<[string, SemanticInput]> = [
+    ["bulk padding, 1,250 per side", call({ command: `echo ${"x".repeat(1_250)} ; ${DELETE} ; echo ${"y".repeat(1_250)}` })],
+    ["bulk padding, 20,000 per side", call({ command: `echo ${"x".repeat(20_000)} ; ${DELETE} ; echo ${"y".repeat(20_000)}` })],
+    ["70 distinct tokens per side", call({ command: `echo ${distinct(70, "src")} ; ${DELETE} ; echo ${distinct(70, "out")}` })],
+    ["200 distinct tokens per side", call({ command: `echo ${distinct(200, "src")} ; ${DELETE} ; echo ${distinct(200, "out")}` })],
+    [
+      "a realistic formatter run around it",
+      call({ command: `prettier --write ${distinct(120, "src")} ; ${DELETE} ; eslint --fix ${distinct(120, "app")}` }),
+    ],
+    ["padding in a SECOND field beside the command", call({ command: DELETE, note: "z".repeat(20_000) })],
+    ["an MCP tool's `script`", mcp("mcp__shell__exec", { script: `echo ${"x".repeat(1_400)} ; ${DELETE} ; echo ${"y".repeat(1_400)}` })],
+    ["an MCP tool's `sql`", mcp("mcp__db__query", { sql: `-- ${"x".repeat(1_400)}\n${DELETE}\n-- ${"y".repeat(1_400)}` })],
+    ["a Write's `content`", mcp("Write", { file_path: "/work/project/run.sh", content: `#${"x".repeat(1_400)}\n${DELETE}\n#${"y".repeat(1_400)}` })],
+    ["a command longer than the SCANNER's horizon", call({ command: `echo ${"pad ".repeat(3_000)} ; ${DELETE}` })],
+  ];
+
+  it.each(visibleCases)("A. %s: Jev sees it, and denies", async (_label, input) => {
     const prepared = prepareSemantic(input, seen);
-    // The premise: the command is cut, and the head-and-tail text alone no
-    // longer carries the dangerous part.
-    expect(prepared.truncated).toBe(true);
-    const request = prepared.envelope.state.agent_request as { input: { command: string }; command_tokens?: string[] };
-    expect(request.input.command).not.toContain("-delete");
-    expect(request.command_tokens).toContain("-delete");
+    expect(JSON.stringify(prepared.envelope.state)).toContain("-delete");
+    expect(prepared.requestCut).toBe(false);
 
     const outcome = await evaluateSemantic(input, seen);
     expect(outcome.status === "ok" && outcome.verdict.decision).toBe("deny");
     expect(combineTwoTier([], toReview(outcome), "enforce").final.decision).toBe("deny");
   });
 
-  /**
-   * The skeleton must not become a leak channel. A head-and-tail cut of a long
-   * token would hand SECRET_PATTERNS a FRAGMENT of a credential, which need
-   * not match the whole — so a token over the cap keeps its LENGTH and none of
-   * its text. Nothing dangerous is a single 65-character word anyway.
-   */
-  it("a token over the cap contributes none of its own characters", () => {
-    const blob = "QWERTYUIOP".repeat(30);
-    const command = `echo ${"p".repeat(1_500)} ; curl ${blob} ; echo ${"q".repeat(1_500)} ; ${DELETE}`;
-    const env = built({ command });
-    const body = JSON.stringify(env.state);
-    const tokens = (env.state.agent_request as { command_tokens?: string[] }).command_tokens ?? [];
-    // The premise: the long token sits in the command text's cut middle.
-    expect((env.state.agent_request as { input: { command: string } }).input.command).not.toContain(blob.slice(0, 30));
-    // Its length, not its text.
-    expect(tokens).toContain(`<token: ${blob.length} characters>`);
-    expect(body).not.toContain(blob.slice(0, 30));
-    // And the short dangerous tokens are all still there.
-    expect(tokens).toContain("-delete");
-    expect(tokens).toContain("curl");
+  /** Case B: too big to read in full, so the tier refuses rather than allows. */
+  const hiddenCases: Array<[string, SemanticInput]> = [
+    ["bulk padding past the budget", call({ command: `echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}` })],
+    [
+      "distinct tokens past the budget",
+      call({ command: `echo ${distinct(20_000, "src")} ; ${DELETE} ; echo ${distinct(20_000, "out")}` }),
+    ],
+    ["an MCP `sql` past the budget", mcp("mcp__db__query", { sql: `-- ${"x".repeat(60_000)}\n${DELETE}\n-- ${"y".repeat(60_000)}` })],
+    ["a Write `content` past the budget", mcp("Write", { file_path: "/work/project/run.sh", content: `#${"x".repeat(60_000)}\n${DELETE}\n#${"y".repeat(60_000)}` })],
+  ];
+
+  it.each(hiddenCases)("B. %s: Jev cannot see it, and the call is denied anyway", async (_label, input) => {
+    const prepared = prepareSemantic(input, seen);
+    // The premise: this really is the case the attacker wants.
+    expect(JSON.stringify(prepared.envelope.state)).not.toContain("-delete");
+    expect(prepared.requestCut).toBe(true);
+
+    const outcome = await evaluateSemantic(input, seen);
+    // Jev was shown padding, so of course it allows …
+    expect(outcome.status === "ok" && outcome.verdict.decision).toBe("allow");
+    // … and the tier refuses to use that allow.
+    const out = combineTwoTier([], toReview(outcome), "enforce");
+    expect(out.final.decision).toBe("deny");
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut" });
+  });
+
+  it("the size where A becomes B is the budget, and nothing else", () => {
+    const at = (chars: number) => prepareSemantic(call({ command: `${DELETE} ${"x".repeat(chars)}` }), seen).requestCut;
+    expect(at(MAX_AGENT_REQUEST_CHARS - 5_000)).toBe(false);
+    expect(at(MAX_AGENT_REQUEST_CHARS + 5_000)).toBe(true);
+  });
+
+  it("control: the unpadded call denies, uncut and unremarkable", async () => {
+    const outcome = await evaluateSemantic(call({ command: DELETE }), seen);
+    const out = combineTwoTier([], toReview(outcome), "enforce");
+    expect(out.final.decision).toBe("deny");
+    expect(out.activity.evaluator).toBe("jev");
+    expect(out.activity.jevFallbackReason).toBeUndefined();
   });
 
   it("a credential in a padded command is not sent", () => {
@@ -381,14 +466,130 @@ describe("padding around the dangerous part does not hide it", () => {
     expect(body).not.toContain(secret);
     expect(body).not.toContain(secret.slice(0, 24));
     expect(env.redactions).toBeGreaterThan(0);
-    expect((env.state.agent_request as { command_tokens?: string[] }).command_tokens).toContain("-delete");
+    // Short redaction, so it is not a cut: the call is still reviewable.
+    expect(env.requestCut).toBe(false);
+    expect(body).toContain("-delete");
+  });
+});
+
+/**
+ * The invariant the whole design rests on, stated as one property and checked
+ * over every way of burying a marker that anyone has thought of:
+ *
+ *   **if the marker is not in the state, the envelope says the request was cut**
+ *
+ * Contrapositive: an uncut call carries every character of its own input, so
+ * there is nowhere to hide. This is the test to extend when a new hiding place
+ * is found — not a new cap.
+ */
+describe("nothing can be hidden from Jev without the cut being reported", () => {
+  const MARK = "rm -rf / --no-preserve-root";
+  const pad = (n: number) => "x".repeat(n);
+  const distinct = (n: number) => Array.from({ length: n }, (_, i) => `src/mod-${i}.txt`).join(" ");
+
+  const burials: Array<[string, Record<string, unknown>]> = [
+    ["in the open", { command: MARK }],
+    ["between bulk padding", { command: `echo ${pad(1_000)} ; ${MARK} ; echo ${pad(1_000)}` }],
+    ["between huge bulk padding", { command: `echo ${pad(200_000)} ; ${MARK} ; echo ${pad(200_000)}` }],
+    ["between distinct tokens", { command: `echo ${distinct(300)} ; ${MARK} ; echo ${distinct(300)}` }],
+    ["between a great many distinct tokens", { command: `echo ${distinct(30_000)} ; ${MARK} ; echo ${distinct(30_000)}` }],
+    ["past the scanner's horizon", { command: `echo ${pad(20_000)} ; ${MARK}` }],
+    ["in a second field, after a huge first one", { note: pad(200_000), script: MARK }],
+    ["in the last of many fields", { ...Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`k${i}`, pad(500)])), zz: MARK }],
+    ["in a KEY name", { [MARK]: 1 }],
+    ["in a key name after padding", { note: pad(200_000), [MARK]: 1 }],
+    ["four levels down", { a: { b: { c: { d: MARK } } } }],
+    ["seventy levels down", JSON.parse(`${"{\"a\":".repeat(70)}${JSON.stringify(MARK)}${"}".repeat(70)}`)],
+    ["inside an array", { edits: [{ new_string: MARK }] }],
+    ["inside a long array", { edits: [...Array.from({ length: 400 }, () => ({ new_string: pad(500) })), { new_string: MARK }] }],
+    ["in a shell comment", { command: `echo hi # ${MARK}` }],
+    ["in a fake private key block", { note: `-----BEGIN RSA PRIVATE KEY-----\n${MARK}\n-----END RSA PRIVATE KEY-----` }],
+    ["behind a value JSON cannot carry", { a: Symbol("s"), b: MARK }],
+    ["behind a getter that throws", (() => ({ get boom(): string { throw new Error("no"); }, b: MARK })) as never],
+  ];
+
+  it.each(burials)("%s", (label, raw) => {
+    const toolInput = typeof raw === "function" ? (raw as () => Record<string, unknown>)() : raw;
+    const env = built(toolInput);
+    const body = JSON.stringify(env.state);
+    // A shell comment is quarantined into its own field rather than hidden, so
+    // it is visible either way; everything else is either carried or reported.
+    if (!body.includes(MARK)) {
+      expect({ label, requestCut: env.requestCut }).toEqual({ label, requestCut: true });
+    }
+    expect(JSON.stringify(env.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
+  });
+});
+
+/**
+ * Rule 2, the half that a header matcher cannot do. `SECRET_PATTERNS`' private
+ * key entry matches `-----BEGIN … PRIVATE KEY-----` and nothing else, which is
+ * right for a detector that denies on a hit and wrong for a transform: it
+ * replaced the header and sent the base64 body, with `redactions: 1` making the
+ * call look audited. A 2048-bit RSA key is ~1,700 characters, so the whole of
+ * one fits under any cap here.
+ */
+describe("a private key is redacted whole, not just its header", () => {
+  const pem = (label: string, lines: number, close = true): string =>
+    `-----BEGIN ${label}-----\n${Array.from({ length: lines }, (_, i) => `MIIEowIBAAKCAQEAwXyz${String(i).padStart(4, "0")}abcdefghijklmnopqrstuvwxyzABCDEFGH`).join("\n")}\n${
+      close ? `-----END ${label}-----\n` : ""
+    }`;
+
+  const cases: Array<[string, string]> = [
+    ["RSA PRIVATE KEY", pem("RSA PRIVATE KEY", 25)],
+    ["PRIVATE KEY", pem("PRIVATE KEY", 25)],
+    ["OPENSSH PRIVATE KEY", pem("OPENSSH PRIVATE KEY", 25)],
+    ["EC PRIVATE KEY with no END line", pem("EC PRIVATE KEY", 25, false)],
+  ];
+
+  it.each(cases)("%s: none of the body is in the request", (_label, key) => {
+    const env = built({ file_path: "/work/project/deploy_key", content: key });
+    const body = JSON.stringify(env.state);
+    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0020");
+    expect(env.redactions).toBeGreaterThan(0);
+    // And it is NOT a cut: a key body is base64, the redaction removes only
+    // base64 lines, and nothing that could be an operation went with it. So
+    // writing a key file is still a reviewable call rather than a refused one.
+    expect(env.requestCut).toBe(false);
   });
 
-  it("an uncut command carries no skeleton", () => {
-    const prepared = prepareSemantic(call({ command: DELETE }), seen);
-    const request = prepared.envelope.state.agent_request as { command_tokens?: string[] };
-    expect(request.command_tokens).toBeUndefined();
-    expect(prepared.truncated).toBe(false);
+  /**
+   * The reason it is line by line. Redaction is the one thing that removes
+   * text without reporting a cut, so if a whole BEGIN…END block were dropped,
+   * a fake key block would be free hiding space — the same class, one spelling
+   * further out.
+   */
+  it("a command wrapped in a fake key block still reaches Jev", () => {
+    const hidden = "find . -name '*.sqlite' -delete";
+    const env = built({
+      command: `echo ok`,
+      note: `-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAwXyz0000abcdefghijklmnop\n${hidden}\nMIIEowIBAAKCAQEAwXyz0001abcdefghijklmnop\n-----END RSA PRIVATE KEY-----`,
+    });
+    const body = JSON.stringify(env.state);
+    expect(body).toContain(hidden);
+    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+  });
+
+  it("an encrypted key's own headers survive; only the body goes", () => {
+    const env = built({
+      file_path: "/work/project/id_rsa",
+      content: "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,9F2B\n\nMIIEowIBAAKCAQEAwXyz0000abcdefghijklmnop\n-----END RSA PRIVATE KEY-----",
+    });
+    const body = JSON.stringify(env.state);
+    expect(body).toContain("Proc-Type: 4,ENCRYPTED");
+    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+  });
+
+  it("a key in a shell heredoc goes the same way", () => {
+    const env = built({ command: `cat > /work/project/id_rsa <<'EOF'\n${pem("RSA PRIVATE KEY", 25)}EOF` });
+    expect(JSON.stringify(env.state)).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+  });
+
+  it("a CERTIFICATE is not a private key, and is carried", () => {
+    const env = built({ file_path: "/work/project/server.crt", content: pem("CERTIFICATE", 4) });
+    expect(JSON.stringify(env.state)).toContain("MIIEowIBAAKCAQEAwXyz0000");
+    expect(env.requestCut).toBe(false);
   });
 });
 
@@ -404,7 +605,7 @@ describe("the verdict log cannot discard a verdict either", () => {
     expect(() =>
       verdictLogRow(
         call(toolInput),
-        { status: "degraded", reason: "timeout", latencyMs: 3, questionCount: 4, truncated: true },
+        { status: "degraded", reason: "timeout", latencyMs: 3, questionCount: 4, truncated: true, requestCut: false },
         { eventType: "PreToolUse", applied: "legacy-fallback" },
       ),
     ).not.toThrow();
@@ -413,7 +614,7 @@ describe("the verdict log cannot discard a verdict either", () => {
   it("nesting 200,000 deep is a digest and a preview, not an exception", () => {
     const row = verdictLogRow(
       call(parsedNesting(200_000)),
-      { status: "degraded", reason: "timeout", latencyMs: 3, questionCount: 4, truncated: true },
+      { status: "degraded", reason: "timeout", latencyMs: 3, questionCount: 4, truncated: true, requestCut: false },
       { eventType: "PreToolUse", applied: "legacy-fallback" },
     );
     expect(String(row.inputDigest)).toHaveLength(16);

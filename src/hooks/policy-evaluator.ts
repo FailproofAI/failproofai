@@ -210,14 +210,18 @@ export async function evaluatePolicies(
     // CLIs. The activity row (`evaluator: "jev-fallback"` + reason) and
     // `failproofai jev status` are where a fallback is made visible.
     //
-    // `truncated` is the one reason that is not an outage: Jev answered, and
-    // its answer still counted toward the most-severe rule — only its clears
-    // were withdrawn (see `semantic/combine.ts`). Saying "unavailable" there
-    // would send someone looking for a provider problem that is not there.
+    // `truncated` and `request-cut` are the reasons that are not an outage:
+    // Jev answered, and its answer still counted toward the most-severe rule.
+    // `truncated` withdrew its clears; `request-cut` additionally refused to
+    // let a call nobody could read in full come out as an allow (see
+    // `semantic/combine.ts`). Saying "unavailable" there would send someone
+    // looking for a provider problem that is not there.
     hookLogInfo(
-      combined.activity.jevFallbackReason === "truncated"
-        ? "jev judged a truncated call; it cleared nothing, and only the most severe verdict applied"
-        : `jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`,
+      combined.activity.jevFallbackReason === "request-cut"
+        ? "jev could not be shown the whole call; it cleared nothing, and the call was not allowed on a partial read"
+        : combined.activity.jevFallbackReason === "truncated"
+          ? "jev judged a truncated call; it cleared nothing, and only the most severe verdict applied"
+          : `jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`,
     );
   }
   return {

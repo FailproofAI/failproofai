@@ -14,15 +14,28 @@
  *    than the regex engine alone.
  * 2. **Clearing does not.** A cut call clears no reviewable deny, and is
  *    recorded `jev-fallback` / `truncated`.
+ * 3. **A cut of the CALL is stricter still.** When what was cut is the tool
+ *    input itself (`requestCut`), the call may not come out as an allow at
+ *    all: `combineTwoTier` turns a would-be allow into
+ *    `semantic/request-too-large-to-review`, recorded `jev-fallback` /
+ *    `request-cut`. That is what makes padding useless rather than merely
+ *    expensive — see `envelope.ts`'s header.
  *
- * The cap is not exotic: a Write of ~2,100 characters trips it, so this is the
- * ordinary case on a machine running in enforce mode (D2), not a corner.
+ * The budget is deliberately large (`MAX_AGENT_REQUEST_CHARS`, 56,000
+ * characters), so the fixtures here are correspondingly large: an ordinary
+ * call is never cut, and a cut one is genuinely outsized.
  */
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import { MAX_REQUEST_CHARS } from "../../../src/hooks/semantic/compile";
-import { DEFAULT_ENVELOPE_LIMITS, MAX_STATE_CHARS, MAX_STRING_CHARS, buildEnvelope } from "../../../src/hooks/semantic/envelope";
+import {
+  DEFAULT_ENVELOPE_LIMITS,
+  MAX_FACT_CHARS,
+  MAX_STATE_CHARS,
+  MAX_STRING_CHARS,
+  buildEnvelope,
+} from "../../../src/hooks/semantic/envelope";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { evaluateSemantic, prepareSemantic, type SemanticOptions, type SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
 import { toReview } from "../../../src/hooks/semantic/jev-review";
@@ -70,6 +83,8 @@ async function judged(input: SemanticInput, transport = alarmed): Promise<{ outc
 const DANGEROUS = "rm -rf / --no-preserve-root";
 /** Past `MAX_STRING_CHARS`, so the envelope caps the command and flags the call. */
 const PADDING = "x".repeat(MAX_STRING_CHARS + 100);
+/** The §4 row for a cut of the call itself, as `combineTwoTier` records it. */
+const REQUEST_CUT = "request-cut";
 
 describe("padding a command cannot take Jev's own deny away", () => {
   it("the same command, padded past the envelope cap, is still denied", async () => {
@@ -93,11 +108,11 @@ describe("padding a command cannot take Jev's own deny away", () => {
     expect(out.final.entries[0].policyName).toMatch(/^semantic\//);
   });
 
-  it("the padded call is still recorded as §4's truncated fallback", async () => {
+  it("the padded call is still recorded as §4's fallback, naming the cut", async () => {
     const { review } = await judged(bash(`${DANGEROUS} ${PADDING}`));
     expect(combineTwoTier([], review, "enforce").activity).toMatchObject({
       evaluator: "jev-fallback",
-      jevFallbackReason: "truncated",
+      jevFallbackReason: REQUEST_CUT,
       jevDecision: "deny",
       jevMode: "enforce",
     });
@@ -128,19 +143,35 @@ describe("a cut call still clears nothing", () => {
     expect(out.final.decision).toBe("allow");
   });
 
-  it("padded, the very same answer clears nothing and the instruct stands", async () => {
+  it("padded, the very same answer clears nothing", async () => {
     const { review } = await judged(
       bash(`git commit --amend -m 'fix typo' ${PADDING}`, ["fix the typo in the last commit message"]),
       calm,
     );
-    expect(review).toMatchObject({ kind: "answered", truncated: true });
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: true });
     // Jev still says the reviewer is clear …
     expect(review.kind === "answered" && review.clear).toContain("git-history-rewrite");
     // … and the cut withdraws it anyway.
     const out = combineTwoTier([reviewable], review, "enforce");
     expect(out.cleared).toEqual([]);
-    expect(out.final).toEqual(regexOnly([reviewable]));
     expect(out.activity.jevCleared).toBeUndefined();
+    // The cut here is inside the CALL, so the instruct does not stand either:
+    // on most CLIs an instruct RUNS the call with a note, which would make
+    // "pad it, and also trip a warn-level rule" the next spelling of the
+    // padding attack.
+    expect(out.final.decision).toBe("deny");
+    expect(out.final.entries[0].policyName).toBe("semantic/request-too-large-to-review");
+  });
+
+  it("cut only in its CONTEXT, the instruct stands and only the clear is withdrawn", async () => {
+    const { review } = await judged(
+      bash("git commit --amend -m 'fix typo'", [`fix the typo in the last commit message. ${"Background the human pasted. ".repeat(80)}`]),
+      calm,
+    );
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: false });
+    const out = combineTwoTier([reviewable], review, "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly([reviewable]));
   });
 });
 
@@ -155,21 +186,33 @@ describe("ordinary oversized input is judged, not skipped", () => {
     agentLastMessage: null,
   });
 
-  it("under the cap and over it differ only in what may be cleared", async () => {
-    const small = await judged(bigWrite(MAX_STRING_CHARS - 200), calm);
-    const large = await judged(bigWrite(MAX_STRING_CHARS + 200), calm);
+  it("a big Write is judged like any other call, not skipped", async () => {
+    // 20,000 characters: ten times what the old per-field cap allowed, and
+    // still carried WHOLE, so nothing about it is degraded or withheld.
+    const small = await judged(bigWrite(2_000), calm);
+    const big = await judged(bigWrite(20_000), calm);
     expect(small.outcome.truncated).toBe(false);
-    expect(large.outcome.truncated).toBe(true);
-    expect(small.review.kind).toBe("answered");
-    expect(large.review).toMatchObject({ kind: "answered", truncated: true });
-    // Same questions asked, same answers given: the ONLY difference downstream
-    // is that the large one clears nothing.
-    expect(large.review.kind === "answered" && large.review.asked).toEqual(small.review.kind === "answered" ? small.review.asked : []);
-    expect(combineTwoTier([], large.review, "enforce").cleared).toEqual([]);
+    expect(big.outcome.truncated).toBe(false);
+    expect(big.review).toMatchObject({ kind: "answered", truncated: false });
+    expect(big.review.kind === "answered" && big.review.asked).toEqual(small.review.kind === "answered" ? small.review.asked : []);
+    expect(combineTwoTier([], big.review, "enforce").final.decision).toBe("allow");
+  });
+
+  it("past the budget it is cut, clears nothing, and is not allowed", async () => {
+    const huge = await judged(bigWrite(MAX_STRING_CHARS + 20_000), calm);
+    expect(huge.outcome.truncated).toBe(true);
+    expect(huge.outcome.status === "ok" && huge.outcome.requestCut).toBe(true);
+    expect(huge.review).toMatchObject({ kind: "answered", truncated: true, requestCut: true });
+    const out = combineTwoTier([], huge.review, "enforce");
+    expect(out.cleared).toEqual([]);
+    // The blunt half of the rule, stated: an unreadable call is refused, and
+    // the reason says what to do about it.
+    expect(out.final.decision).toBe("deny");
+    expect(out.final.entries[0].reason).toMatch(/split it into smaller calls/i);
   });
 
   it("a deny on an oversized Write still applies", async () => {
-    const { review } = await judged(bigWrite(MAX_STRING_CHARS + 200), alarmed);
+    const { review } = await judged(bigWrite(MAX_STRING_CHARS + 20_000), alarmed);
     expect(review).toMatchObject({ kind: "answered", truncated: true, decision: "deny" });
     expect(combineTwoTier([], review, "enforce").final.decision).toBe("deny");
   });
@@ -242,7 +285,7 @@ describe("padding past the request budget is the same class", () => {
     const out = combineTwoTier([], review, "enforce");
     expect(out.final.decision).toBe("deny");
     expect(out.decidedByJev).toBe(true);
-    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: REQUEST_CUT, jevDecision: "deny" });
   });
 
   it("nesting that used to overrun the budget is bounded at the default caps", () => {
@@ -305,7 +348,9 @@ describe("padding past the request budget is the same class", () => {
     };
     const prepared = prepareSemantic(input, opts(alarmed));
     expect(prepared.oversized).toBe(false);
-    expect(JSON.stringify(prepared.compiled.request).length).toBeLessThan(MAX_REQUEST_CHARS / 2);
+    // The margin the constants were chosen for: state + questions, worst case,
+    // with room left over for the policy set to grow.
+    expect(JSON.stringify(prepared.compiled.request).length).toBeLessThan(MAX_REQUEST_CHARS - 20_000);
 
     const { outcome, review } = await judged(input);
     expect(outcome.status).toBe("ok");
@@ -328,7 +373,7 @@ describe("padding past the request budget is the same class", () => {
  * the budget reachable in the first place.
  */
 describe("facts are capped like everything else", () => {
-  const LONG = "/work/project/" + "d".repeat(MAX_STRING_CHARS + 500);
+  const LONG = "/work/project/" + "d".repeat(MAX_FACT_CHARS + 500);
 
   it("a long path is cut in `facts`, and the cut is flagged", () => {
     const prepared = prepareSemantic(
@@ -350,8 +395,8 @@ describe("facts are capped like everything else", () => {
     const facts = prepared.envelope.state.facts as { paths: Array<{ as_written: string; resolved: string }> };
     expect(facts.paths.length).toBeGreaterThan(0);
     for (const p of facts.paths) {
-      expect(p.as_written.length).toBeLessThan(MAX_STRING_CHARS + 200);
-      expect(p.resolved.length).toBeLessThan(MAX_STRING_CHARS + 200);
+      expect(p.as_written.length).toBeLessThan(MAX_FACT_CHARS + 200);
+      expect(p.resolved.length).toBeLessThan(MAX_FACT_CHARS + 200);
     }
   });
 

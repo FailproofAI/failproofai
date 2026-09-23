@@ -23,7 +23,10 @@
  * A verdict given on a truncated envelope is not that. It comes through as
  * `answered` with `truncated: true`: it clears nothing, and it still counts
  * toward the most-severe rule, because padding a call must not be a way to
- * stop Jev's own deny applying. Size cannot reach this path at all any more —
+ * stop Jev's own deny applying. When the cut was inside the CALL rather than
+ * the context around it, `requestCut` says so, and `combine.ts` refuses to
+ * allow such a call at all — padding can make an outcome stricter, never more
+ * permissive. Size cannot reach the degrade path at all any more —
  * `buildEnvelope` spends a hard budget and never throws, so there is no
  * "too big" and no "raised while preparing" to degrade on (see `envelope.ts`).
  */
@@ -217,6 +220,11 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     // can be cleared (`asked` is empty) and the verdict is allow anyway —
     // recording it as a fallback would only inflate the fallback rate.
     truncated: outcome.truncated && sent,
+    // Same "only if a request was sent" rule, for the same reason: with no
+    // semantic policy applying nothing was judged, so nothing was hidden from
+    // the judging, and a deny for an unreadable call would be a deny with no
+    // review behind it.
+    requestCut: outcome.requestCut && sent,
     latencyMs,
     model,
   };

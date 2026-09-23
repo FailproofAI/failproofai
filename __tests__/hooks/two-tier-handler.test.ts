@@ -622,9 +622,14 @@ describe("fallback: the regex result, recorded with a reason", () => {
  * activity row.
  *
  * Both spellings are covered: past a field's cap (the envelope cuts) and past
- * the whole request budget (`prepareSemantic` rebuilds the envelope smaller
- * rather than degrading, which used to be `request-too-large` — a `fallback`,
- * with Jev's deny discarded).
+ * the whole request budget (the envelope is built inside a hard budget rather
+ * than degrading, which used to be `request-too-large` — a `fallback`, with
+ * Jev's deny discarded).
+ *
+ * And the half that closes the class rather than mitigating it: a call whose
+ * own text had to be cut (`request-cut`) is DENIED even when Jev — shown only
+ * the padding — answered allow, because the alternative is that padding is an
+ * off switch for this tier.
  */
 describe("a padded call cannot make Jev's own deny go away", () => {
   const DELETE = "find . -name '*.sqlite' -delete";
@@ -674,7 +679,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
     // Not `request-too-large`, which carried no decision at all.
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
     expect(row.policySource).toBeUndefined();
   });
 
@@ -694,7 +699,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     const { outcome, row } = await run("PreToolUse", { tool_name: "Bash", tool_input: padKey() });
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
     // Never either of the two degrade reasons that discarded the verdict.
     expect(row.jevFallbackReason).not.toBe("request-too-large");
     expect(row.jevFallbackReason).not.toBe("prepare");
@@ -714,31 +719,87 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
     expect(row.jevFallbackReason).not.toBe("prepare");
   });
 
-  it("padding on BOTH sides of the dangerous part does not hide it from Jev", async () => {
-    jevConfig = CFG;
-    // Answers only from what the request actually carries — the fakes above
-    // answer the same whatever they were sent, so none of them can see this.
-    respond = async (request) => {
-      const visible = JSON.stringify(request.state).includes("-delete");
-      return {
-        model: request.model,
-        answers: Object.fromEntries(
-          Object.keys(request.questions).map((id) => [
-            id,
-            { noul: id.startsWith("destructive-deletion.") && visible ? 0.97 : 0.05 },
-          ]),
-        ),
-      };
+  /**
+   * Answers only from what the request actually carries. Every other fake in
+   * this file answers the same whatever it was sent, which is exactly why none
+   * of them could see the two-sided padding repros.
+   */
+  const seeingTransport = async (request: { model: string; state: unknown; questions: Record<string, unknown> }) => {
+    const visible = JSON.stringify(request.state).includes("-delete");
+    return {
+      model: request.model,
+      answers: Object.fromEntries(
+        Object.keys(request.questions).map((id) => [
+          id,
+          { noul: id.startsWith("destructive-deletion.") && visible ? 0.97 : 0.05 },
+        ]),
+      ),
     };
-    const around = `echo ${"x".repeat(1_250)} ; ${DELETE} ; echo ${"y".repeat(850)}`;
-    const { outcome, row } = await bash(around);
+  };
+
+  /** n DISTINCT short tokens: the spelling that defeats any deduplication. */
+  const distinct = (n: number, prefix: string) =>
+    Array.from({ length: n }, (_, i) => `${prefix}/mod-${String(i).padStart(4, "0")}.txt`).join(" ");
+
+  const hiding: Array<[string, string]> = [
+    ["bulk padding", `echo ${"x".repeat(1_250)} ; ${DELETE} ; echo ${"y".repeat(850)}`],
+    ["200 distinct tokens per side", `echo ${distinct(200, "src")} ; ${DELETE} ; echo ${distinct(200, "out")}`],
+    ["a realistic formatter run around it", `prettier --write ${distinct(120, "src")} ; ${DELETE} ; eslint --fix ${distinct(120, "app")}`],
+  ];
+
+  it.each(hiding)("padding on BOTH sides (%s) does not hide it from Jev", async (_label, command) => {
+    jevConfig = CFG;
+    respond = seeingTransport as typeof respond;
+    const { outcome, row } = await bash(command);
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    // Carried whole, so this is an ordinary `jev` row — nothing was cut.
+    expect(row).toMatchObject({ evaluator: "jev", jevDecision: "deny" });
+    expect(row.jevFallbackReason).toBeUndefined();
+  });
+
+  it("padding on a field other than `command` does not hide it either", async () => {
+    jevConfig = CFG;
+    respond = seeingTransport as typeof respond;
+    const { outcome } = await run("PreToolUse", {
+      tool_name: "mcp__db__exec",
+      tool_input: { sql: `-- ${"x".repeat(1_400)}\n${DELETE}\n-- ${"y".repeat(1_400)}` },
+    });
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+  });
+
+  /**
+   * And the case that cannot be won by showing Jev more: padding past the
+   * budget. Jev is shown padding and answers allow; the regex tier has no rule
+   * for this command either, so before this rule the call went through.
+   */
+  it("padding past the budget hides it — and the call is denied anyway", async () => {
+    jevConfig = CFG;
+    respond = seeingTransport as typeof respond;
+    const { outcome, row } = await bash(`echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}`);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/request-too-large-to-review");
+    expect(outcome.stdout).toContain('"permissionDecision":"deny"');
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "allow" });
+    // No registered policy decided it, so it must not be attributed to one.
+    expect(row.policySource).toBeUndefined();
+  });
+
+  it("an ordinary long call is NOT denied: the rule is about the budget, not about length", async () => {
+    jevConfig = CFG;
+    respond = seeingTransport as typeof respond;
+    const { outcome, row } = await run("PreToolUse", {
+      tool_name: "Write",
+      tool_input: { file_path: `${project}/notes.md`, content: "note line here\n".repeat(1_500) },
+    });
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row).toMatchObject({ evaluator: "jev" });
+    expect(row.jevFallbackReason).toBeUndefined();
   });
 
   it("shadow mode still enforces the regex result for both spellings", async () => {
@@ -752,6 +813,12 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     const budget = await run("PreToolUse", { tool_name: "Bash", tool_input: padBudget() });
     expect(budget.outcome.evaluation?.decision).toBe("allow");
     expect(budget.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "shadow" });
+
+    // Including the new refusal: shadow mode never denies on its own.
+    respond = seeingTransport as typeof respond;
+    const hidden = await bash(`echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}`);
+    expect(hidden.outcome.evaluation?.decision).toBe("allow");
+    expect(hidden.row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevMode: "shadow" });
   });
 
   it("control: unpadded, the very same deny is a plain `jev` row", async () => {

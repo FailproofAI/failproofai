@@ -16,7 +16,14 @@
  * enforces the regex result exactly.
  */
 import { describe, expect, it } from "vitest";
-import { combineTwoTier, regexOnly, type JevMode, type JevReview, type RegexVerdict } from "../../../src/hooks/semantic/combine";
+import {
+  UNREVIEWABLE_POLICY,
+  combineTwoTier,
+  regexOnly,
+  type JevMode,
+  type JevReview,
+  type RegexVerdict,
+} from "../../../src/hooks/semantic/combine";
 import { fallbackCode, toReview } from "../../../src/hooks/semantic/jev-review";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import type { SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
@@ -47,6 +54,8 @@ function semOutcome(opts: {
   /** Default 0.05: the probe was asked and came back low. `null`: it was not asked. */
   injection?: number | null;
   truncated?: boolean;
+  /** The cut was inside the call itself. Implies `truncated`. */
+  requestCut?: boolean;
   via?: "cloudflare" | "none";
   beyondTask?: boolean;
 }): SemanticOutcome {
@@ -74,7 +83,8 @@ function semOutcome(opts: {
     latencyMs: 42,
     inputTokens: 100,
     questionCount: outcomes.length,
-    truncated: opts.truncated ?? false,
+    truncated: (opts.truncated ?? false) || (opts.requestCut ?? false),
+    requestCut: opts.requestCut ?? false,
     redactions: 0,
     model: "jev-1.13.0",
     modelVerified: true,
@@ -83,7 +93,7 @@ function semOutcome(opts: {
 }
 
 function degradedOutcome(reason: string, truncated = false): SemanticOutcome {
-  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated };
+  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated, requestCut: false };
 }
 
 type Truncation = "complete" | "truncated";
@@ -496,6 +506,7 @@ describe("the clear rule, on hand-built reviews", () => {
     injectionAsked: true,
     injected: false,
     truncated: false,
+    requestCut: false,
     latencyMs: 10,
     model: "jev-1.13.0",
     ...over,
@@ -568,6 +579,83 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.decidedByJev).toBe(false);
   });
 
+  /**
+   * The rule that closes the padding class: a call part of which was never
+   * shown to Jev may not come out as an allow.
+   *
+   * Withdrawing clears is not enough on its own, and that is the whole reason
+   * this exists. In the case the tier is FOR — the regex tier has no rule, so
+   * its floor is allow, and only Jev would have denied — an attacker who can
+   * make Jev answer about padding instead of about the command has turned the
+   * tier off, and there is no clear to withdraw.
+   */
+  describe("a cut of the CALL itself can only make the outcome stricter", () => {
+    it("a would-be allow becomes a deny that names the remedy", () => {
+      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "enforce");
+      expect(out.final.decision).toBe("deny");
+      expect(out.final.entries[0].policyName).toBe(UNREVIEWABLE_POLICY);
+      expect(out.final.entries[0].reason).toMatch(/split it into smaller calls/i);
+      expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "allow" });
+      // No registered policy decided this, so the handler must not attribute
+      // it to one: `semantic/request-too-large-to-review` is not in the
+      // registry, and an unfound name is reported as a builtin.
+      expect(out.decidedByJev).toBe(true);
+    });
+
+    it("Jev's own deny still decides, with its own attribution", () => {
+      const review = answered({
+        requestCut: true,
+        truncated: true,
+        decision: "deny",
+        reason: "deletes the database",
+        policyName: "semantic/destructive-deletion",
+      });
+      const out = combineTwoTier([], review, "enforce");
+      expect(out.final.entries).toEqual([{ policyName: "semantic/destructive-deletion", reason: "deletes the database" }]);
+      expect(out.decidedByJev).toBe(true);
+    });
+
+    it("a regex deny still decides, with its own attribution", () => {
+      const hard: RegexVerdict = { policyName: "failproofai/block-sudo", decision: "deny", reason: "sudo", authority: "hard", reviewedBy: [] };
+      const out = combineTwoTier([hard], answered({ requestCut: true, truncated: true }), "enforce");
+      expect(out.final.entries).toEqual([{ policyName: "failproofai/block-sudo", reason: "sudo" }]);
+    });
+
+    /**
+     * An instruct is not a refusal: on most CLIs it RUNS the call and attaches
+     * a note. So a cut call may not be left as one either — otherwise "pad the
+     * call, and also trip any warn-level rule" is the next spelling.
+     */
+    it("an instruct does not let a cut call through", () => {
+      const instruct: RegexVerdict = { policyName: "failproofai/warn-x", decision: "instruct", reason: "careful", authority: "hard", reviewedBy: [] };
+      const out = combineTwoTier([instruct], answered({ requestCut: true, truncated: true }), "enforce");
+      expect(out.final.decision).toBe("deny");
+      expect(out.final.entries[0].policyName).toBe(UNREVIEWABLE_POLICY);
+    });
+
+    it("Jev's own instruct does not let one through either", () => {
+      const review = answered({ requestCut: true, truncated: true, decision: "instruct", policyName: "semantic/beyond-task", reason: "beyond the task" });
+      expect(combineTwoTier([], review, "enforce").final.decision).toBe("deny");
+    });
+
+    it("a cut call with NOTHING else is still just the refusal", () => {
+      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "enforce");
+      expect(out.final.entries).toHaveLength(1);
+    });
+
+    it("shadow mode never denies on it", () => {
+      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "shadow");
+      expect(out.final).toEqual(regexOnly([]));
+      expect(out.activity.jevFallbackReason).toBe("request-cut");
+    });
+
+    it("a cut of the CONTEXT alone does not deny — a long prompt is not an attack", () => {
+      const out = combineTwoTier([], answered({ truncated: true }), "enforce");
+      expect(out.final).toEqual(regexOnly([]));
+      expect(out.activity.jevFallbackReason).toBe("truncated");
+    });
+  });
+
   // Round 2: the exported pure function is safe on its own, not only behind
   // authorityOf — a verdict it is handed is cleared only when it is BOTH
   // reviewable AND names at least one reviewer.
@@ -612,9 +700,22 @@ describe("toReview", () => {
       injectionAsked: true,
       injected: false,
       truncated: true,
+      requestCut: false,
       latencyMs: 42,
       model: "jev-1.13.0",
     });
+  });
+
+  it("a cut of the call itself is reported separately from a cut of the context", () => {
+    const context = toReview({ ...semOutcome({ policies: { "secret-exposure": "none" } }), truncated: true });
+    const call = toReview({ ...semOutcome({ policies: { "secret-exposure": "none" } }), truncated: true, requestCut: true });
+    expect(context).toMatchObject({ truncated: true, requestCut: false });
+    expect(call).toMatchObject({ truncated: true, requestCut: true });
+  });
+
+  it("a request cut on a call that was never SENT is not a request cut either", () => {
+    const out = toReview({ ...semOutcome({ via: "none", policies: {} }), truncated: true, requestCut: true });
+    expect(out).toMatchObject({ truncated: false, requestCut: false });
   });
 
   // A `fallback` review carries no decision at all — that is what makes it

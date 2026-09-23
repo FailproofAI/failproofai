@@ -98,6 +98,17 @@ export interface PreparedCall {
    */
   truncated: boolean;
   /**
+   * Part of the CALL ITSELF was not shown to Jev (`envelope.requestCut`): the
+   * tool input did not fit `MAX_AGENT_REQUEST_CHARS`, or a redaction swallowed
+   * a long span of it. Strictly stronger than `truncated`, and the only flag
+   * that can make a call stricter rather than only less clearable — see
+   * `envelope.ts`'s header and `combine.ts`.
+   *
+   * A cut the intent store made is NOT one of these: what it cuts is context
+   * the human typed, not the call.
+   */
+  requestCut: boolean;
+  /**
    * The compiled request does not fit `MAX_REQUEST_CHARS`, so nothing can be
    * sent. The state is bounded by `MAX_STATE_CHARS` however the call was
    * shaped, so this is reachable only if OUR OWN questions overrun the budget
@@ -159,6 +170,8 @@ export type SemanticOutcome =
       inputTokens: number | null;
       questionCount: number;
       truncated: boolean;
+      /** Part of the call was not shown to Jev. See {@link PreparedCall.requestCut}. */
+      requestCut: boolean;
       redactions: number;
       model: string;
       /** False when the provider did not say which Jev version answered. */
@@ -172,6 +185,7 @@ export type SemanticOutcome =
       latencyMs: number;
       questionCount: number;
       truncated: boolean;
+      requestCut: boolean;
     };
 
 function envNumber(name: string, fallback: number): number {
@@ -212,6 +226,7 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
     userSaid: envelope.evidence.userSaid,
     agentLastMessage: envelope.evidence.agentLastMessage,
     truncated,
+    requestCut: envelope.requestCut,
     oversized: chars > MAX_REQUEST_CHARS,
   };
 }
@@ -228,9 +243,16 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     // away on the shape of the tool input. This stays as a floor under the
     // code around it (`scanCommand`, `computeFacts`, the policy set), never as
     // the plan for an exotic payload.
-    return { status: "degraded", reason: `prepare: ${err instanceof Error ? err.message : String(err)}`, latencyMs: elapsed(), questionCount: 0, truncated: false };
+    return {
+      status: "degraded",
+      reason: `prepare: ${err instanceof Error ? err.message : String(err)}`,
+      latencyMs: elapsed(),
+      questionCount: 0,
+      truncated: false,
+      requestCut: false,
+    };
   }
-  const { selected, envelope, compiled, truncated } = prepared;
+  const { selected, envelope, compiled, truncated, requestCut } = prepared;
   const questionCount = Object.keys(compiled.request.questions).length;
   const thresholds = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const judge = (answers: Record<string, number>): SemanticVerdict =>
@@ -249,6 +271,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       inputTokens: null,
       questionCount: 0,
       truncated,
+      requestCut,
       redactions: envelope.redactions,
       model: compiled.request.model,
       modelVerified: true,
@@ -262,6 +285,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     latencyMs: elapsed(),
     questionCount,
     truncated,
+    requestCut,
   });
 
   // Not reachable by padding the call: the state is built inside
@@ -286,6 +310,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       inputTokens: typeof response.usage?.input_tokens === "number" ? response.usage.input_tokens : null,
       questionCount,
       truncated,
+      requestCut,
       redactions: envelope.redactions,
       model: response.model,
       modelVerified: response.modelUnverified !== true,
@@ -360,6 +385,7 @@ export function verdictLogRow(input: SemanticInput, outcome: SemanticOutcome, me
     latencyMs: outcome.latencyMs,
     questionCount: outcome.questionCount,
     truncated: outcome.truncated,
+    requestCut: outcome.requestCut,
   };
   if (outcome.status === "degraded") return { ...base, status: "degraded", reason: outcome.reason };
   return {

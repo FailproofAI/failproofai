@@ -28,7 +28,10 @@ describe("semantic/envelope", () => {
   });
 
   it("keeps the head and the tail of a long string, so padding cannot push the dangerous part out", () => {
-    const long = "echo safe ".repeat(1000) + "&& sudo rm -rf /";
+    // Sized off the cap itself, so it keeps testing the cut rather than the
+    // constant: `MAX_STRING_CHARS` is the whole request budget now, and a
+    // 10,000-character command is carried whole.
+    const long = "echo safe ".repeat(Math.ceil(MAX_STRING_CHARS / 10) + 100) + "&& sudo rm -rf /";
     const c = capHeadTail(long, MAX_STRING_CHARS);
     expect(c.truncated).toBe(true);
     expect(c.text).toContain("sudo rm -rf /");

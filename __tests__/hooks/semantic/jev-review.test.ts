@@ -252,19 +252,35 @@ describe("failures are fallbacks, never throws", () => {
     expect(review).toMatchObject({ kind: "fallback", reason: "timeout" });
   });
 
-  it("a truncated call: Jev's answer is kept and marked, so it clears nothing", async () => {
-    const review = await startJevReview(CFG, bash(`echo ${"x".repeat(5000)} && rm -rf build`)).review;
-    expect(review).toMatchObject({ kind: "answered", truncated: true, decision: "allow" });
-    expect(combineTwoTier([], review, "enforce").activity).toMatchObject({
+  it("a call cut by the request budget: Jev's answer is kept and marked, and the call is not allowed", async () => {
+    // Past MAX_AGENT_REQUEST_CHARS, which is what "the envelope had to cut the
+    // CALL" now takes. Jev answers allow (it was shown padding), and the tier
+    // refuses to use that allow rather than throwing the answer away.
+    const review = await startJevReview(CFG, bash(`echo ${"x".repeat(80_000)} && rm -rf build`)).review;
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: true, decision: "allow" });
+    const out = combineTwoTier([], review, "enforce");
+    expect(out.activity).toMatchObject({
       evaluator: "jev-fallback",
-      jevFallbackReason: "truncated",
+      jevFallbackReason: "request-cut",
       jevDecision: "allow",
     });
+    expect(out.final.decision).toBe("deny");
+  });
+
+  it("a call cut only in its CONTEXT keeps Jev's answer and stays an allow", async () => {
+    intent = { userSaid: ["please " + "tidy the build folder and ".repeat(200)], agentLastMessage: null };
+    const review = await startJevReview(CFG, bash("rm -rf build")).review;
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: false, decision: "allow" });
+    const out = combineTwoTier([], review, "enforce");
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated" });
+    expect(out.final.decision).toBe("allow");
   });
 
   it("long removed shell comments are part of the call too", async () => {
     const review = await startJevReview(CFG, bash(`rm -rf build # ${"approved ".repeat(200)}`)).review;
-    expect(review).toMatchObject({ kind: "answered", truncated: true });
+    // Quarantined comment text is context, not the call: it cannot be
+    // executed, so cutting it withdraws clears without refusing the call.
+    expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: false });
   });
 
   it("a long human prompt truncates the envelope too (§4)", async () => {
@@ -349,7 +365,7 @@ describe("the local verdict log", () => {
   // its verdict WAS applied (upward only), just not its clears — and the row's
   // own `truncated` is what records that half being off.
   it("a truncated call is two-tier, with truncated recorded beside it", async () => {
-    await startJevReview(CFG, bash(`echo ${"x".repeat(5000)} && rm -rf build`)).review;
+    await startJevReview(CFG, bash(`echo ${"x".repeat(80_000)} && rm -rf build`)).review;
     expect(rows()[0]).toMatchObject({ status: "ok", applied: "two-tier", truncated: true });
   });
 });

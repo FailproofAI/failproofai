@@ -71,11 +71,13 @@ describe("semantic/jev-config", () => {
     expect(inspectJevConfig()).toEqual({ status: "absent", path: jevConfigPath() });
   });
 
-  it("loads a valid owner-only file and fills the defaults (mode enforce, 1500 ms)", () => {
+  it("loads a valid owner-only file and fills the defaults (mode enforce, 3000 ms)", () => {
     write({ provider: "typesafe", apiKey: KEY });
-    expect(loadJevConfig()).toEqual({ provider: "typesafe", apiKey: KEY, mode: "enforce", timeoutMs: 1500 });
+    expect(loadJevConfig()).toEqual({ provider: "typesafe", apiKey: KEY, mode: "enforce", timeoutMs: 3000 });
     expect(DEFAULT_JEV_MODE).toBe("enforce");
-    expect(JEV_CONFIG_DEFAULT_TIMEOUT_MS).toBe(1500);
+    // 3000 ms, not 1500: see DEFAULT_JEV_TIMEOUT_MS in evaluator.ts for the
+    // measurements. jev-review.test.ts pins this equal to that copy.
+    expect(JEV_CONFIG_DEFAULT_TIMEOUT_MS).toBe(3000);
     const r = inspectJevConfig();
     expect(r.status).toBe("ok");
     if (r.status === "ok") {
@@ -136,7 +138,7 @@ describe("semantic/jev-config", () => {
     process.env.FAILPROOFAI_JEV_BASE_URL = "https://evil.example.com";
     process.env.FAILPROOFAI_JEV_MODEL = "jev-1.13.9";
     process.env.FAILPROOFAI_JEV_ACCOUNT_ID = ACCOUNT;
-    expect(loadJevConfig()).toEqual({ provider: "typesafe", apiKey: KEY, mode: "enforce", timeoutMs: 1500 });
+    expect(loadJevConfig()).toEqual({ provider: "typesafe", apiKey: KEY, mode: "enforce", timeoutMs: 3000 });
   });
 
   it("never switches Jev on from the environment or the research credential dir", () => {

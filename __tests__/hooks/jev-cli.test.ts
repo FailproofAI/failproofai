@@ -250,7 +250,7 @@ describe("failproofai jev", () => {
         model: "typesafe/jev",
         modelIsDefault: true,
         mode: "enforce",
-        timeoutMs: 1500,
+        timeoutMs: 3000,
         keySource: "file",
         legacyOverride: false,
       });
@@ -321,7 +321,7 @@ describe("failproofai jev", () => {
       expect(Object.keys(calls[0].body.questions as object)).toEqual(["jev_test"]);
       expect(JSON.stringify(calls[0].body).length).toBeLessThan(400);
       const out = text(r);
-      expect(out).toMatch(/latency\s+\d+ ms — within the 1500 ms timeout/);
+      expect(out).toMatch(/latency\s+\d+ ms — within the 3000 ms timeout/);
       expect(out).toContain("jev-1.13.0 (Jev 1.13 family — verified)");
       expect(out).toContain("p = 0.970");
       expect(out).not.toContain(KEY);
@@ -333,7 +333,7 @@ describe("failproofai jev", () => {
       const r = await runJevCommand(["test", "--json"], RENDER);
       expect(r.exitCode).toBe(0);
       const j = JSON.parse(r.json as string);
-      expect(j).toMatchObject({ ok: true, provider: "openrouter", model: "typesafe/jev-1.13", reportedModel: "typesafe/jev-1.13-20260917", modelVerified: true, answer: 0.97, inputTokens: 31, timeoutMs: 1500 });
+      expect(j).toMatchObject({ ok: true, provider: "openrouter", model: "typesafe/jev-1.13", reportedModel: "typesafe/jev-1.13-20260917", modelVerified: true, answer: 0.97, inputTokens: 31, timeoutMs: 3000 });
       expect(typeof j.latencyMs).toBe("number");
       expect(r.json).not.toContain(KEY);
     });

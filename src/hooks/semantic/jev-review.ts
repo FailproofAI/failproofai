@@ -148,7 +148,7 @@ export const MAX_JEV_TIMEOUT_MS = 10_000;
  */
 export const JEV_DEADLINE_GRACE_MS = 250;
 
-/** The config's timeout, clamped to the bounds above; anything unusable → the 1500 ms default. */
+/** The config's timeout, clamped to the bounds above; anything unusable → the 3000 ms default. */
 export function resolveTimeout(cfg: JevConfig): number {
   const t = cfg.timeoutMs;
   if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return DEFAULT_JEV_TIMEOUT_MS;

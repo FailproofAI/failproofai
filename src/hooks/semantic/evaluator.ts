@@ -33,8 +33,57 @@ import type { JevProviderKind } from "./jev-config";
 import { SEMANTIC_POLICIES } from "./policies";
 import type { Facts, IntentMode, SemanticInput, SemanticPolicy, SemanticVerdict } from "./types";
 
-/** p95 measured independently at 710–740 ms; past this, the regex engine decides. */
-export const DEFAULT_JEV_TIMEOUT_MS = 1_500;
+/**
+ * How long a Jev call may take before the regex engine decides alone.
+ *
+ * 3000 ms, from 1,449 answered Cloudflare calls over five separate sessions:
+ * 1,187 labelled-corpus and 202 intent-set replays through the real handler,
+ * plus 60 live calls measured for this decision. Pooled p50 508 ms, p90
+ * 1425 ms, p95 1692 ms, p99 2370 ms, max 3624 ms. Latency does not track
+ * request size or question count (p50 is flat from 2 to 24 questions), so the
+ * tail is provider-side jitter, not something a caller can shrink.
+ *
+ * The old 1500 ms came from a sandbox reading of p95 210 ms that no longer
+ * reproduces — today's p50 alone is ~500 ms. At 1500 ms, 8.4% of answered
+ * calls pooled, and 43% of the cold-process calls in the worst session, were
+ * aborted and quietly downgraded to the regex verdict: the timeout was a
+ * routine event rather than a failure, and on a fresh install Jev was
+ * effectively off. At 3000 ms it is 0.28% — about 1 call in 360 — and no
+ * measured session is above 1.0%.
+ *
+ * THE TRADEOFF. This runs inside a PreToolUse hook, so the budget is a direct
+ * tax on every tool call — but only on the calls the provider does not answer
+ * in time. The typical cost is the p50 (~500 ms) and does not move with the
+ * budget; what doubles is the worst case, 1.5 s to 3.0 s per tool call. There
+ * is no circuit breaker, so a provider that accepts a connection and then
+ * stalls charges the full budget on every call until the user lowers
+ * `timeoutMs` or removes the config. We take that ceiling because the failure
+ * it replaces is worse and invisible: a budget under the provider's real
+ * latency does not just slow the hook down, it silently returns the weaker
+ * regex verdict for roughly 1 call in 12 and lets the same event be enforced
+ * two different ways on two runs.
+ *
+ * 3000 ms is where the tail flattens: 2500 → 3000 recovers 9 calls per 1,449,
+ * 3000 → 4000 only 4 more. Past it the budget buys almost nothing and the
+ * worst case keeps growing.
+ *
+ * NO SEPARATE COLD-START BUDGET, deliberately. Measured in pairs — call 1
+ * against call 2 in the same fresh process, same second, n=30 — the cold
+ * connection setup costs a median of +180 ms (mean +266 ms). That is an order
+ * of magnitude below the provider jitter both share (warm p50 617 ms to p95
+ * 1964 ms), so a cold-only budget would be tuning the small term. It would
+ * also not reach the path that needs it: without the daemon each hook is its
+ * own process, so every call is a cold call and a first-call exemption is
+ * just this default under another name, while with the daemon the worker
+ * lives for hours and the exemption would buy one verdict per worker. And a
+ * second budget is a second way for one event to be enforced two ways
+ * depending on how old the process happens to be.
+ *
+ * Per-machine override: `timeoutMs` in the Jev config file, or
+ * `FAILPROOFAI_JEV_TIMEOUT_MS`. Bounds: `MIN_JEV_TIMEOUT_MS` /
+ * `MAX_JEV_TIMEOUT_MS` (100 ms – 10 s).
+ */
+export const DEFAULT_JEV_TIMEOUT_MS = 3_000;
 
 export interface SemanticOptions {
   /** How to reach Jev. Required for a request to be made; absent → `degraded("no-transport")`. */

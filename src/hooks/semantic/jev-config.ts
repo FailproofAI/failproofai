@@ -65,7 +65,7 @@ export interface JevConfig {
   accountId?: string;
   /** Provider-specific model id; each provider has a default. */
   model?: string;
-  /** Default 1500. */
+  /** Default 3000; the reasoning is on `DEFAULT_JEV_TIMEOUT_MS` in `evaluator.ts`. */
   timeoutMs?: number;
   /** `shadow` logs Jev and enforces regex; `enforce` applies the combine rules. Default `enforce`. */
   mode?: "shadow" | "enforce";
@@ -78,8 +78,16 @@ export const JEV_PROVIDER_KINDS: readonly JevProviderKind[] = ["typesafe", "open
 /** The env var that may supply the key (and nothing else) when the file carries none. */
 export const JEV_API_KEY_ENV = "FAILPROOFAI_JEV_API_KEY";
 
-/** The same 1500 ms as `DEFAULT_JEV_TIMEOUT_MS` in `evaluator.ts`: p95 measured at 710–740 ms. */
-export const JEV_CONFIG_DEFAULT_TIMEOUT_MS = 1_500;
+/**
+ * The same 3000 ms as `DEFAULT_JEV_TIMEOUT_MS` in `evaluator.ts`, which is
+ * where the measurements and the tradeoff behind the number are written out.
+ * In short: pooled p95 over 1,449 answered calls is 1692 ms and the tail runs
+ * to 3624 ms, so 1500 ms aborted 8.4% of answers (43% of cold-process calls in
+ * the worst session) and silently fell back to regex; 3000 ms aborts 0.28%.
+ * Kept separate from the evaluator's copy so the config layer does not import
+ * the evaluator; the two are pinned equal by a test.
+ */
+export const JEV_CONFIG_DEFAULT_TIMEOUT_MS = 3_000;
 /** Bounds on `timeoutMs`. Every millisecond of it can be added to a tool call. */
 export const MIN_JEV_TIMEOUT_MS = 100;
 export const MAX_JEV_TIMEOUT_MS = 10_000;

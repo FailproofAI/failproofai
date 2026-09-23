@@ -91,7 +91,7 @@ import { MAX_AGENT_REQUEST_CHARS, MAX_USER_MESSAGE_CHARS } from "../../../src/ho
 const PAST_THE_CALL_BUDGET = "x".repeat(MAX_AGENT_REQUEST_CHARS + 1_000);
 /** Repeats needed to run past the per-message cap, whatever it is set to. */
 const OVER_CAP = Math.ceil((MAX_USER_MESSAGE_CHARS * 1.5) / "tidy the build folder and ".length);
-import type { JevConfig } from "../../../src/hooks/semantic/jev-config";
+import { JEV_CONFIG_DEFAULT_TIMEOUT_MS, type JevConfig } from "../../../src/hooks/semantic/jev-config";
 
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32) };
 const allLow = (request: JevRequest): JevResponse => ({
@@ -162,12 +162,12 @@ describe("the request", () => {
     expect(review.injected).toBe(false);
   });
 
-  it("uses the config's timeout, defaulting to 1500 ms", async () => {
+  it("uses the config's timeout, defaulting to 3000 ms", async () => {
     const spy = vi.spyOn(AbortSignal, "timeout");
     await startJevReview(CFG, bash("ls")).review;
     await startJevReview({ ...CFG, timeoutMs: 250 }, bash("ls")).review;
     await startJevReview({ ...CFG, timeoutMs: -3 }, bash("ls")).review;
-    expect(spy.mock.calls.map((c) => c[0])).toEqual([1500, 250, 1500]);
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([3000, 250, 3000]);
   });
 
   it("asks nothing — and sends nothing — for a tool with no side effects", async () => {
@@ -516,14 +516,21 @@ describe("the injection probe", () => {
 });
 
 describe("how long a call may wait for Jev", () => {
-  it("clamps the configured timeout to 100 ms – 10 s; anything unusable is the 1500 ms default", () => {
+  it("clamps the configured timeout to 100 ms – 10 s; anything unusable is the 3000 ms default", () => {
     expect([MIN_JEV_TIMEOUT_MS, MAX_JEV_TIMEOUT_MS]).toEqual([100, 10_000]);
     expect(resolveTimeout({ ...CFG, timeoutMs: 5 })).toBe(100);
     expect(resolveTimeout({ ...CFG, timeoutMs: 60_000 })).toBe(10_000);
     expect(resolveTimeout({ ...CFG, timeoutMs: 2_000 })).toBe(2_000);
-    expect(resolveTimeout({ ...CFG, timeoutMs: Number.POSITIVE_INFINITY })).toBe(1_500);
-    expect(resolveTimeout({ ...CFG, timeoutMs: "900" as never })).toBe(1_500);
-    expect(resolveTimeout(CFG)).toBe(1_500);
+    expect(resolveTimeout({ ...CFG, timeoutMs: Number.POSITIVE_INFINITY })).toBe(3_000);
+    expect(resolveTimeout({ ...CFG, timeoutMs: "900" as never })).toBe(3_000);
+    expect(resolveTimeout(CFG)).toBe(3_000);
+  });
+
+  it("the config layer's copy of the default has not drifted from the evaluator's", () => {
+    // Two constants hold the same number so jev-config.ts need not import the
+    // evaluator. `resolveTimeout(CFG)` with no timeoutMs IS DEFAULT_JEV_TIMEOUT_MS,
+    // so this fails the moment one copy is changed without the other.
+    expect(JEV_CONFIG_DEFAULT_TIMEOUT_MS).toBe(resolveTimeout(CFG));
   });
 
   it("the clamped value is what the request uses", async () => {

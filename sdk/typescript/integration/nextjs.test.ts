@@ -50,6 +50,8 @@ interface Variant {
   dist: string;
   bundler: "turbopack" | "webpack";
   external: boolean;
+  /** Built with `withFailproofai(config)` instead of a hand-written list. */
+  wrapped?: boolean;
 }
 
 const VARIANTS: Variant[] = [
@@ -57,12 +59,18 @@ const VARIANTS: Variant[] = [
   { name: "turbopack, frameworks in serverExternalPackages", dist: ".next-it-turbopack-external", bundler: "turbopack", external: true },
   { name: "webpack, default config (frameworks bundled)", dist: ".next-it-webpack", bundler: "webpack", external: false },
   { name: "webpack, frameworks in serverExternalPackages", dist: ".next-it-webpack-external", bundler: "webpack", external: true },
+  { name: "turbopack, withFailproofai(nextConfig)", dist: ".next-it-turbopack-wrapped", bundler: "turbopack", external: true, wrapped: true },
 ];
 
 const nextEnv = (variant: Variant): Record<string, string> => ({
   NEXT_TELEMETRY_DISABLED: "1",
   FAILPROOFAI_IT_NEXT_DIST: variant.dist,
-  FAILPROOFAI_IT_NEXT_EXTERNAL: variant.external ? "1" : "",
+  FAILPROOFAI_IT_NEXT_EXTERNAL: variant.external && !variant.wrapped ? "1" : "",
+  FAILPROOFAI_IT_NEXT_WRAP: variant.wrapped ? "1" : "",
+  // A hand-written list carries no marker, so the documented override tells
+  // `instrument()` the app is configured. The wrapper needs none: it records
+  // what it externalized when Next evaluates the config.
+  FAILPROOFAI_NEXT_EXTERNALS: variant.external && !variant.wrapped ? "1" : "",
 });
 
 async function freePort(): Promise<number> {
@@ -300,9 +308,23 @@ describe.each(VARIANTS)("Next.js 16, $name", (variant) => {
     expect(stderr.match(/loaded its no-op build/g) ?? []).toHaveLength(1);
   });
 
-  it("prints nothing else from the SDK into the server's output", () => {
-    const lines = stderr.split("\n").filter((line) => line.includes("[failproofai-sdk]"));
-    expect(lines.filter((line) => !line.includes("loaded its no-op build")), stderr).toEqual([]);
+  it("warns for each adapter Next bundles, and otherwise prints nothing from the SDK", () => {
+    const lines = stderr
+      .split("\n")
+      .filter((line) => line.includes("[failproofai-sdk]") && !line.includes("loaded its no-op build"));
+    const warned = lines
+      .map((line) => /instrument\("([a-z]+)"\) is running under Next\.js/.exec(line)?.[1])
+      .filter((name): name is string => name !== undefined)
+      .sort();
+    // Bundled: exactly the three adapters that cannot reach a bundled copy,
+    // each once, naming the wrapper. Never the Vercel AI SDK, which records
+    // bundled or not. Configured (wrapper or hand-written list + override):
+    // silence.
+    expect(warned, stderr).toEqual(variant.external ? [] : ["langchain", "llamaindex", "mastra"]);
+    if (!variant.external) {
+      for (const line of lines) expect(line).toContain("withFailproofai");
+    }
+    expect(lines.length, stderr).toBe(warned.length);
     // Loading a second copy of LlamaIndex beside the one the app runs makes
     // LlamaIndex itself warn. External: the SDK patches the app's own copy, so
     // there is no second one. Bundled: `instrument()` loads the node_modules

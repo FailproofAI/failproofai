@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { withFailproofai } from "@failproofai/sdk/next";
 import type { NextConfig } from "next";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,11 @@ const root = dirname(fileURLToPath(import.meta.url));
  * imports the SDK: an SDK whose import broke the Edge runtime fails the build.
  */
 const external = process.env.FAILPROOFAI_IT_NEXT_EXTERNAL === "1";
+/**
+ * FAILPROOFAI_IT_NEXT_WRAP=1  the documented setup: the app lists nothing
+ *                             itself and exports `withFailproofai(config)`.
+ */
+const wrap = process.env.FAILPROOFAI_IT_NEXT_WRAP === "1";
 
 const config: NextConfig = {
   distDir: process.env.FAILPROOFAI_IT_NEXT_DIST ?? ".next",
@@ -43,4 +49,4 @@ const config: NextConfig = {
   turbopack: { root },
 };
 
-export default config;
+export default wrap ? withFailproofai(config) : config;

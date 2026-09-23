@@ -46,7 +46,8 @@
  */
 
 import { logException, logger } from "../logger.js";
-import { loadedModulePaths, resolveFrom } from "../node-require.js";
+import { NEXT_EXTERNALS_ENV } from "../next.js";
+import { isNextServer, loadedModulePaths, resolveFrom } from "../node-require.js";
 import * as compat from "./compat.js";
 import type { Adapter } from "./core.js";
 import * as core from "./core.js";
@@ -229,8 +230,82 @@ export async function instrument(
     }
     active.set(name, adapter);
     installed.push(name);
+    warnIfNextBundles(name);
   }
   return installed;
+}
+
+/**
+ * What a framework's adapter needs a Next.js server to load from
+ * `node_modules`. The Vercel AI SDK needs nothing: ai 7 reads its telemetry
+ * integrations from a global and `telemetry()` is passed at the call site, so
+ * both reach a bundled copy.
+ */
+const NEXT_REQUIRES: Partial<Record<FrameworkName, readonly string[]>> = {
+  langchain: ["@failproofai/sdk", "@langchain/core"],
+  mastra: ["@failproofai/sdk", "@mastra/core"],
+  llamaindex: ["@failproofai/sdk", "@llamaindex/core", "@llamaindex/workflow"],
+};
+
+const nextWarned = new Set<FrameworkName>();
+
+/**
+ * The packages `name` needs externalized that this Next.js server does not
+ * externalize — empty when configured, `null` when that cannot be determined.
+ *
+ * Sources, most direct first: the list `withFailproofai` records when Next
+ * evaluates the config (`next start` / `next dev`); the resolved config a
+ * standalone server stores in `__NEXT_PRIVATE_STANDALONE_CONFIG`; and a
+ * hand-set `FAILPROOFAI_NEXT_EXTERNALS=1`, which trusts the app.
+ *
+ * @internal Exported for tests.
+ */
+export function nextExternalsGap(name: FrameworkName): string[] | null {
+  const required = NEXT_REQUIRES[name];
+  if (required === undefined) return [];
+  const marker = process.env[NEXT_EXTERNALS_ENV];
+  if (marker !== undefined && marker.trim() !== "") {
+    if (["1", "true", "yes"].includes(marker.trim().toLowerCase())) return [];
+    const listed = new Set(marker.split(",").map((entry) => entry.trim()));
+    return required.filter((pkg) => !listed.has(pkg));
+  }
+  const standalone = process.env.__NEXT_PRIVATE_STANDALONE_CONFIG;
+  if (standalone) {
+    try {
+      const config = JSON.parse(standalone) as { serverExternalPackages?: unknown };
+      const listed = new Set(Array.isArray(config.serverExternalPackages) ? config.serverExternalPackages : []);
+      return required.filter((pkg) => !listed.has(pkg));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Warn, once per framework, when a Next.js server bundles what `instrument()`
+ * attaches to — the one arrangement where it reports success and records
+ * nothing. Node runtime only: an Edge route gets the SDK's no-op build.
+ */
+function warnIfNextBundles(name: FrameworkName): void {
+  if (!isNextServer() || process.env.NEXT_RUNTIME !== "nodejs" || nextWarned.has(name)) return;
+  const gap = nextExternalsGap(name);
+  if (gap !== null && gap.length === 0) return;
+  nextWarned.add(name);
+  const missing = gap === null ? NEXT_REQUIRES[name]! : gap;
+  logger.warn(
+    `instrument(${JSON.stringify(name)}) is running under Next.js, which bundles ` +
+      `${missing.join(", ")} into its server output unless told not to — and then this adapter ` +
+      "records NOTHING while reporting success. Wrap your next.config: " +
+      '`import { withFailproofai } from "@failproofai/sdk/next"; export default withFailproofai(config)`, ' +
+      `or add ${missing.join(", ")} to serverExternalPackages yourself and set ` +
+      `${NEXT_EXTERNALS_ENV}=1 to silence this.`,
+  );
+}
+
+/** @internal Tests only: forget which Next.js warnings have fired. */
+export function resetNextWarnings(): void {
+  nextWarned.clear();
 }
 
 /**

@@ -37,31 +37,70 @@
   "types": "./dist/cjs/index.d.ts",
   "typesVersions": {
     "*": {
-      "ai": ["./dist/cjs/integrations/ai.d.ts"],
-      "mastra": ["./dist/cjs/integrations/mastra.d.ts"],
-      "langchain": ["./dist/cjs/integrations/langchain.d.ts"],
-      "llamaindex": ["./dist/cjs/integrations/llamaindex.d.ts"],
-      "evaluator": ["./dist/cjs/evaluator/index.d.ts"],
-      "sandbox-worker": ["./dist/cjs/evaluator/sandbox-worker.d.ts"]
+      "ai": [
+        "./dist/cjs/integrations/ai.d.ts"
+      ],
+      "mastra": [
+        "./dist/cjs/integrations/mastra.d.ts"
+      ],
+      "langchain": [
+        "./dist/cjs/integrations/langchain.d.ts"
+      ],
+      "llamaindex": [
+        "./dist/cjs/integrations/llamaindex.d.ts"
+      ],
+      "evaluator": [
+        "./dist/cjs/evaluator/index.d.ts"
+      ],
+      "sandbox-worker": [
+        "./dist/cjs/evaluator/sandbox-worker.d.ts"
+      ],
+      "next": [
+        "./dist/cjs/next.d.ts"
+      ]
     }
   },
   "exports": {
     ".": {
       "edge-light": {
-        "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/edge/index.js" },
-        "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/edge/index.js" }
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
       },
       "workerd": {
-        "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/edge/index.js" },
-        "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/edge/index.js" }
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
       },
       "worker": {
-        "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/edge/index.js" },
-        "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/edge/index.js" }
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
       },
       "browser": {
-        "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/edge/index.js" },
-        "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/edge/index.js" }
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
       },
       "import": {
         "types": "./dist/esm/index.d.ts",
@@ -74,20 +113,44 @@
     },
     "./ai": {
       "edge-light": {
-        "import": { "types": "./dist/esm/integrations/ai.d.ts", "default": "./dist/esm/edge/ai.js" },
-        "require": { "types": "./dist/cjs/integrations/ai.d.ts", "default": "./dist/cjs/edge/ai.js" }
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
       },
       "workerd": {
-        "import": { "types": "./dist/esm/integrations/ai.d.ts", "default": "./dist/esm/edge/ai.js" },
-        "require": { "types": "./dist/cjs/integrations/ai.d.ts", "default": "./dist/cjs/edge/ai.js" }
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
       },
       "worker": {
-        "import": { "types": "./dist/esm/integrations/ai.d.ts", "default": "./dist/esm/edge/ai.js" },
-        "require": { "types": "./dist/cjs/integrations/ai.d.ts", "default": "./dist/cjs/edge/ai.js" }
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
       },
       "browser": {
-        "import": { "types": "./dist/esm/integrations/ai.d.ts", "default": "./dist/esm/edge/ai.js" },
-        "require": { "types": "./dist/cjs/integrations/ai.d.ts", "default": "./dist/cjs/edge/ai.js" }
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
       },
       "import": {
         "types": "./dist/esm/integrations/ai.d.ts",
@@ -100,20 +163,44 @@
     },
     "./mastra": {
       "edge-light": {
-        "import": { "types": "./dist/esm/integrations/mastra.d.ts", "default": "./dist/esm/edge/mastra.js" },
-        "require": { "types": "./dist/cjs/integrations/mastra.d.ts", "default": "./dist/cjs/edge/mastra.js" }
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
       },
       "workerd": {
-        "import": { "types": "./dist/esm/integrations/mastra.d.ts", "default": "./dist/esm/edge/mastra.js" },
-        "require": { "types": "./dist/cjs/integrations/mastra.d.ts", "default": "./dist/cjs/edge/mastra.js" }
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
       },
       "worker": {
-        "import": { "types": "./dist/esm/integrations/mastra.d.ts", "default": "./dist/esm/edge/mastra.js" },
-        "require": { "types": "./dist/cjs/integrations/mastra.d.ts", "default": "./dist/cjs/edge/mastra.js" }
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
       },
       "browser": {
-        "import": { "types": "./dist/esm/integrations/mastra.d.ts", "default": "./dist/esm/edge/mastra.js" },
-        "require": { "types": "./dist/cjs/integrations/mastra.d.ts", "default": "./dist/cjs/edge/mastra.js" }
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
       },
       "import": {
         "types": "./dist/esm/integrations/mastra.d.ts",
@@ -126,20 +213,44 @@
     },
     "./langchain": {
       "edge-light": {
-        "import": { "types": "./dist/esm/integrations/langchain.d.ts", "default": "./dist/esm/edge/langchain.js" },
-        "require": { "types": "./dist/cjs/integrations/langchain.d.ts", "default": "./dist/cjs/edge/langchain.js" }
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
       },
       "workerd": {
-        "import": { "types": "./dist/esm/integrations/langchain.d.ts", "default": "./dist/esm/edge/langchain.js" },
-        "require": { "types": "./dist/cjs/integrations/langchain.d.ts", "default": "./dist/cjs/edge/langchain.js" }
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
       },
       "worker": {
-        "import": { "types": "./dist/esm/integrations/langchain.d.ts", "default": "./dist/esm/edge/langchain.js" },
-        "require": { "types": "./dist/cjs/integrations/langchain.d.ts", "default": "./dist/cjs/edge/langchain.js" }
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
       },
       "browser": {
-        "import": { "types": "./dist/esm/integrations/langchain.d.ts", "default": "./dist/esm/edge/langchain.js" },
-        "require": { "types": "./dist/cjs/integrations/langchain.d.ts", "default": "./dist/cjs/edge/langchain.js" }
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
       },
       "import": {
         "types": "./dist/esm/integrations/langchain.d.ts",
@@ -152,20 +263,44 @@
     },
     "./llamaindex": {
       "edge-light": {
-        "import": { "types": "./dist/esm/integrations/llamaindex.d.ts", "default": "./dist/esm/edge/llamaindex.js" },
-        "require": { "types": "./dist/cjs/integrations/llamaindex.d.ts", "default": "./dist/cjs/edge/llamaindex.js" }
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
       },
       "workerd": {
-        "import": { "types": "./dist/esm/integrations/llamaindex.d.ts", "default": "./dist/esm/edge/llamaindex.js" },
-        "require": { "types": "./dist/cjs/integrations/llamaindex.d.ts", "default": "./dist/cjs/edge/llamaindex.js" }
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
       },
       "worker": {
-        "import": { "types": "./dist/esm/integrations/llamaindex.d.ts", "default": "./dist/esm/edge/llamaindex.js" },
-        "require": { "types": "./dist/cjs/integrations/llamaindex.d.ts", "default": "./dist/cjs/edge/llamaindex.js" }
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
       },
       "browser": {
-        "import": { "types": "./dist/esm/integrations/llamaindex.d.ts", "default": "./dist/esm/edge/llamaindex.js" },
-        "require": { "types": "./dist/cjs/integrations/llamaindex.d.ts", "default": "./dist/cjs/edge/llamaindex.js" }
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
       },
       "import": {
         "types": "./dist/esm/integrations/llamaindex.d.ts",
@@ -174,6 +309,16 @@
       "require": {
         "types": "./dist/cjs/integrations/llamaindex.d.ts",
         "default": "./dist/cjs/integrations/llamaindex.js"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/esm/next.d.ts",
+        "default": "./dist/esm/next.js"
+      },
+      "require": {
+        "types": "./dist/cjs/next.d.ts",
+        "default": "./dist/cjs/next.js"
       }
     },
     "./evaluator": {

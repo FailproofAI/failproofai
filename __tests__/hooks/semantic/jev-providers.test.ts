@@ -20,6 +20,7 @@ import {
   transportForConfig,
 } from "../../../src/hooks/semantic/jev-client";
 import { evaluateSemantic } from "../../../src/hooks/semantic/evaluator";
+import { JEV_REASON_PROVIDER_REFUSED, normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest, JevResponse } from "../../../src/hooks/semantic/types";
 
 const KEY = ["prov", "test", "abcdef0123456789"].join("-");
@@ -71,6 +72,16 @@ async function codeOf(p: Promise<unknown>): Promise<string> {
     return `non-jev:${(e as Error).name}`;
   }
   return "no-throw";
+}
+
+async function errorOf(p: Promise<unknown>): Promise<{ code: string; message: string }> {
+  try {
+    await p;
+  } catch (e) {
+    if (e instanceof JevError) return { code: e.code, message: e.message };
+    return { code: `non-jev:${(e as Error).name}`, message: String(e) };
+  }
+  return { code: "no-throw", message: "" };
 }
 
 function codeOfSync(fn: () => unknown): string {
@@ -352,6 +363,47 @@ describe("errors: 429, 402, 5xx and friends", () => {
     expect(await codeOf(send(CONFIGS.openrouter))).toBe("out-of-credits");
   });
 
+  // The other thing a 402 means. Verified live on the Cloudflare route: a
+  // request whose content it declines comes back 402 with the wording below —
+  // not a quota, size or rate condition. Filed as `out-of-credits` it told the
+  // operator to top up an account that was fine, on exactly the calls a
+  // provider is likeliest to refuse (see the client's header).
+  const REFUSAL_402 = { errors: [{ message: "Model execution failed (Payment error)", code: 2021 }] };
+
+  it.each(Object.keys(CONFIGS))("%s: a refused request is provider-refused, not out-of-credits", async (name) => {
+    reply(REFUSAL_402, 402);
+    const failure = await errorOf(send(CONFIGS[name]));
+    expect(failure.code).toBe("provider-refused");
+    // And the text does not tell the operator their account is empty.
+    expect(failure.message).toBe("Model execution failed (Payment error)");
+    expect(failure.message).not.toMatch(/credit/i);
+  });
+
+  it("keeps out-of-credits for a 402 that does name the balance", async () => {
+    // The distinction is the provider's own words; the status alone cannot make
+    // it. A body about credits is still a billing condition.
+    for (const body of [{ error: { message: "Insufficient credits" } }, { errors: [{ message: "Out of credits" }] }]) {
+      reply(body, 402);
+      expect(await codeOf(send(CONFIGS.cloudflare))).toBe("out-of-credits");
+    }
+  });
+
+  it("applies the same rule to a 402 reported inside a 200 body", async () => {
+    reply({ error: { code: 402, message: "Model execution failed (Payment error)" } });
+    expect(await codeOf(send(CONFIGS.openrouter))).toBe("provider-refused");
+    reply({ error: { code: 402, message: "Insufficient credits" } });
+    expect(await codeOf(send(CONFIGS.openrouter))).toBe("out-of-credits");
+  });
+
+  it("stores the new code as itself, not as `other`", async () => {
+    // The point of the split is a reason an operator can read in
+    // `failproofai jev status`, so the code has to survive the activity
+    // store's closed list — which is why the client imports the constant.
+    expect(normalizeJevFallbackReason(JEV_REASON_PROVIDER_REFUSED)).toBe(JEV_REASON_PROVIDER_REFUSED);
+    reply(REFUSAL_402, 402);
+    expect(normalizeJevFallbackReason(await codeOf(send(CONFIGS.cloudflare)))).toBe(JEV_REASON_PROVIDER_REFUSED);
+  });
+
   it("an error reported inside a 200 body is not an answer", async () => {
     reply({ error: { code: 402, message: "out of credits" } });
     expect(await codeOf(send(CONFIGS.openrouter))).toBe("out-of-credits");
@@ -472,6 +524,16 @@ describe("through evaluateSemantic, as the handler will call it", () => {
     const built = transportForConfig(CONFIGS.openrouter);
     const out = await evaluateSemantic(input, { transport: built.transport, model: built.model, intent: "v1" });
     expect(out).toMatchObject({ status: "degraded", reason: "out-of-credits" });
+  });
+
+  it("a refused request → degraded with reason provider-refused", async () => {
+    // The reason the fallback row carries, and the whole point of the split:
+    // the tier degrading to regex on a refused call is correct, but it must not
+    // be reported as the operator's billing problem.
+    reply({ errors: [{ message: "Model execution failed (Payment error)", code: 2021 }] }, 402);
+    const built = transportForConfig(CONFIGS.cloudflare);
+    const out = await evaluateSemantic(input, { transport: built.transport, model: built.model, intent: "v1" });
+    expect(out).toMatchObject({ status: "degraded", reason: JEV_REASON_PROVIDER_REFUSED });
   });
 
   it("429 and 5xx → degraded (the caller falls back to regex)", async () => {

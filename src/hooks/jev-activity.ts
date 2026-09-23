@@ -106,6 +106,7 @@ export const JEV_REASON_CODE_LIST = [
   "other",
   "out-of-credits",
   "prepare-error",
+  "provider-refused",
   "rate-limited",
   "request-cut",
   "request-too-large",
@@ -129,6 +130,20 @@ export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>(JEV_REASON_
  * instead of silently storing `other`.
  */
 export const JEV_REASON_REQUEST_CUT: JevReasonCode = "request-cut";
+
+/**
+ * "The provider would not run the model on this request" — the OTHER thing an
+ * HTTP 402 means on these routes, and the one that is not about the operator's
+ * balance. The Cloudflare route answers a request whose content it declines
+ * with 402 and a `Payment error` category — the same status a real empty
+ * account gets — so until that call was split both landed under
+ * `out-of-credits`, and `failproofai jev status` told operators to top up
+ * accounts that were fine. What can and cannot be told apart from the response
+ * is written out in `semantic/jev-client.ts` (`paymentRequiredCode`), which is
+ * the only producer; it imports this constant rather than retyping the string,
+ * for the reason {@link JEV_REASON_CODE_LIST} gives.
+ */
+export const JEV_REASON_PROVIDER_REFUSED: JevReasonCode = "provider-refused";
 
 /**
  * Leading words that are renamed on the way in: the evaluator's free-text

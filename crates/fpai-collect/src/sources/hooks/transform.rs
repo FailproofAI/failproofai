@@ -184,9 +184,12 @@ pub const JEV_CLEARED_MAX: usize = 64;
 /// identical.
 ///
 /// `request-cut` is the combine rules' "Jev answered, but was shown only part
-/// of the call". `truncated` and `request-too-large` are names an older build
-/// wrote and no current producer does; they stay because this list is applied
-/// to rows written by other builds too.
+/// of the call". `provider-refused` is the client's "the provider would not run
+/// the model on this request" — an HTTP 402 that is not a billing condition, so
+/// it must not be filed as `out-of-credits`. `truncated` and
+/// `request-too-large` are names an older build wrote and no current producer
+/// does; they stay because this list is applied to rows written by other builds
+/// too.
 pub const JEV_REASON_CODES: &[&str] = &[
     "aborted",
     "cloudflare-error",
@@ -201,6 +204,7 @@ pub const JEV_REASON_CODES: &[&str] = &[
     "other",
     "out-of-credits",
     "prepare-error",
+    "provider-refused",
     "rate-limited",
     "request-cut",
     "request-too-large",

@@ -45,9 +45,28 @@
  * `timeout`, `network`, `http-<status>` (429 and every 5xx included, and every
  * 3xx: a redirect is never followed, so the answer only ever comes from the
  * configured origin),
- * `out-of-credits` (HTTP 402, or a 402 inside a 200 body), `upstream-error`,
+ * `out-of-credits` and `provider-refused` (the two meanings of HTTP 402, or of
+ * a 402 inside a 200 body — see `paymentRequiredCode`), `upstream-error`,
  * `cloudflare-error`, `cloudflare-incomplete`, `malformed`, `model-mismatch`,
  * `config`.
+ *
+ * # When the provider refuses the call
+ *
+ * A refusal is not spread evenly over the traffic: the provider is likeliest to
+ * decline exactly the calls that matter most — the curl that reads like
+ * exfiltration, the file listing carrying `rm -rf /` and `dd if=/dev/zero`.
+ * Both the judged call and our own question text ride in the request, so either
+ * can trip it; one of our own shipped examples did, live (see
+ * `download_and_run` in `policies.ts`).
+ *
+ * The consequence is a security property, not a nicety. A refusal degrades the
+ * call to the regex policies — which is the correct fallback: every hard policy
+ * still denies, and no reviewable deny is ever cleared by an answer nobody got
+ * — but the degrade has to be VISIBLE, because it lands on the worst call of
+ * the day rather than a random one. It is visible as `jev-fallback` /
+ * `provider-refused` on the activity row and in `failproofai jev status`.
+ * Filing it as `out-of-credits` was the opposite of visible: it sent the
+ * operator to their billing page while that call went through on regex alone.
  *
  * # Not an opt-in: `resolveJevProvider`
  *
@@ -64,6 +83,11 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+// A value, not a literal: the code has to be one the activity store's closed
+// list names, and importing the constant makes a rename there a compile error
+// here instead of a row quietly stored as `other`. `jev-activity.ts` is pure
+// (no node imports, no semantic modules), as `combine.ts` already relies on.
+import { JEV_REASON_PROVIDER_REFUSED } from "../jev-activity";
 import {
   CLOUDFLARE_ACCOUNT_ID_RE,
   isCalibratedJevModel,
@@ -111,8 +135,8 @@ export type JevTransport = (request: JevRequest, signal: AbortSignal) => Promise
 export class JevError extends Error {
   /**
    * Short, stable cause used in logs and as the fallback reason: timeout,
-   * network, http-<status>, out-of-credits, upstream-error, cloudflare-error,
-   * cloudflare-incomplete, malformed, model-mismatch, config.
+   * network, http-<status>, out-of-credits, provider-refused, upstream-error,
+   * cloudflare-error, cloudflare-incomplete, malformed, model-mismatch, config.
    */
   readonly code: string;
   constructor(code: string, message: string) {
@@ -209,6 +233,52 @@ export function scrubSecret(text: string, secret: string): string {
   return secret.length >= 4 ? text.split(secret).join("[key]") : text;
 }
 
+/**
+ * Cloudflare's wording for a request it would not run the model on, seen live
+ * (2026-09-21 to 24) as HTTP 402 with
+ * `{"errors":[{"message":"Model execution failed (Payment error)","code":2021}]}`.
+ *
+ * Matched on the wording, not on the numeric code: 2021 is the only value
+ * observed and nothing here knows which other codes Cloudflare files under the
+ * same meaning, so testing the code would be a guess where the text is an
+ * observation.
+ */
+const MODEL_EXECUTION_402_RE = /model execution failed/i;
+
+/**
+ * Which of the two quite different things an HTTP 402 means here, from the
+ * provider's own words (already scrubbed; `""` when it sent none).
+ *
+ * The two are: the account really has no credits left, and the provider
+ * DECLINED TO PROCESS THE REQUEST. The second is not a theory — on the
+ * Cloudflare route it is reproducible: one shipped question's example text made
+ * every call that selected that policy fail with 402, deterministically, on any
+ * state, at well under a request a second, with no quota, size or rate
+ * condition in play, and the failures stopped when a few characters of the
+ * question changed (`download_and_run` in `policies.ts`). Either half of the
+ * request can trip it — our questions or the judged call itself, which is why
+ * an agent's own command can cause it.
+ *
+ * The response is all the evidence there is, and it does not settle the two in
+ * general. "Model execution failed (Payment error)" is Cloudflare reporting
+ * that the model RUN was refused for a payment-category reason: what we have
+ * watched it mean is a content refusal, but a partner-side billing failure
+ * would arrive wearing the same wrapper, and nothing in the body tells those
+ * apart. So this shape is `provider-refused` — a name that says who refused and
+ * that no answer arrived, and accuses the operator's balance under neither
+ * reading. Any other 402 (a body that names credits, a non-JSON body, no body)
+ * stays `out-of-credits`: the status's own meaning, and the only thing left to
+ * call it.
+ *
+ * The gap that remains: a route refusing content in different words is still
+ * filed as `out-of-credits`. A fallback histogram filling with `out-of-credits`
+ * while the account demonstrably has money is the sign to sweep the questions
+ * again, the way `policies.ts` describes.
+ */
+function paymentRequiredCode(detail: string): string {
+  return MODEL_EXECUTION_402_RE.test(detail) ? JEV_REASON_PROVIDER_REFUSED : "out-of-credits";
+}
+
 /** A redirect, including the opaque form a browser-style fetch returns for `redirect: "manual"` (status 0). */
 function isRedirect(res: Response): boolean {
   return res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
@@ -246,12 +316,22 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     parsed = await res.json();
   } catch {
     if (signal.aborted) throw new JevError("timeout", "Jev did not answer in time");
+    // No provider words to read, so nothing distinguishes a refusal from an
+    // empty account: the status's own meaning stands (see `paymentRequiredCode`).
     if (res.status === 402) throw new JevError("out-of-credits", "HTTP 402: the account is out of credits");
     if (!res.ok) throw new JevError(`http-${res.status}`, `HTTP ${res.status}`);
     throw new JevError("malformed", "response body is not JSON");
   }
   if (res.status === 402) {
-    throw new JevError("out-of-credits", errorDetail(parsed, bearer) || "HTTP 402: the account is out of credits");
+    const detail = errorDetail(parsed, bearer);
+    const code = paymentRequiredCode(detail);
+    throw new JevError(
+      code,
+      detail ||
+        (code === JEV_REASON_PROVIDER_REFUSED
+          ? "HTTP 402: the provider would not run the model on this request"
+          : "HTTP 402: the account is out of credits"),
+    );
   }
   if (!res.ok) {
     throw new JevError(`http-${res.status}`, errorDetail(parsed, bearer) || `HTTP ${res.status}`);
@@ -293,7 +373,8 @@ function normalizeNative(body: unknown, sentModel: string, opts: NativeTransport
     if (b.error !== undefined) {
       const code = typeof b.error === "object" && b.error !== null ? (b.error as { code?: unknown }).code : undefined;
       const detail = errorDetail(body, opts.apiKey) || "the provider reported an error";
-      if (code === 402 || code === "402") throw new JevError("out-of-credits", detail);
+      // Same two meanings, one layer in; same rule (see `paymentRequiredCode`).
+      if (code === 402 || code === "402") throw new JevError(paymentRequiredCode(detail), detail);
       if (typeof code === "number" && (code === 429 || code >= 500)) throw new JevError(`http-${code}`, detail);
       throw new JevError("upstream-error", detail);
     }
@@ -387,6 +468,9 @@ export function unwrapCloudflare(
     const detail = Array.isArray(envelope.errors)
       ? envelope.errors.map((e) => (typeof e?.message === "string" ? e.message : "")).filter(Boolean).join("; ")
       : "";
+    // Not the refusal path: a declined request arrives as HTTP 402 and never
+    // reaches here (see `paymentRequiredCode`). A 200 `{success: false}` is a
+    // different failure, and `cloudflare-error` blames nobody's billing either.
     throw new JevError("cloudflare-error", scrubSecret(detail, secret).slice(0, MAX_ERROR_DETAIL) || "Cloudflare reported failure");
   }
   let inner: unknown = "result" in envelope ? envelope.result : envelope;

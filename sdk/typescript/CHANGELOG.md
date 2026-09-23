@@ -35,8 +35,22 @@ section is missing or empty is refused before anything is built.
   Python adapter's golden output event for event, including interrupt/resume.
   The AI SDK is served by `telemetry()` — one object carrying an OpenTelemetry
   tracer for `ai` 4–6 and a telemetry integration for `ai` 7 — plus
-  `instrument("ai")` and `wrapModel()`; using them together records each call
-  once. `langchainHandler()` works without `instrument()`.
+  `wrapModel()` and, for `ai` 7, `instrument("ai")`; using them together records
+  each call once. On `ai` 4–6 `instrument("ai")` never takes the global
+  OpenTelemetry slot unless asked (`registerGlobalTracer: true`), because
+  taking it silently refuses the application's own tracing set up afterwards.
+  `langchainHandler()` works without `instrument()`.
+
+- **Safe in a long-running server.** Nothing a finished run leaves behind is
+  kept: tracker links go when their run closes (a FIFO cap full of finished
+  runs used to evict live ones and drop their events), LangGraph runs paused on
+  a human and resumed by another worker are forgotten after 15 minutes, and a
+  streamed model call that is cancelled or errors still closes. Concurrent
+  requests on one shared LlamaIndex query engine or agent are kept apart, and
+  `uninstrument()` stops Mastra recording through models and tools it had
+  already wrapped. Frameworks are found from the entry script as well as the
+  working directory, so a service started from `/` or a monorepo app with its
+  own nested copy of a framework is instrumented correctly.
 
 - **Tested against the real frameworks, not just in isolation.** `integration/`
   installs real framework releases at both ends of every declared range from

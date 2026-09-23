@@ -1,5 +1,8 @@
 # Installing the SDK
 
+> TypeScript/JavaScript: `npm install @failproofai/sdk` — see `typescript.md`.
+> This page is the Python distribution.
+
 ```bash
 pip install failproofai-sdk        # or: uv add failproofai-sdk
 ```

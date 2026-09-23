@@ -1,5 +1,9 @@
 # Writing the integration
 
+> TypeScript/JavaScript: the same three scopes exist as `session()`, `agent()` and
+> `toolCall()` on `AsyncLocalStorage`, and a hand-built loop is three edit sites —
+> see `typescript.md` → *An agent with no framework*. This page is the Python SDK.
+
 Identity is ambient. Bind it once per run with a context manager and every
 `event.*` call inside — including calls in functions that have never heard of
 Failproof AI — lands on the right session and agent.

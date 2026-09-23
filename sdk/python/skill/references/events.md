@@ -1,5 +1,9 @@
 # Event catalog
 
+> TypeScript/JavaScript: the same 15 events on `failproofai.event`, camelCase
+> (`toolUse({ toolName, toolCallId })`) taking one options object; the file written
+> is identical. Name map in `typescript.md`. Code below is Python.
+
 Every method lives on `failproofai_sdk.event`, is **keyword-only**, and returns `None`.
 Nothing here blocks or does I/O — the call queues the event and returns.
 

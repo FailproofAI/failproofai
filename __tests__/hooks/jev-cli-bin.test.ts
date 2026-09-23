@@ -96,4 +96,12 @@ describe("failproofai jev (real binary)", () => {
     expect(r.stdout + r.stderr).toContain("Unknown subcommand: enable");
     expect(r.stderr).not.toContain("node:internal");
   });
+
+  it("does not repeat a subcommand shaped like a key — `failproofai jev <key>` is the paste-in-the-wrong-place case", () => {
+    const r = cli(["jev", KEY]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout + r.stderr).not.toContain(KEY);
+    expect(r.stdout + r.stderr).toContain("Unknown subcommand");
+    expect(r.stdout + r.stderr).toContain("--key-stdin");
+  });
 });

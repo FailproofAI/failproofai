@@ -123,6 +123,26 @@ describe("failproofai jev status — activity comes from jevStats()", () => {
     expectOneDefaultCall();
   });
 
+  it("shadow mode's would-be clears are printed, not reported as 'cleared nothing'", async () => {
+    // T8's jevStats() counts a clear that CHANGED an outcome in clearsByPolicy
+    // — which only enforce mode can do — and shadow mode's would-be clears in
+    // shadowClearsByPolicy. A renderer reading only the first tells a shadow
+    // user nothing was cleared, which is the one number shadow mode exists to
+    // show. The field is optional on the stats this branch builds against.
+    jevStatsMock.mockResolvedValue({
+      ...STATS,
+      clearsByPolicy: {},
+      shadowClearsByPolicy: { "block-read-outside-cwd": 9, "protect-env-vars": 2 },
+    } as JevStats);
+    await runJevCommand(["setup", "--provider", "typesafe", "--mode", "shadow", "--key-stdin"], withKey(KEY));
+
+    const human = await runJevCommand(["status"], RENDER);
+    expect(human.exitCode).toBe(0);
+    const out = text(human);
+    expect(out).toContain("would have cleared (shadow) block-read-outside-cwd ×9, protect-env-vars ×2");
+    expect(out).toContain("cleared nothing");
+  });
+
   it("a jevStats() that throws is reported as unreadable, not as no activity", async () => {
     jevStatsMock.mockRejectedValue(new Error("activity store is corrupt"));
     const human = await runJevCommand(["status"], RENDER);

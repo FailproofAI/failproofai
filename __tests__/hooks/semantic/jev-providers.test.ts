@@ -214,7 +214,7 @@ describe("answer parsing and version handling", () => {
     expect(codeOfSync(() => readAnswers(request, unreported))).toBe("model-mismatch");
   });
 
-  it("openrouter: accepts the dated 1.13 snapshot, refuses another family", async () => {
+  it("openrouter: accepts the dated 1.13 snapshot, refuses another family, an alias or no model", async () => {
     reply({ model: "typesafe/jev-1.13-20260917", answers });
     const res = await send(CONFIGS.openrouter);
     expect(readAnswers(request, res)).toEqual({ a: 0.25, b: 0.75 });
@@ -223,6 +223,21 @@ describe("answer parsing and version handling", () => {
     reply({ model: "typesafe/jev-1.14-20270101", answers });
     const newer = await send(CONFIGS.openrouter);
     expect(codeOfSync(() => readAnswers(request, newer))).toBe("model-mismatch");
+
+    // Unlike Vercel and Cloudflare, OpenRouter always names the snapshot that
+    // answered, so an unversioned reply says nothing about the version and is
+    // not accepted as one: it is neither an alias this route trusts nor a
+    // route allowed to report nothing.
+    reply({ model: "typesafe/jev", answers });
+    const aliased = await send(CONFIGS.openrouter);
+    expect(aliased.modelUnverified).toBeUndefined();
+    expect(codeOfSync(() => readAnswers(request, aliased))).toBe("model-mismatch");
+
+    reply({ answers });
+    const unreported = await send(CONFIGS.openrouter);
+    expect(unreported.modelUnverified).toBeUndefined();
+    expect(unreported.model).toBe("");
+    expect(codeOfSync(() => readAnswers(request, unreported))).toBe("model-mismatch");
   });
 
   it("vercel: its unversioned alias (or no model) is accepted and marked unverified; a reported other version is refused", async () => {
@@ -291,6 +306,24 @@ describe("answer parsing and version handling", () => {
     reply({ model: "jev-1.13.0", answers: { a: { noul: 0.1 }, b: { noul: Number.NaN } } });
     const res = await send(CONFIGS.typesafe);
     expect(codeOfSync(() => readAnswers(request, res))).toBe("malformed");
+  });
+
+  it("refuses a probability outside [0, 1] or not finite, which is only reachable below the wire", () => {
+    // Over the wire these never arrive as themselves — JSON.stringify writes
+    // NaN and Infinity as null — so the range and finiteness checks can only
+    // be exercised by calling readAnswers with the response object, which is
+    // exactly what a gateway or an in-process transport can hand it. It
+    // matters because the number goes straight into the decision thresholds,
+    // and in enforce mode (the default) a Jev answer can clear a reviewable
+    // policy's deny.
+    const answered = (noul: number): JevResponse => ({ model: "jev-1.13.0", answers: { a: { noul }, b: { noul: 0.5 } } });
+    for (const bad of [1.5, 1.0000001, -0.2, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(codeOfSync(() => readAnswers(request, answered(bad))), `noul=${String(bad)}`).toBe("malformed");
+    }
+    // The ends of the range are answers, not errors.
+    expect(readAnswers(request, { model: "jev-1.13.0", answers: { a: { noul: 0 }, b: { noul: 1 } } })).toEqual({ a: 0, b: 1 });
+    // And a value of the wrong type still is one.
+    expect(codeOfSync(() => readAnswers(request, { model: "jev-1.13.0", answers: { a: { noul: "0.5" } } } as unknown as JevResponse))).toBe("malformed");
   });
 });
 

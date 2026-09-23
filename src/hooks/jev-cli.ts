@@ -18,10 +18,11 @@
  * because a cooked-mode read would echo each character as it is typed. No
  * output of this module, human or `--json`, contains the key; provider error
  * text is scrubbed of it in `jev-client.ts`, and `jev test` scrubs whatever
- * error it prints once more. No subcommand repeats a value it could not use
+ * error it prints once more. Nothing here repeats a value it could not use
  * (a stray argument, an unknown provider, an unreadable timeout, a model id
- * shaped like a key): a key pasted into the wrong place on the command line is
- * already in shell history, and does not also need to be on the screen.
+ * shaped like a key, or an unknown subcommand that is not shaped like one):
+ * a key pasted into the wrong place on the command line is already in shell
+ * history, and does not also need to be on the screen.
  *
  * # A stored key stays with its host
  *
@@ -43,7 +44,8 @@
  * Hooks read the file on every event (see `loadJevConfig`), so a setup, a mode
  * switch or a remove applies on the next tool call, daemon or not.
  */
-import { existsSync, statSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, statSync, unlinkSync } from "node:fs";
+import { dirname } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import {
   DEFAULT_JEV_MODE,
@@ -113,6 +115,9 @@ const ENV_KEY_STAND_IN = "env-key-stand-in";
  * history and does not also need to be on the screen.
  */
 const STRAY_ARGUMENT = "Unexpected argument (not repeated here, in case it is a key). The key goes on stdin: --key-stdin.";
+
+/** What a mistyped subcommand looks like, and no key does: short, lower-case letters and dashes. */
+const SUBCOMMAND_SHAPE = /^[a-z][a-z-]{0,20}$/;
 
 const VALUE_FLAGS = new Set(["--provider", "--base-url", "--account-id", "--model", "--timeout-ms", "--mode"]);
 const BOOL_FLAGS = new Set(["--key-stdin", "--key-from-env", "--json"]);
@@ -208,10 +213,19 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
     .sort((a, b) => b[1] - a[1])
     .map(([r, n]) => `${r} ×${n}`)
     .join(", ");
-  const clears = Object.entries(stats.clearsByPolicy)
-    .sort((a, b) => b[1] - a[1])
-    .map(([p, n]) => `${p} ×${n}`)
-    .join(", ");
+  const byPolicy = (counts: Record<string, number> | undefined) =>
+    Object.entries(counts ?? {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([p, n]) => `${p} ×${n}`)
+      .join(", ");
+  const clears = byPolicy(stats.clearsByPolicy);
+  // `clearsByPolicy` counts clears that CHANGED an outcome, which only enforce
+  // mode can do; in shadow mode every clear Jev would have made is in
+  // `shadowClearsByPolicy` instead and this one is empty. Printing the first
+  // alone would tell a shadow user "cleared nothing" — the one number they
+  // turned shadow mode on to watch. The field is optional because the stats
+  // module T1 builds against does not have it yet (T8 adds it).
+  const shadowClears = byPolicy((stats as { shadowClearsByPolicy?: Record<string, number> }).shadowClearsByPolicy);
   const ms = (v: number | null) => (v === null ? "—" : `${Math.round(v)} ms`);
   return stack(
     heading,
@@ -221,6 +235,7 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
         ["fell back to regex", `${pct(stats.fallbackRate)}${reasons ? ` (${reasons})` : ""}`],
         ["latency", `p50 ${ms(stats.latencyP50Ms)} · p95 ${ms(stats.latencyP95Ms)}`],
         ["cleared", clears || "nothing"],
+        ...(shadowClears ? ([["would have cleared (shadow)", shadowClears]] as Array<[string, string]>) : []),
       ],
       opts,
     ),
@@ -427,6 +442,28 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   } catch {
     // Reported as unknown below.
   }
+  // `writeJsonAtomically` creates the directory at 0700, but leaves a
+  // pre-existing one alone — and older code paths create ~/.failproofai at the
+  // umask, which on a umask-002 machine is group-writable. A directory others
+  // can write into defeats the file's 0600 (they replace the file and the key
+  // goes to their endpoint), so the one command that puts a key there takes
+  // that away. Exactly the write bits the loader refuses, and no more: read
+  // bits give nobody that power, and config.json in the same directory is
+  // world-readable by design.
+  const dir = dirname(path);
+  let tightenedDir: { path: string; to: string } | null = null;
+  if (process.platform !== "win32") {
+    try {
+      const before = statSync(dir).mode & 0o777;
+      if ((before & 0o022) !== 0) {
+        const after = before & ~0o022;
+        chmodSync(dir, after);
+        tightenedDir = { path: dir, to: after.toString(8).padStart(4, "0") };
+      }
+    } catch {
+      // Not fatal: the loader reports a directory it will not read from.
+    }
+  }
 
   const route = jevRoute(cfg);
   return ok(
@@ -445,6 +482,12 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
         ],
         opts,
       ),
+      tightenedDir
+        ? note(
+            `${tightenedDir.path} was writable by other users, who could have replaced this file whatever its own permissions were; it is now ${tightenedDir.to}.`,
+            opts,
+          )
+        : null,
       note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
       nextStep("failproofai jev test", "Check it with one live request:", opts),
     ),
@@ -459,6 +502,20 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
  * go — and shadow mode lets a loopback http URL through validation. Null when
  * it names nothing recognisable.
  */
+/**
+ * The route a config with no stored key would take, for display. The key does
+ * not decide where requests go, so a stand-in fills it; null when the routing
+ * fields do not make a usable route (`inspectJevConfig` has already validated
+ * them, so that is a belt-and-braces null).
+ */
+function routeForRouting(routing: Omit<JevConfig, "apiKey">): ReturnType<typeof jevRoute> | null {
+  try {
+    return jevRoute({ ...routing, apiKey: ENV_KEY_STAND_IN });
+  } catch {
+    return null;
+  }
+}
+
 function namedEndpoint(raw: Record<string, unknown> | null): string | null {
   if (!raw || typeof raw.provider !== "string" || !(JEV_PROVIDER_KINDS as readonly string[]).includes(raw.provider)) return null;
   const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "shadow" };
@@ -494,6 +551,23 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         const named = namedEndpoint(readJevConfigFileForUpdate()?.raw ?? null);
         if (named) base.endpoint = named;
       }
+    }
+    if (inspection.status === "key-missing") {
+      // Configured, just not usable in THIS environment: a provisioning check
+      // must be able to tell that from a file it should rewrite, so the routing
+      // is reported exactly as for `ok`, with `keySource: "env"` and a reason.
+      const route = routeForRouting(inspection.routing);
+      Object.assign(base, {
+        permissions: octal(inspection.mode),
+        provider: inspection.routing.provider,
+        ...(route ? { endpoint: displayEndpoint(route.endpoint), model: route.model, modelIsDefault: route.modelIsDefault } : {}),
+        mode: inspection.routing.mode,
+        timeoutMs: inspection.routing.timeoutMs,
+        keySource: "env",
+        keyEnvVar: JEV_API_KEY_ENV,
+        reason: "no-env-key",
+        problem: inspection.problem,
+      });
     }
     if (inspection.status === "ok") {
       const { config: cfg } = inspection;
@@ -540,6 +614,43 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     );
   }
 
+  if (inspection.status === "key-missing") {
+    // Not a refusal: this is the file `setup --key-from-env` writes, doing what
+    // it was asked to. Saying "write a valid one" here would tell its owner to
+    // undo the one choice they made, so it reads like `absent` — off HERE —
+    // and the next step is the variable, not a rewrite.
+    const route = routeForRouting(inspection.routing);
+    return ok(
+      stack(
+        title("failproofai jev status", "off in this shell", opts),
+        note(
+          `Jev is off in this shell: ${inspection.path} stores no key and takes it from ${JEV_API_KEY_ENV}, which is not set here. ` +
+            "The config is fine; hooks run the regex policies wherever the variable is unset — including under the daemon, which does not see a shell's environment.",
+          opts,
+        ),
+        rows(
+          [
+            ["provider", inspection.routing.provider],
+            ...((route
+              ? [
+                  ["endpoint", displayEndpoint(route.endpoint)],
+                  ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
+                ]
+              : []) as Array<[string, string]>),
+            ["mode", modeLine(inspection.routing.mode ?? DEFAULT_JEV_MODE)],
+            ["config", inspection.path],
+            ["permissions", permissions(inspection.mode)],
+            ["key", `from ${JEV_API_KEY_ENV} — not set in this shell`],
+          ],
+          opts,
+        ),
+        nextStep(`failproofai jev setup --key-stdin < key-file`, `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file instead:`, opts),
+        legacyNote,
+        jevStatsLines(stats, opts),
+      ),
+    );
+  }
+
   if (inspection.status === "refused") {
     // A file other users could change may name an endpoint its owner never
     // chose, and `chmod 600` would start trusting it with the key — so say
@@ -552,8 +663,9 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         named ? rows([["endpoint it names", named]], opts) : null,
         inspection.reason === "too-open"
           ? nextStep(
-              `chmod 600 ${inspection.path}`,
-              "Other users could change this file, so check that endpoint is one you chose. Then make the file owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+              // Either the file or the directory it sits in; `fix` says which.
+              inspection.fix ?? `chmod 600 ${inspection.path}`,
+              "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
               opts,
             )
           : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
@@ -615,11 +727,21 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     const why =
       inspection.status === "absent"
         ? `There is no ${inspection.path}; nothing to test.`
-        : `${inspection.path} was refused — ${inspection.problem}.`;
-    const json = asJson
-      ? JSON.stringify({ ok: false, error: { code: inspection.status === "absent" ? "not-configured" : "config", message: why } }, null, 2)
-      : undefined;
-    return fail(stack(title("failproofai jev test", "not run", opts), note(why, opts), nextStep("failproofai jev setup --provider <kind> --key-stdin", undefined, opts)), json);
+        : inspection.status === "key-missing"
+          ? `${inspection.path} takes its key from ${JEV_API_KEY_ENV}, which is not set in this shell, so there is no key to test with.`
+          : `${inspection.path} was refused — ${inspection.problem}.`;
+    const code = inspection.status === "absent" ? "not-configured" : inspection.status === "key-missing" ? "no-env-key" : "config";
+    const fixCmd =
+      inspection.status === "key-missing" ? "failproofai jev setup --key-stdin < key-file" : "failproofai jev setup --provider <kind> --key-stdin";
+    const json = asJson ? JSON.stringify({ ok: false, error: { code, message: why } }, null, 2) : undefined;
+    return fail(
+      stack(
+        title("failproofai jev test", "not run", opts),
+        note(why, opts),
+        nextStep(fixCmd, inspection.status === "key-missing" ? `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file:` : undefined, opts),
+      ),
+      json,
+    );
   }
 
   const cfg = inspection.config;
@@ -754,7 +876,16 @@ export async function runJevCommand(argv: string[], deps: JevCliDeps = {}): Prom
       return test(rest, deps, opts);
     case "remove":
       return remove(rest, opts);
-    default:
-      return fail([sub ? `Unknown subcommand: ${sub}` : "A subcommand is required.", "", ...JEV_USAGE]);
+    default: {
+      // The subcommand slot takes a pasted key as readily as any flag does
+      // (`failproofai jev <key>`, having forgotten `setup --key-stdin`), so it
+      // is repeated only when it is shaped like a subcommand — which no key is.
+      const nameLike = sub !== undefined && SUBCOMMAND_SHAPE.test(sub);
+      return fail([
+        !sub ? "A subcommand is required." : nameLike ? `Unknown subcommand: ${sub}` : "Unknown subcommand (not repeated here, in case it is a key).",
+        "",
+        ...JEV_USAGE,
+      ]);
+    }
   }
 }

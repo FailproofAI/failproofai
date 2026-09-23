@@ -12,9 +12,13 @@
  * that judges its own tool calls would be choosing its own verdict. So:
  *
  * - no project-scope file is ever read (`<cwd>/.failproofai/jev.json` is inert);
- * - `provider`, `baseUrl`, `model` and `accountId` come from the file only,
- *   never from the environment — a repo's `.claude/settings.json` can set env
- *   vars for a session;
+ * - `provider`, `baseUrl`, `model` and `accountId` come from the file at
+ *   `failproofaiHome()/jev.json` only, never from the environment — a repo's
+ *   `.claude/settings.json` can set env vars for a session. (`FAILPROOFAI_HOME`
+ *   is not an exception to that: it relocates the ENTIRE failproofai layout,
+ *   policies and all, rather than redirecting Jev in particular, and a layout
+ *   pointed somewhere new has no policies to evaluate and no 0600 jev.json a
+ *   checkout could have produced.)
  * - `FAILPROOFAI_JEV_API_KEY` may supply the KEY, and only when the file has
  *   none. It exists for single-session use and for people who keep keys off
  *   disk. It can never switch Jev on by itself (no file → null), never replace
@@ -31,6 +35,14 @@
  * other bit counts, not just read: a group-writable file lets someone else
  * choose the endpoint.
  *
+ * Its DIRECTORY is checked too, for write bits only. A directory another user
+ * can write into gives them the file's power by another route — unlink it and
+ * create their own 0600 one, which every check above would then read as the
+ * owner's. `jev setup` takes those bits off, so a home that some older code
+ * path created at the umask is fixed the first time Jev is configured. Read
+ * bits are left alone at both ends: they give nobody that power, and
+ * `config.json` beside it is world-readable by design.
+ *
  * # Read on every hook event, on purpose
  *
  * Deliberately uncached: one open + fstat + read of a file capped at 64 KiB is
@@ -38,7 +50,8 @@
  * the very next tool call — including inside the long-lived daemon worker —
  * with no restart and no stale state to reason about.
  */
-import { closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { jevConfigFile } from "../fp-home";
 
 export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare" | "custom";
@@ -132,7 +145,15 @@ const API_KEY_RE = /^[\x21-\x7e]{1,4096}$/;
 const MODEL_RE = /^[A-Za-z0-9._:/@~+-]{1,200}$/;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
-export type ValidationResult<T> = { ok: true; value: T } | { ok: false; problem: string };
+export type ValidationResult<T> =
+  | { ok: true; value: T }
+  /**
+   * `missingKey` marks the one failure that is not a fault in the file: it
+   * carries no `apiKey` and `FAILPROOFAI_JEV_API_KEY` is unset here. Callers
+   * that can tell those apart (`inspectJevConfig`, and `jev status` through it)
+   * use the flag rather than matching on `problem`.
+   */
+  | { ok: false; problem: string; missingKey?: true };
 
 /** A key is visible ASCII, one line, at most 4 KiB. The message never includes the key. */
 export function validateApiKey(key: unknown): string | null {
@@ -246,7 +267,11 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
     if (bad) return { ok: false, problem: `${JEV_API_KEY_ENV} is set but invalid: ${bad}` };
     apiKey = envKey;
   } else {
-    return { ok: false, problem: `no API key: set apiKey in the file (failproofai jev setup), or ${JEV_API_KEY_ENV} for this session` };
+    return {
+      ok: false,
+      problem: `no API key: set apiKey in the file (failproofai jev setup), or ${JEV_API_KEY_ENV} for this session`,
+      missingKey: true,
+    };
   }
 
   const cfg: JevConfig = { provider: kind, apiKey, mode: DEFAULT_JEV_MODE, timeoutMs: JEV_CONFIG_DEFAULT_TIMEOUT_MS };
@@ -312,17 +337,69 @@ export type JevConfigInspection =
   | { status: "absent"; path: string }
   | { status: "ok"; path: string; mode: number | null; keySource: "file" | "env"; config: JevConfig }
   | {
+      /**
+       * The file is sound and names `FAILPROOFAI_JEV_API_KEY` as the key's
+       * source (`jev setup --key-from-env` writes exactly this), but the
+       * variable is not set in THIS process. Jev is off here — `loadJevConfig`
+       * returns null, as for every status but `ok` — and on wherever the
+       * variable is set. Kept apart from `refused` because nothing is wrong
+       * with the file: telling the owner to write a valid one would have them
+       * overwrite the config they chose, and a provisioning check reading
+       * `status --json` should see a configured machine, not a broken one.
+       */
+      status: "key-missing";
+      path: string;
+      mode: number | null;
+      /** Everything the file says except the key, so `jev status` can show the route. */
+      routing: Omit<JevConfig, "apiKey">;
+      problem: string;
+    }
+  | {
       status: "refused";
       path: string;
       /** The file's permission bits, when they are the reason. */
       mode: number | null;
       reason: "too-open" | "unreadable" | "too-large" | "not-json" | "invalid";
       problem: string;
+      /** The command that fixes it, when one does. */
+      fix?: string;
     };
 
 function readEnvKey(): string | null {
   const v = process.env[JEV_API_KEY_ENV];
   return v === undefined || v === "" ? null : v;
+}
+
+/**
+ * A placeholder key, used only to answer "is this file sound apart from the
+ * key?" when the variable that would supply it is unset in this process.
+ * Validation stops at the missing key, so the fields after it — baseUrl,
+ * accountId, model, timeoutMs, mode — are otherwise never checked, and a file
+ * that is also malformed further down must still be reported as malformed. It
+ * is never written, never sent, and never returned: `inspectJevConfig` copies
+ * the routing fields out of the config it validates and drops the rest.
+ */
+const KEY_STAND_IN = "supplied-by-the-environment";
+
+/**
+ * Group- or world-WRITE bits on the directory holding the config. Anyone who
+ * can write there can unlink the owner's file and leave their own 0600 one,
+ * which every check on the file itself then passes. Read bits are deliberately
+ * not included: a 0755 home is ordinary and gives nobody that power, while the
+ * file inside it is checked for read bits too.
+ */
+const DIR_WRITABLE_BY_OTHERS = 0o022;
+
+/** The config directory's mode when others can write to it, else null. */
+function looseConfigDirMode(path: string): number | null {
+  if (!modesAreMeaningful()) return null;
+  try {
+    const mode = statSync(dirname(path)).mode & 0o777;
+    return (mode & DIR_WRITABLE_BY_OTHERS) !== 0 ? mode : null;
+  } catch {
+    // No directory, or no permission to stat it: the file read reports that.
+    return null;
+  }
 }
 
 /** Whether permission bits can be trusted to mean anything here. */
@@ -364,6 +441,21 @@ export function inspectJevConfig(): JevConfigInspection {
         mode,
         reason: "too-open",
         problem: `its permissions are ${mode.toString(8).padStart(4, "0")}; it holds a key, so it must be owner-only (chmod 600 ${path})`,
+        fix: `chmod 600 ${path}`,
+      };
+    }
+    const dirMode = looseConfigDirMode(path);
+    if (dirMode !== null) {
+      // 0600 on the file means nothing while another user can replace the file.
+      return {
+        status: "refused",
+        path,
+        mode,
+        reason: "too-open",
+        problem:
+          `its directory ${dirname(path)} is ${dirMode.toString(8).padStart(4, "0")} — other users can write there, ` +
+          `so they can put their own config in its place; it must be owner-only (chmod 700 ${dirname(path)})`,
+        fix: `chmod 700 ${dirname(path)}`,
       };
     }
     if (st.size > MAX_CONFIG_BYTES) return { status: "refused", path, mode, reason: "too-large", problem: `it is larger than ${MAX_CONFIG_BYTES} bytes` };
@@ -393,14 +485,36 @@ export function inspectJevConfig(): JevConfigInspection {
   }
   const envKey = readEnvKey();
   const r = validateJevConfig(parsed, envKey);
-  if (!r.ok) return { status: "refused", path, mode, reason: "invalid", problem: r.problem };
+  if (!r.ok) {
+    if (r.missingKey === true) {
+      // Nothing is wrong with the file unless the REST of it is wrong too, and
+      // validation never got that far, so ask again with a stand-in key.
+      const rest = validateJevConfig(parsed, KEY_STAND_IN);
+      if (rest.ok) {
+        const routing: Omit<JevConfig, "apiKey"> = { provider: rest.value.provider, mode: rest.value.mode, timeoutMs: rest.value.timeoutMs };
+        if (rest.value.baseUrl !== undefined) routing.baseUrl = rest.value.baseUrl;
+        if (rest.value.accountId !== undefined) routing.accountId = rest.value.accountId;
+        if (rest.value.model !== undefined) routing.model = rest.value.model;
+        return {
+          status: "key-missing",
+          path,
+          mode,
+          routing,
+          problem: `it carries no apiKey, so the key comes from ${JEV_API_KEY_ENV} — which is not set in this environment`,
+        };
+      }
+      return { status: "refused", path, mode, reason: "invalid", problem: rest.problem };
+    }
+    return { status: "refused", path, mode, reason: "invalid", problem: r.problem };
+  }
   const keySource = (parsed as Record<string, unknown>).apiKey !== undefined ? "file" : "env";
   return { status: "ok", path, mode, keySource, config: r.value };
 }
 
 /**
- * The validated global config, or null — absent, refused, or invalid all mean
- * Jev is off and the regex path runs unchanged. Never throws.
+ * The validated global config, or null — absent, refused, invalid, or a
+ * key-from-the-environment file in an environment that does not set it all
+ * mean Jev is off and the regex path runs unchanged. Never throws.
  */
 export function loadJevConfig(): JevConfig | null {
   try {
@@ -416,9 +530,11 @@ export interface JevConfigFileForUpdate {
   /** The file's permission bits (null where they mean nothing). */
   mode: number | null;
   /**
-   * Group or other bits were set: the loader refuses this file, and someone
-   * other than its owner may have written it — so the endpoint it names is not
-   * trusted with the key it holds (see `jev setup`).
+   * Group or other bits were set on the file, or write bits on its directory:
+   * the loader refuses this file, and someone other than its owner may have
+   * written it — so the endpoint it names is not trusted with the key it holds
+   * (see `jev setup`). A directory others can write into means the same thing,
+   * because the file in it can simply be replaced.
    */
   tooOpen: boolean;
 }
@@ -451,7 +567,8 @@ export function readJevConfigFileForUpdate(): JevConfigFileForUpdate | null {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const meaningful = modesAreMeaningful();
     const mode = meaningful ? st.mode & 0o777 : null;
-    return { raw: parsed as Record<string, unknown>, mode, tooOpen: mode !== null && (mode & 0o077) !== 0 };
+    const tooOpen = mode !== null && ((mode & 0o077) !== 0 || looseConfigDirMode(path) !== null);
+    return { raw: parsed as Record<string, unknown>, mode, tooOpen };
   } catch {
     return null;
   } finally {

@@ -968,7 +968,8 @@ async function runCli() {
             label: "notes",
             lines: [
               "• Global only: ~/.failproofai/jev.json, written 0600. A copy anyone",
-              "  else can read is refused, and a repository can never set it.",
+              "  else can read — or one in a directory anyone else can WRITE, who",
+              "  could replace it — is refused; a repository can never set it.",
               "• Re-running setup for the same provider keeps the key, so",
               "  `failproofai jev setup --mode shadow` just switches the mode.",
               "• The daemon does not see your shell's environment: keep the key in",

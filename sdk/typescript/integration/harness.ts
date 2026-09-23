@@ -134,18 +134,25 @@ export function fixtures(): string[] {
  */
 export function transpile(fixture: string): void {
   const dir = join(FIXTURES, fixture);
-  const source = readFileSync(join(dir, "agent.ts"), "utf8");
   const out = join(dir, ".run");
   mkdirSync(out, { recursive: true });
-  const emit = (module: ts.ModuleKind, file: string): void => {
-    const { outputText } = ts.transpileModule(source, {
-      compilerOptions: { module, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-      fileName: join(dir, "agent.ts"),
-    });
-    writeFileSync(join(out, file), outputText);
-  };
-  emit(ts.ModuleKind.ESNext, "agent.mjs");
-  emit(ts.ModuleKind.CommonJS, "agent.cjs");
+  // `agent.ts`, plus any other top-level `agent-*.ts` program a fixture carries
+  // for APIs only its own framework release has (run through `runAgent`'s
+  // `program`). Each is standalone: programs never import one another.
+  const programs = readdirSync(dir).filter((name) => /^agent(-[\w-]+)?\.ts$/.test(name));
+  for (const name of programs) {
+    const base = name.slice(0, -".ts".length);
+    const source = readFileSync(join(dir, name), "utf8");
+    const emit = (module: ts.ModuleKind, file: string): void => {
+      const { outputText } = ts.transpileModule(source, {
+        compilerOptions: { module, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+        fileName: join(dir, name),
+      });
+      writeFileSync(join(out, file), outputText);
+    };
+    emit(ts.ModuleKind.ESNext, `${base}.mjs`);
+    emit(ts.ModuleKind.CommonJS, `${base}.cjs`);
+  }
 }
 
 /** Run one case of a fixture's agent in one module system. */
@@ -154,11 +161,13 @@ export function runAgent(
   format: Format,
   scenario: string,
   env: Record<string, string> = {},
+  /** Which `agent*.ts` program of the fixture to run; `agent` unless it carries more. */
+  program = "agent",
 ): RunResult {
   const dir = join(FIXTURES, fixture);
   const home = mkdtempSync(join(tmpdir(), `failproofai-it-${fixture}-`));
   try {
-    const entry = join(dir, ".run", format === "esm" ? "agent.mjs" : "agent.cjs");
+    const entry = join(dir, ".run", `${program}.${format === "esm" ? "mjs" : "cjs"}`);
     const result = spawnSync(process.execPath, [entry, scenario], {
       cwd: dir,
       encoding: "utf8",

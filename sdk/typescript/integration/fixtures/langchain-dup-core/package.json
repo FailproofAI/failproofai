@@ -1,0 +1,15 @@
+{
+  "name": "failproofai-it-langchain-dup-core",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: an app on @langchain/core 1.x + LangGraph.js 1.x whose provider package (vendor/lc-weather-provider) pins @langchain/core 0.3, so npm nests a SECOND core under it — two CallbackManager classes in one process.",
+  "dependencies": {
+    "@langchain/core": "1.2.12",
+    "@langchain/langgraph": "1.4.17",
+    "lc-weather-provider": "file:vendor/lc-weather-provider",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

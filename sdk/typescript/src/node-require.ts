@@ -14,7 +14,7 @@
  * application IS has two answers and neither is always right — see `anchors()`.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join } from "node:path";
 
@@ -150,6 +150,118 @@ export function resolveEsm(specifier: string): string | null {
 }
 
 const ESM_CONDITIONS: readonly string[] = ["node", "import", "default"];
+const CJS_CONDITIONS: readonly string[] = ["node", "require", "default"];
+
+/**
+ * The file `subpath` of the package installed at `root` resolves to, for an
+ * `import` or a `require` — or null. `root` is a package directory found on
+ * disk rather than by resolution (see `nestedCopies`), so there is no
+ * specifier to hand Node's resolver; this reads the package's own `exports`.
+ */
+export function resolveExportsAt(root: string, subpath: string, kind: "import" | "require"): string | null {
+  let manifest: { exports?: unknown; main?: unknown };
+  try {
+    manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as typeof manifest;
+  } catch {
+    return null;
+  }
+  let target: string | null;
+  if (manifest.exports === undefined) {
+    if (subpath !== ".") return null;
+    target = typeof manifest.main === "string" ? manifest.main : "index.js";
+    if (!target.startsWith("./")) target = `./${target}`;
+  } else {
+    target = matchExports(manifest.exports, subpath, kind === "import" ? ESM_CONDITIONS : CJS_CONDITIONS);
+  }
+  if (target === null || !target.startsWith("./")) return null;
+  const file = join(root, target);
+  return existsSync(file) ? file : null;
+}
+
+/** Bounds on `nestedCopies`' walk: it runs once, at `instrument()`, over a tree nobody sized. */
+const NESTED_MAX_DEPTH = 4;
+const NESTED_MAX_DIRS = 20_000;
+
+/**
+ * Every OTHER installed copy of package `name` the application can end up
+ * running: the real directories of the copies nested BENEATH some dependency
+ * (`node_modules/<dep>/node_modules/<name>`, at any depth up to a bound), in
+ * every `node_modules` on the application's resolution chain — plus, under
+ * pnpm, every version in the virtual store (`node_modules/.pnpm/<name>@<v>`).
+ *
+ * A copy exists there because a dependency could not share the application's
+ * — it pinned a different version as a hard dependency — and everything that
+ * dependency builds is built on it. `resolveFrom` can never name one: Node's
+ * resolution from the application stops at the application's own copy.
+ *
+ * Deliberately NOT included: a `<name>` sitting directly in some ancestor
+ * `node_modules`. The nearest one is the application's own copy, and a farther
+ * one is a monorepo root's hoist the application's imports never reach.
+ */
+export function nestedCopies(name: string): string[] {
+  const found = new Map<string, true>();
+  const seen = new Set<string>();
+  let budget = NESTED_MAX_DIRS;
+  const real = (path: string): string | null => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return null;
+    }
+  };
+  const list = (dir: string): string[] => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  };
+  const candidate = (dir: string): void => {
+    const path = real(dir);
+    if (path !== null && manifestNames(join(path, "package.json"), name)) found.set(path, true);
+  };
+  const scan = (modules: string, depth: number): void => {
+    const key = real(modules);
+    if (key === null || seen.has(key)) return;
+    seen.add(key);
+    for (const entry of list(modules)) {
+      if (budget <= 0) return;
+      if (entry === ".pnpm") {
+        // pnpm's virtual store: one directory per installed version.
+        const prefix = `${name.replace("/", "+")}@`;
+        for (const version of list(join(modules, entry))) {
+          if (version.startsWith(prefix)) candidate(join(modules, entry, version, "node_modules", name));
+        }
+        continue;
+      }
+      if (entry.startsWith(".")) continue;
+      const packages = entry.startsWith("@") ? list(join(modules, entry)).map((sub) => join(modules, entry, sub)) : [join(modules, entry)];
+      for (const pkg of packages) {
+        if (budget-- <= 0) return;
+        // The top level of a scanned `node_modules` is never a candidate.
+        if (depth > 0 && pkg === join(modules, name)) {
+          candidate(pkg);
+          continue;
+        }
+        if (depth < NESTED_MAX_DEPTH) {
+          const inner = join(pkg, "node_modules");
+          if (existsSync(inner)) scan(inner, depth + 1);
+        }
+      }
+    }
+  };
+  for (const anchor of anchors()) {
+    let dir = anchor;
+    for (;;) {
+      const modules = join(dir, "node_modules");
+      if (existsSync(modules)) scan(modules, 0);
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return [...found.keys()];
+}
 
 function splitSpecifier(specifier: string): { name: string | null; subpath: string } {
   const parts = specifier.split("/");

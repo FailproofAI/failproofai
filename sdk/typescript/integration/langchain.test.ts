@@ -62,6 +62,95 @@ const GRAPH = [
   "weather_graph agent_end",
 ];
 
+/**
+ * The expected trace of each plain-LangChain surface, per session.
+ *
+ * Captured from the Python adapter running the equivalent program
+ * (langchain-core 1.6.3) with `GenericFakeChatModel`; the rule on both sides is
+ * the table in `frameworks.md`: the ROOT run is the agent, named by the
+ * framework's own run name; an LCEL step, a prompt, a parser, a lambda and a
+ * `RunnableParallel` branch emit NOTHING (no `includeChains`); a chat model is
+ * its request/response pair; a retriever is a `retriever:<name>` tool pair.
+ *
+ * Where the agent_id differs from Python's it is the FRAMEWORK's run name that
+ * differs, not the mapping:
+ *   * `RunnableParallel.from({...})` runs as `RunnableMap` in LangChain.js
+ *     (Python: `RunnableParallel<a,b>`);
+ *   * a `RunnableLambda` is named `RunnableLambda` whatever its function is
+ *     called in JS (Python names it after the function), so the case sets the
+ *     run name to Python's (`shout`) instead;
+ *   * `withStructuredOutput` names its sequence `StructuredOutput` in JS
+ *     (Python: `RunnableSequence`).
+ * `.batch()` of three inputs is three roots — three sessions, exactly as
+ * Python's `.batch()` is.
+ */
+const SURFACES: Record<string, { trace: string[]; sessions?: number }> = {
+  lcel: { trace: modelRun("RunnableSequence") },
+  sequence: { trace: ["RunnableSequence agent_start", "RunnableSequence agent_end"] },
+  parallel: { trace: ["RunnableMap agent_start", "RunnableMap agent_end"] },
+  lambda: { trace: ["shout agent_start", "shout agent_end"] },
+  retriever: { trace: retrieverRun("Docs", "Docs") },
+  vectorstore: { trace: retrieverRun("VectorStoreRetriever", "VectorStoreRetriever") },
+  rag: {
+    trace: [
+      "RunnableSequence agent_start",
+      "RunnableSequence tool_use retriever:Docs",
+      "RunnableSequence tool_result retriever:Docs",
+      "RunnableSequence model_request",
+      "RunnableSequence model_response",
+      "RunnableSequence agent_end",
+    ],
+  },
+  batch3: { trace: modelRun("RunnableSequence"), sessions: 3 },
+  // `streamEvents` v2 attaches LangChain's own event-stream handler beside
+  // ours; the trace is the `.invoke()` one, with the stream folded in.
+  "stream-events": { trace: modelRun("RunnableSequence") },
+  "lcel-stream": { trace: modelRun("RunnableSequence") },
+  structured: { trace: modelRun("StructuredOutput") },
+  // `bindTools` returns a binding, which is not a run of its own: the model is
+  // the root, exactly as Python's `bind_tools(...).invoke()`.
+  "bind-tools": { trace: modelRun("ToolCallingModel") },
+};
+
+function modelRun(agent: string): string[] {
+  return [`${agent} agent_start`, `${agent} model_request`, `${agent} model_response`, `${agent} agent_end`];
+}
+
+function retrieverRun(agent: string, retriever: string): string[] {
+  return [
+    `${agent} agent_start`,
+    `${agent} tool_use retriever:${retriever}`,
+    `${agent} tool_result retriever:${retriever}`,
+    `${agent} agent_end`,
+  ];
+}
+
+/**
+ * The v1 `langchain` package's `createAgent` (langchain 1.5.12), which only the
+ * 1.x line has — so it lives in the langchain-1 fixture's own `agent-v1.ts`.
+ *
+ * Python golden: `langchain.agents.create_agent` 1.4.2 with the same scripted
+ * model, `name="weather_agent"`. Identical but for one name: LangChain.js calls
+ * the model node `model_request` where Python calls it `model` — the graph's
+ * own node name, which both adapters report verbatim.
+ */
+const CREATE_AGENT = [
+  "weather_agent agent_start",
+  "weather_agent hook_triggered model_request",
+  "weather_agent model_request",
+  "weather_agent model_response",
+  "weather_agent hook_completed model_request",
+  "weather_agent hook_triggered tools",
+  "weather_agent tool_use get_weather",
+  "weather_agent tool_result get_weather",
+  "weather_agent hook_completed tools",
+  "weather_agent hook_triggered model_request",
+  "weather_agent model_request",
+  "weather_agent model_response",
+  "weather_agent hook_completed model_request",
+  "weather_agent agent_end",
+];
+
 describe.each(FIXTURES)("%s", (fixture) => {
   it("typechecks as a customer's nodenext ES-module project", () => {
     expect(typecheck(fixture)).toBe("");
@@ -386,6 +475,208 @@ describe.each(FIXTURES)("%s", (fixture) => {
         [30, 7],
       ]);
       expect(ofType(result.events, "tool_use")[0]!.tool_call_id).toBe("call_1");
+    });
+
+    // -- plain LangChain: every surface, instrumented and by explicit handler --
+
+    describe.each(["instrument", "handler"] as const)("through %s", (mode) => {
+      const runSurface = (surface: string) => run(mode === "handler" ? `handler:${surface}` : surface);
+
+      it.each(Object.keys(SURFACES))("records %s as one root agent per input", (surface) => {
+        const expected = SURFACES[surface]!;
+        const result = runSurface(surface);
+        const sessions = [...new Set(result.events.map((e) => e.session_id))];
+        expect(sessions, describeTrace(result)).toHaveLength(expected.sessions ?? 1);
+        for (const session of sessions) {
+          expect(shape(result.events.filter((e) => e.session_id === session)), describeTrace(result)).toEqual(
+            expected.trace,
+          );
+        }
+        expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+        if (mode === "handler") expect(result.stdout).not.toContain("instrumented");
+      });
+
+      it("summarises a retriever's documents, never their text", () => {
+        for (const surface of ["retriever", "rag"]) {
+          const result = runSurface(surface);
+          const use = ofType(result.events, "tool_use")[0]!;
+          const done = ofType(result.events, "tool_result")[0]!;
+          expect(use.tool_call_id, describeTrace(result)).toBe(done.tool_call_id);
+          expect(use.input).toEqual({ query: surface === "rag" ? "weather?" : "weather in Paris" });
+          expect(done.output).toEqual({ n: 2, sources: ["wx.txt", "wx2.txt"] });
+          // Not in the retrieval's own events. (In `rag` the documents DO reach
+          // the model_request — the chain put them into the prompt.)
+          expect(JSON.stringify([use, done])).not.toContain("Rome is rainy");
+        }
+        const store = runSurface("vectorstore");
+        expect(ofType(store.events, "tool_result")[0]!.output, describeTrace(store)).toEqual({ n: 1, sources: ["wx.txt"] });
+      });
+
+      it("folds a streamed chain's tokens into one model_response, usage included", () => {
+        for (const surface of ["lcel-stream", "stream-events"]) {
+          const result = runSurface(surface);
+          const response = ofType(result.events, "model_response")[0]!;
+          expect(response.fw_streamed, describeTrace(result)).toBe(true);
+          expect(response.fw_chunks).toBe(5);
+          expect(typeof response.fw_ttft_ms).toBe("number");
+          expect(response.content).toBe("It is sunny in Paris.");
+          // Usage arrives on the LAST chunk only; it survives the aggregation.
+          expect([response.input_tokens, response.output_tokens]).toEqual([30, 7]);
+        }
+      });
+
+      it("records the tools a model was bound to, for bindTools and withStructuredOutput", () => {
+        const bound = runSurface("bind-tools");
+        const request = ofType(bound.events, "model_request")[0]!;
+        expect(request.model, describeTrace(bound)).toBe("tool-calling-1");
+        expect((request.tools as Array<{ function: { name: string } }>).map((t) => t.function.name)).toEqual([
+          "get_weather",
+        ]);
+        expect([ofType(bound.events, "model_response")[0]!.input_tokens]).toEqual([12]);
+        const structured = runSurface("structured");
+        const asked = ofType(structured.events, "model_request")[0]!;
+        expect((asked.tools as Array<{ function: { name: string } }>).map((t) => t.function.name)).toEqual(["Weather"]);
+        expect(structured.stdout).toContain('{"out":{"city":"Paris","sky":"sunny"}}');
+      });
+    });
+  });
+});
+
+describe("langchain-1: createAgent", () => {
+  it("typechecks as a customer's nodenext ES-module project", () => {
+    // `tsconfig.json` lists both programs, so this covers agent-v1.ts too.
+    expect(typecheck("langchain-1")).toBe("");
+  });
+
+  describe.each(FORMATS)("as %s", (format) => {
+    const run = (scenario: string) => {
+      const result = runAgent("langchain-1", format, scenario, {}, "agent-v1");
+      expect(result.status, describeTrace(result)).toBe(0);
+      return result;
+    };
+
+    it.each(["create-agent", "handler:create-agent", "create-agent-stream"])(
+      "records %s as one agent with its nodes as hooks",
+      (scenario) => {
+        const result = run(scenario);
+        expect(shape(result.events), describeTrace(result)).toEqual(CREATE_AGENT);
+        expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+        expect(new Set(result.events.map((e) => e.session_id)).size).toBe(1);
+        for (const hook of ofType(result.events, "hook_triggered")) expect(hook.trigger_event).toBe("graph_node");
+        expect(ofType(result.events, "tool_use")[0]!.tool_call_id).toBe("call_1");
+        expect(ofType(result.events, "model_response").map((e) => [e.input_tokens, e.output_tokens])).toEqual([
+          [12, 5],
+          [30, 7],
+        ]);
+      },
+    );
+
+    it("records middleware: a node-shaped hook is a hook, a wrapping hook adds nothing", () => {
+      // Python golden (`AgentMiddleware` with `before_model` + `wrap_model_call`):
+      // `Audit.before_model` is a node before each model turn; `wrap_model_call`
+      // runs INSIDE the model node and emits nothing of its own.
+      const result = run("create-agent-mw");
+      const before = ["weather_agent hook_triggered Audit.before_model", "weather_agent hook_completed Audit.before_model"];
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        CREATE_AGENT[0],
+        ...before,
+        ...CREATE_AGENT.slice(1, 9),
+        ...before,
+        ...CREATE_AGENT.slice(9),
+      ]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("renders the model node's Command output as messages, not LangChain's serialization envelope", () => {
+      // The model node returns `{ output: [Command] }`; its messages used to be
+      // captured as `{lc: 1, type: "constructor", id: [...], kwargs}`.
+      const result = run("create-agent");
+      const done = ofType(result.events, "hook_completed").find((e) => e.hook_name === "model_request")!;
+      const text = JSON.stringify(done.output);
+      expect(text, describeTrace(result)).not.toContain('"lc":1');
+      expect(text).toContain('"type":"ai"');
+      expect(text).toContain('"lg_name":"Command"');
+    });
+  });
+});
+
+/**
+ * Two copies of `@langchain/core` in one process: the app's 1.2.12 and 0.3.80
+ * nested under a provider that pinned it (see the fixture's `agent.ts`).
+ *
+ * The nested copy's runs INSIDE an app run were always recorded — the child is
+ * handed the parent's manager, handler and all. Its ROOT runs were recorded by
+ * nothing under `instrument()` until the adapter learned to find and patch the
+ * nested copy too. Python has no equivalent (one interpreter imports one
+ * `langchain_core`), so the expectation is the mapping rule itself: identical
+ * to the same run through the app's own copy.
+ */
+describe("langchain-dup-core: a provider nested on its own @langchain/core", () => {
+  const DUP = "langchain-dup-core";
+
+  it("typechecks as a customer's nodenext ES-module project", () => {
+    expect(typecheck(DUP)).toBe("");
+  });
+
+  const NESTED_ROOTS: Record<string, string[]> = {
+    "nested-model": modelRun("ChatWeather"),
+    "nested-tool": [
+      "get_weather agent_start",
+      "get_weather tool_use get_weather",
+      "get_weather tool_result get_weather",
+      "get_weather agent_end",
+    ],
+    "nested-retriever": retrieverRun("WeatherRetriever", "WeatherRetriever"),
+    "nested-runnable": ["forecast agent_start", "forecast agent_end"],
+  };
+
+  describe.each(FORMATS)("as %s", (format) => {
+    const run = (scenario: string) => {
+      const result = runAgent(DUP, format, scenario);
+      expect(result.status, describeTrace(result)).toBe(0);
+      return result;
+    };
+
+    it.each(Object.keys(NESTED_ROOTS))("records a root started by the nested copy (%s)", (scenario) => {
+      const result = run(scenario);
+      expect(shape(result.events), describeTrace(result)).toEqual(NESTED_ROOTS[scenario]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it.each(Object.keys(NESTED_ROOTS))("records it through an explicit handler too (%s)", (scenario) => {
+      const result = run(`handler:${scenario}`);
+      expect(shape(result.events), describeTrace(result)).toEqual(NESTED_ROOTS[scenario]);
+    });
+
+    it("does not double-record a nested root when the handler and instrument() are both active", () => {
+      const result = run("both:nested-model");
+      expect(shape(result.events), describeTrace(result)).toEqual(NESTED_ROOTS["nested-model"]);
+    });
+
+    it("records nothing through the nested copy after uninstrument()", () => {
+      const result = run("uninstrument:nested-model");
+      expect(result.events, describeTrace(result)).toEqual([]);
+    });
+
+    it("records the nested copy's model inside the app's chain", () => {
+      const result = run("app-chain");
+      expect(shape(result.events), describeTrace(result)).toEqual(modelRun("RunnableSequence"));
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records the nested copy's model inside the app's lambda, parented through the shared async context", () => {
+      const result = run("app-lambda");
+      expect(shape(result.events), describeTrace(result)).toEqual(modelRun("outer"));
+    });
+
+    it("records the nested copy's model inside the app's LangGraph graph", () => {
+      const result = run("app-graph");
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      expect(ofType(result.events, "model_response").map((e) => [e.input_tokens, e.output_tokens])).toEqual([
+        [12, 5],
+        [30, 7],
+      ]);
     });
   });
 });

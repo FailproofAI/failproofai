@@ -45,7 +45,8 @@
  * supported global-handler registry (Python has `register_configure_hook`), so
  * this is the only placement that works without editing call sites. Both are
  * patched on EVERY loaded copy of `@langchain/core` — see
- * `compat.requireModuleCopies` for why there can be two.
+ * `compat.requireModuleCopies` for why there can be two — and on every copy
+ * nested under a dependency that pinned its own (see `nestedManagers`).
  *
  * `langchainHandler()` is the patch-free path: the same handler, passed
  * explicitly. It works with or without `instrument()`, and the two together do
@@ -76,11 +77,20 @@
  */
 
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { sessionId as ambientSessionId } from "../context.js";
 import { logger } from "../logger.js";
 import { isCancellation as isScopeCancellation } from "../scopes.js";
-import { nodeRequire, resolveFrom } from "../node-require.js";
+import {
+  entryIsCommonJs,
+  importModule,
+  isRequired,
+  nestedCopies,
+  nodeRequire,
+  resolveExportsAt,
+  resolveFrom,
+} from "../node-require.js";
 import * as compat from "./compat.js";
 import * as core from "./core.js";
 import type { Adapter } from "./core.js";
@@ -524,6 +534,19 @@ function plain(value: unknown, depth = 0): unknown {
   }
   const kwargs = (value as Loose).lc_kwargs;
   if (isObject(kwargs)) return plain(kwargs, depth + 1);
+  // A LangGraph `Command` / `Send` — what every `createAgent` model node
+  // returns. Not `Serializable`, so `truncate()` would dump it through its own
+  // `toJSON()` and every message inside through LangChain's envelope. Take the
+  // dump here instead and give its contents the same payload view.
+  const dump = (value as { toJSON?: unknown }).toJSON;
+  if (typeof dump === "function") {
+    try {
+      const dumped: unknown = (dump as () => unknown).call(value);
+      if (isPlainObject(dumped) && dumped.lc === undefined) return plain(dumped, depth + 1);
+    } catch {
+      // A throwing `toJSON` is the value's problem; `truncate` renders it.
+    }
+  }
   return value;
 }
 
@@ -2086,21 +2109,84 @@ function closeEverything(): void {
   state.tracker.closeOpenAgents("cancelled");
 }
 
+/**
+ * The `CallbackManager` of every OTHER installed copy of `@langchain/core` —
+ * the ones nested under a dependency that pinned its own version.
+ *
+ * That layout is ordinary: a provider or community package declaring
+ * `@langchain/core` as a hard dependency on a range the application's copy does
+ * not satisfy gets its own copy at `node_modules/<pkg>/node_modules/
+ * @langchain/core`, and everything it exports — its chat model, its tools, its
+ * retrievers — is built on that copy. Resolution from the application can never
+ * reach it. A run such a class starts INSIDE one of the application's runs was
+ * always recorded: the child is handed the parent's manager, handler included.
+ * But one it starts as a ROOT — `providerModel.invoke()`, a provider's tool or
+ * retriever called directly — went through the nested copy's own, unpatched
+ * `configure`, and was recorded nowhere, silently, while `instrument()`
+ * reported success (VERIFIED: `integration/fixtures/langchain-dup-core`).
+ *
+ * LangChain offers no cross-copy hook to use instead. Its one registration
+ * point, `registerConfigureHook`, keys its list on a module-private
+ * `Symbol("lc:configure_hooks")` — each copy reads only its own — and stores
+ * it in the current async context, not globally. So the copies are found on
+ * disk (`nestedCopies`) and loaded the way the application will load them: the
+ * build its module system reaches, plus the CommonJS build if something has
+ * already `require`d it — `requireModuleCopies`' rule, for the same reasons. A
+ * copy outside the declared range is left alone rather than patched blind.
+ *
+ * The one arrangement this cannot see is the one `requireModuleCopies` cannot:
+ * an ES-module application whose CommonJS-only dependency `require`s its nested
+ * copy AFTER `instrument()`. `langchainHandler()` covers it.
+ */
+async function nestedManagers(): Promise<CallbackManagerCtor[]> {
+  const found: CallbackManagerCtor[] = [];
+  for (const root of nestedCopies(PACKAGE)) {
+    await core.callSafely(
+      async () => {
+        const version = (nodeRequire(join(root, "package.json")) as { version?: unknown }).version;
+        const parts = compat.parseVersion(typeof version === "string" ? version : "");
+        if (parts.length === 0 || (parts[0] ?? 0) >= 2 || ((parts[0] ?? 0) === 0 && (parts[1] ?? 0) < 3)) {
+          logger.debug(`langchain adapter leaving ${root} (${String(version)}) alone: outside >=0.3.0 <2.0.0`);
+          return;
+        }
+        const cjs = resolveExportsAt(root, "./callbacks/manager", "require");
+        const esm = resolveExportsAt(root, "./callbacks/manager", "import");
+        const modules: unknown[] = [];
+        if (esm === null || entryIsCommonJs()) {
+          if (cjs !== null) modules.push(nodeRequire(cjs));
+        } else {
+          modules.push(await importModule(pathToFileURL(esm).href));
+          if (cjs !== null && cjs !== esm && isRequired(cjs)) modules.push(nodeRequire(cjs));
+        }
+        for (const module of modules) {
+          const CallbackManager = (module as { CallbackManager?: unknown }).CallbackManager;
+          if (typeof CallbackManager === "function") found.push(CallbackManager as CallbackManagerCtor);
+        }
+      },
+      [],
+      `${NAME}.nestedManagers`,
+    );
+  }
+  return found;
+}
+
 export const adapter: Adapter = {
   name: NAME,
 
   async install(options: Record<string, unknown> = {}): Promise<void> {
     // Every loaded copy: the ES-module and CommonJS builds of @langchain/core
     // are two different CallbackManager classes. See `requireModuleCopies`.
-    const managers = (
+    const primary = (
       (await compat.requireModuleCopies(
         "@langchain/core/callbacks/manager",
         "npm install @langchain/core",
       )) as Array<{ CallbackManager?: CallbackManagerCtor }>
     ).map((module) => module.CallbackManager);
-    if (managers.some((CallbackManager) => typeof CallbackManager !== "function")) {
+    if (primary.some((CallbackManager) => typeof CallbackManager !== "function")) {
       throw new Error("@langchain/core/callbacks/manager does not export CallbackManager");
     }
+    // ...and every copy nested under a dependency. See `nestedManagers`.
+    const managers = [...new Set([...primary, ...(await nestedManagers())])] as CallbackManagerCtor[];
 
     compat.checkVersion(NAME, PACKAGE, {
       minimum: "0.3.0",
@@ -2124,7 +2210,7 @@ export const adapter: Adapter = {
     // through the other would install cleanly and record nothing — the single
     // most expensive failure an adapter can have, because everything looks fine.
     let patched = 0;
-    for (const CallbackManager of managers as CallbackManagerCtor[]) {
+    for (const CallbackManager of managers) {
       for (const method of ["configure", "_configureSync"] as const) {
         const original = CallbackManager[method];
         if (typeof original !== "function") continue;

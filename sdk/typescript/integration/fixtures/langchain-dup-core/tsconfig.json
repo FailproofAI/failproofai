@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "files": ["agent.ts", "agent-v1.ts"]
+  "files": ["agent.ts"]
 }

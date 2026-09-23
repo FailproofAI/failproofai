@@ -16,11 +16,28 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as failproofai from "@failproofai/sdk";
 import { langchainHandler } from "@failproofai/sdk/langchain";
 import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
-import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
+import { Document } from "@langchain/core/documents";
+import { Embeddings } from "@langchain/core/embeddings";
+import {
+  BaseChatModel,
+  type BaseChatModelCallOptions,
+  type BaseChatModelParams,
+} from "@langchain/core/language_models/chat_models";
 import { AIMessage, AIMessageChunk, HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
-import { RunnableLambda } from "@langchain/core/runnables";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { BaseRetriever } from "@langchain/core/retrievers";
+import {
+  RunnableLambda,
+  RunnableParallel,
+  RunnablePassthrough,
+  RunnableSequence,
+  type RunnableConfig,
+} from "@langchain/core/runnables";
 import { tool } from "@langchain/core/tools";
+import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
+import { VectorStore } from "@langchain/core/vectorstores";
 import { Annotation, Command, END, MemorySaver, MessagesAnnotation, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { ToolNode, createReactAgent } from "@langchain/langgraph/prebuilt";
 import { z } from "zod";
@@ -101,6 +118,226 @@ const brokenWeather = tool(
     schema: z.object({ city: z.string() }),
   },
 );
+
+// ---------------------------------------------------------------------------
+// Plain LangChain: LCEL, retrievers, structured output, bound tools
+// ---------------------------------------------------------------------------
+
+const ANSWER = "It is sunny in Paris.";
+/** How `AnswerModel` streams `ANSWER`: five chunks, usage on the last one. */
+const ANSWER_CHUNKS = ["It", " is", " sunny", " in", " Paris."];
+
+/**
+ * Always answers, and streams like a provider does. The usage rides on the
+ * LAST chunk, where OpenAI and Anthropic put it, so a streamed call's tokens
+ * survive only if the adapter reads the aggregated generation.
+ */
+class AnswerModel extends BaseChatModel {
+  _llmType(): string {
+    return "answer";
+  }
+
+  async _generate(): Promise<ChatResult> {
+    const message = new AIMessage({
+      content: ANSWER,
+      usage_metadata: { input_tokens: 30, output_tokens: 7, total_tokens: 37 },
+      response_metadata: { finish_reason: "stop" },
+    });
+    return { generations: [{ text: ANSWER, message }] };
+  }
+
+  override async *_streamResponseChunks(
+    _messages: BaseMessage[],
+    _options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun,
+  ): AsyncGenerator<ChatGenerationChunk> {
+    for (const [index, text] of ANSWER_CHUNKS.entries()) {
+      const last = index === ANSWER_CHUNKS.length - 1;
+      const message = new AIMessageChunk({
+        content: text,
+        ...(last ? { usage_metadata: { input_tokens: 30, output_tokens: 7, total_tokens: 37 } } : {}),
+      });
+      const chunk = new ChatGenerationChunk({ text, message });
+      yield chunk;
+      await runManager?.handleLLMNewToken(text, undefined, undefined, undefined, undefined, { chunk });
+    }
+  }
+}
+
+interface ToolCallingOptions extends BaseChatModelCallOptions {
+  tools?: Array<{ function?: { name?: string } }>;
+}
+
+/**
+ * A model that binds tools the way a real provider integration does: the
+ * formatted tools and `tool_choice` ride on the call options, and come back
+ * out through `invocationParams` — which is where the adapter reads them.
+ * Asks for whichever tool it was bound to first, then answers — as a chunk,
+ * which is what a 1.x provider returns and what `withStructuredOutput` checks.
+ */
+class ToolCallingModel extends BaseChatModel<ToolCallingOptions> {
+  _llmType(): string {
+    return "tool-calling";
+  }
+
+  override invocationParams(options?: this["ParsedCallOptions"]): Record<string, unknown> {
+    return { model: "tool-calling-1", tools: options?.tools, tool_choice: options?.tool_choice };
+  }
+
+  override bindTools(tools: unknown[], kwargs?: Partial<ToolCallingOptions>) {
+    return this.withConfig({
+      tools: tools.map((t) => convertToOpenAITool(t as never)),
+      ...kwargs,
+    } as Partial<ToolCallingOptions>) as never;
+  }
+
+  async _generate(messages: BaseMessage[], options: this["ParsedCallOptions"]): Promise<ChatResult> {
+    const wanted = options.tools?.[0]?.function?.name ?? "get_weather";
+    const answered = messages.some((m) => m.getType() === "tool");
+    const message = answered
+      ? new AIMessageChunk({
+          content: ANSWER,
+          usage_metadata: { input_tokens: 30, output_tokens: 7, total_tokens: 37 },
+        })
+      : new AIMessageChunk({
+          content: "",
+          tool_calls: [
+            wanted === "Weather"
+              ? { id: "call_s", name: "Weather", args: { city: "Paris", sky: "sunny" }, type: "tool_call" }
+              : { id: "call_1", name: "get_weather", args: { city: "Paris" }, type: "tool_call" },
+          ],
+          usage_metadata: { input_tokens: 12, output_tokens: 5, total_tokens: 17 },
+        });
+    return { generations: [{ text: typeof message.content === "string" ? message.content : "", message }] };
+  }
+}
+
+const WEATHER_DOCS = [
+  new Document({ pageContent: "Paris is sunny", metadata: { source: "wx.txt" } }),
+  new Document({ pageContent: "Rome is rainy", metadata: { source: "wx2.txt" } }),
+];
+
+/** The smallest custom retriever: what a hand-rolled RAG lookup is. */
+class Docs extends BaseRetriever {
+  lc_namespace = ["failproofai", "fixtures"];
+
+  async _getRelevantDocuments(_query: string): Promise<Document[]> {
+    return WEATHER_DOCS;
+  }
+}
+
+/** Deterministic, offline embeddings: letter frequencies. */
+class LetterEmbeddings extends Embeddings {
+  constructor() {
+    super({});
+  }
+
+  private vector(text: string): number[] {
+    const out = new Array<number>(26).fill(0);
+    for (const ch of text.toLowerCase()) {
+      const code = ch.charCodeAt(0) - 97;
+      if (code >= 0 && code < 26) out[code] += 1;
+    }
+    return out;
+  }
+
+  async embedDocuments(texts: string[]): Promise<number[][]> {
+    return texts.map((text) => this.vector(text));
+  }
+
+  async embedQuery(text: string): Promise<number[]> {
+    return this.vector(text);
+  }
+}
+
+/**
+ * An in-memory vector store, so `.asRetriever()` — the retriever almost every
+ * RAG app actually runs — is exercised without a network or a native module.
+ */
+class TinyVectorStore extends VectorStore {
+  declare FilterType: never;
+  private rows: Array<{ vector: number[]; doc: Document }> = [];
+
+  _vectorstoreType(): string {
+    return "tiny";
+  }
+
+  async addVectors(vectors: number[][], documents: Document[]): Promise<void> {
+    vectors.forEach((vector, i) => this.rows.push({ vector, doc: documents[i]! }));
+  }
+
+  async addDocuments(documents: Document[]): Promise<void> {
+    await this.addVectors(await this.embeddings.embedDocuments(documents.map((d) => d.pageContent)), documents);
+  }
+
+  async similaritySearchVectorWithScore(query: number[], k: number): Promise<Array<[Document, number]>> {
+    const dot = (a: number[], b: number[]) => a.reduce((sum, x, i) => sum + x * (b[i] ?? 0), 0);
+    return this.rows
+      .map(({ vector, doc }): [Document, number] => [doc, dot(vector, query)])
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, k);
+  }
+}
+
+const prompt = () => ChatPromptTemplate.fromMessages([["human", "{q}"]]);
+const lcel = () => prompt().pipe(new AnswerModel({})).pipe(new StringOutputParser());
+
+/**
+ * Every plain-LangChain surface, each runnable with or without an explicit
+ * handler: `<name>` runs it under `instrument()`, `handler:<name>` passes
+ * `callbacks: [langchainHandler()]` instead and never instruments.
+ */
+const SURFACES: Record<string, (config: RunnableConfig) => Promise<unknown>> = {
+  lcel: (config) => lcel().invoke({ q: "weather?" }, config),
+  sequence: (config) =>
+    RunnableSequence.from([
+      RunnableLambda.from((x: number) => x + 1),
+      RunnableLambda.from((x: number) => x * 2),
+    ]).invoke(1, config),
+  parallel: (config) =>
+    RunnableParallel.from({
+      a: RunnableLambda.from((x: number) => x + 1),
+      b: RunnableLambda.from((x: number) => x * 2),
+    }).invoke(1, config),
+  lambda: (config) => RunnableLambda.from((x: string) => x.toUpperCase()).withConfig({ runName: "shout" }).invoke("abc", config),
+  retriever: (config) => new Docs().invoke("weather in Paris", config),
+  vectorstore: async (config) => {
+    const store = new TinyVectorStore(new LetterEmbeddings(), {});
+    await store.addDocuments([WEATHER_DOCS[0]!]);
+    return store.asRetriever({ k: 1 }).invoke("Paris", config);
+  },
+  rag: (config) =>
+    RunnableSequence.from([
+      {
+        context: new Docs().pipe((docs: Document[]) => docs.map((d) => d.pageContent).join("\n")),
+        q: new RunnablePassthrough(),
+      },
+      ChatPromptTemplate.fromMessages([["human", "{context}\n{q}"]]),
+      new AnswerModel({}),
+      new StringOutputParser(),
+    ]).invoke("weather?", config),
+  batch3: (config) => lcel().batch([{ q: "a" }, { q: "b" }, { q: "c" }], config),
+  "stream-events": async (config) => {
+    const kinds: string[] = [];
+    for await (const event of lcel().streamEvents({ q: "weather?" }, { ...config, version: "v2" })) {
+      kinds.push(event.event);
+    }
+    return kinds.includes("on_chat_model_stream");
+  },
+  "lcel-stream": async (config) => {
+    let text = "";
+    for await (const chunk of await lcel().stream({ q: "weather?" }, config)) text += chunk;
+    return text;
+  },
+  structured: (config) =>
+    new ToolCallingModel({})
+      .withStructuredOutput(z.object({ city: z.string(), sky: z.string() }), { name: "Weather" })
+      .invoke("weather?", config),
+  "bind-tools": (config) =>
+    (new ToolCallingModel({}).bindTools([getWeather], { tool_choice: "get_weather" }) as unknown as ToolCallingModel)
+      .invoke("weather?", config)
+      .then((message) => (message as AIMessage).tool_calls?.length),
+};
 
 function buildGraph(model: ScriptedModel, tools = [getWeather]) {
   const callModel = async (state: typeof MessagesAnnotation.State) => ({
@@ -187,6 +424,16 @@ const OPTIONS: Record<string, Record<string, unknown>> = {
 };
 
 async function main(scenario: string): Promise<void> {
+  const explicit = scenario.startsWith("handler:");
+  const surface = SURFACES[explicit ? scenario.slice("handler:".length) : scenario];
+  if (surface !== undefined) {
+    if (!explicit) report({ instrumented: await failproofai.instrument("langchain") });
+    const out = await surface(explicit ? { callbacks: [langchainHandler() as never] } : {});
+    report({ out });
+    await failproofai.flush();
+    return;
+  }
+
   if (scenario !== "handler") {
     report({ instrumented: await failproofai.instrument("langchain", OPTIONS[scenario] ?? {}) });
   }

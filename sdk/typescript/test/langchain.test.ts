@@ -246,6 +246,42 @@ describe("the graph mapping", () => {
     expect(requests[0]!.model).toBe("ScriptedModel");
   });
 
+  it("a node that returns a Command renders the messages inside it, not their serialization envelope", async () => {
+    // `langchain`'s `createAgent` model node returns `{ output: [Command] }`.
+    // A Command is neither a message nor LangChain `Serializable` (no
+    // `lc_kwargs`), so the payload view used to hand it to `truncate` whole,
+    // which dumps it through `toJSON()` — and the messages in its `update`
+    // then through THEIRS, LangChain's `{lc, type: "constructor", id, kwargs}`
+    // envelope: class paths with the content buried one level down.
+    class Message {
+      lc_kwargs = { content: "hi" };
+      content = "hi";
+      getType(): string {
+        return "ai";
+      }
+      toJSON(): unknown {
+        return { lc: 1, type: "constructor", id: ["langchain_core", "messages", "AIMessage"], kwargs: this.lc_kwargs };
+      }
+    }
+    class Command {
+      lg_name = "Command";
+      update = { messages: [new Message()] };
+      goto: string[] = [];
+      toJSON(): unknown {
+        return { lg_name: this.lg_name, update: this.update, resume: undefined, goto: this.goto };
+      }
+    }
+    root("g", "weather_agent");
+    node("n", "g", "model_request", 1);
+    end("n", { output: [new Command()] });
+    end("g");
+    const done = ofType(await events(), "hook_completed")[0]!;
+    expect(done.output).toEqual({
+      output: [{ lg_name: "Command", update: { messages: [{ type: "ai", content: "hi" }] }, resume: null, goto: [] }],
+    });
+    expect(JSON.stringify(done.output)).not.toContain('"lc":1');
+  });
+
   it("model_request carries normalized messages with their roles", async () => {
     root("g", "weather_graph");
     node("n", "g", "agent", 1);

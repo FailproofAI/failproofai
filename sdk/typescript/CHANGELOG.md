@@ -25,12 +25,31 @@ section is missing or empty is refused before anything is built.
   A synchronous body stays synchronous — the scopes do not wrap every call in a
   promise, because a constructor or an `EventEmitter` listener cannot await one.
 
-- **Adapters** — `instrument()` wires LangChain.js / LangGraph.js, the Vercel AI
-  SDK, Mastra and LlamaIndex.TS. The AI SDK's surface is ES-module functions,
-  which cannot be patched, so it is served by the two extension points the SDK
-  itself documents: an OpenTelemetry-shaped `tracer()` for
-  `experimental_telemetry`, and a `LanguageModelV2Middleware`. Using both
-  records each model call once, not twice.
+- **Adapters** — `instrument()` wires LangChain.js / LangGraph.js
+  (`@langchain/core` 0.3 – 1.x), the Vercel AI SDK (`ai` 4 – 7), Mastra
+  (`@mastra/core` 0.20 – 1.x) and LlamaIndex.TS (`llamaindex` 0.11.4 – 0.x),
+  and they draw the Python SDK's trees: a construct is an agent only if it owns
+  an LLM decision loop, a LangGraph node or workflow step is a hook, model and
+  tool calls are pairs carrying token counts and the model's own tool call id,
+  and a failure is recorded once, where it happened. LangChain traces match the
+  Python adapter's golden output event for event, including interrupt/resume.
+  The AI SDK is served by `telemetry()` — one object carrying an OpenTelemetry
+  tracer for `ai` 4–6 and a telemetry integration for `ai` 7 — plus
+  `instrument("ai")` and `wrapModel()`; using them together records each call
+  once. `langchainHandler()` works without `instrument()`.
+
+- **Tested against the real frameworks, not just in isolation.** `integration/`
+  installs real framework releases at both ends of every declared range from
+  per-fixture lockfiles, extracts the packed tarball into each, and runs one
+  agent as an ES module and as CommonJS — the dual-package case where an
+  adapter that patches the CommonJS copy of a framework records nothing at all
+  in an ES-module application. Adapters patch the copy the application loads,
+  and never load a second one. Runs in CI as `failproofai-ts-sdk-integrations`.
+
+- **Type declarations for every consumer setup** — ESM and CommonJS
+  `nodenext`, CommonJS `node16`, `moduleResolution: node` (every subpath, via
+  `typesVersions`) and `bundler` — on TypeScript ≥ 5.4. CommonJS consumers get
+  CommonJS declarations; `@arethetypeswrong/cli` reports no problems.
 
 - **Evaluator** — `@failproofai/sdk/evaluator` implements Evaluator v2: the wire
   protocol, the worker state machine, the authoring API, and a

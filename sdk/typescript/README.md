@@ -88,12 +88,38 @@ await failproofai.instrument("langchain");   // exactly one
 failproofai.uninstrument();                  // put everything back
 ```
 
-| framework | how it attaches |
-|---|---|
-| **LangChain.js / LangGraph.js** | `CallbackManager.configure`, so every `invoke`/`stream`/`batch` is covered without passing `callbacks:` anywhere. LangGraph nodes become their own agent spans. |
-| **Vercel AI SDK** | Call-site APIs — see below. ES-module exports cannot be patched. |
-| **Mastra** | `Agent.prototype.generate`/`.stream` (and the `…VNext` variants) plus `createTool`. |
-| **LlamaIndex.TS** | `Settings.callbackManager` — subscribed, never patched. |
+| framework | supported | how it attaches |
+|---|---|---|
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, so every `invoke`/`stream`/`batch` is covered without passing `callbacks:` anywhere — or pass `langchainHandler()` yourself and patch nothing. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` at the call site, or `instrument("ai")` for the whole process — see below. |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, the agent's model and tool resolution, and the workflow run/step engine. Tools built before `instrument()` are covered. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (subscribed) plus `AgentWorkflow.runStream`, for workflow runs and their steps. |
+
+**Every range in that table is tested, not declared.** `integration/` installs
+real framework releases at both ends of each range, extracts the packed tarball
+into each project, and runs one agent as an ES module and again as CommonJS on
+every CI run — the same bar the Python SDK's framework job holds.
+
+**The mapping is the Python SDK's**, so a TypeScript agent and a Python one on
+the same framework draw the same tree. A construct is an **agent** if and only
+if it owns an LLM decision loop: a graph or chain run, an AI SDK
+`generateText`/`streamText` call, a Mastra agent, a LlamaIndex agent run.
+Machinery around it — a LangGraph node, a Mastra or LlamaIndex workflow step —
+is a **hook** (`hook_triggered`/`hook_completed` with a `trigger_event`), never
+a nested agent, so `agent_id` stays a small set of real names. Model calls are
+`model_request`/`model_response` pairs with token counts; tool calls are
+`tool_use`/`tool_result` carrying the model's own tool call id. A failure is
+recorded once, on the event it happened in — not once per layer it unwound
+through.
+
+**ES modules and CommonJS both work.** Most of these frameworks ship two builds,
+and Node loads them as two unrelated copies: patching one does nothing to the
+other. The adapters patch the copy your application loads, plus the CommonJS
+copy if something has already `require`d it, and never load a second copy
+nobody uses. What no adapter can reach is a framework **bundled into your own
+output** (esbuild, webpack): the copy in `node_modules` is not the one running.
+Use the call-site helpers there — `langchainHandler()`, `telemetry()`,
+`wrapTool()`.
 
 Everything an adapter records is namespaced `fw_*`, bounded per field and per
 event, and tagged with `framework` / `framework_version`. An adapter that fails
@@ -103,7 +129,7 @@ failure into a throw.
 
 **The Vercel AI SDK** exports plain functions from an ES module, and an ES
 module namespace is immutable by specification — there is nowhere to stand. So
-it uses the two extension points the SDK itself documents:
+it uses the extension points the SDK itself documents:
 
 ```ts
 import { telemetry } from "@failproofai/sdk/ai";
@@ -112,28 +138,50 @@ const { text } = await generateText({
   model,
   prompt,
   experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // on ai 7, `telemetry: telemetry({ … })` — the same object, the new name
 });
 ```
 
-That is the complete integration: an agent span, model request/response with
-token counts, and every tool call. If you would rather not pass it at each call
-site, wrap the model once instead — that sees model calls only, because tool
-calls happen above the model layer:
+That is the complete integration: an agent span named by `functionId`, a
+model request/response pair per step with token counts, and every tool call.
+One call site works on every major: `ai` 4–6 read the tracer it carries, `ai` 7
+reads the telemetry integration it carries.
+
+`instrument("ai")` does the same for the whole process. On `ai` 7 that is every
+call; on 4–6 it is every call that passes `experimental_telemetry: { isEnabled:
+true }` — the AI SDK only consults the global tracer for those. It never
+replaces an OpenTelemetry tracer provider you registered yourself.
+
+If you would rather wrap the model once, `wrapModel` sees model calls only,
+because tool calls happen above the model layer. A wrapped model called with
+nothing around it is recorded as its own run, named after the model:
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";
 const model = await wrapModel(openai("gpt-4o"));
 ```
 
-Using both is fine: the middleware notices an open tracer span and defers, so
-each call is recorded once.
+Using both is fine: the middleware notices the call is already being recorded
+and defers, so each call is recorded once.
 
-**Mastra and LangChain** have call-site helpers too, for tools built before
-`instrument()` ran and for hosts where patching is not wanted:
+**LangChain without patching**, for hosts where patching is not wanted — the
+handler works with or without `instrument()`, and never double-records:
 
 ```ts
-import { wrapTool, workflow } from "@failproofai/sdk/mastra";
 import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+`instrument("langchain")` also takes `sessionId`, `captureContent`,
+`includeChains`, `graphCallbacks` and `captureLimit`, as the Python adapter
+does; a per-call `metadata: { failproofai_sdk_session_id }` picks the session
+for one invocation.
+
+**Mastra** tool calls made outside any agent can be wrapped by hand:
+
+```ts
+import { wrapTool } from "@failproofai/sdk/mastra";
+const lookup = wrapTool(createTool({ id: "lookup", /* … */ }));
 ```
 
 ### 3. `event.*`

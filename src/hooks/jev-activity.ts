@@ -75,8 +75,24 @@ export const JEV_REASON_OTHER = "other";
  * other reason is stored as `other`. A code added to a producer must be added
  * here AND to `JEV_REASON_CODES` in the collector's `transform.rs` (a test
  * keeps the two identical), or it ships as `other` — safe, but less useful.
+ *
+ * WHY A TUPLE AND A TYPE, not just a set. A producer that writes the code as a
+ * bare string literal can be renamed without this list hearing about it, and
+ * the result is silent: the row still stores, as `other`, and only a reader
+ * months later notices the diagnosis is gone. That is exactly what happened to
+ * `request-cut` — the combine rules' name for "Jev answered, but was shown
+ * only part of the call" — which was renamed from `truncated` after this list
+ * was written and spent its whole life being stored as `other`. So the codes
+ * a producer writes DIRECTLY are exported from here as constants typed
+ * {@link JevReasonCode} (see {@link JEV_REASON_REQUEST_CUT}): the producer
+ * imports the constant instead of retyping the string, and a code this list
+ * does not name is a compile error rather than a quiet `other`.
+ *
+ * Codes no producer writes any more (`truncated`, `request-too-large`) stay
+ * here on purpose: rows written by an older build still carry them, and this
+ * list is also what the collector applies to THOSE rows.
  */
-export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>([
+export const JEV_REASON_CODE_LIST = [
   "aborted",
   "cloudflare-error",
   "cloudflare-incomplete",
@@ -91,12 +107,28 @@ export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>([
   "out-of-credits",
   "prepare-error",
   "rate-limited",
+  "request-cut",
   "request-too-large",
   "timeout",
   "truncated",
   "unavailable",
   "upstream-error",
-]);
+] as const;
+
+/** One of {@link JEV_REASON_CODE_LIST}. */
+export type JevReasonCode = (typeof JEV_REASON_CODE_LIST)[number];
+
+export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>(JEV_REASON_CODE_LIST);
+
+/**
+ * "Jev answered, but the request it answered had to be cut to fit the
+ * envelope, so it cleared nothing" — the one fallback reason the combine rules
+ * write themselves (`semantic/combine.ts`), rather than passing on from the
+ * client or the evaluator. It is a value, not a literal, so that renaming the
+ * code in {@link JEV_REASON_CODE_LIST} breaks the build at the producer
+ * instead of silently storing `other`.
+ */
+export const JEV_REASON_REQUEST_CUT: JevReasonCode = "request-cut";
 
 /**
  * Leading words that are renamed on the way in: the evaluator's free-text
@@ -263,10 +295,16 @@ function outcomeOf(e: JevActivityFields): JevOutcome | null {
 
 /**
  * Fallback reasons that mean Jev DID answer and the combine rules set the
- * answer aside: the call was truncated to fit the envelope (Jev judged only
- * part of it), or a model other than the configured one answered.
+ * answer aside: the call was cut to fit the envelope (Jev judged only part of
+ * it), or a model other than the configured one answered. `truncated` is the
+ * name a build before the rename wrote for the first of those, kept so an old
+ * row still reads correctly.
  */
-const ANSWERED_BUT_NOT_APPLIED_REASONS: ReadonlySet<string> = new Set(["truncated", "model-mismatch"]);
+const ANSWERED_BUT_NOT_APPLIED_REASONS: ReadonlySet<string> = new Set<string>([
+  JEV_REASON_REQUEST_CUT,
+  "truncated",
+  "model-mismatch",
+]);
 
 /**
  * True for a fallback row where Jev answered but its answer was not applied —

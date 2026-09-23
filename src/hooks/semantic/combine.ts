@@ -2,9 +2,10 @@
  * The two-tier combine rules: regex policy verdicts + Jev's review → one
  * final verdict, plus what to record about how it was reached.
  *
- * Pure and synchronous, with type-only imports, so it can sit on the hook path
- * (`policy-evaluator.ts` imports it) without pulling the semantic evaluator
- * into the bundle, and so every row of the table below is testable offline.
+ * Pure and synchronous, importing only types and one constant from the equally
+ * pure `jev-activity.ts`, so it can sit on the hook path (`policy-evaluator.ts`
+ * imports it) without pulling the semantic evaluator into the bundle, and so
+ * every row of the table below is testable offline.
  *
  * | Situation                                     | Result                                                      |
  * |-----------------------------------------------|-------------------------------------------------------------|
@@ -162,6 +163,13 @@
  * and then there is nothing to clear anyway.
  */
 import type { PolicyAuthority } from "../policy-types";
+// The one value import, and deliberately from the activity vocabulary rather
+// than a local literal: the fallback reason this module writes itself has to
+// be a code the activity store's closed list names, or it is stored and
+// shipped as `other`. Importing the constant makes a rename a compile error
+// here. `jev-activity.ts` is pure (no node imports, no semantic modules), so
+// this costs the hook path nothing.
+import { JEV_REASON_REQUEST_CUT } from "../jev-activity";
 
 export type Decision = "allow" | "deny" | "instruct";
 export type JevMode = "shadow" | "enforce";
@@ -382,7 +390,7 @@ export function combineTwoTier(
     // A cut MESSAGE is not a fallback: nothing about the call was missing and
     // nothing was withheld, so reporting one would only inflate the rate.
     evaluator: review.requestCut ? "jev-fallback" : "jev",
-    ...(review.requestCut ? { jevFallbackReason: "request-cut" } : {}),
+    ...(review.requestCut ? { jevFallbackReason: JEV_REASON_REQUEST_CUT } : {}),
     jevDecision: review.decision,
     ...(cleared.length > 0 ? { jevCleared: cleared } : {}),
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),

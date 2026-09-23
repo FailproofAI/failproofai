@@ -179,9 +179,14 @@ pub const JEV_CLEARED_MAX: usize = 64;
 
 /// Every fallback reason code a row may carry, besides `http-NNN`. Any other
 /// reason ships as `other` — even a short kebab-case word, which could be the
-/// first word of the judged command. `JEV_REASON_CODES` in
+/// first word of the judged command. `JEV_REASON_CODE_LIST` in
 /// `src/hooks/jev-activity.ts` is the same list; a test keeps the two
 /// identical.
+///
+/// `request-cut` is the combine rules' "Jev answered, but was shown only part
+/// of the call". `truncated` and `request-too-large` are names an older build
+/// wrote and no current producer does; they stay because this list is applied
+/// to rows written by other builds too.
 pub const JEV_REASON_CODES: &[&str] = &[
     "aborted",
     "cloudflare-error",
@@ -197,6 +202,7 @@ pub const JEV_REASON_CODES: &[&str] = &[
     "out-of-credits",
     "prepare-error",
     "rate-limited",
+    "request-cut",
     "request-too-large",
     "timeout",
     "truncated",

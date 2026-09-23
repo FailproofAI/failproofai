@@ -115,6 +115,21 @@
  *     only in a part of it Jev never read is exactly the subtraction this
  *     design refuses everywhere else.
  *
+ * "Uncut" there means uncut by the ENVELOPE, and there is one cut it cannot
+ * undo: T4's intent store caps a prompt as it READS it (`intent.ts`), so a
+ * 12,000-character prompt arrives already head-and-tail cut and its middle is
+ * not recoverable by anyone. Run over that, the local substring check read
+ * "the user did not name it" off a string that could not have contained it —
+ * the same subtraction one channel further out, and the same symptom: the
+ * length of the human's paste decided the verdict. So a human turn that
+ * arrived cut makes the local check INCONCLUSIVE rather than negative
+ * (`PreparedCall.userSaidCut`, `DecideV1Options.userSaidCut`), and the
+ * override rests on what it rests on when a call names no identifiable target
+ * at all — Jev's own `op_requested` and `scope` answers. It can only restore a
+ * clear a short prompt would have kept, it is read from the human channel
+ * only, and `targetNamedByUser` still reports FALSE, because nothing in what
+ * we hold named the target; what changes is that "false" no longer decides.
+ *
  * Severity, meanwhile, is never subtracted by a cut at all. §4's table files a
  * truncated envelope under "fall back to the regex result", and reading that
  * as "throw Jev's answer away" made padding a command past the envelope's

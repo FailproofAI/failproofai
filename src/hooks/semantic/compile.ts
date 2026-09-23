@@ -13,8 +13,25 @@ import { INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "./policies";
 import type { Facts, IntentMode, JevRequest, NoulQuestion, Probe, SemanticPolicy } from "./types";
 
 export const DEFAULT_JEV_MODEL = "jev-1.13.0";
-/** Well under Jev's 64k-token request budget at any plausible tokenisation. */
-export const MAX_REQUEST_CHARS = 120_000;
+/**
+ * The compiled request, serialized.
+ *
+ * Two things fix it. It has to hold `MAX_STATE_CHARS` (`envelope.ts`, 161,024)
+ * plus the largest question set this policy list compiles — measured at 17,859
+ * characters, for all fourteen policies on an unknown MCP tool — or
+ * `PreparedCall.oversized` stops meaning "our own questions overran" and
+ * becomes one more size cliff a caller can drive a call over. That is 178,883,
+ * and the margin above it is deliberate but small: the question set is ours,
+ * not the caller's, so it does not need to be generous.
+ *
+ * And it has to stay under Jev's 64k-token request budget. JSON of source
+ * text tokenises at roughly three and a half to four characters a token, so
+ * 192,000 is 48k–55k tokens. A string that tokenises worse than three
+ * characters a token — dense base64, a minified bundle — can still cross it,
+ * and there the provider's own error is the honest answer: it comes back as a
+ * degrade, which clears nothing.
+ */
+export const MAX_REQUEST_CHARS = 192_000;
 
 /** Which policies to ask about this call. Unknown (MCP) tools get all of them. */
 export function selectPolicies(policies: ReadonlyArray<SemanticPolicy>, facts: Facts): SemanticPolicy[] {
@@ -116,9 +133,43 @@ export function compileRequest(
       anyOverridable = true;
     }
   }
-  if (anyOverridable) {
+  if (selected.length > 0) {
+    /**
+     * Asked on EVERY call, for the same reason as in v1 above — and it was
+     * gated here long after that was settled there.
+     *
+     * `anyOverridable` is true only when a SELECTED policy may be overridden
+     * AND a human message was recorded, so the probe went unasked in two live
+     * cases: a CLI with no prompt-submit event at all (Hermes has none) or the
+     * first call of a session, and a call where every applicable policy is
+     * non-overridable (`credential-exfiltration`, `agent-config-tampering`).
+     * Both are where an injected repo file has the most room to speak for a
+     * user who has not, and `decide` uses this answer for more than an
+     * override: it ESCALATES a policy that fired independently in a call that
+     * also argues for its own approval. `combine.ts` reads `injectionAsked`
+     * as "was the request sent at all" and withdraws every clear when it is
+     * false, so the gate also cost those calls their clears.
+     *
+     * The probe's own question is answerable without a prompt, which is what
+     * makes the gate indefensible rather than merely costly: it asks only
+     * whether text inside `agent_request` speaks to the reviewer
+     * (`policies.ts`), and never reads `user_said`. Nothing about a missing
+     * human message makes it unanswerable.
+     *
+     * It cannot block on its own (`decide.ts`), so asking it always cannot
+     * turn planted text into a veto over any command.
+     */
     add(INJECTION_PROBE.id, noul(INJECTION_PROBE), null);
-    add(SCOPE_PROBE.id, noul(SCOPE_PROBE), null);
+    /**
+     * The scope probe stays gated, deliberately, and the asymmetry is the
+     * point. `decide` reads `scope` in exactly one place — the override
+     * branch — and that branch cannot be entered without a
+     * `<policy>.user_asked` answer, which is compiled under the SAME condition
+     * as this one. With `anyOverridable` false the answer is one nobody reads,
+     * so asking it is tokens for nothing; the injection answer above is read
+     * outside that branch.
+     */
+    if (anyOverridable) add(SCOPE_PROBE.id, noul(SCOPE_PROBE), null);
   }
 
   return { request: { model, state, questions }, owners };

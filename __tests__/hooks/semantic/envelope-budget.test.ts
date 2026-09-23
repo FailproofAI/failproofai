@@ -131,7 +131,10 @@ const shapes: Array<[string, Record<string, unknown>]> = [
   ["60 x 60 x 2,000 characters", nested(60, 60, 2_000)],
   ["nesting 25,000 deep", parsedNesting(25_000)],
   ["nesting 200,000 deep", parsedNesting(200_000)],
-  ["20,000 control characters", { command: DANGEROUS, blob: "\u0000\u0001\u0002".repeat(20_000) }],
+  // Control characters are sanitised to spaces, so they cost one each: the
+  // count is derived from the cap rather than written down, which is what the
+  // two entries below got wrong when the cap moved.
+  ["control characters past the budget", { command: DANGEROUS, blob: "\u0000\u0001\u0002".repeat(Math.ceil(MAX_AGENT_REQUEST_CHARS / 3) + 1_000) }],
   ["a 2,000,000-character command", { command: `echo ${"x".repeat(1_000_000)} ; ${DANGEROUS} ; echo ${"y".repeat(1_000_000)}` }],
   ["a cyclic object", cyclic()],
   ["a getter that throws", throwingGetter()],
@@ -139,8 +142,10 @@ const shapes: Array<[string, Record<string, unknown>]> = [
   // The axis every earlier revision of this list missed: MANY CHEAP entries
   // rather than a few long ones. `""` was charged nothing and serializes as
   // three characters inside an array, so 36,000 of them put the state 21% past
-  // its cap with both flags false.
-  ["40,000 empty strings in an array", { command: DANGEROUS, pad: new Array(40_000).fill("") }],
+  // its cap with both flags false. Three characters each is also why the
+  // count is derived: at a written-down 40,000 this entry stopped being past
+  // the budget the moment the budget moved, and passed for the wrong reason.
+  ["just past the budget in empty strings", { command: DANGEROUS, pad: new Array(Math.ceil(MAX_AGENT_REQUEST_CHARS / 3) + 1_000).fill("") }],
   ["80,000 empty strings in an array", { command: DANGEROUS, pad: new Array(80_000).fill("") }],
   ["80,000 nulls in an array", { command: DANGEROUS, pad: new Array(80_000).fill(null) }],
   ["80,000 booleans in an array", { command: DANGEROUS, pad: new Array(80_000).fill(true) }],
@@ -193,6 +198,10 @@ function walkStrings(value: unknown, out: string[] = []): string[] {
   }
   return out;
 }
+
+/** An ordinary source file of `lines` lines, at a realistic line length. */
+const TS_FILE = (lines: number): string =>
+  Array.from({ length: lines }, (_, i) => `  const value${i} = computeSomething(argument, other); // ${i}\n`).join("");
 
 function built(toolInput: Record<string, unknown>, userSaid = ["clean up the temp dir"]) {
   const scanned = typeof toolInput.command === "string" ? scanCommand(toolInput.command) : null;
@@ -296,11 +305,26 @@ describe("the envelope's size is a function of its caps, not of the input", () =
       edits: Array.from({ length: 1_000 }, (_, i) => ({ old_string: `a${i}`, new_string: `b${i}` })),
     }],
     ["an MCP body of 500 short fields", Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`field_${i}`, `value ${i}`]))],
-    // ~50,000 serialized characters: the largest of these, and still inside
-    // the call's 56,000-character budget. Past that a call loses its CLEARS
-    // (never its verdict, and never with a refusal) — see `combine.ts`.
     ["an MCP body of 1,800 rows", { rows: Array.from({ length: 1_800 }, (_, i) => ({ id: i, name: `row ${i}` })) }],
     ["a 40,000-character Write", { file_path: "/work/project/big.ts", content: "const x = 1;\n".repeat(3_000) }],
+    /**
+     * The four shapes the budget was actually failing, measured as they
+     * SERIALIZE rather than as their longest field reads. A 56,000-character
+     * call budget was described as "a ~1,400-line file in a single Write";
+     * measured, a 1,000-line TypeScript file is a 58,968-character
+     * `agent_request` once the path, the JSON skeleton and two characters for
+     * every quote, backslash and newline are paid for. So each of these — a
+     * file write, a refactor, a moderate MCP result, a heredoc — was reported
+     * as a call nobody could read whole, which withdrew every clear and left
+     * any reviewable regex deny standing. Sizes, at the caps in this build:
+     *
+     *   | a 1,000-line Write   |  58,968 |   | a 400-edit MultiEdit |  33,459 |
+     *   | a 2,000-row MCP body | 118,714 |   | a 56 KB heredoc      |  58,449 |
+     */
+    ["a 1,000-line Write", { file_path: "/work/project/src/app.ts", content: TS_FILE(1_000) }],
+    ["a 2,000-line Write", { file_path: "/work/project/src/app.ts", content: TS_FILE(2_000) }],
+    ["an MCP body of 2,000 rows", { rows: Array.from({ length: 2_000 }, (_, i) => ({ id: i, name: `row ${i}`, email: `user${i}@example.com` })) }],
+    ["a 56 KB heredoc", { command: `cat > /work/project/notes.md <<'EOF'\n${TS_FILE(1_200).slice(0, 56 * 1_024)}\nEOF` }],
     ["a 10-deep MCP request body", { a: { b: { c: { d: { e: { f: { g: { h: { i: { j: 1 } } } } } } } } } }],
     ["a package.json-shaped object", {
       file_path: "/work/project/package.json",
@@ -562,14 +586,21 @@ describe("padding around the dangerous part cannot buy permission", () => {
   });
 
   /** Case B: too big to read in full, so the tier clears nothing rather than refusing. */
+  /**
+   * Sized off the budget itself rather than written down. Written-down padding
+   * is how two of these came to pass for the wrong reason when the budget
+   * moved: 60,000 per side stopped being past a 128,000-character call budget,
+   * so the case no longer tested case B at all.
+   */
+  const PAD = MAX_AGENT_REQUEST_CHARS;
   const hiddenCases: Array<[string, SemanticInput]> = [
-    ["bulk padding past the budget", call({ command: `echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}` })],
+    ["bulk padding past the budget", call({ command: `echo ${"x".repeat(PAD)} ; ${DELETE} ; echo ${"y".repeat(PAD)}` })],
     [
       "distinct tokens past the budget",
-      call({ command: `echo ${distinct(20_000, "src")} ; ${DELETE} ; echo ${distinct(20_000, "out")}` }),
+      call({ command: `echo ${distinct(Math.ceil(PAD / 18), "src")} ; ${DELETE} ; echo ${distinct(Math.ceil(PAD / 18), "out")}` }),
     ],
-    ["an MCP `sql` past the budget", mcp("mcp__db__query", { sql: `-- ${"x".repeat(60_000)}\n${DELETE}\n-- ${"y".repeat(60_000)}` })],
-    ["a Write `content` past the budget", mcp("Write", { file_path: "/work/project/run.sh", content: `#${"x".repeat(60_000)}\n${DELETE}\n#${"y".repeat(60_000)}` })],
+    ["an MCP `sql` past the budget", mcp("mcp__db__query", { sql: `-- ${"x".repeat(PAD)}\n${DELETE}\n-- ${"y".repeat(PAD)}` })],
+    ["a Write `content` past the budget", mcp("Write", { file_path: "/work/project/run.sh", content: `#${"x".repeat(PAD)}\n${DELETE}\n#${"y".repeat(PAD)}` })],
   ];
 
   it.each(hiddenCases)("B. %s: Jev cannot see it, so its answer clears nothing", async (_label, input) => {
@@ -715,6 +746,81 @@ describe("padding around the dangerous part cannot buy permission", () => {
       const env = built({ command: "npm run build && npm test" });
       expect({ redactions: env.redactions, requestCut: env.requestCut }).toEqual({ redactions: 0, requestCut: false });
     });
+
+    /**
+     * The half of the question the class left out: WHERE the span is.
+     *
+     * "Could this span have started something?" was asked of the span alone,
+     * and `<`, `>`, `&` and `;` are in the class because a redirection and a
+     * separator are operations. They are also how every documentation
+     * placeholder is written (`scheme://<user>:<password>@<host>/<db>`), how
+     * Kubernetes, Make and Azure spell a substitution (`$(DB_USER)`), and what
+     * a password with punctuation in it looks like. In a README, a manifest, a
+     * `.env.example` or the `new_string` of an edit the call WRITES that text
+     * — it does not run it — so none of it can start anything, and charging it
+     * a cut of the CALL withdrew every clear and left a reviewable regex deny
+     * standing on writing a doc.
+     *
+     * So the question is asked only of text the call hands to a shell. These
+     * are the spellings that must cost nothing; the `hiding` table above is
+     * the same characters where they really are an operation, and it still
+     * holds.
+     */
+    const placeholders: Array<[string, string, Record<string, unknown>]> = [
+      ["a README placeholder", "Write", { file_path: "/work/project/README.md", content: `Set DATABASE_URL to ${PG}<user>:<password>@<host>/<db>\n` }],
+      ["a Kubernetes $(VAR) manifest", "Write", { file_path: "/work/project/k8s/app.yaml", content: `  - name: DATABASE_URL\n    value: ${PG}$(DB_USER):$(DB_PASS)@$(DB_HOST)/app\n` }],
+      ["a Makefile $(VAR)", "Write", { file_path: "/work/project/Makefile", content: `DB_URL = ${PG}$(DB_USER):$(DB_PASS)@$(DB_HOST)/app\n` }],
+      ["an Azure $(VAR) pipeline", "Write", { file_path: "/work/project/azure-pipelines.yml", content: `  DATABASE_URL: ${PG}$(dbUser):$(dbPass)@$(dbHost)/app\n` }],
+      ["a password with & ; < > in it", "Write", { file_path: "/work/project/.env.example", content: `DATABASE_URL=${PG}app:p&ss;w<o>rd@localhost/app\n` }],
+      ["a placeholder in an Edit's new_string", "Edit", { file_path: "/work/project/docs/db.md", old_string: "TODO", new_string: `${PG}<user>:<password>@<host>/<db>` }],
+      ["a placeholder in a MultiEdit", "MultiEdit", { file_path: "/work/project/docs/db.md", edits: [{ old_string: "TODO", new_string: `${PG}<user>:<password>@<host>/<db>` }] }],
+    ];
+
+    it.each(placeholders)("%s is redacted with no cut", (_label, toolName, toolInput) => {
+      const scanned = typeof toolInput.command === "string" ? scanCommand(toolInput.command) : null;
+      const f = computeFacts(toolName, toolInput, "/work/project", null, scanned);
+      const env = buildEnvelope(toolInput, ["wire the database url up from the environment"], f, scanned, {});
+      expect(env.redactions).toBeGreaterThan(0);
+      expect({ truncated: env.truncated, requestCut: env.requestCut }).toEqual({ truncated: false, requestCut: false });
+    });
+
+    /**
+     * And what that still charges, on purpose. The same placeholder typed
+     * inside a Bash command really does contain a redirection: `>` there
+     * writes a file. No rule that keeps the `>` and `&&` cases of the table
+     * above detected can tell the two apart from the span alone, so these are
+     * cuts — pinned here so the trade is visible rather than discovered.
+     *
+     * Both need a credential-SHAPED span (something `SECRET_PATTERNS` matches)
+     * with a metacharacter inside it, in a command, which is why this is a
+     * narrow residual rather than the class the table above removed.
+     */
+    const stillCut: Array<[string, string]> = [
+      ["a placeholder typed into a command", `psql "${PG}<user>:<password>@<host>/<db>"`],
+      // A QUOTED heredoc body is literal text and the shell runs none of it,
+      // but telling that from an unquoted one (where `$(…)` does run) needs a
+      // heredoc-aware scanner, which `scanCommand` is not. Guessing the
+      // permissive way would reopen the table above, so this stays a cut.
+      ["a placeholder in a quoted heredoc", `cat > /work/project/README.md <<'EOF'\nDATABASE_URL=${PG}<user>:<password>@<host>/<db>\nEOF`],
+    ];
+
+    it.each(stillCut)("%s is still a cut", (_label, command) => {
+      const env = built({ command });
+      expect({ truncated: env.truncated, requestCut: env.requestCut }).toEqual({ truncated: true, requestCut: true });
+    });
+
+    /**
+     * For a tool we do not know the shape of, we do not know which field the
+     * server runs, so every string in the call counts as shell text. That is
+     * the conservative side, and it is what keeps this class closed for the
+     * tools it cannot reason about.
+     */
+    it("an unknown MCP tool's fields are all treated as shell text", () => {
+      const toolInput = { sql: `select from ${REDIS}$(rm${IFS}-rf${IFS}/srv)@h` };
+      const f = computeFacts("mcp__db__query", toolInput, "/work/project", null, null);
+      const env = buildEnvelope(toolInput, ["run the report"], f, null, {});
+      expect({ truncated: env.truncated, requestCut: env.requestCut }).toEqual({ truncated: true, requestCut: true });
+    });
   });
 });
 
@@ -813,7 +919,19 @@ describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
     ["a PEM header", "-----BEGIN RSA PRIVATE KEY-----"],
   ];
 
-  /** Every ordinary way a secret is preceded in a command, a file or a payload. */
+  /**
+   * Every ordinary way a secret is preceded in a command, a file or a payload.
+   *
+   * The HYPHEN wrappers are the ones this table was missing, and the omission
+   * is why a live leak shipped green: the scan-form boundary was written
+   * `(?<![A-Za-z0-9_-])`, so a `-` counted as a word character for every
+   * pattern and a secret preceded by one was not a candidate at all. A
+   * unified-diff removal line is most of what an agent writes when it edits a
+   * config, and a hyphenated header name is how two of the three
+   * authorization headers are spelled, so `-Authorization: Bearer <token>`,
+   * `Proxy-Authorization`, `X-Authorization`, `-sk-…`, `-AKIA…`, `-ghp_…` and
+   * a connection string on a removal line all reached Jev in clear.
+   */
   const wrappers: Array<[string, (s: string) => string]> = [
     ["bare", (s) => s],
     ["an assignment", (s) => `API_KEY=${s}`],
@@ -824,6 +942,10 @@ describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
     ["YAML", (s) => `token: ${s}`],
     ["a long flag", (s) => `--api-key=${s}`],
     ["after a newline", (s) => `line one\n${s}`],
+    ["a hyphen before it", (s) => `-${s}`],
+    ["a diff removal line", (s) => `--- a/deploy/app.yaml\n+++ b/deploy/app.yaml\n-${s}\n+  token: from-the-environment\n`],
+    ["a diff removal line in a Write", (s) => `@@ -1,3 +1,3 @@\n context\n-${s}\n+redacted\n`],
+    ["two removal lines", (s) => `-${s}\n-${s}\n`],
   ];
 
   it.each(secrets)("%s is redacted in every ordinary spelling", (_label, secret) => {
@@ -832,6 +954,54 @@ describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
       expect({ how, redacted: out.count > 0 }).toEqual({ how, redacted: true });
       expect({ how, leaked: out.text.includes(secret.slice(0, 30)) }).toEqual({ how, leaked: false });
     }
+  });
+
+  /**
+   * The hyphen shapes again, spelled out as whole lines rather than through
+   * the wrapper table, because the wrapper table cannot say what is actually
+   * at stake: these are the two places a token really is preceded by a hyphen,
+   * and both were sent in clear.
+   *
+   * The token, not just "something", is what has to come out: each case
+   * carries the secret's own payload and asserts that payload is gone.
+   */
+  const TOKEN = A(40);
+  const hyphenated: Array<[string, string, string]> = [
+    ["a bearer token on a diff removal line", `-Authorization: Bearer ${TOKEN}`, TOKEN],
+    ["Proxy-Authorization", `Proxy-Authorization: Bearer ${TOKEN}`, TOKEN],
+    ["X-Authorization", `X-Authorization: Bearer ${TOKEN}`, TOKEN],
+    ["Proxy-Authorization on a removal line", `-Proxy-Authorization: Bearer ${TOKEN}`, TOKEN],
+    ["a JWT on a diff removal line", `-  id_token: eyJ${A(40)}.${A(80)}.${A(43)}`, `eyJ${A(40)}`],
+    ["a JWT in a hyphenated header", `X-Amz-Security-Token: eyJ${A(40)}.${A(80)}.${A(43)}`, `eyJ${A(40)}`],
+    ["an API key on a removal line", `-OPENAI_API_KEY=${["sk", A(30)].join("-")}`, A(30)],
+    ["an AWS id on a removal line", `-aws_access_key_id = AKIA${U(16)}`, `AKIA${U(16)}`],
+    ["a connection string on a removal line", `-DATABASE_URL=${["postgres", "://"].join("")}appuser:hunter2hunter2@db:5432/app`, "hunter2hunter2"],
+    ["a whole removal hunk of a config", `--- a/.env\n+++ b/.env\n-OPENAI_API_KEY=${["sk", A(30)].join("-")}\n-DATABASE_URL=${["postgres", "://"].join("")}u:hunter2hunter2@db/app\n`, "hunter2hunter2"],
+  ];
+
+  it.each(hyphenated)("%s is redacted", (_label, text, payload) => {
+    const out = redactSecrets(text);
+    expect(out.count).toBeGreaterThan(0);
+    expect(out.text).not.toContain(payload);
+  });
+
+  /**
+   * And the hyphen did not become free: the boundary it replaced is what keeps
+   * the redactor linear, so a pattern whose own run can eat a `-` admits only
+   * a hyphen that is ITSELF preceded by something outside that run. A diff
+   * line is exactly that shape; `eyJ-eyJ-eyJ…`, where every hyphen sits
+   * between two run characters, is not, and yields one candidate rather than
+   * one per repeat. The cost is pinned in the linearity suite below.
+   *
+   * What that gives up, stated so it is a decision and not a surprise: a JWT
+   * glued DIRECTLY to a hyphenated word with no other delimiter
+   * (`Proxy-eyJhbGci…`) is not redacted — the same residual as a secret glued
+   * to the end of a word, and the only alternative found was a candidate at
+   * every hyphen, which is quadratic on `eyJ-` repeated.
+   */
+  it("a hyphen inside a run is not a boundary: the JWT candidate is not restarted there", () => {
+    const out = redactSecrets(`eyJ-${"eyJ-".repeat(2_000)}`);
+    expect(out.count).toBe(0);
   });
 });
 
@@ -844,14 +1014,18 @@ describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
  * which are written as detectors for short command strings and are used here
  * as a TRANSFORM over a whole envelope. Two of them run an open-ended run that
  * has to backtrack to find a delimiter, retried at every position where a
- * three-character prefix occurs: quadratic. At the current 56,000-character
- * cap that measured 1,267 ms for one Bash command of `eyJ` repeated.
+ * three-character prefix occurs: quadratic. That measured 1,267 ms for one
+ * Bash command of `eyJ` repeated to a 56,000-character cap, and the cost grows
+ * with the SQUARE of the cap, so it is worse at the cap this build carries.
  *
  * This pins the COST, not the spelling, so a future pattern that reintroduces
  * the blow-up fails here rather than in production. The bar is the directive's:
- * a 500 KB call, well under 100 ms. Generous against the measured numbers
- * (13–32 ms) so it does not flake on a loaded machine, and tight enough that a
- * return to quadratic (1,267 ms) cannot pass.
+ * a 500 KB call, well under 100 ms. The measured numbers moved when the call
+ * budget did, because a linear scan over 1.8x the text costs 1.8x as much:
+ * these inputs are 2–39 ms warm, and the worst shape at the current cap — its
+ * own test at the end of this suite — is 73–85 ms warm and 88–97 ms cold.
+ * That one is met by much less margin than before, deliberately; a return to
+ * quadratic cannot pass either of them.
  */
 describe("every path is linear: no input buys itself a stall", () => {
   const BUDGET_MS = 100;
@@ -871,15 +1045,28 @@ describe("every path is linear: no input buys itself a stall", () => {
   };
 
   const inputs: Array<[string, SemanticInput]> = [
-    // A JWT prefix at every position: 18,000 candidate starts in one run.
-    ["a command of 'eyJ' repeated to the string cap", call({ command: "eyJ".repeat(18_667) })],
+    // A JWT prefix at every position: a candidate start every three characters.
+    ["a command of 'eyJ' repeated to the string cap", call({ command: "eyJ".repeat(Math.ceil(MAX_STRING_CHARS / 3)) })],
     ["a command of 'eyJ' repeated to 500 KB", call({ command: "eyJ".repeat(166_667) })],
+    // The same, with a hyphen at every boundary — the shape the hyphen-aware
+    // lookbehind has to refuse to restart on. Admitting a candidate at every
+    // hyphen is quadratic here, which is why a diff line is admitted by what
+    // precedes the hyphen rather than by the hyphen itself.
+    ["a command of 'eyJ-' repeated to the string cap", call({ command: "eyJ-".repeat(Math.ceil(MAX_STRING_CHARS / 4)) })],
+    ["a command of 'eyJ-' repeated to 500 KB", call({ command: "eyJ-".repeat(125_000) })],
+    ["a command of '-eyJ' repeated to 500 KB", call({ command: "-eyJ".repeat(125_000) })],
+    // A diff of a config file, which is the ordinary shape of the same thing:
+    // every line starts with a hyphen, so every line is a live candidate.
+    [
+      "a Write of 4,000 diff removal lines carrying JWTs",
+      { ...call({ file_path: "/work/project/cfg.yaml", content: Array.from({ length: 4_000 }, (_, i) => `-token-${i}-eyJhbGciOiJIUzI1NiJ9`).join("\n") }), toolName: "Write" },
+    ],
     ["file content of 'eyJ' repeated to the string cap", { ...call({ file_path: "/work/project/a.txt", content: "eyJ".repeat(18_667) }), toolName: "Write" }],
     // A connection-string prefix at every position, with no `@` to find.
     [`a command of '${PG}' repeated to the string cap`, call({ command: PG.repeat(5_091) })],
     [`a command of '${REDIS}' repeated to the string cap`, call({ command: REDIS.repeat(6_875) })],
     // Many strings rather than one: the section budget has to bound the total.
-    [`200 strings of 56,000 '${PG}' characters`, call({ command: "ls", pad: Array.from({ length: 200 }, () => PG.repeat(5_091)) })],
+    [`200 strings of '${PG}' repeated to the string cap`, call({ command: "ls", pad: Array.from({ length: 200 }, () => PG.repeat(Math.ceil(MAX_STRING_CHARS / 11))) })],
     // Ordinary bulk, which is what the cap is actually generous for.
     ["a 500 KB ordinary command", call({ command: `echo ${"abcdefgh ".repeat(55_000)}` })],
     // Controls: the same volume of text the patterns really do match.
@@ -893,6 +1080,45 @@ describe("every path is linear: no input buys itself a stall", () => {
 
   it("an ordinary call is not measurably slower than it was", () => {
     expect(millis(() => void prepareSemantic(call({ command: "npm run build && npm test" }), opts))).toBeLessThan(5);
+  });
+
+  /**
+   * The worst input at the CURRENT cap, with its own bound, because the cap
+   * moved and the inputs above did not.
+   *
+   * The fixtures above are written in characters (55,000, 500 KB), so they no
+   * longer sit at the per-string cap the way they did when the cap was 56,000
+   * — and the cost of the whole envelope is set by how much text the redactor
+   * scans, which is the SECTION budget. This is therefore the real worst case:
+   * a connection-string prefix every eight characters, each candidate scanning
+   * `MAX_DELIMITED_RUN` characters for an `@` that is not there, over as much
+   * text as the budget admits, whether that is one string or forty.
+   *
+   * Measured cold, fresh process, one call: 88–97 ms at
+   * MAX_AGENT_REQUEST_CHARS 128,000, against 35 ms at 56,000 — a linear scan
+   * over 1.8x the text, and the price of the budget this build carries. Warm
+   * (this suite's metric) it is 73–85 ms. The bound here is deliberately its
+   * own rather than the 100 ms above: 200 ms does not flake on a loaded
+   * machine, and a return to quadratic — 1,267 ms at 56,000, some 6 s at this
+   * cap — cannot pass it. If the cold number needs to come back down, the
+   * levers are `MAX_DELIMITED_RUN` and the section budget itself, not this
+   * test.
+   */
+  it("the worst adversarial shape at the cap is linear, and doubling the input doubles the cost", () => {
+    const at = (chars: number) => call({ command: REDIS.repeat(Math.ceil(chars / REDIS.length)) });
+    const capped = millis(() => void prepareSemantic(at(MAX_STRING_CHARS), opts));
+    expect(capped).toBeLessThan(200);
+
+    // Linear, not quadratic: the same shape spread over forty strings instead
+    // of one costs the same, and half the text costs about half the time.
+    const spread = millis(() =>
+      void prepareSemantic(call({ command: REDIS.repeat(Math.ceil(MAX_STRING_CHARS / 8 / 2)), pad: Array.from({ length: 40 }, () => REDIS.repeat(1_000)) }), opts),
+    );
+    expect(spread).toBeLessThan(200);
+    const half = millis(() => void prepareSemantic(at(MAX_STRING_CHARS / 2), opts));
+    // Quadratic would make the full-cap run four times the half-cap one, not
+    // two; the slack absorbs a noisy machine without admitting that.
+    expect(capped).toBeLessThan(half * 3);
   });
 });
 

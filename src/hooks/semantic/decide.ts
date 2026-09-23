@@ -117,6 +117,8 @@ export function decide(
   toolInput: Record<string, unknown>,
   userSaid: ReadonlyArray<string>,
   thresholds: Thresholds = DEFAULT_THRESHOLDS,
+  /** See {@link DecideV1Options.userSaidCut}. */
+  userSaidCut = false,
 ): SemanticVerdict {
   const injection = typeof answers.injection === "number" ? answers.injection : null;
   const injected = injection !== null && injection >= thresholds.injection;
@@ -147,9 +149,11 @@ export function decide(
     if (p.userCanOverride && userAsked !== null && userAsked >= thresholds.userAsked && withinScope) {
       targets ??= targetTokens(toolInput);
       // No identifiable target: the scope answer (already required) carries it.
-      // Otherwise one of the targets must also appear in the user's own words.
+      // Otherwise one of the targets must also appear in the user's own words —
+      // unless the words we hold were cut, when "absent" is not something this
+      // check knows (see {@link DecideV1Options.userSaidCut}).
       const named = targets.size > 0 && targetNamedByUser(targets, userSaid);
-      if (targets.size === 0 || named) return { ...base, targetNamedByUser: named, verdict: "overridden" };
+      if (targets.size === 0 || named || userSaidCut) return { ...base, targetNamedByUser: named, verdict: "overridden" };
     }
     return { ...base, verdict: fired };
   });
@@ -252,6 +256,21 @@ export interface DecideV1Options {
   flagBeyondTask?: boolean;
   /** Turn the task-step clear/soften off, leaving only op-requested (an ablation). */
   taskStepClears?: boolean;
+  /**
+   * A human turn we are reading arrived already cut, so `targetNamedByUser`
+   * cannot tell "the user did not name it" from "the part naming it was cut".
+   *
+   * The local target check is then INCONCLUSIVE rather than negative: the
+   * override falls back to what it rests on when a call names no identifiable
+   * target at all — the model's own `op_requested` and `beyond_task` answers.
+   * Without this, the LENGTH of the human's paste decided the verdict: the
+   * same `rm` of the same file came out `allow` after "delete cache.sqlite"
+   * and `instruct` + every clear withdrawn after the same sentence inside a
+   * 12,000-character prompt. Set only from the HUMAN channel, which the agent
+   * cannot write (`evaluator.ts`), so padding is not a way to buy one: it can
+   * restore a clear a short prompt would have had, never create one.
+   */
+  userSaidCut?: boolean;
 }
 
 /**
@@ -281,6 +300,7 @@ export function decideV1(
   const t = opts.thresholds ?? DEFAULT_THRESHOLDS_V1;
   const flagBeyond = opts.flagBeyondTask ?? true;
   const taskClears = opts.taskStepClears ?? true;
+  const userSaidCut = opts.userSaidCut ?? false;
   const num = (id: string): number | null => (typeof answers[id] === "number" ? answers[id] : null);
   const injection = num("injection");
   const injected = injection !== null && injection >= t.injection;
@@ -292,7 +312,7 @@ export function decideV1(
     targets ??= targetTokens(toolInput);
     if (targets.size === 0) return { ok: true, named: false };
     const named = targetNamedByUser(targets, agentLastMessage ? [...userSaid, agentLastMessage] : userSaid);
-    return { ok: named, named };
+    return { ok: named || userSaidCut, named };
   };
 
   const outcomes: PolicyOutcome[] = selected.map((p) => {

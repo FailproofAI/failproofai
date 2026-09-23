@@ -144,8 +144,13 @@
  *     inside. It is still redacted (a password is not worth leaking to argue
  *     about), and {@link couldNotBeSecret} asks the one question that decides
  *     whether the removal hid anything — could the span have STARTED
- *     something? — so a removal is reported as a cut exactly when the answer
- *     is yes.
+ *     something IN TEXT THIS CALL RUNS? — so a removal is reported as a cut
+ *     exactly when the answer is yes. The second half of that question is not
+ *     decoration: asked of the span alone it fired on
+ *     `scheme://<user>:<password>@<host>/<db>` in a README, on `$(DB_USER)` in
+ *     a Kubernetes manifest and on a password with an `&` in it, none of which
+ *     the call executes, and each of those was a cut of the CALL that
+ *     withdrew every clear.
  *
  *     That question has to stay narrow, and an earlier revision's did not. It
  *     asked "does the span carry shell metacharacters", with `{`, `}`, `(`,
@@ -170,17 +175,49 @@ import type { Facts } from "./types";
  * One string value inside `agent_request`. Equal to the section's own budget:
  * one field may use all of it, and the section is what actually bounds it.
  */
-export const MAX_STRING_CHARS = 56_000;
+export const MAX_STRING_CHARS = 128_000;
 /**
- * The whole `agent_request` section, serialized — the call being judged.
+ * The whole `agent_request` section, SERIALIZED — the call being judged.
  *
  * Sized so that a cut is a genuinely outsized call rather than an ordinary
- * one: 56,000 characters is a ~1,400-line file in a single `Write`, or a
- * command two orders of magnitude longer than any real one. Past it the call
- * is refused rather than half-reviewed (see the header), so this number is the
- * one that decides how blunt that is.
+ * one, which means it has to be sized against what the call COSTS once
+ * serialized rather than against how long its longest field reads. An earlier
+ * revision put it at 56,000 and described that as "a ~1,400-line file in a
+ * single `Write`". What the section actually pays for is the file path AND the
+ * content AND the JSON skeleton AND two characters for every quote, backslash
+ * and newline in the text, so that description overstated the headroom by
+ * about half. Measured `agent_request` sizes, on this repository's own files
+ * (mean line 43 characters — a dense file is worse):
+ *
+ *   | a 1,400-line `Write`   |  62,165 |   | a 400-edit `MultiEdit`  |  68,327 |
+ *   | a 56 KB heredoc        |  58,933 |   | a 2,000-row MCP body    | 118,714 |
+ *
+ * — a file write, a refactor, a heredoc and a moderate MCP result, every one
+ * of them reported at 56,000 as a call nobody could read whole, which
+ * withdrew every clear and left any reviewable regex deny standing. That is
+ * the tier's own value spent on size. The 1,000-line write named in the
+ * report is the same class one step down: at this repository's median it is
+ * 34,851 and always fitted, but its own largest test file is 56,902 — over
+ * the old cap for editing the file that tested the cap.
+ *
+ * At 128,000 all four fit with room, and that is why it is derived from the
+ * table above rather than rounded up further, because it is NOT free:
+ *
+ *   - a BYOK user pays for the tokens, and the largest calls roughly double;
+ *   - the redactor scans as much text as the budget admits, so its worst case
+ *     scales with this number. The worst shape measured — a connection-string
+ *     prefix every eight characters, none of them a credential — costs 88–97
+ *     ms cold here against 35 ms at 56,000. Still linear, still inside the
+ *     hook's 100 ms bar, but no longer WELL inside it, and the hook is
+ *     synchronous. The levers, if that has to come back down, are
+ *     {@link MAX_DELIMITED_RUN} and this constant;
+ *     `__tests__/hooks/semantic/envelope-budget.test.ts` pins both the shape
+ *     and the fact that it is linear.
+ *
+ * A call past this budget is still asked about, with whatever fitted, and
+ * still cannot clear anything: see the header.
  */
-export const MAX_AGENT_REQUEST_CHARS = 56_000;
+export const MAX_AGENT_REQUEST_CHARS = 128_000;
 /** Everything that is not the call: `how_to_read`, `user_said`, `agent_last_message`, `facts`. */
 export const MAX_CONTEXT_CHARS = 32_000;
 /**
@@ -222,7 +259,15 @@ export const MAX_DEPTH = 64;
  * does not charge for. Measured worst case is under 300 characters.
  */
 const STATE_OVERHEAD = 1_024;
-/** The whole `state`, serialized: the two section budgets plus the skeleton. */
+/**
+ * The whole `state`, serialized: the two section budgets plus the skeleton.
+ *
+ * `MAX_REQUEST_CHARS` (`compile.ts`) is sized to hold this plus the largest
+ * question set, so that `PreparedCall.oversized` stays what it claims to be —
+ * a policy-set problem rather than something a caller can provoke. The two
+ * numbers move together; `__tests__/hooks/semantic/envelope-budget.test.ts`
+ * pins the gap between them.
+ */
 export const MAX_STATE_CHARS = MAX_AGENT_REQUEST_CHARS + MAX_CONTEXT_CHARS + STATE_OVERHEAD;
 
 /**
@@ -230,7 +275,7 @@ export const MAX_STATE_CHARS = MAX_AGENT_REQUEST_CHARS + MAX_CONTEXT_CHARS + STA
  * budget, and the only thing the envelope's size depends on.
  *
  * {@link EnvelopeOptions.limits} exists so a test can shrink the budget and
- * watch exhaustion happen without building a 56,000-character payload. The
+ * watch exhaustion happen without building a payload the size of the cap. The
  * product always uses {@link DEFAULT_ENVELOPE_LIMITS}; there is deliberately
  * no "try again smaller" path, because nothing can come out too big.
  */
@@ -275,8 +320,9 @@ const UNREPRESENTABLE = "<value omitted>";
  * A negated class is the expensive shape: it admits anything, so the engine
  * scans to the end of the string and backtracks looking for the delimiter, at
  * EVERY position where the pattern's prefix occurs. `postgres://` repeated to
- * 56,000 characters is 5,000 such positions over a 56,000-character run, and
- * cost 217 ms of synchronous hook time per string.
+ * the string cap is one such position every eleven characters over a run as
+ * long as the cap, and cost 217 ms of synchronous hook time per string at the
+ * 56,000 cap this was measured at.
  *
  * 256 is two orders of magnitude more than a real `user:pass@` and an order of
  * magnitude more than a long generated password. Past it the connection string
@@ -287,14 +333,16 @@ const UNREPRESENTABLE = "<value omitted>";
 const MAX_DELIMITED_RUN = 256;
 
 /**
- * A secret does not start in the middle of a word.
+ * A secret does not start in the middle of a word — where "word" means a run
+ * of THIS PATTERN'S own charset, not one fixed idea of one.
  *
  * This is what makes the POSITIVE runs linear, and it is worth stating why,
  * because the bound above cannot do it: `JWT_RE`'s segments are
  * `[A-Za-z0-9_-]{10,}` and a JWT payload really can be thousands of characters
  * long, so bounding them either misses live tokens or leaves the cost in.
- * `eyJ` repeated to 56,000 characters put 18,000 candidate starts inside one
- * 56,000-character run: 934 ms.
+ * `eyJ` repeated put a candidate start every three characters inside one run
+ * as long as the string cap: 934 ms at the 56,000 cap it was measured at, and
+ * quadratic, so worse at the cap this build uses.
  *
  * With this lookbehind a candidate must be preceded by a character OUTSIDE the
  * run's charset — and such a character ENDS the run. So each candidate owns a
@@ -302,8 +350,45 @@ const MAX_DELIMITED_RUN = 256;
  * cost of the same input is 2 ms. What it gives up is a secret glued to the
  * end of a word with no delimiter of any kind (`...abceyJhbGci...`), which no
  * real token, header, URL, assignment or JSON string produces.
+ *
+ * `-` is the character that argument gets WRONG when it is applied to every
+ * pattern at once, and it shipped that way: one global
+ * `(?<![A-Za-z0-9_-])` made a hyphen a word character for ALL of them, so
+ * `-Authorization: Bearer <token>` — a unified-diff removal line, which is
+ * most of what an agent writes when it edits a config — and the hyphenated
+ * header names `Proxy-Authorization` and `X-Authorization` reached Jev with
+ * the token in clear. `-sk-…`, `-AKIA…`, `-ghp_…` and a connection string on
+ * a diff line went out the same way. A hyphen is a DELIMITER far more often
+ * than it is the inside of a token, so the default is
+ * {@link NOT_MID_WORD}, which does not list it.
+ *
+ * A pattern only needs the hyphen back when its own run could have eaten one
+ * AND something after that run can fail — the shape that backtracks. That is
+ * `JWT_RE` and nothing else here (`sk-ant-[A-Za-z0-9\-_]{20,}` and the bearer
+ * token both END in their open-ended run, so a failing candidate reads fewer
+ * than its minimum and stops). For those, {@link NOT_MID_HYPHENATED_WORD}
+ * keeps the disjointness argument and still admits a diff line: a candidate
+ * may also be preceded by a single `-` that is ITSELF preceded by a character
+ * outside the run (or by the start of the string). That character ends the
+ * run just as before, so two candidates still own disjoint stretches — the
+ * outside character of the later one sits at or after the start of the
+ * earlier one, which bounds the earlier one's scan — and `-eyJ` repeated,
+ * where every hyphen is preceded by a `J`, yields ONE candidate rather than
+ * 14,000. Both branches are lookbehinds of at most two characters, so neither
+ * adds backtracking; {@link scanForm} picks between them from the pattern's
+ * own source, and `__tests__/hooks/semantic/envelope-budget.test.ts` pins the
+ * COST as well as the redaction.
+ *
+ * What the hyphenated branch gives up, said plainly: a JWT glued DIRECTLY to
+ * a hyphenated word with nothing else between them (`Proxy-eyJhbGci…`) is
+ * still not a candidate, because admitting one there is admitting one at
+ * every hyphen. That is the same residual as a secret glued to the end of a
+ * word, it is not how a header, a diff line, a URL, an assignment or a JSON
+ * string writes a token, and the alternative measured quadratic.
  */
-const NOT_MID_WORD = "(?<![A-Za-z0-9_-])";
+const NOT_MID_WORD = "(?<![A-Za-z0-9_])";
+/** {@link NOT_MID_WORD} for a pattern whose own open-ended run can contain `-`. */
+const NOT_MID_HYPHENATED_WORD = "(?:(?<![A-Za-z0-9_-])|(?<=(?:^|[^A-Za-z0-9_-])-))";
 
 /** `+`, `*` or `{n,}` — a quantifier with no upper bound. */
 const OPEN_ENDED = /^(?:(\+)|(\*)|\{(\d+),\})/;
@@ -324,9 +409,10 @@ const OPEN_ENDED = /^(?:(\+)|(\*)|\{(\d+),\})/;
  * the spelling, so a future pattern that reintroduces the blow-up fails there
  * rather than in production.
  */
-function boundDelimitedRuns(source: string): string {
+function boundDelimitedRuns(source: string): { source: string; hyphenRun: boolean } {
   let out = "";
   let i = 0;
+  let hyphenRun = false;
   while (i < source.length) {
     const c = source[i];
     if (c === "\\") {
@@ -342,20 +428,51 @@ function boundDelimitedRuns(source: string): string {
     let j = i + 1;
     const negated = source[j] === "^";
     if (negated) j += 1;
+    const bodyStart = j;
     // A `]` as the first member of a class is a literal `]`, not the end of it.
     if (source[j] === "]") j += 1;
     while (j < source.length && source[j] !== "]") j += source[j] === "\\" ? 2 : 1;
+    const body = source.slice(bodyStart, j);
     out += source.slice(i, j + 1);
     i = j + 1;
-    if (!negated) continue;
     const open = OPEN_ENDED.exec(source.slice(i));
     if (!open) continue;
+    if (!negated) {
+      // A POSITIVE run is left alone — NOT_MID_WORD is what bounds those, and
+      // a bound would cost live tokens (see above). What is recorded is the
+      // one thing the lookbehind has to know: this run could have eaten a `-`,
+      // and there is more pattern after it that can FAIL, so a candidate that
+      // starts inside such a run backtracks over the whole of it.
+      if (hasLiteralHyphen(body) && i + open[0].length < source.length) hyphenRun = true;
+      continue;
+    }
     const min = open[3] !== undefined ? Number(open[3]) : open[1] !== undefined ? 1 : 0;
     // Never narrower than the pattern's own floor: a `{500,}` stays satisfiable.
     out += `{${min},${Math.max(min, MAX_DELIMITED_RUN)}}`;
     i += open[0].length;
   }
-  return out;
+  return { source: out, hyphenRun };
+}
+
+/**
+ * Whether a character class lists `-` as a MEMBER rather than as a range.
+ *
+ * `[A-Za-z0-9_-]` and `[A-Za-z0-9\-._~+/]` do; `[A-Z]` does not. The rule is
+ * the one the language uses: a `-` is a range only with a member on each side
+ * of it, so an escaped one, or one at either end of the body, is a member.
+ * Wrong in the "it is a member" direction only costs a pattern the hyphen
+ * boundary it has today, which is the safe way to be wrong.
+ */
+function hasLiteralHyphen(body: string): boolean {
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === "\\") {
+      if (body[i + 1] === "-") return true;
+      i++;
+      continue;
+    }
+    if (body[i] === "-" && (i === 0 || i === body.length - 1)) return true;
+  }
+  return false;
 }
 
 /**
@@ -375,7 +492,9 @@ function boundDelimitedRuns(source: string): string {
  * alternation.
  */
 function scanForm(re: RegExp): RegExp {
-  return new RegExp(`${NOT_MID_WORD}(?:${boundDelimitedRuns(re.source)})`, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+  const bounded = boundDelimitedRuns(re.source);
+  const boundary = bounded.hyphenRun ? NOT_MID_HYPHENATED_WORD : NOT_MID_WORD;
+  return new RegExp(`${boundary}(?:${bounded.source})`, re.flags.includes("g") ? re.flags : `${re.flags}g`);
 }
 
 const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [scanForm(re), label]);
@@ -435,6 +554,24 @@ const SHELL_METACHARACTERS = /[`;|&<>\n\r]|\$\(/;
  * whole point was NOT to hardcode the password. Saying no too often lets a
  * command be posted inside a `scheme://…@` span and reviewed as
  * `<redacted:database credentials>`.
+ *
+ * WHERE the span is decides as much as what is in it, and leaving that out is
+ * what made the check fire on ordinary work. `<` and `>` are in the list
+ * because a redirection is an operation — and they are also how every
+ * documentation placeholder on earth is written
+ * (`scheme://<user>:<password>@<host>/<db>`), how a Kubernetes, Make or Azure
+ * manifest spells a substitution (`$(DB_USER)`), and what a password with a
+ * `&` or a `;` in it looks like. In a README, a compose file, a `.env.example`
+ * or the `new_string` of an edit, none of those can start anything: the call
+ * WRITES that text, it does not run it. So the answer here is only asked of
+ * text the call hands to a shell — `Accumulator.shellText` — which is the
+ * judged `command`, the comments taken out of it, and every string of a tool
+ * we do not know the shape of.
+ *
+ * What that still charges, deliberately: the same placeholder typed inside a
+ * Bash command (`echo "…<user>:<password>@…" >> README.md`). There, `>` really
+ * is a redirection, and no rule that keeps round 8's `>` and `&&` repros
+ * detected can tell the two apart from the span alone.
  */
 function couldNotBeSecret(span: string): boolean {
   return SHELL_METACHARACTERS.test(span);
@@ -665,6 +802,12 @@ interface Accumulator {
   /** The CALL or the FACTS about it were cut. Jev may then clear nothing. */
   requestCut: boolean;
   section: Section;
+  /**
+   * What is being written is text THIS CALL HANDS TO A SHELL — the judged
+   * command, the comments taken out of it, and (for a tool we do not know the
+   * shape of) the rest of its input. See {@link couldNotBeSecret}.
+   */
+  shellText: boolean;
   /** Serialized characters of the CURRENT budget pool still unspent. */
   left: number;
 }
@@ -684,6 +827,11 @@ function markCut(acc: Accumulator): void {
 /** What a cut from here on means. Does not touch the budget. */
 function enter(acc: Accumulator, section: Section): void {
   acc.section = section;
+}
+
+/** Whether what is written from here on is text this call hands to a shell. */
+function shell(acc: Accumulator, shellText: boolean): void {
+  acc.shellText = shellText;
 }
 
 /**
@@ -737,8 +885,10 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
   if (capped.truncated) markCut(acc);
   const r = redactSecrets(sanitise(capped.text));
   acc.redactions += r.count;
-  // A redaction that removed something executable is a removal like any other.
-  if (r.cut) markCut(acc);
+  // A redaction that removed something this call could have EXECUTED is a
+  // removal like any other. In text the call writes or sends, the same
+  // characters are data, and charging them a cut denied writing a README.
+  if (r.cut && acc.shellText) markCut(acc);
   // A redaction marker can be longer than what it replaced, and ordinary text
   // was charged at one character each. Re-cut to the exact cost rather than
   // let one field overrun its section.
@@ -945,6 +1095,7 @@ export function buildEnvelope(
     truncated: false,
     requestCut: false,
     section: "messages",
+    shellText: false,
     left: limits.contextChars,
   };
   // Every input below is treated as untyped: see {@link asText} and rule 4.
@@ -1082,7 +1233,9 @@ export function buildEnvelope(
    */
   const stripped = scanned && rawCommand !== null && !scanIncomplete ? asText(scanned.withoutComments) : null;
   const judged = stripped ?? rawCommand;
+  shell(acc, true);
   const command = judged === null ? null : cleanString(judged, limits.stringChars, acc);
+  shell(acc, false);
   // The tool NAME is part of the call, not of the context, so it is charged
   // here and a cut of it is a cut of the request. `facts.tool_name` carries
   // its own copy above; they are the same short string, and paying for it
@@ -1093,7 +1246,17 @@ export function buildEnvelope(
   const readable = entriesOf(input0);
   if (readable === null) markCut(acc);
   const rest = (readable ?? []).filter(([k]) => !(k === "command" && command !== null));
+  /**
+   * For a KNOWN tool the shape is known, and `command` above is the only field
+   * of it a shell ever sees: everything else is a path, a flag, or the text
+   * being written. For an unknown (MCP) tool it is not known which field the
+   * server runs, so every string in the call counts as shell text — the
+   * conservative side, and the side that keeps the round-8 hiding class closed
+   * for a tool we cannot reason about.
+   */
+  shell(acc, f.toolIsKnown !== true);
   const input = buildObject(rest, acc, limits, 0);
+  shell(acc, false);
 
   /**
    * The removed shell comments, still in view of the injection probe: what the
@@ -1115,8 +1278,10 @@ export function buildEnvelope(
    * bounded by that — a cap here would be a second bound that only ever fires
    * on ordinary scripts.
    */
+  shell(acc, true);
   const removedComments =
     scanned?.commentsRemoved && !scanIncomplete ? cleanString((scanned.comments ?? []).join("\n"), limits.stringChars, acc) : null;
+  shell(acc, false);
 
   const state: Record<string, unknown> = {
     how_to_read: howToRead,

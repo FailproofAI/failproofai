@@ -86,7 +86,9 @@ import {
   throttleScope,
 } from "../../../src/hooks/semantic/jev-review";
 import { combineTwoTier, type RegexVerdict } from "../../../src/hooks/semantic/combine";
-import { MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
+import { MAX_AGENT_REQUEST_CHARS, MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
+/** Padding that puts the CALL past its own budget, whatever that budget is set to. */
+const PAST_THE_CALL_BUDGET = "x".repeat(MAX_AGENT_REQUEST_CHARS + 1_000);
 /** Repeats needed to run past the per-message cap, whatever it is set to. */
 const OVER_CAP = Math.ceil((MAX_USER_MESSAGE_CHARS * 1.5) / "tidy the build folder and ".length);
 import type { JevConfig } from "../../../src/hooks/semantic/jev-config";
@@ -260,7 +262,7 @@ describe("failures are fallbacks, never throws", () => {
     // CALL" takes. Jev answers allow (it was shown padding); the tier records
     // the cut and refuses to CLEAR anything on that allow — and invents no
     // deny of its own, because size is not a policy.
-    const review = await startJevReview(CFG, bash(`echo ${"x".repeat(80_000)} && rm -rf build`)).review;
+    const review = await startJevReview(CFG, bash(`echo ${PAST_THE_CALL_BUDGET} && rm -rf build`)).review;
     expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: true, decision: "allow" });
     const out = combineTwoTier([], review, "enforce");
     expect(out.activity).toMatchObject({
@@ -390,7 +392,7 @@ describe("the local verdict log", () => {
   // its verdict WAS applied (upward only), just not its clears — and the row's
   // own `truncated` is what records that half being off.
   it("a truncated call is two-tier, with truncated recorded beside it", async () => {
-    await startJevReview(CFG, bash(`echo ${"x".repeat(80_000)} && rm -rf build`)).review;
+    await startJevReview(CFG, bash(`echo ${PAST_THE_CALL_BUDGET} && rm -rf build`)).review;
     expect(rows()[0]).toMatchObject({ status: "ok", applied: "two-tier", truncated: true });
   });
 });
@@ -672,7 +674,7 @@ describe("every fallback this path records carries a code the activity store kno
     }],
     // The one case that is not a transport failure: the call itself did not
     // fit, so the arrange step returns the command to send instead.
-    ["a call the envelope had to cut", () => `echo ${"x".repeat(80_000)} && rm -rf build`],
+    ["a call the envelope had to cut", () => `echo ${PAST_THE_CALL_BUDGET} && rm -rf build`],
   ])("%s", async (_name, arrange) => {
     const command = arrange() ?? "rm -rf build";
     const review = await startJevReview(CFG, bash(command)).review;

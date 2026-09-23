@@ -125,6 +125,12 @@ export interface PreparedCall {
    * `__tests__/hooks/semantic/envelope-budget.test.ts`.
    */
   oversized: boolean;
+  /**
+   * A human turn in the window arrived already cut (T4's store caps what it
+   * keeps). Read ONLY by the deciders' local target check, which it makes
+   * inconclusive rather than negative. See {@link humanTurnCut}.
+   */
+  userSaidCut: boolean;
 }
 
 /**
@@ -166,11 +172,41 @@ const STORE_CUT_SLACK = 64;
  * cap; a quoted mark in ordinary prose does not. Only what is actually sent is
  * looked at: `user_said` (cleaned, the last few) and `agent_last_message`.
  */
+function storeCut(message: unknown): boolean {
+  return typeof message === "string" && message.length >= MAX_USER_MESSAGE_CHARS - STORE_CUT_SLACK && OMISSION_MARK.test(message);
+}
+
 function intentStoreCut(state: Record<string, unknown>): boolean {
   const said = Array.isArray(state.user_said) ? state.user_said : [];
-  return [...said, state.agent_last_message].some(
-    (m) => typeof m === "string" && m.length >= MAX_USER_MESSAGE_CHARS - STORE_CUT_SLACK && OMISSION_MARK.test(m),
-  );
+  return [...said, state.agent_last_message].some(storeCut);
+}
+
+/**
+ * The same guess, over the HUMAN channel only — and it feeds something that
+ * does change a verdict, so the narrowing is the point.
+ *
+ * `decide` / `decideV1` run one check of their own that the model does not:
+ * when a call names an identifiable target, one of those targets has to appear
+ * in what the human typed before an `op-requested` answer may clear the
+ * policy. Run over a prompt the store CUT, that check reads a head and a tail
+ * and calls a target named in the middle absent — so a 12,000-character prompt
+ * asking for exactly this file came out `instruct` + every clear withdrawn,
+ * where the same sentence on its own came out `allow`. The length of the
+ * human's own paste decided the verdict, which is what the design forbids.
+ *
+ * So a cut prompt makes that local check INCONCLUSIVE rather than negative:
+ * the same answer the deciders already give when a call names no identifiable
+ * target at all, where the model's own `op_requested` / `scope` answers carry
+ * the override. It can only ever restore a clear a short prompt would have
+ * had; it never adds one where the human's words are whole.
+ *
+ * The AGENT's message is deliberately NOT in here, and `opts.contextTruncated`
+ * deliberately not consulted: the agent writes its own channel and chooses its
+ * own length, so letting a cut there relax a local check would hand it the
+ * switch. The human's turns are read from a channel the agent cannot write.
+ */
+function humanTurnCut(turns: ReadonlyArray<string>): boolean {
+  return turns.some(storeCut);
 }
 
 export type SemanticOutcome =
@@ -246,6 +282,7 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
     truncated: truncated || oversized,
     requestCut: envelope.requestCut || oversized,
     oversized,
+    userSaidCut: humanTurnCut(envelope.evidence.userSaid),
   };
 }
 
@@ -275,8 +312,11 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
   const thresholds = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const judge = (answers: Record<string, number>): SemanticVerdict =>
     prepared.intent === "v1"
-      ? decideV1(selected, answers, input.toolInput, prepared.userSaid, prepared.agentLastMessage, opts.v1)
-      : decide(selected, answers, input.toolInput, prepared.userSaid, thresholds);
+      ? decideV1(selected, answers, input.toolInput, prepared.userSaid, prepared.agentLastMessage, {
+          ...opts.v1,
+          userSaidCut: prepared.userSaidCut,
+        })
+      : decide(selected, answers, input.toolInput, prepared.userSaid, thresholds, prepared.userSaidCut);
 
   // Nothing applies (an inert tool, or every precondition false): the answer
   // is allow and no request is made.

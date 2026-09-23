@@ -317,3 +317,108 @@ describe("a long prompt does not lose the consent it contains", () => {
     expect(r.combined.final.decision).toBe("deny");
   });
 });
+
+/**
+ * The same class one channel further out, and the half that was still open:
+ * a prompt T4's STORE had already cut before we ever saw it.
+ *
+ * The envelope reports `evidence.userSaid` uncut, which is what fixes the
+ * case above — the cut there is the envelope's own, so the uncut text is in
+ * hand. A prompt the store capped is different: `intent.ts` reads it through
+ * `capHeadTail(prompt, MAX_USER_MESSAGE_CHARS)`, so what arrives IS the
+ * head-and-tail cut and the middle is not recoverable. The local substring
+ * check then read "the user did not name it" off a string that could not have
+ * contained it, and the LENGTH of the human's paste decided the verdict: the
+ * same `DROP TABLE` came out `allow` after one sentence and `instruct`, with
+ * every clear withdrawn, after the same sentence inside a 12,000-character
+ * prompt.
+ *
+ * So a cut human turn makes the local check INCONCLUSIVE rather than
+ * negative, and the override falls back to what it rests on when a call names
+ * no identifiable target at all: Jev's own `op_requested` / `scope` answers.
+ * Two things bound that. It is read from the HUMAN channel only — the agent
+ * writes `agent_last_message` and chooses its own length, so a cut there must
+ * never relax a local check — and it can only restore a clear a short prompt
+ * would have had. `targetNamedByUser` stays FALSE in the outcome, because
+ * nothing named the target in what we hold; what changes is that "false" no
+ * longer decides.
+ */
+describe("a prompt the store cut before we saw it does not change the verdict", () => {
+  /** Exactly how `intent.ts` caps a stored prompt: head, mark, tail. */
+  const stored = (text: string): string => {
+    if (text.length <= MAX_USER_MESSAGE_CHARS) return text;
+    const mark = `\n…[${text.length - MAX_USER_MESSAGE_CHARS} characters omitted]…\n`;
+    const keep = MAX_USER_MESSAGE_CHARS - mark.length;
+    const head = Math.ceil(keep * 0.6);
+    return `${text.slice(0, head)}${mark}${text.slice(text.length - (keep - head))}`;
+  };
+
+  const pad = (n: number) => "some background for you to read. ".repeat(n);
+  /** A 12,000-character prompt whose middle — the cut part — names the target. */
+  const BURIED = stored(`${pad(180)}${NAMES_THE_TARGET}. ${pad(180)}`);
+  /** The same length and the same cut, naming the target nowhere at all. */
+  const NAMES_NOTHING = stored(`${pad(180)}please carry on with the plan. ${pad(180)}`);
+
+  it("the fixture really is a stored cut: at the cap, marked, and the target is gone", () => {
+    expect(BURIED.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+    expect(BURIED).toContain("characters omitted");
+    expect(BURIED).not.toContain("analytics_events");
+    expect(prepareSemantic(call([BURIED]), v1).userSaidCut).toBe(true);
+    // A short prompt is not mistaken for one.
+    expect(prepareSemantic(call([`${NAMES_THE_TARGET}.`]), v1).userSaidCut).toBe(false);
+  });
+
+  it.each([
+    ["v1", v1],
+    ["v0", v0],
+  ])("%s: the store's cut neither adds a deny nor withdraws a clear", async (_label, opts) => {
+    const short = await run(call([`${NAMES_THE_TARGET}.`]), opts);
+    const cut = await run(call([BURIED]), opts);
+
+    expect(short.combined.final.decision).toBe("allow");
+    expect(cut.verdict).toBe(short.verdict);
+    expect(cut.outcome.verdict.decision).toBe(short.outcome.verdict.decision);
+    expect(cut.combined.final.decision).toBe(short.combined.final.decision);
+    expect(cut.combined.cleared).toEqual(short.combined.cleared);
+    // The local check itself is honest about what it found: nothing.
+    expect(cut.named).toBe(false);
+  });
+
+  /**
+   * The consequence, stated rather than hidden: once the prompt is cut, a
+   * prompt that never named the target is indistinguishable from one that
+   * named it in the dropped middle, so it takes the same route. That is the
+   * point — the alternative is the length of a paste deciding the verdict —
+   * and it is bounded by what the override still requires of Jev
+   * (`op_requested`, `scope`, no injection) and by the channel being the
+   * human's.
+   */
+  it("a cut prompt that named nothing takes the same route, and Jev's answers carry it", async () => {
+    const cut = await run(call([NAMES_NOTHING]), v1);
+    expect(cut.named).toBe(false);
+    expect(cut.verdict).toBe("overridden");
+
+    // With the same prompt UNCUT, the local check is conclusive again and the
+    // override does not fire: it is the cut, not the length, that relaxes it.
+    const shortNoTarget = await run(call(["please carry on with the plan."]), v1);
+    expect(shortNoTarget.verdict).not.toBe("overridden");
+    expect(shortNoTarget.combined.final.decision).toBe("deny");
+  });
+
+  /**
+   * The agent's channel may not buy the same thing, however long it is. (In
+   * v1 the agent's last message is evidence for the target check on its own
+   * merits — a proposal the human replied to — so the fixture names no target
+   * there: what is under test is whether a CUT in that channel relaxes the
+   * check, and it may not.)
+   */
+  it("a cut AGENT message does not relax the local check", async () => {
+    const long = stored(`I will get on with the plan now. ${pad(180)}`);
+    const said = ["please carry on with the plan."];
+    expect(prepareSemantic(call(said, long), v1).userSaidCut).toBe(false);
+    const r = await run(call(said, long), v1);
+    expect(r.named).toBe(false);
+    expect(r.verdict).not.toBe("overridden");
+    expect(r.combined.final.decision).toBe("deny");
+  });
+});

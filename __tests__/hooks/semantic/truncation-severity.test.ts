@@ -23,9 +23,11 @@
  * A cut MESSAGE — a long human prompt, a long agent message — is a fourth
  * thing, and it does nothing at all: `a long prompt changes no verdict` below.
  *
- * The budget is deliberately large (`MAX_AGENT_REQUEST_CHARS`, 56,000
- * characters), so the fixtures here are correspondingly large: an ordinary
- * call is never cut, and a cut one is genuinely outsized.
+ * The budget is deliberately large (`MAX_AGENT_REQUEST_CHARS`, sized against
+ * what a call COSTS serialized — a 1,400-line `Write`, a 400-edit `MultiEdit`
+ * and a 2,000-row MCP body all fit), so the fixtures here are correspondingly
+ * large and are derived from the constant rather than written down: an
+ * ordinary call is never cut, and a cut one is genuinely outsized.
  */
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";

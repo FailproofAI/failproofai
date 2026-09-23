@@ -174,6 +174,7 @@ import { evaluateHookEvent } from "../../src/hooks/handler";
 import { clearPolicies } from "../../src/hooks/policy-registry";
 import { captureIntent, readIntent } from "../../src/hooks/semantic/intent";
 import { startJevReview } from "../../src/hooks/semantic/jev-review";
+import { MAX_AGENT_REQUEST_CHARS, MAX_STRING_CHARS } from "../../src/hooks/semantic/envelope";
 import { loadJevConfig } from "../../src/hooks/semantic/jev-config";
 import { transportForConfig } from "../../src/hooks/semantic/jev-client";
 import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
@@ -585,7 +586,9 @@ describe("fallback: the regex result, recorded with a reason", () => {
 
   it("a cut CALL: regex decides, Jev's answer is recorded but clears nothing", async () => {
     jevConfig = CFG;
-    const padded = `cat ${join(home, "other", "notes.txt")} ${"#".repeat(80_000)}`;
+    // Derived from the budget, not written down: a fixture sized against a
+    // past value of the cap stops testing the cut when the cap moves.
+    const padded = `cat ${join(home, "other", "notes.txt")} ${"#".repeat(MAX_AGENT_REQUEST_CHARS + 1_000)}`;
     const { outcome, row } = await bash(padded);
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "allow" });
@@ -643,9 +646,11 @@ describe("fallback: the regex result, recorded with a reason", () => {
 describe("a padded call cannot make Jev's own deny go away", () => {
   const DELETE = "find . -name '*.sqlite' -delete";
   /** Past MAX_STRING_CHARS beside the command: the judged command is unchanged. */
-  const padField = () => `${DELETE} ${"x".repeat(60_000)}`;
-  /** An extra key no policy reads, long enough to have overrun the request budget. */
-  const padBudget = () => ({ command: DELETE, file_path: `${project}/${"d".repeat(70_000)}` });
+  const padField = () => `${DELETE} ${"x".repeat(MAX_STRING_CHARS + 1_000)}`;
+  /** One side of padding that puts the CALL past its budget, whatever it is set to. */
+  const overflow = (c: string) => c.repeat(MAX_AGENT_REQUEST_CHARS + 1_000);
+  /** An extra field no policy reads, long enough to overrun the request budget. */
+  const padBudget = () => ({ command: DELETE, file_path: `${project}/${"d".repeat(MAX_STRING_CHARS + 1_000)}` });
 
   it("a field-capped call: the regex engine allows, Jev's deny decides, recorded as cut", async () => {
     jevConfig = CFG;
@@ -796,7 +801,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
   it("padding past the budget hides it, and the tier's floor is then the regex result", async () => {
     jevConfig = CFG;
     respond = seeingTransport as typeof respond;
-    const { outcome, row } = await bash(`echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}`);
+    const { outcome, row } = await bash(`echo ${overflow("x")} ; ${DELETE} ; echo ${overflow("y")}`);
     expect(outcome.evaluation?.decision).toBe("allow");
     expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "allow" });
   });
@@ -810,7 +815,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     expect(clean.outcome.evaluation?.decision).toBe("allow");
     expect(clean.row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
 
-    const padded = await bash(`cat ${target} ; echo ${"x".repeat(100_000)}`);
+    const padded = await bash(`cat ${target} ; echo ${overflow("x")}`);
     expect(padded.outcome.evaluation?.decision).toBe("deny");
     expect(padded.outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
     expect(padded.row.jevCleared).toBeUndefined();
@@ -844,7 +849,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     // And a call the envelope had to cut: shadow enforces the regex result
     // either way.
     respond = seeingTransport as typeof respond;
-    const hidden = await bash(`echo ${"x".repeat(100_000)} ; ${DELETE} ; echo ${"y".repeat(100_000)}`);
+    const hidden = await bash(`echo ${overflow("x")} ; ${DELETE} ; echo ${overflow("y")}`);
     expect(hidden.outcome.evaluation?.decision).toBe("allow");
     expect(hidden.row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevMode: "shadow" });
   });

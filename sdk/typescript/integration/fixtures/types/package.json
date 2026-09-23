@@ -1,0 +1,11 @@
+{
+  "name": "failproofai-it-types",
+  "private": true,
+  "description": "Integration fixture: the packed @failproofai/sdk's type declarations under every consumer tsconfig, on the newest and the oldest supported TypeScript. No \"type\" field on purpose: a .ts file here is CommonJS, as in a default `npm init` project.",
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@types/node": "22.20.4",
+    "typescript": "5.9.3",
+    "typescript-min": "npm:typescript@5.4.5"
+  }
+}

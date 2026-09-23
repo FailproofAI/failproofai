@@ -34,40 +34,80 @@
   },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
+  "types": "./dist/cjs/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "ai": ["./dist/cjs/integrations/ai.d.ts"],
+      "mastra": ["./dist/cjs/integrations/mastra.d.ts"],
+      "langchain": ["./dist/cjs/integrations/langchain.d.ts"],
+      "llamaindex": ["./dist/cjs/integrations/llamaindex.d.ts"],
+      "evaluator": ["./dist/cjs/evaluator/index.d.ts"],
+      "sandbox-worker": ["./dist/cjs/evaluator/sandbox-worker.d.ts"]
+    }
+  },
   "exports": {
     ".": {
-      "types": "./dist/esm/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./ai": {
-      "types": "./dist/esm/integrations/ai.d.ts",
-      "import": "./dist/esm/integrations/ai.js",
-      "require": "./dist/cjs/integrations/ai.js"
+      "import": {
+        "types": "./dist/esm/integrations/ai.d.ts",
+        "default": "./dist/esm/integrations/ai.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/ai.d.ts",
+        "default": "./dist/cjs/integrations/ai.js"
+      }
     },
     "./mastra": {
-      "types": "./dist/esm/integrations/mastra.d.ts",
-      "import": "./dist/esm/integrations/mastra.js",
-      "require": "./dist/cjs/integrations/mastra.js"
+      "import": {
+        "types": "./dist/esm/integrations/mastra.d.ts",
+        "default": "./dist/esm/integrations/mastra.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/mastra.d.ts",
+        "default": "./dist/cjs/integrations/mastra.js"
+      }
     },
     "./langchain": {
-      "types": "./dist/esm/integrations/langchain.d.ts",
-      "import": "./dist/esm/integrations/langchain.js",
-      "require": "./dist/cjs/integrations/langchain.js"
+      "import": {
+        "types": "./dist/esm/integrations/langchain.d.ts",
+        "default": "./dist/esm/integrations/langchain.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/langchain.d.ts",
+        "default": "./dist/cjs/integrations/langchain.js"
+      }
     },
     "./llamaindex": {
-      "types": "./dist/esm/integrations/llamaindex.d.ts",
-      "import": "./dist/esm/integrations/llamaindex.js",
-      "require": "./dist/cjs/integrations/llamaindex.js"
+      "import": {
+        "types": "./dist/esm/integrations/llamaindex.d.ts",
+        "default": "./dist/esm/integrations/llamaindex.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/llamaindex.d.ts",
+        "default": "./dist/cjs/integrations/llamaindex.js"
+      }
     },
     "./evaluator": {
-      "types": "./dist/esm/evaluator/index.d.ts",
-      "import": "./dist/esm/evaluator/index.js",
-      "require": "./dist/cjs/evaluator/index.js"
+      "import": {
+        "types": "./dist/esm/evaluator/index.d.ts",
+        "default": "./dist/esm/evaluator/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/evaluator/index.d.ts",
+        "default": "./dist/cjs/evaluator/index.js"
+      }
     },
     "./sandbox-worker": {
-      "types": "./dist/esm/evaluator/sandbox-worker.d.ts",
+      "types": "./dist/cjs/evaluator/sandbox-worker.d.ts",
       "require": "./dist/cjs/evaluator/sandbox-worker.js",
       "default": "./dist/cjs/evaluator/sandbox-worker.js"
     },

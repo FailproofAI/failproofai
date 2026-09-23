@@ -56,13 +56,62 @@ if (existsSync(cli)) {
 }
 
 // Every path the `exports` map promises must exist, or the failure lands on a
-// consumer's `import` rather than on this build.
+// consumer's `import` rather than on this build. Conditions nest
+// (`require.types`), so walk them.
+//
+// And every declaration must sit in the same half as the JavaScript it
+// describes: `.d.ts` files take their module format from the nearest
+// package.json exactly like `.js` files do, so ESM declarations under a
+// `require` condition tell TypeScript a CommonJS file is an ES module.
+const walkConditions = (path, value, visit) => {
+  if (typeof value === "string") {
+    visit(path, value);
+    return;
+  }
+  for (const [condition, next] of Object.entries(value)) walkConditions([...path, condition], next, visit);
+};
 for (const [entry, conditions] of Object.entries(manifest.exports)) {
   if (typeof conditions === "string") continue;
-  for (const [condition, target] of Object.entries(conditions)) {
+  const targets = [];
+  walkConditions([], conditions, (path, target) => {
+    targets.push({ path, target });
     if (!existsSync(join(root, target))) {
-      problems.push(`exports["${entry}"].${condition} points at ${target}, which was not built.`);
+      problems.push(`exports["${entry}"].${path.join(".")} points at ${target}, which was not built.`);
     }
+  });
+  for (const half of ["import", "require"]) {
+    const dirs = new Set(
+      targets
+        .filter(({ path }) => path[0] === half)
+        .map(({ target }) => target.split("/").slice(0, 3).join("/")),
+    );
+    if (dirs.size > 1) {
+      problems.push(`exports["${entry}"].${half} mixes ${[...dirs].join(" and ")}; types and JavaScript must match.`);
+    }
+  }
+}
+
+// `moduleResolution: node` (node10) ignores `exports`, so each subpath reaches
+// it only through `typesVersions` — and must land on the CommonJS declarations,
+// which is what a node10 project compiles to.
+for (const [range, mapping] of Object.entries(manifest.typesVersions ?? {})) {
+  for (const [subpath, targets] of Object.entries(mapping)) {
+    for (const target of targets) {
+      if (!existsSync(join(root, target))) {
+        problems.push(`typesVersions["${range}"]["${subpath}"] points at ${target}, which was not built.`);
+      }
+      if (!target.startsWith("./dist/cjs/")) {
+        problems.push(`typesVersions["${range}"]["${subpath}"] points at ${target}, not at dist/cjs.`);
+      }
+    }
+  }
+}
+for (const [field, prefix] of [
+  ["types", "./dist/cjs/"],
+  ["main", "./dist/cjs/"],
+]) {
+  if (!String(manifest[field]).startsWith(prefix) || !existsSync(join(root, manifest[field]))) {
+    problems.push(`package.json "${field}" is ${manifest[field]}; it must be a built file under ${prefix}.`);
   }
 }
 

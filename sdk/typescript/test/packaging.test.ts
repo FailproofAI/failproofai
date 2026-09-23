@@ -19,13 +19,32 @@ import { runNode, indexUrl } from "./helpers.js";
  * from outside it.
  */
 
+/** An `exports` value: a target, or conditions that nest (`require.types`). */
+type Conditions = string | { [condition: string]: Conditions };
+
+/** Every `[condition path, target]` under one `exports` entry. */
+const targetsOf = (value: Conditions, path: string[] = []): Array<[string[], string]> =>
+  typeof value === "string"
+    ? [[path, value]]
+    : Object.entries(value).flatMap(([condition, next]) => targetsOf(next, [...path, condition]));
+
+/** The single target the given condition path selects, e.g. `["require", "default"]`. */
+const targetAt = (value: Conditions, ...path: string[]): string => {
+  const found = targetsOf(value).filter(([p]) => p.join(".") === path.join("."));
+  if (found.length !== 1) throw new Error(`no single target at ${path.join(".")}`);
+  return found[0]![1];
+};
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   name: string;
   version: string;
   type: string;
   bin: Record<string, string>;
-  exports: Record<string, Record<string, string> | string>;
+  exports: Record<string, Conditions>;
+  main: string;
+  types: string;
+  typesVersions?: Record<string, Record<string, string[]>>;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -76,14 +95,63 @@ describe("zero runtime dependencies", () => {
 describe("the published surface", () => {
   it("builds every path its exports map promises", () => {
     for (const [entry, conditions] of Object.entries(manifest.exports)) {
-      if (typeof conditions === "string") {
-        expect(existsSync(join(root, conditions)), `${entry} -> ${conditions}`).toBe(true);
-        continue;
-      }
-      for (const [condition, target] of Object.entries(conditions)) {
-        expect(existsSync(join(root, target)), `${entry}.${condition} -> ${target}`).toBe(true);
+      for (const [path, target] of targetsOf(conditions)) {
+        expect(existsSync(join(root, target)), `${entry}.${path.join(".")} -> ${target}`).toBe(true);
       }
     }
+  });
+
+  it("hands each module system the declarations of its own half", () => {
+    // A `.d.ts` takes its module format from the nearest package.json, exactly
+    // like a `.js`. ESM declarations under `require` told every CommonJS
+    // project on `module: node16` that a CommonJS file was an ES module
+    // (TS1479 on every import).
+    for (const [entry, conditions] of Object.entries(manifest.exports)) {
+      if (entry === "./package.json") continue;
+      if (entry === "./sandbox-worker") {
+        // CommonJS only, for both module systems: types and code agree.
+        for (const [path, target] of targetsOf(conditions)) {
+          expect(target.startsWith("./dist/cjs/"), `${entry}.${path.join(".")}`).toBe(true);
+        }
+        continue;
+      }
+      for (const [half, dir] of [
+        ["import", "./dist/esm/"],
+        ["require", "./dist/cjs/"],
+      ] as const) {
+        const types = targetAt(conditions, half, "types");
+        const code = targetAt(conditions, half, "default");
+        expect(types.startsWith(dir), `${entry}.${half}.types -> ${types}`).toBe(true);
+        expect(code.startsWith(dir), `${entry}.${half}.default -> ${code}`).toBe(true);
+        expect(types, entry).toBe(code.replace(/\.js$/, ".d.ts"));
+      }
+    }
+  });
+
+  it("gives moduleResolution: node (node10) every subpath, as CommonJS declarations", () => {
+    // node10 ignores `exports`; `typesVersions` is its only route to a subpath,
+    // and `types` to the root. A node10 project compiles to CommonJS.
+    expect(manifest.types).toBe("./dist/cjs/index.d.ts");
+    expect(manifest.main).toBe("./dist/cjs/index.js");
+    const mapping = manifest.typesVersions?.["*"] ?? {};
+    const subpaths = Object.keys(manifest.exports)
+      .filter((entry) => entry !== "." && entry !== "./package.json")
+      .map((entry) => entry.slice(2));
+    expect(Object.keys(mapping).sort()).toEqual(subpaths.sort());
+    for (const subpath of subpaths) {
+      const conditions = manifest.exports[`./${subpath}`]!;
+      const expected =
+        subpath === "sandbox-worker"
+          ? targetAt(conditions, "types")
+          : targetAt(conditions, "require", "types");
+      expect(mapping[subpath], subpath).toEqual([expected]);
+    }
+  });
+
+  it("builds the CommonJS declarations the require conditions point at", () => {
+    const cjs = readFileSync(join(root, "dist/cjs/index.d.ts"), "utf8");
+    expect(cjs).toContain("export declare function configure");
+    expect(existsSync(join(root, "dist/cjs/evaluator/sandbox-worker.d.ts"))).toBe(true);
   });
 
   it("tells Node which half of the dual build is CommonJS", () => {
@@ -153,7 +221,7 @@ describe("both module systems load it", () => {
   it("loads the evaluator and the adapters from their subpaths", async () => {
     const require_ = createRequire(join(root, "anchor.js"));
     for (const subpath of ["./evaluator", "./ai", "./mastra", "./langchain", "./llamaindex"]) {
-      const target = (manifest.exports[subpath] as Record<string, string>).require!;
+      const target = targetAt(manifest.exports[subpath]!, "require", "default");
       expect(existsSync(join(root, target))).toBe(true);
       expect(() => require_(join(root, target))).not.toThrow();
     }

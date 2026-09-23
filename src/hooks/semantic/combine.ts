@@ -6,13 +6,16 @@
  * (`policy-evaluator.ts` imports it) without pulling the semantic evaluator
  * into the bundle, and so every row of the table below is testable offline.
  *
- * | Situation                                   | Result                                                        |
- * |---------------------------------------------|---------------------------------------------------------------|
+ * | Situation                                     | Result                                                      |
+ * |-----------------------------------------------|-------------------------------------------------------------|
  * | not configured / FAILPROOFAI_EVALUATOR=legacy | `regexOnly` — never reaches this module's `combineTwoTier`  |
- * | any HARD deny                               | the regex result (Jev was aborted, so nothing is cleared)     |
- * | Jev degraded, or its envelope was truncated | the regex result, every deny counts; recorded `jev-fallback`  |
- * | Jev answered                                | reviewable denies/instructs Jev covered are cleared; final =  |
- * |                                             | the most severe of {remaining regex results, Jev's verdict}   |
+ * | any HARD deny                                 | the regex result (Jev was aborted, so nothing is cleared)   |
+ * | Jev degraded — no verdict at all              | the regex result, every deny counts; recorded `jev-fallback`|
+ * | Jev answered on a TRUNCATED envelope          | nothing is cleared, so every regex deny counts; Jev's own   |
+ * |                                               | verdict still joins the most-severe rule; recorded          |
+ * |                                               | `jev-fallback` / `truncated`, with its decision             |
+ * | Jev answered                                  | reviewable denies/instructs Jev covered are cleared; final =|
+ * |                                               | the most severe of {remaining regex results, Jev's verdict} |
  *
  * `shadow` mode computes and records all of it, and still returns the regex
  * result.
@@ -24,12 +27,36 @@
  * false, the tool class did not apply, the name is misspelled — keeps the
  * regex verdict standing.
  *
- * Suspected injection withdraws every clear — and so does an injection probe
- * that was never asked. A clear is only as good as the check that the call is
- * not acting on text planted by a repo, a tool result or the agent itself;
- * v1 asks that probe only when a human message was recorded, so a call with
- * no captured intent (the first call of a session, every call on a CLI with
- * no prompt event) clears nothing.
+ * ## One rule about a partial picture
+ *
+ * Three things mean Jev judged less than the whole call: the envelope was
+ * truncated (§4), injection is suspected, or the injection probe was never
+ * asked. Each withdraws every CLEAR and nothing else. Jev's own deny or
+ * instruct still joins the most-severe rule, because an answer given on part
+ * of the evidence can only ever ADD severity — `combineTwoTier`'s result is
+ * never less severe than `regexOnly(verdicts)` unless a clear fired, and a
+ * clear fires only on a complete, uninjected, injection-checked picture.
+ *
+ * That invariant is what makes the tier safe to pad. §4's table files a
+ * truncated envelope under "fall back to the regex result", and reading that
+ * as "throw Jev's answer away" made padding a command past the envelope's
+ * 2,000-character cap a working way to stop Jev's OWN deny applying (a real
+ * repro: `rm -rf / --no-preserve-root` + 2,100 spaces flipped deny → allow).
+ * Truncation is attacker-influenceable, so it may never subtract severity.
+ * What §4 asks for is still there — every regex deny counts, and the call is
+ * recorded as `jev-fallback` / `truncated` — the answer is just not thrown
+ * away on the way in.
+ *
+ * Structurally: a `fallback` review carries no `decision` at all, so a verdict
+ * Jev actually produced cannot be filed as one. If Jev decided, it comes
+ * through `answered` (possibly `truncated`), and `answered` always reaches the
+ * most-severe merge.
+ *
+ * A clear is only as good as the check that the call is not acting on text
+ * planted by a repo, a tool result or the agent itself; v1 asks the injection
+ * probe only when a human message was recorded, so a call with no captured
+ * intent (the first call of a session, every call on a CLI with no prompt
+ * event) clears nothing.
  */
 import type { PolicyAuthority } from "../policy-types";
 
@@ -58,13 +85,19 @@ export type JevReview =
       kind: "not-consulted";
     }
   | {
-      /** Degraded (timeout, 429, HTTP/parse error, model mismatch, …) or truncated. */
+      /**
+       * Jev produced no verdict: degraded (timeout, 429, HTTP/parse error,
+       * model mismatch, no transport, a config that cannot be built, …).
+       *
+       * Deliberately carries NO `decision`. A verdict Jev did produce must not
+       * be droppable on the way into the combine — that is how padding a
+       * command used to make Jev's own deny disappear — so anything Jev
+       * decided comes through `answered`, whose severity is always merged.
+       */
       kind: "fallback";
       reason: string;
       latencyMs: number | null;
       model: string | null;
-      /** Set when Jev did answer (a truncated envelope) — recorded, never enforced. */
-      decision: Decision | null;
     }
   | {
       kind: "answered";
@@ -83,6 +116,16 @@ export type JevReview =
       injectionAsked: boolean;
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
+      /**
+       * Jev judged less than the whole call: the envelope cut the command, the
+       * human's words or the agent's last message (§4, `SemanticOutcome.truncated`).
+       *
+       * Withdraws every clear — a clear resting on half of the evidence is not
+       * a clear — and nothing else: the decision below still joins the
+       * most-severe rule, so padding cannot subtract severity. Recorded as
+       * `jev-fallback` / `truncated`, which is the §4 row.
+       */
+      truncated: boolean;
       /**
        * Null when nothing had to be sent (no semantic policy applied), or when
        * the answer came from the throttle's cache: a hit's ~0 ms is not a
@@ -191,7 +234,6 @@ export function combineTwoTier(
       decidedByJev: false,
       activity: {
         evaluator: "jev-fallback",
-        ...(review.decision ? { jevDecision: review.decision } : {}),
         jevFallbackReason: review.reason,
         ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),
         ...(review.model ? { jevModel: review.model } : {}),
@@ -200,14 +242,20 @@ export function combineTwoTier(
     };
   }
 
+  // The one gate on clearing. Every reason Jev's picture is partial lives here
+  // and here only, so the next one added cannot accidentally take Jev's own
+  // severity with it (see "One rule about a partial picture" above).
+  const wholePicture = review.injectionAsked && !review.injected && !review.truncated;
   const asked = new Set(review.asked);
   const clearSet = new Set(review.clear);
-  const cleared =
-    review.injected || !review.injectionAsked
-      ? []
-      : verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName);
+  const cleared = wholePicture ? verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName) : [];
   const activity: JevActivityFields = {
-    evaluator: "jev",
+    // §4 records a truncated call as a fallback, and so do we — the tier's
+    // clearing half really was off for it. The decision below is still applied
+    // (upward only), so `jev-fallback` + `truncated` means "Jev cleared
+    // nothing", while every other reason means "Jev never answered".
+    evaluator: review.truncated ? "jev-fallback" : "jev",
+    ...(review.truncated ? { jevFallbackReason: "truncated" } : {}),
     jevDecision: review.decision,
     ...(cleared.length > 0 ? { jevCleared: cleared } : {}),
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),

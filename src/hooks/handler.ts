@@ -312,7 +312,7 @@ async function startTwoTier(
     hookLogInfo(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
       mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
-      review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null, decision: null }),
+      review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null }),
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
     };

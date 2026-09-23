@@ -283,8 +283,12 @@ export interface VerdictLogMeta {
   /**
    * What the handler did with the outcome: combined it with the regex results
    * (`two-tier`), logged it while enforcing the regex result (`shadow`), or
-   * kept the regex result because Jev was unavailable or the envelope it
-   * judged was truncated (`legacy-fallback`).
+   * kept the regex result because Jev never answered (`legacy-fallback`).
+   *
+   * A TRUNCATED call is `two-tier`, not `legacy-fallback`: its clears were
+   * withdrawn, but Jev's own verdict still joined the most-severe rule (see
+   * `combine.ts`). `truncated` on the same row is what says the clearing half
+   * was off for it; the activity row records `jev-fallback` / `truncated`.
    */
   applied: "two-tier" | "shadow" | "legacy-fallback";
 }

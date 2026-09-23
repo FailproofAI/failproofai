@@ -8,7 +8,12 @@
  * The expected result is written out for `enforce` + complete. The other
  * columns follow from rules the table asserts on every row: shadow enforces
  * the regex result, and a truncated envelope — whatever was cut: the call,
- * the human's words or the agent's last message — falls back to it (§4).
+ * the human's words or the agent's last message — withdraws every clear, so
+ * every regex deny counts (§4) and the call is recorded `jev-fallback` /
+ * `truncated`. Truncation withdraws clears and NOTHING else: Jev's own deny or
+ * instruct still joins the most-severe rule, which is what `enforceTruncated`
+ * spells out on the three rows that have one to apply. A row without it
+ * enforces the regex result exactly.
  */
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type JevMode, type JevReview, type RegexVerdict } from "../../../src/hooks/semantic/combine";
@@ -100,6 +105,12 @@ interface Row {
   /** null → a hard deny decided and Jev was never consulted. */
   outcome: SemanticOutcome | null;
   enforce: Expect;
+  /**
+   * enforce + truncated, on the rows where it is NOT the regex result: nothing
+   * is cleared, but Jev's own deny or instruct still joins the most-severe
+   * rule. Absent → the regex result stands exactly (`toEqual(legacy)`).
+   */
+  enforceTruncated?: Expect;
   /** Expected fallback reason, when this row is a fallback even untruncated. */
   fallback?: string;
 }
@@ -229,18 +240,28 @@ const ROWS: Row[] = [
     verdicts: [hard("failproofai/block-sudo", "allow", null)],
     outcome: semOutcome({ decision: "deny", reason: "deletes the database", policies: { "destructive-deletion": "deny" } }),
     enforce: { decision: "deny", names: ["semantic/destructive-deletion"], cleared: [], decidedByJev: true },
+    // Cut or not, Jev's deny still decides: padding this command past the
+    // envelope cap used to turn the whole call back into an allow.
+    enforceTruncated: { decision: "deny", names: ["semantic/destructive-deletion"], cleared: [], decidedByJev: true },
   },
   {
     id: "regex instruct, Jev deny → Jev's deny (most severe)",
     verdicts: [hard("failproofai/warn-git-stash-drop", "instruct")],
     outcome: semOutcome({ decision: "deny", reason: "rewrites history", policies: { "git-history-rewrite": "deny" } }),
     enforce: { decision: "deny", names: ["semantic/git-history-rewrite"], cleared: [], decidedByJev: true },
+    enforceTruncated: { decision: "deny", names: ["semantic/git-history-rewrite"], cleared: [], decidedByJev: true },
   },
   {
     id: "regex instruct + Jev instruct → both, regex first",
     verdicts: [hard("failproofai/warn-git-stash-drop", "instruct")],
     outcome: semOutcome({ decision: "instruct", reason: "touches the system", policies: { "system-modification": "instruct" } }),
     enforce: {
+      decision: "instruct",
+      names: ["failproofai/warn-git-stash-drop", "semantic/system-modification"],
+      cleared: [],
+      decidedByJev: false,
+    },
+    enforceTruncated: {
       decision: "instruct",
       names: ["failproofai/warn-git-stash-drop", "semantic/system-modification"],
       cleared: [],
@@ -298,6 +319,8 @@ const ROWS: Row[] = [
 
 const MODES: JevMode[] = ["enforce", "shadow"];
 const TRUNCATED: Truncation[] = ["complete", "truncated"];
+/** allow < instruct < deny, for the "never more permissive" invariant. */
+const SEVERITY: Record<"allow" | "instruct" | "deny", number> = { allow: 0, instruct: 1, deny: 2 };
 
 function reviewFor(row: Row, truncated: Truncation): JevReview {
   if (!row.outcome) return { kind: "not-consulted" };
@@ -315,23 +338,42 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
           const names = out.final.entries.map((e) => e.policyName);
 
           const hardDecided = row.outcome === null;
-          // Truncation is a fallback only for a call Jev was actually sent:
-          // with no semantic policy applying nothing is judged, so nothing was
-          // judged on a cut envelope (and the answered row clears nothing).
+          // Jev never answered at all. The only state in which its verdict is
+          // absent from the combine.
+          const degraded = !hardDecided && row.fallback !== undefined;
+          // Truncation counts only for a call Jev was actually sent: with no
+          // semantic policy applying nothing is judged, so nothing was judged
+          // on a cut envelope (and that row clears nothing anyway).
           const nothingSent = row.outcome?.status === "ok" && row.outcome.via === "none";
-          const fallback = !hardDecided && (row.fallback !== undefined || (truncated === "truncated" && !nothingSent));
-          const answered = !hardDecided && !fallback;
+          const cutAnswer = !hardDecided && !degraded && truncated === "truncated" && !nothingSent;
+          const wholeAnswer = !hardDecided && !degraded && !cutAnswer;
 
           // What is ENFORCED.
-          if (mode === "enforce" && answered) {
-            expect(out.final.decision).toBe(row.enforce.decision);
-            expect(names).toEqual(row.enforce.names);
-            expect(out.decidedByJev).toBe(row.enforce.decidedByJev ?? false);
-          } else {
-            // shadow, a fallback (degraded or truncated) and a hard deny all
-            // enforce exactly what the regex engine says alone.
+          if (mode === "shadow" || hardDecided || degraded) {
+            // shadow, a degraded Jev and a hard deny all enforce exactly what
+            // the regex engine says alone.
             expect(out.final).toEqual(legacy);
             expect(out.decidedByJev).toBe(false);
+          } else if (cutAnswer && !row.enforceTruncated) {
+            // Nothing cleared, and Jev's own verdict was no more severe than
+            // the regex result: the regex result stands, byte for byte.
+            expect(out.final).toEqual(legacy);
+            expect(out.decidedByJev).toBe(false);
+          } else {
+            const want = (cutAnswer ? row.enforceTruncated : undefined) ?? row.enforce;
+            expect(out.final.decision).toBe(want.decision);
+            expect(names).toEqual(want.names);
+            expect(out.decidedByJev).toBe(want.decidedByJev ?? false);
+          }
+
+          // The invariant that makes padding pointless: with nothing cleared,
+          // the final can never be MORE PERMISSIVE than the regex engine
+          // alone. Clearing is the ONLY thing that may soften a call, and
+          // every reason Jev's picture is partial — truncation included —
+          // withdraws clears and nothing else. Checked on every row, in both
+          // modes, complete and truncated.
+          if (out.cleared.length === 0) {
+            expect(SEVERITY[out.final.decision]).toBeGreaterThanOrEqual(SEVERITY[legacy.decision]);
           }
 
           // What is RECORDED.
@@ -339,18 +381,23 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
           if (hardDecided) {
             expect(out.activity).toEqual({ evaluator: "jev", jevMode: mode });
             expect(out.cleared).toEqual([]);
-          } else if (fallback) {
+          } else if (degraded) {
             expect(out.activity.evaluator).toBe("jev-fallback");
-            expect(out.activity.jevFallbackReason).toBe(row.fallback ?? "truncated");
+            expect(out.activity.jevFallbackReason).toBe(row.fallback);
             expect(out.activity.jevCleared).toBeUndefined();
             expect(out.cleared).toEqual([]);
-            if (row.fallback === undefined) {
-              // Truncated: Jev did answer, and that answer is kept for the record.
-              expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
-            } else {
-              expect(out.activity.jevDecision).toBeUndefined();
-            }
+            // Jev produced no verdict, so there is none to record.
+            expect(out.activity.jevDecision).toBeUndefined();
+          } else if (cutAnswer) {
+            // §4's row: recorded as a fallback with its reason, and nothing is
+            // cleared — but Jev's answer is kept, and it was applied above.
+            expect(out.activity.evaluator).toBe("jev-fallback");
+            expect(out.activity.jevFallbackReason).toBe("truncated");
+            expect(out.activity.jevCleared).toBeUndefined();
+            expect(out.cleared).toEqual([]);
+            expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
           } else {
+            expect(wholeAnswer).toBe(true);
             expect(out.activity.evaluator).toBe("jev");
             expect(out.activity.jevFallbackReason).toBeUndefined();
             expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
@@ -370,8 +417,15 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
     expect(answeredRows.length).toBe(24);
-    // Every answered row also runs truncated (the truncation → fallback row).
+    // Every answered row also runs truncated (the §4 truncation row).
     expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(144);
+    // Exactly the rows where Jev's own verdict outranks the regex result carry
+    // a truncated expectation; on every other row the regex result stands.
+    expect(ROWS.filter((r) => r.enforceTruncated).map((r) => r.id)).toEqual([
+      "regex allows, Jev denies → Jev's deny",
+      "regex instruct, Jev deny → Jev's deny (most severe)",
+      "regex instruct + Jev instruct → both, regex first",
+    ]);
     // The four degraded causes §10 gate 5 names must each be a row.
     for (const cause of ["timeout", "http-429", "out-of-credits", "model-mismatch"]) {
       expect(degradedRows.map((r) => r.fallback)).toContain(cause);
@@ -441,6 +495,7 @@ describe("the clear rule, on hand-built reviews", () => {
     clear: ["read-outside-workspace"],
     injectionAsked: true,
     injected: false,
+    truncated: false,
     latencyMs: 10,
     model: "jev-1.13.0",
     ...over,
@@ -478,6 +533,41 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.final.decision).toBe("deny");
   });
 
+  it("a truncated answer withholds every clear, and nothing else", () => {
+    const out = combineTwoTier(verdicts, answered({ truncated: true }), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly(verdicts));
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "allow" });
+  });
+
+  // The hole this rule closes: truncation is attacker-influenceable (pad the
+  // command past the envelope's 2,000-character cap), so it may never subtract
+  // severity. It used to turn the whole review into a fallback, which threw
+  // Jev's own deny away and flipped this call to allow.
+  it("a truncated answer still applies Jev's OWN deny", () => {
+    const review = answered({ truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
+    const out = combineTwoTier([], review, "enforce");
+    expect(out.final.decision).toBe("deny");
+    expect(out.final.entries).toEqual([{ policyName: "semantic/destructive-deletion", reason: "deletes the database" }]);
+    expect(out.decidedByJev).toBe(true);
+    // …and it is still RECORDED as §4's truncated fallback.
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+  });
+
+  it("a truncated answer still applies Jev's OWN instruct", () => {
+    const review = answered({ truncated: true, decision: "instruct", reason: "beyond the task", policyName: "semantic/beyond-task" });
+    const out = combineTwoTier([], review, "enforce");
+    expect(out.final).toEqual({ decision: "instruct", entries: [{ policyName: "semantic/beyond-task", reason: "beyond the task" }] });
+    expect(out.decidedByJev).toBe(true);
+  });
+
+  it("shadow still enforces the regex result for a truncated answer", () => {
+    const review = answered({ truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
+    const out = combineTwoTier([], review, "shadow");
+    expect(out.final).toEqual(regexOnly([]));
+    expect(out.decidedByJev).toBe(false);
+  });
+
   // Round 2: the exported pure function is safe on its own, not only behind
   // authorityOf — a verdict it is handed is cleared only when it is BOTH
   // reviewable AND names at least one reviewer.
@@ -510,14 +600,43 @@ describe("toReview", () => {
     expect(toReview(semOutcome({ via: "none", injection: 0.1 }))).toMatchObject({ asked: [], clear: [], injectionAsked: false });
   });
 
-  it("any truncation of the envelope is a fallback, with Jev's decision kept for the record", () => {
+  it("any truncation of the envelope marks the answer, keeping Jev's decision", () => {
     const out = toReview({ ...semOutcome({ decision: "instruct", policies: { "secret-exposure": "instruct" } }), truncated: true });
-    expect(out).toEqual({ kind: "fallback", reason: "truncated", latencyMs: 42, model: "jev-1.13.0", decision: "instruct" });
+    expect(out).toEqual({
+      kind: "answered",
+      decision: "instruct",
+      reason: null,
+      policyName: "semantic/secret-exposure",
+      asked: ["secret-exposure"],
+      clear: [],
+      injectionAsked: true,
+      injected: false,
+      truncated: true,
+      latencyMs: 42,
+      model: "jev-1.13.0",
+    });
   });
 
-  it("a truncated envelope that was never SENT is not a fallback: nothing was judged, nothing can clear", () => {
+  // A `fallback` review carries no decision at all — that is what makes it
+  // impossible to file a verdict Jev produced as "Jev did not answer".
+  it("a degraded outcome is the only fallback, and carries no decision", () => {
+    const out = toReview(degradedOutcome("timeout"));
+    expect(out).toEqual({ kind: "fallback", reason: "timeout", latencyMs: 1500, model: null });
+    expect("decision" in out).toBe(false);
+  });
+
+  it("a truncated envelope that was never SENT is not truncated: nothing was judged, nothing can clear", () => {
     const out = toReview({ ...semOutcome({ via: "none", policies: {} }), truncated: true });
-    expect(out).toMatchObject({ kind: "answered", decision: "allow", asked: [], clear: [], injectionAsked: false, latencyMs: null, model: null });
+    expect(out).toMatchObject({
+      kind: "answered",
+      decision: "allow",
+      asked: [],
+      clear: [],
+      injectionAsked: false,
+      truncated: false,
+      latencyMs: null,
+      model: null,
+    });
     // …so the combine records an answered call and enforces the regex result.
     const verdicts = [reviewable(RRO, "deny", ["read-outside-workspace"])];
     const combined = combineTwoTier(verdicts, out, "enforce");

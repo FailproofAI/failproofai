@@ -209,7 +209,16 @@ export async function evaluatePolicies(
     // lines reach the hook's stderr — which is the deny text itself on some
     // CLIs. The activity row (`evaluator: "jev-fallback"` + reason) and
     // `failproofai jev status` are where a fallback is made visible.
-    hookLogInfo(`jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`);
+    //
+    // `truncated` is the one reason that is not an outage: Jev answered, and
+    // its answer still counted toward the most-severe rule — only its clears
+    // were withdrawn (see `semantic/combine.ts`). Saying "unavailable" there
+    // would send someone looking for a provider problem that is not there.
+    hookLogInfo(
+      combined.activity.jevFallbackReason === "truncated"
+        ? "jev judged a truncated call; it cleared nothing, and only the most severe verdict applied"
+        : `jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`,
+    );
   }
   return {
     ...formatVerdict(eventType, session, toolName, combined.final),

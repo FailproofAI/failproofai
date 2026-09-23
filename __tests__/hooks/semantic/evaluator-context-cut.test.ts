@@ -1,17 +1,19 @@
 // @vitest-environment node
 /**
- * §4 falls back to the regex result when Jev judged a truncated envelope —
- * the call, the human's words or the agent's last message cut. The intent
- * store (T4) caps what it keeps to fit INSIDE the envelope's own limit,
- * omission mark included, so the envelope never cuts a stored message a second
- * time and its own `truncated` flag stays false. The cut must still count:
- * `prepareSemantic` / `evaluateSemantic` report it, and `toReview` turns it
- * into the `truncated` fallback.
+ * §4 keeps the regex result when Jev judged a truncated envelope — the call,
+ * the human's words or the agent's last message cut. The intent store (T4)
+ * caps what it keeps to fit INSIDE the envelope's own limit, omission mark
+ * included, so the envelope never cuts a stored message a second time and its
+ * own `truncated` flag stays false. The cut must still count:
+ * `prepareSemantic` / `evaluateSemantic` report it, and `toReview` marks the
+ * answer `truncated`, which withdraws every clear and records the call as
+ * `jev-fallback` / `truncated`.
  *
- * Where the cut comes from matters, because the fallback THROWS JEV'S VERDICT
- * AWAY. `user_said` and `agent_last_message` are content — the agent writes
- * the second one, and it repeats file and tool-output text a third party
- * controls — so a cut must never be something that text can simply claim:
+ * Where the cut comes from matters, because a cut TAKES JEV'S CLEARS AWAY —
+ * every reviewable deny then stands. `user_said` and `agent_last_message` are
+ * content — the agent writes the second one, and it repeats file and
+ * tool-output text a third party controls — so a cut must never be something
+ * that text can simply claim:
  *
  * - `SemanticOptions.contextTruncated` is the store's own word, out of band,
  *   and is believed exactly (`startJevReview` reads it off `readIntent`).
@@ -27,6 +29,7 @@
 import { describe, it, expect } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import { MAX_USER_MESSAGE_CHARS, capHeadTail } from "../../../src/hooks/semantic/envelope";
 import { evaluateSemantic, prepareSemantic, type SemanticOptions } from "../../../src/hooks/semantic/evaluator";
@@ -64,6 +67,17 @@ const OPTS: SemanticOptions = {
   intent: "v1",
   v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
 };
+
+/** The reviewable regex deny that call earns, as `evaluatePolicies` records it. */
+function outsideReadDeny(): RegexVerdict {
+  return {
+    policyName: "failproofai/block-read-outside-cwd",
+    decision: "deny",
+    reason: "reads outside the workspace",
+    authority: "reviewable",
+    reviewedBy: ["read-outside-workspace"],
+  };
+}
 
 /** A read outside the project, inside home: read-outside-workspace is asked. Paths only; nothing is touched. */
 function outsideRead(userSaid: string[], agentLastMessage: string | null = null): SemanticInput {
@@ -106,7 +120,7 @@ describe("a message the intent store already cut is a truncated envelope (§4)",
     expect(prepared.truncated).toBe(true);
   });
 
-  it("the review falls back: Jev's answer is recorded, nothing is cleared", async () => {
+  it("the review is marked truncated: Jev's answer is recorded, nothing is cleared", async () => {
     for (const input of [
       outsideRead([storedByIntentStore(LONG_PROMPT)]),
       outsideRead(["tidy my notes"], storedByIntentStore(LONG_AGENT)),
@@ -114,7 +128,15 @@ describe("a message the intent store already cut is a truncated envelope (§4)",
       const outcome = await evaluateSemantic(input, OPTS);
       expect(outcome.status).toBe("ok");
       expect(outcome.truncated).toBe(true);
-      expect(toReview(outcome)).toMatchObject({ kind: "fallback", reason: "truncated", decision: "allow" });
+      const review = toReview(outcome);
+      expect(review).toMatchObject({ kind: "answered", truncated: true, decision: "allow" });
+      // Its reviewer came back clear, and the cut still withdraws the clear.
+      expect(review.kind === "answered" && review.clear).toContain("read-outside-workspace");
+      const verdicts = [outsideReadDeny()];
+      const out = combineTwoTier(verdicts, review, "enforce");
+      expect(out.cleared).toEqual([]);
+      expect(out.final).toEqual(regexOnly(verdicts));
+      expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "allow" });
     }
   });
 
@@ -180,8 +202,8 @@ describe("the store's own word (`contextTruncated`) is believed exactly", () => 
     expect(prepared.envelope.truncated).toBe(false);
     expect(prepared.truncated).toBe(true);
     expect(toReview(await evaluateSemantic(input, { ...OPTS, contextTruncated: true }))).toMatchObject({
-      kind: "fallback",
-      reason: "truncated",
+      kind: "answered",
+      truncated: true,
     });
   });
 

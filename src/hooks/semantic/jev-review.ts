@@ -14,7 +14,12 @@
  * verdict is intent v1 (`decideV1` with `DEFAULT_THRESHOLDS_V1`).
  *
  * The returned promise never rejects: every failure is a `fallback` review,
- * which the combine turns into today's regex result.
+ * which the combine turns into today's regex result. A `fallback` means Jev
+ * produced NO verdict — it deliberately carries no decision, so a verdict Jev
+ * did produce can never be dropped on the way in. A verdict given on a
+ * truncated envelope comes through as `answered` with `truncated: true`: it
+ * clears nothing, and it still counts toward the most-severe rule, because
+ * padding a command must not be a way to stop Jev's own deny applying.
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { normalizePolicyName } from "../policy-registry";
@@ -166,28 +171,13 @@ export function fallbackCode(reason: string): string {
  */
 export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   if (outcome.status === "degraded") {
-    return { kind: "fallback", reason: fallbackCode(outcome.reason), latencyMs: outcome.latencyMs, model: null, decision: null };
+    // No verdict at all. The `fallback` variant carries no decision, by design:
+    // see "One rule about a partial picture" in `combine.ts`.
+    return { kind: "fallback", reason: fallbackCode(outcome.reason), latencyMs: outcome.latencyMs, model: null };
   }
   const sent = outcome.via !== "none";
   const latencyMs = sent && !cached ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
-  // §4: a truncated ENVELOPE means Jev judged less than the whole picture —
-  // the call, the human's words or the agent's last message was cut — so the
-  // regex result stands, every deny counting. Padding a command must not be a
-  // way to hide its dangerous part, and a clear resting on half of what the
-  // human typed is not a clear. Jev's answer is still recorded. "Cut" includes
-  // a message the intent store capped before the envelope saw it (T4 caps what
-  // it keeps to fit the envelope, so the envelope cannot see that cut; the
-  // store reports it through `readIntent`, see `IntentStore`):
-  // `outcome.truncated` covers both (see `prepareSemantic`).
-  //
-  // Only when a request was actually sent: with no semantic policy applying
-  // nothing reaches Jev, so nothing was judged on a cut envelope, nothing can
-  // be cleared (`asked` is empty) and the answer below is the regex result
-  // anyway — recording it as a fallback would only inflate the fallback rate.
-  if (outcome.truncated && sent) {
-    return { kind: "fallback", reason: "truncated", latencyMs, model, decision: outcome.verdict.decision };
-  }
   const outcomes = outcome.verdict.outcomes;
   // `null` when the injection probe was not in the request: v1 asks it only
   // when there is a recorded human message to judge the call against (never
@@ -205,6 +195,22 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     clear: sent ? outcomes.filter((o) => o.verdict === "none" || o.verdict === "overridden").map((o) => o.policy) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
+    // §4: a truncated ENVELOPE means Jev judged less than the whole picture —
+    // the call, the human's words or the agent's last message was cut. It
+    // withdraws every clear (a clear resting on half of what the human typed
+    // is not a clear) and the call is recorded as `jev-fallback` /
+    // `truncated`; Jev's own deny or instruct still counts, because padding a
+    // command must not be a way to stop it applying. "Cut" includes a message
+    // the intent store capped before the envelope saw it (T4 caps what it
+    // keeps to fit the envelope, so the envelope cannot see that cut; the
+    // store reports it through `readIntent`, see `IntentStore`):
+    // `outcome.truncated` covers both (see `prepareSemantic`).
+    //
+    // Only when a request was actually sent: with no semantic policy applying
+    // nothing reaches Jev, so nothing was judged on a cut envelope, nothing
+    // can be cleared (`asked` is empty) and the verdict is allow anyway —
+    // recording it as a fallback would only inflate the fallback rate.
+    truncated: outcome.truncated && sent,
     latencyMs,
     model,
   };
@@ -240,7 +246,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     throttled = throttle.throttleTransport(route.transport, { scope: throttleScope(cfg, route) });
   } catch (err) {
     const reason = err instanceof JevError ? err.code : "config";
-    return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null, decision: null }));
+    return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null }));
   }
 
   let intent: { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean };
@@ -301,7 +307,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
       }
       return review;
     })
-    .catch((): JevReview => ({ kind: "fallback", reason: "error", latencyMs: null, model: null, decision: null }));
+    .catch((): JevReview => ({ kind: "fallback", reason: "error", latencyMs: null, model: null }));
 
   // The backstop: `evaluateSemantic` times out through the transport's
   // abort signal, which only works if the transport honours it. Whatever the
@@ -314,7 +320,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     deadline = setTimeout(() => {
       abandoned = true;
       controller.abort();
-      resolve({ kind: "fallback", reason: "timeout", latencyMs: timeoutMs + JEV_DEADLINE_GRACE_MS, model: null, decision: null });
+      resolve({ kind: "fallback", reason: "timeout", latencyMs: timeoutMs + JEV_DEADLINE_GRACE_MS, model: null });
     }, timeoutMs + JEV_DEADLINE_GRACE_MS);
   });
   return handle(

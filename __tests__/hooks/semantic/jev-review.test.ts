@@ -85,6 +85,7 @@ import {
   startJevReview,
   throttleScope,
 } from "../../../src/hooks/semantic/jev-review";
+import { combineTwoTier } from "../../../src/hooks/semantic/combine";
 import type { JevConfig } from "../../../src/hooks/semantic/jev-config";
 
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32) };
@@ -219,7 +220,7 @@ describe("failures are fallbacks, never throws", () => {
       throw new JevError("config", "provider openrouter is not supported yet");
     });
     const review = await startJevReview(CFG, bash("ls")).review;
-    expect(review).toEqual({ kind: "fallback", reason: "config", latencyMs: null, model: null, decision: null });
+    expect(review).toEqual({ kind: "fallback", reason: "config", latencyMs: null, model: null });
     expect(transportCalls).toHaveLength(0);
   });
 
@@ -233,7 +234,9 @@ describe("failures are fallbacks, never throws", () => {
       throw err;
     };
     const review = await startJevReview(CFG, bash("ls")).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: code, decision: null });
+    expect(review).toMatchObject({ kind: "fallback", reason: code });
+    // A fallback is Jev NOT answering, so it carries no verdict to apply.
+    expect("decision" in review).toBe(false);
   });
 
   it("a model mismatch", async () => {
@@ -249,26 +252,31 @@ describe("failures are fallbacks, never throws", () => {
     expect(review).toMatchObject({ kind: "fallback", reason: "timeout" });
   });
 
-  it("a truncated call: Jev's answer is kept for the record, the regex decides", async () => {
+  it("a truncated call: Jev's answer is kept and marked, so it clears nothing", async () => {
     const review = await startJevReview(CFG, bash(`echo ${"x".repeat(5000)} && rm -rf build`)).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: "truncated", decision: "allow" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true, decision: "allow" });
+    expect(combineTwoTier([], review, "enforce").activity).toMatchObject({
+      evaluator: "jev-fallback",
+      jevFallbackReason: "truncated",
+      jevDecision: "allow",
+    });
   });
 
   it("long removed shell comments are part of the call too", async () => {
     const review = await startJevReview(CFG, bash(`rm -rf build # ${"approved ".repeat(200)}`)).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true });
   });
 
-  it("a long human prompt truncates the envelope too (§4): the regex decides", async () => {
+  it("a long human prompt truncates the envelope too (§4)", async () => {
     intent = { userSaid: ["please " + "tidy the build folder and ".repeat(200)], agentLastMessage: null };
     const review = await startJevReview(CFG, bash("rm -rf build")).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true });
   });
 
   it("so does a long agent message", async () => {
     intent = { userSaid: ["tidy the build folder"], agentLastMessage: "Plan: " + "step ".repeat(600) };
     const review = await startJevReview(CFG, bash("rm -rf build")).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true });
   });
 
   it("an intent store that throws", async () => {
@@ -298,24 +306,24 @@ describe("the intent store's own truncation flag", () => {
     return `${text.slice(0, Math.ceil(budget * 0.6))}${mark}${text.slice(text.length - (budget - Math.ceil(budget * 0.6)))}`;
   };
 
-  it("truncated: true falls back, though nothing in the messages looks cut", async () => {
+  it("truncated: true marks the answer, though nothing in the messages looks cut", async () => {
     intent = { userSaid: ["tidy the build folder"], agentLastMessage: "I can tidy it.", truncated: true };
     const review = await startJevReview(CFG, bash("rm -rf build")).review;
-    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+    expect(review).toMatchObject({ kind: "answered", truncated: true });
   });
 
   it("truncated: false is believed over the mark-and-cap guess", async () => {
     const capped = stored("please " + "tidy the build folder and ".repeat(200));
     intent = { userSaid: [capped], agentLastMessage: null };
-    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "fallback", reason: "truncated" });
+    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: true });
 
     intent = { userSaid: [capped], agentLastMessage: null, truncated: false };
-    expect((await startJevReview(CFG, bash("rm -rf build")).review).kind).toBe("answered");
+    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: false });
   });
 
   it("a store that does not report it (the §7 stub) is read as before", async () => {
     intent = { userSaid: ["tidy the build folder"], agentLastMessage: null };
-    expect((await startJevReview(CFG, bash("rm -rf build")).review).kind).toBe("answered");
+    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: false });
   });
 });
 
@@ -335,6 +343,14 @@ describe("the local verdict log", () => {
     await startJevReview(CFG, bash("ls")).review;
     expect(rows().map((r) => r.applied)).toEqual(["two-tier", "shadow", "legacy-fallback"]);
     expect(rows()[2]).toMatchObject({ status: "degraded", reason: "http-429" });
+  });
+
+  // `legacy-fallback` means Jev never answered. A truncated call is not that:
+  // its verdict WAS applied (upward only), just not its clears — and the row's
+  // own `truncated` is what records that half being off.
+  it("a truncated call is two-tier, with truncated recorded beside it", async () => {
+    await startJevReview(CFG, bash(`echo ${"x".repeat(5000)} && rm -rf build`)).review;
+    expect(rows()[0]).toMatchObject({ status: "ok", applied: "two-tier", truncated: true });
   });
 });
 
@@ -469,7 +485,7 @@ describe("how long a call may wait for Jev", () => {
     const t0 = performance.now();
     const review = await startJevReview({ ...CFG, timeoutMs: 100 }, bash("ls")).review;
     const elapsed = performance.now() - t0;
-    expect(review).toMatchObject({ kind: "fallback", reason: "timeout", decision: null });
+    expect(review).toMatchObject({ kind: "fallback", reason: "timeout" });
     expect(elapsed).toBeGreaterThanOrEqual(100);
     expect(elapsed).toBeLessThan(100 + JEV_DEADLINE_GRACE_MS + 400);
     expect(transportCalls[0].signal.aborted).toBe(true);
@@ -581,6 +597,9 @@ const T8_REASON_CODES = new Set([
 const knownToT8 = (code: string) => T8_REASON_CODES.has(code) || /^http-\d{3}$/.test(code);
 
 describe("every fallback this path records carries a code the activity store knows", () => {
+  // Read off the ACTIVITY row, not the review: that is what the store keeps
+  // and telemetry ships, and it is where a truncated call's `truncated` lands
+  // now that such a call is an answer with its clears withdrawn.
   it.each([
     ["a transport that cannot be built (JevError)", () => {
       vi.mocked(transportForConfig).mockImplementationOnce(() => {
@@ -606,8 +625,8 @@ describe("every fallback this path records carries a code the activity store kno
   ])("%s", async (_name, arrange) => {
     arrange();
     const review = await startJevReview(CFG, bash("rm -rf build")).review;
-    expect(review.kind).toBe("fallback");
-    if (review.kind !== "fallback") return;
-    expect(knownToT8(review.reason)).toBe(true);
+    const { activity } = combineTwoTier([], review, "enforce");
+    expect(activity.evaluator).toBe("jev-fallback");
+    expect(knownToT8(activity.jevFallbackReason as string)).toBe(true);
   });
 });

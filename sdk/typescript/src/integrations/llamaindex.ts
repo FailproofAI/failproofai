@@ -1848,6 +1848,8 @@ export function attach(
  * `@llamaindex/core/global`, so found by watching which storage one call of
  * the exported `getEventCaller()` reads. The prototype is swapped back before
  * this returns: the window is one synchronous call, with no other code in it.
+ *
+ * @internal Exported for the unit tests.
  */
 export function eventCallerStorage(module: GlobalModule): AsyncLocalStorage<unknown> | null {
   const getEventCaller = module.getEventCaller;

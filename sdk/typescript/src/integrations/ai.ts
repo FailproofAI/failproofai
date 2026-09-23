@@ -197,6 +197,8 @@ function toolCallOf(part: Record<string, unknown>): Record<string, unknown> {
  * v5/v6 `streamText` `{ type: "tool-call", input: {…} }`. Passed through, the
  * same call read three different ways on the dashboard, its input a JSON
  * string inside JSON.
+ *
+ * @internal Exported for the unit tests.
  */
 export function toolCallsOf(value: unknown): Array<Record<string, unknown>> | undefined {
   const parsed = parseMaybeJson(value);

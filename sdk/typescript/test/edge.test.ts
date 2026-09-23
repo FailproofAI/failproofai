@@ -52,7 +52,7 @@ describe("the edge build's imports", () => {
  */
 const INTERNAL: Record<string, string[]> = {
   index: [],
-  ai: ["_internals", "usageTokens", "stopReasonOf", "responseContent"],
+  ai: ["toolCallsOf", "_internals", "usageTokens", "stopReasonOf", "responseContent"],
   langchain: [
     "ABANDONED_ROOT_GRACE_MS",
     "PAUSED_SESSION_TTL_MS",
@@ -70,7 +70,7 @@ const INTERNAL: Record<string, string[]> = {
     "usageOf",
   ],
   mastra: ["_internals"],
-  llamaindex: ["BELOW_VERSION", "MIN_VERSION", "parseOptions", "summarizeNodes", "usageOf"],
+  llamaindex: ["BELOW_VERSION", "MIN_VERSION", "eventCallerStorage", "parseOptions", "summarizeNodes", "usageOf"],
 };
 
 const PAIRS: Array<[string, () => Promise<Record<string, unknown>>, () => Promise<Record<string, unknown>>]> = [

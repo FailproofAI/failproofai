@@ -741,6 +741,9 @@ async function main(scenario: string): Promise<void> {
         const generated = await agent.generate(question);
         report({ text, mastraStreamTokens: streamedUsage.inputTokens ?? 0, mastraGenerateTokens: generated.usage.inputTokens ?? 0, requests });
       } finally {
+        // Deno's node:http keeps idle keep-alive sockets open through close(),
+        // so the process would outlive the test; Node closes idle ones itself.
+        server.closeAllConnections();
         server.close();
       }
       break;

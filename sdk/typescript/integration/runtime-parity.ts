@@ -64,10 +64,31 @@ const GENERATED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
  * concurrently (`shared-query`) interleave by scheduling, which is a property
  * of the event loop and not of the SDK; the order WITHIN a session is not.
  */
-export const digest = (events: Event[]): string[][] => {
+export const digest = (events: Event[], unordered = false): string[][] => {
   const sessions = new Map<string, Event[]>();
   for (const event of events) sessions.set(event.session_id, [...(sessions.get(event.session_id) ?? []), event]);
-  return [...sessions.values()].map(digestSession).sort((a, b) => a.join().localeCompare(b.join()));
+  return [...sessions.values()]
+    .map((session) => (unordered ? digestSession(session).sort() : digestSession(session)))
+    .sort((a, b) => a.join().localeCompare(b.join()));
+};
+
+/**
+ * Scenarios that run several agents at once INSIDE ONE session (ten
+ * `generate`s on one agent, say). Their events interleave by scheduling within
+ * the session too, so for these the comparison is the same MULTISET of events
+ * per session rather than the same sequence — still exact about what was
+ * recorded, silent only about an order no runtime (Node included) repeats.
+ */
+const UNORDERED = /^concurrent/;
+
+/**
+ * Scenarios not compared at all, with the reason. Each is one its own
+ * framework suite already skips as a documented limit, where the trace is not
+ * a stable property of the run on any runtime.
+ */
+const SKIPPED: Record<string, string> = {
+  "mastra-0:tripwire-output":
+    "Mastra 0.24 gives no end signal for an output-processor tripwire on a stream, so the run is left open (skipped in mastra-coverage.test.ts)",
 };
 
 const digestSession = (events: Event[]): string[] =>
@@ -119,13 +140,16 @@ export function parity(
 ): void {
   describe.each(FRAMEWORK_FIXTURES)(`%s under ${label}`, (fixture) => {
     describe.each(pairs)("%s vs %s", (nodeFormat, otherFormat) => {
-      it.concurrent.each(scenarios(fixture).filter((name) => !(name in HELPERS)))("%s", async (scenario) => {
+      it.concurrent.each(
+        scenarios(fixture).filter((name) => !(name in HELPERS) && !(`${fixture}:${name}` in SKIPPED)),
+      )("%s", async (scenario) => {
         const [node, other] = await Promise.all([
           runAgentAsync(fixture, nodeFormat, scenario),
           runAgentAsync(fixture, otherFormat, scenario),
         ]);
         const key = `${fixture}:${otherFormat}:${scenario}`;
-        const matches = same(node, other);
+        const unordered = UNORDERED.test(scenario);
+        const matches = same(node, other, unordered);
         const divergence =
           known[key] ??
           known[`${fixture}:*:${scenario}`] ??
@@ -139,7 +163,7 @@ export function parity(
         }
         const context = `NODE ${nodeFormat}\n${describeTrace(node)}\n\n${otherFormat.toUpperCase()}\n${describeTrace(other)}`;
         expect(other.status, context).toBe(node.status);
-        expect(digest(other.events), context).toEqual(digest(node.events));
+        expect(digest(other.events, unordered), context).toEqual(digest(node.events, unordered));
         expect(traceViolations(other.events), context).toEqual(traceViolations(node.events));
         expect(sdkLines(other.stderr), context).toEqual(sdkLines(node.stderr));
       });
@@ -147,10 +171,10 @@ export function parity(
   });
 }
 
-function same(a: RunResult, b: RunResult): boolean {
+function same(a: RunResult, b: RunResult, unordered: boolean): boolean {
   return (
     a.status === b.status &&
-    JSON.stringify(digest(a.events)) === JSON.stringify(digest(b.events)) &&
+    JSON.stringify(digest(a.events, unordered)) === JSON.stringify(digest(b.events, unordered)) &&
     JSON.stringify(sdkLines(a.stderr)) === JSON.stringify(sdkLines(b.stderr))
   );
 }

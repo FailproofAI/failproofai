@@ -60,6 +60,24 @@ section is missing or empty is refused before anything is built.
   in an ES-module application. Adapters patch the copy the application loads,
   and never load a second one. Runs in CI as `failproofai-ts-sdk-integrations`.
 
+- **Every commonly used surface, not just the headline API.** Beyond each
+  framework's main agent call the suite covers LangChain's v1 `createAgent`,
+  LCEL chains, retrievers, `.batch()` and nested `@langchain/core` copies; the
+  AI SDK's agent classes, embeddings, object generation, approval and
+  client-side tools and every stream-consumption style; Mastra instances,
+  networks, memory threads (the thread is the session), workflows with
+  suspend/resume, processors and MCP tools; LlamaIndex chat engines, query
+  engines, retrievers and `createWorkflow()` workflows — each under
+  concurrency as well.
+
+- **Next.js:** `withFailproofai(nextConfig)` from `@failproofai/sdk/next`
+  keeps the frameworks `instrument()` patches out of Next's server bundle, and
+  `instrument()` warns once per framework it cannot reach instead of recording
+  nothing silently. Importing the SDK in an Edge route is safe (a no-op build).
+
+- **Runtimes:** Node ≥ 20.9, Bun and Deno, every framework as ESM and CJS,
+  checked against Node's trace.
+
 - **Type declarations for every consumer setup** — ESM and CommonJS
   `nodenext`, CommonJS `node16`, `moduleResolution: node` (every subpath, via
   `typesVersions`) and `bundler` — on TypeScript ≥ 5.4. CommonJS consumers get

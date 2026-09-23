@@ -277,6 +277,35 @@ Using both is fine: the middleware notices the call is already being recorded an
 
 `functionId` names the agent span. Keep it low-cardinality — it lands in `agent_id`, the primary dashboard facet.
 
+### Next.js
+
+`next build` bundles your server's dependencies by default, and a framework bundled into the build is a copy `instrument()` cannot reach. Wrap the config once and call `instrument()` from Next's startup hook:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` adds LangChain, Mastra, LlamaIndex and the SDK itself to `serverExternalPackages`, keeping your own list. Without it, `instrument()` warns once per framework it cannot reach rather than failing silently; if you list the packages yourself, set `FAILPROOFAI_NEXT_EXTERNALS=1`. The Vercel AI SDK and the call-site helpers work either way. An Edge route gets a no-op build: importing the SDK is safe and records nothing.
+
+### Token counts on streamed calls
+
+OpenAI-compatible APIs only report usage on a stream when the client asks. LangChain and the Vercel AI SDK ask; for LlamaIndex pass `additionalChatOptions: { stream_options: { include_usage: true } }` to its `OpenAI` LLM, and for Mastra build the model with usage enabled (for example `createOpenAICompatible({ includeUsage: true })`). Otherwise streamed model calls carry no token counts.
+
+### Runtimes
+
+Node ≥ 20.9, Bun and Deno — every framework, as an ES module and as CommonJS, is tested on each against Node's trace. The SDK runs beside the `failproofaid` daemon, which ships what it writes.
+
 ## Evaluations
 
 ```ts

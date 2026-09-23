@@ -118,8 +118,8 @@ other. The adapters patch the copy your application loads, plus the CommonJS
 copy if something has already `require`d it, and never load a second copy
 nobody uses. What no adapter can reach is a framework **bundled into your own
 output** (esbuild, webpack): the copy in `node_modules` is not the one running.
-Use the call-site helpers there — `langchainHandler()`, `telemetry()`,
-`wrapTool()`.
+On Next.js, `withFailproofai()` fixes that (see below); elsewhere use the
+call-site helpers — `langchainHandler()`, `telemetry()`, `wrapTool()`.
 
 Everything an adapter records is namespaced `fw_*`, bounded per field and per
 event, and tagged with `framework` / `framework_version`. An adapter that fails
@@ -201,6 +201,85 @@ for one invocation.
 import { wrapTool } from "@failproofai/sdk/mastra";
 const lookup = wrapTool(createTool({ id: "lookup", /* … */ }));
 ```
+
+#### What each adapter records, framework by framework
+
+- **LangChain / LangGraph** — also `createAgent` from the v1 `langchain`
+  package (its middleware hooks are steps), plain LCEL chains, retrievers
+  (`tool_use`/`tool_result` summarised as `{ n, sources }`), `.batch()` (one
+  session per input), `.stream()`/`.streamEvents()`, structured output, and
+  `interrupt()`/`Command` resumes (`human_wait` + `agent_pause`, then
+  `agent_resume` + `human_input`, across processes too). A provider package
+  that pins its own nested `@langchain/core` is instrumented as well.
+- **Vercel AI SDK** — `generateText`/`streamText`/`generateObject`/
+  `streamObject`, the agent classes (`ToolLoopAgent`/`Agent`; named by
+  `functionId`, since the SDK does not pass the agent's `id` through), parallel,
+  client-side and approval-gated tools. An `embed` inside an agent is that
+  agent's model call; a bare one is its own run. A stream that stops early ends
+  `cancelled`. On `ai` 7, pass `abortSignal: request.signal` in a route handler
+  so a client that disconnects closes the run. A tool approval produces two
+  runs — wrap them in one `failproofai.session()` to keep one session.
+- **Mastra** — agents on a `Mastra` instance, agent networks (`.network()` is
+  one agent, with delegates nested under it), agent-as-tool, workflows
+  (branch, parallel, loops, nested, agent steps; steps are hooks), MCP tools,
+  structured output (a separate structuring model appears as a nested agent),
+  processors. A memory **thread** is the session, and a suspended workflow's run
+  id keeps its session through `resume()`, with the human-in-the-loop events. A
+  run blocked by a processor tripwire ends `rejected`.
+- **LlamaIndex.TS** — `agent()`/`multiAgent()` workflows, `createWorkflow()`
+  workflows (llamaindex 0.12+), chat engines, query engines and retrievers
+  (named after the retriever class), the legacy `LLMAgent`, bare LLM calls.
+  Concurrent requests on one shared engine or agent stay in separate sessions.
+  LlamaIndex.TS has no embedding events, so `embeddings: true` records nothing.
+
+#### Token counts on streamed calls
+
+OpenAI-compatible APIs only report usage on a **stream** when the client asks
+for it, and two frameworks don't ask by default — so their streamed model calls
+arrive with no token counts, and there is nothing to record:
+
+```ts
+// LlamaIndex
+new OpenAI({ model, additionalChatOptions: { stream_options: { include_usage: true } } });
+// Mastra: build the model with usage on, e.g. createOpenAICompatible({ …, includeUsage: true })
+```
+
+LangChain and the Vercel AI SDK already request it.
+
+#### Next.js
+
+`next build` bundles your server's dependencies by default, and a framework
+bundled into the build is a copy `instrument()` cannot reach. Wrap the config
+once, and call `instrument()` from Next's startup hook:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` adds LangChain, Mastra, LlamaIndex and the SDK itself to
+`serverExternalPackages`, keeping your own list. Without it, `instrument()`
+warns once per framework it cannot reach — it never fails silently. If you list
+the packages by hand, set `FAILPROOFAI_NEXT_EXTERNALS=1` to silence the warning.
+The Vercel AI SDK and every call-site helper work either way. An **Edge**
+route gets a no-op build: importing the SDK is safe, and nothing is recorded
+there.
+
+#### Runtimes
+
+Node ≥ 20.9, Bun and Deno (including `npm:` imports) — every framework, as an ES
+module and as CommonJS, is tested on each and must record the same trace Node
+does. The SDK runs beside the `failproofaid` daemon, which ships what it writes.
 
 ### 3. `event.*`
 

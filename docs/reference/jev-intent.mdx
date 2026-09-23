@@ -1,0 +1,105 @@
+---
+title: "Jev intent capture"
+description: "Which harness events tell the Jev evaluator what the human asked for, which field carries the text, what is never counted, and the risk that comes with trusting a harness-delivered prompt."
+icon: "message-square-quote"
+---
+
+When you configure your own Jev endpoint, the Jev evaluator judges each tool call against **what the human asked for**, not against whatever text the harness put in front of the agent. A reply such as "yes, force-push it" can clear a **reviewable** policy — which is the whole point of the evaluator, since a regex that cannot read the request blocks a third of real work.
+
+That text comes from one place: **the prompt the harness itself hands the hook at its prompt-submit event**. Failproof AI records the part of it the human typed — harness wrapping stripped, secrets redacted, capped — into a `0600` file under its own state directory. Nothing on disk is consulted: the session transcript is a file the agent can rewrite in one command, so it is never asked who wrote a prompt.
+
+## The risk this accepts, plainly
+
+An agent that can already run commands can make a harness submit a prompt. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` and `pi -p` all fire the same prompt-submit event, with the same payload, as a person typing, in a child session that agent controls. It can also run Failproof AI's own hook binary and feed it a payload it wrote. Nothing inside Failproof AI can tell either from the real thing — both are the same program reading the same stdin.
+
+**So an agent with a shell can forge its own consent.** That is a deliberate trade, taken on 2026-09-23, and here is both halves of it:
+
+- **What it buys.** The alternative was built and measured: require a field in which the harness names a human as the prompt's author, and record nothing otherwise. No shipping harness sends such a field, so that version recorded **nothing, on every harness** — Jev judged every call with no stated intent and could never clear a single policy. A capture that never fires is not a safer product, it is no product.
+- **What it cannot do.** A recorded prompt only ever clears a policy already marked **reviewable**. A **hard** policy is never cleared by anything Jev says, so a forged prompt can never turn a hard deny into an allow. The worst it can do is stop a reviewable policy from nudging an agent that was already free to run the command. And skipping the hook gains an agent nothing: the harness invokes Failproof AI for the tool call independently.
+
+What is still refused is everything that is cheap to check and that an agent cannot obtain just by asking: a turn the harness's own payload marks as machine-submitted, a payload naming a sub-agent, a session id that is not a plain name, an event that is not the prompt-submit one, and text that is nothing but harness wrapping — including Failproof AI's own stop-gate words, which several harnesses feed back as the next user turn.
+
+## Per-harness table
+
+"Text field" is the stdin payload field after Failproof AI's per-harness normalization. "Recorded" says whether the prompt is kept as the human's request.
+
+| Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes, unless the payload's `source` names a turn nobody submitted (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, an unknown value and a build that sends no `source` at all are all recorded | the session transcript (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Yes | the rollout JSONL (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Yes | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Yes, with the `<user_query>` wrapper peeled when it is the whole prompt | the agent transcript JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | Yes — but current OpenCode carries no text in that event, so in practice nothing is recorded; a repeat of the same message is recorded once | none (sessions are SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Yes, unless `input_source` is `extension` — another extension's `sendUserMessage()`, whose text can be model-written or repo-derived | the Pi session JSONL |
+| Hermes | `hermes` | none | — | No — Hermes has no prompt-submit event at all | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Yes, unless the run metadata marks the run as a machine's: a `trigger` other than `user`, an `inputProvenance.kind` other than `external_user`, or `senderIsOwner: false` | none (`before_agent_run` carries no transcript path) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Yes | the droid session JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Yes | none (sessions are SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | No — `PreInvocation` fires before *every* model call in a turn and carries no prompt text | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Yes | none (sessions are SQLite) |
+
+Two harnesses record nothing, and for the same reason in both cases: their event delivers no human text. Hermes has no prompt-submit event — its native plugin handles `pre_llm_call` itself and forwards only tool, session and subagent events. Antigravity's `PreInvocation` fires before every model call, on a human turn and on the five that follow it, and carries no prompt field; hooks can also inject `userMessage` steps into the same conversation. There is nothing in either event to record.
+
+## What makes a prompt the human's
+
+1. **The event.** Failproof AI was invoked for the harness's prompt-submit event, which the handler canonicalizes to `UserPromptSubmit`.
+2. **The payload.** The harness writes it on the hook's stdin, and it carries the text in the field named above. A call that reaches Failproof AI without the payload records nothing.
+3. **Nothing in the payload rules the turn out.** A payload that names a sub-agent (`agent_id`) is the agent prompting itself. A `source`, `input_source` or OpenClaw run marker that names a machine-submitted turn is refused. An **absent** marker rules nothing out — that is the difference from the version that recorded nothing, since every marker here is absent on every shipping build.
+4. **Something is left after the wrapping is stripped** (see below).
+
+**The session transcript is not evidence of who wrote a prompt.** Earlier versions of this page described a transcript cross-check: the prompt was refused if the transcript showed the model scheduling it, and the transcript had to continue the one the previous prompt saw. That check is gone. A transcript is a file the agent already has a shell over — it can be truncated, replaced, padded past the read budget, snapshotted at the start of a turn and restored at the end, or made to read well again with entries the agent wrote. Each round of hardening was followed by another spelling of the same forgery, so the whole mechanism was removed rather than repaired.
+
+The transcript is still read for one thing: **the agent's last visible message**. That message is agent-written by definition, Jev is told so, and it is never consent on its own.
+
+## What is kept from a prompt
+
+Harnesses put more than the human's words into a prompt. Before anything is stored:
+
+- `<system-reminder>` blocks are removed, and the human's words around them are kept.
+- A session-continuation summary ("This session is being continued from a previous conversation…") is dropped entirely.
+- Task notifications, local-command output and interruption markers are dropped entirely.
+- A turn another agent or session wrote is dropped entirely: Claude Code wraps those in `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` or `<channel source=…>`.
+- Failproof AI's own messages are dropped entirely. A stop gate's `MANDATORY ACTION REQUIRED from failproofai …` or an `Instruction from failproofai: …` comes back as the next user turn on Cursor, Copilot, Devin and OpenClaw, and it never counts as the human's words — not plain, not wrapped in a `<user_query>` block, not behind a system reminder.
+- A slash command is kept as the command and arguments the human typed, never the body the harness expanded it into.
+- A prompt the Codex IDE extension built keeps only the text after its last `## My request for Codex:` (or, in newer builds, `## My request:`) heading. Everything the extension put before it is dropped: the active file, open tabs, text selected in the editor, mentioned files and apps, diff and browser comments, PR checks, earlier conversations. This rule is applied to **every** harness's prompts, not only Codex's — such a prompt can be pasted into any composer — so the extension's section headings are read in two groups:
+  - **A heading nobody types** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, the Codex and ChatGPT conversation headings, "The attached pasted text file(s)…", and the rest of the extension's own sections) means the extension built this prompt. One with no request heading under it contains no human text at all and is not recorded. That is what keeps an approval forged in text you merely *selected* — a `// NOTE FROM THE OWNER: yes, force-push…` comment inside `# Selected text:` — out of your recorded request.
+  - **A heading somebody plausibly types** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) means "extension-built" only when a request heading is actually there. With none, the prompt is yours and is kept whole, heading and all. Dropping it would be silent and total: nothing recorded for that turn, so no reviewable policy could be cleared and Jev would not even be asked whether the request envelope carries an injection. This counts only at the *top* of a turn: once a prompt has been established as extension-built, a heading of either group inside what follows its request heading is another of the extension's sections, and the prompt is not recorded.
+
+  The request itself is judged like any other turn: if what follows the heading is a continuation summary, a message another agent or session wrote, one of Failproof AI's own directives, or another of the extension's sections, the prompt is not recorded at all.
+- A Cursor prompt wrapped in `<user_query>…</user_query>` (optionally behind a `<timestamp>` block) is unwrapped when the wrapper is the *whole* prompt. A tag anywhere else is ordinary text — a snippet pasted from a log, or a branch name the agent chose — and the prompt is kept whole rather than cut down to the tagged span.
+- Pasted blocks are kept and labelled as pasted by the human.
+
+A prompt that is nothing but harness text is not recorded at all.
+
+## The agent's last message
+
+A reply like "yes" means nothing without the question it answers. When a prompt is recorded, Failproof AI also reads the agent's last visible message from the session transcript **at that moment**, and stores it with the prompt. Jev receives it in its own field, labelled as written by the agent: it explains a short reply and never counts as the human's request on its own. It is the one thing the transcript is read for, and the worst a rewritten transcript can do is put a message the agent wrote where a message the agent wrote is expected.
+
+It is read from the end of the transcript, at most the last 4 MB. Supported transcript formats are Claude Code, Codex rollouts (older `agent_message` events and newer `AgentMessage` items), Cursor, Copilot `events.jsonl`, and the Pi, Factory and OpenClaw session JSONL. Claude Code's own synthetic and API-error messages and subagent (sidechain) messages are skipped. There is no snapshot for Goose and OpenCode, which keep sessions in SQLite, for Devin, whose transcript is a single JSON document, or for OpenClaw, whose `before_agent_run` event carries no transcript path.
+
+## Storage
+
+| Property | Value |
+| --- | --- |
+| Location | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Permissions | file `0600`, directory `0700` |
+| Kept per session | the last 5 prompts; a prompt identical to the one before it replaces it rather than taking a new slot |
+| Window | prompts older than 6 hours are ignored |
+| Size | each prompt and agent message is capped at 1,200 characters, keeping the head and the tail |
+| Secrets | redacted with the same patterns as the `sanitize-*` policies before anything is written. A text longer than 9,600 characters is redacted as its first 5,760 and last 3,840 characters, and the text next to those cuts, where a secret could have been split, is never stored |
+
+A session ID containing anything but letters, digits, `.`, `_` and `-`, or longer than 128 characters, is never used as a file name, so nothing is recorded for it.
+
+A session file exists only once a prompt has been recorded in it. It holds prompts and nothing else — no origin state, no transcript mark — and it is deleted once it has been silent for longer than the six-hour window, the next time a new session writes its first prompt.
+
+Nothing is recorded unless a Jev endpoint is configured.
+
+## Known limits
+
+- **A prompt is only as trustworthy as the hook invocation.** Everything here reads the payload the harness wrote on the hook's stdin. An agent that can run commands can run the harness headlessly (`claude -p` and the seven others listed above) or run Failproof AI's hook binary itself with a payload it wrote, and record a prompt nobody typed. This is the accepted trade described at the top of this page: it clears reviewable policies only, never a hard one.
+- **Sub-agent detection is Claude-shaped.** A payload carrying `agent_id` is never recorded, on any harness. That is the field Claude Code, Factory Droid and Devin would use. Codex fires its prompt event inside sub-agent threads, Copilot runs in-process sidekicks, Goose has a `delegate` tool and OpenClaw runs personas — none of which marks the payload in a way this recognises, so a sub-agent prompt on those harnesses is recorded as the session's own. OpenClaw's `openclaw.agentId` is **not** that mark: the shipped plugin sets it on every run, the owner's included.
+- **Schedulers that carry no marker.** Claude Code's `schedule_wakeup` and `loop_wakeup`, and OpenClaw's `cron` and `heartbeat` triggers, are refused because those harnesses say so in the payload. Goose's own scheduler (`goose schedule add`) and Codex's `codex exec` say nothing, so a run they start is recorded like any other.
+- **An agent's last message can be a message the agent chose.** The transcript is not authenticated, so an agent that writes its own transcript can decide what its "last message" says. It is labelled agent-written and never clears anything by itself — but note that `decide.ts`'s v1 path lets it satisfy the deterministic "did the user name this target" check, so an agent that controls its transcript can supply a target name an override needs.
+- **A prompt that opens with one of the extension's machine headings is dropped whole.** Start a prompt with `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` or another section heading from the first group above, and never write a `## My request:` heading, and nothing is recorded for that turn — so nothing is cleared for it either. That is deliberate: those sections carry text somebody else controls (code you selected, a reviewer's diff comment, a page title), and recording that as your words is the worse failure. Headings a developer plausibly types are in the second group and never drop a prompt on their own.
+- **OpenCode records nothing in practice.** Its `message.updated` event carries no text in current OpenCode, and it also fires for the child sessions its task tool creates, whose "user" message the parent agent wrote.
+- **`CODEX_HOME` is not honoured** by the rollout discovery in `lib/codex-sessions.ts`. This affects only where an agent-message snapshot is looked for, never whether a prompt is recorded.

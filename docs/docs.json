@@ -217,6 +217,7 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
+                  "reference/jev-intent",
                   "reference/custom-agents",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",

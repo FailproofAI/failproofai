@@ -1684,6 +1684,17 @@ describe("the shared floor", () => {
 });
 
 describe("cost", () => {
+  /**
+   * These budgets exist to catch a QUADRATIC scan, not to measure speed.
+   * Every bug they were written for cost hundreds of milliseconds to seconds
+   * on these inputs (910 ms for the assignment rule, 1,267 ms for the JWT
+   * one); a linear scan of the same input is a millisecond or two. So the
+   * bound is deliberately loose: an order of magnitude above a healthy run
+   * and an order below the regression, because a tight bound measures the CI
+   * runner's load instead of the code — a 15 ms bound failed at 15.2 ms on a
+   * shared runner while the scan was perfectly linear.
+   */
+  const LINEAR_SCAN_BUDGET_MS = 150;
   const RUN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
   // Step 5, not 7: 7 shares a factor with the 63-character alphabets below,
   // so `(i * 7) % 63` emitted NINE distinct characters and never the
@@ -1716,7 +1727,7 @@ describe("cost", () => {
         const s = run(n, alphabet);
         const t0 = performance.now();
         redactSecrets(s);
-        expect(performance.now() - t0, `${n} of ${alphabet.slice(-4)}`).toBeLessThan(15);
+        expect(performance.now() - t0, `${n} of ${alphabet.slice(-4)}`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
       }
     }
   });
@@ -1731,7 +1742,7 @@ describe("cost", () => {
       const s = "-ab".repeat(n);
       const t0 = performance.now();
       redactSecrets(s);
-      expect(performance.now() - t0, `${s.length} chars`).toBeLessThan(15);
+      expect(performance.now() - t0, `${s.length} chars`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
     }
   });
 
@@ -1755,7 +1766,7 @@ describe("cost", () => {
         const s = `x://${unit.repeat(n)}`;
         const t0 = performance.now();
         redactSecrets(s);
-        expect(performance.now() - t0, `${s.length} of ${unit}`).toBeLessThan(15);
+        expect(performance.now() - t0, `${s.length} of ${unit}`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
       }
     }
   });
@@ -1777,7 +1788,7 @@ describe("cost", () => {
         const s = `${pemBegin()} `.repeat(n) + tail;
         const t0 = performance.now();
         redactSecrets(s);
-        expect(performance.now() - t0, `${s.length} chars + ${tail.slice(0, 14) || "no tail"}`).toBeLessThan(15);
+        expect(performance.now() - t0, `${s.length} chars + ${tail.slice(0, 14) || "no tail"}`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
       }
     }
   });
@@ -1812,7 +1823,7 @@ describe("cost", () => {
         const s = unit.repeat(Math.ceil(chars / unit.length));
         const t0 = performance.now();
         redactSecrets(s);
-        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(15);
+        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
       }
     }
   });
@@ -1827,7 +1838,7 @@ describe("cost", () => {
         const s = unit.repeat(Math.ceil(chars / unit.length));
         const t0 = performance.now();
         redactSecrets(s);
-        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(15);
+        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(LINEAR_SCAN_BUDGET_MS);
       }
     }
   });

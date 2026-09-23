@@ -756,7 +756,15 @@ describe("pruneExpiredSessions", () => {
     mkdirSync(dir, { recursive: true });
     const now = Date.now();
     writeFileSync(join(dir, "edge.json"), JSON.stringify({ prompts: [{ at: now - INTENT_MAX_AGE_MS, text: "old" }] }));
-    utimesSync(join(dir, "edge.json"), (now - INTENT_MAX_AGE_MS) / 1000, (now - INTENT_MAX_AGE_MS) / 1000);
+    // A millisecond inside the window, not exactly on it: `utimesSync` takes
+    // seconds as a float and the filesystem stores whatever precision it has,
+    // so a timestamp written AT the boundary can read back a hair older and
+    // prune legitimately (it failed at exactly this line on a CI runner, and
+    // passed on ext4). One millisecond of slack cannot hide an off-by-window
+    // bug — the window is six hours — and the `at` field beside it is still
+    // exactly on the boundary, which is the arithmetic this test is about.
+    const edgeMs = now - INTENT_MAX_AGE_MS + 1;
+    utimesSync(join(dir, "edge.json"), edgeMs / 1000, edgeMs / 1000);
     expect(pruneExpiredSessions(now)).toBe(0);
     expect(readIntent("edge", now).userSaid).toEqual(["old"]);
   });

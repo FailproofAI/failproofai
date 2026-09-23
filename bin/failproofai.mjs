@@ -907,13 +907,14 @@ async function runCli() {
     return;
   }
 
-  // jev setup | status | test | remove
+  // jev --url <url> | jev setup | status | test | remove
   //
   // The customer's own Jev endpoint and key (BYOK), the only opt-in to the
   // two-tier hook evaluator. Writes ~/.failproofai/jev.json and nothing else —
   // no root, no daemon call; hooks re-read the file on every event. The key is
   // taken on stdin or at a masked prompt and never printed, so it stays out of
-  // `ps`, shell history and scrollback.
+  // `ps`, shell history and scrollback; `--token` is the one spelling that does
+  // put it on the command line, and says so every time it is used.
   if (args[0] === "jev") {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -924,6 +925,7 @@ async function runCli() {
           {
             label: "usage",
             entries: [
+              ["failproofai jev --url <url> --key-stdin [options]"],
               ["failproofai jev setup --provider <kind> --key-stdin [options]"],
               ["failproofai jev status [--json]"],
               ["failproofai jev test [--json]"],
@@ -950,10 +952,13 @@ async function runCli() {
               ["cloudflare", "Workers AI, model typesafe/jev; needs --account-id"],
               ["custom", "any TypeSafe-compatible endpoint; needs --base-url"],
             ],
+            after: ["--url reads the provider off the host, so it needs no --provider;", "any other host is custom, with that URL as its base."],
           },
           {
             label: "setup options",
             entries: [
+              ["--url <url>", "The endpoint. Picks the provider from its host."],
+              ["--token <token>", "The key, on the command line — history and `ps` see it."],
               ["--provider <kind>", "Required the first time, or to switch providers."],
               ["--key-stdin", "Read the key from stdin; on a terminal, a masked prompt."],
               ["--key-from-env", "Store no key; read FAILPROOFAI_JEV_API_KEY per session."],
@@ -961,7 +966,7 @@ async function runCli() {
               ["--base-url <url>", "Override the API base; `default` clears it."],
               ["--model <id>", "Override the model id; `default` clears it."],
               ["--mode <m>", "enforce (default) or shadow: log Jev, enforce regex."],
-              ["--timeout-ms <n>", "Per-call budget before falling back. Default 1500."],
+              ["--timeout-ms <n>", "Per-call budget before falling back. Default 3000."],
             ],
           },
           {
@@ -974,11 +979,15 @@ async function runCli() {
               "  `failproofai jev setup --mode shadow` just switches the mode.",
               "• The daemon does not see your shell's environment: keep the key in",
               "  the file on a machine set up with `failproofai config`.",
+              "• --token is the fast path, not the safe one: your shell history keeps",
+              "  it and the process list shows it. Prefer --key-stdin.",
             ],
           },
           {
             label: "examples",
             lines: [
+              "failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key",
+              "failproofai jev --url https://openrouter.ai/api/v1 --token <token>",
               "failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key",
               "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
               "failproofai jev test",
@@ -1001,7 +1010,9 @@ async function runCli() {
     await track("cli_jev", {
       ok: result.exitCode === 0,
       // The subcommand only — never the provider, a URL, a model id or the key.
-      sub: ["setup", "status", "test", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+      // An argv opening with an option is the one-shot form of `setup`, and is
+      // reported as `setup`: the literal, never the option or what follows it.
+      sub: subArgs[0].startsWith("-") ? "setup" : ["setup", "status", "test", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);

@@ -36,37 +36,81 @@ With Vercel's own bring-your-own-key feature, a failed request is silently retri
 
 ## Set it up
 
-The key never goes on the command line, where `ps` and your shell history would keep it. Pipe it in with `--key-stdin`, or run `setup` in a terminal without it and paste the key at a masked prompt.
+One command, the endpoint and the key:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+```
+
+### The URL picks the provider
+
+You do not have to name the provider: the URL's **host** is which one it is.
+
+| URL host | Provider | Also needs |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| any other host | `custom` | — the URL you gave is the base URL |
+
+Three things follow from that:
+
+- **A URL that is the provider's own API writes no override.** `--url https://api.typesafe.ai/v1` produces exactly the config `--provider typesafe` would have. Give a different path or host on a known provider and it is stored as the base URL, as `--base-url` would store it.
+- **`--provider` still overrides the inference**, which is how you reach a proxy that speaks a provider's API from a host of your own: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. (`--provider custom` is not a contradiction — it means "treat this URL as itself".)
+
+`--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http://localhost` in shadow mode only.
+
+### The key
+
+Pipe it in with `--key-stdin`, or run the command in a terminal without it and paste the key at a masked prompt. Either way it goes straight into the config file and is never printed back.
 
 <Tabs>
   <Tab title="TypeSafe">
     ```bash
-    failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key
+    failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
     ```
   </Tab>
   <Tab title="OpenRouter">
     ```bash
-    failproofai jev setup --provider openrouter --key-stdin < ~/openrouter.key
+    failproofai jev --url https://openrouter.ai/api/v1 --key-stdin < ~/openrouter.key
     ```
   </Tab>
   <Tab title="Vercel">
     ```bash
-    failproofai jev setup --provider vercel --key-stdin < ~/vercel-gateway.key
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 \
+      --key-stdin < ~/vercel-gateway.key
     ```
   </Tab>
   <Tab title="Cloudflare">
     ```bash
-    failproofai jev setup --provider cloudflare --account-id <32-hex-account-id> \
-      --key-stdin < ~/cloudflare.token
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --key-stdin < ~/cloudflare.token
     ```
   </Tab>
   <Tab title="Custom">
     ```bash
-    failproofai jev setup --provider custom --base-url https://jev.internal.example.com/v1 \
-      --key-stdin < ~/jev.key
+    failproofai jev --url https://jev.internal.example.com/v1 --key-stdin < ~/jev.key
     ```
   </Tab>
 </Tabs>
+
+`failproofai jev setup` takes the same flags and is the longhand for all of it: `setup --provider <kind>` where you would rather name the provider than the URL.
+
+### `--token`, and what it costs
+
+`--token <token>` puts the key on the command line, which is the fastest way to configure a machine and the only spelling that leaves the key anywhere but the config file:
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+A command-line argument is in your shell's history file afterwards, and while the command runs it is in the process list — readable from `/proc` by anything running as you. `setup` says so every time `--token` is used. Prefer `--key-stdin` on a machine you share, in a recorded session, or anywhere the history file is synced; rotate a key you have passed this way if it matters.
+</Warning>
+
+`--token`, `--key-stdin` and `--key-from-env` are mutually exclusive: give one.
 
 Then send one small live request to check the key, the endpoint and which Jev answered:
 
@@ -187,6 +231,8 @@ This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the r
 
 | Command | Outcome |
 | --- | --- |
+| `failproofai jev --url <url> --key-stdin` | Configure it in one command; the provider comes from the URL's host |
+| `failproofai jev --url <url> --token <token>` | Same, with the key on the command line — your history and the process list see it |
 | `failproofai jev setup --provider <kind> --key-stdin` | Write the config from a key piped on stdin |
 | `failproofai jev setup --provider <kind>` | Same, asking for the key at a masked prompt |
 | `failproofai jev setup --key-from-env` | Store no key; read `FAILPROOFAI_JEV_API_KEY` per session |

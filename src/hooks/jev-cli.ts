@@ -2,27 +2,45 @@
  * `failproofai jev` — configure the customer's own Jev endpoint and key (BYOK),
  * the single opt-in to the two-tier hook evaluator.
  *
+ *   jev --url <url> [--token <token>]
+ *               the one-shot form: the same thing as `setup`, with the provider
+ *               read off the URL's host
  *   jev setup   write ~/.failproofai/jev.json at 0600 from flags + a key
  *   jev status  what is configured, whether it is being used, and how Jev has
  *               been doing (fallbacks, latency, clears) — never the key
  *   jev test    one tiny live request: latency and the Jev version that answered
  *   jev remove  delete the file; hooks go back to the regex engine unchanged
  *
+ * # The provider is read off the URL
+ *
+ * `--url` names the endpoint, and its HOST says which provider that is
+ * (`PROVIDER_BY_HOST`); anything else is `custom` with that URL as its base.
+ * `--provider` still overrides the inference, but a provider that contradicts
+ * the URL's host — `--provider openrouter` against `api.typesafe.ai` — is
+ * refused rather than guessed at, because the two spellings disagree about
+ * where the key is about to be sent. `--url` is otherwise exactly
+ * `--base-url`: it is validated by the same `validateBaseUrl` the loader uses
+ * and refused in the same words, and when it names the provider's own API it
+ * clears the override rather than writing it back.
+ *
  * # The key is never echoed
  *
- * There is no `--key <value>` flag: a command-line argument is readable from
- * `ps` by every user on the box and lands in shell history. The key arrives on
- * stdin (`--key-stdin`), at a masked prompt when stdin is a terminal, or — for
- * people who keep keys off disk — from `FAILPROOFAI_JEV_API_KEY` at run time
- * (`--key-from-env`). `--key-stdin` on a terminal uses the masked prompt too,
- * because a cooked-mode read would echo each character as it is typed. No
- * output of this module, human or `--json`, contains the key; provider error
- * text is scrubbed of it in `jev-client.ts`, and `jev test` scrubs whatever
- * error it prints once more. Nothing here repeats a value it could not use
- * (a stray argument, an unknown provider, an unreadable timeout, a model id
- * shaped like a key, or an unknown subcommand that is not shaped like one):
- * a key pasted into the wrong place on the command line is already in shell
- * history, and does not also need to be on the screen.
+ * `--token <value>` exists because one command that configures Jev is worth
+ * having, but it is not the recommended spelling and says so at the end of
+ * every run that uses it: a command-line argument lands in shell history and
+ * is readable from `ps` — from `/proc` — by anything running as this user.
+ * The key otherwise arrives on stdin (`--key-stdin`), at a masked prompt when
+ * stdin is a terminal, or — for people who keep keys off disk — from
+ * `FAILPROOFAI_JEV_API_KEY` at run time (`--key-from-env`). `--key-stdin` on a
+ * terminal uses the masked prompt too, because a cooked-mode read would echo
+ * each character as it is typed. No output of this module, human or `--json`,
+ * contains the key; provider error text is scrubbed of it in `jev-client.ts`,
+ * and `jev test` scrubs whatever error it prints once more. Nothing here
+ * repeats a value it could not use (a stray argument, an unknown provider, an
+ * unreadable timeout, a model id shaped like a key, an option that is not one,
+ * or an unknown subcommand that is not shaped like one): a key pasted into the
+ * wrong place on the command line is already in shell history, and does not
+ * also need to be on the screen.
  *
  * # A stored key stays with its host
  *
@@ -55,6 +73,7 @@ import {
   jevConfigPath,
   readJevConfigFileForUpdate,
   validateApiKey,
+  validateBaseUrl,
   validateJevConfig,
   type JevConfig,
   type JevProviderKind,
@@ -95,6 +114,7 @@ const fail = (lines: string[], json?: string): JevCliResult => ({ lines, exitCod
 
 export const JEV_USAGE = [
   "Usage:",
+  "  failproofai jev --url <url> [--key-stdin | --token <token>] [options]",
   "  failproofai jev setup --provider <kind> [--key-stdin | --key-from-env] [options]",
   "  failproofai jev status [--json]",
   "  failproofai jev test [--json]",
@@ -119,8 +139,21 @@ const STRAY_ARGUMENT = "Unexpected argument (not repeated here, in case it is a 
 /** What a mistyped subcommand looks like, and no key does: short, lower-case letters and dashes. */
 const SUBCOMMAND_SHAPE = /^[a-z][a-z-]{0,20}$/;
 
-const VALUE_FLAGS = new Set(["--provider", "--base-url", "--account-id", "--model", "--timeout-ms", "--mode"]);
+const VALUE_FLAGS = new Set(["--provider", "--url", "--token", "--base-url", "--account-id", "--model", "--timeout-ms", "--mode"]);
 const BOOL_FLAGS = new Set(["--key-stdin", "--key-from-env", "--json"]);
+
+/** What an option name looks like, and no key does — the same idea as `SUBCOMMAND_SHAPE`. */
+const OPTION_SHAPE = /^--?[a-z][a-z0-9-]{0,30}$/;
+
+/**
+ * An unknown option, named only when it is shaped like an option name. A
+ * mistyped `--token` is the one place a key is most likely to arrive glued to
+ * an option (`-token=<key>`, `--tokn=<key>`), so what is echoed is the name
+ * that failed to parse and never the value behind it.
+ */
+function unknownOption(arg: string): string {
+  return OPTION_SHAPE.test(arg) ? `Unknown option: ${arg}` : "Unknown option (not repeated here, in case it carries a key).";
+}
 
 interface Parsed {
   values: Map<string, string>;
@@ -135,7 +168,9 @@ function parseFlags(argv: string[], allowed: Set<string>): Parsed | string {
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline: string | undefined;
-    if (arg.startsWith("--") && arg.includes("=")) {
+    // Split on `=` for a single dash too (`-token=<key>`): a value must never
+    // survive into the "unknown option" message below.
+    if (arg.startsWith("-") && arg.includes("=")) {
       inline = arg.slice(arg.indexOf("=") + 1);
       arg = arg.slice(0, arg.indexOf("="));
     }
@@ -143,7 +178,7 @@ function parseFlags(argv: string[], allowed: Set<string>): Parsed | string {
       positionals.push(arg);
       continue;
     }
-    if (!allowed.has(arg)) return `Unknown option: ${arg}`;
+    if (!allowed.has(arg)) return unknownOption(arg);
     if (VALUE_FLAGS.has(arg)) {
       const v = inline ?? argv[++i];
       if (v === undefined || (inline === undefined && v.startsWith("--"))) return `Missing value after ${arg}`;
@@ -269,6 +304,36 @@ function movedHost(provider: JevProviderKind, before: unknown, after: unknown): 
   return { from, to };
 }
 
+/**
+ * The provider each known host IS, so `failproofai jev --url <url>` needs no
+ * `--provider`. Exact hosts only: a neighbouring name (`eu.api.typesafe.ai`, a
+ * corporate proxy) is `custom`, which reaches the same TypeSafe-compatible API
+ * at the URL given, and `--provider` is there to say otherwise.
+ */
+const PROVIDER_BY_HOST: Readonly<Record<string, JevProviderKind>> = {
+  "api.typesafe.ai": "typesafe",
+  "openrouter.ai": "openrouter",
+  "ai-gateway.vercel.sh": "vercel",
+  "api.cloudflare.com": "cloudflare",
+};
+
+/** The provider a validated URL names, or `custom` for a host that is nobody's. */
+function providerForUrl(url: string): JevProviderKind {
+  try {
+    return PROVIDER_BY_HOST[new URL(url).hostname.toLowerCase()] ?? "custom";
+  } catch {
+    return "custom";
+  }
+}
+
+/** Whether a validated URL is exactly where this provider's requests already go. */
+function isProviderDefaultUrl(kind: JevProviderKind, url: string): boolean {
+  const base = JEV_PROVIDER_DEFAULTS[kind].baseUrl;
+  if (!base) return false;
+  const normalized = validateBaseUrl(base);
+  return normalized.ok && normalized.value === url;
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
@@ -286,6 +351,53 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values, bools } = parsed;
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
+  // One source for the key, so no run has to decide which of two the person
+  // meant. The message names the recommended one first.
+  if (values.has("--token") && (bools.has("--key-stdin") || bools.has("--key-from-env"))) {
+    return fail([
+      `Use one of --key-stdin, --key-from-env and --token, not more than one.`,
+      "",
+      "  failproofai jev --url <url> --key-stdin < key-file",
+      "Nothing was written.",
+    ]);
+  }
+  if (values.has("--url") && values.has("--base-url")) {
+    return fail(["--url and --base-url are the same thing; give one of them.", "", "Nothing was written."]);
+  }
+
+  // `--url` is `--base-url` that also picks the provider. It is validated here,
+  // by the loader's own `validateBaseUrl`, so a URL is refused in the same
+  // words whichever way it arrived — and so the host below is a parsed host,
+  // never a value that was echoed before it was known to be a URL.
+  let urlProvider: { kind: JevProviderKind; host: string } | null = null;
+  const urlArg = values.get("--url");
+  if (urlArg !== undefined) {
+    const checkedUrl = validateBaseUrl(urlArg);
+    if (!checkedUrl.ok) return fail([`Not saved: ${checkedUrl.problem}.`, "", "Nothing was written."]);
+    const normalized = checkedUrl.value;
+    urlProvider = { kind: providerForUrl(normalized), host: new URL(normalized).host };
+    const named = values.get("--provider");
+    const explicit =
+      named !== undefined && (JEV_PROVIDER_KINDS as readonly string[]).includes(named) ? (named as JevProviderKind) : null;
+    // An explicit provider wins — except where it disagrees with the host about
+    // which gateway this is, which is a disagreement about where the key goes.
+    // `custom` is not a disagreement: it is the "treat this URL as itself" ask.
+    if (explicit !== null && explicit !== "custom" && urlProvider.kind !== "custom" && explicit !== urlProvider.kind) {
+      return fail([
+        `--provider ${explicit} and --url disagree: ${urlProvider.host} is ${urlProvider.kind}'s endpoint, not ${explicit}'s.`,
+        "Drop --provider to take the provider from the URL, or give the URL that provider's own endpoint.",
+        "",
+        "Nothing was written.",
+      ]);
+    }
+    const kind = explicit ?? urlProvider.kind;
+    if (explicit === null) values.set("--provider", kind);
+    // The provider's own API is where its key belongs anyway, so a URL naming
+    // it clears the override instead of writing the same address into the file
+    // (`custom` has no API of its own — its URL is the whole address).
+    values.set("--base-url", kind !== "custom" && isProviderDefaultUrl(kind, normalized) ? "default" : normalized);
+    values.delete("--url");
+  }
 
   const existingFile = readJevConfigFileForUpdate();
   const existing = existingFile?.raw ?? null;
@@ -333,6 +445,19 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     next.timeoutMs = n;
   }
 
+  // Cloudflare's endpoint is per-account, so a URL that turns out to be
+  // Cloudflare's needs one. Named here rather than left to validation, which
+  // knows the field and not the flag — and this run never said "cloudflare",
+  // the URL did.
+  if (urlProvider?.kind === "cloudflare" && typeof next.accountId !== "string") {
+    return fail([
+      `Not saved: ${urlProvider.host} is Cloudflare Workers AI, whose endpoint is per-account.`,
+      "Pass the account id as well: --account-id <32 hex characters>.",
+      "",
+      "Nothing was written.",
+    ]);
+  }
+
   // A key stored for one host is not carried to another (see the header). A
   // file that was open to other users is the loader's "someone else may have
   // chosen the endpoint" case, so the URL it names is measured against the
@@ -349,6 +474,7 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   // stays that way across a re-run for the same provider.
   let keyNote: string;
   let keyFromEnv = false;
+  let tokenOnCommandLine = false;
   const envKey = process.env[JEV_API_KEY_ENV];
   const envKeyNote = () =>
     envKey
@@ -369,6 +495,16 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     if (bad) return fail([`Not saved: ${bad}.`]);
     next.apiKey = key;
     keyNote = "set from stdin";
+  } else if (values.has("--token")) {
+    // Trimmed like the stdin key, and validated by the same rule, so the same
+    // paste is accepted or refused identically whichever way it arrived. The
+    // refusal quotes the rule, never the value.
+    const key = (values.get("--token") as string).trim();
+    const bad = validateApiKey(key);
+    if (bad) return fail([`Not saved: ${bad}.`]);
+    next.apiKey = key;
+    tokenOnCommandLine = true;
+    keyNote = "set from --token — this shell's history has it too";
   } else if (typeof next.apiKey === "string") {
     keyNote = "kept from the existing config";
   } else if (sameProvider && !hostMove) {
@@ -485,6 +621,19 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
       tightenedDir
         ? note(
             `${tightenedDir.path} was writable by other users, who could have replaced this file whatever its own permissions were; it is now ${tightenedDir.to}.`,
+            opts,
+          )
+        : null,
+      // Said once, after the key is safely stored: the file is 0600, but the
+      // command line it came on is not — it is in this shell's history file and
+      // was readable from /proc by anything running as this user while the
+      // process lived.
+      tokenOnCommandLine
+        ? warning(
+            [
+              "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.",
+              "Prefer piping the key in — `failproofai jev --url <url> --key-stdin < key-file` — and rotate this one if it matters.",
+            ],
             opts,
           )
         : null,
@@ -867,6 +1016,11 @@ function remove(argv: string[], opts: RenderOpts): JevCliResult {
 export async function runJevCommand(argv: string[], deps: JevCliDeps = {}): Promise<JevCliResult> {
   const opts = deps.render ?? optsFor(process.stdout);
   const [sub, ...rest] = argv;
+  // `failproofai jev --url <url> --token <token>` — the one-shot form. An argv
+  // that opens with an option is `setup` with that option: nothing else here
+  // takes one in the subcommand slot, and the two spellings then parse through
+  // exactly the same code.
+  if (sub !== undefined && sub.startsWith("-")) return setup(argv, deps, opts);
   switch (sub) {
     case "setup":
       return setup(rest, deps, opts);

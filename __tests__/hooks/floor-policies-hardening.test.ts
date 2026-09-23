@@ -715,3 +715,162 @@ describe("block-mass-kill: the filter check stays linear", () => {
     expect(performance.now() - t).toBeLessThan(1500);
   });
 });
+
+/**
+ * Review round 3: three bypasses that are one rewrite away from a command the
+ * floor already denies. Each block pins every spelling the reviewers found,
+ * plus the whole class behind it, next to the ordinary commands that must keep
+ * running.
+ */
+describe("block-no-verify: an inline alias runs under what the invocation around it set", () => {
+  // Expanding an alias used to re-read the body on its own, so every setting on
+  // the outer `git` was dropped — including the `-c alias.*` that names the next
+  // alias, which is why the chain below ran a real `--no-verify` commit and why
+  // the `depth` guard could never fire. Checked against git 2.43: each of these
+  // really does reach the commit.
+  it.each([
+    // The chain itself, for both commit and push, at two and three levels.
+    "git -c alias.b=a -c alias.a='commit --no-verify' b -m x",
+    "git -c alias.b=a -c alias.a='commit -n' b -m x",
+    "git -c alias.q=p -c alias.p='push --no-verify' q",
+    "git -c alias.c=b -c alias.b=a -c alias.a='commit --no-verify' c -m x",
+    // A `!` body shells out to git, which inherits the settings via GIT_CONFIG_PARAMETERS.
+    "git -c alias.b=a -c alias.a='!git commit --no-verify' b -m x",
+    // The rest of the same class: the other things the outer invocation imposes.
+    "git -c core.hooksPath=/dev/null -c alias.a=commit a -m x",
+    "git --config-env=core.hooksPath=H -c alias.a=commit a -m x",
+    "HUSKY=0 git -c alias.a=commit a -m x",
+    "export HUSKY=0; git -c alias.a=commit a -m x",
+    // git takes the LAST definition of a name; reading only the first hid this one.
+    "git -c alias.a=status -c alias.a='commit --no-verify' a -m x",
+  ])("denies %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("deny");
+  });
+
+  it.each([
+    "git -c alias.st=status st",
+    "git -c alias.lg='log --oneline -20' lg",
+    "git -c alias.b=st -c alias.st=status b",
+    "git -c alias.ci='commit -s' ci -m x",
+    "git -c alias.p='!git push origin HEAD' p",
+    "git -c core.hooksPath=.githooks -c alias.a=commit a -m x",
+    "HUSKY=1 git -c alias.a=commit a -m x",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+
+  it("names every level it walked through", async () => {
+    const r = await policy("block-no-verify").fn(bash("git -c alias.b=a -c alias.a='commit --no-verify' b -m x"));
+    expect(r.reason).toContain("alias.b=… → git -c alias.a=… → git commit --no-verify");
+  });
+
+  // Each definition is analysed and recursed into, so N of one name at each of
+  // two levels is N² analyses. Repeats collapse; distinct ones past the cap stop.
+  it("stays bounded on a command that defines one alias hundreds of times", async () => {
+    const dup = `git ${Array(400).fill("-c alias.a=status").join(" ")} a`;
+    const distinct = (n: number, name: string, body: (i: number) => string) =>
+      Array.from({ length: n }, (_, i) => `-c alias.${name}='${body(i)}'`).join(" ");
+    const fanOut = `git ${distinct(150, "a", (i) => `status -x${i}`)} ${distinct(150, "b", (i) => `a -y${i}`)} b`;
+    const t = performance.now();
+    expect(await decide("block-no-verify", dup)).toBe("allow");
+    const r = await policy("block-no-verify").fn(bash(fanOut));
+    expect(r.decision).toBe("deny");
+    expect(r.reason).toContain("too many definitions");
+    expect(performance.now() - t).toBeLessThan(1500);
+  });
+});
+
+describe("block-mass-kill: a filter on a `ps` chain is not only grep", () => {
+  it.each([
+    // The canonical awk spelling of the grep row the policy already denied.
+    `ps aux | awk '/node/ {print $2}' | xargs kill -9`,
+    `ps -e | awk '/node/{print $1}' | xargs kill`,
+    `ps aux | awk '$11 ~ /node/ {print $2}' | xargs kill`,
+    `ps -eo pid,comm | awk '{if ($2 == "node") print $1}' | xargs kill`,
+    `ps aux | sed -n '/node/p' | awk '{print $2}' | xargs kill`,
+    `ps aux | perl -ne 'print if /node/' | awk '{print $2}' | xargs kill`,
+    `kill $(ps aux | awk '/python/ {print $2}')`,
+    // The pattern is assembled in a variable.
+    `N=node; ps aux | awk "/$N/ {print \\$2}" | xargs kill`,
+    // Nothing on the chain narrows a listing of every process at all.
+    `ps aux | awk '{print $2}' | xargs kill -9`,
+    // `-aux`'s `u` is BSD output format, not the `-u <user>` selector.
+    `ps -aux | awk '{print $2}' | xargs kill`,
+    `ps -ef | awk '{print $2}' | xargs kill`,
+    `ps -eo pid= | xargs kill -9`,
+    `ps aux | cut -c10-15 | xargs kill`,
+  ])("denies %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("deny");
+  });
+
+  it.each([
+    // A narrow pattern in every one of those tools.
+    `ps aux | awk '/my-special-worker/ {print $2}' | xargs kill`,
+    `ps aux | sed -n '/my-special-worker/p' | awk '{print $2}' | xargs kill`,
+    `ps -eo pid,comm | awk '{if ($2 == "my-daemon") print $1}' | xargs kill`,
+    // A `s///` or a division is not a selection: reading every literal as a
+    // pattern would deny these.
+    `ps aux | grep my-worker | sed 's/ +/ /g' | awk '{print $2}' | xargs kill`,
+    `ps aux | grep my-worker | awk '{print $1/$2}' | xargs kill`,
+    // Something on the chain does narrow, so the every-process rule stays quiet.
+    `ps aux --sort=-%mem | head -2 | awk '{print $2}' | xargs kill`,
+    `ps aux | awk 'NR>1 {print $2}' | grep -f wanted.txt | xargs kill`,
+    // A `ps` that selects a subset is not a listing of every process.
+    `ps -o ppid= -p 4242 | xargs kill`,
+    `ps -C my-daemon -o pid= | xargs kill`,
+    `ps 4242 -o pid= | xargs kill`,
+    // No `ps` in front of it: these are not process listings.
+    `cat pids.txt | awk '/node/ {print $2}' | xargs kill`,
+  ])("allows %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+});
+
+describe("block-mass-kill: an unanchored pattern is a substring regex", () => {
+  // pkill/pgrep match the pattern as a regex SEARCH over the process name, so
+  // each of these reaches exactly what the literal name beside it reaches.
+  // Comparing normalised strings drew the line one character wide: `pkill node`
+  // denied, `pkill nod` did not.
+  it.each([
+    "pkill nod",
+    "pkill ode",
+    "pkill -f nod",
+    "pkill n.de",
+    "pkill ytho",
+    "pkill '^nod'",
+    "pkill '.*nod.*'",
+    "killall -r 'nod.*'",
+    "pgrep nod | xargs kill",
+    "pgrep -f ytho | xargs kill",
+    `ps aux | grep nod | awk '{print $2}' | xargs kill`,
+  ])("denies %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("deny");
+  });
+
+  it.each([
+    // The pattern is matched against the generic name, never the other way
+    // round, so a longer or more specific pattern reaches none of them.
+    "pkill vite",
+    "pkill esbuild",
+    "pkill nginx",
+    "pkill webpack",
+    "pkill my-worker",
+    "pkill -f 'node.*worker'",
+    "pkill -f /opt/app/bin/serve",
+    "killall myapp",
+    "killall -r 'myapp-worker.*'",
+    // `nod$` does not match `node`, and pkill would not kill it.
+    "pkill 'nod$'",
+    // `-x` compares the whole name.
+    "pkill -x nod",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+
+  it("stays fast on a pathological pattern", async () => {
+    const t = performance.now();
+    expect(await decide("block-mass-kill", `pkill '${"(a+)+".repeat(40)}$'`)).toBe("allow");
+    expect(await decide("block-mass-kill", "pkill '(([a-z]*)*)*node'")).toBe("deny");
+    expect(performance.now() - t).toBeLessThan(1500);
+  });
+});

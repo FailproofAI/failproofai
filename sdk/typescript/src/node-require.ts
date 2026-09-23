@@ -93,10 +93,23 @@ export function resolveFrom(specifier: string): string | null {
  */
 export function entryIsCommonJs(): boolean {
   try {
-    return appRequire.main !== undefined;
+    return isCommonJsMain(appRequire.main);
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a `require.main` value names a CommonJS entry module.
+ *
+ * Node answers `undefined` for an ES-module entry; Deno answers `null`. A bare
+ * `!== undefined` read Deno's `null` as "CommonJS", so an ES-module Deno app
+ * had its frameworks' CommonJS copies patched while its own imports reached the
+ * untouched ES-module copies: `instrument()` returned success and nothing was
+ * recorded. Only an actual module object counts.
+ */
+export function isCommonJsMain(main: unknown): boolean {
+  return typeof main === "object" && main !== null;
 }
 
 /** Whether `path` is in the CommonJS module cache, i.e. has been `require`d. */

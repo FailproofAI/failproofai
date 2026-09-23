@@ -41,8 +41,75 @@ import ts from "typescript";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const FIXTURES = join(ROOT, "integration", "fixtures");
 
-export type Format = "esm" | "cjs";
+export type Format = "esm" | "cjs" | "bun-esm" | "bun-cjs" | "deno-esm" | "deno-cjs";
+/** The two module systems, under Node. What every framework file runs. */
 export const FORMATS: readonly Format[] = ["esm", "cjs"];
+/**
+ * The same two transpiled agents, under Bun. A framework test file opts in with
+ * `describe.each([...FORMATS, ...BUN_FORMATS])`; `runtimes.bun.test.ts` runs
+ * every scenario of every fixture this way against its Node twin.
+ */
+export const BUN_FORMATS: readonly Format[] = ["bun-esm", "bun-cjs"];
+/** The same two transpiled agents, under Deno (`deno run -A`). */
+export const DENO_FORMATS: readonly Format[] = ["deno-esm", "deno-cjs"];
+
+export type Runtime = "node" | "bun" | "deno";
+
+/** Which runtime a format runs under, and which transpiled agent it runs. */
+export function splitFormat(format: Format): { runtime: Runtime; module: "esm" | "cjs" } {
+  const [head, tail] = format.split("-") as [string, string | undefined];
+  if (tail === undefined) return { runtime: "node", module: head as "esm" | "cjs" };
+  return { runtime: head as Runtime, module: tail as "esm" | "cjs" };
+}
+
+/**
+ * The command line that starts `runtime`, before the script and its arguments.
+ *
+ * Bun and Deno come from the `runtimes` fixture — pinned in its lockfile and
+ * installed with `--ignore-scripts`, so each is its platform package's own
+ * binary rather than whatever a developer or a CI image happens to have on
+ * PATH. `FAILPROOFAI_IT_BUN` / `FAILPROOFAI_IT_DENO` override that with an
+ * explicit binary. There is no fall-back to PATH and no skip: a runtime that
+ * cannot be found fails the test that needed it.
+ */
+export function runtimeCommand(runtime: Runtime): string[] {
+  if (runtime === "node") return [process.execPath];
+  const override = process.env[runtime === "bun" ? "FAILPROOFAI_IT_BUN" : "FAILPROOFAI_IT_DENO"];
+  const binary = override || runtimeBinary(runtime);
+  return runtime === "deno" ? [binary, "run", "--allow-all", "--no-lock"] : [binary];
+}
+
+function runtimeBinary(runtime: "bun" | "deno"): string {
+  const modules = join(FIXTURES, "runtimes", "node_modules");
+  const scope = join(modules, runtime === "bun" ? "@oven" : "@deno");
+  const candidates = existsSync(scope)
+    ? readdirSync(scope).map((dir) =>
+        runtime === "bun" ? join(scope, dir, "bin", "bun") : join(scope, dir, "deno"),
+      )
+    : [];
+  // npm installs every platform package whose os/cpu match; on a glibc Linux
+  // that can include a musl build that will not start. Take the first that runs.
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    const probe = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (probe.status === 0) return candidate;
+  }
+  throw new Error(
+    `no runnable ${runtime} binary under ${scope}. The runtimes fixture installs it; ` +
+      `run the suite with FAILPROOFAI_IT_FIXTURES including "runtimes", or set ` +
+      `FAILPROOFAI_IT_${runtime.toUpperCase()} to a binary.`,
+  );
+}
+
+/**
+ * Every scenario a fixture's agent accepts: the `case "…":` labels of its
+ * dispatch `switch`. Lets a runtime-parity test cover a fixture completely
+ * without restating what each framework test already asserts.
+ */
+export function scenarios(fixture: string): string[] {
+  const source = readFileSync(join(FIXTURES, fixture, "agent.ts"), "utf8");
+  return [...new Set([...source.matchAll(/^\s*case "([a-z0-9-]+)":/gm)].map((match) => match[1]!))];
+}
 
 export type Event = Record<string, unknown> & {
   type: string;
@@ -100,7 +167,9 @@ export async function installFixture(fixture: string, pack: string): Promise<voi
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
   execFileSync("tar", ["-xzf", pack, "-C", target, "--strip-components=1"]);
-  transpile(fixture);
+  // Runtime fixtures (`nextjs`, `runtimes`, `workers`) are not one-agent
+  // projects; they build or run their own sources.
+  if (existsSync(join(dir, "agent.ts"))) transpile(fixture);
 }
 
 function run(command: string, args: string[], cwd: string, label: string): Promise<void> {
@@ -173,8 +242,10 @@ export function runAgent(
   const dir = join(FIXTURES, fixture);
   const home = mkdtempSync(join(tmpdir(), `failproofai-it-${fixture}-`));
   try {
-    const entry = join(dir, ".run", `${program}.${format === "esm" ? "mjs" : "cjs"}`);
-    const result = spawnSync(process.execPath, [entry, scenario], {
+    const { runtime, module } = splitFormat(format);
+    const entry = join(dir, ".run", `${program}.${module === "esm" ? "mjs" : "cjs"}`);
+    const [command, ...prefix] = runtimeCommand(runtime);
+    const result = spawnSync(command!, [...prefix, entry, scenario], {
       cwd: dir,
       encoding: "utf8",
       timeout: 90_000,
@@ -198,7 +269,70 @@ export function runAgent(
   }
 }
 
-function readSpool(dir: string): Event[] {
+/**
+ * `runAgent`, without blocking the test worker — so a file that runs hundreds
+ * of cases (the runtime-parity suites) can run them `concurrent`ly.
+ */
+export async function runAgentAsync(
+  fixture: string,
+  format: Format,
+  scenario: string,
+  env: Record<string, string> = {},
+): Promise<RunResult> {
+  const dir = join(FIXTURES, fixture);
+  const { runtime, module } = splitFormat(format);
+  const entry = join(dir, ".run", module === "esm" ? "agent.mjs" : "agent.cjs");
+  const [command, ...prefix] = runtimeCommand(runtime);
+  return await runProcess([command!, ...prefix, entry, scenario], { cwd: dir, env, label: fixture });
+}
+
+/**
+ * Run any command against a fresh scratch spool and collect what it wrote.
+ * The building block of `runAgentAsync`, and of the runtime suites whose
+ * programs are not a fixture's `agent.ts`.
+ */
+export async function runProcess(
+  argv: string[],
+  options: { cwd: string; env?: Record<string, string>; label?: string; timeout?: number; home?: string },
+): Promise<RunResult> {
+  const home = options.home ?? mkdtempSync(join(tmpdir(), `failproofai-it-${options.label ?? "run"}-`));
+  try {
+    const { stdout, stderr, status } = await new Promise<{ stdout: string; stderr: string; status: number | null }>(
+      (resolvePromise) => {
+        const child = spawn(argv[0]!, argv.slice(1), {
+          cwd: options.cwd,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            FAILPROOFAI_HOME: home,
+            FAILPROOFAI_SDK_STRICT: "1",
+            NODE_OPTIONS: "",
+            ...options.env,
+          },
+        });
+        let out = "";
+        let err = "";
+        child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString()));
+        child.stderr.on("data", (chunk: Buffer) => (err += chunk.toString()));
+        const timer = setTimeout(() => child.kill("SIGKILL"), options.timeout ?? 90_000);
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          resolvePromise({ stdout: out, stderr: `${err}\n${String(error)}`, status: null });
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolvePromise({ stdout: out, stderr: err, status: code });
+        });
+      },
+    );
+    return { events: readSpool(join(home, "custom-agents", "events")), stdout, stderr, status };
+  } finally {
+    if (options.home === undefined) rmSync(home, { recursive: true, force: true });
+  }
+}
+
+/** Every event in a spool directory, in the order the run produced them. */
+export function readSpool(dir: string): Event[] {
   if (!existsSync(dir)) return [];
   const events: Event[] = [];
   for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort()) {

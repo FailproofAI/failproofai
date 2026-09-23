@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -224,6 +225,51 @@ describe("both module systems load it", () => {
       const target = targetAt(manifest.exports[subpath]!, "require", "default");
       expect(existsSync(join(root, target))).toBe(true);
       expect(() => require_(join(root, target))).not.toThrow();
+    }
+  });
+
+  it("runs an evaluator module written as CommonJS or as ESM through the bin", () => {
+    // The bin is the ESM build. A CommonJS evals file gets `Evaluator` from
+    // `dist/cjs` — a second copy of the class — so an `instanceof` check in the
+    // loader refused it with "resolved to Evaluator, not an Evaluator", and the
+    // commonest setup (plain `tsc` output, no "type": "module") could not start.
+    const dir = mkdtempSync(join(tmpdir(), "fpai-evals-"));
+    const cjsEntry = JSON.stringify(join(root, targetAt(manifest.exports["./evaluator"]!, "require", "default")));
+    const esmEntry = JSON.stringify(
+      pathToFileURL(join(root, targetAt(manifest.exports["./evaluator"]!, "import", "default"))).href,
+    );
+    writeFileSync(
+      join(dir, "evals.cjs"),
+      `const { Evaluator } = require(${cjsEntry});\nexports.app = new Evaluator({ name: "cjs", version: "1" });\n`,
+    );
+    writeFileSync(
+      join(dir, "evals.mjs"),
+      `import { Evaluator } from ${esmEntry};\nexport const app = new Evaluator({ name: "esm", version: "1" });\n`,
+    );
+    writeFileSync(join(dir, "not-evals.cjs"), "exports.app = { runFromEnv() {} };\n");
+
+    const run = (file: string) => {
+      const env = { ...process.env };
+      delete env.FAILPROOFAI_EVALUATOR_URL;
+      delete env.FAILPROOFAI_EVALUATOR_TOKEN;
+      try {
+        execFileSync(process.execPath, [join(root, manifest.bin["failproofai-evaluator"]!), join(dir, file)], {
+          env,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        return "";
+      } catch (error) {
+        return String((error as { stderr?: string }).stderr ?? error);
+      }
+    };
+    try {
+      // Loading succeeded when the worker gets as far as reading its config.
+      expect(run("evals.cjs")).toContain("FAILPROOFAI_EVALUATOR_URL is required");
+      expect(run("evals.mjs")).toContain("FAILPROOFAI_EVALUATOR_URL is required");
+      expect(run("not-evals.cjs")).toContain("not an Evaluator");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

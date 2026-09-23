@@ -1326,7 +1326,8 @@ export async function wrapModel<T>(model: T, options: Record<string, unknown> = 
   if (typeof wrap !== "function") {
     throw new Error(
       "this version of `ai` does not export wrapLanguageModel; pass " +
-        "`experimental_telemetry: failproofai.ai.telemetry()` instead.",
+        "`experimental_telemetry: telemetry()` instead " +
+        '(`import { telemetry } from "@failproofai/sdk/ai"`).',
     );
   }
   return wrap({ model, middleware: middleware(options) });
@@ -1512,8 +1513,9 @@ export const adapter: Adapter = {
           `instrument("ai") on ai ${String(major)}.x does not register a global OpenTelemetry ` +
             "tracer — that slot belongs to your own tracing — so by itself it records nothing " +
             "on ai 4–6 (it covers ai 7). Record calls at the call site with " +
-            "`experimental_telemetry: failproofai.ai.telemetry()`, or wrap the model once with " +
-            "`failproofai.ai.wrapModel(model)`. If this process runs no OpenTelemetry of its own, " +
+            "`experimental_telemetry: telemetry()`, or wrap the model once with " +
+            "`await wrapModel(model)` — both `import { telemetry, wrapModel } from " +
+            '"@failproofai/sdk/ai"`. If this process runs no OpenTelemetry of its own, ' +
             '`instrument("ai", { registerGlobalTracer: true })` records every call that passes ' +
             "`experimental_telemetry: { isEnabled: true }`. Pass `registerGlobalTracer: false` " +
             "to silence this.",
@@ -1527,10 +1529,10 @@ export const adapter: Adapter = {
       (outcome === "taken"
         ? "an OpenTelemetry tracer provider is already registered, so the `ai` adapter left it alone. "
         : "`@opentelemetry/api` is not importable, so the `ai` adapter cannot register a global tracer. ") +
-        "Add telemetry at the call site —\n" +
-        "  experimental_telemetry: failproofai.ai.telemetry()\n" +
+        'Add telemetry at the call site (import { telemetry, wrapModel } from "@failproofai/sdk/ai") —\n' +
+        "  experimental_telemetry: telemetry()\n" +
         "or wrap the model once —\n" +
-        "  const model = await failproofai.ai.wrapModel(openai('gpt-4o'))",
+        "  const model = await wrapModel(openai('gpt-4o'))",
       `${NAME}:global-tracer`,
     );
   },

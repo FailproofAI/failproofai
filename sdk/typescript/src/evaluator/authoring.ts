@@ -321,14 +321,46 @@ export interface EvalOptions {
   timeoutSeconds?: number;
 }
 
+/**
+ * Marks an `Evaluator` across the package's two builds.
+ *
+ * `failproofai-evaluator` is the ESM build, and a CommonJS evals file (plain
+ * `tsc` output, `require`) constructs its `Evaluator` from `dist/cjs` — a
+ * second, unrelated copy of the class. `instanceof` is false across the two, so
+ * the loader refused the commonest setup there is with "resolved to Evaluator,
+ * not an Evaluator". `Symbol.for` is one registry per process, so both copies
+ * stamp and read the same key.
+ */
+const EVALUATOR_BRAND = Symbol.for("@failproofai/sdk/evaluator.Evaluator");
+
+/**
+ * True for an `Evaluator` from either build of this package.
+ *
+ * Safe to hand the result to `runFromEnv()`: that method belongs to the copy
+ * that built the object, and runs the runtime from that same copy, so the
+ * result classes it checks are the ones the evaluations construct.
+ *
+ * @internal
+ */
+export function isEvaluator(value: unknown): value is Evaluator {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[EVALUATOR_BRAND] === true &&
+    typeof (value as { runFromEnv?: unknown }).runFromEnv === "function"
+  );
+}
+
 /** A process-local collection of explicitly versioned evaluations. */
 export class Evaluator {
+  declare readonly [EVALUATOR_BRAND]: true;
   readonly name: string;
   readonly version: string;
   readonly managedCompiler: ManagedCompiler | null;
   private readonly registry = new Map<string, EvalDefinition>();
 
   constructor(options: { name: string; version: string; managedCompiler?: ManagedCompiler }) {
+    Object.defineProperty(this, EVALUATOR_BRAND, { value: true });
     this.name = bounded(options.name, "name", MAX_DISPLAY_NAME_BYTES);
     this.version = bounded(options.version, "version", MAX_VERSION_BYTES);
     // Omitted keeps the default: server-authored source is compiled and

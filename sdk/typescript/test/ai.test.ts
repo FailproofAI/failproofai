@@ -608,6 +608,10 @@ describe("instrument('ai') and the process-wide OpenTelemetry slot", () => {
       const advice = warnings.filter((w) => w.includes("registerGlobalTracer"));
       expect(advice).toHaveLength(1);
       expect(advice[0]).toContain("telemetry()");
+      // …naming an import that exists. The root package has no `ai` export, so
+      // `failproofai.ai.telemetry()` sent the reader to `undefined`.
+      expect(advice[0]).toContain('from "@failproofai/sdk/ai"');
+      expect(advice[0]).not.toContain("failproofai.ai.");
     },
   );
 

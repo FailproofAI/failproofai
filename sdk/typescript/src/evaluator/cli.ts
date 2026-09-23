@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 
 import { importModule } from "../node-require.js";
-import { Evaluator } from "./authoring.js";
+import { isEvaluator, type Evaluator } from "./authoring.js";
 
 export async function loadEvaluator(spec: string): Promise<Evaluator> {
   const separator = spec.lastIndexOf("#");
@@ -37,7 +37,7 @@ export async function loadEvaluator(spec: string): Promise<Evaluator> {
   if (candidate === undefined) {
     throw new Error(`${JSON.stringify(spec)} does not export ${JSON.stringify(exportName)}`);
   }
-  if (!(candidate instanceof Evaluator)) {
+  if (!isEvaluator(candidate)) {
     throw new TypeError(
       `${JSON.stringify(spec)} resolved to ${
         (candidate as object)?.constructor?.name ?? typeof candidate

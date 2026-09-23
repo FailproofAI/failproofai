@@ -21,7 +21,11 @@
  *    asking each let a live credential through. The cost is that ordinary
  *    code and prose under those names lose the rest of their line in what
  *    Jev is shown; see the header of ./redact.ts. The count is reported so a
- *    redaction is auditable.
+ *    redaction is auditable. Every secret found this way is then scrubbed out
+ *    of the WHOLE state (`scrubDeep`), which is why only an OPAQUE TOKEN is
+ *    ever reported as one: whatever an agent writes under a credential name
+ *    would otherwise be deleted from `facts` and from the human's own words,
+ *    which is a way to blind the evaluator rather than to protect a secret.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
  *    cut is flagged `truncated` — which the handler treats as "keep the regex
@@ -160,17 +164,23 @@ function scrubDeep(value: unknown, acc: Accumulator): unknown {
 function cleanValue(value: unknown, acc: Accumulator, depth = 0, fieldName?: string): unknown {
   if (typeof value === "string") {
     if (fieldName !== undefined) {
+      // `{"Authorization": "Basic …"}`, `{"Cookie": "sid=…; theme=dark"}`: the
+      // whole value goes, and the BARE credential inside it is what the scrub
+      // pass then looks for elsewhere. This runs FIRST, ahead of the
+      // secret-named-field rule, although `cookie` and `api-key` are secret
+      // NAMES as well: that rule reports the whole value as the secret, which
+      // matched no copy of the credential inside it, so the copy the human had
+      // pasted into their message went out with the request.
+      const auth = redactAuthorizationField(fieldName, value);
+      if (auth) {
+        acc.redactions++;
+        for (const s of auth.secrets) acc.found.add(s);
+        return auth.text;
+      }
       if (isSecretFieldValue(fieldName, value)) {
         acc.redactions++;
         acc.found.add(value);
         return "<redacted:assigned secret>";
-      }
-      // `{"Authorization": "Basic …"}`: the scheme stays, the credential goes.
-      const auth = redactAuthorizationField(fieldName, value);
-      if (auth) {
-        acc.redactions++;
-        acc.found.add(auth.secret);
-        return auth.text;
       }
     }
     return cleanString(value, MAX_STRING_CHARS, acc);

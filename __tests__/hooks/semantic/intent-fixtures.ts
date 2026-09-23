@@ -23,7 +23,14 @@ export const SID = {
 
 // ── Stdin payloads, one per harness ─────────────────────────────────────────
 
-/** Claude Code 2.1.x `UserPromptSubmit`. */
+/**
+ * Claude Code 2.1.x `UserPromptSubmit`. `source` is the field Claude Code's
+ * hook-input schema uses to name who authored the prompt: `user` is the
+ * interactive composer, and `sdk`, `system`, `loop_wakeup`, `schedule_wakeup`
+ * and `poll_event` are the values for prompts nobody typed. It is optional in
+ * that schema ("Payloads may omit it while the field rolls out"), so a
+ * payload without it is a real shape too — see `claudePromptNoSource`.
+ */
 export const claudePrompt = (prompt: string, transcriptPath: string, extra: Record<string, unknown> = {}) => ({
   session_id: SID.claude,
   transcript_path: transcriptPath,
@@ -33,9 +40,17 @@ export const claudePrompt = (prompt: string, transcriptPath: string, extra: Reco
   agent_type: "general-purpose",
   hook_event_name: "UserPromptSubmit",
   prompt,
+  source: "user",
   session_title: "fix login flow",
   ...extra,
 });
+
+/** The same payload from a build that does not send `source` yet. */
+export const claudePromptNoSource = (prompt: string, transcriptPath: string, extra: Record<string, unknown> = {}) => {
+  const payload: Record<string, unknown> = claudePrompt(prompt, transcriptPath, extra);
+  delete payload.source;
+  return payload;
+};
 
 /** Codex 0.154 `UserPromptSubmit` (installed as `--hook user_prompt_submit`). */
 export const codexPrompt = (prompt: string, transcriptPath: string) => ({

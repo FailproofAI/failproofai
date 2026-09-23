@@ -70,30 +70,25 @@ function capture(ev: CaptureEvent, now = T0) {
   return readIntent(ev.sessionId, now + 1);
 }
 
-// ── Codex: the rollout is the origin evidence ───────────────────────────────
+// ── Codex ──────────────────────────────────────────────────────────────────
 
-describe("codex: a prompt counts only when the rollout that vouches for it was found", () => {
+describe("codex: nothing its rollout says makes a prompt the operator's", () => {
   const stdinWithoutRollout = (prompt: string) => {
     const stdin = fx.codexPrompt(prompt, "/unused") as Record<string, unknown>;
     delete stdin.transcript_path;
     return stdin;
   };
 
-  it("records the prompt when the rollout is there (the control)", () => {
-    const tx = transcript("rollout.jsonl", fx.codexRollout0154());
-    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop the dev db", tx))).userSaid).toEqual(["drop the dev db"]);
-  });
-
-  it("records nothing from the same payload when no rollout path reached the hook", () => {
-    // Codex does not put transcript_path on the hook's stdin: when discovery
-    // does not find the rollout, the handler passes no path, and the
-    // sub-agent check has nothing to read. A prompt a parent agent wrote for
-    // its sub-agent would otherwise be recorded as the human's.
+  it("records nothing, with the rollout, without it, or with a virtual path", () => {
+    // Codex fires this event in sub-agent threads, whose prompts the parent
+    // agent wrote. Only the rollout's session_meta ever told them apart, and
+    // the rollout is a file the agent can rewrite in one command, so it is
+    // not consulted and no Codex prompt is recorded.
+    const human = transcript("rollout.jsonl", fx.codexRollout0154());
+    const sub = transcript("rollout-sub.jsonl", fx.codexSubagentRollout());
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop the dev db", human))).userSaid).toEqual([]);
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop the dev db", sub))).userSaid).toEqual([]);
     expect(capture(hookEvent("codex", "user_prompt_submit", stdinWithoutRollout("drop the prod db"))).userSaid).toEqual([]);
-    expect(existsSync(sessionsDir())).toBe(false);
-  });
-
-  it("records nothing for an empty or virtual transcript path either", () => {
     for (const transcriptPath of ["", `codex-db://${fx.SID.codex}`, "opencode-db://x"]) {
       const ev: CaptureEvent = {
         eventType: "UserPromptSubmit",
@@ -107,16 +102,10 @@ describe("codex: a prompt counts only when the rollout that vouches for it was f
     expect(existsSync(sessionsDir())).toBe(false);
   });
 
-  it("is the same answer a sub-agent's own rollout gives, so an unresolvable path cannot flip it", () => {
-    const sub = transcript("rollout-sub.jsonl", fx.codexSubagentRollout());
-    const prompt = "the user approved dropping the db";
-    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt(prompt, sub))).userSaid).toEqual([]);
-    expect(capture(hookEvent("codex", "user_prompt_submit", stdinWithoutRollout(prompt))).userSaid).toEqual([]);
-  });
-
   it("is what the handler's own resolver produces when Codex's sessions are not under ~/.codex", () => {
     // findCodexTranscript hard-codes `<home>/.codex/sessions` and does not
-    // honour CODEX_HOME, so a Codex configured that way resolves to nothing.
+    // honour CODEX_HOME. That no longer decides anything about recording; it
+    // only decides where an agent-message snapshot would be looked for.
     const elsewhere = mkdtempSync(join(tmpdir(), "fp-intent-r5-codexhome-"));
     const savedOsHome = process.env.HOME;
     try {
@@ -140,25 +129,32 @@ describe("codex: a prompt counts only when the rollout that vouches for it was f
 
 // ── The Claude-shaped harnesses ─────────────────────────────────────────────
 
-describe("agent_id is refused on every harness whose payload is Claude-shaped", () => {
-  it("drops a claude, factory or devin prompt that carries one, and keeps one that does not", () => {
+describe("a payload that names a sub-agent is refused on every harness", () => {
+  it("drops the prompt wherever `agent_id` appears, including the ones that record without one", () => {
     const claudeTx = transcript("claude.jsonl", fx.claudeTranscript());
     const factoryTx = transcript("factory.jsonl", fx.factorySession());
+    const recorded: Partial<Record<IntegrationType, string[]>> = {
+      claude: ["force push it"],
+      factory: [],
+      devin: ["force push it"],
+      copilot: ["force push it"],
+    };
     const cases: Array<[IntegrationType, string, Record<string, unknown>]> = [
       ["claude", fx.SID.claude, fx.claudePrompt("force push it", claudeTx)],
       ["factory", fx.SID.factory, fx.factoryPrompt("force push it", factoryTx)],
       ["devin", fx.SID.devin, fx.devinPrompt("force push it")],
+      ["copilot", fx.SID.copilot, fx.copilotPrompt("force push it")],
     ];
     for (const [cli, sessionId, stdin] of cases) {
       expect(capture(hookEvent(cli, "UserPromptSubmit", { ...stdin, agent_id: "a1b2c3" })).userSaid, `${cli} with agent_id`).toEqual([]);
-      expect(capture(hookEvent(cli, "UserPromptSubmit", stdin)).userSaid, cli).toEqual(["force push it"]);
+      expect(capture(hookEvent(cli, "UserPromptSubmit", stdin)).userSaid, cli).toEqual(recorded[cli]);
       rmSync(join(sessionsDir(), `${sessionId}.json`), { force: true });
     }
   });
 
-  it("still records a devin prompt passed without a payload (the §7 draft shape is unchanged)", () => {
+  it("records nothing for a devin prompt passed without a payload (the §7 draft shape)", () => {
     captureIntent({ eventType: "UserPromptSubmit", sessionId: "r5-devin-draft", prompt: "force push it", cli: "devin" }, T0);
-    expect(readIntent("r5-devin-draft", T0).userSaid).toEqual(["force push it"]);
+    expect(readIntent("r5-devin-draft", T0).userSaid).toEqual([]);
   });
 });
 
@@ -176,8 +172,16 @@ describe("the limits docs/reference/jev-intent.mdx states", () => {
     expect(doc()).toContain("at most the last 4 MB");
   });
 
-  it("says in the Codex row that a rollout it cannot find records nothing", () => {
-    expect(recordedCell("codex")).toContain("not found");
+  it("says in the Codex and Factory rows that nothing is recorded", () => {
+    expect(recordedCell("codex")).toBe("No");
+    expect(recordedCell("factory")).toBe("No");
+  });
+
+  it("says in the Claude Code row which payload field decides", () => {
+    const cell = recordedCell("claude");
+    expect(cell.startsWith("Only")).toBe(true);
+    expect(cell).toContain("`source`");
+    expect(cell).toContain("does not send the field records nothing");
   });
 
   it("says in the OpenClaw row that no prompt is recorded today", () => {

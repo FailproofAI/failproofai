@@ -1156,9 +1156,121 @@ describe("hooks/builtin-policies", () => {
       expect((await policy.fn(ctx)).decision).toBe("allow");
     });
 
-    it("allows non-Write tools", async () => {
+    it("allows non-Write/Edit tools", async () => {
       const ctx = makeCtx({ toolName: "Read", toolInput: { file_path: "/home/user/cert.pem" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    // Issue #814: Codex apply_patch canonicalizes to Edit and puts the patch in
+    // tool_input.command (not file_path). Fake key material only.
+    it("blocks Codex-shaped apply_patch Edit that adds .ssh/id_rsa via command", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command:
+            "*** Begin Patch\n*** Add File: .ssh/id_rsa\n+FAKESECRET_test_only\n*** End Patch",
+        },
+      });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toContain("secret key files");
+    });
+
+    it("blocks Edit with file_path pointing at a .pem (non-Codex Edit shape)", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: { file_path: "/home/user/cert.pem", old_string: "a", new_string: "b" },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("allows Codex-shaped apply_patch Edit that only touches safe paths", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command:
+            "*** Begin Patch\n*** Add File: src/safe.ts\n+export const ok = 1;\n*** End Patch",
+        },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("denies multi-file apply_patch when a protected path appears after a safe path", async () => {
+      // Ordering matters for the regression: a first-path-only checker would
+      // see src/safe.ts and allow. Protected path is id_rsa (this policy's
+      // surface — not .env, which belongs to block-env-files).
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command: [
+            "*** Begin Patch",
+            "*** Add File: src/safe.ts",
+            "+export const ok = 1;",
+            "*** Add File: .ssh/id_rsa",
+            "+FAKESECRET_test_only",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("denies multi-file apply_patch when Update File targets credentials after a safe update", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command: [
+            "*** Begin Patch",
+            "*** Update File: README.md",
+            "@@",
+            "-old",
+            "+new",
+            "*** Update File: .aws/credentials",
+            "@@",
+            "+aws_access_key_id=AKIA_TEST_NOT_A_REAL_KEY",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    // apply_patch rename: Update File = source, Move to = destination. Both
+    // paths must be checked so either a protected source or protected dest denies.
+    it("denies apply_patch rename when Move to targets a protected path", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command: [
+            "*** Begin Patch",
+            "*** Update File: src/safe.ts",
+            "*** Move to: .ssh/id_rsa",
+            "@@",
+            "-old",
+            "+FAKESECRET_test_only",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("denies apply_patch rename when Update File source is a protected path", async () => {
+      const ctx = makeCtx({
+        toolName: "Edit",
+        toolInput: {
+          command: [
+            "*** Begin Patch",
+            "*** Update File: .ssh/id_rsa",
+            "*** Move to: src/safe.ts",
+            "@@",
+            "-old",
+            "+new",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
     });
   });
 

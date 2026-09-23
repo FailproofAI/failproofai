@@ -108,15 +108,14 @@ Reviewable only where a semantic policy genuinely covers the same concern. Every
 
 These built-in policies cover commands Jev is known to miss, so they are hard by design. They are off by default.
 
-{/* These six arrive with the hard-floor additions (build task T7). If they do
-    not ship in the same release, remove this table and the sentence above. */}
+{/* These four arrived with the hard-floor additions (build task T7). Two more
+    were drafted — `block-mass-kill` and `block-no-verify` — and cut from the
+    scope, so they are deliberately absent here. */}
 
 | Policy | Authority | Reviewed by | Why |
 | --- | --- | --- | --- |
 | `block-disk-destruction` | hard | | Covers `dd` to a device, `mkfs` and `wipefs`, which Jev misses. |
 | `block-gh-destructive` | hard | | Covers `gh release delete` and `gh api -X DELETE`, which Jev misses. |
-| `block-mass-kill` | hard | | Covers mass `pkill` and `killall`, which Jev misses. |
-| `block-no-verify` | hard | | Covers `git commit` and `git push` with `--no-verify`, which Jev misses. |
 | `block-indirect-exec` | hard | | Covers destructive binaries run through a variable, which Jev misses. |
 | `block-chmod-777` | hard | | Covers world-writable permission changes. |
 

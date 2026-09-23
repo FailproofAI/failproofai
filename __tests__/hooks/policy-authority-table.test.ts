@@ -38,14 +38,14 @@ const FLOOR = [
 ];
 
 /**
- * The hard-floor additions arriving with T7 (decision D5). Listed so the docs
- * page may name them before they are in this catalog — and ONLY them, so a
- * typo'd docs row still fails.
+ * The hard-floor additions of T7 (decision D5) have LANDED, so every one of
+ * them is a builtin the checks below reach through `POLICY_CATALOG`, and this
+ * set is empty on purpose: nothing but a builtin may appear in the docs table
+ * any more, so a typo'd or cut-policy row fails. Two drafted floor policies
+ * (`block-mass-kill`, `block-no-verify`) were cut from the scope and must not
+ * come back here — four ship, not six.
  */
-const ARRIVING_HARD = new Set([
-  "block-disk-destruction", "block-gh-destructive", "block-mass-kill",
-  "block-no-verify", "block-indirect-exec", "block-chmod-777",
-]);
+const ARRIVING_HARD = new Set<string>([]);
 
 const DOC = readFileSync(resolve(__dirname, "../../docs/policies/authority.mdx"), "utf8");
 

@@ -64,7 +64,7 @@ vi.mock("../../../src/hooks/semantic/jev-throttle", () => ({
   isCachedJevResponse: (response: unknown) => cacheProbe(response),
 }));
 
-let intent: { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean } = {
+let intent: { userSaid: string[]; agentLastMessage: string | null } = {
   userSaid: [],
   agentLastMessage: null,
 };
@@ -333,16 +333,26 @@ describe("failures are fallbacks, never throws", () => {
 });
 
 /**
- * §7's `readIntent` may report that the store CUT what it kept — T4 caps a
- * stored prompt or agent message to fit inside the envelope's own limit, so
- * the envelope cannot see that cut. It is reported out of band, beside the
- * messages, never read out of their text: `agent_last_message` is written by
- * the agent and repeats file and tool-output text a third party controls, and
- * a cut read out of content would let a repo file switch the semantic tier off
- * for a call (see `evaluator-context-cut.test.ts`). Optional, like T5's
- * `scope`: a store that does not report it is read exactly as before.
+ * What the review does about a cut the INTENT STORE made — T4 caps a stored
+ * prompt or agent message to fit inside the envelope's own limit, so the
+ * envelope cannot see that cut.
+ *
+ * There is no out-of-band report of it. `readIntent` returns the two fields §7
+ * declares and nothing else, so what stands is the evaluator's narrower guess
+ * (`intentStoreCut`): its own omission mark, in a message that also fills the
+ * cap. A store cut can therefore go unnoticed, and that is the honest state of
+ * it. These tests used to hand `readIntent` a `truncated` field and pin the
+ * review's reading of it; nothing has ever written that field, so the channel
+ * (and the two tests that were its only user) is gone — see `IntentStore` in
+ * `jev-review.ts`.
+ *
+ * If the store is taught to report a cut, the report must stay out of band,
+ * never read out of message text: `agent_last_message` is written by the agent
+ * and repeats file and tool-output text a third party controls, so a cut
+ * inferred from content would let a repo file switch the semantic tier off for
+ * a call. `evaluator-context-cut.test.ts` pins the evaluator's side of that.
  */
-describe("the intent store's own truncation flag", () => {
+describe("a cut the intent store made", () => {
   /** A prompt capped the way the store caps it: at most the envelope's limit, the mark included. */
   const stored = (text: string) => {
     const mark = `\n…[${text.length} characters omitted]…\n`;
@@ -350,22 +360,21 @@ describe("the intent store's own truncation flag", () => {
     return `${text.slice(0, Math.ceil(budget * 0.6))}${mark}${text.slice(text.length - (budget - Math.ceil(budget * 0.6)))}`;
   };
 
-  it("truncated: true marks the answer, though nothing in the messages looks cut", async () => {
-    intent = { userSaid: ["tidy the build folder"], agentLastMessage: "I can tidy it.", truncated: true };
-    const review = await startJevReview(CFG, bash("rm -rf build")).review;
-    expect(review).toMatchObject({ kind: "answered", truncated: true });
+  it("is noticed through the evaluator's mark-and-cap guess", async () => {
+    intent = { userSaid: [stored("please " + "tidy the build folder and ".repeat(OVER_CAP))], agentLastMessage: null };
+    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: true });
   });
 
-  it("truncated: false is believed over the mark-and-cap guess", async () => {
-    const capped = stored("please " + "tidy the build folder and ".repeat(OVER_CAP));
-    intent = { userSaid: [capped], agentLastMessage: null };
-    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: true });
-
-    intent = { userSaid: [capped], agentLastMessage: null, truncated: false };
+  it("is not taken from anything else the store hands back", async () => {
+    intent = { userSaid: ["tidy the build folder"], agentLastMessage: "I can tidy it." };
+    // A field no store writes, handed over anyway. The review reads none: only
+    // what the envelope was given decides. Without this, a mock would be the
+    // only place the removed channel still existed.
+    (intent as Record<string, unknown>).truncated = true;
     expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: false });
   });
 
-  it("a store that does not report it (the §7 stub) is read as before", async () => {
+  it("an uncut read is not reported as one", async () => {
     intent = { userSaid: ["tidy the build folder"], agentLastMessage: null };
     expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "answered", truncated: false });
   });

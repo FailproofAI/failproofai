@@ -18,6 +18,10 @@ import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry
 // Type-only apart from the two pure functions: the semantic evaluator itself is
 // loaded by handler.ts, lazily, and only when a Jev config exists.
 import { combineTwoTier, regexOnly, type FinalVerdict, type JevActivityFields, type JevReview, type RegexVerdict, type TwoTierReview } from "./semantic/combine";
+// The code, not a copy of the string: the log line below turns on it, and a
+// rename should break the build here rather than quietly print "unavailable"
+// for a call Jev actually answered.
+import { JEV_REASON_REQUEST_CUT } from "./jev-activity";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -210,18 +214,22 @@ export async function evaluatePolicies(
     // CLIs. The activity row (`evaluator: "jev-fallback"` + reason) and
     // `failproofai jev status` are where a fallback is made visible.
     //
-    // `truncated` and `request-cut` are the reasons that are not an outage:
-    // Jev answered, and its answer still counted toward the most-severe rule.
-    // `truncated` withdrew its clears; `request-cut` additionally refused to
-    // let a call nobody could read in full come out as an allow (see
-    // `semantic/combine.ts`). Saying "unavailable" there would send someone
-    // looking for a provider problem that is not there.
+    // `request-cut` is the one reason here that is not an outage: Jev answered,
+    // its answer still counted toward the most-severe rule, it withdrew its
+    // clears, and it refused to let a call nobody could read in full come out
+    // as an allow (see `semantic/combine.ts`). Saying "unavailable" for it
+    // would send someone looking for a provider problem that is not there.
+    //
+    // `truncated` — the name a build before the rename wrote for that same
+    // reason — had a branch of its own here, and it was unreachable: this line
+    // only ever describes a row THIS process just produced, and `combine.ts`
+    // writes `JEV_REASON_REQUEST_CUT`. The readers that do meet old rows keep
+    // the old name (`ANSWERED_BUT_NOT_APPLIED_REASONS` and the code list in
+    // `jev-activity.ts`); a log line about a live call does not need it.
     hookLogInfo(
-      combined.activity.jevFallbackReason === "request-cut"
+      combined.activity.jevFallbackReason === JEV_REASON_REQUEST_CUT
         ? "jev could not be shown the whole call; it cleared nothing, and the call was not allowed on a partial read"
-        : combined.activity.jevFallbackReason === "truncated"
-          ? "jev judged a truncated call; it cleared nothing, and only the most severe verdict applied"
-          : `jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`,
+        : `jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`,
     );
   }
   return {

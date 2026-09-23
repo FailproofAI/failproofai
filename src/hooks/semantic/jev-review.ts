@@ -69,19 +69,29 @@ interface JevThrottle {
 const throttle: JevThrottle = jevThrottle;
 
 /**
- * T4's intent store as this file calls it. §7 declares
- * `readIntent(sessionId)` returning what the human typed and the agent's last
- * message; a store that CUT either to fit what it keeps reports that here, out
- * of band, and the evaluator believes it (`SemanticOptions.contextTruncated`).
- * It has to be out of band: the messages are agent-authored, so a cut read out
- * of their text would let repo content switch the semantic tier off for a call
- * (see `intentStoreCut` in `evaluator.ts`, the narrower guess used when
- * nothing is reported). Optional, and read the same defensive way as T5's
- * `scope` above, so this compiles against the contract stub and T4's real
- * store alike.
+ * T4's intent store as this file calls it: §7's `readIntent(sessionId)`,
+ * returning what the human typed and the agent's last message. That is all it
+ * returns.
+ *
+ * There was a second, optional field here — a store that had CUT either
+ * message reporting so out of band, which the evaluator believes
+ * (`SemanticOptions.contextTruncated`) — and nothing has ever written it.
+ * `readIntent` in `intent.ts` returns the two fields above, so the branch
+ * reading the third was dead while its comment claimed the store reports its
+ * cuts. Removed rather than left standing: what actually decides is the
+ * evaluator's narrower guess (`intentStoreCut` in `evaluator.ts` — its own
+ * omission mark in a message that also fills the cap), so a store cut can go
+ * unnoticed, and that belongs in the open.
+ *
+ * Wiring it is one line if T4's store is ever taught to report the cut
+ * (`capWithin` in `intent.ts` is what makes it): pass `contextTruncated` to
+ * `evaluateSemantic` below. It has to stay out of band like that, never read
+ * out of the message text, because the messages are agent-authored — a cut
+ * inferred from their content would let repo text switch the semantic tier off
+ * for a call.
  */
 interface IntentStore {
-  readIntent(sessionId?: string): { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean };
+  readIntent(sessionId?: string): { userSaid: string[]; agentLastMessage: string | null };
 }
 const intentReader: IntentStore = intentStore;
 
@@ -219,9 +229,10 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
     // Something did not fit — a human turn, the agent's message, or what T4's
     // store had already capped before the envelope saw it (it caps to fit the
-    // envelope, so the envelope cannot see that cut; the store reports it
-    // through `readIntent`, see `IntentStore`). `outcome.truncated` covers
-    // both (see `prepareSemantic`). Carried for the verdict log; `combine.ts`
+    // envelope, so the envelope cannot see that cut; only the evaluator's
+    // `intentStoreCut` guess can, since nothing reports it out of band — see
+    // `IntentStore`). `outcome.truncated` covers both (see `prepareSemantic`).
+    // Carried for the verdict log; `combine.ts`
     // reads nothing from it, because the length of what a human typed is not
     // evidence about the call.
     //
@@ -276,7 +287,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null }));
   }
 
-  let intent: { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean };
+  let intent: ReturnType<IntentStore["readIntent"]>;
   try {
     intent = intentReader.readIntent(call.sessionId);
   } catch {
@@ -312,9 +323,8 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     intent: "v1",
     v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
     signal: controller.signal,
-    // Only when the store actually reports it; otherwise the evaluator's own
-    // (narrower) guess stands. See `IntentStore` above.
-    ...(typeof intent.truncated === "boolean" ? { contextTruncated: intent.truncated } : {}),
+    // No `contextTruncated`: nothing reports a store cut out of band, so the
+    // evaluator's own (narrower) guess stands. See `IntentStore` above.
   })
     .then((outcome): JevReview => {
       const hit = cached && outcome.status === "ok";

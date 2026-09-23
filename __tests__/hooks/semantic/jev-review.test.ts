@@ -86,6 +86,7 @@ import {
   throttleScope,
 } from "../../../src/hooks/semantic/jev-review";
 import { combineTwoTier, type RegexVerdict } from "../../../src/hooks/semantic/combine";
+import { JEV_REASON_CODES, JEV_REASON_OTHER, normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import { MAX_AGENT_REQUEST_CHARS, MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
 /** Padding that puts the CALL past its own budget, whatever that budget is set to. */
 const PAST_THE_CALL_BUDGET = "x".repeat(MAX_AGENT_REQUEST_CHARS + 1_000);
@@ -642,19 +643,23 @@ describe("a truncated envelope that was never sent", () => {
 });
 
 /**
- * T8's closed reason-code list (`JEV_REASON_CODES` + the free-text prefixes it
- * renames, in jev-task/t8's src/hooks/jev-activity.ts; the collector's
- * transform.rs holds the same list). Any other code is stored and shipped as
- * `other`, which says nothing about what went wrong.
+ * Whether the activity store would keep this reason as itself rather than
+ * reduce it to `other`, which says nothing about what went wrong.
+ *
+ * Asked of the store's own normaliser, never of a list copied into this file.
+ * A copy is how this branch's worst bug got in: `request-cut` was renamed at
+ * its producer, the list it had to be added to did not hear about it, and the
+ * code spent its whole life being stored as `other` while every hand-written
+ * copy of the list still said it was fine.
  */
-const T8_REASON_CODES = new Set([
-  "aborted", "cloudflare-error", "cloudflare-incomplete", "config", "error", "malformed", "model-mismatch", "network",
-  "no-api-key", "no-transport", "other", "out-of-credits", "prepare-error", "rate-limited", "request-cut",
-  "request-too-large", "timeout", "truncated", "upstream-error",
-  // free-text prefixes, renamed on the way in
-  "prepare",
-]);
-const knownToT8 = (code: string) => T8_REASON_CODES.has(code) || /^http-\d{3}$/.test(code);
+const keptByTheStore = (reason: string): boolean => {
+  // Two steps, both the store's own: what it would write for this reason, then
+  // the closed list that write is held to. `http-NNN` is the one shape the list
+  // does not enumerate.
+  const stored = normalizeJevFallbackReason(reason);
+  if (stored === undefined || stored === JEV_REASON_OTHER) return false;
+  return JEV_REASON_CODES.has(stored) || /^http-\d{3}$/.test(stored);
+};
 
 describe("every fallback this path records carries a code the activity store knows", () => {
   // Read off the ACTIVITY row, not the review: that is what the store keeps
@@ -686,7 +691,8 @@ describe("every fallback this path records carries a code the activity store kno
     const command = arrange() ?? "rm -rf build";
     const review = await startJevReview(CFG, bash(command)).review;
     const { activity } = combineTwoTier([], review, "enforce");
+    const reason = activity.jevFallbackReason as string;
     expect(activity.evaluator).toBe("jev-fallback");
-    expect(knownToT8(activity.jevFallbackReason as string)).toBe(true);
+    expect(keptByTheStore(reason), `${reason} would be stored as \`other\``).toBe(true);
   });
 });

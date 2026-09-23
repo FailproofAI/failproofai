@@ -1363,7 +1363,7 @@ function teardown(): void {
         t.emit("modelResponse", call.requestId, {
           parentKey: call.runKey,
           model: call.model,
-          stopReason: "cancelled",
+          stopReason: "incomplete", // the LangChain adapter's word for a model call cut off mid-flight
           requestId: call.requestId,
           ...core.fwFields({ duration_ms: core.ms(Date.now() - call.started), incomplete: true }),
         }),

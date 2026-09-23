@@ -274,7 +274,7 @@ describe("uninstrument()", () => {
       const atTeardown = await flushed(spool);
       expect(types(atTeardown)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
       const response = atTeardown[2]!;
-      expect(response.stop_reason).toBe("cancelled");
+      expect(response.stop_reason).toBe("incomplete");
       expect(response.fw_incomplete).toBe(true);
       expect(atTeardown[3]!.outcome).toBe("cancelled");
 

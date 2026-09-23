@@ -280,7 +280,7 @@ describe.each(FIXTURES)("%s", (fixture) => {
       ]);
       expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
       const response = ofType(result.events, "model_response")[0]!;
-      expect(response.stop_reason).toBe("cancelled");
+      expect(response.stop_reason).toBe("incomplete");
       expect(response.fw_incomplete).toBe(true);
       expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("cancelled");
     });

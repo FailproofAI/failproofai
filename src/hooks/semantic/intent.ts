@@ -18,7 +18,12 @@
  *   harness's own transcript, the prompt counts only while that evidence can
  *   still be read — a file the agent can truncate, replace or hide must never
  *   read as "the human said this" once it stops being readable (see
- *   `transcriptVouchesForPrompt` and `codexRolloutOrigin`).
+ *   `transcriptVouchesForPrompt` and `codexRolloutOrigin`). A transcript the
+ *   agent can also rewrite is believed only while it is still the file we
+ *   marked, grown: every prompt-submit event stores the transcript's identity,
+ *   length and the digest of the bytes before that length in the same 0600
+ *   file, and a transcript that does not continue the marked one says nothing
+ *   (see `readTranscriptState`).
  * - Replay: the eval harness reads historical transcripts, where human
  *   messages are the non-meta `user` entries whose content is text rather than
  *   a tool result.
@@ -30,6 +35,7 @@
  *
  * Text inside a tool call claiming "the user approved this" is never consulted.
  */
+import { createHash } from "node:crypto";
 import {
   closeSync,
   mkdirSync,
@@ -50,6 +56,15 @@ import { MAX_USER_MESSAGE_CHARS, redactSecrets } from "./envelope";
 export const MAX_RECORDED_PROMPTS = 5;
 /** Older than this and a prompt no longer describes what the agent is doing. */
 export const INTENT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/**
+ * How long a session's file is kept. Longer than the intent window, because
+ * the file outlives the prompts in it: it is also the session's origin state
+ * (that it has been seen at all, and what its transcript was last time), and
+ * deleting that while the session is still running would hand the agent the
+ * first-prompt exception back. Nothing stale is ever read as intent — every
+ * read filters by `INTENT_MAX_AGE_MS` — and a session idle this long is over.
+ */
+export const SESSION_FILE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** A prompt stamped further in the future than this was not written by us. */
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
@@ -65,8 +80,26 @@ interface RecordedPrompt {
   agent?: string | null;
 }
 
+/**
+ * What the session's transcript was when its last prompt-submit event was
+ * seen: its identity, how much of it had been accounted for, and a digest of
+ * the bytes just before that point. A transcript that is still this file,
+ * with those bytes still where they were and nothing but new bytes after
+ * them, is the conversation we already judged, continued. Anything else is a
+ * different story in the same place. See `readTranscriptState`.
+ */
+interface TranscriptMark {
+  dev: number;
+  ino: number;
+  size: number;
+  /** Hex SHA-256 of at most `TRANSCRIPT_MARK_WINDOW_BYTES` ending at `size`. */
+  tail: string;
+}
+
 interface IntentFile {
   prompts: RecordedPrompt[];
+  /** Absent until a prompt-submit event is seen with a readable transcript. */
+  transcript?: TranscriptMark;
 }
 
 function readIntentFile(sessionId: string): IntentFile {
@@ -79,13 +112,20 @@ function readIntentFile(sessionId: string): IntentFile {
 }
 
 /**
- * Append one prompt, keeping the newest `MAX_RECORDED_PROMPTS`. Atomic, 0600
- * file in a 0700 directory. Returns false instead of throwing.
+ * Write the session's file: its prompts, newest `MAX_RECORDED_PROMPTS` kept,
+ * plus the transcript mark the next prompt's origin check compares against.
+ * `entry` null records no prompt (the file is still written: its existence is
+ * what says this session has been seen), and `mark` null leaves the stored
+ * mark alone — a mark only ever moves forward, so a transcript that stopped
+ * continuing the marked one cannot lower the bar for the next prompt.
+ *
+ * Atomic, 0600 file in a 0700 directory. Returns false instead of throwing.
  */
-function appendPrompt(sessionId: string, entry: RecordedPrompt): boolean {
+function writeSession(sessionId: string, entry: RecordedPrompt | null, mark: TranscriptMark | null, now: number): boolean {
   try {
     const file = readIntentFile(sessionId);
-    file.prompts = [...file.prompts, entry].slice(-MAX_RECORDED_PROMPTS);
+    if (entry) file.prompts = [...file.prompts, entry].slice(-MAX_RECORDED_PROMPTS);
+    if (mark) file.transcript = mark;
     const dir = sessionsDir();
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const target = intentFile(sessionId);
@@ -94,12 +134,15 @@ function appendPrompt(sessionId: string, entry: RecordedPrompt): boolean {
     writeFileSync(tmp, JSON.stringify(file), { mode: 0o600 });
     renameSync(tmp, target);
     // Once per session, not per prompt: sweep the files no read can use.
-    if (isNew) pruneExpiredSessions(entry.at);
+    if (isNew) pruneExpiredSessions(now);
     return true;
   } catch {
     return false;
   }
 }
+
+/** Append one prompt to a session that keeps no transcript mark (replay). */
+const appendPrompt = (sessionId: string, entry: RecordedPrompt): boolean => writeSession(sessionId, entry, null, entry.at);
 
 function fileExists(path: string): boolean {
   try {
@@ -113,10 +156,11 @@ function fileExists(path: string): boolean {
 const SESSION_FILE_RE = /^[A-Za-z0-9._-]{1,128}\.json(?:\.\d+\.tmp)?$/;
 
 /**
- * Delete session files last written longer ago than the intent window. A
- * file's mtime is its newest prompt's, so every prompt in such a file has
- * expired and no read would return any of it: removing it loses nothing and
- * keeps one-file-per-session from growing without bound.
+ * Delete session files last written longer ago than `SESSION_FILE_MAX_AGE_MS`.
+ * A file's mtime is its newest prompt-submit event's, so such a session has
+ * been silent for a week: every prompt in it expired long ago, and its origin
+ * state describes a run that is over. Removing it loses nothing and keeps
+ * one-file-per-session from growing without bound.
  */
 export function pruneExpiredSessions(now: number = Date.now()): number {
   let removed = 0;
@@ -127,7 +171,7 @@ export function pruneExpiredSessions(now: number = Date.now()): number {
       const path = resolve(dir, name);
       try {
         const st = statSync(path);
-        if (st.isFile() && now - st.mtimeMs > INTENT_MAX_AGE_MS) {
+        if (st.isFile() && now - st.mtimeMs > SESSION_FILE_MAX_AGE_MS) {
           unlinkSync(path);
           removed++;
         }
@@ -585,6 +629,17 @@ export interface PromptOnlyCaptureEvent {
 const NO_ORIGIN_CHECK: ReadonlySet<IntegrationType> = new Set<IntegrationType>(["copilot", "cursor", "devin"]);
 
 /**
+ * Harnesses whose prompts are checked against the session transcript, because
+ * the harness fires this event for prompts the model scheduled too (see
+ * `transcriptVouchesForPrompt`). These are the sessions `captureIntent` keeps
+ * origin state for: the transcript mark, and that the session has been seen.
+ *
+ * Devin is not here although its payloads are Claude-shaped: its transcript is
+ * one JSON document, not JSONL, so there are no turns to read.
+ */
+const VOUCHED_BY_TRANSCRIPT: ReadonlySet<IntegrationType> = new Set<IntegrationType>(["claude", "factory"]);
+
+/**
  * Pi's `InputEvent.source` values that count as the operator's own input:
  * typed in Pi's editor (`pi -p` reports this too), or sent by the program
  * driving Pi in RPC mode. Not `extension`: another extension's
@@ -605,7 +660,7 @@ function isKnownCli(cli: string): cli is IntegrationType {
  * Each rejection below is a way a harness delivers text through this event
  * that no human typed.
  */
-function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent): string | null {
+function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent, origin: SessionOrigin | null): string | null {
   if (!isKnownCli(ev.cli)) return null;
   const channel = PROMPT_CHANNELS[ev.cli];
   if (channel.capture === "no" || channel.field === null) return null;
@@ -627,9 +682,11 @@ function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent): string | nu
       // that payload without it), so today this never fires; it is here in
       // case a later version — of any of the three — starts marking the event.
       if (str(payload.agent_id)) return null;
-      // Devin's transcript is one JSON document, not JSONL: there are no turns
-      // to read, so only the two JSONL harnesses run the scheduled-prompt check.
-      if (ev.cli !== "devin" && !transcriptVouchesForPrompt(ev, raw)) return null;
+      // Only the two JSONL harnesses have a transcript to check
+      // (`VOUCHED_BY_TRANSCRIPT`), and only `captureIntent` reads the origin
+      // state they are checked against: without it there is nothing to check
+      // against, which is not the same as nothing having scheduled this.
+      if (VOUCHED_BY_TRANSCRIPT.has(ev.cli) && (!origin || !transcriptVouchesForPrompt(ev, raw, origin))) return null;
       break;
     case "codex":
       // Codex's origin evidence is its rollout's session_meta, which Codex
@@ -1008,12 +1065,11 @@ type ScheduleVerdict = "scheduled" | "typed" | "unknown";
 function scheduledPromptVerdict(transcriptPath: string, raw: string): ScheduleVerdict {
   let typed: string | undefined;
   const visible = (): string => (typed ??= visibleText(raw));
+  // A conversation entry that parsed: what tells "nothing scheduled this"
+  // apart from "nothing could be read". Only a turn counts — a bookkeeping
+  // line, or anything else carrying a `type`, is not the conversation this
+  // prompt would be part of.
   let turnSeen = false;
-  // Any entry that parsed: the transcript is readable and holds a
-  // conversation, which is what tells "nothing scheduled this" apart from
-  // "nothing could be read". A turn-hinted line stops being parsed once
-  // `turnSeen` is set, and by then this is already true.
-  let entrySeen = false;
   let scheduled = false;
   visitLinesBackwards(transcriptPath, TRANSCRIPT_TAIL_MAX_BYTES, (line) => {
     const hinted = SCHEDULE_HINTS.some((h) => line.includes(h));
@@ -1025,7 +1081,6 @@ function scheduledPromptVerdict(transcriptPath: string, raw: string): ScheduleVe
       return false;
     }
     if (!entry) return false;
-    if (typeof entry.type === "string") entrySeen = true;
     if (entry.type === "system" && entry.subtype === "scheduled_task_fire") {
       if (!turnSeen) return (scheduled = true);
       const fired = typeof entry.prompt === "string" ? visibleText(entry.prompt) : "";
@@ -1039,7 +1094,118 @@ function scheduledPromptVerdict(transcriptPath: string, raw: string): ScheduleVe
     if (isTurnEntry(entry)) turnSeen = true;
     return false;
   });
-  return scheduled ? "scheduled" : entrySeen ? "typed" : "unknown";
+  return scheduled ? "scheduled" : turnSeen ? "typed" : "unknown";
+}
+
+/**
+ * How the transcript at hand relates to the one this session marked when its
+ * last prompt-submit event was seen:
+ *
+ * - `"first"` — there was no mark to compare against (the session's first
+ *   prompt-submit event, or the first one whose transcript could be read).
+ * - `"continuous"` — the same file, the marked bytes still where they were,
+ *   and everything appended since then within the check's reach.
+ * - `"outran"` — the same file, appended to only, but by more than
+ *   `TRANSCRIPT_TAIL_MAX_BYTES`: the append-only chain still holds, and yet
+ *   evidence written since the last prompt can be sitting beyond what the
+ *   scheduled-prompt check reads. Costs this prompt, not the session: the
+ *   mark moves on to the new end.
+ * - `"rewritten"` — the transcript is not the marked file grown. It was
+ *   truncated, replaced, moved aside, made unreadable, or its earlier bytes
+ *   are no longer the bytes that were there. What it says now is not
+ *   evidence, and the mark stays where it was so a rewritten transcript
+ *   cannot lower the bar for the next prompt either.
+ */
+type MarkCheck = "first" | "continuous" | "outran" | "rewritten";
+
+/** How much of the transcript, ending at the marked size, the digest covers. */
+const TRANSCRIPT_MARK_WINDOW_BYTES = 64 * 1024;
+
+/** Hex SHA-256 of at most the window of bytes ending at `end`, or null on a short read. */
+function windowDigest(fd: number, end: number): string | null {
+  const start = Math.max(0, end - TRANSCRIPT_MARK_WINDOW_BYTES);
+  const want = end - start;
+  const buf = Buffer.alloc(want);
+  const read = want === 0 ? 0 : readSync(fd, buf, 0, want, start);
+  // A short read means the bytes that were marked are not all there.
+  if (read !== want) return null;
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+/**
+ * Read the transcript against the session's stored mark: what to store next
+ * (null to keep the stored one) and how this transcript relates to it.
+ *
+ * This is what makes the scheduled-prompt check evidence and not just a
+ * reading of whatever the file says right now. The agent can write its own
+ * transcript, so "a conversation is there" proves nothing on its own — one
+ * `{"type":"user"}` line after a `truncate` reads exactly like an honest
+ * session. What it cannot do is take back bytes this hook already accounted
+ * for: a transcript that is still the same inode, still carries the same
+ * bytes before the marked size, and has only grown since, is the conversation
+ * that was judged before, continued.
+ */
+function readTranscriptState(path: string | null, previous: TranscriptMark | null): { mark: TranscriptMark | null; check: MarkCheck } {
+  const noEvidence = { mark: null, check: (previous ? "rewritten" : "first") as MarkCheck };
+  if (!path) return noEvidence;
+  let fd: number | undefined;
+  try {
+    const st = statSync(path);
+    if (!st.isFile()) return noEvidence;
+    fd = openSync(path, "r");
+    const size = st.size;
+    const tail = windowDigest(fd, size);
+    if (tail === null) return noEvidence;
+    const mark: TranscriptMark = { dev: st.dev, ino: st.ino, size, tail };
+    if (!previous) return { mark, check: "first" };
+    if (previous.dev !== st.dev || previous.ino !== st.ino) return noEvidence;
+    if (size < previous.size) return noEvidence;
+    if (windowDigest(fd, previous.size) !== previous.tail) return noEvidence;
+    return { mark, check: size - previous.size > TRANSCRIPT_TAIL_MAX_BYTES ? "outran" : "continuous" };
+  } catch {
+    return noEvidence;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Nothing useful to do.
+      }
+    }
+  }
+}
+
+/**
+ * A session's origin state, read once per prompt-submit event, before any of
+ * the checks below run — and written back for every one of them, recorded or
+ * not (see `captureIntent`).
+ */
+interface SessionOrigin {
+  /** No prompt-submit event has been seen in this session before this one. */
+  unseen: boolean;
+  check: MarkCheck;
+  /** The mark to store, or null to keep the stored one. */
+  mark: TranscriptMark | null;
+}
+
+/**
+ * The session's stored transcript mark, if the file holds one that reads back
+ * as one. The agent cannot write this file — the always-on self-protection
+ * guard stops it from touching failproofai's state — but a hand-edited or
+ * half-written one must not read as a mark.
+ */
+function storedTranscriptMark(sessionId: string): TranscriptMark | null {
+  const m = readIntentFile(sessionId).transcript;
+  if (!m || typeof m !== "object") return null;
+  const { dev, ino, size, tail } = m as TranscriptMark;
+  return typeof dev === "number" && typeof ino === "number" && typeof size === "number" && typeof tail === "string" ? { dev, ino, size, tail } : null;
+}
+
+function readSessionOrigin(sessionId: string, transcriptPath: string | undefined): SessionOrigin {
+  const unseen = !fileExists(intentFile(sessionId));
+  const previous = unseen ? null : storedTranscriptMark(sessionId);
+  const { mark, check } = readTranscriptState(readTranscriptPath(transcriptPath), previous);
+  return { unseen, check, mark };
 }
 
 /**
@@ -1050,26 +1216,37 @@ function scheduledPromptVerdict(transcriptPath: string, raw: string): ScheduleVe
  * an unusable transcript must not read as "nobody scheduled this". Every way
  * of making one unusable — truncating it, replacing it with a FIFO or a
  * device, `chmod 000`, moving it aside, padding it past the read budget with
- * junk — is one command in a shell the agent already has.
+ * junk — is one command in a shell the agent already has. So is making one
+ * *usable again* with words the agent chose, which is why the transcript must
+ * also still be the file this session marked (see `readTranscriptState`).
  *
  * Two things are NOT the agent taking the evidence away:
  *
- * - A harness that names no transcript at all. The path comes from the hook's
- *   stdin (Claude Code and droid both put it there); the agent cannot edit the
- *   payload, so a missing path is the harness saying there is nothing to
- *   cross-check, as on Devin. Codex is the opposite case — there the path is
- *   discovered on the file system, so its absence IS arrangeable, and that
- *   branch fails closed.
- * - A session's FIRST prompt. At that moment a real Claude Code transcript
- *   holds only session-start bookkeeping (`mode`, `permission-mode`,
- *   `file-history-snapshot`) or does not exist yet, so "no conversation" is
- *   what an honest transcript looks like — and a prompt the model scheduled
- *   cannot be a session's first, since scheduling one takes a turn. Believing
- *   it only there keeps `claude -p "…"` and the opening prompt of every
- *   session working; from the second prompt on, a transcript showing no
- *   conversation means the evidence was taken away, and nothing is recorded.
+ * - A harness that names no transcript at all, and never has in this session.
+ *   The path comes from the hook's stdin (Claude Code and droid both put it
+ *   there); the agent cannot edit the payload, so a missing path is the
+ *   harness saying there is nothing to cross-check, as on Devin. Codex is the
+ *   opposite case — there the path is discovered on the file system, so its
+ *   absence IS arrangeable, and that branch fails closed. A session that once
+ *   had a readable transcript and now names none is the mark going missing,
+ *   and counts as rewritten.
+ * - A session's FIRST prompt-submit event. At that moment a real Claude Code
+ *   transcript holds only session-start bookkeeping (`mode`,
+ *   `permission-mode`, `file-history-snapshot`) or does not exist yet, so "no
+ *   conversation" is what an honest transcript looks like — and a prompt the
+ *   model scheduled cannot be a session's first, since scheduling one takes a
+ *   turn. Believing it only there keeps `claude -p "…"` and the opening
+ *   prompt of every session working. It is the first event that spends the
+ *   exception, not the first recorded prompt: a session whose opening turns
+ *   are all dropped — harness text, an image-only prompt, a prompt the model
+ *   scheduled — would otherwise keep it alive for the whole session.
  */
-function transcriptVouchesForPrompt(ev: CaptureEvent | PromptOnlyCaptureEvent, raw: string): boolean {
+function transcriptVouchesForPrompt(ev: CaptureEvent | PromptOnlyCaptureEvent, raw: string, origin: SessionOrigin): boolean {
+  // The evidence is not what it was: nothing this transcript says counts.
+  if (origin.check === "rewritten") return origin.unseen;
+  // Append-only, but the check cannot see everything appended since the last
+  // prompt, so a fire entry could be sitting in the part it cannot read.
+  if (origin.check === "outran") return origin.unseen;
   const path = readTranscriptPath(ev.transcriptPath);
   if (!path) return true;
   switch (scheduledPromptVerdict(path, raw)) {
@@ -1078,19 +1255,8 @@ function transcriptVouchesForPrompt(ev: CaptureEvent | PromptOnlyCaptureEvent, r
     case "typed":
       return true;
     default:
-      return !sessionHasRecorded(ev.sessionId);
+      return origin.unseen;
   }
-}
-
-/**
- * Whether this session has ever recorded a prompt: its file is written on the
- * first one and only `pruneExpiredSessions` removes it, long after every
- * prompt in it has expired. The agent cannot create or delete it — the
- * always-on self-protection guard stops it from touching failproofai's state.
- */
-function sessionHasRecorded(sessionId: string | undefined): boolean {
-  if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
-  return fileExists(intentFile(sessionId));
 }
 
 /** A session source or thread source naming a sub-agent, however it is spelled. */
@@ -1176,28 +1342,42 @@ function codexRolloutOrigin(transcriptPath: string | undefined): RolloutOrigin {
  * cannot be checked, for every harness that checks origin (see
  * `CaptureEvent`); prompts a harness marks as not typed by the human; prompts
  * whose origin evidence — a Codex rollout's `session_meta`, a Claude Code or
- * droid transcript's conversation — cannot be read (see `codexRolloutOrigin`
- * and `transcriptVouchesForPrompt`); turns that are entirely harness text
- * (`cleanHumanTurn` → null); session ids that could name a path outside the
- * state directory.
+ * droid transcript's conversation — cannot be read or no longer continues the
+ * conversation this session already saw (see `codexRolloutOrigin`,
+ * `transcriptVouchesForPrompt` and `readTranscriptState`); turns that are
+ * entirely harness text (`cleanHumanTurn` → null); session ids that could
+ * name a path outside the state directory.
+ *
+ * For a harness whose prompts are checked against its transcript, the
+ * session's origin state is read before any of that and written back after
+ * all of it, whether or not the prompt was recorded: the file's existence is
+ * how the next event knows this session has been seen before, and the mark in
+ * it is what that event's transcript has to continue. A prompt this refuses
+ * would otherwise leave no trace, and the next one would be believed as the
+ * session's first.
  */
 export function captureIntent(ev: CaptureEvent | PromptOnlyCaptureEvent, now: number = Date.now()): void {
   try {
     if (ev?.eventType !== "UserPromptSubmit") return;
-    if (!ev.sessionId || !SESSION_ID_RE.test(ev.sessionId)) return;
-    const raw = humanPromptText(ev);
-    if (raw === null) return;
-    const cleaned = cleanHumanTurn(raw);
-    if (cleaned === null) return;
-    const agent = lastAgentMessage(ev.transcriptPath);
-    appendPrompt(ev.sessionId, {
-      at: now,
-      text: storable(cleaned),
-      agent: agent === null ? null : storable(agent),
-    });
+    const sessionId = ev.sessionId;
+    if (!sessionId || !SESSION_ID_RE.test(sessionId)) return;
+    const origin = isKnownCli(ev.cli) && VOUCHED_BY_TRANSCRIPT.has(ev.cli) ? readSessionOrigin(sessionId, ev.transcriptPath) : null;
+    const entry = promptToRecord(ev, origin, now);
+    if (origin) writeSession(sessionId, entry, origin.mark, now);
+    else if (entry) writeSession(sessionId, entry, null, now);
   } catch {
     // Losing intent only means Jev judges without it.
   }
+}
+
+/** The prompt this event records, with the agent message it replies to, or null. */
+function promptToRecord(ev: CaptureEvent | PromptOnlyCaptureEvent, origin: SessionOrigin | null, now: number): RecordedPrompt | null {
+  const raw = humanPromptText(ev, origin);
+  if (raw === null) return null;
+  const cleaned = cleanHumanTurn(raw);
+  if (cleaned === null) return null;
+  const agent = lastAgentMessage(ev.transcriptPath);
+  return { at: now, text: storable(cleaned), agent: agent === null ? null : storable(agent) };
 }
 
 /**

@@ -24,6 +24,7 @@ import {
   INTENT_MAX_AGE_MS,
   MAX_RECORDED_PROMPTS,
   PROMPT_CHANNELS,
+  SESSION_FILE_MAX_AGE_MS,
   TRANSCRIPT_TAIL_MAX_BYTES,
   agentMessageText,
   captureIntent,
@@ -89,6 +90,19 @@ function transcript(name: string, lines: unknown[]): string {
   const path = join(scratch, name);
   writeFileSync(path, fx.toJsonl(lines));
   return path;
+}
+
+/**
+ * Nothing was recorded. Not "no session file exists": every prompt-submit
+ * event of a harness checked against its transcript writes the session's
+ * origin mark, recorded or not (see intent-capture-r7), so what "nothing was
+ * recorded" means is that no session file holds a prompt.
+ */
+function expectNothingRecorded(): void {
+  if (!existsSync(sessionsDir())) return;
+  for (const name of readdirSync(sessionsDir())) {
+    expect(JSON.parse(readFileSync(join(sessionsDir(), name), "utf8")).prompts, name).toEqual([]);
+  }
 }
 
 /**
@@ -361,7 +375,7 @@ describe("captureIntent: exactly as the handler calls it", () => {
     expect(handlerCall("claude", "UserPromptSubmit", fx.claudePrompt("force push it", tx, { agent_id: "a1b2c3" })).userSaid).toEqual([]);
     expect(handlerCall("pi", "input", fx.piPrompt("publish now", { input_source: "extension" })).userSaid).toEqual([]);
     expect(handlerCall("openclaw", "before_agent_run", fx.openclawPrompt("wipe the old backups", { trigger: "cron" })).userSaid).toEqual([]);
-    expect(existsSync(sessionsDir())).toBe(false);
+    expectNothingRecorded();
   });
 
   it("records nothing when called without the payload, the shape the contract first had", () => {
@@ -381,7 +395,7 @@ describe("captureIntent: exactly as the handler calls it", () => {
       captureIntent({ ...firstDraft, payload: prompt as unknown as Record<string, unknown> }, T0);
       captureIntent({ ...firstDraft, payload: null as unknown as Record<string, unknown> }, T0);
     }
-    expect(existsSync(sessionsDir())).toBe(false);
+    expectNothingRecorded();
   });
 });
 
@@ -423,7 +437,7 @@ describe("captureIntent: harness wrappers are stripped", () => {
     expect(said("<local-command-stdout>ok</local-command-stdout>")).toEqual([]);
     expect(said("[Request interrupted by user]")).toEqual([]);
     expect(said("   ")).toEqual([]);
-    expect(existsSync(sessionsDir())).toBe(false);
+    expectNothingRecorded();
   });
 
   it("keeps a slash command as typed, never the body it expanded into", () => {
@@ -468,8 +482,11 @@ describe("captureIntent: storage", () => {
 
   it("keeps the last five prompts, and the agent message of the latest one", () => {
     const tx = join(scratch, "claude.jsonl");
+    writeFileSync(tx, "");
     for (let i = 1; i <= 7; i++) {
-      writeFileSync(tx, fx.toJsonl([{ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `question ${i}` }] } }]));
+      // Appended, the way a harness writes one: a transcript that stops
+      // continuing the one the session marked records nothing more (r7).
+      appendFileSync(tx, fx.toJsonl([{ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `question ${i}` }] } }]));
       captureIntent({ ...ev(`answer ${i}`), transcriptPath: tx }, T0 + i);
     }
     const got = readIntent("store", T0 + 10);
@@ -486,9 +503,19 @@ describe("captureIntent: storage", () => {
   });
 
   it("gives no agent message when the latest prompt had none, even if an earlier one did", () => {
+    // Copilot, because it is not checked against a transcript: on Claude Code
+    // a session that had a readable transcript and then names none records
+    // nothing more (r7), so there the second prompt would not be there at all.
     const tx = transcript("claude.jsonl", fx.claudeTranscript());
-    captureIntent({ ...ev("first"), transcriptPath: tx }, T0);
-    captureIntent(ev("second"), T0 + 1);
+    const copilot = (prompt: string, transcriptPath?: string): CaptureEvent => ({
+      eventType: "UserPromptSubmit",
+      sessionId: "store",
+      transcriptPath,
+      cli: "copilot",
+      payload: { prompt },
+    });
+    captureIntent(copilot("first", tx), T0);
+    captureIntent(copilot("second"), T0 + 1);
     expect(readIntent("store", T0 + 2)).toEqual({ userSaid: ["first", "second"], agentLastMessage: null });
   });
 
@@ -566,11 +593,15 @@ describe("captureIntent never throws", () => {
       { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", payload: { prompt: 42 } },
       { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", payload: { prompt: ["x"] } },
       { eventType: "UserPromptSubmit", sessionId: "odd", cli: "openclaw", payload: { prompt: "x", openclaw: "not-an-object" } },
-      { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", transcriptPath: scratch, payload: { prompt: "hi" } },
+      // Its own session: a directory names no readable transcript, and after
+      // the odd prompts above that session has been seen (r7), which is what
+      // makes unreadable evidence refuse rather than record.
+      { eventType: "UserPromptSubmit", sessionId: "odd-dir", cli: "claude", transcriptPath: scratch, payload: { prompt: "hi" } },
       null as unknown as CaptureEvent,
     ];
     for (const e of odd) expect(() => captureIntent(e, T0)).not.toThrow();
-    expect(readIntent("odd", T0)).toEqual({ userSaid: ["hi"], agentLastMessage: null });
+    expect(readIntent("odd", T0)).toEqual({ userSaid: [], agentLastMessage: null });
+    expect(readIntent("odd-dir", T0)).toEqual({ userSaid: ["hi"], agentLastMessage: null });
 
     const file = join(scratch, "not-a-dir");
     writeFileSync(file, "");
@@ -680,22 +711,30 @@ describe("the agent-message snapshot", () => {
 });
 
 describe("pruneExpiredSessions", () => {
-  it("removes only session files whose newest prompt is past the window, on a new session's first write", () => {
+  it("removes only session files silent past the retention window, on a new session's first write", () => {
     const dir = sessionsDir();
     mkdirSync(dir, { recursive: true });
     const now = Date.now();
-    const old = (now - INTENT_MAX_AGE_MS - 60_000) / 1000;
+    const secs = (ms: number) => (now - ms) / 1000;
     const write = (name: string, mtimeSec?: number) => {
       writeFileSync(join(dir, name), JSON.stringify({ prompts: [] }));
       if (mtimeSec !== undefined) utimesSync(join(dir, name), mtimeSec, mtimeSec);
     };
-    write("stale.json", old);
-    write("stale.json.123.tmp", old);
+    write("stale.json", secs(SESSION_FILE_MAX_AGE_MS + 60_000));
+    write("stale.json.123.tmp", secs(SESSION_FILE_MAX_AGE_MS + 60_000));
+    // Past the intent window but not the retention window: its prompts are
+    // gone from every read, but its origin mark still answers for the session.
+    write("quiet.json", secs(INTENT_MAX_AGE_MS + 60_000));
     write("fresh.json");
-    write("notes.txt", old);
+    write("notes.txt", secs(SESSION_FILE_MAX_AGE_MS + 60_000));
     captureIntent({ eventType: "UserPromptSubmit", sessionId: "brand-new", cli: "claude", payload: { prompt: "hi" } }, now);
-    expect(readdirSync(dir).sort()).toEqual(["brand-new.json", "fresh.json", "notes.txt"]);
+    expect(readdirSync(dir).sort()).toEqual(["brand-new.json", "fresh.json", "notes.txt", "quiet.json"]);
     expect(pruneExpiredSessions(now)).toBe(0);
+  });
+
+  it("keeps a session file for a week, so a quiet session cannot spend its first prompt twice", () => {
+    expect(SESSION_FILE_MAX_AGE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(SESSION_FILE_MAX_AGE_MS).toBeGreaterThan(INTENT_MAX_AGE_MS);
   });
 });
 
@@ -1369,7 +1408,7 @@ describe("turns another agent or session wrote are never the human's", () => {
       expect(capture({ eventType: "UserPromptSubmit", sessionId: "peer", cli: "claude", payload: { prompt: `<system-reminder>r</system-reminder>\n${text}` } }).userSaid).toEqual([]);
       expect(humanMessageText({ type: "user", message: { role: "user", content: text } }), text).toBeNull();
     }
-    expect(existsSync(sessionsDir())).toBe(false);
+    expectNothingRecorded();
   });
 });
 

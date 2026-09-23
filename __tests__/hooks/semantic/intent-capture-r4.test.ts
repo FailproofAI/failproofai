@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -445,7 +445,7 @@ describe("guards the earlier tests did not reach", () => {
     expect(readIntent("corrupt-0", T0).userSaid).toEqual(["rebase it"]);
   });
 
-  it("codex: a transcript path naming a FIFO neither blocks the hook nor hides the prompt", () => {
+  it("codex: a rollout that is not a readable file neither blocks the hook nor lets the prompt through", () => {
     const fifo = join(scratch, "rollout.fifo");
     try {
       execFileSync("mkfifo", [fifo]);
@@ -453,6 +453,19 @@ describe("guards the earlier tests did not reach", () => {
       return; // No mkfifo on this platform.
     }
     if (spawnSync("bun", ["--version"]).status !== 0) return; // Needs bun to run the probe.
+    // A sub-agent's own rollout, then the three ways it can stop being a
+    // readable regular file. Each is one command in the shell the agent has,
+    // and the prompt is the parent agent's words, so none may be recorded.
+    const rollout = transcript("rollout-sub.jsonl", fx.codexSubagentRollout());
+    const unreadable = join(scratch, "rollout-000.jsonl");
+    writeFileSync(unreadable, readFileSync(rollout));
+    chmodSync(unreadable, 0o000);
+    const paths: Array<[string, string]> = [
+      ["control", rollout],
+      ["fifo", fifo],
+      ["devnull", "/dev/null"],
+      ["mode000", unreadable],
+    ];
     // In a child with a deadline: opening a FIFO nobody writes to blocks
     // forever, which would hang this test runner rather than fail it.
     const probe = join(scratch, "probe.ts");
@@ -461,13 +474,19 @@ describe("guards the earlier tests did not reach", () => {
       probe,
       [
         `const { captureIntent, readIntent } = await import(${JSON.stringify(intentModule)});`,
-        `captureIntent({ eventType: "UserPromptSubmit", sessionId: "fifo", transcriptPath: ${JSON.stringify(fifo)}, cli: "codex", payload: { prompt: "drop it" } }, ${T0});`,
-        `console.log(JSON.stringify(readIntent("fifo", ${T0})));`,
+        `const out = {};`,
+        `for (const [name, path] of ${JSON.stringify(paths)}) {`,
+        `  captureIntent({ eventType: "UserPromptSubmit", sessionId: name, transcriptPath: path, cli: "codex", payload: { prompt: "drop it" } }, ${T0});`,
+        `  out[name] = readIntent(name, ${T0});`,
+        `}`,
+        `console.log(JSON.stringify(out));`,
       ].join("\n"),
     );
     const run = spawnSync("bun", [probe], { env: { ...process.env, FAILPROOFAI_HOME: home }, encoding: "utf8", timeout: 20_000 });
     expect(run.signal, run.stderr).toBeNull();
     expect(run.status, run.stderr).toBe(0);
-    expect(JSON.parse(run.stdout.trim())).toEqual({ userSaid: ["drop it"], agentLastMessage: null });
+    const got = JSON.parse(run.stdout.trim()) as Record<string, { userSaid: string[] }>;
+    for (const [name] of paths) expect(got[name], name).toEqual({ userSaid: [], agentLastMessage: null });
+    chmodSync(unreadable, 0o600);
   });
 });

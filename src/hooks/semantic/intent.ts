@@ -13,7 +13,12 @@
  *   which the always-on self-protection guard already stops the agent from
  *   modifying. Each harness is audited separately (`PROMPT_CHANNELS` below and
  *   docs/reference/jev-intent.mdx): some have no such event, and some fire it
- *   for text no human typed, and those are never recorded.
+ *   for text no human typed, and those are never recorded. Where the only
+ *   thing separating a typed prompt from one the agent arranged is the
+ *   harness's own transcript, the prompt counts only while that evidence can
+ *   still be read — a file the agent can truncate, replace or hide must never
+ *   read as "the human said this" once it stops being readable (see
+ *   `transcriptVouchesForPrompt` and `codexRolloutOrigin`).
  * - Replay: the eval harness reads historical transcripts, where human
  *   messages are the non-meta `user` entries whose content is text rather than
  *   a tool result.
@@ -353,6 +358,20 @@ function ideRequest(text: string): string | null {
 }
 
 /**
+ * Whether a turn is text a harness, a tool or another agent wrote: the
+ * session-continuation summary, or anything opening with a
+ * `NON_HUMAN_PREFIXES` marker (failproofai's own words among them).
+ *
+ * Asked of a whole turn, and again of every span pulled out of one — the text
+ * after a Codex IDE prompt's request heading is a span the repo, an extension
+ * or a Stop gate's follow-up can land in, so it has to pass the same test the
+ * turn did rather than inherit its answer.
+ */
+function harnessAuthored(text: string): boolean {
+  return text.startsWith(CONTINUATION_PREFIX) || NON_HUMAN_PREFIXES.some((p) => text.startsWith(p));
+}
+
+/**
  * The part of one "user" turn the human actually typed, or null when none of
  * it is theirs.
  *
@@ -374,11 +393,17 @@ export function cleanHumanTurn(raw: string): string | null {
   // runs on the hook path, on the whole prompt, before anything caps it.
   let text = replaceTagBlocks(raw, "system-reminder", () => "").trim();
   if (!text) return null;
-  if (text.startsWith(CONTINUATION_PREFIX)) return null;
-  if (NON_HUMAN_PREFIXES.some((p) => text.startsWith(p))) return null;
-  if (IDE_CONTEXT_OPENERS.some((p) => text.startsWith(p))) {
+  if (harnessAuthored(text)) return null;
+  // Unwrap an extension-built prompt, then judge what came out exactly as the
+  // turn itself was judged. The request is whatever follows the last heading,
+  // and the extension appends its sections around text it did not write: a
+  // Stop gate's follow-up, a continuation summary, a peer session's message or
+  // another context section can all land there. The loop ends on its second
+  // pass at the latest — `ideRequest` takes the LAST heading, so no request
+  // heading is left in what it returns — and each pass shortens the text.
+  while (IDE_CONTEXT_OPENERS.some((p) => text.startsWith(p))) {
     const request = ideRequest(text);
-    if (request === null) return null;
+    if (request === null || harnessAuthored(request)) return null;
     text = request;
   }
   if (/^<command-(?:name|message)>/.test(text)) {
@@ -476,7 +501,8 @@ export interface PromptChannel {
 export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> = {
   // UserPromptSubmit also fires for prompts the model scheduled for itself
   // (CronCreate, ScheduleWakeup, /loop), with a payload identical to a typed
-  // one. Only the transcript tells them apart: see `modelScheduledPrompt`.
+  // one. Only the transcript tells them apart: see `scheduledPromptVerdict`
+  // and `transcriptVouchesForPrompt`.
   claude: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
   codex: { nativeEvent: "user_prompt_submit", field: "prompt", capture: "yes" },
   copilot: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
@@ -603,18 +629,19 @@ function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent): string | nu
       if (str(payload.agent_id)) return null;
       // Devin's transcript is one JSON document, not JSONL: there are no turns
       // to read, so only the two JSONL harnesses run the scheduled-prompt check.
-      if (ev.cli !== "devin" && modelScheduledPrompt(ev.transcriptPath, raw)) return null;
+      if (ev.cli !== "devin" && !transcriptVouchesForPrompt(ev, raw)) return null;
       break;
     case "codex":
-      // Codex's origin evidence is its rollout's session_meta, and Codex does
-      // not put transcript_path on the hook's stdin: the path is discovered
-      // from the session id (`findCodexTranscript`). No rollout, no evidence,
-      // so record nothing (fail closed), the same way pi and openclaw below
-      // treat a missing mark. A sub-agent thread's prompts are written by the
-      // parent agent, and recording one would let the agent clear a reviewable
-      // policy with words it wrote itself.
-      if (!readTranscriptPath(ev.transcriptPath)) return null;
-      if (codexRolloutIsSubagent(ev.transcriptPath)) return null;
+      // Codex's origin evidence is its rollout's session_meta, which Codex
+      // writes when the session starts — before any prompt — so a Codex
+      // session always has it. Anything else (no rollout found, a rollout
+      // that is not a readable regular file, an empty one, a first line that
+      // is not session_meta, one with no source mark at all) is the evidence
+      // missing, not a human answering: record nothing, the same way pi and
+      // openclaw below treat a missing mark. A sub-agent thread's prompts are
+      // written by the parent agent, and recording one would let the agent
+      // clear a reviewable policy with words it wrote itself.
+      if (codexRolloutOrigin(ev.transcriptPath) !== "human") return null;
       break;
     case "pi": {
       // Pi's InputEvent.source is "interactive" | "rpc" | "extension"; the
@@ -957,23 +984,36 @@ function isTurnEntry(entry: unknown): boolean {
 }
 
 /**
- * Whether the transcript shows that the model, not the human, wrote `raw`:
+ * What the transcript says about who wrote `raw`:
  *
- * - a scheduled-task fire entry newer than every conversation entry — the
- *   prompt being submitted is the one that fire started, whatever it says;
- * - a fire entry whose prompt is this prompt (or, cut to 200 characters, its
- *   start) — the task fired while a turn was running and its prompt waited
- *   in the queue;
- * - a tool call whose `prompt` input is this prompt.
+ * - `"scheduled"` — the model wrote it, shown by any of:
+ *   - a scheduled-task fire entry newer than every conversation entry — the
+ *     prompt being submitted is the one that fire started, whatever it says;
+ *   - a fire entry whose prompt is this prompt (or, cut to 200 characters, its
+ *     start) — the task fired while a turn was running and its prompt waited
+ *     in the queue;
+ *   - a tool call whose `prompt` input is this prompt.
+ * - `"typed"` — the transcript holds conversation and none of it scheduled
+ *   this prompt.
+ * - `"unknown"` — no conversation entry could be read at all, so the
+ *   transcript says nothing either way. Not a "no": see
+ *   `transcriptVouchesForPrompt`.
  *
  * Reads at most `TRANSCRIPT_TAIL_MAX_BYTES` from the end. A match that is
  * really the human typing the same words again only costs that prompt its
  * standing as intent.
  */
-function modelScheduledPrompt(transcriptPath: string | undefined, raw: string): boolean {
+type ScheduleVerdict = "scheduled" | "typed" | "unknown";
+
+function scheduledPromptVerdict(transcriptPath: string, raw: string): ScheduleVerdict {
   let typed: string | undefined;
   const visible = (): string => (typed ??= visibleText(raw));
   let turnSeen = false;
+  // Any entry that parsed: the transcript is readable and holds a
+  // conversation, which is what tells "nothing scheduled this" apart from
+  // "nothing could be read". A turn-hinted line stops being parsed once
+  // `turnSeen` is set, and by then this is already true.
+  let entrySeen = false;
   let scheduled = false;
   visitLinesBackwards(transcriptPath, TRANSCRIPT_TAIL_MAX_BYTES, (line) => {
     const hinted = SCHEDULE_HINTS.some((h) => line.includes(h));
@@ -985,6 +1025,7 @@ function modelScheduledPrompt(transcriptPath: string | undefined, raw: string): 
       return false;
     }
     if (!entry) return false;
+    if (typeof entry.type === "string") entrySeen = true;
     if (entry.type === "system" && entry.subtype === "scheduled_task_fire") {
       if (!turnSeen) return (scheduled = true);
       const fired = typeof entry.prompt === "string" ? visibleText(entry.prompt) : "";
@@ -998,7 +1039,58 @@ function modelScheduledPrompt(transcriptPath: string | undefined, raw: string): 
     if (isTurnEntry(entry)) turnSeen = true;
     return false;
   });
-  return scheduled;
+  return scheduled ? "scheduled" : entrySeen ? "typed" : "unknown";
+}
+
+/**
+ * Whether the transcript lets this prompt count as the human's.
+ *
+ * The check exists because Claude Code fires `UserPromptSubmit` for prompts
+ * the model scheduled for itself, with a payload identical to a typed one, so
+ * an unusable transcript must not read as "nobody scheduled this". Every way
+ * of making one unusable — truncating it, replacing it with a FIFO or a
+ * device, `chmod 000`, moving it aside, padding it past the read budget with
+ * junk — is one command in a shell the agent already has.
+ *
+ * Two things are NOT the agent taking the evidence away:
+ *
+ * - A harness that names no transcript at all. The path comes from the hook's
+ *   stdin (Claude Code and droid both put it there); the agent cannot edit the
+ *   payload, so a missing path is the harness saying there is nothing to
+ *   cross-check, as on Devin. Codex is the opposite case — there the path is
+ *   discovered on the file system, so its absence IS arrangeable, and that
+ *   branch fails closed.
+ * - A session's FIRST prompt. At that moment a real Claude Code transcript
+ *   holds only session-start bookkeeping (`mode`, `permission-mode`,
+ *   `file-history-snapshot`) or does not exist yet, so "no conversation" is
+ *   what an honest transcript looks like — and a prompt the model scheduled
+ *   cannot be a session's first, since scheduling one takes a turn. Believing
+ *   it only there keeps `claude -p "…"` and the opening prompt of every
+ *   session working; from the second prompt on, a transcript showing no
+ *   conversation means the evidence was taken away, and nothing is recorded.
+ */
+function transcriptVouchesForPrompt(ev: CaptureEvent | PromptOnlyCaptureEvent, raw: string): boolean {
+  const path = readTranscriptPath(ev.transcriptPath);
+  if (!path) return true;
+  switch (scheduledPromptVerdict(path, raw)) {
+    case "scheduled":
+      return false;
+    case "typed":
+      return true;
+    default:
+      return !sessionHasRecorded(ev.sessionId);
+  }
+}
+
+/**
+ * Whether this session has ever recorded a prompt: its file is written on the
+ * first one and only `pruneExpiredSessions` removes it, long after every
+ * prompt in it has expired. The agent cannot create or delete it — the
+ * always-on self-protection guard stops it from touching failproofai's state.
+ */
+function sessionHasRecorded(sessionId: string | undefined): boolean {
+  if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
+  return fileExists(intentFile(sessionId));
 }
 
 /** A session source or thread source naming a sub-agent, however it is spelled. */
@@ -1009,42 +1101,61 @@ const SUBAGENT_NAME_RE = /sub[-_ ]?agent/i;
  * sub-agent.
  */
 const RAW_SUBAGENT_SOURCE_RE = /"source"\s*:\s*(?:\{|"[^"]*sub[-_ ]?agent)|"thread_source"\s*:\s*"[^"]*sub[-_ ]?agent/i;
+/** A string `source` or `thread_source` in a session_meta line too long to parse. */
+const RAW_SOURCE_MARK_RE = /"(?:thread_)?source"\s*:\s*"/;
 
 /**
- * Whether a Codex rollout belongs to a sub-agent thread, whose prompts the
- * parent agent wrote. Codex's `SessionSource` serializes the sub-agent variant
- * as an object (`{"subagent": …}`) where every human-driven source is a plain
- * string (`cli`, `vscode`, `exec`, …); a string source or `thread_source`
- * naming a sub-agent counts too.
+ * Who a Codex rollout says its thread belongs to:
+ *
+ * - `"subagent"`: a thread whose prompts the parent agent wrote. Codex's
+ *   `SessionSource` serializes the sub-agent variant as an object
+ *   (`{"subagent": …}`) where every human-driven source is a plain string
+ *   (`cli`, `vscode`, `exec`, …); a string source or `thread_source` naming a
+ *   sub-agent counts too.
+ * - `"human"`: a session_meta line carrying a source mark that names no
+ *   sub-agent. Every rollout Codex writes carries one (verified on 0.131
+ *   through 0.154: `source` is always present, `thread_source` sometimes).
+ * - `"unknown"`: no evidence. The rollout was not found, is not a readable
+ *   regular file (a FIFO, a device, `/dev/null`, a directory, mode 000), is
+ *   empty, does not start with a session_meta line, or carries no source mark
+ *   at all. Every one of those is a single command away for an agent holding
+ *   a shell in its own sub-agent thread, so none of them may read as "human".
  */
-function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
+type RolloutOrigin = "subagent" | "human" | "unknown";
+
+function codexRolloutOrigin(transcriptPath: string | undefined): RolloutOrigin {
   const path = readTranscriptPath(transcriptPath);
-  if (!path) return false;
+  if (!path) return "unknown";
   let fd: number | undefined;
   try {
     const st = statSync(path);
-    if (!st.isFile()) return false;
+    if (!st.isFile() || st.size === 0) return "unknown";
     fd = openSync(path, "r");
     // session_meta carries the base instructions: ~13–22 KB in 0.153/0.154.
     const head = Buffer.alloc(Math.min(st.size, 256 * 1024));
-    readSync(fd, head, 0, head.length, 0);
-    const nl = head.indexOf(0x0a);
-    const firstLine = head.subarray(0, nl < 0 ? head.length : nl).toString("utf8");
+    // Only what was actually read: a file truncated between the stat and the
+    // read leaves an empty first line, which parses as nothing → "unknown".
+    const body = head.subarray(0, readSync(fd, head, 0, head.length, 0));
+    const nl = body.indexOf(0x0a);
+    const firstLine = body.subarray(0, nl < 0 ? body.length : nl).toString("utf8");
     let first: { type?: string; payload?: { source?: unknown; thread_source?: unknown } };
     try {
       first = JSON.parse(firstLine);
     } catch {
       // A first line longer than the read: judge by the raw text, by the
       // same rule as the parsed line below.
-      return /"type"\s*:\s*"session_meta"/.test(firstLine) && RAW_SUBAGENT_SOURCE_RE.test(firstLine);
+      if (!/"type"\s*:\s*"session_meta"/.test(firstLine)) return "unknown";
+      if (RAW_SUBAGENT_SOURCE_RE.test(firstLine)) return "subagent";
+      return RAW_SOURCE_MARK_RE.test(firstLine) ? "human" : "unknown";
     }
-    if (first?.type !== "session_meta") return false;
+    if (first?.type !== "session_meta") return "unknown";
     const source = first.payload?.source;
-    if (source !== null && typeof source === "object") return true;
+    if (source !== null && typeof source === "object") return "subagent";
     const marks = [source, first.payload?.thread_source].filter((s): s is string => typeof s === "string");
-    return marks.some((s) => SUBAGENT_NAME_RE.test(s));
+    if (marks.some((s) => SUBAGENT_NAME_RE.test(s))) return "subagent";
+    return marks.length > 0 ? "human" : "unknown";
   } catch {
-    return false;
+    return "unknown";
   } finally {
     if (fd !== undefined) {
       try {
@@ -1063,9 +1174,12 @@ function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
  * Ignored: any event but `UserPromptSubmit`; harnesses with no human prompt
  * channel (see `PROMPT_CHANNELS`); an event without its payload, whose origin
  * cannot be checked, for every harness that checks origin (see
- * `CaptureEvent`); prompts a harness marks as not typed by the human; turns
- * that are entirely harness text (`cleanHumanTurn` → null); session ids that
- * could name a path outside the state directory.
+ * `CaptureEvent`); prompts a harness marks as not typed by the human; prompts
+ * whose origin evidence — a Codex rollout's `session_meta`, a Claude Code or
+ * droid transcript's conversation — cannot be read (see `codexRolloutOrigin`
+ * and `transcriptVouchesForPrompt`); turns that are entirely harness text
+ * (`cleanHumanTurn` → null); session ids that could name a path outside the
+ * state directory.
  */
 export function captureIntent(ev: CaptureEvent | PromptOnlyCaptureEvent, now: number = Date.now()): void {
   try {

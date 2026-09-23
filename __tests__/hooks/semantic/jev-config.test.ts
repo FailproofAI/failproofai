@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -231,16 +230,11 @@ describe("semantic/jev-config", () => {
       expect(JSON.stringify(r)).not.toContain(KEY);
     });
 
-    it.skipIf(!posix)("refuses a FIFO in the file's place without blocking", () => {
-      mkdirSync(join(home, ".failproofai"), { recursive: true });
-      const made = spawnSync("mkfifo", [jevConfigPath()]);
-      if (made.status !== 0) return; // no mkfifo here; nothing to check
-      const started = Date.now();
-      expect(loadJevConfig()).toBeNull();
-      const r = inspectJevConfig();
-      expect(r.status === "refused" && r.problem).toContain("not a regular file");
-      expect(Date.now() - started).toBeLessThan(2_000);
-    });
+    // A FIFO in the file's place is checked in jev-config-review.test.ts, in a
+    // CHILD process with a spawn timeout. It cannot be checked here: a
+    // regression to a blocking open() would hang this worker forever rather
+    // than fail, because vitest's per-test timeout cannot interrupt a
+    // synchronous syscall. See the rule pinned at the end of that file.
 
     it("refuses a directory in the file's place", () => {
       mkdirSync(jevConfigPath(), { recursive: true });

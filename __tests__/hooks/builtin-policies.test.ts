@@ -38,8 +38,8 @@ describe("hooks/builtin-policies", () => {
 
   describe("BUILTIN_POLICIES", () => {
     // 40 before `block-self-pause` was merged into `block-failproofai-commands`.
-    it("has 39 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+    it("has 43 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(43);
     });
 
     it("has 11 default-enabled policies", () => {

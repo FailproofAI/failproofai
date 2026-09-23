@@ -20,7 +20,7 @@
 
 **Bản dịch:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Quan sát và thực thi cho mọi hệ thống agents của bạn.** Dù agents chạy ở đâu, chúng tôi đều nhìn thấy — và có thể từ chối. Failproof kết nối 12 hệ thống agent — các CLI viết code như Claude Code và Codex, các gateway chat như Hermes, các trợ lý tự lưu trữ như OpenClaw — ghi lại mọi lần chạy và chặn các lệnh gọi công cụ nguy hiểm trước khi chúng được thực thi. 39 chính sách tích hợp sẵn. Độ trễ bằng không. Chạy cục bộ.
+**Quan sát và thực thi cho mọi hệ thống agents của bạn.** Dù agents chạy ở đâu, chúng tôi đều nhìn thấy — và có thể từ chối. Failproof kết nối 12 hệ thống agent — các CLI viết code như Claude Code và Codex, các gateway chat như Hermes, các trợ lý tự lưu trữ như OpenClaw — ghi lại mọi lần chạy và chặn các lệnh gọi công cụ nguy hiểm trước khi chúng được thực thi. 43 chính sách tích hợp sẵn. Độ trễ bằng không. Chạy cục bộ.
 
 </div>
 
@@ -159,7 +159,7 @@ Cho đến khi gói tới, điều duy nhất thực thi là `block-failproofai-
 
 Mỗi một cổng gọi *trước* khi nó chạy, vì vậy chúng giữ trên tất cả mười hai hệ thống. Bốn cái đầu tiên áp dụng cho bất kỳ agent nào có thể gọi một công cụ; ba cái cuối cùng là những điều yêu thích của nhà phát triển — CLI viết code là loại hệ thống chúng tôi bao phủ sâu nhất. Họ `sanitize-*` là riêng biệt: nó chạy sau khi một công cụ trả về, vì vậy nó báo cáo một bí mật trong kết quả công cụ thay vì giữ nó ra khỏi ngữ cảnh.
 
-→ [Tất cả 39 chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/packs)
+→ [Tất cả 43 chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/packs)
 
 ---
 

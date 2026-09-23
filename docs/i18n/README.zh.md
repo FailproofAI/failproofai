@@ -22,7 +22,7 @@
 
 **为你的 Agent 所运行的每一个框架提供可观测性与策略执行。**
 无论你的 Agent 在哪里运行，我们都能感知——并且可以说不。Failproof 接入了 12 个 Agent
-框架——包括 Claude Code 和 Codex 等编码 CLI，Hermes 等聊天网关，以及 OpenClaw 等自托管助手——捕获每一次运行，并在危险工具调用执行之前将其拦截。内置 39 条策略，零延迟，本地运行。
+框架——包括 Claude Code 和 Codex 等编码 CLI，Hermes 等聊天网关，以及 OpenClaw 等自托管助手——捕获每一次运行，并在危险工具调用执行之前将其拦截。内置 43 条策略，零延迟，本地运行。
 
 </div>
 
@@ -161,7 +161,7 @@ failproofai                                    # 在 localhost:8020 启动仪表
 
 以上所有策略均在调用*执行前*进行拦截，因此对全部十二个框架均有效。前四条适用于任何能调用工具的 Agent；后三条是开发者最常用的——编码 CLI 是我们覆盖最深入的框架类别。`sanitize-*` 系列策略有所不同：它在工具返回结果后运行，用于报告工具输出中的密钥，而非阻止其进入上下文。
 
-→ [全部 39 条内置策略](https://docs.befailproof.ai/policies/packs)
+→ [全部 43 条内置策略](https://docs.befailproof.ai/policies/packs)
 
 ---
 

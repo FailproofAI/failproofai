@@ -21,7 +21,7 @@
 **Çeviriler:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Aracılarınızın çalıştığı her ortam için gözlemlenebilirlik ve zorlama.**
-Aracılarınız nerede çalışırsa çalışsın, biz onu görebiliriz — ve hayır diyebiliriz. Failproof, 12 aracı ortamına bağlanır — Claude Code ve Codex gibi kodlama CLI'ları, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi kendine barındırılan asistanlar — her çalıştırmayı yakalar ve yürütülmeden önce tehlikeli araç çağrılarını engeller. 39 yerleşik ilke. Sıfır gecikme. Yerel olarak çalışır.
+Aracılarınız nerede çalışırsa çalışsın, biz onu görebiliriz — ve hayır diyebiliriz. Failproof, 12 aracı ortamına bağlanır — Claude Code ve Codex gibi kodlama CLI'ları, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi kendine barındırılan asistanlar — her çalıştırmayı yakalar ve yürütülmeden önce tehlikeli araç çağrılarını engeller. 43 yerleşik ilke. Sıfır gecikme. Yerel olarak çalışır.
 
 </div>
 
@@ -161,7 +161,7 @@ Bir paket gelene kadar, uygulamayı yapan tek şey `block-failproofai-commands`,
 
 Bu komutların hepsi çağrısı çalıştırmadan önce kapıdan geçer, bu nedenle tüm on iki ortamda geçerlidirler. İlk dördü, bir aracı çağrı yapabilen herhangi bir araçla geçerlidir; sonuncu üçü geliştirici favorileridir — kodlama CLI'ları en derin kapladığımız ortam sınıfıdır. `sanitize-*` ailesi ayrıdır: bir araç döndükten sonra çalışır, bu nedenle bağlamdan onu tutmak yerine araç çıktısında bir gizli kodunu bildirir.
 
-→ [Tüm 39 yerleşik ilke](https://docs.befailproof.ai/policies/packs)
+→ [Tüm 43 yerleşik ilke](https://docs.befailproof.ai/policies/packs)
 
 ---
 

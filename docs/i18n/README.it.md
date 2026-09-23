@@ -21,7 +21,7 @@
 **Traduzioni:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Osservabilità e controllo per ogni harness su cui i tuoi agenti vengono eseguiti.**
-Ovunque i tuoi agenti vengono eseguiti, noi lo vediamo — e possiamo dire no. Failproof si integra con 12 harness di agenti — CLI di coding come Claude Code e Codex, gateway di chat come Hermes, assistenti self-hosted come OpenClaw — catturando ogni esecuzione e bloccando le chiamate ai tool pericolose prima che vengano eseguite. 39 policy built-in. Zero latenza. Esecuzione locale.
+Ovunque i tuoi agenti vengono eseguiti, noi lo vediamo — e possiamo dire no. Failproof si integra con 12 harness di agenti — CLI di coding come Claude Code e Codex, gateway di chat come Hermes, assistenti self-hosted come OpenClaw — catturando ogni esecuzione e bloccando le chiamate ai tool pericolose prima che vengano eseguite. 43 policy built-in. Zero latenza. Esecuzione locale.
 
 </div>
 
@@ -160,7 +160,7 @@ Finché un pack non arriva, l'unica cosa che fa enforcement è `block-failproofa
 
 Ognuna di queste controlla la chiamata *prima* che venga eseguita, quindi funzionano su tutti e dodici gli harness. Le prime quattro si applicano a qualsiasi agente che può chiamare un tool; le ultime tre sono i preferiti degli sviluppatori — i CLI di coding sono la classe di harness che copriamo più profondamente. La famiglia `sanitize-*` è separata: viene eseguita dopo che un tool ritorna, quindi segnala un secret nell'output del tool piuttosto che tenerlo fuori dal contesto.
 
-→ [Tutte le 39 policy built-in](https://docs.befailproof.ai/policies/packs)
+→ [Tutte le 43 policy built-in](https://docs.befailproof.ai/policies/packs)
 
 ---
 

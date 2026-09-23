@@ -69,9 +69,13 @@ export const ARCHITECT_CAUTION_SIGNALS = new Set(["reread-after-edit", "redundan
 
 /**
  * Mapping from policy/detector short-name → which archetype its hits feed,
- * and how heavily (intensity within the cluster). Every one of the 39 builtin
- * policies and 8 audit-only detectors maps exactly once — no overlaps, full
- * coverage. Weights express *severity within* a persona; cross-persona
+ * and how heavily (intensity within the cluster). Every one of the original 39
+ * builtin policies and 8 audit-only detectors maps exactly once — no overlaps,
+ * full coverage. The four hard-floor builtins added for the two-tier Jev
+ * evaluator (block-disk-destruction, block-gh-destructive, block-indirect-exec,
+ * block-chmod-777) are deliberately NOT mapped yet: adding cowboy signals
+ * shifts the lift baselines — a persona change that wants its own calibration.
+ * Their hits still appear in the report and the score. Weights express *severity within* a persona; cross-persona
  * fairness is handled later by lift normalisation, not by these numbers.
  */
 export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: number }> = {

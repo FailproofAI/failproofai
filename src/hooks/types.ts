@@ -1059,7 +1059,7 @@ export type HookEventType = (typeof HOOK_EVENT_TYPES)[number];
  *
  * It stays in `HOOK_EVENT_TYPES` because that list is the canonical set a
  * policy may subscribe to; this one governs what we write into settings.json.
- * No builtin matches it (all 39 match only PreToolUse / PostToolUse /
+ * No builtin matches it (all 43 match only PreToolUse / PostToolUse /
  * PermissionRequest / Stop), so nothing is lost by not registering.
  */
 export const CLAUDE_INSTALL_EVENT_TYPES = HOOK_EVENT_TYPES.filter(

@@ -21,7 +21,7 @@
 **Traductions :** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Observabilité et application des règles pour chaque environnement d'exécution de vos agents.**
-Où que vos agents s'exécutent, nous le voyons — et nous pouvons dire non. Failproof s'intègre à 12 environnements d'agents — des CLI de développement comme Claude Code et Codex, des passerelles de chat comme Hermes, des assistants auto-hébergés comme OpenClaw — capturant chaque exécution et bloquant les appels d'outils dangereux avant qu'ils ne se produisent. 39 politiques intégrées. Zéro latence. Fonctionne en local.
+Où que vos agents s'exécutent, nous le voyons — et nous pouvons dire non. Failproof s'intègre à 12 environnements d'agents — des CLI de développement comme Claude Code et Codex, des passerelles de chat comme Hermes, des assistants auto-hébergés comme OpenClaw — capturant chaque exécution et bloquant les appels d'outils dangereux avant qu'ils ne se produisent. 43 politiques intégrées. Zéro latence. Fonctionne en local.
 
 </div>
 
@@ -160,7 +160,7 @@ Tant qu'aucun pack n'est installé, la seule règle active est `block-failproofa
 
 Chacune de ces règles intercepte l'appel *avant* son exécution, ce qui garantit leur efficacité sur les douze environnements. Les quatre premières s'appliquent à tout agent capable d'appeler un outil ; les trois dernières sont les préférées des développeurs — les CLI de développement constituent la catégorie d'environnements que nous couvrons le plus en profondeur. La famille `sanitize-*` est à part : elle s'exécute après le retour d'un outil, signalant ainsi un secret dans la sortie de l'outil plutôt que de l'empêcher d'entrer dans le contexte.
 
-→ [Les 39 politiques intégrées](https://docs.befailproof.ai/policies/packs)
+→ [Les 43 politiques intégrées](https://docs.befailproof.ai/policies/packs)
 
 ---
 

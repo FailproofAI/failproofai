@@ -21,7 +21,7 @@
 **अनुवाद:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **हर harness के लिए अवलोकन और प्रवर्तन जो आपके agents चलाते हैं।**
-जहां भी आपके agents चलते हैं, हम इसे देखते हैं — और हम नहीं कह सकते। Failproof 12 agent harnesses को हुक करता है — Claude Code और Codex जैसे कोडिंग CLIs, Hermes जैसे chat gateways, OpenClaw जैसे self-hosted assistants — हर run को कैप्चर करता है और execution से पहले खतरनाक tool calls को block करता है। 39 built-in policies। शून्य latency। स्थानीय रूप से चलता है।
+जहां भी आपके agents चलते हैं, हम इसे देखते हैं — और हम नहीं कह सकते। Failproof 12 agent harnesses को हुक करता है — Claude Code और Codex जैसे कोडिंग CLIs, Hermes जैसे chat gateways, OpenClaw जैसे self-hosted assistants — हर run को कैप्चर करता है और execution से पहले खतरनाक tool calls को block करता है। 43 built-in policies। शून्य latency। स्थानीय रूप से चलता है।
 
 </div>
 
@@ -160,7 +160,7 @@ Setup hooks को wire करता है और **कोई नहीं** po
 
 इनमें से हर एक call को चलने से *पहले* gate करता है, इसलिए वे सभी बारह harnesses पर काम करते हैं। पहले चार किसी भी agent पर लागू होते हैं जो tool call कर सकता है; अंतिम तीन developer पसंद हैं — कोडिंग CLIs harness class हैं जिन्हें हम सबसे गहराई से कवर करते हैं। `sanitize-*` family अलग है: यह tool return के बाद चलता है, इसलिए यह context में secret को रखने के बजाय tool output में रिपोर्ट करता है।
 
-→ [सभी 39 built-in policies](https://docs.befailproof.ai/policies/packs)
+→ [सभी 43 built-in policies](https://docs.befailproof.ai/policies/packs)
 
 ---
 

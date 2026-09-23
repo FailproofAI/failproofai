@@ -57,6 +57,11 @@ import {
 } from "@/src/hooks/semantic/jev-config";
 import { displayEndpoint, jevRoute } from "@/src/hooks/semantic/jev-client";
 import { jevStats } from "@/src/hooks/semantic/jev-stats";
+import {
+  reviewableProblem,
+  reviewableSummary,
+  surveyReviewableCoverage,
+} from "@/src/hooks/policy-reviewability";
 
 /** The loader's four answers, unchanged — see `JevConfigInspection`. */
 export type JevSettingsStatus = "absent" | "ok" | "key-missing" | "refused";
@@ -106,6 +111,31 @@ export type JevModelView =
   | { kind: "id"; id: string }
   | { kind: "withheld" };
 
+/**
+ * How much of this machine's enabled policy set Jev is allowed to CLEAR.
+ *
+ * The panel says whether Jev is on; this is what says whether the half of it
+ * that clears a verdict can fire at all. A pack published before this release
+ * declares no `authority`, every policy in it is therefore `hard`, and a
+ * machine in that state looks perfect from every other field on the panel — the
+ * endpoint answers, the fallback rate is fine, and no deny is ever cleared. See
+ * `src/hooks/policy-reviewability.ts` for what is counted.
+ *
+ * The two sentences are computed there rather than here, so this panel and
+ * `failproofai jev status` say the same thing in the same words — the same rule
+ * the rest of this module follows for everything it reports.
+ */
+export interface JevReviewabilityView {
+  /** Enabled policies whose authority could be read without running code. */
+  enabled: number;
+  /** Of those, the ones Jev may clear. */
+  reviewable: number;
+  /** The count, as one line. */
+  summary: string;
+  /** Why nothing can be cleared, and what fixes it; null when something can. */
+  problem: string | null;
+}
+
 export interface JevSettingsView {
   status: JevSettingsStatus;
   /** True only when a hook running right now would consult Jev. */
@@ -136,6 +166,8 @@ export interface JevSettingsView {
   /** The command that fixes it, when there is one. */
   fix: string | null;
   stats: JevSettingsStats | null;
+  /** What Jev may clear here. Null when Jev is off, or when it could not be read. */
+  reviewable: JevReviewabilityView | null;
 }
 
 const MIN_HINTABLE_KEY_LENGTH = 12;
@@ -238,6 +270,29 @@ async function statsOrNull(on: boolean): Promise<JevSettingsStats | null> {
 }
 
 /**
+ * The authority counts, for a machine where a clear could actually happen.
+ *
+ * Off means the regex policies decide whatever any policy's authority says, so
+ * there is nothing to report and the panel shows no row. Never throws, for the
+ * same reason `statsOrNull` does not: the panel renders without the line rather
+ * than without the panel.
+ */
+function reviewableOrNull(on: boolean): JevReviewabilityView | null {
+  if (!on) return null;
+  try {
+    const coverage = surveyReviewableCoverage();
+    return {
+      enabled: coverage.enabled,
+      reviewable: coverage.reviewable,
+      summary: reviewableSummary(coverage),
+      problem: reviewableProblem(coverage),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Everything /settings shows about Jev, and nothing it must not.
  *
  * Never throws: every branch of `inspectJevConfig` is a state the panel can
@@ -259,6 +314,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
     token: null as JevTokenPresence | null,
     problem: null as string | null,
     fix: null as string | null,
+    reviewable: null as JevReviewabilityView | null,
   };
 
   if (inspection.status === "ok") {
@@ -282,6 +338,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       // last four characters leave the function.
       token: { source: inspection.keySource, hint: maskedHint(cfg.apiKey) },
       stats: await statsOrNull(true),
+      reviewable: reviewableOrNull(true),
     };
   }
 

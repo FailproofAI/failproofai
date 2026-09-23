@@ -9,10 +9,11 @@
  * valid `~/.failproofai/jev.json` exists; without it the hook path is byte for
  * byte what it was before. So this panel has two jobs, in this order:
  *
- *   1. say whether it is on, where it sends requests, in which mode, and — once
- *      it has run — how often it fell back to the regex engine. A panel that
- *      only took input would leave "is this thing working" unanswerable from
- *      the dashboard.
+ *   1. say whether it is on, where it sends requests, in which mode, how much
+ *      of the enabled policy set it is allowed to clear, and — once it has run
+ *      — how often it fell back to the regex engine. A panel that only took
+ *      input would leave "is this thing working" unanswerable from the
+ *      dashboard.
  *   2. take the endpoint and the token.
  *
  * It is a full-width cell in the same hairline console as the scheduled-audit
@@ -323,6 +324,15 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
               </dd>
             </div>
           )}
+          {view.reviewable && (
+            <div className="set-how-row">
+              <dt className="set-how-label">reviewable</dt>
+              {/* The count, in the server's words — the same sentence
+                  `failproofai jev status` prints, because the two surfaces must
+                  not disagree about what Jev is allowed to clear. */}
+              <dd className="set-how-body">{view.reviewable.summary}</dd>
+            </div>
+          )}
           {view.stats && view.stats.total > 0 && (
             <div className="set-how-row">
               <dt className="set-how-label">fallbacks</dt>
@@ -343,6 +353,12 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
           {view.fix ? ` — ${view.fix}` : ""}
         </p>
       )}
+
+      {/* Jev is on, answering, and cannot clear a single verdict. Nothing else
+          on this page shows it: a policy set with no authority marks behaves
+          exactly like a healthy one until you notice that nothing is ever
+          cleared. The server sends the cause and the remedy together. */}
+      {view?.reviewable?.problem && <p className="set-warn">{view.reviewable.problem}</p>}
 
       <div className="set-rule" />
 

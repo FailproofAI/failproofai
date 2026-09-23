@@ -51,6 +51,9 @@ function view(over: Partial<JevSettingsView> = {}): JevSettingsView {
     problem: null,
     fix: null,
     stats: null,
+    // What Jev may clear. Null is the off state, and also what the server sends
+    // when it could not read the policy set.
+    reviewable: null,
     ...over,
   };
 }
@@ -135,6 +138,50 @@ describe("what it says about the machine", () => {
     // to help someone repair exactly that file.
     renderPanel(configured({ model: { kind: "withheld" } }));
     expect(screen.getByText(/not shown here, in case it is a key/i)).toBeInTheDocument();
+  });
+
+  it("says how much of the policy set Jev may clear", async () => {
+    renderPanel(
+      configured({
+        reviewable: {
+          enabled: 12,
+          reviewable: 7,
+          summary: "7 of 12 enabled policies are reviewable: Jev may clear a deny or an instruction from those, and from no others.",
+          problem: null,
+        },
+      }),
+    );
+    expect(screen.getByText(/7 of 12 enabled policies are reviewable/i)).toBeInTheDocument();
+  });
+
+  it("warns when Jev is on and cannot clear anything, because nothing else on the page would", async () => {
+    // The state an upgrade produces: a pack published before this release
+    // declares no authority, so every policy is hard and the clear half of the
+    // evaluator can never fire. The endpoint, the mode and the fallback rate
+    // all look healthy in that state.
+    renderPanel(
+      configured({
+        reviewable: {
+          enabled: 11,
+          reviewable: 0,
+          summary: "0 of 11 enabled policies are reviewable.",
+          problem:
+            "Jev can add a deny or an instruction on this machine, but it can never clear one. " +
+            "No enabled policy is marked reviewable — a policy pack published before this release carries no such marks — " +
+            "so re-take the pack (`failproofai policies add FailproofAI/policies`) to get a marked copy, " +
+            "or enforce this build's builtin policies, which carry them.",
+        },
+      }),
+    );
+    expect(screen.getByText(/0 of 11 enabled policies are reviewable/i)).toBeInTheDocument();
+    expect(screen.getByText(/it can never clear one/i)).toBeInTheDocument();
+    expect(screen.getByText(/failproofai policies add FailproofAI\/policies/i)).toBeInTheDocument();
+  });
+
+  it("says nothing about authority while Jev is off", async () => {
+    renderPanel(view());
+    await waitFor(() => expect(getViewMock).toHaveBeenCalled());
+    expect(document.body.textContent ?? "").not.toMatch(/reviewable/i);
   });
 
   it("surfaces the loader's own reason when the file is refused, with the fix", async () => {

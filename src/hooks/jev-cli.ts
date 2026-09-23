@@ -6,7 +6,8 @@
  *               the one-shot form: the same thing as `setup`, with the provider
  *               read off the URL's host
  *   jev setup   write ~/.failproofai/jev.json at 0600 from flags + a key
- *   jev status  what is configured, whether it is being used, and how Jev has
+ *   jev status  what is configured, whether it is being used, how much of the
+ *               enabled policy set Jev is allowed to clear, and how Jev has
  *               been doing (fallbacks, latency, clears) — never the key
  *   jev test    one tiny live request: latency and the Jev version that answered
  *   jev remove  delete the file; hooks go back to the regex engine unchanged
@@ -99,6 +100,12 @@ import {
   scrubSecret,
   transportForConfig,
 } from "./semantic/jev-client";
+import {
+  reviewableProblem,
+  reviewableSummary,
+  surveyReviewableCoverage,
+  type ReviewableCoverage,
+} from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import type { JevRequest } from "./semantic/types";
 import { emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
@@ -779,6 +786,20 @@ function namedEndpoint(raw: Record<string, unknown> | null): string | null {
   }
 }
 
+/**
+ * What Jev may clear here, or null when it could not be worked out. `status`
+ * answers "is this thing working", and a settings read that threw would replace
+ * that answer with a stack trace — the survey reads three files it does not
+ * own, and none of them is worth the whole command.
+ */
+function safeCoverage(): ReviewableCoverage | null {
+  try {
+    return surveyReviewableCoverage();
+  } catch {
+    return null;
+  }
+}
+
 async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set(["--json"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
@@ -793,6 +814,12 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     stats = null;
   }
   const legacy = process.env.FAILPROOFAI_EVALUATOR === "legacy";
+  // Only where a clear could actually happen. A file that is absent, refused or
+  // keyless means hooks run the regex policies whatever any policy's authority
+  // says, and an authority count there would answer a question nobody is in a
+  // position to ask yet.
+  const coverage = inspection.status === "ok" ? safeCoverage() : null;
+  const coverageProblem = coverage ? reviewableProblem(coverage) : null;
 
   if (asJson) {
     const base: Record<string, unknown> = { path: inspection.path, status: inspection.status, legacyOverride: legacy, stats };
@@ -832,6 +859,20 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         mode: cfg.mode,
         timeoutMs: cfg.timeoutMs,
         keySource: inspection.keySource,
+        // How much of this machine's policy set Jev is allowed to clear, and
+        // why it is none when it is none. A provisioning check that turns Jev
+        // on has no other way to find out that the half it turned on cannot
+        // fire — the call counts look identical either way.
+        ...(coverage
+          ? {
+              reviewablePolicies: {
+                enabled: coverage.enabled,
+                reviewable: coverage.reviewable,
+                customPolicyFiles: coverage.customFiles,
+                problem: coverageProblem,
+              },
+            }
+          : {}),
       });
     }
     const json = JSON.stringify(base, null, 2);
@@ -945,6 +986,8 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         ],
         opts,
       ),
+      coverage ? note(reviewableSummary(coverage), opts) : null,
+      coverageProblem ? warning([coverageProblem], opts) : null,
       legacyNote,
       jevStatsLines(stats, opts),
     ),

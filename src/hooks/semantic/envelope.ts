@@ -9,17 +9,42 @@
  *    that Jev "does not treat data as hostile by default", so this is a
  *    mitigation, not a guarantee — the real defence is in `decide.ts`, where
  *    no answer about injected text can ever produce a deny or an allow.
- * 2. Secrets never leave the machine. EVERY string is run through the same
- *    SECRET_PATTERNS the sanitize-* builtins use before it is sent — object
- *    KEYS as much as values, because `{"<a key that is a token>": 1}` is a
- *    string leaving the machine like any other — and the count is reported so
- *    a redaction is auditable. A PEM block has its BASE64 BODY LINES removed,
- *    from its `-----BEGIN … PRIVATE KEY-----` line to its `-----END …-----`
- *    line (or to the end of the string when there is none): the shared pattern
- *    list is a header matcher, which is right for a detector that denies and
- *    wrong for a transform, where matching the header alone would send the key
- *    material — and line by line rather than block by block, so a fake key
- *    block is not a place to hide a command (see {@link redactPrivateKeyBodies}).
+ * 2. Secrets never leave the machine. EVERY string that is sent — tool input
+ *    values AND object KEYS (because `{"<a key that is a token>": 1}` is a
+ *    string leaving the machine like any other), human and agent messages, and
+ *    the path/cwd/branch facts — goes through `redactSecrets` (./redact.ts):
+ *    the SECRET_PATTERNS the sanitize-* builtins block on, plus the wider net
+ *    only a redactor can afford. A value under a secret-named key
+ *    (`{"password": "…"}`) is redacted whatever it looks like, and so is the
+ *    WHOLE value of a credential header (`Authorization`, `x-api-key`,
+ *    `Cookie` and kin) and the whole argument of a credential flag
+ *    (`--password`, `sshpass -p`) — bluntly, with nothing asked about the
+ *    value, because five rounds of asking each let a live credential through.
+ *    The cost is that ordinary code and prose under those names lose the rest
+ *    of their line in what Jev is shown; see the header of ./redact.ts. Those
+ *    two blunt rules run HERE and nowhere else — via {@link redactInto}, the
+ *    only caller that passes `blunt: true`. What T4's intent store keeps on
+ *    disk, and what the verdict log's `inputPreview` records, are the human's
+ *    and the operator's own words, whole. The count is reported so a redaction
+ *    is auditable. Every secret found this way is then scrubbed out of the
+ *    state ({@link scrubDeep}) — an OPAQUE token out of all of it, and a
+ *    WORD-BUILT one (`api-v2-backup`, `dev-admin-key-9f3c`) out of
+ *    `agent_request` only. Nothing in the text can tell that second shape from
+ *    a directory the human named, and deleting it from `facts` or from
+ *    `user_said` is a way to blind the evaluator rather than to protect a
+ *    secret.
+ *
+ *    A PEM block has its KEY MATERIAL removed rather than just its
+ *    `-----BEGIN … PRIVATE KEY-----` line: the shared pattern list is a header
+ *    matcher, which is right for a detector that denies and wrong for a
+ *    transform, where matching the header alone would send the key material.
+ *    That now lives in ./redact.ts (`redactPemBlocks`), which walks each
+ *    header to its own footer — or, when the envelope's own cap cut the footer
+ *    away, takes the following lines only while they still look like key
+ *    material. A lone armour line in a `grep` therefore takes nothing after
+ *    it, and a header and a footer quoted separately in documentation do not
+ *    take the prose between them, so a fake key block is still not a place to
+ *    hide a command.
  * 3. The envelope is built inside a HARD, DETERMINISTIC BUDGET, in two
  *    independent pools, so neither can starve the other and the serialized
  *    size is a function of the caps in {@link EnvelopeLimits} and nothing else:
@@ -62,16 +87,20 @@
  *    timeout does not bound it and a slow build is the agent's tool call
  *    stalling. Everything here is a single pass except the shared
  *    `SECRET_PATTERNS`, which are written as detectors for short command
- *    strings and are used here as a TRANSFORM over a whole envelope: two of
- *    them run an open-ended quantifier that backtracks to find a delimiter,
- *    retried at every position where a three-character prefix occurs, which is
- *    quadratic. At the current caps that measured 1,267 ms for one Bash
- *    command of `eyJ` repeated. They are therefore compiled into a SCAN FORM
- *    here — see {@link NOT_MID_WORD} and {@link boundDelimitedRuns} — rather
+ *    strings and are used by the redactor as a TRANSFORM over a whole
+ *    envelope: two of them run an open-ended quantifier that backtracks to
+ *    find a delimiter, retried at every position where a three-character
+ *    prefix occurs, which is quadratic. At the current caps that measured
+ *    1,267 ms for one Bash command of `eyJ` repeated. They are therefore
+ *    compiled into a SCAN FORM — `NOT_MID_WORD` and `boundDelimitedRuns` in
+ *    ./redact.ts, which is where the shared floor is now compiled — rather
  *    than edited at the source, where the same patterns are a detector that
  *    wants neither change. The same input now measures 13 ms, and the test
  *    file pins the COST, so a future pattern that reintroduces the blow-up
- *    fails there rather than in production.
+ *    fails there rather than in production. The redactor's own rules are held
+ *    to the same standard by `redaction-cost.test.ts`, and its final scrub of
+ *    known secrets is ONE pass with ONE matcher compiled for the whole walk
+ *    (`buildSecretScrubber`), never a matcher per string.
  *
  * ## The one rule about a cut, and why it is a rule rather than a mitigation
  *
@@ -135,10 +164,12 @@
  * out of those — so what such a redaction removes cannot be a command, and it
  * is not a cut. Two shapes are delimited rather than charset-limited:
  *
- *   - a PEM block, which is why only its base64 BODY LINES are removed (see
- *     {@link redactPrivateKeyBodies}): anything inside a
- *     `-----BEGIN … PRIVATE KEY-----` block that is not base64 is kept and
- *     judged, so wrapping a command in a fake key block hides nothing;
+ *   - a PEM block, which is why only its KEY MATERIAL is removed
+ *     (`redactPemBlocks`, ./redact.ts): a block's body is limited to what a
+ *     PEM body can contain, and a header with no footer takes the lines after
+ *     it only while they still look like key material, so anything inside a
+ *     `-----BEGIN … PRIVATE KEY-----` block that is not key material is kept
+ *     and judged and wrapping a command in a fake key block hides nothing;
  *   - a connection string, whose userinfo run is `[^@\s]+` — a span of
  *     anything but `@` and a space, which `$(rm${IFS}-rf${IFS}/srv)` fits
  *     inside. It is still redacted (a password is not worth leaking to argue
@@ -167,9 +198,19 @@
  * outside: a command inside a fake PEM block still reaches Jev, and a command
  * hidden in a `scheme://…@` span costs the call its clears.
  */
-import { SECRET_PATTERNS } from "../builtin-policies";
 import { MAX_SCAN_CHARS, type ScannedCommand } from "./facts";
+import { buildSecretScrubber, isSecretFieldValue, redactAuthorizationField, redactSecretsDetailed } from "./redact";
+import type { SecretScrubber } from "./redact";
 import type { Facts } from "./types";
+
+/**
+ * The redactor itself lives in ./redact.ts; this file is its one blunt caller.
+ * Re-exported because `intent.ts`, `evaluator.ts` and three test files have
+ * always imported `redactSecrets` from here, and because the narrow default is
+ * what those callers want — see {@link redactInto} for the one path that
+ * opts in to more.
+ */
+export { redactSecrets, type Redacted } from "./redact";
 
 /**
  * One string value inside `agent_request`. Equal to the section's own budget:
@@ -210,9 +251,10 @@ export const MAX_STRING_CHARS = 128_000;
  *     ms cold here against 35 ms at 56,000. Still linear, still inside the
  *     hook's 100 ms bar, but no longer WELL inside it, and the hook is
  *     synchronous. The levers, if that has to come back down, are
- *     {@link MAX_DELIMITED_RUN} and this constant;
+ *     `MAX_DELIMITED_RUN` (./redact.ts) and this constant;
  *     `__tests__/hooks/semantic/envelope-budget.test.ts` pins both the shape
- *     and the fact that it is linear.
+ *     and the fact that it is linear, and `redaction-cost.test.ts` pins the
+ *     redactor's own rules the same way.
  *
  * A call past this budget is still asked about, with whatever fitted, and
  * still cannot clear anything: see the header.
@@ -314,202 +356,6 @@ const TOO_DEEP = "<nested value omitted>";
 const UNREPRESENTABLE = "<value omitted>";
 
 /**
- * How far an open-ended run of a NEGATED character class — `[^@\s]+`, the
- * userinfo of a connection string — is followed before the pattern gives up.
- *
- * A negated class is the expensive shape: it admits anything, so the engine
- * scans to the end of the string and backtracks looking for the delimiter, at
- * EVERY position where the pattern's prefix occurs. `postgres://` repeated to
- * the string cap is one such position every eleven characters over a run as
- * long as the cap, and cost 217 ms of synchronous hook time per string at the
- * 56,000 cap this was measured at.
- *
- * 256 is two orders of magnitude more than a real `user:pass@` and an order of
- * magnitude more than a long generated password. Past it the connection string
- * is not redacted — which is a leak of a credential nobody writes, not a hole
- * in the review: an unredacted span removes nothing, so it hides nothing, and
- * {@link couldNotBeSecret} is not reached either.
- */
-const MAX_DELIMITED_RUN = 256;
-
-/**
- * A secret does not start in the middle of a word — where "word" means a run
- * of THIS PATTERN'S own charset, not one fixed idea of one.
- *
- * This is what makes the POSITIVE runs linear, and it is worth stating why,
- * because the bound above cannot do it: `JWT_RE`'s segments are
- * `[A-Za-z0-9_-]{10,}` and a JWT payload really can be thousands of characters
- * long, so bounding them either misses live tokens or leaves the cost in.
- * `eyJ` repeated put a candidate start every three characters inside one run
- * as long as the string cap: 934 ms at the 56,000 cap it was measured at, and
- * quadratic, so worse at the cap this build uses.
- *
- * With this lookbehind a candidate must be preceded by a character OUTSIDE the
- * run's charset — and such a character ENDS the run. So each candidate owns a
- * disjoint stretch of the string, the total work is one pass, and the measured
- * cost of the same input is 2 ms. What it gives up is a secret glued to the
- * end of a word with no delimiter of any kind (`...abceyJhbGci...`), which no
- * real token, header, URL, assignment or JSON string produces.
- *
- * `-` is the character that argument gets WRONG when it is applied to every
- * pattern at once, and it shipped that way: one global
- * `(?<![A-Za-z0-9_-])` made a hyphen a word character for ALL of them, so
- * `-Authorization: Bearer <token>` — a unified-diff removal line, which is
- * most of what an agent writes when it edits a config — and the hyphenated
- * header names `Proxy-Authorization` and `X-Authorization` reached Jev with
- * the token in clear. `-sk-…`, `-AKIA…`, `-ghp_…` and a connection string on
- * a diff line went out the same way. A hyphen is a DELIMITER far more often
- * than it is the inside of a token, so the default is
- * {@link NOT_MID_WORD}, which does not list it.
- *
- * A pattern only needs the hyphen back when its own run could have eaten one
- * AND something after that run can fail — the shape that backtracks. That is
- * `JWT_RE` and nothing else here (`sk-ant-[A-Za-z0-9\-_]{20,}` and the bearer
- * token both END in their open-ended run, so a failing candidate reads fewer
- * than its minimum and stops). For those, {@link NOT_MID_HYPHENATED_WORD}
- * keeps the disjointness argument and still admits a diff line: a candidate
- * may also be preceded by a single `-` that is ITSELF preceded by a character
- * outside the run (or by the start of the string). That character ends the
- * run just as before, so two candidates still own disjoint stretches — the
- * outside character of the later one sits at or after the start of the
- * earlier one, which bounds the earlier one's scan — and `-eyJ` repeated,
- * where every hyphen is preceded by a `J`, yields ONE candidate rather than
- * 14,000. Both branches are lookbehinds of at most two characters, so neither
- * adds backtracking; {@link scanForm} picks between them from the pattern's
- * own source, and `__tests__/hooks/semantic/envelope-budget.test.ts` pins the
- * COST as well as the redaction.
- *
- * What the hyphenated branch gives up, said plainly: a JWT glued DIRECTLY to
- * a hyphenated word with nothing else between them (`Proxy-eyJhbGci…`) is
- * still not a candidate, because admitting one there is admitting one at
- * every hyphen. That is the same residual as a secret glued to the end of a
- * word, it is not how a header, a diff line, a URL, an assignment or a JSON
- * string writes a token, and the alternative measured quadratic.
- */
-const NOT_MID_WORD = "(?<![A-Za-z0-9_])";
-/** {@link NOT_MID_WORD} for a pattern whose own open-ended run can contain `-`. */
-const NOT_MID_HYPHENATED_WORD = "(?:(?<![A-Za-z0-9_-])|(?<=(?:^|[^A-Za-z0-9_-])-))";
-
-/** `+`, `*` or `{n,}` — a quantifier with no upper bound. */
-const OPEN_ENDED = /^(?:(\+)|(\*)|\{(\d+),\})/;
-
-/**
- * Bound every open-ended run of a negated character class in a pattern source.
- *
- * A linear scan of the source, not a regex over it: it copies escapes and
- * character classes whole, and only rewrites a quantifier that directly
- * follows a `[^…]` class. A positive class is left alone — {@link NOT_MID_WORD}
- * is what bounds those, and a bound would cost live tokens (see above).
- *
- * Deliberately narrow: a quantifier applied to a GROUP containing a negated
- * class (`(?:[^@\s])+`) is not rewritten, because unwrapping groups is where a
- * source rewriter starts changing what a pattern means. No shape in
- * `SECRET_PATTERNS` is written that way today, and
- * `__tests__/hooks/semantic/envelope-budget.test.ts` pins the COST rather than
- * the spelling, so a future pattern that reintroduces the blow-up fails there
- * rather than in production.
- */
-function boundDelimitedRuns(source: string): { source: string; hyphenRun: boolean } {
-  let out = "";
-  let i = 0;
-  let hyphenRun = false;
-  while (i < source.length) {
-    const c = source[i];
-    if (c === "\\") {
-      out += source.slice(i, i + 2);
-      i += 2;
-      continue;
-    }
-    if (c !== "[") {
-      out += c;
-      i += 1;
-      continue;
-    }
-    let j = i + 1;
-    const negated = source[j] === "^";
-    if (negated) j += 1;
-    const bodyStart = j;
-    // A `]` as the first member of a class is a literal `]`, not the end of it.
-    if (source[j] === "]") j += 1;
-    while (j < source.length && source[j] !== "]") j += source[j] === "\\" ? 2 : 1;
-    const body = source.slice(bodyStart, j);
-    out += source.slice(i, j + 1);
-    i = j + 1;
-    const open = OPEN_ENDED.exec(source.slice(i));
-    if (!open) continue;
-    if (!negated) {
-      // A POSITIVE run is left alone — NOT_MID_WORD is what bounds those, and
-      // a bound would cost live tokens (see above). What is recorded is the
-      // one thing the lookbehind has to know: this run could have eaten a `-`,
-      // and there is more pattern after it that can FAIL, so a candidate that
-      // starts inside such a run backtracks over the whole of it.
-      if (hasLiteralHyphen(body) && i + open[0].length < source.length) hyphenRun = true;
-      continue;
-    }
-    const min = open[3] !== undefined ? Number(open[3]) : open[1] !== undefined ? 1 : 0;
-    // Never narrower than the pattern's own floor: a `{500,}` stays satisfiable.
-    out += `{${min},${Math.max(min, MAX_DELIMITED_RUN)}}`;
-    i += open[0].length;
-  }
-  return { source: out, hyphenRun };
-}
-
-/**
- * Whether a character class lists `-` as a MEMBER rather than as a range.
- *
- * `[A-Za-z0-9_-]` and `[A-Za-z0-9\-._~+/]` do; `[A-Z]` does not. The rule is
- * the one the language uses: a `-` is a range only with a member on each side
- * of it, so an escaped one, or one at either end of the body, is a member.
- * Wrong in the "it is a member" direction only costs a pattern the hyphen
- * boundary it has today, which is the safe way to be wrong.
- */
-function hasLiteralHyphen(body: string): boolean {
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] === "\\") {
-      if (body[i + 1] === "-") return true;
-      i++;
-      continue;
-    }
-    if (body[i] === "-" && (i === 0 || i === body.length - 1)) return true;
-  }
-  return false;
-}
-
-/**
- * The SCAN FORM of a shared pattern: the same matches on anything anyone
- * writes, at a cost that is linear in the length of the string.
- *
- * `SECRET_PATTERNS` is shared with the `sanitize-*` builtins, where it is a
- * detector run over short command strings. Here it is a TRANSFORM run over
- * every string in an envelope, up to the whole budget, on the synchronous hook
- * path before any `await` — so the 1,500 ms Jev timeout does not bound it and
- * an agent's own tool call stalls behind it. The patterns are left as the
- * builtins' authors wrote them and adapted here, rather than edited there,
- * because the two call sites want different things from them.
- *
- * The source is wrapped in a non-capturing group so the lookbehind applies to
- * the whole pattern rather than to the first branch of a top-level
- * alternation.
- */
-function scanForm(re: RegExp): RegExp {
-  const bounded = boundDelimitedRuns(re.source);
-  const boundary = bounded.hyphenRun ? NOT_MID_HYPHENATED_WORD : NOT_MID_WORD;
-  return new RegExp(`${boundary}(?:${bounded.source})`, re.flags.includes("g") ? re.flags : `${re.flags}g`);
-}
-
-const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [scanForm(re), label]);
-
-export interface Redacted {
-  text: string;
-  count: number;
-  /**
-   * At least one replacement removed text that could have been executable, so
-   * the removal has to be reported as a cut. See {@link couldNotBeSecret}.
-   */
-  cut: boolean;
-}
-
-/**
  * What a shell needs in order to START something inside a span that has no
  * whitespace in it: command substitution (a backtick, or `$(`), a command
  * separator (`;`, `|`, `&`, a newline), a redirection (`<`, `>`).
@@ -575,118 +421,6 @@ const SHELL_METACHARACTERS = /[`;|&<>\n\r]|\$\(/;
  */
 function couldNotBeSecret(span: string): boolean {
   return SHELL_METACHARACTERS.test(span);
-}
-
-const PEM_BEGIN = "-----BEGIN ";
-const PEM_END = "-----END ";
-const PEM_CLOSE = "-----";
-const KEY_BODY_MARK = "<redacted:private key>";
-/** Shorter than this and a base64 line is not key material worth removing. */
-const MIN_KEY_LINE = 16;
-
-/** Base64 and base64url, the charsets a PEM body is written in. One linear pass. */
-function isKeyMaterialLine(line: string): boolean {
-  if (line.length < MIN_KEY_LINE) return false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    const ok =
-      (c >= "A" && c <= "Z") || (c >= "a" && c <= "z") || (c >= "0" && c <= "9") || c === "+" || c === "/" || c === "=" || c === "-" || c === "_";
-    if (!ok) return false;
-  }
-  return true;
-}
-
-/** Drop the base64 body lines of a PEM block, keeping every other line. */
-function redactBody(body: string, onRedact: () => void): string {
-  const out: string[] = [];
-  let run = 0;
-  let removed = false;
-  for (const line of body.split("\n")) {
-    if (isKeyMaterialLine(line.trim())) {
-      run++;
-      continue;
-    }
-    if (run > 0) {
-      out.push(KEY_BODY_MARK);
-      removed = true;
-      run = 0;
-    }
-    out.push(line);
-  }
-  if (run > 0) {
-    out.push(KEY_BODY_MARK);
-    removed = true;
-  }
-  if (removed) onRedact();
-  return out.join("\n");
-}
-
-/**
- * Remove the KEY MATERIAL from every `-----BEGIN … PRIVATE KEY-----` block,
- * line by line.
- *
- * `SECRET_PATTERNS`' private-key entry matches the BEGIN line only, which is
- * the right shape for the `sanitize-*` builtins — they are detectors that deny
- * on a hit — and the wrong shape here, where the match is what gets replaced:
- * replacing the header alone leaves the base64 body in the request. A 2048-bit
- * RSA key is ~1,700 characters, so the whole of one fits under any cap here
- * and would have gone out intact. (Those builtins are also `PostToolUse` only,
- * so nothing else would have caught it on the way in.)
- *
- * LINE BY LINE rather than block by block, because a redaction is the one
- * thing here that removes text without reporting a cut: dropping everything
- * between BEGIN and END would make a fake key block a place to hide a command.
- * A key body is base64; a command needs whitespace; so every line that is not
- * base64 is kept and judged, and an encrypted key's `Proc-Type:` headers
- * survive as the honest rendering they are.
- *
- * `indexOf` only: linear scans, nothing that can backtrack. An unclosed block
- * is redacted to the end of the string, because a key that was cut in half is
- * still half a key.
- */
-function redactPrivateKeyBodies(text: string, onRedact: () => void): string {
-  if (!text.includes(PEM_BEGIN)) return text;
-  let out = "";
-  let at = 0;
-  for (;;) {
-    const begin = text.indexOf(PEM_BEGIN, at);
-    if (begin < 0) break;
-    const labelEnd = text.indexOf(PEM_CLOSE, begin + PEM_BEGIN.length);
-    if (labelEnd < 0) break;
-    const after = labelEnd + PEM_CLOSE.length;
-    const label = text.slice(begin + PEM_BEGIN.length, labelEnd);
-    if (!label.includes("PRIVATE")) {
-      out += text.slice(at, after);
-      at = after;
-      continue;
-    }
-    const end = text.indexOf(PEM_END, after);
-    const stop = end < 0 ? text.length : end;
-    out += text.slice(at, after) + redactBody(text.slice(after, stop), onRedact);
-    at = stop;
-  }
-  return at === 0 ? text : out + text.slice(at);
-}
-
-export function redactSecrets(text: string): Redacted {
-  let count = 0;
-  let cut = false;
-  const hit = (): void => {
-    count++;
-  };
-  let out = redactPrivateKeyBodies(text, hit);
-  for (const [re, label] of GLOBAL_SECRET_PATTERNS) {
-    re.lastIndex = 0;
-    out = out.replace(re, (span: string) => {
-      hit();
-      // Redacted either way — a password is not worth leaking to win an
-      // argument about whether it was one — but a span that could have been an
-      // operation is removed text, and removed text is a cut.
-      if (couldNotBeSecret(span)) cut = true;
-      return `<redacted:${label}>`;
-    });
-  }
-  return { text: out, count, cut };
 }
 
 /**
@@ -764,20 +498,93 @@ function sliceToCost(s: string, budget: number): string {
   return s;
 }
 
-/** Keep the head and the tail: a dangerous suffix cannot be padded out of view. */
+/**
+ * Characters a secret does not contain, so a cut next to one never splits one:
+ * whitespace, quotes, and the delimiters of code and JSON.
+ */
+const CUT_STOP = /[\s"'`,;{}()<>|]/;
+/**
+ * How far a cut may move to reach one. Past this the token is long enough that
+ * its surviving part still matches a full pattern on its own.
+ *
+ * Bounded for the budget's sake as much as the redactor's: snapping may only
+ * ever move a cut INWARD (the head's end earlier, the tail's start later), so
+ * the result stays within the cap `capHeadTail` was given whatever it finds.
+ */
+const CUT_SNAP_MAX = 256;
+
+const isEscapeLetter = (c: string | undefined): boolean => c === "n" || c === "r" || c === "t";
+
+/** A cut right AFTER `text[i]` splits no token: a stop character, or the end of a JSON-escaped `\n`. */
+function endsSegment(text: string, i: number): boolean {
+  return CUT_STOP.test(text[i]) || (isEscapeLetter(text[i]) && text[i - 1] === "\\");
+}
+
+/** A cut right BEFORE `text[i]` splits no token: a stop character, or the start of a JSON-escaped `\n`. */
+function startsSegment(text: string, i: number): boolean {
+  return CUT_STOP.test(text[i]) || (text[i] === "\\" && isEscapeLetter(text[i + 1]));
+}
+
+/**
+ * Keep the head and the tail: a dangerous suffix cannot be padded out of view.
+ *
+ * Two things happen here, from the two sides of this file's history, and they
+ * compose in one direction only:
+ *
+ *   - the mark is BUDGETED IN, so the result is never longer than the cap it
+ *     was given. The whole envelope is accounted in these units, so a cap that
+ *     could be overrun by its own marker is not a bound at all;
+ *   - each cut is then MOVED INWARD to the nearest stop character (within
+ *     `CUT_SNAP_MAX`) so it never lands inside a token. Callers cap BEFORE
+ *     they redact, to bound the redactor's cost, and a key sliced at the cut
+ *     arrives as a fragment no pattern matches — an Anthropic key cut ten
+ *     characters past its `api03-` is too short for its own rule and still ten
+ *     characters of a live key. Snapping drops the fragment into the omitted
+ *     middle instead, whole.
+ *
+ * Inward only, which is what lets the two coexist: snapping can shorten what
+ * is kept but never lengthen it, so the mark's budget still holds afterwards.
+ *
+ * A JSON-escaped newline counts as a stop too. Structured input nested two
+ * levels deep is JSON-stringified before it is capped, and a PEM key in there
+ * is one unbroken run of characters with `\n` escapes between its lines:
+ * without this the cut lands mid-line, and the fragment it leaves is too short
+ * for the key-line rules to recognise.
+ */
 export function capHeadTail(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };
   if (max <= 0) return { text: text.length > 0 ? OMITTED : "", truncated: text.length > 0 };
-  const mark = `\n…[${text.length - max} characters omitted]…\n`;
+  // Reserved against the WIDEST count this text could report, so the mark
+  // finally written is never longer than what was budgeted for it — the count
+  // is only known after snapping, and snapping is what makes it exact.
+  const markFor = (n: number): string => `\n…[${n} characters omitted]…\n`;
+  const reserve = markFor(text.length).length;
   // The mark alone would overrun the cap: nothing meaningful fits.
-  if (mark.length >= max) return { text: OMITTED, truncated: true };
-  // Budget the mark in, so the result is never LONGER than the cap it was
-  // given. The whole envelope is accounted in these units.
-  const keep = max - mark.length;
-  const head = Math.ceil(keep * 0.6);
-  const tail = keep - head;
+  if (reserve >= max) return { text: OMITTED, truncated: true };
+  const keep = max - reserve;
+  let head = Math.ceil(keep * 0.6);
+  let tailStart = text.length - (keep - head);
+  if (head > 0 && !endsSegment(text, head - 1) && !startsSegment(text, head)) {
+    for (let i = head - 1; i >= Math.max(0, head - CUT_SNAP_MAX); i--) {
+      if (endsSegment(text, i)) {
+        head = i + 1;
+        break;
+      }
+    }
+  }
+  if (tailStart < text.length && !endsSegment(text, tailStart - 1) && !startsSegment(text, tailStart)) {
+    for (let i = tailStart; i < Math.min(text.length, tailStart + CUT_SNAP_MAX); i++) {
+      if (startsSegment(text, i)) {
+        tailStart = i;
+        break;
+      }
+    }
+  }
+  // Exact, now that both cuts have settled: what is kept plus what this says
+  // was omitted is the whole of the input, so a reader can tell how much of
+  // the string they are not seeing.
   return {
-    text: `${text.slice(0, head)}${mark}${tail > 0 ? text.slice(text.length - tail) : ""}`,
+    text: `${text.slice(0, head)}${markFor(tailStart - head)}${tailStart < text.length ? text.slice(tailStart) : ""}`,
     truncated: true,
   };
 }
@@ -810,6 +617,47 @@ interface Accumulator {
   shellText: boolean;
   /** Serialized characters of the CURRENT budget pool still unspent. */
   left: number;
+  /** Every literal secret replaced so far, so its copies can be scrubbed too. */
+  found: Set<string>;
+  /**
+   * Secrets whose copies are scrubbed out of `agent_request` ONLY.
+   *
+   * A credential header and a credential flag give up their value on the
+   * strength of the NAME, so a word-built token the agent wrote under one
+   * (`echo cookie: api-v2-backup`) is indistinguishable from a directory the
+   * human named. Scrubbing those envelope-wide let the agent delete its own
+   * choice of words from `user_said` and from `facts` — the two fields
+   * `how_to_read` tells Jev are trustworthy. See `RedactedDetail.weak`.
+   */
+  weak: Set<string>;
+}
+
+/**
+ * Redact one already-capped string into the accumulator.
+ *
+ * `blunt: true` is this path's privilege and nobody else's: a credential
+ * header gives up its whole value and a credential flag its whole argument, on
+ * the strength of the NAME. Here a false positive costs Jev a few characters
+ * of context and a miss hands a third party a live key; outside the request
+ * body nothing has left the machine yet, so the same rule only destroys
+ * context (see `RedactOptions` in ./redact.ts).
+ *
+ * This is also where a redaction is judged as a CUT. `RedactedDetail.found`
+ * and `.weak` are the literal spans each rule REMOVED, which is exactly what
+ * {@link couldNotBeSecret} has to be asked about: almost every shape is drawn
+ * from a charset no operation can be spelled out of, and the ones that are not
+ * — a connection string's userinfo above all — can hide a command. Asked of
+ * the removed span, and only in text this call hands to a shell: in a README
+ * or an edit's `new_string` the same characters are data, and charging them a
+ * cut denied ordinary work.
+ */
+function redactInto(text: string, acc: Accumulator): string {
+  const r = redactSecretsDetailed(text, { blunt: true });
+  acc.redactions += r.count;
+  for (const f of r.found) acc.found.add(f);
+  for (const f of r.weak) acc.weak.add(f);
+  if (acc.shellText && (r.found.some(couldNotBeSecret) || r.weak.some(couldNotBeSecret))) markCut(acc);
+  return r.text;
 }
 
 /**
@@ -883,21 +731,37 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
   // and never by whatever the agent chose to send.
   const capped = capHeadTail(value, room);
   if (capped.truncated) markCut(acc);
-  const r = redactSecrets(sanitise(capped.text));
-  acc.redactions += r.count;
   // A redaction that removed something this call could have EXECUTED is a
-  // removal like any other. In text the call writes or sends, the same
-  // characters are data, and charging them a cut denied writing a README.
-  if (r.cut && acc.shellText) markCut(acc);
+  // removal like any other, and `redactInto` is where that is decided.
+  let out = redactInto(sanitise(capped.text), acc);
   // A redaction marker can be longer than what it replaced, and ordinary text
   // was charged at one character each. Re-cut to the exact cost rather than
   // let one field overrun its section.
-  let out = r.text;
+  //
+  // (The charge itself is below, and it is the larger of what is EMITTED and
+  // what was READ — see the note there.)
   if (jsonCost(out) > acc.left) {
     out = sliceToCost(out, acc.left);
     markCut(acc);
   }
-  spend(acc, jsonCost(out));
+  /**
+   * Charged for what was READ, when that is more than what is emitted.
+   *
+   * This file's own rule is that "their cost is bounded by `room`, and never
+   * by whatever the agent chose to send" (the cap above). That only holds if
+   * reading is what the budget charges: a section that charges the OUTPUT
+   * hands the next field a full budget again whenever redaction shrank the
+   * last one, and redaction can shrink a lot. `blunt` gives up a credential
+   * header's whole value, so 128 000 characters of `Authorization: ` come back
+   * as a handful of markers — and a 576-field MCP body then had every one of
+   * its fields read in full, 73 MB for a 79 KB envelope, 27.8 s of synchronous
+   * `PreToolUse` time. Ordinary text is unaffected: its serialized cost and
+   * its length are the same number either way.
+   *
+   * It bounds the state from above exactly as before — charging MORE can only
+   * end a section sooner, never emit more than the cap.
+   */
+  spend(acc, Math.max(jsonCost(out), capped.text.length));
   return out;
 }
 
@@ -931,14 +795,14 @@ function entriesOf(value: object): Array<[string, unknown]> | null {
  * string is at least its two quotes; the container adds its brackets and one
  * separator per entry.
  */
-function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, depth: number): unknown {
+function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, depth: number, fieldName?: string): unknown {
   if (acc.left <= 0) {
     markCut(acc);
     return OMITTED;
   }
   switch (typeof value) {
     case "string":
-      return cleanString(value, limits.stringChars, acc);
+      return cleanFieldString(value, acc, limits, fieldName);
     case "number":
       // What it actually serializes to. `JSON.stringify` uses the same
       // Number-to-String algorithm as `String`, so this is exact — and it
@@ -980,7 +844,9 @@ function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, de
       // The separator; the element then charges its own floor on top, so the
       // cheapest thing an array can hold — `""` — costs the 3 it serializes to.
       spend(acc, SEPARATOR_COST);
-      kept.push(cleanValue(v, acc, limits, depth + 1));
+      // Array elements inherit their array's key, as more values of the same
+      // field: `{"passwords": ["a", "b"]}` is two values of `passwords`.
+      kept.push(cleanValue(v, acc, limits, depth + 1, fieldName));
     }
     return kept;
   }
@@ -990,6 +856,41 @@ function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, de
     return cleanString(UNREPRESENTABLE, limits.stringChars, acc);
   }
   return buildObject(entries, acc, limits, depth);
+}
+
+/**
+ * One string value, judged with the KEY it sits under in hand.
+ *
+ * A string under a secret-named key (`{"password": "hunter2"}` from an MCP
+ * tool) is redacted whole: nothing inside the string itself says it is a
+ * secret, only its key does. Both rules here are charged against the budget
+ * through {@link cleanString} like any other value, so replacing a value with
+ * a marker cannot put the section over its cap.
+ */
+function cleanFieldString(value: string, acc: Accumulator, limits: EnvelopeLimits, fieldName?: string): string {
+  if (fieldName !== undefined && value.length > 0) {
+    // `{"Authorization": "Basic …"}`, `{"Cookie": "sid=…; theme=dark"}`: the
+    // whole value goes, and the BARE credential inside it is what the scrub
+    // pass then looks for elsewhere. This runs FIRST, ahead of the
+    // secret-named-field rule, although `cookie` and `api-key` are secret
+    // NAMES as well: that rule reports the whole value as the secret, which
+    // matched no copy of the credential inside it, so the copy the human had
+    // pasted into their message went out with the request.
+    const auth = redactAuthorizationField(fieldName, value);
+    if (auth) {
+      acc.redactions++;
+      for (const s of auth.secrets) acc.found.add(s);
+      for (const s of auth.weak) acc.weak.add(s);
+      // The marker is what is sent, so the marker is what is charged.
+      return cleanString(auth.text, limits.stringChars, acc);
+    }
+    if (isSecretFieldValue(fieldName, value)) {
+      acc.redactions++;
+      acc.found.add(value);
+      return cleanString("<redacted:assigned secret>", limits.stringChars, acc);
+    }
+  }
+  return cleanString(value, limits.stringChars, acc);
 }
 
 /**
@@ -1026,7 +927,57 @@ function buildObject(
     // `cleanString`, and the value charges its floor below, so the cheapest
     // entry an object can hold — `"":""` — costs the 5 it serializes to.
     spend(acc, SEPARATOR_COST * 2);
-    out.push([key, cleanValue(v, acc, limits, depth + 1)]);
+    // The value is judged under the key AS WRITTEN, not the redacted one: a
+    // key that redaction turned into a marker is still `password` as far as
+    // what its value is.
+    out.push([key, cleanValue(v, acc, limits, depth + 1, rawKey)]);
+  }
+  return Object.fromEntries(out);
+}
+
+/**
+ * The last pass over the finished state: replace every copy of a secret found
+ * anywhere in it. A secret is recognised where its context gives it away, but
+ * its bytes can sit elsewhere without that context — `facts.paths` lifts the
+ * bare value out of `aws configure set aws_secret_access_key <value>`, and a
+ * human may paste the same value into a message.
+ *
+ * The secrets are compiled ONCE, by the caller, and every string in the state
+ * is scanned against that one matcher. Compiling per string put the number of
+ * secrets back into the per-string cost, which is the product this pass exists
+ * not to pay: see `buildSecretScrubber` in ./redact.ts.
+ *
+ * Not accounted against the budget, and it does not need to be: the walk is
+ * over the state this function already built, the budget is already spent, and
+ * a marker that is longer than the secret it replaces can only make the state
+ * bigger by the difference. That is bounded by `STATE_OVERHEAD`'s headroom, so
+ * it cannot be spent by a caller — a secret has to be RECOGNISED to be
+ * scrubbed, and a recognised secret was already redacted where it was found.
+ *
+ * Built through `Object.fromEntries` rather than assignment, for the same
+ * reason {@link buildObject} is: a key named `__proto__` must become an
+ * ordinary property instead of reaching the prototype setter.
+ */
+function scrubDeep(value: unknown, acc: Accumulator, scrubber: SecretScrubber): unknown {
+  if (typeof value === "string") {
+    const r = scrubber.scrub(value);
+    acc.redactions += r.count;
+    return r.text;
+  }
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc, scrubber));
+  if (value === null || typeof value !== "object") return value;
+  const out: Array<[string, unknown]> = [];
+  const seen = new Set<string>();
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const r = scrubber.scrub(k);
+    acc.redactions += r.count;
+    let key = r.text;
+    // Two keys can only collide once one of them was scrubbed. Suffix rather
+    // than drop: unlike the budget walk, nothing here ran out of room, so
+    // losing an entry would be a cut nobody asked for and nobody recorded.
+    for (let n = 2; seen.has(key); n++) key = `${r.text}#${n}`;
+    seen.add(key);
+    out.push([key, scrubDeep(v, acc, scrubber)]);
   }
   return Object.fromEntries(out);
 }
@@ -1097,6 +1048,8 @@ export function buildEnvelope(
     section: "messages",
     shellText: false,
     left: limits.contextChars,
+    found: new Set(),
+    weak: new Set(),
   };
   // Every input below is treated as untyped: see {@link asText} and rule 4.
   const input0 = toolInput && typeof toolInput === "object" && !Array.isArray(toolInput) ? toolInput : {};
@@ -1307,11 +1260,37 @@ export function buildEnvelope(
     },
   };
 
+  if (acc.found.size > 0 || acc.weak.size > 0) {
+    // The weak list is applied to the agent's own request and nowhere else:
+    // it holds word-built tokens that are as likely to be a directory name as
+    // a credential, and deleting one from `user_said` or `facts` hands the
+    // agent a way to edit the human's words and blind the evaluator.
+    const wide = acc.weak.size === 0 ? acc.found : new Set([...acc.found, ...acc.weak]);
+    // Two matchers at most, each compiled once for the whole walk.
+    const narrowScrubber = buildSecretScrubber(acc.found);
+    const wideScrubber = wide === acc.found ? narrowScrubber : buildSecretScrubber(wide);
+    for (const key of Object.keys(state)) {
+      if (key === "how_to_read") continue;
+      state[key] = scrubDeep(state[key], acc, key === "agent_request" ? wideScrubber : narrowScrubber);
+    }
+  }
+
   return {
     state,
     truncated: acc.truncated,
     requestCut: acc.requestCut,
     redactions: acc.redactions,
-    evidence: { userSaid: keptSaid, agentLastMessage: agentLastSent },
+    // `agentLastMessage` is read back OUT of the finished state rather than
+    // from the local built above, because the scrub pass runs between the two
+    // and this field's whole contract is that it holds "the same characters
+    // Jev read". A secret scrubbed out of the state but left standing here
+    // would let a local check in `decide` match on text Jev never saw, which
+    // is the subtraction this design refuses everywhere else. `userSaid` is
+    // deliberately NOT read back: it is the human's turns, uncut and
+    // unscrubbed, for the reason given on `Envelope.evidence`.
+    evidence: {
+      userSaid: keptSaid,
+      agentLastMessage: typeof state.agent_last_message === "string" ? state.agent_last_message : null,
+    },
   };
 }

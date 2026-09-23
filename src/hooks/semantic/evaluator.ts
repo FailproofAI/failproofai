@@ -413,7 +413,16 @@ function inputPreview(toolInput: Record<string, unknown>): string {
   const primary =
     ["command", "file_path", "path", "url", "query", "pattern"].map((k) => toolInput[k]).find((v) => typeof v === "string") ??
     safeStringify(toolInput);
-  return redactSecrets(String(primary).slice(0, 240)).text;
+  // The narrow rules only (`blunt` is opt-in, and this is not the envelope).
+  // This preview goes to `~/.failproofai/semantic/verdicts.jsonl` on this
+  // machine and nowhere else — it is what an operator reads to see what the
+  // agent tried. With the blunt rules on, every command that merely NAMED a
+  // credential came back cut off at the name: `bun test -t "sends
+  // authorization: Bearer when configured"` logged as `… authorization:
+  // <redacted:authorization header>`. A secret that is actually in the command
+  // is still removed by the shared floor, the vendor prefixes and the
+  // secret-named assignment and flag rules.
+  return redactSecrets(String(primary).slice(0, 240), { blunt: false }).text;
 }
 
 export interface VerdictLogMeta {

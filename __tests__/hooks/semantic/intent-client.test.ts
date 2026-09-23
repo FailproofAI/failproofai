@@ -57,6 +57,26 @@ describe("semantic/intent", () => {
     expect(said("sess-3", 2)[0]).not.toContain(fakeKey);
   });
 
+  it("stores what the human typed whole: the envelope's blunt rules do not run here", () => {
+    // The intent store is the evaluator's own record of what the user asked
+    // for, and it never leaves the machine — `buildEnvelope` redacts it again,
+    // bluntly, when it does. Storing it cut off after a `cookie:` or an
+    // `authorization:` destroyed the targets the human named on disk, where
+    // nothing can recover them. (T4 replaced `recordUserPrompt` with
+    // `captureIntent`, which is what `record` goes through here; the property
+    // is the same and it now covers the only door into `user_said`.)
+    const prompt = "the authorization: header is missing, add it in src/api/client.ts and retry the cookie: path";
+    record("sess-blunt", prompt, 1);
+    expect(said("sess-blunt", 2)).toEqual([prompt]);
+    // A credential in the prompt is still replaced, by the narrow rules.
+    const fakeKey = ["sk", "abcdefghijklmnopqrstuvwxyz0123456789"].join("-");
+    record("sess-blunt-2", `deploy with --password ${fakeKey} and then restart`, 1);
+    const stored = said("sess-blunt-2", 2)[0];
+    expect(stored).not.toContain(fakeKey);
+    expect(stored).toContain("deploy with --password");
+    expect(stored).toContain("and then restart");
+  });
+
   it("forgets prompts older than the intent window", () => {
     record("sess-4", "old", 0);
     expect(said("sess-4", INTENT_MAX_AGE_MS + 1)).toEqual([]);

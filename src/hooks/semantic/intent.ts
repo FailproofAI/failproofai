@@ -904,13 +904,22 @@ function tailStartClearOfCut(tail: string): number {
  * picks what to keep: a piece that redaction shrank to almost nothing
  * contributes almost nothing, rather than the fragment by its cut. The
  * marker counts every character left out, in the redacted text's terms.
+ *
+ * `blunt: false` at every call below — the default, spelled out so a future
+ * change to it cannot reach this path silently. The credential-header and flag
+ * rules give up a whole line or a whole argument on the strength of a NAME,
+ * which is the right trade for the Jev request body and the wrong one here.
+ * This is the evaluator's record of what the HUMAN asked for — it never leaves
+ * the machine, `buildEnvelope` redacts it again (bluntly) before it does, and
+ * storing it cut off after a `cookie:` or an `authorization:` lost the targets
+ * the human named. The narrow rules still run.
  */
 function storable(text: string): string {
-  if (text.length <= PRE_CAP_CHARS) return capWithin(redactSecrets(text).text, MAX_USER_MESSAGE_CHARS);
+  if (text.length <= PRE_CAP_CHARS) return capWithin(redactSecrets(text, { blunt: false }).text, MAX_USER_MESSAGE_CHARS);
   const headLen = Math.ceil(PRE_CAP_CHARS * 0.6);
   const tailLen = PRE_CAP_CHARS - headLen;
-  const head = redactSecrets(text.slice(0, headLen)).text;
-  const tail = redactSecrets(text.slice(text.length - tailLen)).text;
+  const head = redactSecrets(text.slice(0, headLen), { blunt: false }).text;
+  const tail = redactSecrets(text.slice(text.length - tailLen), { blunt: false }).text;
   const keptHead = head.slice(0, headEndClearOfCut(head));
   const keptTail = tail.slice(tailStartClearOfCut(tail));
   const omitted = head.length - keptHead.length + (text.length - headLen - tailLen) + (tail.length - keptTail.length);

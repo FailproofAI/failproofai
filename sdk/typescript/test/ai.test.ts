@@ -14,6 +14,7 @@ import {
   middleware,
   responseContent,
   stopReasonOf,
+  toolCallsOf,
   tracer,
   usageTokens,
 } from "../src/integrations/ai.js";
@@ -156,7 +157,8 @@ describe("the tracer (ai v4–v6)", () => {
     expect(events.every((e) => e.agent_id === "ai.streamText")).toBe(true);
     const response = events.find((e) => e.type === "model_response")!;
     expect(response.stop_reason).toBe("tool-calls");
-    expect(response.content).toEqual([{ toolCallId: "c1", toolName: "weather", input: "{}" }]);
+    // The call's input is parsed, as on every other path — not a JSON string in JSON.
+    expect(response.content).toEqual([{ toolCallId: "c1", toolName: "weather", input: {} }]);
   });
 
   it("records a failed model step once, on its model_response", async () => {
@@ -768,4 +770,303 @@ describe("bookkeeping", () => {
       runtime.event = original;
     }
   }, 120_000);
+});
+
+describe("tool calls in a model_response", () => {
+  it("reads every major's ai.response.toolCalls into one shape, input parsed", () => {
+    // v4: toolCallType + args as a JSON string.
+    expect(toolCallsOf(JSON.stringify([{ toolCallType: "function", toolCallId: "a", toolName: "w", args: '{"city":"Paris"}' }]))).toEqual([
+      { toolCallId: "a", toolName: "w", input: { city: "Paris" } },
+    ]);
+    // v5/v6 generateText: input as a JSON string.
+    expect(toolCallsOf(JSON.stringify([{ toolCallId: "b", toolName: "w", input: '{"city":"Rome"}' }]))).toEqual([
+      { toolCallId: "b", toolName: "w", input: { city: "Rome" } },
+    ]);
+    // v5/v6 streamText: a typed part with input already an object.
+    expect(toolCallsOf(JSON.stringify([{ type: "tool-call", toolCallId: "c", toolName: "w", input: { city: "Oslo" } }]))).toEqual([
+      { toolCallId: "c", toolName: "w", input: { city: "Oslo" } },
+    ]);
+    expect(toolCallsOf(undefined)).toBeUndefined();
+    expect(toolCallsOf("[]")).toBeUndefined();
+    expect(toolCallsOf("not json")).toBeUndefined();
+  });
+});
+
+describe("the tracer when a stream does not finish (ai v4–v6)", () => {
+  type Tracer = ReturnType<typeof tracer>;
+  const streamRoot = (t: Tracer, functionId: string, body: (root: Span) => void): void => {
+    t.startActiveSpan(
+      "ai.streamText",
+      { attributes: { "ai.operationId": "ai.streamText", "ai.telemetry.functionId": functionId } },
+      (root: Span) => body(root),
+    );
+  };
+  const openStep = (t: Tracer): Span => {
+    let step: Span | undefined;
+    t.startActiveSpan(
+      "ai.streamText.doStream",
+      { attributes: { "ai.operationId": "ai.streamText.doStream", "ai.model.id": "m" } },
+      (span: Span) => {
+        step = span;
+      },
+    );
+    return step!;
+  };
+
+  it("closes the model call an aborted stream left open, and ends the agent cancelled", async () => {
+    const t = tracer();
+    let step: Span | undefined;
+    await session({ sessionId: "s1" }, () => {
+      streamRoot(t, "counter", (root) => {
+        step = openStep(t);
+        // v5/v6 on abort: the root ends from the result stream's flush; the
+        // model step's span is never ended.
+        root.end();
+      });
+    });
+    // A late end of the abandoned step is not news.
+    step!.setAttributes({ "ai.response.finishReason": "stop" });
+    step!.end();
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    const response = events.find((e) => e.type === "model_response")!;
+    expect(response.stop_reason).toBe("cancelled");
+    expect(response.model).toBe("m");
+    expect(response.request_id).toBe(events.find((e) => e.type === "model_request")!.request_id);
+    expect(events.at(-1)!.outcome).toBe("cancelled");
+    expect(count(events, "error")).toBe(0);
+    expect(_internals.tracker()!.stats()).toEqual({ runs: 0, links: 0 });
+  });
+
+  it("closes a tool a cut-off operation left running, as cancelled", async () => {
+    const t = tracer();
+    await session({ sessionId: "s1" }, () => {
+      streamRoot(t, "agent", (root) => {
+        t.startActiveSpan(
+          "ai.toolCall",
+          { attributes: { "ai.operationId": "ai.toolCall", "ai.toolCall.name": "weather", "ai.toolCall.id": "tc1" } },
+          () => undefined,
+        );
+        root.end();
+      });
+    });
+    const events = await flushed(spool);
+    const result = events.find((e) => e.type === "tool_result")!;
+    expect(result.tool_call_id).toBe("tc1");
+    expect(result.error).toMatch(/cancelled/);
+    expect(events.at(-1)!.outcome).toBe("cancelled");
+  });
+
+  it("ends a streamText that finished no step as cancelled, and a completed one as success", async () => {
+    const t = tracer();
+    await session({ sessionId: "s1" }, () => {
+      streamRoot(t, "aborted-between-steps", (root) => root.end());
+      streamRoot(t, "finished", (root) => {
+        root.setAttributes({ "ai.response.finishReason": "stop" });
+        root.end();
+      });
+      t.startActiveSpan("ai.generateText", { attributes: { "ai.operationId": "ai.generateText" } }, (root: Span) => root.end());
+    });
+    const ends = (await flushed(spool)).filter((e) => e.type === "agent_end");
+    expect(ends.map((e) => [e.agent_id, e.outcome])).toEqual([
+      ["aborted-between-steps", "cancelled"],
+      ["finished", "success"],
+      ["ai.generateText", "success"],
+    ]);
+  });
+
+  it("ends an operation nothing will ever end — its root span collected — as cancelled and abandoned", async () => {
+    const { setFlagsFromString } = await import("node:v8");
+    const { runInNewContext } = await import("node:vm");
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+
+    // A client that disconnected: the SDK's result stream never flushes, so
+    // neither span is ended, and every reference to them is then dropped.
+    const start = (): void => {
+      const t = tracer();
+      streamRoot(t, "disconnected", () => {
+        openStep(t);
+      });
+    };
+    await session({ sessionId: "s1" }, () => {
+      start();
+    });
+    for (let i = 0; i < 20 && _internals.tracker()!.stats().runs > 0; i += 1) {
+      gc();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    expect(events[2]!.stop_reason).toBe("cancelled");
+    expect(events.at(-1)!.outcome).toBe("cancelled");
+    expect(events.at(-1)!.fw_abandoned).toBe(true);
+    expect(events.every((e) => e.session_id === "s1" && e.agent_id === "disconnected")).toBe(true);
+    expect(_internals.tracker()!.stats()).toEqual({ runs: 0, links: 0 });
+  });
+});
+
+describe("embeddings", () => {
+  type Tracer = ReturnType<typeof tracer>;
+  const embedSpans = (t: Tracer, operation = "ai.embed", functionId?: string): void => {
+    t.startActiveSpan(
+      operation,
+      { attributes: { "ai.operationId": operation, ...(functionId ? { "ai.telemetry.functionId": functionId } : {}) } },
+      (root: Span) => {
+        t.startActiveSpan(
+          `${operation}.doEmbed`,
+          { attributes: { "ai.operationId": `${operation}.doEmbed`, "ai.model.id": "embedder" } },
+          (span: Span) => {
+            span.setAttributes({ "ai.usage.tokens": 3 });
+            span.end();
+          },
+        );
+        root.end();
+      },
+    );
+  };
+  const lines = (events: Array<Record<string, unknown>>) => events.map((e) => `${String(e.agent_id)} ${String(e.type)}`);
+
+  it("tracer: a bare embed() is its own run, named by functionId", async () => {
+    embedSpans(tracer(), "ai.embed", "indexer");
+    const events = await flushed(spool);
+    expect(lines(events)).toEqual([
+      "indexer agent_start",
+      "indexer model_request",
+      "indexer model_response",
+      "indexer agent_end",
+    ]);
+    expect(events[2]!.input_tokens).toBe(3);
+  });
+
+  it("tracer: an embed() inside agent() is a model call of that agent, not a nested agent", async () => {
+    const t = tracer();
+    await session({ sessionId: "s1" }, () =>
+      agent("rag", () => {
+        embedSpans(t);
+        embedSpans(t, "ai.embedMany");
+      }),
+    );
+    const events = await flushed(spool);
+    expect(lines(events)).toEqual([
+      "rag agent_start",
+      "rag model_request",
+      "rag model_response",
+      "rag model_request",
+      "rag model_response",
+      "rag agent_end",
+    ]);
+    expect(_internals.tracker()!.stats()).toEqual({ runs: 0, links: 0 });
+  });
+
+  it("tracer: an embed() inside a tool is a model call of the operation that ran the tool", async () => {
+    const t = tracer();
+    await session({ sessionId: "s1" }, () => {
+      t.startActiveSpan(
+        "ai.generateText",
+        { attributes: { "ai.operationId": "ai.generateText", "ai.telemetry.functionId": "weather-agent" } },
+        (root: Span) => {
+          t.startActiveSpan(
+            "ai.toolCall",
+            { attributes: { "ai.operationId": "ai.toolCall", "ai.toolCall.name": "lookup", "ai.toolCall.id": "tc1" } },
+            (tool: Span) => {
+              embedSpans(t);
+              tool.end();
+            },
+          );
+          root.end();
+        },
+      );
+    });
+    const events = await flushed(spool);
+    expect(lines(events)).toEqual([
+      "weather-agent agent_start",
+      "weather-agent tool_use",
+      "weather-agent model_request",
+      "weather-agent model_response",
+      "weather-agent tool_result",
+      "weather-agent agent_end",
+    ]);
+    expect(events.at(-1)!.outcome).toBe("success");
+  });
+
+  it("tracer: a failing enclosed embed() reports its error under the enclosing agent", async () => {
+    const t = tracer();
+    await session({ sessionId: "s1" }, () =>
+      agent("rag", () => {
+        t.startActiveSpan("ai.embed", { attributes: { "ai.operationId": "ai.embed" } }, (root: Span) => {
+          root.recordException(new Error("too many values"));
+          root.end();
+        });
+      }),
+    );
+    expect(lines(await flushed(spool))).toEqual(["rag agent_start", "rag error", "rag agent_end"]);
+  });
+
+  it("v7: bare, inside agent(), and inside a tool — the same three answers", async () => {
+    const embed = (callId: string, functionId?: string): void => {
+      integration.onStart({ callId, operationId: "ai.embed", ...(functionId ? { functionId } : {}) });
+      integration.onEmbedStart({ callId, modelId: "embedder", values: ["a"] });
+      integration.onEmbedEnd({ callId, modelId: "embedder", usage: { tokens: 3 } });
+      integration.onEnd({ callId });
+    };
+    embed("bare", "indexer");
+    await session({ sessionId: "s1" }, async () => {
+      await agent("rag", () => {
+        embed("scoped");
+      });
+      integration.onStart({ callId: "outer", operationId: "ai.generateText", functionId: "weather-agent" });
+      await integration.executeTool({
+        callId: "outer",
+        execute: async () => {
+          embed("in-tool");
+        },
+      });
+      integration.onEnd({ callId: "outer" });
+    });
+    const events = await flushed(spool);
+    expect(lines(events)).toEqual([
+      "indexer agent_start",
+      "indexer model_request",
+      "indexer model_response",
+      "indexer agent_end",
+      "rag agent_start",
+      "rag model_request",
+      "rag model_response",
+      "rag agent_end",
+      "weather-agent agent_start",
+      "weather-agent model_request",
+      "weather-agent model_response",
+      "weather-agent agent_end",
+    ]);
+    expect(events.filter((e) => e.type === "model_response").map((e) => e.input_tokens)).toEqual([3, 3, 3]);
+    expect(_internals.openCalls()).toBe(0);
+    expect(_internals.tracker()!.stats()).toEqual({ runs: 0, links: 0 });
+  });
+});
+
+describe("the telemetry integration on abort and failure (ai v7)", () => {
+  it("closes the interrupted model call as cancelled, keeping its model", async () => {
+    await session({ sessionId: "s1" }, () => {
+      integration.onStart({ callId: "a1", operationId: "ai.streamText", functionId: "counter" });
+      integration.onLanguageModelCallStart({ callId: "a1", modelId: "m" });
+      integration.onAbort({ callId: "a1" });
+    });
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    expect(events[2]!.stop_reason).toBe("cancelled");
+    expect(events[2]!.model).toBe("m");
+    expect(events[3]!.outcome).toBe("cancelled");
+  });
+
+  it("keeps the model on a call closed by a failure", async () => {
+    await session({ sessionId: "s1" }, () => {
+      integration.onStart({ callId: "e1", operationId: "ai.generateText", functionId: "f" });
+      integration.onLanguageModelCallStart({ callId: "e1", modelId: "m" });
+      integration.onError({ callId: "e1", error: new Error("boom") });
+    });
+    const response = (await flushed(spool)).find((e) => e.type === "model_response")!;
+    expect(response.stop_reason).toBe("error");
+    expect(response.model).toBe("m");
+  });
 });

@@ -137,9 +137,12 @@ export function transpile(fixture: string): void {
   const out = join(dir, ".run");
   mkdirSync(out, { recursive: true });
   // `agent.ts`, plus any other top-level `agent-*.ts` program a fixture carries
-  // for APIs only its own framework release has (run through `runAgent`'s
-  // `program`). Each is standalone: programs never import one another.
-  const programs = readdirSync(dir).filter((name) => /^agent(-[\w-]+)?\.ts$/.test(name));
+  // for APIs only its own framework release has, and the named EXTRA_PROGRAMS
+  // (the ai fixtures' `surfaces.ts`) — all run through `runAgent`'s `program`.
+  // Each is standalone: programs never import one another.
+  const programs = readdirSync(dir).filter(
+    (name) => /^agent(-[\w-]+)?\.ts$/.test(name) || EXTRA_PROGRAMS.some((extra) => name === `${extra}.ts`),
+  );
   for (const name of programs) {
     const base = name.slice(0, -".ts".length);
     const source = readFileSync(join(dir, name), "utf8");
@@ -154,6 +157,9 @@ export function transpile(fixture: string): void {
     emit(ts.ModuleKind.CommonJS, `${base}.cjs`);
   }
 }
+
+/** Entry programs besides `agent.ts` that a fixture may ship, run with `runAgent(..., program)`. */
+const EXTRA_PROGRAMS = ["surfaces"];
 
 /** Run one case of a fixture's agent in one module system. */
 export function runAgent(

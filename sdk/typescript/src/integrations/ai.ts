@@ -9,7 +9,9 @@
  *
  * | AI SDK                                                   | FailproofAI                                   |
  * |----------------------------------------------------------|-----------------------------------------------|
- * | `generateText` / `streamText` / `generateObject` / `streamObject` / `embed` / `embedMany` call | `agent_start` / `agent_end`; `agent_id` = `functionId`, else the operation name (`ai.generateText`) — never a call or span id |
+ * | `generateText` / `streamText` / `generateObject` / `streamObject` call — including one made by an agent class (`Experimental_Agent`, `ToolLoopAgent`) | `agent_start` / `agent_end`; `agent_id` = `functionId`, else the operation name (`ai.generateText`) — never a call or span id. An agent class's own `id` is dropped by the SDK before telemetry sees it: set `functionId` in its telemetry settings |
+ * | `embed` / `embedMany` with nothing enclosing it           | its own run, like a bare `wrapModel` call: `agent_start`, a model pair per provider call, `agent_end` |
+ * | `embed` / `embedMany` inside `failproofai.agent()` or a tool | model pairs of the enclosing agent — no nested agent (it owns no decision loop) |
  * | a model step (one provider call; a tool loop makes several) | `model_request` / `model_response`, paired on `request_id` |
  * | a tool execution                                         | `tool_use` / `tool_result`, with the MODEL's own `toolCallId` |
  * | an operation inside `failproofai.agent()` / a tool       | nested: `parent_id` = the enclosing agent     |
@@ -29,6 +31,16 @@
  * leaf carried it. v5+ hands a tool failure back to the model as a tool-error
  * result and the loop carries on, so there the agent ends `success`: it
  * recovered. v4 throws it out of `generateText`, so there it ends `failed`.
+ *
+ * **A stream that does not finish ends `cancelled`.** An aborted stream closes
+ * its open model call with `stop_reason: "cancelled"` on every major. A stream
+ * whose reader goes away — a client disconnecting from a route that returns
+ * `toUIMessageStreamResponse()`, a stream nobody reads, a v4–v6 provider
+ * stream that breaks mid-way — is never ended by the SDK at all; on v4–v6 the
+ * adapter closes it when its root span is garbage-collected (`fw_abandoned`).
+ * v7 reports none of these to an integration and hands it nothing to watch,
+ * so there the agent stays open (bounded by `MAX_OPEN_CALLS`) unless the call
+ * passes an `abortSignal` — the request's own, in a route handler.
  *
  * ## Where it attaches
  *
@@ -178,6 +190,24 @@ function toolCallOf(part: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
+ * A step's tool calls in the one shape every path emits —
+ * `{ toolCallId, toolName, input }` with `input` parsed. The tracer reads them
+ * from `ai.response.toolCalls`, which each major spells its own way: v4
+ * `{ toolCallType, args: "<json>" }`, v5/v6 `generateText` `{ input: "<json>" }`,
+ * v5/v6 `streamText` `{ type: "tool-call", input: {…} }`. Passed through, the
+ * same call read three different ways on the dashboard, its input a JSON
+ * string inside JSON.
+ */
+export function toolCallsOf(value: unknown): Array<Record<string, unknown>> | undefined {
+  const parsed = parseMaybeJson(value);
+  if (!Array.isArray(parsed)) return undefined;
+  const calls = parsed
+    .filter((call): call is Record<string, unknown> => typeof call === "object" && call !== null)
+    .map(toolCallOf);
+  return calls.length > 0 ? calls : undefined;
+}
+
+/**
  * What the model said: its text, or — for a step that only called tools — the
  * calls. Reads v4's `{ text, toolCalls }` and v5+'s `content: [parts]`.
  */
@@ -257,6 +287,20 @@ const ROOT_OPERATIONS = new Set([
   "ai.embedMany",
 ]);
 
+/**
+ * The embedding operations. An embedding call owns no decision loop, so it is
+ * an agent only when nothing encloses it — a bare `embed()` in an indexing
+ * script is its own run, the way a bare `wrapModel` call is. Inside an agent
+ * (a `failproofai.agent()` scope, or a tool of a traced operation) it is a
+ * model call of THAT agent: a nested `ai.embed` agent per retrieval drowned
+ * the real agents in the `agent_id` facet.
+ */
+const EMBED_OPERATIONS = new Set(["ai.embed", "ai.embedMany"]);
+
+/** Whether an operation starting now has an agent above it to belong to. */
+const enclosedByAgent = (parentKey: unknown): boolean =>
+  parentKey !== undefined || currentIdentity().agentId !== null;
+
 /** The operations that ARE the model call. Each becomes a request/response pair. */
 const MODEL_OPERATIONS = new Set([
   "ai.generateText.doGenerate",
@@ -268,6 +312,105 @@ const MODEL_OPERATIONS = new Set([
 ]);
 
 let spanCounter = 0;
+
+/** A model or tool span still open: what closing it takes, held apart from the span. */
+interface OpenLeaf {
+  id: string;
+  parentId: string | undefined;
+  /** Set for a model call (its model id, possibly undefined); unset for a tool. */
+  model?: { id: string | undefined };
+  tool?: { toolName: string; toolCallId: string };
+  started: number;
+  closed: boolean;
+}
+
+/**
+ * What an operation still owes the trace — its `agent_end` and the leaves
+ * under it that never closed. Plain data, deliberately holding no span, so a
+ * `FinalizationRegistry` can settle it once the root span itself is gone.
+ */
+interface Ledger {
+  id: string;
+  operation: string;
+  started: number;
+  tracker: core.RunTracker;
+  /** False for an enclosed embedding operation, which opened no agent. */
+  agent: boolean;
+  leaves: Map<string, OpenLeaf>;
+  done: boolean;
+}
+
+/** Close a leaf that will never end by itself, as cancelled. */
+function closeLeaf(t: core.RunTracker, leaf: OpenLeaf): void {
+  leaf.closed = true;
+  if (leaf.model !== undefined) {
+    t.emit("modelResponse", leaf.id, {
+      parentKey: leaf.parentId,
+      model: leaf.model.id,
+      stopReason: "cancelled",
+      role: "assistant",
+      requestId: leaf.id,
+      ...core.fwFields({ duration_ms: core.ms(Date.now() - leaf.started) }),
+    });
+  } else if (leaf.tool !== undefined) {
+    t.emit("toolResult", leaf.id, {
+      parentKey: leaf.parentId,
+      ...leaf.tool,
+      error: "cancelled: the operation ended before the tool returned",
+    });
+  }
+  t.unlink(leaf.id);
+}
+
+/** Close every leaf still open under an operation; whether there were any. */
+function settleLeaves(t: core.RunTracker, ledger: Ledger): boolean {
+  const leaves = [...ledger.leaves.values()];
+  ledger.leaves.clear();
+  for (const leaf of leaves) closeLeaf(t, leaf);
+  return leaves.length > 0;
+}
+
+/**
+ * Operations whose root span was garbage-collected before anything ended it.
+ *
+ * The SDK ends a stream's root span from its result stream's `flush()`, and a
+ * `TransformStream` never flushes when its reader cancels or its source
+ * errors. So a client that disconnects from a route returning
+ * `toUIMessageStreamResponse()`, a stream nobody reads, and (on v4) a provider
+ * stream that breaks mid-way all leave the root span open forever — for the
+ * SDK's own OpenTelemetry exporters as much as for this adapter — and the
+ * agent reads as still running. Once nothing can reach the root span nothing
+ * can end it either, so that is exactly when it is safe to say it never will:
+ * the agent ends `cancelled`, marked `fw_abandoned`.
+ */
+const abandonedOperations =
+  typeof FinalizationRegistry === "function"
+    ? new FinalizationRegistry<Ledger>((ledger) => {
+        if (ledger.done) return;
+        ledger.done = true;
+        const t = tracker;
+        // A tracker since replaced (uninstall, reinstall) no longer owns this run.
+        if (t === null || t !== ledger.tracker) return;
+        core.callSafely(
+          () => {
+            settleLeaves(t, ledger);
+            if (ledger.agent) {
+              t.endAgent(ledger.id, {
+                outcome: "cancelled",
+                ...core.fwFields({
+                  operation: ledger.operation,
+                  abandoned: true,
+                  duration_ms: core.ms(Date.now() - ledger.started),
+                }),
+              });
+            }
+            t.unlink(ledger.id);
+          },
+          [],
+          `${NAME}.span.abandoned`,
+        );
+      })
+    : null;
 
 /**
  * One OpenTelemetry span, translated as it opens and as it ends.
@@ -289,6 +432,17 @@ export class FailproofSpan {
   private ended = false;
   private failure: unknown = undefined;
   private leafFailed = false;
+  /** An enclosed embedding operation: its model calls belong to the agent above, it is no agent itself. */
+  private passThrough = false;
+  /**
+   * On a root: what the operation still owes. The SDK does not end a model
+   * span when a stream is aborted — only the root — so the root closes
+   * whatever is left when it ends, and the ledger survives the span for the
+   * case where nothing ends the root at all.
+   */
+  private ledger: Ledger | undefined;
+  /** On a model or tool span: its entry in the root's ledger. */
+  private leaf: OpenLeaf | undefined;
 
   constructor(spanName: string, parent: FailproofSpan | undefined, attributes: Attributes = {}) {
     this.spanName = spanName;
@@ -300,6 +454,41 @@ export class FailproofSpan {
     core.callSafely(() => {
       this.open();
     }, [], `${NAME}.span.start`);
+    core.callSafely(() => {
+      this.track();
+    }, [], `${NAME}.span.track`);
+  }
+
+  /** Enter this span in its operation's ledger (or, for a root, open one). */
+  private track(): void {
+    const t = tracker;
+    if (t === null || this.root === undefined) return;
+    if (this.root === this) {
+      this.ledger = {
+        id: this.id,
+        operation: this.operation(),
+        started: this.started,
+        tracker: t,
+        agent: !this.passThrough,
+        leaves: new Map(),
+        done: false,
+      };
+      abandonedOperations?.register(this, this.ledger, this.ledger);
+    } else if (this.isLeaf && this.root.ledger !== undefined) {
+      this.leaf = {
+        id: this.id,
+        parentId: this.parentId,
+        ...(this.isModelCall ? { model: { id: this.model() } } : { tool: this.tool() }),
+        started: this.started,
+        closed: false,
+      };
+      this.root.ledger.leaves.set(this.id, this.leaf);
+    }
+  }
+
+  /** A model or tool span: one that opens a request/tool pair it must close. */
+  private get isLeaf(): boolean {
+    return this.isModelCall || this.operation() === "ai.toolCall";
   }
 
   get spanId(): string {
@@ -321,6 +510,11 @@ export class FailproofSpan {
     if (t === null) return;
     const a = this.attributes;
     const operation = this.operation();
+    if (EMBED_OPERATIONS.has(operation) && enclosedByAgent(this.parentId)) {
+      this.passThrough = true;
+      t.link(this.id, this.parentId);
+      return;
+    }
     if (ROOT_OPERATIONS.has(operation)) {
       t.startAgent(this.id, {
         agentId: agentName(a["ai.telemetry.functionId"], operation),
@@ -424,6 +618,15 @@ export class FailproofSpan {
   end(): void {
     if (this.ended) return;
     this.ended = true;
+    if (this.leaf !== undefined) {
+      // Closed as cancelled when its operation ended; a late end is not news.
+      if (this.leaf.closed) return;
+      this.root?.ledger?.leaves.delete(this.id);
+    }
+    if (this.ledger !== undefined) {
+      this.ledger.done = true;
+      abandonedOperations?.unregister(this.ledger);
+    }
     const t = tracker;
     if (t === null) return;
     core.callSafely(() => {
@@ -438,7 +641,7 @@ export class FailproofSpan {
     if (failed && this.root && this.root !== this) this.root.leafFailed = true;
 
     if (MODEL_OPERATIONS.has(operation)) {
-      const toolCalls = parseMaybeJson(a["ai.response.toolCalls"]);
+      const toolCalls = toolCallsOf(a["ai.response.toolCalls"]);
       t.emit("modelResponse", this.id, {
         parentKey: this.parentId,
         model: (typeof a["ai.response.model"] === "string" ? a["ai.response.model"] : undefined) ?? this.model(),
@@ -453,13 +656,13 @@ export class FailproofSpan {
         ),
         content: failed
           ? undefined
-          : (nonEmpty(a["ai.response.text"]) ?? nonEmpty(toolCalls) ?? parseMaybeJson(nonEmpty(a["ai.response.object"]))),
+          : (nonEmpty(a["ai.response.text"]) ?? toolCalls ?? parseMaybeJson(nonEmpty(a["ai.response.object"]))),
         role: "assistant",
         requestId: this.id,
         error: failed ? errorText(this.failure) : undefined,
         ...core.fwFields({
           duration_ms: core.ms(Date.now() - this.started),
-          tool_calls: failed ? undefined : nonEmpty(toolCalls),
+          tool_calls: failed ? undefined : toolCalls,
           response_id: a["ai.response.id"],
         }),
       });
@@ -473,20 +676,33 @@ export class FailproofSpan {
         error: failed ? errorText(this.failure) : undefined,
       });
     } else if (ROOT_OPERATIONS.has(operation)) {
+      const cutOff = this.ledger !== undefined && settleLeaves(t, this.ledger);
       // The failure is already on the model_response / tool_result that raised
       // it; a second `error` here would count it twice.
       if (failed && !this.leafFailed) {
         const detail = errorOf(this.failure);
-        t.emit("error", this.id, { errorType: detail.type, message: detail.message, traceback: detail.stack });
+        t.emit("error", this.id, {
+          ...(this.passThrough ? { parentKey: this.parentId } : {}),
+          errorType: detail.type,
+          message: detail.message,
+          traceback: detail.stack,
+        });
       }
-      t.endAgent(this.id, {
-        outcome: failed ? "failed" : "success",
-        ...core.fwFields({
-          operation,
-          duration_ms: core.ms(Date.now() - this.started),
-          finish_reason: stopReasonOf(a["ai.response.finishReason"]),
-        }),
-      });
+      if (!this.passThrough) {
+        // An aborted stream ends its root with a model call still open and no
+        // finish reason (v5/v6 end only the root; v4 the same when the
+        // provider honours the signal). It did not succeed: it was cancelled.
+        const finishReason = stopReasonOf(a["ai.response.finishReason"]);
+        const cancelled = cutOff || (operation === "ai.streamText" && finishReason === undefined);
+        t.endAgent(this.id, {
+          outcome: failed ? "failed" : cancelled ? "cancelled" : "success",
+          ...core.fwFields({
+            operation,
+            duration_ms: core.ms(Date.now() - this.started),
+            finish_reason: finishReason,
+          }),
+        });
+      }
     }
     // Every span kind leaves a parent link behind (`emit` with a `parentKey`,
     // `startAgent` under a parent, `link` for any other span). Its last event
@@ -607,12 +823,17 @@ interface Call {
   key: string;
   operation: string;
   /** Model calls started and not yet ended, oldest first — one at a time in practice. */
-  pending: Array<{ id: string; started: number }>;
+  pending: Array<{ id: string; started: number; model: string | undefined }>;
   /** Tool keys whose `tool_use` is out and whose `tool_result` is not. */
   tools: Set<string>;
   sequence: number;
   /** A leaf already recorded the failure; the agent's end must not repeat it. */
   leafFailed: boolean;
+  /**
+   * Whether this call is an agent. An embedding call inside one is not: its
+   * model calls are recorded on the enclosing agent and it opens no run.
+   */
+  agent: boolean;
 }
 
 const MAX_OPEN_CALLS = 10_000;
@@ -640,7 +861,7 @@ function startModel(event: Event7, fields: Record<string, unknown>): void {
   if (t === null || call === undefined) return;
   call.sequence += 1;
   const id = `${call.key}:m${String(call.sequence)}`;
-  call.pending.push({ id, started: Date.now() });
+  call.pending.push({ id, started: Date.now(), model: typeof event.modelId === "string" ? event.modelId : undefined });
   t.emit("modelRequest", id, {
     parentKey: call.key,
     model: typeof event.modelId === "string" ? event.modelId : undefined,
@@ -657,7 +878,8 @@ function endModel(event: Event7 | undefined, call: Call, fields: Record<string, 
   const performance = event?.performance as { responseTimeMs?: unknown } | undefined;
   t.emit("modelResponse", open.id, {
     parentKey: call.key,
-    model: typeof event?.modelId === "string" ? event.modelId : undefined,
+    // An aborted or failed call is closed with no end event: keep the model it started with.
+    model: typeof event?.modelId === "string" ? event.modelId : open.model,
     role: "assistant",
     requestId: open.id,
     ...fields,
@@ -681,14 +903,17 @@ function finishCall(call: Call, outcome: string, error?: unknown, fields: Record
   calls.delete(call.callId);
   if (t === null) return;
   while (call.pending.length > 0) {
-    if (error === undefined) endModel(undefined, call, { stopReason: "incomplete" });
+    // An abort closes the model call it interrupted as cancelled, like the
+    // middleware does; "incomplete" is left for an operation that ended with
+    // a call the SDK never reported back.
+    if (error === undefined) endModel(undefined, call, { stopReason: outcome === "cancelled" ? "cancelled" : "incomplete" });
     else failModel(call, error);
   }
   if (error !== undefined && !call.leafFailed) {
     const detail = errorOf(error);
     t.emit("error", call.key, { errorType: detail.type, message: detail.message, traceback: detail.stack });
   }
-  t.endAgent(call.key, { outcome, ...fields });
+  if (call.agent) t.endAgent(call.key, { outcome, ...fields });
   // Forget every link this call left: its own (a nested call's), and any tool
   // the operation abandoned mid-run (an abort, an error).
   t.unlink(call.key);
@@ -720,10 +945,16 @@ export const integration: AiTelemetryIntegration = {
     }
     const operation = typeof event.operationId === "string" ? event.operationId : "ai";
     const key = `ai7:${callId}`;
-    calls.set(callId, { callId, key, operation, pending: [], tools: new Set(), sequence: 0, leafFailed: false });
+    const parentKey = enclosingCall.getStore();
+    const agent = !(EMBED_OPERATIONS.has(operation) && enclosedByAgent(parentKey));
+    calls.set(callId, { callId, key, operation, pending: [], tools: new Set(), sequence: 0, leafFailed: false, agent });
+    if (!agent) {
+      t.link(key, parentKey);
+      return;
+    }
     t.startAgent(key, {
       agentId: agentName(event.functionId, operation),
-      parentKey: enclosingCall.getStore(),
+      parentKey,
       ...core.fwFields({ operation, call_id: callId }),
     });
   }),

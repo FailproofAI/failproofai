@@ -8,6 +8,9 @@
 // Everything below the `--- the same in every fixture` line is the same
 // program in every ai-* fixture; only the model mock and the tool/loop
 // spelling above it change between majors.
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
 import * as failproofai from "@failproofai/sdk";
 import { middleware, telemetry, tracer, wrapModel } from "@failproofai/sdk/ai";
 import {
@@ -149,6 +152,86 @@ async function readme(): Promise<void> {
   report({ text, wrapped: (await generateText({ model: wrapped, prompt })).text, viaMiddleware: viaMiddleware.modelId, withMetadata: withMetadata.text, withTracer: await viaTracer(prompt) });
 }
 
+/**
+ * The customer's own OpenTelemetry, set up AFTER `instrument("ai")` — the
+ * usual order when tracing starts in a module loaded later (a `NodeSDK`
+ * started from an instrumentation file). Null when `@opentelemetry/api` is not
+ * installed (ai 7 dropped the dependency).
+ */
+function customerTracing(): { registered: boolean; ended: () => string[] } | null {
+  interface Api {
+    trace: {
+      setGlobalTracerProvider(provider: unknown): boolean;
+      getTracer(name: string): { startSpan(name: string): { end(): void } };
+    };
+  }
+  let api: Api;
+  try {
+    api = createRequire(join(process.cwd(), "agent.js"))("@opentelemetry/api") as Api;
+  } catch {
+    return null;
+  }
+  const ended: string[] = [];
+  const span = (name: string) => ({
+    setAttribute() { return this; },
+    setAttributes() { return this; },
+    addEvent() { return this; },
+    addLink() { return this; },
+    addLinks() { return this; },
+    setStatus() { return this; },
+    updateName() { return this; },
+    recordException() {},
+    isRecording: () => true,
+    spanContext: () => ({ traceId: "0".repeat(31) + "1", spanId: "0".repeat(15) + "1", traceFlags: 1 }),
+    end: () => void ended.push(name),
+  });
+  const theirs = {
+    startSpan: (name: string) => span(name),
+    startActiveSpan: (name: string, ...rest: unknown[]) => (rest[rest.length - 1] as (s: unknown) => unknown)(span(name)),
+  };
+  const registered = api.trace.setGlobalTracerProvider({ getTracer: () => theirs });
+  // What an http / pg / Next.js instrumentation does with the global API.
+  api.trace.getTracer("my-service").startSpan("http.request").end();
+  return { registered, ended: () => [...new Set(ended)].sort() };
+}
+
+/** A model whose stream breaks part-way: the provider connection dropped. */
+function breakMidStream<M>(model: M): M {
+  const target = model as unknown as { doStream: (options: unknown) => PromiseLike<{ stream: ReadableStream<unknown> }> };
+  const original = target.doStream.bind(target);
+  target.doStream = async (options: unknown) => {
+    const result = await original(options);
+    const reader = result.stream.getReader();
+    let parts = 0;
+    return {
+      ...result,
+      stream: new ReadableStream<unknown>({
+        async pull(controller) {
+          if (parts++ === 2) {
+            controller.error(new Error("connection reset"));
+            return;
+          }
+          const next = await reader.read();
+          if (next.done) controller.close();
+          else controller.enqueue(next.value);
+        },
+      }),
+    };
+  };
+  return model;
+}
+
+/** Call a model's `doStream` directly, as a provider-level consumer does. */
+async function openStream(model: unknown): Promise<ReadableStreamDefaultReader<unknown>> {
+  const call = {
+    inputFormat: "prompt",
+    mode: { type: "regular" },
+    prompt: [{ role: "user", content: [{ type: "text", text: "Weather in Rome?" }] }],
+  };
+  const { stream } = await (model as { doStream(options: unknown): PromiseLike<{ stream: ReadableStream<unknown> }> }).doStream(call);
+  return stream.getReader();
+}
+
 async function main(scenario: string): Promise<void> {
   switch (scenario) {
     case "generate":
@@ -190,6 +273,40 @@ async function main(scenario: string): Promise<void> {
       report({ instrumented: await failproofai.instrument("ai") });
       report({ text: await askStreaming(scripted(), { telemetry: { isEnabled: true, functionId: "weather-agent" } }) });
       break;
+    case "instrument-global":
+      report({ instrumented: await failproofai.instrument("ai", { registerGlobalTracer: true }) });
+      report({ text: await ask(scripted(), { telemetry: { isEnabled: true, functionId: "weather-agent" } }) });
+      break;
+    case "instrument-global-stream":
+      report({ instrumented: await failproofai.instrument("ai", { registerGlobalTracer: true }) });
+      report({ text: await askStreaming(scripted(), { telemetry: { isEnabled: true, functionId: "weather-agent" } }) });
+      break;
+    case "instrument-then-otel": {
+      report({ instrumented: await failproofai.instrument("ai") });
+      const customer = customerTracing();
+      const text = await ask(scripted(), { telemetry: { isEnabled: true, functionId: "weather-agent" } });
+      report({ text, customer: customer === null ? "absent" : { registered: customer.registered, ended: customer.ended() } });
+      break;
+    }
+    case "wrap-stream-cancel": {
+      const reader = await openStream(await wrapModel(scripted("answer")));
+      await reader.read();
+      await reader.cancel("client disconnected");
+      report({ cancelled: true });
+      break;
+    }
+    case "wrap-stream-error": {
+      const reader = await openStream(await wrapModel(breakMidStream(scripted("answer"))));
+      try {
+        while (!(await reader.read()).done) {
+          // drain
+        }
+        report({ drained: true });
+      } catch (error) {
+        report({ threw: (error as Error).message });
+      }
+      break;
+    }
     case "uninstrument":
       report({ instrumented: await failproofai.instrument("ai") });
       report({ removed: failproofai.uninstrument() });

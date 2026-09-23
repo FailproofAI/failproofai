@@ -84,14 +84,24 @@ describe.each(FIXTURES)("%s", (fixture) => {
   });
 
   describe.each(FORMATS)("as %s", (format) => {
-    const run = (scenario: string) => {
+    const run = (scenario: string, { expectNote = false } = {}) => {
       const result = runAgent(fixture, format, scenario);
       expect(result.status, describeTrace(result)).toBe(0);
       // A warning from the SDK is how a silently-inert adapter shows itself
       // ("could not resolve a session", "outside the supported range").
-      expect(result.stderr, describeTrace(result)).not.toContain("[failproofai-sdk]");
+      const lines = result.stderr.split("\n").filter((line) => line.includes("[failproofai-sdk]"));
+      if (expectNote) {
+        // The one deliberate exception: instrument("ai") on ai 4–6 says, once,
+        // that by itself it records nothing there — and nothing else is said.
+        expect(lines, describeTrace(result)).toHaveLength(1);
+        expect(lines[0], describeTrace(result)).toContain("registerGlobalTracer");
+      } else {
+        expect(lines, describeTrace(result)).toEqual([]);
+      }
       return result;
     };
+    /** instrument("ai") without the opt-in: inert, and noted, on ai 4–6. */
+    const noted = major < 7;
 
     it("records generateText with a tool loop as one agent", () => {
       const result = run("generate");
@@ -213,15 +223,91 @@ describe.each(FIXTURES)("%s", (fixture) => {
       expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
     });
 
-    it.each(["instrument", "instrument-stream"])("%s: instrument('ai') records the same trace as telemetry()", (scenario) => {
-      const result = run(scenario);
-      expect(result.stdout).toContain('"instrumented":["ai"]');
-      expect(shape(result.events), describeTrace(result)).toEqual(scenario === "instrument" ? GEN : STREAM);
+    it.each(["instrument", "instrument-stream"])(
+      "%s: instrument('ai') records the same trace as telemetry() on ai 7, and on ai 4–6 records nothing and says so",
+      (scenario) => {
+        const result = run(scenario, { expectNote: noted });
+        expect(result.stdout).toContain('"instrumented":["ai"]');
+        if (major >= 7) {
+          expect(shape(result.events), describeTrace(result)).toEqual(scenario === "instrument" ? GEN : STREAM);
+          expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+        } else {
+          // v4–v6's only process-wide hook is the global OpenTelemetry slot,
+          // which instrument("ai") no longer takes by default.
+          expect(result.events, describeTrace(result)).toEqual([]);
+          expect(result.stdout).toContain(scenario === "instrument" ? "It is 20C in Paris." : "Rome is 25C.");
+        }
+      },
+    );
+
+    it.each(["instrument-global", "instrument-global-stream"])(
+      "%s: instrument('ai', { registerGlobalTracer: true }) records the same trace as telemetry()",
+      (scenario) => {
+        const result = run(scenario);
+        expect(result.stdout).toContain('"instrumented":["ai"]');
+        expect(shape(result.events), describeTrace(result)).toEqual(scenario === "instrument-global" ? GEN : STREAM);
+        expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      },
+    );
+
+    it("leaves the global OpenTelemetry slot to a customer provider registered after instrument('ai')", () => {
+      const result = run("instrument-then-otel", { expectNote: noted });
+      const report = JSON.parse(result.stdout.trim().split("\n").pop()!) as {
+        text: string;
+        customer: "absent" | { registered: boolean; ended: string[] };
+      };
+      expect(report.text).toBe("It is 20C in Paris.");
+      if (major >= 7) {
+        // v7 has no OpenTelemetry dependency; the integration records the call.
+        expect(report.customer).toBe("absent");
+        expect(shape(result.events), describeTrace(result)).toEqual(GEN);
+        return;
+      }
+      // Their registration is accepted, and their tracer gets every span —
+      // the AI SDK's own and their service's.
+      expect(report.customer, describeTrace(result)).toEqual({
+        registered: true,
+        ended: expect.arrayContaining(["ai.generateText", "ai.generateText.doGenerate", "ai.toolCall", "http.request"]),
+      });
+      expect(result.events, describeTrace(result)).toEqual([]);
+    });
+
+    it("closes a streamed wrapModel call the reader cancels, as cancelled", () => {
+      const result = run("wrap-stream-cancel");
+      expect(result.stdout).toContain('"cancelled":true');
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "mock-model agent_start",
+        "mock-model model_request",
+        "mock-model model_response",
+        "mock-model agent_end",
+      ]);
       expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      const response = ofType(result.events, "model_response")[0]!;
+      expect(response.stop_reason).toBe("cancelled");
+      expect(response.error).toBeUndefined();
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("cancelled");
+      expect(count(result.events, "error")).toBe(0);
+    });
+
+    it("closes a streamed wrapModel call whose stream errors, with the error", () => {
+      const result = run("wrap-stream-error");
+      expect(result.stdout).toContain('"threw":"connection reset"');
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "mock-model agent_start",
+        "mock-model model_request",
+        "mock-model model_response",
+        "mock-model agent_end",
+      ]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      const response = ofType(result.events, "model_response")[0]!;
+      expect(response.stop_reason).toBe("error");
+      expect(response.error).toMatch(/connection reset/);
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("failed");
+      expect(count(result.events, "error")).toBe(0);
     });
 
     it("records nothing after uninstrument()", () => {
-      const result = run("uninstrument");
+      const result = run("uninstrument", { expectNote: noted });
       expect(result.stdout).toContain('"removed":["ai"]');
       expect(result.events, describeTrace(result)).toEqual([]);
     });

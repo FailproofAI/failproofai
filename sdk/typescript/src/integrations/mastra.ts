@@ -490,51 +490,6 @@ function foldStreamPart(outcome: ModelOutcome, part: unknown): void {
   }
 }
 
-/**
- * Pass `source` through untouched, observing each part and calling `done`
- * exactly once — when it ends, errors, or the reader cancels it.
- *
- * A pull-based re-stream rather than `pipeThrough(new TransformStream())`: a
- * transformer has no hook for a consumer that cancels, and a step whose
- * consumer walked away must still close its `model_request`.
- */
-function observeStream(
-  source: ReadableStream<unknown>,
-  onPart: (part: unknown) => void,
-  done: (error?: unknown) => void,
-): ReadableStream<unknown> {
-  const reader = source.getReader();
-  let finished = false;
-  const finish = (error?: unknown): void => {
-    if (finished) return;
-    finished = true;
-    core.callSafely(done, [error], `${NAME}.stream`);
-  };
-  return new ReadableStream<unknown>({
-    async pull(controller) {
-      let chunk: { done: boolean; value?: unknown };
-      try {
-        chunk = await reader.read();
-      } catch (error) {
-        finish(error);
-        controller.error(error);
-        return;
-      }
-      if (chunk.done) {
-        finish();
-        controller.close();
-        return;
-      }
-      core.callSafely(onPart, [chunk.value], `${NAME}.stream`);
-      controller.enqueue(chunk.value);
-    },
-    cancel(reason) {
-      finish(reason ?? new Error("stream cancelled"));
-      return reader.cancel(reason);
-    },
-  });
-}
-
 type ModelMethod = (options: unknown) => PromiseLike<unknown>;
 
 /**
@@ -572,10 +527,13 @@ function observedCall(target: object, original: ModelMethod, frame: Frame, name:
     const outcome: ModelOutcome = {};
     return {
       ...(result as object),
-      stream: observeStream(
+      // Pull-based, so a consumer that cancels still closes the step (see
+      // core.observeStream). A cancel ends it with the cancel reason as its error.
+      stream: core.observeStream(
         stream as ReadableStream<unknown>,
         (part) => foldStreamPart(outcome, part),
         (error) => endModelCall(call, error === undefined ? outcome : { ...outcome, error: outcome.error ?? error }),
+        `${NAME}.stream`,
       ),
     };
   };

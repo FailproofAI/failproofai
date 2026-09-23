@@ -253,6 +253,66 @@ export function unwrap<T>(value: T): T {
 }
 
 // ---------------------------------------------------------------------------
+// Observing a stream without owning it
+// ---------------------------------------------------------------------------
+
+/**
+ * Pass `source` through untouched, handing each part to `onPart` and calling
+ * `done` exactly once — when the stream ends, when it errors, or when the
+ * reader cancels it.
+ *
+ * `done(undefined, false)` is a clean end; `done(error, false)` a stream that
+ * errored; `done(reason, true)` a consumer that cancelled (the reason is
+ * whatever it passed to `cancel()`, or a generic error when it passed nothing).
+ * The cancel is forwarded to `source`, so a provider connection is released.
+ *
+ * A pull-based re-stream rather than `pipeThrough(new TransformStream())`: a
+ * transformer's `flush` runs only on a clean end, with no hook for a consumer
+ * that walks away or a source that errors — and a model call observed that
+ * way stays open forever in exactly the cases worth recording.
+ *
+ * `onPart` and `done` run under `callSafely(site)`: an observer that throws
+ * never breaks the caller's stream.
+ */
+export function observeStream<T>(
+  source: ReadableStream<T>,
+  onPart: (part: T) => void,
+  done: (error: unknown, cancelled: boolean) => void,
+  site: string,
+): ReadableStream<T> {
+  const reader = source.getReader();
+  let finished = false;
+  const finish = (error: unknown, cancelled: boolean): void => {
+    if (finished) return;
+    finished = true;
+    callSafely(done, [error, cancelled], site);
+  };
+  return new ReadableStream<T>({
+    async pull(controller) {
+      let chunk: { done: boolean; value?: T };
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        finish(error, false);
+        controller.error(error);
+        return;
+      }
+      if (chunk.done) {
+        finish(undefined, false);
+        controller.close();
+        return;
+      }
+      callSafely(onPart, [chunk.value], site);
+      controller.enqueue(chunk.value as T);
+    },
+    cancel(reason) {
+      finish(reason ?? new Error("stream cancelled"), true);
+      return reader.cancel(reason);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Install / uninstall discipline
 // ---------------------------------------------------------------------------
 

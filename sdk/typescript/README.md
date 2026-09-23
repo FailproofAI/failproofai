@@ -91,7 +91,7 @@ failproofai.uninstrument();                  // put everything back
 | framework | supported | how it attaches |
 |---|---|---|
 | **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, so every `invoke`/`stream`/`batch` is covered without passing `callbacks:` anywhere — or pass `langchainHandler()` yourself and patch nothing. |
-| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` at the call site, or `instrument("ai")` for the whole process — see below. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` at the call site, or `instrument("ai")` for the whole process on `ai` 7 (on 4–6 that is opt-in) — see below. |
 | **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, the agent's model and tool resolution, and the workflow run/step engine. Tools built before `instrument()` are covered. |
 | **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (subscribed) plus `AgentWorkflow.runStream`, for workflow runs and their steps. |
 
@@ -147,14 +147,32 @@ model request/response pair per step with token counts, and every tool call.
 One call site works on every major: `ai` 4–6 read the tracer it carries, `ai` 7
 reads the telemetry integration it carries.
 
-`instrument("ai")` does the same for the whole process. On `ai` 7 that is every
-call; on 4–6 it is every call that passes `experimental_telemetry: { isEnabled:
-true }` — the AI SDK only consults the global tracer for those. It never
-replaces an OpenTelemetry tracer provider you registered yourself.
+`instrument("ai")` does the same for the whole process **on `ai` 7**: every
+call, through the AI SDK's global telemetry-integration list, which is additive
+and takes nothing from anybody else's.
+
+**On `ai` 4–6, `instrument("ai")` records nothing by itself, and logs one
+warning saying so.** The only process-wide hook those majors have is the global
+OpenTelemetry tracer provider — a single slot that OpenTelemetry refuses to hand
+over once taken. Registering ours would silently refuse your own
+`NodeSDK.start()` later in startup and send your http/database spans to a tracer
+that exports nothing. Use `telemetry()` at the call site (above) or `wrapModel`
+(below) there. If the process runs no OpenTelemetry of its own, you can opt in:
+
+```ts
+await instrument("ai", { registerGlobalTracer: true });
+```
+
+— it then records every call that passes `experimental_telemetry: { isEnabled:
+true }` (the AI SDK only consults the global tracer for those), and only takes
+the slot if it is still empty. `registerGlobalTracer: false` keeps the default
+and silences the warning.
 
 If you would rather wrap the model once, `wrapModel` sees model calls only,
 because tool calls happen above the model layer. A wrapped model called with
-nothing around it is recorded as its own run, named after the model:
+nothing around it is recorded as its own run, named after the model. A streamed
+call closes however the stream stops: `stop_reason: "cancelled"` when the
+consumer cancels it, `"error"` with the error when it fails part-way:
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";

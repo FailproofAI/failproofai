@@ -1,7 +1,14 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import * as core from "../src/integrations/core.js";
 import {
+  FailproofSpan,
+  _internals,
   adapter,
   integration,
   middleware,
@@ -11,6 +18,7 @@ import {
   usageTokens,
 } from "../src/integrations/ai.js";
 import { setLogger } from "../src/logger.js";
+import { runtime } from "../src/runtime.js";
 import { agent, session } from "../src/scopes.js";
 import { flushed, useSpool } from "./helpers.js";
 import type { Spool } from "./helpers.js";
@@ -42,6 +50,7 @@ afterEach(async () => {
 });
 
 const types = (events: Array<Record<string, unknown>>) => events.map((e) => e.type);
+const count = (events: Array<Record<string, unknown>>, type: string) => events.filter((e) => e.type === type).length;
 
 interface Span {
   setAttributes: (a: Record<string, unknown>) => unknown;
@@ -434,4 +443,329 @@ describe("the middleware", () => {
       "stop",
     ]);
   });
+});
+
+describe("the middleware on a stream that does not finish", () => {
+  const endless = (onCancel: (reason: unknown) => void) =>
+    new ReadableStream({
+      pull(controller) {
+        controller.enqueue({ type: "text-delta", delta: "x" });
+      },
+      cancel(reason) {
+        onCancel(reason);
+      },
+    });
+
+  it("closes a streamed call the consumer cancels, as cancelled, and cancels the provider stream", async () => {
+    let sourceCancelled: unknown;
+    const result = await middleware().wrapStream({
+      params: {},
+      model: { modelId: "gpt-x" },
+      doStream: async () => ({ stream: endless((reason) => (sourceCancelled = reason)) }),
+    });
+    const reader = (result.stream as ReadableStream<unknown>).getReader();
+    await reader.read();
+    await reader.read();
+    await reader.cancel("client disconnected");
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    const response = events[2]!;
+    expect(response.stop_reason).toBe("cancelled");
+    expect(response.error).toBeUndefined();
+    expect(response.content).toMatch(/^x+$/);
+    expect(response.request_id).toBe(events[1]!.request_id);
+    expect(events[3]!.outcome).toBe("cancelled");
+    expect(sourceCancelled).toBe("client disconnected");
+    expect(count(events, "error")).toBe(0);
+  });
+
+  it("closes a streamed call whose stream errors, with the error, and ends its run failed", async () => {
+    const result = await middleware().wrapStream({
+      params: {},
+      model: { modelId: "gpt-x" },
+      doStream: async () => ({
+        stream: new ReadableStream({
+          async pull(controller) {
+            controller.enqueue({ type: "text-delta", delta: "y" });
+            await Promise.resolve();
+            controller.error(new Error("ECONNRESET"));
+          },
+        }),
+      }),
+    });
+    const reader = (result.stream as ReadableStream<unknown>).getReader();
+    await expect(
+      (async () => {
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+      })(),
+    ).rejects.toThrow("ECONNRESET");
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    expect(events[2]!.stop_reason).toBe("error");
+    expect(events[2]!.error).toBe("Error: ECONNRESET");
+    expect(events[3]!.outcome).toBe("failed");
+    // Recorded once, on the model_response — not again as an `error` event.
+    expect(count(events, "error")).toBe(0);
+  });
+
+  it("closes a cancelled call inside agent() without ending the enclosing agent", async () => {
+    await session({ sessionId: "s1" }, () =>
+      agent("planner", async () => {
+        const result = await middleware().wrapStream({
+          params: {},
+          model: { modelId: "gpt-x" },
+          doStream: async () => ({ stream: endless(() => undefined) }),
+        });
+        const reader = (result.stream as ReadableStream<unknown>).getReader();
+        await reader.read();
+        await reader.cancel();
+      }),
+    );
+    const events = await flushed(spool);
+    expect(types(events)).toEqual(["agent_start", "model_request", "model_response", "agent_end"]);
+    expect(events.every((e) => e.agent_id === "planner")).toBe(true);
+    expect(events[2]!.stop_reason).toBe("cancelled");
+    // The only agent_end is the planner's own, from its scope.
+    expect(events[3]!.outcome).toBe("success");
+  });
+});
+
+describe("instrument('ai') and the process-wide OpenTelemetry slot", () => {
+  /**
+   * A throwaway application with `ai` at `version` and a stand-in for
+   * `@opentelemetry/api` that keeps the real one's global-registration rule:
+   * the first provider wins and every later `setGlobalTracerProvider` returns
+   * false. (The real API against real `ai` releases is proven in
+   * `integration/ai.test.ts`.)
+   */
+  const apps: string[] = [];
+  const makeApp = (version: string): string => {
+    const app = mkdtempSync(join(tmpdir(), "failproofai-ai-otel-"));
+    apps.push(app);
+    const write = (path: string, text: string): void => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, text);
+    };
+    write(join(app, "node_modules", "ai", "package.json"), JSON.stringify({ name: "ai", version, main: "index.js" }));
+    write(join(app, "node_modules", "ai", "index.js"), "module.exports = {};\n");
+    write(
+      join(app, "node_modules", "@opentelemetry", "api", "package.json"),
+      JSON.stringify({ name: "@opentelemetry/api", version: "1.9.0", main: "index.js" }),
+    );
+    write(
+      join(app, "node_modules", "@opentelemetry", "api", "index.js"),
+      [
+        "let delegate = null;",
+        "class NoopTracerProvider { getTracer() { return {}; } }",
+        "class ProxyTracerProvider { getDelegate() { return delegate ?? new NoopTracerProvider(); } }",
+        "const proxy = new ProxyTracerProvider();",
+        "module.exports = {",
+        "  ProxyTracerProvider,",
+        "  trace: {",
+        "    setGlobalTracerProvider(p) { if (delegate) return false; delegate = p; return true; },",
+        "    getTracerProvider() { return proxy; },",
+        "    disable() { delegate = null; },",
+        "  },",
+        "};",
+      ].join("\n"),
+    );
+    return app;
+  };
+  interface FakeOtel {
+    trace: {
+      setGlobalTracerProvider(p: unknown): boolean;
+      getTracerProvider(): { getDelegate(): unknown };
+    };
+  }
+  const otelOf = (app: string): FakeOtel => createRequire(join(app, "main.js"))("@opentelemetry/api") as FakeOtel;
+  const inApp = async (app: string, fn: () => unknown): Promise<void> => {
+    const cwd = process.cwd();
+    process.chdir(app);
+    try {
+      await fn();
+    } finally {
+      process.chdir(cwd);
+    }
+  };
+  afterEach(() => {
+    for (const app of apps.splice(0)) rmSync(app, { recursive: true, force: true });
+  });
+
+  it.each(["4.3.19", "5.0.0", "6.0.288"])(
+    "on ai %s does not take the global slot by default, so the customer's own provider still registers",
+    async (version) => {
+      const app = makeApp(version);
+      await inApp(app, () => adapter.install({}));
+      const theirs = { getTracer: () => ({ theirs: true }) };
+      expect(otelOf(app).trace.setGlobalTracerProvider(theirs)).toBe(true);
+      expect(otelOf(app).trace.getTracerProvider().getDelegate()).toBe(theirs);
+      // …and says, once, what instrument("ai") does and does not cover here.
+      await inApp(app, () => adapter.install({}));
+      const advice = warnings.filter((w) => w.includes("registerGlobalTracer"));
+      expect(advice).toHaveLength(1);
+      expect(advice[0]).toContain("telemetry()");
+    },
+  );
+
+  it("registers the global tracer on ai 4–6 only when asked to", async () => {
+    const app = makeApp("6.0.288");
+    await inApp(app, () => adapter.install({ registerGlobalTracer: true }));
+    const delegate = otelOf(app).trace.getTracerProvider().getDelegate() as { getTracer?: () => unknown };
+    expect((delegate.getTracer?.() as object | undefined)?.constructor.name).toBe("FailproofTracer");
+    expect(warnings.filter((w) => w.includes("registerGlobalTracer"))).toEqual([]);
+    // uninstrument() gives the slot back.
+    adapter.uninstall();
+    expect(otelOf(app).trace.setGlobalTracerProvider({ getTracer: () => ({}) })).toBe(true);
+  });
+
+  it("stays quiet on ai 4–6 when told registerGlobalTracer: false", async () => {
+    const app = makeApp("5.0.0");
+    await inApp(app, () => adapter.install({ registerGlobalTracer: false }));
+    expect(warnings).toEqual([]);
+    expect(otelOf(app).trace.setGlobalTracerProvider({ getTracer: () => ({}) })).toBe(true);
+  });
+
+  it("on ai 7 neither touches OpenTelemetry nor warns", async () => {
+    const app = makeApp("7.0.111");
+    await inApp(app, () => adapter.install({}));
+    expect(warnings).toEqual([]);
+    expect(otelOf(app).trace.setGlobalTracerProvider({ getTracer: () => ({}) })).toBe(true);
+  });
+});
+
+describe("bookkeeping", () => {
+  interface TrackerMaps {
+    links: Map<unknown, unknown>;
+    runs: Map<unknown, unknown>;
+  }
+  const maps = (): TrackerMaps => _internals.tracker() as unknown as TrackerMaps;
+
+  it("leaves no residue after 20k completed operations, and never evicts a live run's links", async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const original = runtime.event;
+    runtime.event = new Proxy(
+      {},
+      {
+        get: (_, method) => (options: Record<string, unknown>) =>
+          captured.push({ method: String(method), ...options }),
+      },
+    ) as typeof runtime.event;
+    try {
+      const t = tracer();
+      const mw = middleware();
+
+      // A run that stays open throughout: a root operation with an
+      // intermediate span under it, whose child only arrives at the very end.
+      let liveRoot: FailproofSpan | undefined;
+      let liveStep: FailproofSpan | undefined;
+      await session({ sessionId: "live" }, () =>
+        t.startActiveSpan(
+          "ai.generateText",
+          { attributes: { "ai.operationId": "ai.generateText", "ai.telemetry.functionId": "live-agent" } },
+          (root) => {
+            liveRoot = root;
+            t.startActiveSpan("ai.step", (step) => {
+              liveStep = step;
+            });
+          },
+        ),
+      );
+
+      const stream = (mode: "finish" | "cancel" | "error") => async () => ({
+        stream: new ReadableStream({
+          pull(controller) {
+            controller.enqueue({ type: "text-delta", delta: "x" });
+            if (mode === "finish") {
+              controller.enqueue({ type: "finish", finishReason: "stop" });
+              controller.close();
+            } else if (mode === "error") {
+              controller.error(new Error("reset"));
+            }
+          },
+        }),
+      });
+      const drain = async (s: unknown, cancel: boolean): Promise<void> => {
+        const reader = (s as ReadableStream<unknown>).getReader();
+        try {
+          if (cancel) {
+            await reader.read();
+            await reader.cancel();
+            return;
+          }
+          while (!(await reader.read()).done) {
+            /* drain */
+          }
+        } catch {
+          // the errored stream
+        }
+      };
+
+      const N = 20_000;
+      for (let i = 0; i < N; i += 1) {
+        // ai v4–v6: the tracer, every span kind.
+        t.startActiveSpan("ai.generateText", { attributes: { "ai.operationId": "ai.generateText" } }, (root) => {
+          t.startActiveSpan(
+            "ai.generateText.doGenerate",
+            { attributes: { "ai.operationId": "ai.generateText.doGenerate" } },
+            (span) => span.end(),
+          );
+          t.startActiveSpan(
+            "ai.toolCall",
+            { attributes: { "ai.operationId": "ai.toolCall", "ai.toolCall.id": `t${String(i)}` } },
+            (span) => span.end(),
+          );
+          t.startActiveSpan("ai.other", (span) => span.end());
+          if (i % 2 === 0) root.recordException(new Error("x"));
+          root.end();
+        });
+        // ai v7: the integration — success, error and abort paths.
+        const callId = `c${String(i)}`;
+        const toolCall = { toolCallId: `tc${String(i)}`, toolName: "w", input: {} };
+        integration.onStart({ callId, operationId: "ai.generateText", functionId: "f" });
+        integration.onLanguageModelCallStart({ callId });
+        integration.onLanguageModelCallEnd({ callId, finishReason: "tool-calls" });
+        integration.onToolExecutionStart({ callId, toolCall });
+        if (i % 3 === 0) {
+          integration.onToolExecutionEnd({ callId, toolCall, toolOutput: { type: "tool-result", output: 1 } });
+          integration.onEnd({ callId });
+        } else if (i % 3 === 1) {
+          integration.onLanguageModelCallStart({ callId });
+          integration.onError({ callId, error: new Error("boom") });
+        } else {
+          integration.onAbort({ callId });
+        }
+        // The middleware: generate, and a stream that finishes, is cancelled, or errors.
+        await mw.wrapGenerate({ params: {}, model: { modelId: "m" }, doGenerate: async () => ({ text: "x" }) });
+        const mode = (["finish", "cancel", "error"] as const)[i % 3]!;
+        const result = await mw.wrapStream({ params: {}, model: { modelId: "m" }, doStream: stream(mode) });
+        await drain(result.stream, mode === "cancel");
+      }
+
+      // Only the live run is left: its agent, and its intermediate span's link.
+      expect(maps().runs.size).toBe(1);
+      expect(maps().links.size).toBe(1);
+      expect(_internals.openCalls()).toBe(0);
+
+      // That link survived 20k runs through the table: the live run's late
+      // child still resolves to it.
+      captured.length = 0;
+      const step = new FailproofSpan("ai.generateText.doGenerate", liveStep, {
+        "ai.operationId": "ai.generateText.doGenerate",
+      });
+      step.end();
+      liveStep!.end();
+      liveRoot!.end();
+      expect(captured.map((e) => [e.method, e.agentId, e.sessionId])).toEqual([
+        ["modelRequest", "live-agent", "live"],
+        ["modelResponse", "live-agent", "live"],
+        ["agentEnd", "live-agent", "live"],
+      ]);
+      expect(maps().runs.size).toBe(0);
+      expect(maps().links.size).toBe(0);
+    } finally {
+      runtime.event = original;
+    }
+  }, 120_000);
 });

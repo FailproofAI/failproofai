@@ -55,13 +55,22 @@
  * but its events carry no `callId`, and the integration ignores any event
  * without one, so v6 is recorded by the tracer alone and never twice.
  *
- * `instrument("ai")` registers both process-wide: the integration on the
- * global list (v7 then records EVERY call — its telemetry is on by default
- * once an integration is registered) and, for v4–v6, the tracer as the global
- * OpenTelemetry tracer provider — but only when none is registered yet, so it
- * never takes over a customer's own tracing. v4–v6 only consult the global
- * tracer for calls that pass `experimental_telemetry: { isEnabled: true }`;
- * that is the SDK's rule, not ours.
+ * `instrument("ai")` registers the integration on v7's global list, so v7
+ * records EVERY call (its telemetry is on by default once an integration is
+ * registered). That list is additive and per-call `integrations` replace it,
+ * so it takes nothing from anybody else.
+ *
+ * On v4–v6 `instrument("ai")` records nothing by itself, and says so once. The
+ * process-wide hook there is the global OpenTelemetry tracer provider, a
+ * single slot that OpenTelemetry refuses to hand over once taken: registering
+ * ours would silently refuse the customer's own `NodeSDK.start()` later in
+ * startup and route their http/database spans to a tracer that exports
+ * nothing. So taking it is opt-in — `instrument("ai", { registerGlobalTracer:
+ * true })`, for a process with no OpenTelemetry of its own — and even then
+ * only when the slot is still empty. (v4–v6 consult the global tracer only for
+ * calls that pass `experimental_telemetry: { isEnabled: true }`; that is the
+ * SDK's rule, not ours.) The call-site `telemetry()` and `wrapModel()` are the
+ * recommended paths on v4–v6.
  *
  * * **`middleware()` / `wrapModel()`** see model calls only — tools run above
  *   the model layer. Combined with `telemetry()` or `instrument()` they defer,
@@ -454,9 +463,7 @@ export class FailproofSpan {
           response_id: a["ai.response.id"],
         }),
       });
-      return;
-    }
-    if (operation === "ai.toolCall") {
+    } else if (operation === "ai.toolCall") {
       const { toolName, toolCallId } = this.tool();
       t.emit("toolResult", this.id, {
         parentKey: this.parentId,
@@ -465,9 +472,7 @@ export class FailproofSpan {
         output: failed ? undefined : parseMaybeJson(a["ai.toolCall.result"] ?? a["ai.toolCall.output"]),
         error: failed ? errorText(this.failure) : undefined,
       });
-      return;
-    }
-    if (ROOT_OPERATIONS.has(operation)) {
+    } else if (ROOT_OPERATIONS.has(operation)) {
       // The failure is already on the model_response / tool_result that raised
       // it; a second `error` here would count it twice.
       if (failed && !this.leafFailed) {
@@ -483,6 +488,11 @@ export class FailproofSpan {
         }),
       });
     }
+    // Every span kind leaves a parent link behind (`emit` with a `parentKey`,
+    // `startAgent` under a parent, `link` for any other span). Its last event
+    // is out, so forget it: a completed span's link kept forever is a leak,
+    // and at the tracker's FIFO cap it evicts a LIVE run's links instead.
+    t.unlink(this.id);
   }
 }
 
@@ -598,6 +608,8 @@ interface Call {
   operation: string;
   /** Model calls started and not yet ended, oldest first — one at a time in practice. */
   pending: Array<{ id: string; started: number }>;
+  /** Tool keys whose `tool_use` is out and whose `tool_result` is not. */
+  tools: Set<string>;
   sequence: number;
   /** A leaf already recorded the failure; the agent's end must not repeat it. */
   leafFailed: boolean;
@@ -654,6 +666,7 @@ function endModel(event: Event7 | undefined, call: Call, fields: Record<string, 
       response_id: event?.responseId,
     }),
   });
+  t.unlink(open.id);
 }
 
 /** Close the oldest open model call as failed. */
@@ -676,6 +689,11 @@ function finishCall(call: Call, outcome: string, error?: unknown, fields: Record
     t.emit("error", call.key, { errorType: detail.type, message: detail.message, traceback: detail.stack });
   }
   t.endAgent(call.key, { outcome, ...fields });
+  // Forget every link this call left: its own (a nested call's), and any tool
+  // the operation abandoned mid-run (an abort, an error).
+  t.unlink(call.key);
+  for (const key of call.tools) t.unlink(key);
+  call.tools.clear();
 }
 
 const safe = (site: string, fn: (event: Event7) => void) => (event: unknown): void => {
@@ -702,7 +720,7 @@ export const integration: AiTelemetryIntegration = {
     }
     const operation = typeof event.operationId === "string" ? event.operationId : "ai";
     const key = `ai7:${callId}`;
-    calls.set(callId, { callId, key, operation, pending: [], sequence: 0, leafFailed: false });
+    calls.set(callId, { callId, key, operation, pending: [], tools: new Set(), sequence: 0, leafFailed: false });
     t.startAgent(key, {
       agentId: agentName(event.functionId, operation),
       parentKey: enclosingCall.getStore(),
@@ -762,6 +780,7 @@ export const integration: AiTelemetryIntegration = {
     const toolCall = event.toolCall as Record<string, unknown> | undefined;
     if (t === null || call === undefined || !toolCall) return;
     const toolCallId = String(toolCall.toolCallId);
+    call.tools.add(`${call.key}:${toolCallId}`);
     t.emit("toolUse", `${call.key}:${toolCallId}`, {
       parentKey: call.key,
       toolName: typeof toolCall.toolName === "string" ? toolCall.toolName : "tool",
@@ -786,6 +805,8 @@ export const integration: AiTelemetryIntegration = {
       output: failed ? undefined : output?.output,
       error: failed ? errorText(output?.error) : undefined,
     });
+    call.tools.delete(`${call.key}:${toolCallId}`);
+    t.unlink(`${call.key}:${toolCallId}`);
   }),
 
   onEnd: safe("onEnd", (event: Event7) => {
@@ -895,8 +916,8 @@ function closeModelCall(
   model: ModelLike | undefined,
   started: number,
   fields: Record<string, unknown>,
+  outcome: string = fields.error === undefined ? "success" : "failed",
 ): void {
-  const failed = fields.error !== undefined;
   t.emit("modelResponse", placement.requestId, {
     parentKey: placement.run ?? undefined,
     model: model?.modelId,
@@ -905,7 +926,8 @@ function closeModelCall(
     ...fields,
     ...core.fwFields({ duration_ms: core.ms(Date.now() - started) }),
   });
-  if (placement.run !== null) t.endAgent(placement.run, { outcome: failed ? "failed" : "success" });
+  t.unlink(placement.requestId);
+  if (placement.run !== null) t.endAgent(placement.run, { outcome });
 }
 
 /**
@@ -974,13 +996,26 @@ export function middleware(options: Record<string, unknown> = {}): AiMiddleware 
 }
 
 /**
- * Tee a model stream so the response event carries what was actually produced.
+ * Observe a model stream so the response event carries what was actually produced.
  *
  * A stream's usage and finish reason only exist in its FINAL part, so emitting
  * at `doStream` return time would record every streaming call with no tokens
  * and no finish reason — the fields the dashboard's cost and failure views are
- * built on. The transform passes every chunk through untouched and emits once,
- * when the stream closes.
+ * built on. Every chunk passes through untouched, and the model call closes
+ * exactly once, however the stream stops:
+ *
+ * * it finishes — the response carries the text, tool calls, usage and finish
+ *   reason read off the parts;
+ * * the consumer cancels it (a client that disconnected, a `streamText` that
+ *   was aborted) — `stop_reason: "cancelled"` with whatever had arrived, and a
+ *   standalone run ends `cancelled`; the cancel is passed on to the provider's
+ *   stream so its connection is released;
+ * * it errors — `stop_reason: "error"` with the error, and a standalone run
+ *   ends `failed`.
+ *
+ * `pipeThrough(new TransformStream())` saw only the first: a transformer's
+ * `flush` never runs on a cancel or an error, so those calls stayed open
+ * forever — no `model_response`, and no `agent_end` for a standalone run.
  */
 function instrumentStream<R>(
   t: core.RunTracker,
@@ -990,7 +1025,7 @@ function instrumentStream<R>(
   started: number,
 ): R {
   const value = result as { stream?: ReadableStream<unknown> };
-  if (!value?.stream || typeof TransformStream !== "function") {
+  if (typeof value?.stream?.getReader !== "function" || typeof ReadableStream !== "function") {
     core.callSafely(closeModelCall, [t, placement, model, started, {}], `${NAME}.middleware.stream`);
     return result;
   }
@@ -1001,42 +1036,44 @@ function instrumentStream<R>(
   let failure: unknown = undefined;
   const toolCalls: Array<Record<string, unknown>> = [];
 
-  const transform = new TransformStream<unknown, unknown>({
-    transform(chunk, controller) {
-      try {
-        const part = chunk as Record<string, unknown>;
-        if (part.type === "text-delta" || part.type === "text") {
-          // v5+ `delta`, v4 `textDelta`.
-          const delta = part.delta ?? part.textDelta ?? part.text;
-          if (typeof delta === "string") text += delta;
-        } else if (part.type === "tool-call") {
-          toolCalls.push(toolCallOf(part));
-        } else if (part.type === "finish") {
-          finishReason = stopReasonOf(part.finishReason);
-          usage = usageTokens(part.usage);
-        } else if (part.type === "error") {
-          failure = part.error;
-        }
-      } catch {
-        // A malformed part must not break the caller's stream.
-      }
-      controller.enqueue(chunk);
-    },
-    flush() {
-      const fields: Record<string, unknown> =
-        failure === undefined
-          ? {
-              stopReason: finishReason,
-              ...usage,
-              content: text || (toolCalls.length > 0 ? toolCalls : undefined),
-              ...core.fwFields({ streaming: true, tool_calls: toolCalls.length > 0 ? toolCalls : undefined }),
-            }
-          : { stopReason: "error", error: errorText(failure), ...usage };
-      core.callSafely(closeModelCall, [t, placement, model, started, fields], `${NAME}.middleware.stream`);
-    },
-  });
+  const onPart = (chunk: unknown): void => {
+    const part = chunk as Record<string, unknown>;
+    if (part.type === "text-delta" || part.type === "text") {
+      // v5+ `delta`, v4 `textDelta`.
+      const delta = part.delta ?? part.textDelta ?? part.text;
+      if (typeof delta === "string") text += delta;
+    } else if (part.type === "tool-call") {
+      toolCalls.push(toolCallOf(part));
+    } else if (part.type === "finish") {
+      finishReason = stopReasonOf(part.finishReason);
+      usage = usageTokens(part.usage);
+    } else if (part.type === "error") {
+      failure = part.error;
+    }
+  };
 
-  return { ...(result as object), stream: value.stream.pipeThrough(transform) } as R;
+  const done = (error: unknown, cancelled: boolean): void => {
+    const produced = {
+      content: text || (toolCalls.length > 0 ? toolCalls : undefined),
+      ...core.fwFields({ streaming: true, tool_calls: toolCalls.length > 0 ? toolCalls : undefined }),
+    };
+    if (cancelled) {
+      closeModelCall(t, placement, model, started, { stopReason: "cancelled", ...usage, ...produced }, "cancelled");
+      return;
+    }
+    // A thrown stream error, else an in-band `error` part.
+    const problem = error ?? failure;
+    const fields: Record<string, unknown> =
+      problem === undefined
+        ? { stopReason: finishReason, ...usage, ...produced }
+        : { stopReason: "error", error: errorText(problem), ...usage };
+    closeModelCall(t, placement, model, started, fields);
+  };
+
+  return {
+    ...(result as object),
+    stream: core.observeStream(value.stream, onPart, done, `${NAME}.middleware.stream`),
+  } as R;
 }
 
 /**
@@ -1173,14 +1210,26 @@ function loadOtel(): OtelApi | null {
   return tryRequire<OtelApi>("@opentelemetry/api");
 }
 
+/** Whether the "instrument('ai') does not cover v4–v6 by itself" note has been logged. */
+let advised = false;
+
 /**
  * Register our tracer as the process-wide OpenTelemetry tracer (ai v4–v6).
+ * Only ever on `instrument("ai", { registerGlobalTracer: true })`.
  *
  * Only when no provider is registered yet: taking over a customer's own
  * tracing is the opposite of what an observability library should do to
  * somebody else's observability. `getTracerProvider()` ALWAYS returns the
  * API's proxy, so the question is asked of the proxy's DELEGATE — a no-op
  * provider until somebody registers one.
+ *
+ * "Not yet" is not "never", which is why this is opt-in: a provider the
+ * customer registers AFTER this call is refused by OpenTelemetry ("duplicate
+ * registration"), and theirs is the one that exports. Composing instead —
+ * handing their provider our spans too — is not possible from here: the
+ * registration that would have to be wrapped has not happened yet, and one
+ * that already has is held by instrumentations as a cached delegate that a
+ * re-registration does not reach.
  */
 function registerGlobalTracer(): "registered" | "absent" | "taken" {
   const api = loadOtel();
@@ -1209,11 +1258,36 @@ export const adapter: Adapter = {
     });
     ensureTracker(options);
 
-    // v7: harmless on older majors, whose events carry no callId.
+    // v7: harmless on older majors, whose events carry no callId. The global
+    // list is additive — v7 dispatches every event to every integration on it,
+    // and a per-call `integrations` option replaces the list for that call —
+    // so registering ours takes nothing from anybody else's.
     registerIntegration();
 
     const major = compat.versionTuple(PACKAGE)?.[0];
     if (major !== undefined && major >= 7) return;
+
+    // v4–v6 read spans from the ONE process-wide OpenTelemetry tracer
+    // provider, and OpenTelemetry refuses every registration after the first.
+    // Taking that slot here would silently refuse the customer's own
+    // `NodeSDK.start()` later on, and send their http/database/framework spans
+    // to a tracer that exports nothing. So it is opt-in, never the default.
+    if (options.registerGlobalTracer !== true) {
+      if (options.registerGlobalTracer === undefined && major !== undefined && !advised) {
+        advised = true;
+        logger.warn(
+          `instrument("ai") on ai ${String(major)}.x does not register a global OpenTelemetry ` +
+            "tracer — that slot belongs to your own tracing — so by itself it records nothing " +
+            "on ai 4–6 (it covers ai 7). Record calls at the call site with " +
+            "`experimental_telemetry: failproofai.ai.telemetry()`, or wrap the model once with " +
+            "`failproofai.ai.wrapModel(model)`. If this process runs no OpenTelemetry of its own, " +
+            '`instrument("ai", { registerGlobalTracer: true })` records every call that passes ' +
+            "`experimental_telemetry: { isEnabled: true }`. Pass `registerGlobalTracer: false` " +
+            "to silence this.",
+        );
+      }
+      return;
+    }
     const outcome = registerGlobalTracer();
     if (outcome === "registered" || major === undefined) return;
     compat.warn(
@@ -1238,9 +1312,20 @@ export const adapter: Adapter = {
       }
       registeredWith = null;
     }
+    advised = false;
     tracker?.closeOpenAgents();
     tracker?.reset();
     tracker = null;
     calls.clear();
   },
+};
+
+/**
+ * The adapter's bookkeeping, for this package's own unit tests.
+ *
+ * @internal Not part of the public API.
+ */
+export const _internals = {
+  tracker: (): core.RunTracker | null => tracker,
+  openCalls: (): number => calls.size,
 };

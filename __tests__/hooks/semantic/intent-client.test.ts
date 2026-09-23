@@ -52,6 +52,24 @@ describe("semantic/intent", () => {
     expect(readUserIntent("sess-3", 2)[0]).not.toContain(fakeKey);
   });
 
+  it("stores what the human typed whole: the envelope's blunt rules do not run here", () => {
+    // `recordUserPrompt` is the evaluator's own record of what the user asked
+    // for, and it never leaves the machine — `buildEnvelope` redacts it again,
+    // bluntly, when it does. Storing it cut off after a `cookie:` or an
+    // `authorization:` destroyed the targets the human named on disk, where
+    // nothing can recover them.
+    const prompt = "the authorization: header is missing, add it in src/api/client.ts and retry the cookie: path";
+    recordUserPrompt("sess-blunt", prompt, 1);
+    expect(readUserIntent("sess-blunt", 2)).toEqual([prompt]);
+    // A credential in the prompt is still replaced, by the narrow rules.
+    const fakeKey = ["sk", "abcdefghijklmnopqrstuvwxyz0123456789"].join("-");
+    recordUserPrompt("sess-blunt-2", `deploy with --password ${fakeKey} and then restart`, 1);
+    const stored = readUserIntent("sess-blunt-2", 2)[0];
+    expect(stored).not.toContain(fakeKey);
+    expect(stored).toContain("deploy with --password");
+    expect(stored).toContain("and then restart");
+  });
+
   it("forgets prompts older than the intent window", () => {
     recordUserPrompt("sess-4", "old", 0);
     expect(readUserIntent("sess-4", INTENT_MAX_AGE_MS + 1)).toEqual([]);

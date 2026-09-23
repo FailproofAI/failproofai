@@ -47,7 +47,14 @@ export function recordUserPrompt(sessionId: string | undefined, prompt: unknown,
   if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
   if (typeof prompt !== "string" || prompt.trim().length === 0) return false;
   try {
-    const text = redactSecrets(capHeadTail(prompt.trim(), MAX_USER_MESSAGE_CHARS).text).text;
+    // `blunt: false`: the credential-header and credential-flag rules give up
+    // a whole line or a whole argument on the strength of a NAME, which is the
+    // right trade for the Jev request body and the wrong one here. This is the
+    // evaluator's record of what the HUMAN asked for — it never leaves the
+    // machine, `buildEnvelope` redacts it again (bluntly) before it does, and
+    // storing it cut off after a `cookie:` or an `authorization:` lost the
+    // targets the human named. The narrow rules still run.
+    const text = redactSecrets(capHeadTail(prompt.trim(), MAX_USER_MESSAGE_CHARS).text, { blunt: false }).text;
     const file = readIntentFile(sessionId);
     file.prompts = [...file.prompts, { at: now, text }].slice(-MAX_RECORDED_PROMPTS);
     const dir = resolve(semanticDir(), "sessions");

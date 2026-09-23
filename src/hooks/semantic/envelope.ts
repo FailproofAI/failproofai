@@ -20,8 +20,10 @@
  *    bluntly, with nothing asked about the value, because five rounds of
  *    asking each let a live credential through. The cost is that ordinary
  *    code and prose under those names lose the rest of their line in what
- *    Jev is shown; see the header of ./redact.ts. The count is reported so a
- *    redaction is auditable. Every secret found this way is then scrubbed out
+ *    Jev is shown; see the header of ./redact.ts. Those two blunt rules run
+ *    HERE and nowhere else — what `recordUserPrompt` keeps on disk is the
+ *    human's own words, whole. The count is reported so a redaction is
+ *    auditable. Every secret found this way is then scrubbed out
  *    of the WHOLE state (`scrubDeep`), which is why only an OPAQUE TOKEN is
  *    ever reported as one: whatever an agent writes under a credential name
  *    would otherwise be deleted from `facts` and from the human's own words,
@@ -115,7 +117,13 @@ interface Accumulator {
 }
 
 function redactInto(text: string, acc: Accumulator): string {
-  const r = redactSecretsDetailed(text);
+  // `blunt: true` is this path's privilege and nobody else's: a credential
+  // header gives up its whole value and a credential flag its whole argument,
+  // on the strength of the NAME. Here a false positive costs Jev a few
+  // characters of context and a miss hands a third party a live key; outside
+  // the request body nothing has left the machine yet, so the same rule only
+  // destroys context (see `redactSecrets`'s options in ./redact.ts).
+  const r = redactSecretsDetailed(text, { blunt: true });
   acc.redactions += r.count;
   for (const f of r.found) acc.found.add(f);
   return r.text;

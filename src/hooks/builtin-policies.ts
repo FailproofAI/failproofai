@@ -147,27 +147,32 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 // `JSON.stringify(payload)`, where a key at the start of a line follows the two
 // characters `\` `n`). It is a consuming CAPTURE group rather than a
 // lookbehind for two reasons: a lookbehind drops JSC's regex JIT to its
-// interpreter (~15x slower on every PostToolUse payload), and the redactor
-// (src/hooks/semantic/redact.ts) puts group 1 back in front of its marker, so
-// only the key is replaced. The boundary is also what keeps the scan linear:
-// the class-mix lookaheads run once per token that starts with `sk-`, never at
-// each `sk-` inside one, so a crafted `sk-sk-sk-…` run costs what its length
-// costs instead of its square.
+// interpreter (~15x slower on every PostToolUse payload), and every consumer
+// that REPLACES a match can put group 1 back in front of its marker, so only
+// the key is replaced (see `SECRET_PATTERNS_KEEPING_PREFIX`). The boundary is
+// also what keeps the scan linear: the class-mix lookaheads run once per token
+// that starts with `sk-`, never at each `sk-` inside one, so a crafted
+// `sk-sk-sk-…` run costs what its length costs instead of its square.
 const SK_GATEWAY_KEY_RE =
   /(^|[^A-Za-z0-9_-]|\\[nrt])sk-(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9_-]{20,}/;
+// The generic `sk-` entry goes LAST: `sanitizeApiKeys` reports the first
+// pattern that matches, so a vendor prefix that has its own name — an
+// Anthropic, OpenRouter or Langfuse key, a GitHub token, an AWS key ID — must
+// be seen before the catch-all that would only call it "sk- API key". The
+// specific `sk-…` prefixes stay at the top for the same reason.
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
   [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
   [/sk-[A-Za-z0-9]{20,}/, "OpenAI API key"],
   [/sk-or-v\d+-[A-Za-z0-9]{32,}/, "OpenRouter API key"],
   [/sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, "Langfuse secret key"],
-  [SK_GATEWAY_KEY_RE, "sk- API key"],
   [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
   [/github_pat_[A-Za-z0-9_]{82}/, "GitHub fine-grained token"],
   [/AKIA[A-Z0-9]{16}/, "AWS access key ID"],
   [/sk_live_[A-Za-z0-9]{24,}/, "Stripe live secret key"],
   [/sk_test_[A-Za-z0-9]{24,}/, "Stripe test secret key"],
   [/AIza[0-9A-Za-z\-_]{35}/, "Google API key"],
+  [SK_GATEWAY_KEY_RE, "sk- API key"],
 ];
 
 // sanitizeConnectionStrings
@@ -204,6 +209,25 @@ export const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [CONNECTION_STRING_RE, "database credentials"],
   ...API_KEY_PATTERNS,
 ];
+
+/**
+ * The entries whose match does NOT start at the secret: group 1 holds the
+ * character in FRONT of it — the token boundary `SK_GATEWAY_KEY_RE` consumes
+ * because a lookbehind would cost the blocking policy its regex JIT.
+ *
+ * Every consumer that REPLACES a match — `maskSecrets` in
+ * src/audit/redact-example.ts, `redactSecrets` in src/hooks/semantic/redact.ts
+ * — must re-emit group 1, or it deletes the character in front of each key it
+ * masks: `export KEY=<key>` came out as `export KEY[REDACTED: sk- API key]`,
+ * and `{"k": "<key>"}` lost its opening quote. A consumer that only `.test`s
+ * (the `sanitize-*` policies) can ignore this.
+ *
+ * Membership is declared HERE rather than inferred from the pattern source. A
+ * `source.startsWith("(")` heuristic reads the same for an entry whose first
+ * group captures part of the SECRET, and would then re-emit the secret in
+ * front of the marker.
+ */
+export const SECRET_PATTERNS_KEEPING_PREFIX: ReadonlySet<RegExp> = new Set<RegExp>([SK_GATEWAY_KEY_RE]);
 
 // warnDestructiveSql / warnSchemaAlteration
 const SQL_TOOL_RE = /\b(?:psql|mysql|sqlite3|pgcli|clickhouse-client)\b/;

@@ -42,7 +42,7 @@
  */
 import { homedir } from "node:os";
 
-import { SECRET_PATTERNS } from "../hooks/builtin-policies";
+import { SECRET_PATTERNS, SECRET_PATTERNS_KEEPING_PREFIX } from "../hooks/builtin-policies";
 
 /** Longest example we let through, after redaction. */
 export const REDACTED_EXAMPLE_MAX_CHARS = 160;
@@ -215,12 +215,23 @@ export function maskAssignedSecrets(input: string): string {
  * calls, so a shared instance would skip matches in the next string depending on
  * where it stopped in the previous one — a bug that only appears once there is
  * more than one example, and looks like flakiness rather than logic.
+ *
+ * A pattern listed in `SECRET_PATTERNS_KEEPING_PREFIX` matched the character in
+ * FRONT of the secret as its group 1 (a consumed token boundary, because a
+ * lookbehind would cost the blocking policy its regex JIT), so that character
+ * is put back. Without it a plain replacement eats it, and the example reads
+ * `export OPENAI_API_KEY[REDACTED: sk- API key]` — the `=` gone, the JSON
+ * quote gone, two lines merged where the boundary was a newline — which also
+ * hides the assignment from `maskAssignedSecrets`, the pass that runs next and
+ * looks for `NAME=value`.
  */
 export function maskSecrets(input: string): string {
   let out = input;
   for (const [pattern, label] of SECRET_PATTERNS) {
     const global = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
-    out = out.replace(global, `[REDACTED: ${label}]`);
+    out = SECRET_PATTERNS_KEEPING_PREFIX.has(pattern)
+      ? out.replace(global, (_match: string, prefix: string) => `${prefix ?? ""}[REDACTED: ${label}]`)
+      : out.replace(global, `[REDACTED: ${label}]`);
   }
   return out;
 }

@@ -26,7 +26,7 @@
  * pass. What it does promise is that the formats seen leaking in practice — the
  * 25-character `sk-` gateway keys among them — do not.
  */
-import { SECRET_PATTERNS } from "../builtin-policies";
+import { SECRET_PATTERNS, SECRET_PATTERNS_KEEPING_PREFIX } from "../builtin-policies";
 
 export interface Redacted {
   text: string;
@@ -68,15 +68,18 @@ function atTokenBoundary(whole: string, offset: number, tokenChars = /[A-Za-z0-9
  * connection strings, `-----` for a PEM header) are not extended: what follows
  * them is a hostname or a newline, not more of the secret.
  *
- * A pattern that OPENS with a capture group matched context in front of the
- * secret rather than the secret itself — the generic `sk-` entry's token
+ * A pattern listed in `SECRET_PATTERNS_KEEPING_PREFIX` matched context in front
+ * of the secret rather than the secret itself — the generic `sk-` entry's token
  * boundary, a consuming group because a lookbehind would cost the blocking
- * policy its regex JIT. Group 1 goes back in front of the marker.
+ * policy its regex JIT. Group 1 goes back in front of the marker. Membership is
+ * read from that set rather than guessed from the pattern's source: a future
+ * entry whose first group captures part of the SECRET would look identical to a
+ * `startsWith("(")` test, and the redactor would print the secret it removed.
  */
 const SHARED_RULES: ReadonlyArray<readonly [RegExp, string, boolean]> = SECRET_PATTERNS.map(([re, label]) => {
   const flags = re.flags.includes("g") ? re.flags : re.flags + "g";
   const extend = /[}+]$/.test(re.source);
-  const keepsPrefix = re.source.startsWith("(") && !re.source.startsWith("(?");
+  const keepsPrefix = SECRET_PATTERNS_KEEPING_PREFIX.has(re);
   return [new RegExp(extend ? `(?:${re.source})[A-Za-z0-9_-]*` : re.source, flags), label, keepsPrefix] as const;
 });
 
@@ -333,22 +336,52 @@ const CONFIG_SET_RE =
  * NAME decides whether the value is a secret (see `secretNameStrength`) and the
  * value has to look like a literal (see `assignmentValueIsSecret`).
  *
- *   1  optional quote before the name (JSON; possibly JSON-escaped)
- *   2  the name, keeping a flag's leading dashes
- *   3  optional quote after the name
- *   4  the separator
- *   5  the value's opening quote   6  the quoted value
- *   7  an unquoted value
+ *   1  the token boundary in front of the name
+ *   2  optional quote before the name (JSON; possibly JSON-escaped)
+ *   3  the name, keeping a flag's leading dashes
+ *   4  optional quote after the name
+ *   5  the separator
+ *   6  the value's opening quote   7  the quoted value
+ *   8  an unquoted value
+ *
+ * Group 1 is what keeps the scan LINEAR, and it is why the name is not checked
+ * for a token boundary in code afterwards. Without it the name could start at
+ * any character of a token: on a 4 000-character run of identifier characters
+ * with no separator in it, the engine consumed the rest of the run at every one
+ * of those positions and backtracked over it — 35 ms for one string, and
+ * `buildEnvelope` redacts up to 576 of them, so a tool call carrying a batch of
+ * base64 blobs stalled the PreToolUse hook for seconds before Jev was even
+ * called. Requiring a boundary character makes every position inside a token
+ * fail in one step (7 s → 30 ms for that envelope). The boundary is consumed
+ * rather than a lookbehind because a lookbehind drops the regex JIT, which
+ * costs more than it saves on every other string; it is re-emitted in front of
+ * the replacement. `\n`, `\r` and `\t` count because input nested two levels
+ * deep is JSON-stringified, where a name at the start of a line follows the two
+ * characters `\` `n` — that alternative comes first so the name is `API_KEY`
+ * rather than `nAPI_KEY`.
+ *
+ * A quoted value's CLOSING quote is matched by a lookahead, so the match ends
+ * just before it and leaves it to be the boundary of whatever comes next:
+ * `TOKEN="a"PASSWORD=x` has no character to spare between the two, and
+ * consuming that quote hid the second assignment from the scan entirely.
  */
 const ASSIGNMENT_RE =
-  /((?:\\?["'])?)(-{0,2}[A-Za-z_][A-Za-z0-9_.-]*)((?:\\?["'])?)([ \t]*(?::=|=|:(?!\/\/))[ \t]*)(?:(\\?["'])(.*?)\5|([^\s"'`<>(){}[\],;&|\\]+))/g;
+  /(^|\\[nrt]|[^A-Za-z0-9_.-])((?:\\?["'])?)(-{0,2}[A-Za-z_][A-Za-z0-9_.-]*)((?:\\?["'])?)([ \t]*(?::=|=|:(?!\/\/))[ \t]*)(?:(\\?["'])(.*?)(?=\6)|([^\s"'`<>(){}[\],;&|\\]+))/g;
 
-/** `--password hunter2`: a secret-named flag and a separate value. */
+/**
+ * `--password hunter2`: a secret-named flag and a separate value.
+ *
+ *   1  the token boundary   2  the flag   3  the space
+ *   4  the value's quote   5  the quoted value   6  an unquoted value
+ *
+ * Boundary group as in `ASSIGNMENT_RE`, and for the same two reasons: `-` is a
+ * name character, so without it every hyphen of a kebab-case run started a flag
+ * whose tail was consumed and backtracked (`x--token` and `a-b c` were then
+ * declined in code, after the cost had been paid). The closing quote is left
+ * unconsumed as in `ASSIGNMENT_RE`, for the same reason.
+ */
 const FLAG_VALUE_RE =
-  /(--?[A-Za-z][A-Za-z0-9_-]*)([ \t]+)(?:(["'])(.*?)\3|([^\s"'`<>(){}[\],;&|\\-][^\s"'`<>(){}[\],;&|\\]*))/g;
-
-/** Characters an identifier is made of; a name must not start in the middle of one. */
-const NAME_CHAR = /[A-Za-z0-9_.-]/;
+  /(^|\\[nrt]|[^A-Za-z0-9_.-])(--?[A-Za-z][A-Za-z0-9_-]*)([ \t]+)(?:(["'])(.*?)(?=\4)|([^\s"'`<>(){}[\],;&|\\-][^\s"'`<>(){}[\],;&|\\]*))/g;
 
 /** Long runs of token characters: candidates for the high-entropy rule. Greedy, so a match is a whole run. */
 const LONG_TOKEN_RE = /[A-Za-z0-9_-]{32,}/g;
@@ -563,29 +596,50 @@ export function isSecretFieldValue(name: string, value: string): boolean {
 
 /** Header names whose value IS a credential, whatever it looks like. */
 const AUTHORIZATION_FIELD_RE = /^(?:x-|proxy-)?authorization$/i;
-const AUTH_SCHEME_WORDS = /^(?:bearer|basic|token|bot|apikey|digest|negotiate)$/i;
+/**
+ * The scheme words `AUTHORIZATION_RE` keeps in front of a redacted credential,
+ * as a whole-word test. The two lists are the same list on purpose: a word
+ * outside it is not known to be a scheme, and the first word of an
+ * `Authorization` value is then as likely to BE the credential as the rest is.
+ */
+const AUTH_SCHEME_WORDS = /^(?:bearer|basic|token|bot|apikey|sso-key|ssws|digest|negotiate)$/i;
 
 /**
  * The value of an `Authorization` field in structured input — `{"headers":
  * {"Authorization": "Basic …"}}` from an HTTP-calling MCP tool. The text rules
  * only see such a value when the word `authorization` sits in the same string,
  * and a name-based rule cannot tell the scheme from the credential. Whatever
- * follows the scheme is the credential, and with no scheme the whole value is.
- * The scheme is kept, because which kind of credential it was is context Jev
- * can use.
+ * follows a KNOWN scheme is the credential, and with no scheme the whole value
+ * is. A known scheme is kept, because which kind of credential it was is
+ * context Jev can use.
+ *
+ * Only a word from `AUTH_SCHEME_WORDS` is kept. Anything else in that position
+ * is sent whole to the marker, because the first word of the value is as likely
+ * to be the credential as the rest: a `{"Authorization": "<gateway key>
+ * signature=…"}` field used to keep its 25-character `sk-` key verbatim as a
+ * "scheme" — the one shape this redactor exists for — while the envelope
+ * reported a redaction. The value returned here never goes through
+ * `redactSecrets`, so whatever it keeps is sent as it stands.
  *
  * Returns the redacted value and the credential it removed, or null when the
  * field is not an authorization header or its value is a reference
- * (`Bearer ${TOKEN}`, `Bearer <token>`) or a bare scheme word.
+ * (`Bearer ${TOKEN}`, `Bearer <token>`) or a bare scheme word. Null also for
+ * prose under the name (`{"authorization": "required for this endpoint"}`):
+ * an unknown first word that does not even look like a token is a word, and
+ * the caller redacts the string with the text rules instead.
  */
 export function redactAuthorizationField(name: string, value: string): { text: string; secret: string } | null {
   if (!AUTHORIZATION_FIELD_RE.test(name.trim())) return null;
   const v = value.trim();
-  const schemed = /^([A-Za-z][A-Za-z0-9-]{0,31})[ \t]+(\S[\s\S]*)$/.exec(v);
+  const schemed = /^(\S+)[ \t]+(\S[\s\S]*)$/.exec(v);
   if (schemed) {
-    const [, scheme, credential] = schemed;
-    if (!isLiteral(credential)) return null;
-    return { text: `${scheme} ${marker(/^bearer$/i.test(scheme) ? "bearer token" : "authorization header")}`, secret: credential };
+    const [, first, rest] = schemed;
+    if (AUTH_SCHEME_WORDS.test(first)) {
+      if (!isLiteral(rest)) return null;
+      return { text: `${first} ${marker(/^bearer$/i.test(first) ? "bearer token" : "authorization header")}`, secret: rest };
+    }
+    if (!isLiteral(v) || !tokenLike(first)) return null;
+    return { text: marker("authorization header"), secret: v };
   }
   if (!isLiteral(v) || AUTH_SCHEME_WORDS.test(v)) return null;
   return { text: marker("authorization header"), secret: v };
@@ -830,32 +884,32 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
   out = replaceCounting(
     out,
     ASSIGNMENT_RE,
+    // The name starts a token by construction (group 1), so no boundary check here.
     (_m, g, offset, whole) => {
-      if (!atTokenBoundary(whole, offset, NAME_CHAR)) return null; // mid-identifier
-      const [q1, name, q2, sep, openQuote, quotedValue, bareValue] = g;
+      const [boundary, q1, name, q2, sep, openQuote, quotedValue, bareValue] = g;
       const quoted = openQuote !== "";
       let value = quoted ? quotedValue : bareValue;
       // `${NAME:-default}` / `${NAME:=default}`: the default is the value, and a
       // default that is itself `$OTHER` is a reference, not a literal.
-      if (!quoted && offset >= 2 && whole.slice(offset - 2, offset) === "${" && sep === ":") value = value.replace(/^[-=+?]/, "");
-      const urlQuery = offset > 0 && (whole[offset - 1] === "?" || whole[offset - 1] === "&");
+      if (!quoted && boundary === "{" && offset > 0 && whole[offset - 1] === "$" && sep === ":") value = value.replace(/^[-=+?]/, "");
+      const urlQuery = boundary === "?" || boundary === "&";
       const colon = sep.trim() === ":";
       const spaced = colon || /\s/.test(sep);
       if (!assignmentValueIsSecret(name, value, { quoted, spaced, urlQuery, colon })) return null;
-      return `${q1}${name}${q2}${sep}${quoted ? openQuote : ""}${marker("assigned secret")}${quoted ? openQuote : ""}`;
+      return `${boundary}${q1}${name}${q2}${sep}${quoted ? openQuote : ""}${marker("assigned secret")}`;
     },
     c,
   );
   out = replaceCounting(
     out,
     FLAG_VALUE_RE,
-    (_m, g, offset, whole) => {
-      if (!atTokenBoundary(whole, offset, NAME_CHAR)) return null; // `x--token`, `a-b c`
-      const [flag, space, quote, quotedValue, bareValue] = g;
+    // Group 1 rules out `x--token` and the `-b` of `a-b c`.
+    (_m, g) => {
+      const [boundary, flag, space, quote, quotedValue, bareValue] = g;
       const quoted = quote !== "";
       const value = quoted ? quotedValue : bareValue;
       if (!assignmentValueIsSecret(flag, value, { quoted, spaced: true, urlQuery: false, flag: true })) return null;
-      return `${flag}${space}${quote}${marker("assigned secret")}${quote}`;
+      return `${boundary}${flag}${space}${quote}${marker("assigned secret")}`;
     },
     c,
   );

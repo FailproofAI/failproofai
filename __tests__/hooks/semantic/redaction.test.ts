@@ -8,12 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   SHARED_PATTERN_EXTENDED,
   looksRandomToken,
+  redactAuthorizationField,
   redactSecrets,
   scrubKnownSecrets,
   secretNameStrength,
   setEnvSecretSource,
 } from "../../../src/hooks/semantic/redact";
-import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../../src/hooks/builtin-policies";
+import { maskSecrets } from "../../../src/audit/redact-example";
+import { BUILTIN_POLICIES, SECRET_PATTERNS, SECRET_PATTERNS_KEEPING_PREFIX } from "../../../src/hooks/builtin-policies";
 import type { PolicyContext } from "../../../src/hooks/policy-types";
 import { ALNUM, B64URL, HEX, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
 
@@ -157,6 +159,47 @@ describe("bearer and authorization values", () => {
   });
 });
 
+describe("redactAuthorizationField — the structured-input path", () => {
+  // This value is returned to the envelope AS IS: `cleanValue` never runs it
+  // through `redactSecrets`, so anything kept here is sent to Jev verbatim.
+  it("keeps only a known scheme word in front of the marker", () => {
+    for (const scheme of ["Bearer", "basic", "Token", "Bot", "ApiKey", "SSWS", "sso-key", "Digest", "Negotiate"]) {
+      const tok = randomToken(rand, 30);
+      const r = redactAuthorizationField("Authorization", `${scheme} ${tok}`);
+      expect(r?.text, scheme).toBe(`${scheme} <redacted:${/^bearer$/i.test(scheme) ? "bearer token" : "authorization header"}>`);
+      expect(r?.secret, scheme).toBe(tok);
+    }
+  });
+
+  it("redacts the WHOLE value when the first word is not a known scheme", () => {
+    // A 25-character gateway key is 26 characters of [A-Za-z0-9-] and used to
+    // qualify as a "scheme", so `{"Authorization": "<key> <anything>"}` kept
+    // the live key and reported a redaction for the harmless second word.
+    const key = gatewayKey(rand, 5);
+    for (const rest of ["signature=abc", "x", `${randomToken(rand, 20)} more`]) {
+      const r = redactAuthorizationField("Authorization", `${key} ${rest}`);
+      expect(r?.text, rest).toBe("<redacted:authorization header>");
+      expect(r?.secret, rest).toBe(`${key} ${rest}`);
+    }
+    const long = SK + "ant-api03-" + rnd(rand, 40);
+    expect(redactAuthorizationField("authorization", `${long} sig=1`)?.text).toBe("<redacted:authorization header>");
+    expect(redactAuthorizationField("Authorization", `AWS4-HMAC-SHA256 Credential=${rnd(rand, 20)}`)?.text).toBe(
+      "<redacted:authorization header>",
+    );
+  });
+
+  it("leaves references, bare scheme words and prose for the text rules", () => {
+    for (const v of ["Bearer ${TOKEN}", "Bearer <token>", "Bearer $TOKEN", "Bearer", "SSWS", "", "   "]) {
+      expect(redactAuthorizationField("Authorization", v), v).toBeNull();
+    }
+    // An unknown first word that is a WORD is prose, not a credential.
+    expect(redactAuthorizationField("authorization", "required for this endpoint")).toBeNull();
+    expect(redactAuthorizationField("X-Authorization", "needed before the upload step")).toBeNull();
+    // Not an authorization field at all.
+    expect(redactAuthorizationField("Content-Type", `Bearer ${randomToken(rand, 30)}`)).toBeNull();
+  });
+});
+
 describe("assignments named like a secret", () => {
   it("redacts the value and keeps the name", () => {
     const v = randomToken(rand, 24);
@@ -240,6 +283,20 @@ describe("assignments named like a secret", () => {
     // assignment inside its value used to be skipped along with it.
     const v = randomToken(rand, 40);
     expectRedacted(`const raw = 'AWS_SECRET_ACCESS_KEY=${v}';`, v, "assigned secret");
+  });
+
+  it("does not consume the boundary the NEXT assignment needs", () => {
+    // The scan requires a token boundary in front of a name (that is what keeps
+    // it linear), so a match that swallowed a quoted value's closing quote left
+    // an assignment glued behind it with no boundary of its own — and unseen.
+    const a = randomToken(rand, 20);
+    const b = randomToken(rand, 20);
+    const r = redactSecrets(`TOKEN="${a}"PASSWORD=${b}`);
+    expect(r.text).toBe(`TOKEN="<redacted:assigned secret>"PASSWORD=<redacted:assigned secret>`);
+    expect(r.count).toBe(2);
+    const f = redactSecrets(`--token "${a}"--password ${b}`);
+    expect(f.text).toBe(`--token "<redacted:assigned secret>"--password <redacted:assigned secret>`);
+    expect(f.count).toBe(2);
   });
 
   it("leaves code, references and descriptive names alone", () => {
@@ -539,5 +596,139 @@ describe("the shared floor", () => {
       const extended = SHARED_PATTERN_EXTENDED[i];
       expect(extended, label).toBe(!["database credentials", "private key"].includes(label));
     });
+  });
+
+  /** One positive fixture per SECRET_PATTERNS entry, all built at runtime. */
+  const UPPER_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const uuid = (): string => [8, 4, 4, 4, 12].map((n) => rnd(rand, n, HEX)).join("-");
+  const samples: Array<[label: string, sample: string, body: string]> = (() => {
+    const mk = (label: string, sample: string, body = sample): [string, string, string] => [label, sample, body];
+    const jwtPart = (): string => rnd(rand, 20, B64URL);
+    const bearer = rnd(rand, 40);
+    const dbPass = rnd(rand, 16);
+    return [
+      mk("private key", pemBegin()),
+      mk("JWT", `ey${"J"}${jwtPart()}.${jwtPart()}.${jwtPart()}`),
+      mk("bearer token", `Authorization: Bearer ${bearer}`, bearer),
+      mk("database credentials", `postgres://admin:${dbPass}@db.internal/app`, dbPass),
+      mk("Anthropic API key", SK + "ant-api03-" + rnd(rand, 40)),
+      mk("OpenAI project API key", SK + "proj-" + rnd(rand, 40)),
+      mk("OpenAI API key", SK + rnd(rand, 32)),
+      mk("OpenRouter API key", SK + "or-v1-" + rnd(rand, 64, HEX)),
+      mk("Langfuse secret key", SK + "lf-" + uuid()),
+      mk("GitHub personal access token", "ghp_" + rnd(rand, 36)),
+      mk("GitHub fine-grained token", "github_pat_" + rnd(rand, 82, ALNUM + "_")),
+      mk("AWS access key ID", "AKIA" + rnd(rand, 16, UPPER_DIGITS)),
+      mk("Stripe live secret key", "sk" + "_live_" + rnd(rand, 24)),
+      mk("Stripe test secret key", "sk" + "_test_" + rnd(rand, 24)),
+      mk("Google API key", "AIza" + rnd(rand, 35)),
+      mk("sk- API key", gatewayKey(rand, 5)),
+    ];
+  })();
+
+  it("has a fixture for every entry, in the list's own order", () => {
+    expect(samples.map(([label]) => label)).toEqual(SECRET_PATTERNS.map(([, label]) => label));
+  });
+
+  /**
+   * The boundary contract, for BOTH consumers of the list at once.
+   *
+   * An entry may open with a consuming capture group holding the character in
+   * front of the secret (a lookbehind would cost the blocking policy its regex
+   * JIT). Every consumer that replaces a match has to put that character back,
+   * and only that character:
+   *
+   *  - forgetting it deletes the character in front of every key — `export
+   *    KEY=<key>` became `export KEY[REDACTED: sk- API key]`, `{"k":"<key>"}`
+   *    lost its opening quote, and two lines merged where the boundary was a
+   *    newline (the audit consumer shipped exactly this);
+   *  - re-emitting a group that holds part of the SECRET would print the
+   *    secret in front of the marker.
+   *
+   * Both show up here as the marker no longer sitting exactly where the secret
+   * started, whichever entry is at fault and whoever adds the next one.
+   */
+  it("replaces each secret in place, keeping the character in front of it — in the redactor and the audit masker", () => {
+    // The tail is parenthesised because a PEM header with no footer takes a
+    // short base64-looking word after it as the key line a cut split.
+    const tail = " (tail)";
+    for (const [label, sample, body] of samples) {
+      const redacted = redactSecrets(`prefix ${sample}${tail}`).text;
+      expect(redacted, label).toContain(`<redacted:${label}>`);
+      expect(redacted.startsWith("prefix <redacted:"), `${label}: ${redacted.slice(0, 40)}`).toBe(true);
+      expect(redacted.endsWith(tail), label).toBe(true);
+      expect(redacted, label).not.toContain(body.slice(0, 12));
+
+      const masked = maskSecrets(`prefix ${sample}${tail}`);
+      expect(masked, label).toContain(`[REDACTED: ${label}]`);
+      expect(masked.startsWith("prefix [REDACTED: "), `${label}: ${masked.slice(0, 40)}`).toBe(true);
+      expect(masked.endsWith(tail), label).toBe(true);
+      expect(masked, label).not.toContain(body.slice(0, 12));
+    }
+  });
+
+  it("declares its prefix-keeping entries instead of inferring them from the source", () => {
+    for (const re of SECRET_PATTERNS_KEEPING_PREFIX) {
+      expect(SECRET_PATTERNS.some(([p]) => p === re), re.source.slice(0, 20)).toBe(true);
+      // A member MUST open with a capture group, or there is no group 1 to keep.
+      expect(re.source.startsWith("(") && !re.source.startsWith("(?"), re.source.slice(0, 20)).toBe(true);
+    }
+  });
+
+  it("reports the most specific label when two entries could claim the output", () => {
+    // sanitize-api-keys returns on the first pattern that matches, so the
+    // generic `sk- API key` entry sits last: a vendor prefix with a name of
+    // its own must keep it.
+    const key = gatewayKey(rand, 5);
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "sanitize-api-keys")!;
+    const cases: Array<[string, string]> = [
+      [`token ghp_${rnd(rand, 36)} and ${key}`, "GitHub personal access token"],
+      [`AKIA${rnd(rand, 16, UPPER_DIGITS)} and ${key}`, "AWS access key ID"],
+      [`AIza${rnd(rand, 35)} and ${key}`, "Google API key"],
+      [`${key} alone`, "sk- API key"],
+    ];
+    for (const [output, label] of cases) {
+      const ctx = { eventType: "PostToolUse", payload: { tool_response: { output } }, toolName: "Bash", toolInput: {} };
+      const r = policy.fn(ctx as unknown as PolicyContext) as { decision: string; reason?: string };
+      expect(r.decision, label).toBe("deny");
+      expect(r.reason, label).toContain(label);
+    }
+  });
+});
+
+describe("cost", () => {
+  const RUN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+  const run = (n: number, alphabet: string): string => {
+    let s = "";
+    for (let i = 0; i < n; i++) s += alphabet[(i * 7) % alphabet.length];
+    return s;
+  };
+
+  it("scans a run of name characters once, not once per character in it", () => {
+    // ASSIGNMENT_RE's name could start at ANY character of a token, so on a
+    // run with no separator in it the engine consumed the rest of the run at
+    // every position and backtracked over it: 7 ms at 2 000 characters, 35 ms
+    // at 4 000 — quadratic, on a PreToolUse path that then still has to call
+    // Jev. A leading token-boundary group makes each position inside a run
+    // fail in one step. The budget is ~50x the linear cost and ~3x below the
+    // quadratic one at 4 000 characters.
+    for (const alphabet of [RUN_CHARS, `${B64URL}`, ALNUM + "-"]) {
+      for (const n of [1_000, 2_000, 4_000]) {
+        const s = run(n, alphabet);
+        const t0 = performance.now();
+        redactSecrets(s);
+        expect(performance.now() - t0, `${n} of ${alphabet.slice(-4)}`).toBeLessThan(15);
+      }
+    }
+  });
+
+  it("stays linear on a run of hyphenated flags", () => {
+    // FLAG_VALUE_RE had the same shape: `-` is a name character, so every
+    // hyphen of a kebab-case run started a flag whose tail was consumed and
+    // backtracked.
+    const s = "-ab".repeat(1_400);
+    const t0 = performance.now();
+    redactSecrets(s);
+    expect(performance.now() - t0).toBeLessThan(15);
   });
 });

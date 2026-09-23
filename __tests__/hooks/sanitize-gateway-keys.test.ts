@@ -7,7 +7,7 @@
  * Key-shaped fixtures are built at runtime (see ./semantic/redaction-fixtures).
  */
 import { describe, expect, it } from "vitest";
-import { maskSecrets } from "../../src/audit/redact-example";
+import { maskSecrets, redactExample } from "../../src/audit/redact-example";
 import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../src/hooks/builtin-policies";
 import type { PolicyContext } from "../../src/hooks/policy-types";
 import { ALNUM, B64URL, HEX, SK, gatewayKey, prng, rnd } from "./semantic/redaction-fixtures";
@@ -147,11 +147,29 @@ describe("sanitize-api-keys — the generic sk- entry starts a token", () => {
     }
   });
 
-  it("the audit redactor still masks a hyphenated gateway key", () => {
+  it("the audit redactor still masks a hyphenated gateway key, and only the key", () => {
+    // Whole-string equality, not "the body is gone and a marker is there":
+    // the weaker assertion passed over a real defect. The entry's token
+    // boundary is a CONSUMING capture group (a lookbehind would cost the
+    // blocking policy its regex JIT), so a plain `.replace(pattern, label)`
+    // deleted the character in front of every key it masked.
     const key = gatewayKey(rand, 5);
-    const out = maskSecrets(`export OPENAI_API_KEY=${key}`);
-    expect(out).not.toContain(key.slice(3));
-    expect(out).toContain("[REDACTED: sk- API key]");
+    expect(maskSecrets(`export OPENAI_API_KEY=${key}`)).toBe("export OPENAI_API_KEY=[REDACTED: sk- API key]");
+    expect(maskSecrets(`{"k":"${key}"}`)).toBe(`{"k":"[REDACTED: sk- API key]"}`);
+    expect(maskSecrets(`a\n${key}\nb`)).toBe("a\n[REDACTED: sk- API key]\nb");
+    expect(maskSecrets(`x,${key},y`)).toBe("x,[REDACTED: sk- API key],y");
+    expect(maskSecrets(key)).toBe("[REDACTED: sk- API key]");
+  });
+
+  it("keeps the assignment visible to the pass that names the credential", () => {
+    // `maskAssignedSecrets` runs after `maskSecrets` and looks for `NAME=value`.
+    // With the `=` eaten it could no longer see the assignment at all, and the
+    // rendered harm-report example said `export OPENAI_API_KEY[REDACTED: …]`.
+    const key = gatewayKey(rand, 5);
+    expect(redactExample(`export OPENAI_API_KEY=${key}`)).toBe("export OPENAI_API_KEY=[REDACTED: sk- API key]");
+    expect(redactExample(`curl -H "x-api-key: ${key}" https://api.example.com/v1/chat`)).toBe(
+      `curl -H "x-api-key: [REDACTED: sk- API key]" https://api.example.com/…/chat`,
+    );
   });
 
   it("stays linear on a long run of `sk-` (every token start, not every `sk-`, runs the class checks)", async () => {

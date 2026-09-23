@@ -102,6 +102,23 @@ describe("buildEnvelope — structured tool input", () => {
     }
   });
 
+  it("redacts a whole Authorization value whose first word is not a known scheme", () => {
+    // `cleanValue` returns this value without running it through
+    // `redactSecrets`, so a "scheme" it keeps is sent verbatim. A 25-character
+    // gateway key is 26 characters of [A-Za-z0-9-] and fitted the old
+    // scheme class exactly: the live key was sent while `redactions` said 1.
+    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
+    const key = gatewayKey(rand, 5);
+    for (const value of [`${key} signature=abc`, `${key} ${rnd(rand, 8)}`, `${SK}ant-api03-${rnd(rand, 40)} v=1`]) {
+      const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
+      const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
+      expect((input.headers as Record<string, unknown>).Authorization, value.slice(0, 8)).toBe("<redacted:authorization header>");
+      const serialized = JSON.stringify(env.state);
+      expectAbsent(serialized, value.split(" ")[0]);
+      expect(env.redactions).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it("leaves Authorization references, bare schemes and other headers alone", () => {
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
     for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer", ""]) {
@@ -120,6 +137,31 @@ describe("buildEnvelope — structured tool input", () => {
       expect(env.truncated).toBe(true);
       const sent = Object.keys((env.state.agent_request as { input: Record<string, unknown> }).input)[0];
       expect(sent.length).toBeLessThan(MAX_STRING_CHARS);
+    }
+  });
+
+  it("redacts a full-sized object of token-shaped fields in well under the Jev timeout", () => {
+    // `cleanValue` caps each string at MAX_STRING_CHARS and redacts it, and a
+    // two-level object of MAX_KEYS x MAX_KEYS fields means 576 of them. With a
+    // quadratic assignment scan this took 2-7 SECONDS on the PreToolUse path,
+    // before the 1 500 ms Jev request even started; base64url is what a batch
+    // of tokens, JWT parts or digests looks like, so no crafting is needed.
+    const field = (alphabet: string): string => {
+      let s = "";
+      for (let i = 0; i < MAX_STRING_CHARS; i++) s += alphabet[(i * 7) % alphabet.length];
+      return s;
+    };
+    for (const alphabet of [B64URL, ALNUM + "_"]) {
+      const value = field(alphabet);
+      const toolInput: Record<string, Record<string, string>> = {};
+      for (let i = 0; i < 24; i++) {
+        const inner: Record<string, string> = {};
+        for (let j = 0; j < 24; j++) inner[`f${i}_${j}`] = value;
+        toolInput[`k${i}`] = inner;
+      }
+      const t0 = performance.now();
+      buildEnvelope(toolInput, [], facts({ toolName: "mcp__x__y", toolClass: "other", toolIsKnown: false }), null);
+      expect(performance.now() - t0, alphabet.slice(-4)).toBeLessThan(600);
     }
   });
 

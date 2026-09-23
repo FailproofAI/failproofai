@@ -82,6 +82,27 @@ describe("sanitize-api-keys — gateway keys", () => {
     expect(r.reason).toContain("OpenAI API key");
   });
 
+  it("allows a TOKEN-INITIAL `sk-` name whose only key-ish trait is a digit", async () => {
+    // `sanitize-api-keys` answers a match by replacing the WHOLE tool result
+    // with a marker, so each of these lost a branch listing, an `ls` row, a
+    // kubectl row, a CSS class or a Markdown anchor to `[REDACTED: …]`. The
+    // class mix a real key has is asked of ONE segment now, not spread across
+    // the whole run, where any Title-Case name with a number satisfies it.
+    for (const s of [
+      `* ${SK}1234-Fix-Login-Bug-Now\n  main`,
+      `-rw-r--r-- 1 u u 8231 Sep 22 10:02 ${SK}Report-2024-Q3-Final-v2.xlsx`,
+      `NAME                          READY\n${SK}Gateway-Prod-7d9f8b6c5x2   1/1`,
+      `<div class="${SK}Spinner-Container-Large-2">`,
+      `2026-09-22 03:00 ${SK}Backups-2026-09-22-full/db.sql`,
+      `{"id":"${SK}Session-Token-Preview-12","ok":true}`,
+      `see [the guide](#${SK}Getting-Started-Guide-v2)`,
+      `${SK}Release-Candidate-3-Notes-Draft`,
+    ]) {
+      const r = await decide(s);
+      expect(r.decision, s).toBe("allow");
+    }
+  });
+
   it("still allows hyphenated names that merely contain or start with `sk-`", async () => {
     for (const s of [
       "NAME                                READY   STATUS\nrisk-scoring-7d9f8b6c5-x2k4p   1/1     Running",

@@ -139,6 +139,33 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 // token has and a kebab-case name does not: upper AND lower case, plus a digit
 // or a lower→upper hump.
 //
+// That mix is asked of ONE SEGMENT, not of the whole run, and that is the whole
+// false-positive guard. Spread across the run it is satisfied by any Title-Case
+// name with a number in it, and `sanitize-api-keys` answers a match by REPLACING
+// the entire tool result with a marker — so a git branch listing
+// (`* sk-1234-Fix-Login-Bug-Now`), an `ls` row (`sk-Report-2024-Q3-Final-v2.xlsx`),
+// a kubectl line (`sk-Gateway-Prod-7d9f8b6c5x2`), a CSS class and a Markdown
+// anchor all came back to the user as `[REDACTED: …]` with the output gone.
+// A real gateway key is random from its first character, so its base64url part
+// has a six-plus run of letters and digits with all three classes in it, while
+// `Gateway`, `Container`, `Session` and `Report-2024` have none — measured at
+// 99.95-100% of LiteLLM's `token_urlsafe(16)`/`(24)` keys and OpenAI's
+// `sk-svcacct-`/`sk-admin-`/`sk-None-` shapes, and 0 of the eight ordinary lines.
+//
+// The `{0,6}` leading-segment hop is what keeps that bounded: it reaches the
+// random part behind a vendor word (`sk-svcacct-…`) in at most seven tries of
+// at most 24 characters, where an unbounded `(?:…)*?` walk would cost the
+// square of a crafted `sk-a-b-c-…` run.
+//
+// The trailing token run puts the REST of the key back inside the match, so a
+// consumer that replaces one replaces all of it — `maskSecrets` in the audit
+// redactor uses these patterns raw, and a match stopping at the qualifying
+// segment would print `[REDACTED: sk- API key]_x7Qd`, the tail of a live key.
+// It is spelled `{0,}` rather than `*` because `SHARED_PATTERN_EXTENDED` reads
+// `/[}+]$/` to decide which patterns end on a token class and must be carried
+// to the end of their token; the two spellings are the same quantifier, and a
+// `*` there silently dropped this entry out of that class.
+//
 // It must also START a token. Title-Case names with a digit have that mix too,
 // and `sk-` is the tail of many words: `task-PROJ-1234-add-login-page`,
 // `Disk-Usage-Report-2024-Q3.xlsx`, `Kiosk-Mode-Setup-Guide-v10`. The boundary
@@ -154,7 +181,7 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 // that starts with `sk-`, never at each `sk-` inside one, so a crafted
 // `sk-sk-sk-…` run costs what its length costs instead of its square.
 const SK_GATEWAY_KEY_RE =
-  /(^|[^A-Za-z0-9_-]|\\[nrt])sk-(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9_-]{20,}/;
+  /(^|[^A-Za-z0-9_-]|\\[nrt])sk-(?=[A-Za-z0-9_-]{20,})(?:[A-Za-z0-9]{0,24}[-_]){0,6}(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9]{6,}[A-Za-z0-9_-]{0,}/;
 // The generic `sk-` entry goes LAST: `sanitizeApiKeys` reports the first
 // pattern that matches, so a vendor prefix that has its own name — an
 // Anthropic, OpenRouter or Langfuse key, a GitHub token, an AWS key ID — must

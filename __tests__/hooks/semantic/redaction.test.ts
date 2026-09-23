@@ -1003,6 +1003,108 @@ describe("credentials in URLs and command arguments", () => {
     expectUntouched(`['app --password ', 'x']`);
   });
 
+  it("reads the value's own quote through EVERY depth of JSON escaping", () => {
+    // `cleanValue` JSON-stringifies any object at depth >= 2, and each level
+    // DOUBLES the backslashes in front of a quote — `"` becomes `\"` and then
+    // `\\\"`. The escape was read as exactly one backslash, so a quoted
+    // credential argument inside a twice-encoded payload matched nothing at
+    // all: `redactions: 0`, password verbatim in `agent_request.input`.
+    const pw = randomToken(rand, 13);
+    const cmd = `app --password "${pw}"`;
+    for (const [name, text] of [
+      ["one level", JSON.stringify({ command: cmd })],
+      ["two levels", JSON.stringify(JSON.stringify({ command: cmd }))],
+      ["two levels, in an object", JSON.stringify({ tool: "bash", arguments: JSON.stringify({ command: cmd }) })],
+      ["two levels, nested keys", JSON.stringify({ a: { b: { arguments: JSON.stringify({ command: cmd }) } } })],
+      ["two levels, an MCP request", JSON.stringify({ mcp: { server: { request: { arguments: JSON.stringify({ command: cmd }) } } } })],
+      ["three levels", JSON.stringify({ payload: JSON.stringify({ input: JSON.stringify({ command: cmd }) }) })],
+    ] as Array<[string, string]>) {
+      const d = redactSecretsDetailed(text);
+      expect(d.text, name).not.toContain(pw);
+      expect(d.count, name).toBe(1);
+      expect(d.found, name).toContain(pw);
+      // The delimiters stay where they were written, so the JSON around the
+      // command still parses for whoever reads the request.
+      expect(d.text.length - d.text.replace(/\\/g, "").length, name).toBe(text.length - text.replace(/\\/g, "").length);
+    }
+    // And the enclosing quote is still not the value's own: a flag at the end
+    // of a string has no argument, however many backslashes escape the quote.
+    expectUntouched(`{"command": "app --password \\\\\\""}`);
+    expectUntouched(`echo "use --password" ; echo "other"`);
+  });
+
+  it("reads a value whose delimiter is spelled like the one around it", () => {
+    // A fragment that begins INSIDE a JSON string — what a cap leaves behind —
+    // has the same `\\"` open as the credential's own quotes, and declining on
+    // that identity alone read the argument as empty and skipped it. The text
+    // decides instead: a partner on the same line, with the enclosing quote or
+    // a value boundary behind it, opened the value.
+    const pw = randomToken(rand, 13);
+    const bs = (n: number): string => "\\".repeat(n);
+    for (const depth of [1, 3]) {
+      for (const value of [1, 3]) {
+        const text = `{${bs(depth)}"a${bs(depth)}": ${bs(depth)}"app --password ${bs(value)}"${pw}${bs(value)}"${bs(depth)}"`;
+        const d = redactSecretsDetailed(text);
+        expect(d.text, text).not.toContain(pw);
+        expect(d.count, text).toBe(1);
+      }
+    }
+    // The other side of the same question: a flag written as a LIST ENTRY is
+    // followed by the quote that ends its own string, not by a value. Taking
+    // it made the `, ` between two entries the credential and replaced it.
+    expectUntouched(`runner.invoke(app, ["--base-url", BASE, "--api-key", "", "keys", "list"])`);
+    expectUntouched(`runner.invoke(app, ["--base-url", BASE, "--token", "", "events"])`);
+    expectUntouched(`argv = ["--password", "", "--verbose"]`);
+  });
+
+  it("reports a BARE credential under a scheme-bearing header, and never a scheme word", () => {
+    // Dropping the scheme position unconditionally was the fix for
+    // `AWS4-HMAC-SHA256`, and it cost a live credential: `Authorization: <key>`
+    // is the form many APIs take, its ONLY piece is the secret, and reporting
+    // nothing sent every copy of it elsewhere in the envelope to Jev in clear.
+    // The question is the piece's SHAPE, not a list of scheme names.
+    for (const n of [8, 16, 20, 32]) {
+      const tok = randomToken(rand, n);
+      expect(redactSecretsDetailed(`Authorization: ${tok}`).found, `${n} chars`).toEqual([tok]);
+      expect(redactAuthorizationField("Authorization", tok)?.secrets, `${n} chars`).toEqual([tok]);
+      expect(redactSecretsDetailed(`Proxy-Authorization: ${tok}`).found, `${n} chars`).toEqual([tok]);
+      expect(scrubKnownSecrets(`reuse ${tok} next time`, redactSecretsDetailed(`Authorization: ${tok}`).found).count).toBe(1);
+    }
+    // A scheme word stays off the list, alone on the value or in front of one.
+    const tok = randomToken(rand, 24);
+    for (const scheme of ["Bearer", "Basic", "Digest", "Negotiate", "NTLM", "Hawk", "GoogleLogin", "AWS4-HMAC-SHA256", "Token", "SSO"]) {
+      expect(redactSecretsDetailed(`Authorization: ${scheme}`).found, scheme).toEqual([]);
+      expect(redactAuthorizationField("Authorization", scheme)?.secrets, scheme).toEqual([]);
+      expect(redactSecretsDetailed(`Authorization: ${scheme} Credential=${tok}`).found, scheme).not.toContain(scheme);
+    }
+  });
+
+  it("reports a WORD-BUILT token weakly, so it is never deleted from the human's words", () => {
+    // These rules redact on the NAME, so an ordinary directory name written
+    // under a credential name lands on the scrub list — and `scrubKnownSecrets`
+    // then deletes it from `facts` and from `user_said`, which is a way to
+    // blind the evaluator on text the AGENT chose. A token built from words is
+    // both the shape of a real corpus credential and the shape of a branch, a
+    // path or a CSS class, so it is reported for the request only.
+    for (const s of ["api-v2-backup", "dark-mode-v2", "dev-admin-key-9f3c", "release_notes_2024"]) {
+      const d = redactSecretsDetailed(`echo cookie: ${s} && ls`);
+      expect(d.found, s).toEqual([]);
+      expect(d.weak, s).toContain(s);
+    }
+    // An opaque token is still reported the strong way, envelope-wide.
+    const tok = randomToken(rand, 24);
+    expect(redactSecretsDetailed(`echo cookie: ${tok} && ls`).found).toEqual([tok]);
+    // And a word-built token with a RANDOM segment in it is opaque again: no
+    // directory is named that way, and missing that copy is a live credential.
+    const mixed = `my-service-token-${rnd(rand, 10, ALNUM)}`;
+    expect(redactSecretsDetailed(`echo cookie: ${mixed} && ls`).found).toEqual([mixed]);
+    // The public half of a cookie list is no longer a delete key either.
+    const sid = randomToken(rand, 24);
+    const cookie = redactSecretsDetailed(`cookie: theme=dark-mode-v2; sid=${sid}`);
+    expect(cookie.found).toEqual([sid]);
+    expect(cookie.weak).toContain("dark-mode-v2");
+  });
+
   it("redacts `config set <secret-name> <value>`", () => {
     const v = randomToken(rand, 30);
     expectRedacted(`aws configure set aws_secret_access_key ${v}`, v, "assigned secret");

@@ -23,11 +23,12 @@
  *    Jev is shown; see the header of ./redact.ts. Those two blunt rules run
  *    HERE and nowhere else — what `recordUserPrompt` keeps on disk is the
  *    human's own words, whole. The count is reported so a redaction is
- *    auditable. Every secret found this way is then scrubbed out
- *    of the WHOLE state (`scrubDeep`), which is why only an OPAQUE TOKEN is
- *    ever reported as one: whatever an agent writes under a credential name
- *    would otherwise be deleted from `facts` and from the human's own words,
- *    which is a way to blind the evaluator rather than to protect a secret.
+ *    auditable. Every secret found this way is then scrubbed out of the state
+ *    (`scrubDeep`) — an OPAQUE token out of all of it, and a WORD-BUILT one
+ *    (`api-v2-backup`, `dev-admin-key-9f3c`) out of `agent_request` only.
+ *    Nothing in the text can tell that second shape from a directory the
+ *    human named, and deleting it from `facts` or from `user_said` is a way
+ *    to blind the evaluator rather than to protect a secret.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
  *    cut is flagged `truncated` — which the handler treats as "keep the regex
@@ -114,6 +115,17 @@ interface Accumulator {
   truncated: boolean;
   /** Every literal secret replaced so far, so its copies can be scrubbed too. */
   found: Set<string>;
+  /**
+   * Secrets whose copies are scrubbed out of `agent_request` ONLY.
+   *
+   * A credential header and a credential flag give up their value on the
+   * strength of the NAME, so a word-built token the agent wrote under one
+   * (`echo cookie: api-v2-backup`) is indistinguishable from a directory the
+   * human named. Scrubbing those envelope-wide let the agent delete its own
+   * choice of words from `user_said` and from `facts` — the two fields
+   * `how_to_read` tells Jev are trustworthy. See `RedactedDetail.weak`.
+   */
+  weak: Set<string>;
 }
 
 function redactInto(text: string, acc: Accumulator): string {
@@ -126,6 +138,7 @@ function redactInto(text: string, acc: Accumulator): string {
   const r = redactSecretsDetailed(text, { blunt: true });
   acc.redactions += r.count;
   for (const f of r.found) acc.found.add(f);
+  for (const f of r.weak) acc.weak.add(f);
   return r.text;
 }
 
@@ -144,21 +157,21 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
  * bare value out of `aws configure set aws_secret_access_key <value>`, and a
  * human may paste the same value into a message.
  */
-function scrubDeep(value: unknown, acc: Accumulator): unknown {
+function scrubDeep(value: unknown, acc: Accumulator, known: ReadonlySet<string>): unknown {
   if (typeof value === "string") {
-    const r = scrubKnownSecrets(value, acc.found);
+    const r = scrubKnownSecrets(value, known);
     acc.redactions += r.count;
     return r.text;
   }
-  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc));
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc, known));
   if (value === null || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const r = scrubKnownSecrets(k, acc.found);
+    const r = scrubKnownSecrets(k, known);
     acc.redactions += r.count;
     let key = r.text;
     for (let n = 2; Object.hasOwn(out, key); n++) key = `${r.text}#${n}`;
-    out[key] = scrubDeep(v, acc);
+    out[key] = scrubDeep(v, acc, known);
   }
   return out;
 }
@@ -183,6 +196,7 @@ function cleanValue(value: unknown, acc: Accumulator, depth = 0, fieldName?: str
       if (auth) {
         acc.redactions++;
         for (const s of auth.secrets) acc.found.add(s);
+        for (const s of auth.weak) acc.weak.add(s);
         return auth.text;
       }
       if (isSecretFieldValue(fieldName, value)) {
@@ -249,7 +263,7 @@ export function buildEnvelope(
   scanned: ScannedCommand | null,
   opts: EnvelopeOptions = {},
 ): Envelope {
-  const acc: Accumulator = { redactions: 0, truncated: false, found: new Set() };
+  const acc: Accumulator = { redactions: 0, truncated: false, found: new Set(), weak: new Set() };
 
   const input = cleanValue(toolInput, acc) as Record<string, unknown>;
   if (scanned && typeof toolInput.command === "string") {
@@ -309,8 +323,16 @@ export function buildEnvelope(
     },
   };
 
-  if (acc.found.size > 0) {
-    for (const key of Object.keys(state)) if (key !== "how_to_read") state[key] = scrubDeep(state[key], acc);
+  if (acc.found.size > 0 || acc.weak.size > 0) {
+    // The weak list is applied to the agent's own request and nowhere else:
+    // it holds word-built tokens that are as likely to be a directory name as
+    // a credential, and deleting one from `user_said` or `facts` hands the
+    // agent a way to edit the human's words and blind the evaluator.
+    const wide = acc.weak.size === 0 ? acc.found : new Set([...acc.found, ...acc.weak]);
+    for (const key of Object.keys(state)) {
+      if (key === "how_to_read") continue;
+      state[key] = scrubDeep(state[key], acc, key === "agent_request" ? wide : acc.found);
+    }
   }
 
   return { state, truncated: acc.truncated, redactions: acc.redactions };

@@ -31,6 +31,19 @@ const SHAPES = [
   "curl -u a:b ",
   // JSON-escaped input, the shape every nested tool argument arrives in.
   "\\nkey=a",
+  // The quote-delimiter walk: a run of backslashes in front of every quote is
+  // what a payload JSON-encoded two or three times looks like, and the walk
+  // that reads it must charge each run to its own characters.
+  '\\\\\\"a --password \\\\\\"b',
+  'x --password "a',
+  "--password '",
+  "-p ",
+  '{"Authorization": "Bearer x"}, ',
+  // The generic `sk-` entry hops over leading segments to reach the random
+  // part of a key; the hop is bounded so a run of tiny segments cannot make
+  // it quadratic.
+  "sk-a-b-c-d-e-f-g-h-i-j-",
+  "sk-aB1-",
 ];
 
 const SMALL = 64 * 1024;
@@ -94,5 +107,18 @@ describe("cost at half a megabyte", () => {
       expect(t, `512 KB of ${JSON.stringify(unit)}`).toBeLessThan(400);
       expect(t / Math.max(small.get(unit) ?? 1, 1), `512 KB / 64 KB of ${JSON.stringify(unit)}`).toBeLessThan(24);
     }
+  }, 60_000);
+
+  it("evaluates half a megabyte of the WORST shape well inside the hook's budget", () => {
+    // The hook runs on every tool call, before Jev is even asked, so the whole
+    // redaction of an oversized command has to disappear into the call. This
+    // pins the absolute number the shape-by-shape budgets above only bound
+    // relatively: a rule that went quadratic here read 910 ms for one
+    // envelope, and this is the assertion that says out loud what "fast" is.
+    //
+    // Best of three, because one pass of half a megabyte allocates enough to
+    // catch a GC that is nobody's regression.
+    const worst = SHAPES.map((unit) => [unit, fastest(fixture(unit, 500 * 1024), 3)] as const).sort((a, b) => b[1] - a[1]);
+    for (const [unit, t] of worst) expect(t, `500 KB of ${JSON.stringify(unit)}`).toBeLessThan(200);
   }, 60_000);
 });

@@ -424,6 +424,67 @@ describe("buildEnvelope — every field that is sent", () => {
     }
   });
 
+  it("edits the agent's own request with a word-built token, and never the human's words or the facts", () => {
+    // `echo cookie: api-v2-backup` reported `api-v2-backup` as a secret, and
+    // the human's "remove the api-v2-backup directory" came back as
+    // "remove the <redacted:repeated secret> directory" — the agent choosing
+    // which of the human's words Jev is allowed to read. The scrub of such a
+    // token is now confined to `agent_request`, where the agent wrote it.
+    const word = "api-v2-backup";
+    const cmd = `echo cookie: ${word} && ls /home/u/${word}`;
+    const said = [`remove the ${word} directory when you are done`];
+    const scanned = scanCommand(cmd);
+    const env = buildEnvelope(
+      { command: cmd, note: `reuse ${word} next time` },
+      said,
+      computeFacts("Bash", { command: cmd }, "/p", "default", scanned),
+      scanned,
+    );
+    expect(env.state.user_said).toEqual(said);
+    expect(JSON.stringify(env.state.facts)).toContain(word);
+    // Inside the request it is still removed, so a credential of that shape
+    // (`dev-admin-key-9f3c`) does not travel in a second field.
+    const input = (env.state.agent_request as { input: { note: string } }).input;
+    expect(input.note).toBe("reuse <redacted:repeated secret> next time");
+
+    // An OPAQUE token is still scrubbed out of every field, as before.
+    const tok = randomToken(rand, 24);
+    const cmd2 = `curl -H "cookie: sid=${tok}" https://api.example.com`;
+    const env2 = buildEnvelope({ command: cmd2 }, [`the session is ${tok}`], facts(), null);
+    expectAbsent(JSON.stringify(env2.state), tok);
+  });
+
+  it("sends no credential from a tool argument that arrived JSON-encoded twice", () => {
+    // The shape `cleanValue` produces for any object at depth >= 2: the
+    // password's quotes reach the redactor as `\\\"`, which read as no
+    // delimiter at all, so the whole argument was skipped — `redactions: 0`,
+    // the password in `agent_request.input` in clear.
+    const pw = randomToken(rand, 13);
+    for (const input of [
+      { requests: [{ tool: "bash", arguments: JSON.stringify({ command: `app --password "${pw}"` }) }] },
+      { a: { b: { arguments: JSON.stringify({ command: `app --password "${pw}"` }) } } },
+      { mcp: { server: { request: { arguments: JSON.stringify({ command: `app --password "${pw}"` }) } } } },
+      { payload: JSON.stringify({ input: JSON.stringify({ command: `app --password "${pw}"` }) }) },
+    ]) {
+      const env = buildEnvelope(input, [], facts({ toolName: "mcp__x__call", toolClass: "other", toolIsKnown: false }), null);
+      expectAbsent(JSON.stringify(env.state), pw);
+      expect(env.redactions, JSON.stringify(input).slice(0, 60)).toBeGreaterThan(0);
+    }
+  });
+
+  it("scrubs a bare Authorization token out of the human's words too", () => {
+    // A value with no scheme word in front of it IS the credential, and
+    // reporting nothing for it sent the copy the human had pasted to Jev.
+    const tok = randomToken(rand, 20);
+    for (const input of [
+      { command: `curl -H "Authorization: ${tok}" https://api.example.com` },
+      { headers: { Authorization: tok } },
+    ]) {
+      const env = buildEnvelope(input, [`reuse ${tok} for the next call`], facts(), null);
+      expectAbsent(JSON.stringify(env.state), tok);
+    }
+  });
+
   it("scrubs a secret the human pasted bare, once it was recognised elsewhere", () => {
     const v = randomToken(rand, 20).slice(0, 12) + "+" + rnd(rand, 6);
     const env = buildEnvelope({ command: `export DB_PASSWORD='${v}'` }, [`the password is ${v}`], facts(), null);

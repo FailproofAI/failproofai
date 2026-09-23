@@ -30,6 +30,7 @@ import {
 } from "./pack-store";
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
+import { authorityFieldsOf, authorityProblem } from "./policy-authority";
 import type { MultiChoice, TTYIn, TTYOut } from "./tui";
 import {
   chip,
@@ -359,6 +360,26 @@ async function build(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
+  // An authority declaration the manifest would lose, or that registration
+  // would quietly downgrade to hard, is refused HERE. Every machine that
+  // installs the pack would otherwise make the policy hard with only a warning
+  // in its own log — the author's decision, silently not taking effect — while
+  // at build time nothing is installed yet and refusing costs nobody anything.
+  // The same rule `scripts/build-policy-pack.mjs` applies to the core pack.
+  const authorityProblems = hooks.flatMap((hook) => {
+    const problem = authorityProblem({ authority: hook.authority, reviewedBy: hook.reviewedBy });
+    return problem ? [`  ${hook.name}: ${problem}`] : [];
+  });
+  if (authorityProblems.length > 0) {
+    return fail([
+      authorityProblems.length === 1
+        ? "One policy declares an authority this build cannot publish:"
+        : `${authorityProblems.length} policies declare an authority this build cannot publish:`,
+      ...authorityProblems,
+      'Fix the declaration, or leave authority out and the policy is "hard". See https://docs.befailproof.ai/policies/authority',
+    ]);
+  }
+
   const policies: unknown[] = [];
   for (const [index, hook] of hooks.entries()) {
     // `category` and `defaultEnabled` are pack-manifest fields a plain custom
@@ -374,6 +395,11 @@ async function build(rest: string[]): Promise<PackCliResult> {
       category: typeof extra.category === "string" && extra.category ? extra.category : "General",
       defaultEnabled: extra.defaultEnabled === true,
       match: hook.match ?? {},
+      // Whether Jev may clear this policy's verdict. A pack's MANIFEST is what
+      // a machine reads it from, so a declaration left on the registration
+      // alone would be published as nothing — silently hard. Checked above, so
+      // everything declared here is shape-valid; absent stays absent.
+      ...authorityFieldsOf(hook as unknown as Record<string, unknown>),
     };
     try {
       policies.push(parsePackPolicy(identity.id, candidate, index));

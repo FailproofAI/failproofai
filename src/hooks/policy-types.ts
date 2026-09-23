@@ -65,6 +65,14 @@ export type PolicyAuthority = "hard" | "reviewable";
  * `alwaysOn`. Anything else — absent, invalid, an empty `reviewedBy`, the
  * self-protection guard — is `hard`, so an unknown custom, cloud or third-party
  * policy can never be weakened by Jev.
+ *
+ * This is the §7 contract every task builds against, and it is deliberately
+ * the looser of two rules: one usable name is enough here. REGISTRATION is
+ * stricter — `resolvePolicyAuthority` in `policy-authority.ts` makes the whole
+ * declaration hard if any entry is malformed or is not a semantic policy this
+ * build has, and that is what `registerPolicy` stores. So a registered policy's
+ * `reviewedBy` is already clean, and the two rules agree on everything that
+ * reaches the registry.
  */
 export function effectiveAuthority(p: {
   authority?: unknown;
@@ -135,7 +143,15 @@ export interface CustomHook {
     events?: HookEventType[];
   };
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
-  /** See {@link PolicyAuthority}. Absent means `hard`. */
+  /**
+   * See {@link PolicyAuthority}. Absent means `hard`.
+   *
+   * Honored for the user's own local policy files (explicit paths and
+   * `.failproofai/policies/`). For a pack policy the pack's MANIFEST decides,
+   * and for a cloud-managed one the cloud ARTIFACT record does — the same split
+   * as `params`, so the declaration a user reviewed in a listing is the one
+   * that takes effect.
+   */
   authority?: PolicyAuthority;
   /** See {@link RegisteredPolicy.reviewedBy}. */
   reviewedBy?: string[];

@@ -32,6 +32,7 @@ import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
+import { authorityDeclarationFor, resolvePolicyAuthority, warnAuthority } from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
@@ -561,6 +562,14 @@ export async function evaluateHookEvent(
           ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudVersion: cloudManaged.version } : {}),
           ...(pack ? { packId: pack.id, packVersion: pack.version } : {}),
         });
+        // Whether Jev may clear this policy's verdict. The cloud assignment or
+        // the pack manifest declares it for those routes, the hook itself only
+        // for the user's own files; anything unclear registers as hard. Said
+        // aloud when a `reviewable` claim is refused and Jev is configured, so
+        // an author is not left wondering why Jev never clears it.
+        const authority = authorityDeclarationFor(hook, { cloudManaged, pack });
+        const refused = resolvePolicyAuthority(authority).downgraded;
+        if (refused) warnAuthority(`${registeredName} asks to be reviewable, but ${refused} — it stays hard`);
         registerPolicy(
           registeredName,
           hook.description ?? "",
@@ -572,6 +581,7 @@ export async function evaluateHookEvent(
           // configured. Matched by the pack's own name for the policy, which is
           // the name before the `pack/<id>@<version>/` prefix is applied.
           pack?.policies.find((p) => p.name === hook.name)?.params,
+          authority,
         );
       }
 

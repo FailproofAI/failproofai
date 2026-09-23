@@ -33,6 +33,7 @@ import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
+import { warnAuthority, withMergedAuthority } from "./policy-authority";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -448,9 +449,19 @@ export async function loadAllCustomHooks(
       `cloud-managed policies ${existing.id} and ${policy.id} have identical source, so they share ` +
         `one artifact and load as one policy; enforcing it if either asks to enforce`,
     );
-    if (existing.effect !== "enforce" && policy.effect === "enforce") {
-      cloudManagedByPath.set(key, policy);
+    // Authority resolves toward HARD, for the same reason: reviewable only if
+    // every assignment behind these bytes says so. Keeping one record's
+    // declaration let the order of active.json decide, so a team's reviewable
+    // assignment could clear what an org-wide hard one enforces.
+    const winner = existing.effect !== "enforce" && policy.effect === "enforce" ? policy : existing;
+    const { merged, overruled } = withMergedAuthority(winner, [existing, policy]);
+    if (overruled) {
+      warnAuthority(
+        `cloud-managed policies ${existing.id} and ${policy.id} share one artifact and do not all declare it ` +
+          `reviewable, so it stays hard`,
+      );
     }
+    cloudManagedByPath.set(key, merged);
   }
 
   // Installed packs, keyed by artifact path — the same content-addressing, and
@@ -482,14 +493,34 @@ export async function loadAllCustomHooks(
    *
    * Winner precedence on a name both declare, because the merged record carries
    * the winner's id and version and there is no merging two different defaults.
+   *
+   * Except AUTHORITY, which resolves toward hard like the effect resolves toward
+   * enforce (`withMergedAuthority`): a name is reviewable only if every pack
+   * behind the artifact declares it reviewable. A pack whose manifest does not
+   * list the name at all counts as hard — its copy of the artifact registers
+   * the policy all the same, undeclared, and an undeclared pack policy is hard.
+   * Winner precedence here would let one pack's manifest make another pack's
+   * policy reviewable, which is the one thing a manifest may never do.
    */
   const unionCatalog = (
     winner: PolicyCatalogEntry[],
     other: PolicyCatalogEntry[],
-  ): PolicyCatalogEntry[] => [
-    ...winner,
-    ...other.filter((p) => !winner.some((w) => w.name === p.name)),
-  ];
+  ): { policies: PolicyCatalogEntry[]; overruled: string[] } => {
+    /** Names a pack asked to be reviewable and did not get, for the warning. */
+    const overruled: string[] = [];
+    const harden = (entry: PolicyCatalogEntry, peer: PolicyCatalogEntry | undefined) => {
+      const r = withMergedAuthority(entry, [entry, peer ?? {}]);
+      if (r.overruled) overruled.push(entry.name);
+      return r.merged;
+    };
+    return {
+      policies: [
+        ...winner.map((w) => harden(w, other.find((p) => p.name === w.name))),
+        ...other.filter((p) => !winner.some((w) => w.name === p.name)).map((p) => harden(p, undefined)),
+      ],
+      overruled,
+    };
+  };
 
   const packByPath = new Map<string, ResolvedPack>();
   /**
@@ -535,12 +566,19 @@ export async function loadAllCustomHooks(
     // being intersected away.
     const winner = existing.effect !== "enforce" && pack.effect === "enforce" ? pack : existing;
     const other = winner === existing ? pack : existing;
+    const catalog = unionCatalog(winner.policies, other.policies);
     packByPath.set(key, {
       ...winner,
-      policies: unionCatalog(winner.policies, other.policies),
+      policies: catalog.policies,
       enabled: unionSelection(winner.enabled, other.enabled),
       clis: unionSelection(winner.clis, other.clis),
     });
+    if (catalog.overruled.length > 0) {
+      warnAuthority(
+        `packs ${existing.id} and ${pack.id} share one artifact and do not all declare ` +
+          `${catalog.overruled.join(", ")} reviewable, so ${catalog.overruled.length === 1 ? "it stays" : "they stay"} hard`,
+      );
+    }
   }
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using

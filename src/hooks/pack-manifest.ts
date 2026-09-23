@@ -43,6 +43,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { packsDir, packsInstalledFile } from "./fp-home";
 import { resolveManagedPath } from "./cloud-managed-policies";
+import { authorityFieldsOf } from "./policy-authority";
 import type { PolicyCatalogEntry } from "./policy-types";
 import type { PolicyEffect } from "./cloud-managed-policies";
 
@@ -273,6 +274,21 @@ export function parsePackPolicy(packId: string, value: unknown, index: number): 
     if (!Array.isArray(value) || value.some((e) => typeof e !== "string" || e.length === 0)) {
       throw new Error(`${where} has a match.${key} that is not a list of names`);
     }
+  }
+  // Authority: whether Jev may clear this policy's verdict. Unlike `match`, a
+  // malformed value is DROPPED rather than refused — refusing the pack fails it
+  // closed and denies every tool call it covers, while dropping the field makes
+  // this one policy `hard`, which is what an unreadable declaration means
+  // anyway. A pack can only describe its OWN policies this way: the name above
+  // cannot contain `/`, so no entry can reach a builtin or another pack's
+  // policy. Absent fields stay absent, valid ones stay where they were, and an
+  // entry with nothing to drop is returned as is.
+  const valid = authorityFieldsOf(raw);
+  const invalid = (["authority", "reviewedBy"] as const).filter((k) => k in raw && !(k in valid));
+  if (invalid.length > 0) {
+    return Object.fromEntries(
+      Object.entries(raw).filter(([k]) => !(invalid as readonly string[]).includes(k)),
+    ) as unknown as PolicyCatalogEntry;
   }
   return raw as unknown as PolicyCatalogEntry;
 }

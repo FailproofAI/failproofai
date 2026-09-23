@@ -11,10 +11,11 @@
  * | `multiAgent()` handoff                | nested agent per agent holding the turn       |
  * | workflow step                         | `hook_triggered`/`hook_completed`, `trigger_event="workflow_step"` |
  * | legacy `LLMAgent` / `AgentRunner` task| `agent_start`/`agent_end` across ALL its steps |
+ * | `createWorkflow()` workflow (core ≥1.1)| `agent_start`/`agent_end` (`"Workflow"`), steps as hooks |
  * | LLM chat                              | `model_request`/`model_response` on `request_id` |
  * | tool call                             | `tool_use`/`tool_result`, the model's call id |
- * | retrieval                             | `tool_use`/`tool_result`, output summarised   |
- * | bare `llm.chat()` / tool / query      | its own root run, named after its class       |
+ * | retrieval                             | `tool_use`/`tool_result` named after the retriever's class, output summarised |
+ * | top-level chat engine / query engine / retriever / `llm.chat()` / tool | its own root run, named after its class |
  *
  * `agent_id` is the agent's `name` (`"Agent"` when unnamed, as in Python), the
  * class name for a multi-agent workflow or a legacy runner — never an id.
@@ -37,6 +38,25 @@
  * — which `run()` also goes through — is wrapped to open the run and to attach
  * those two subscriptions to the context it creates. That is a prototype patch,
  * so it records agents built before `instrument()` too.
+ *
+ * Three smaller hooks fill what neither half says, each on one object and each
+ * undone by `uninstrument()`:
+ *
+ *   * **Invocation boundaries.** A chat engine's `chat()` dispatches nothing of
+ *     its own, so its retrieval and its model call used to become two root runs
+ *     in two sessions. Every `@wrapEventCaller` method runs as
+ *     `storage.run(new EventCaller(...), fn)` on ONE module-private storage in
+ *     `@llamaindex/core/global`; an own `run` on that storage (found through the
+ *     exported `getEventCaller()`, see `eventCallerStorage`) sees each
+ *     invocation start and return. A top-level invocation is then one run named
+ *     after its class that ends when it returns, and an invocation that THROWS
+ *     is the failure signal `wrapLLMEvent` and the legacy runner lack.
+ *   * **Retriever names.** `retrieve-start` carries only the query; the patched
+ *     `BaseRetriever.prototype.retrieve` binds the retriever for it.
+ *   * **Plain workflows.** workflow-core ≥1.1 runs every step handler as
+ *     `AsyncContext.Variable#run(handlerContext, …)`, a class it exports; its
+ *     prototype `run` sees every step of every context. See `plainStep` for why
+ *     such a run ends when its context goes idle.
  *
  * ## Correlation, which LlamaIndex.TS does not give us
  *
@@ -77,19 +97,30 @@
  *
  * ## Known gaps, each one the framework's and each one documented, not faked
  *
- *   * No failure signal for a model call or a legacy task: `wrapLLMEvent` has no
- *     error path (no `llm-end` when `chat()` throws) and a failed legacy step
- *     never dispatches `agent-end`. Inside a workflow the step failure closes
- *     both, marked failed; outside one the leaf stays open until the reaper
- *     (`staleAfter`) or `uninstrument()` closes it.
+ *   * A model call has no failure signal of its own: `wrapLLMEvent` has no error
+ *     path (no `llm-end` when `chat()` throws). A provider whose `chat` is
+ *     `@wrapEventCaller` (every first-party one) fails with its invocation, and
+ *     inside a workflow the failed step closes it. A STREAM that fails while it
+ *     is being read, outside a workflow, has returned already: that leaf stays
+ *     open until the reaper (`staleAfter`) or `uninstrument()`.
+ *   * A provider error mid-stream inside `agent().run()` escapes LlamaIndex's
+ *     workflow runtime as an UNHANDLED rejection and `run()` never settles —
+ *     with or without this SDK. The failed step still closes the run, failed.
  *   * `callTool` dispatches no `llm-tool-result` when a tool throws. In a
  *     workflow the runtime's own tool-result event closes it with the error; in
  *     a legacy agent the next model call does, from the tool-result message.
  *   * No embedding events exist on the TS bus, so `embeddings: true` has
  *     nothing to record.
- *   * A plain `createWorkflow()` workflow has no run boundary to observe (its
- *     context is created and fed by the caller, and never "ends"); only
- *     `AgentWorkflow` — every `agent()`/`multiAgent()` — is a run.
+ *   * Streamed calls carry token usage only when the provider sends it:
+ *     `@llamaindex/openai` requests it only with
+ *     `additionalChatOptions: { stream_options: { include_usage: true } }`.
+ *   * A plain `createWorkflow()` workflow is a run only on workflow-core ≥1.1
+ *     resolvable from the application (not the floor's `@llama-flow/core`, not
+ *     an unhoisted pnpm layout): elsewhere its model calls are loose root runs.
+ *     Its run ends when the context goes idle, so a workflow that waits for an
+ *     event from outside records each burst as its own run, and it is named
+ *     `"Workflow"` — the runtime has no name to give it (wrap it in
+ *     `failproofai.agent("name", …)` to name the parent).
  *   * No human-in-the-loop pairs: the TS runtime has no waiting-for-event signal.
  */
 
@@ -106,6 +137,7 @@ const NAME = "llamaindex";
 const PACKAGE = "llamaindex";
 const CORE_PACKAGE = "@llamaindex/core";
 const WORKFLOW_PACKAGE = "@llamaindex/workflow";
+const ASYNC_CONTEXT_MODULE = "@llamaindex/workflow-core/async-context";
 const INSTALL = "npm install llamaindex";
 
 /**
@@ -412,6 +444,15 @@ interface Run {
   steps: Set<string>;
   /** Legacy runs have no end signal until their last step; bare runs end with their leaf. */
   bare: boolean;
+  /**
+   * Ends when the LlamaIndex invocation in `caller` returns — a chat engine, a
+   * bare model call — because nothing on the bus marks its end. (Query and
+   * legacy runs have their own end event and take only a FAILURE from there.)
+   */
+  byInvocation: boolean;
+  /** Plain-workflow runs: step handlers still running, and the last step's output text. */
+  inFlight: number;
+  output?: string;
   /** A run whose end arrived while a streamed leaf was still open. */
   ending: { outcome: string; summary?: string } | null;
   lastContent?: string;
@@ -481,6 +522,16 @@ export interface GlobalModule {
   getEventCaller?: () => unknown;
 }
 
+/** One loaded copy of `@llamaindex/core/retriever`. */
+export interface RetrieverModule {
+  BaseRetriever?: { prototype: object };
+}
+
+/** One loaded copy of `@llamaindex/workflow-core/async-context` (workflow-core ≥1.1). */
+export interface AsyncContextModule {
+  AsyncContext?: { Variable?: { prototype: object } };
+}
+
 /** One loaded copy of `@llamaindex/workflow`. */
 export interface WorkflowModule {
   AgentWorkflow?: { prototype: object; name?: string };
@@ -511,6 +562,20 @@ class State {
   private readonly tasks = new Map<string, Run>();
   /** Root query-engine runs, by `query-start` id. */
   private readonly queries = new Map<string, Run>();
+  /** The retriever whose `retrieve()` is running, for the retrieval's name. */
+  readonly retrievers = new AsyncLocalStorage<object>();
+  /** `EventCaller`s whose invocation we watch start and end (see `invocation`). */
+  private readonly observed = new WeakSet<object>();
+  /** `EventCaller`s whose invocation has already returned or thrown. */
+  private readonly returned = new WeakSet<object>();
+  /** Model leaves opened directly inside an invocation (not in a workflow step), by its `EventCaller`. */
+  private readonly invocationLeaves = new WeakMap<object, Set<string>>();
+  /** Errors a leaf already carries, so the run they end does not report them again. */
+  private readonly carried = new WeakSet<object>();
+  /** Plain-workflow runs, by the workflow-core root handler context of their context. */
+  private readonly plainRuns = new WeakMap<object, Run>();
+  /** Step handlers of `AgentWorkflow`s, which are recorded as agent runs instead. */
+  private readonly agentHandlers = new WeakSet<object>();
   private readonly globals: GlobalModule[];
   private reaper: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
@@ -609,6 +674,7 @@ class State {
       owner?: object | null;
       caller?: object | null;
       bare?: boolean;
+      byInvocation?: boolean;
       goal?: unknown;
       root?: Run | null;
       fields?: Json;
@@ -639,6 +705,8 @@ class State {
       caller: options.caller ?? null,
       steps: new Set(),
       bare: options.bare ?? false,
+      byInvocation: options.byInvocation ?? false,
+      inFlight: 0,
       ending: null,
       ended: false,
       lastActivity: performance.now(),
@@ -767,19 +835,134 @@ class State {
 
   // -- the bus --------------------------------------------------------------
 
-  /** Where a bus event goes; opens a bare root run when it belongs to nothing. */
-  private placeOrOpen(event: unknown, prefix: string, agentId: () => string): Located {
-    const located = this.locate(originOf(event));
+  /** True when the outermost invocation on the chain is one we can see end. */
+  private observedOuter(origin: Origin): boolean {
+    const outer = origin.chain?.[origin.chain.length - 1];
+    return outer !== undefined && this.observed.has(outer) && !this.returned.has(outer);
+  }
+
+  /** Where a bus event goes; opens a root run when it belongs to nothing. */
+  private placeOrOpen(event: unknown, prefix: string, agentId: () => string, origin = originOf(event)): Located {
+    const located = this.locate(origin);
     if (located) return located;
-    const run = this.openRun(prefix, agentId(), { parent: null, bare: true });
+    const run = this.openRoot(origin, prefix, agentId);
     return { parentKey: run.key, run };
+  }
+
+  /**
+   * The root run for an event nothing encloses: Python's rule, "any other
+   * top-level instrumented call opens the session and becomes its root agent,
+   * named after its class".
+   *
+   * The top-level call is the OUTERMOST invocation on the event's `EventCaller`
+   * chain — a `ContextChatEngine.chat`, not the retriever or the model call it
+   * made — so everything one chat does lands in one run instead of one session
+   * per retrieval and per model call. The run ends when that invocation
+   * returns, which only `invocation()` sees; an invocation it did not see start
+   * (no hook on this build, or begun before `instrument()`) falls back to a
+   * bare run that ends with its one leaf, as every root run used to.
+   */
+  private openRoot(origin: Origin, prefix: string, agentId: () => string): Run {
+    const outer = origin.chain?.[origin.chain.length - 1];
+    if (outer && this.observedOuter(origin)) {
+      return this.openRun(prefix, className(read(outer, "caller")) ?? agentId(), {
+        parent: null,
+        caller: outer,
+        byInvocation: true,
+      });
+    }
+    return this.openRun(prefix, agentId(), { parent: null, bare: true });
+  }
+
+  /**
+   * Run one LlamaIndex invocation — the callback `withEventCaller` binds an
+   * `EventCaller` around — and observe how it ends. Called from the hook on
+   * LlamaIndex's own event-caller storage (`hookInvocations`).
+   *
+   * A native promise is REPLACED by one that settles identically, never merely
+   * observed: attaching a rejection handler to the caller's own promise would
+   * mark it handled, and a rejection the application never handled would stop
+   * being reported. Anything else is returned untouched and only a synchronous
+   * throw is seen.
+   */
+  invocation(caller: object, fn: () => unknown): unknown {
+    this.observed.add(caller);
+    let result: unknown;
+    try {
+      result = fn();
+    } catch (error) {
+      this.returnedFrom(caller, undefined, error, true);
+      throw error;
+    }
+    if (result instanceof Promise && result.constructor === Promise) {
+      return result.then(
+        (value: unknown) => {
+          this.returnedFrom(caller, value);
+          return value;
+        },
+        (error: unknown) => {
+          this.returnedFrom(caller, undefined, error, true);
+          throw error;
+        },
+      );
+    }
+    if (!(isObject(result) && typeof (result as { then?: unknown }).then === "function")) {
+      this.returnedFrom(caller, result);
+    }
+    return result;
+  }
+
+  private returnedFrom(caller: object, value: unknown, error?: unknown, failed = false): void {
+    core.callSafely(
+      () => {
+        if (this.active) this.invocationEnded(caller, value, error, failed);
+      },
+      [],
+      `${NAME}.invocationEnded`,
+    );
+  }
+
+  /**
+   * An invocation returned or threw. A failure is the ONLY failure signal a
+   * model call, a query or a legacy task has — `wrapLLMEvent` has no error path
+   * and a failed step dispatches no `agent-end` — so it closes what that call
+   * left open. A success ends only a run that has no end event of its own.
+   */
+  private invocationEnded(caller: object, value: unknown, error: unknown, failed: boolean): void {
+    this.returned.add(caller);
+    const text = failed ? errorText(error) : undefined;
+    if (failed) {
+      for (const key of this.invocationLeaves.get(caller) ?? []) {
+        const leaf = this.leaves.get(key);
+        if (!leaf) continue;
+        this.closeLeaf(leaf, { error: text });
+        if (isObject(error)) this.carried.add(error);
+      }
+    }
+    this.invocationLeaves.delete(caller);
+    const run = this.live(this.invocations.get(caller));
+    if (!run) return;
+    if (failed) {
+      for (const key of [...run.leaves]) {
+        const leaf = this.leaves.get(key);
+        if (!leaf) continue;
+        this.closeLeaf(leaf, { error: text });
+        if (isObject(error)) this.carried.add(error);
+      }
+      // One report per failure: a leaf that already carries it is the report.
+      if (!(isObject(error) && this.carried.has(error))) this.reportError(run, error);
+      this.finishRun(run, "failed", text);
+    } else if (run.byInvocation) {
+      this.finishRun(run, "success", this.options.captureMessages ? textOf(value) : undefined);
+    }
   }
 
   llmStart(event: unknown): void {
     const payload = detail(event);
     const id = asId(payload.id);
     const frame = this.frames.getStore();
-    const place = this.placeOrOpen(event, "llm", () => className(callersOf(event)[0]) ?? "llm");
+    const origin = originOf(event);
+    const place = this.placeOrOpen(event, "llm", () => className(callersOf(event)[0]) ?? "llm", origin);
     this.closeAnsweredTools(place.run, payload.messages);
     const model = modelFromCallers(event) ?? (frame && frame.run === place.run ? frame.model : undefined) ?? place.run.model;
     const leaf: Leaf = {
@@ -793,6 +976,14 @@ class State {
       model,
     };
     this.openLeaf(leaf);
+    // A model call that throws has no `llm-end`; its invocation throwing is the
+    // only signal. Inside a workflow step the step's failure already closes it.
+    const invocation = origin.chain?.[0];
+    if (invocation && !frame) {
+      const keys = this.invocationLeaves.get(invocation) ?? new Set<string>();
+      keys.add(leaf.key);
+      this.invocationLeaves.set(invocation, keys);
+    }
     this.tracker.emit("modelRequest", leaf.key, {
       parentKey: leaf.parentKey,
       model,
@@ -906,13 +1097,17 @@ class State {
   retrieveStart(event: unknown): void {
     const payload = detail(event);
     const id = asId(payload.id);
-    const place = this.placeOrOpen(event, "retrieve", () => "retriever");
+    // The retriever's class, as Python names it (`VectorIndexRetriever`). The
+    // event does not carry the retriever; the patched `retrieve()` it was
+    // dispatched from does, and the dispatch runs in that call's async context.
+    const name = className(this.retrievers.getStore()) ?? "retriever";
+    const place = this.placeOrOpen(event, "retrieve", () => name);
     const leaf: Leaf = {
       key: `retrieve:${id}`,
       kind: "retrieval",
       run: place.run,
       parentKey: place.parentKey,
-      name: "retriever",
+      name,
       callId: id,
       started: performance.now(),
     };
@@ -941,6 +1136,13 @@ class State {
     const origin = originOf(event);
     const owner = origin.callers[0];
     if (this.locate(origin, owner)) return;
+    // Called from inside ANOTHER invocation nothing encloses — a chat engine
+    // whose first act is a query: that invocation is the root, and the query
+    // is inside it (recording nothing of its own, as inside any run).
+    if (origin.chain && origin.chain.length > 1 && this.observedOuter(origin)) {
+      this.openRoot(origin, "invocation", () => className(owner) ?? "query_engine");
+      return;
+    }
     const payload = detail(event);
     const run = this.openRun(`query:${asId(payload.id)}`, className(owner) ?? "query_engine", {
       owner: isObject(owner) ? owner : null,
@@ -981,8 +1183,15 @@ class State {
     }
     const origin = originOf(event);
     const owner = origin.callers[0];
+    let parent = this.locate(origin, owner);
+    if (!parent && origin.chain && origin.chain.length > 1 && this.observedOuter(origin)) {
+      // A legacy agent called from inside another un-run invocation nests
+      // under it, the way a sub-agent nests under a workflow.
+      const root = this.openRoot(origin, "invocation", () => "invocation");
+      parent = { parentKey: root.key, run: root };
+    }
     const run = this.openRun(`task:${firstId}`, className(owner) ?? "AgentRunner", {
-      parent: this.locate(origin, owner),
+      parent,
       owner: isObject(owner) ? owner : null,
       caller: origin.chain?.[0] ?? null,
       goal: textOf((read(read(read(step, "context"), "store"), "messages") as unknown[] | undefined)?.at(-1)),
@@ -1011,6 +1220,11 @@ class State {
     userInput: unknown,
     module: WorkflowModule,
   ): { run: Run; attach: (context: unknown) => void } {
+    // Its steps are recorded through its context (`attachContext`), never
+    // again as a plain workflow's.
+    for (const handler of handlerNames(workflow).keys()) {
+      if (isObject(handler) || typeof handler === "function") this.agentHandlers.add(handler);
+    }
     const agents = read(workflow, "agents");
     const size = agents instanceof Map ? agents.size : 1;
     const rootName = nonEmpty(read(workflow, "rootAgentName"));
@@ -1173,11 +1387,119 @@ class State {
     };
   }
 
-  private stepStart(run: Run, workflow: Json, name: string, event: unknown): Step | null {
+  /**
+   * One step handler of a plain `createWorkflow()` workflow, seen as
+   * workflow-core binds its handler context (`hookAsyncContext`).
+   *
+   * A plain workflow has no run boundary of its own: the application creates
+   * the context, sends it events and stops reading whenever it likes. So the
+   * run is the context's BURST of activity — it opens with the first step
+   * handler of a context and ends once no step of it is running and none was
+   * started by the last one's output (checked a macrotask later, after the
+   * runtime has dispatched that output). A workflow that then waits for an
+   * event from outside (human-in-the-loop) records the next burst as a new run.
+   */
+  plainStep(handlerContext: Json, proceed: () => unknown): unknown {
+    const original = handlerContext.handler;
+    if (typeof original !== "function" || this.agentHandlers.has(original)) return proceed();
+    const root = rootContext(handlerContext);
+    const inputs = handlerContext.inputs;
+    const input = Array.isArray(inputs) ? (inputs[0] as unknown) : undefined;
+    let run = this.live(this.plainRuns.get(root));
+    if (!run) {
+      const data = read(input, "data");
+      run = this.openRun("workflow", "Workflow", {
+        parent: this.locate(),
+        goal: typeof data === "string" ? data : textOf(data),
+        fields: { workflow: "Workflow" },
+      });
+      this.plainRuns.set(root, run);
+    }
+    const label = eventLabel(input);
+    const name = nonEmpty(read(original, "name")) ?? (label ? `handle:${label}` : "step");
+    const step = this.stepStart(run, {}, name, input, true);
+    if (!step) return proceed();
+    const owner = run;
+    owner.inFlight += 1;
+    let done = false;
+    const end = (value: unknown, error?: unknown): void => {
+      if (done) return;
+      done = true;
+      owner.inFlight -= 1;
+      core.callSafely(
+        () => {
+          const data = read(value, "data");
+          if (error === undefined && typeof data === "string") owner.output = data;
+          this.stepEnd(step, value, error);
+          if (owner.inFlight === 0 && !owner.ended) this.whenQuiet(owner);
+        },
+        [],
+        `${NAME}.plainStepEnd`,
+      );
+    };
+    // The handler object is this invocation's own, so its handler is replaced
+    // in place — the same thing middleware does — rather than wrapped around.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- the wrapper needs its own `this`
+    const state = this;
+    handlerContext.handler = function failproofaiStep(this: unknown, ...args: unknown[]): unknown {
+      let result: unknown;
+      try {
+        result = state.frames.run(step.frame, () => (original as (...a: unknown[]) => unknown).apply(this, args));
+      } catch (error) {
+        end(undefined, error);
+        throw error;
+      }
+      if (isObject(result) && typeof (result as { then?: unknown }).then === "function") {
+        return (result as unknown as PromiseLike<unknown>).then(
+          (value) => {
+            end(value);
+            return value;
+          },
+          (error: unknown) => {
+            end(undefined, error);
+            throw error;
+          },
+        );
+      }
+      end(result);
+      return result;
+    };
+    return proceed();
+  }
+
+  /**
+   * End a plain-workflow run if it is still idle once the runtime has
+   * dispatched the last step's output. Two microtask hops: the step's end runs
+   * in a reaction to the handler's promise, the runtime's `sendEvent` in the
+   * reaction to the promise returned in its place — queued one hop later, and
+   * starting any next handler synchronously. Any later and the run would end
+   * after the caller that awaited it (and after an `agent()` scope around it).
+   */
+  private whenQuiet(run: Run): void {
+    queueMicrotask(() => {
+      queueMicrotask(() => {
+        core.callSafely(
+          () => {
+            if (this.active && !run.ended && run.inFlight === 0) {
+              this.finishRun(run, "success", this.options.captureMessages ? run.output : undefined);
+            }
+          },
+          [],
+          `${NAME}.whenQuiet`,
+        );
+      });
+    });
+  }
+
+  private stepStart(run: Run, workflow: Json, name: string, event: unknown, plain = false): Step | null {
     if (run.ended) return null;
     const data = read(event, "data");
-    const agentName = nonEmpty(read(data, "currentAgentName")) ?? nonEmpty(read(data, "agentName"));
-    const owner = this.subAgent(run, agentName);
+    // Only an AgentWorkflow's events name the agent holding the turn; a plain
+    // workflow's data is the application's own, whatever its field names.
+    const agentName = plain
+      ? undefined
+      : (nonEmpty(read(data, "currentAgentName")) ?? nonEmpty(read(data, "agentName")));
+    const owner = plain ? run : this.subAgent(run, agentName);
     run.lastActivity = owner.lastActivity = performance.now();
     const key = this.nextKey(`${run.key}:step`);
     this.tracker.link(key, owner.key);
@@ -1337,6 +1659,20 @@ function firstStep(step: Json): Json {
   }
 }
 
+/** A workflow-core handler context's root: one per `createContext()`, so one per context. */
+function rootContext(handlerContext: Json): object {
+  const root = read(handlerContext, "root");
+  if (isObject(root)) return root;
+  let current: Json = handlerContext;
+  const seen = new Set<unknown>();
+  for (;;) {
+    const previous = read(current, "prev");
+    if (!isObject(previous) || seen.has(previous)) return current;
+    seen.add(previous);
+    current = previous;
+  }
+}
+
 /** Step handler functions are instance arrow fields, so they are named by the field. */
 function handlerNames(workflow: Json): Map<unknown, string> {
   const names = new Map<unknown, string>();
@@ -1425,7 +1761,13 @@ const BUS_EVENTS: Array<[string, keyof State]> = [
  */
 export function attach(
   rawOptions: Record<string, unknown>,
-  modules: { globals: GlobalModule[]; workflows: WorkflowModule[]; frameworkPackage?: string },
+  modules: {
+    globals: GlobalModule[];
+    workflows: WorkflowModule[];
+    retrievers?: RetrieverModule[];
+    asyncContexts?: AsyncContextModule[];
+    frameworkPackage?: string;
+  },
 ): { sweep: (now?: number) => number; residue: () => ReturnType<State["residue"]> } {
   if (installed !== null) {
     throw new Error(
@@ -1480,12 +1822,158 @@ export function attach(
     );
   }
 
+  const storages = new Set<AsyncLocalStorage<unknown>>();
+  for (const module of modules.globals) {
+    const storage = eventCallerStorage(module);
+    if (storage) storages.add(storage);
+  }
+  for (const storage of storages) hookInvocations(current, storage);
+  compat.probe(NAME, "EventCaller storage", () => storages.size > 0 || modules.globals.every((m) => !m.getEventCaller));
+  for (const module of modules.retrievers ?? []) {
+    patchRetriever(current, module);
+  }
   for (const module of modules.workflows) {
     patchWorkflow(current, module);
+  }
+  for (const module of modules.asyncContexts ?? []) {
+    hookAsyncContext(current, module);
   }
   state.startReaper();
   logger.debug(`llamaindex adapter subscribed on ${buses.size} bus(es), ${current.patcher.size} patch(es)`);
   return { sweep: (now?: number) => state.sweep(now), residue: () => state.residue() };
+}
+
+/**
+ * LlamaIndex's own `AsyncLocalStorage` of `EventCaller`s — module-private in
+ * `@llamaindex/core/global`, so found by watching which storage one call of
+ * the exported `getEventCaller()` reads. The prototype is swapped back before
+ * this returns: the window is one synchronous call, with no other code in it.
+ */
+export function eventCallerStorage(module: GlobalModule): AsyncLocalStorage<unknown> | null {
+  const getEventCaller = module.getEventCaller;
+  if (typeof getEventCaller !== "function") return null;
+  const proto = AsyncLocalStorage.prototype;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- restored as the same unbound function
+  const original = proto.getStore;
+  let found: unknown = null;
+  proto.getStore = function getStore(this: AsyncLocalStorage<unknown>): unknown {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- recording WHICH storage is read is the point
+    found ??= this;
+    return original.call(this);
+  };
+  try {
+    getEventCaller();
+  } catch {
+    // An exotic build; no storage, so no invocation boundaries.
+  } finally {
+    proto.getStore = original;
+  }
+  return found instanceof AsyncLocalStorage ? (found as AsyncLocalStorage<unknown>) : null;
+}
+
+/**
+ * See every LlamaIndex invocation start and end: `withEventCaller` runs each
+ * `@wrapEventCaller` method (a chat engine's `chat`, a query engine's `query`,
+ * a provider's `chat`, `AgentRunner.chat`) as `storage.run(new EventCaller(...), fn)`.
+ * An own `run` on that ONE storage object wraps `fn`; no other storage in the
+ * process is touched, and uninstall restores it.
+ *
+ * This is the run boundary the callback bus lacks: without it a chat engine
+ * has no start or end event at all, so its retrieval and its model call were
+ * two unrelated root runs in two sessions.
+ */
+function hookInvocations(current: Installed, storage: AsyncLocalStorage<unknown>): void {
+  const state = current.state;
+  // Whatever `run` this storage has now (normally the prototype's), called with the storage as `this`.
+  const original = Reflect.get(storage, "run") as (this: unknown, ...args: unknown[]) => unknown;
+  const replacement = function run(this: unknown, store: unknown, callback: unknown, ...args: unknown[]): unknown {
+    if (!state.active || typeof callback !== "function" || !isObject(store) || !("caller" in store)) {
+      return original.call(this, store, callback, ...args);
+    }
+    const fn = callback as (...a: unknown[]) => unknown;
+    return original.call(
+      this,
+      store,
+      function invocation(this: unknown, ...inner: unknown[]): unknown {
+        return state.invocation(store, () => fn.apply(this, inner));
+      },
+      ...args,
+    );
+  };
+  current.patcher.patch(storage, "run", replacement);
+}
+
+/**
+ * `BaseRetriever.prototype.retrieve` — a plain prototype method, so this also
+ * covers retrievers built before `instrument()` — binds the retriever for the
+ * `retrieve-start` it dispatches, which carries only the query.
+ */
+function patchRetriever(current: Installed, module: RetrieverModule): void {
+  const proto = module.BaseRetriever?.prototype as Record<string, unknown> | undefined;
+  const ok = compat.probe(NAME, "BaseRetriever.retrieve", () => typeof proto?.retrieve === "function");
+  if (!ok || !proto) return;
+  const original = proto.retrieve as (...args: unknown[]) => unknown;
+  const state = current.state;
+  const replacement = function retrieve(this: object, ...args: unknown[]): unknown {
+    if (!state.active || !isObject(this)) return original.apply(this, args);
+    return state.retrievers.run(this, () => original.apply(this, args));
+  };
+  current.patcher.patch(proto, "retrieve", replacement);
+}
+
+/**
+ * Plain `createWorkflow()` workflows. workflow-core runs every step handler as
+ * `handlerContextAsyncLocalStorage.run(handlerContext, …)`, and from 1.1 that
+ * storage is an `AsyncContext.Variable` — a class exported from
+ * `@llamaindex/workflow-core/async-context`, so its prototype `run` sees every
+ * handler of every context, including workflows built before `instrument()`.
+ * (Before 1.1, and on `@llama-flow/core`, it is a closure: nothing to hook.)
+ * Only a value shaped like a handler context is acted on; every other use of
+ * the class passes straight through.
+ */
+function hookAsyncContext(current: Installed, module: AsyncContextModule): void {
+  const proto = module.AsyncContext?.Variable?.prototype as Record<string, unknown> | undefined;
+  if (typeof proto?.run !== "function") {
+    logger.debug("llamaindex: this workflow-core has no AsyncContext.Variable; plain workflows are not runs.");
+    return;
+  }
+  const original = proto.run as (value: unknown, fn: () => unknown) => unknown;
+  const state = current.state;
+  const replacement = function run(this: unknown, value: unknown, fn: () => unknown): unknown {
+    if (!state.active || !isHandlerContext(value)) return original.call(this, value, fn);
+    let proceeded = false;
+    const proceed = (): unknown => {
+      proceeded = true;
+      return original.call(this, value, fn);
+    };
+    try {
+      return state.plainStep(value, proceed);
+    } catch (error) {
+      // A failure of ours before the handler ran must not stop the workflow;
+      // one from the handler (after `proceed`) is the application's own.
+      if (proceeded) throw error;
+      core.callSafely(
+        () => {
+          throw error;
+        },
+        [],
+        `${NAME}.plainStep`,
+      );
+      return original.call(this, value, fn);
+    }
+  };
+  current.patcher.patch(proto, "run", replacement);
+}
+
+/** workflow-core's per-invocation handler context, by shape. */
+function isHandlerContext(value: unknown): value is Json {
+  return (
+    isObject(value) &&
+    typeof read(value, "handler") === "function" &&
+    Array.isArray(read(value, "inputs")) &&
+    read(value, "next") instanceof Set &&
+    "prev" in value
+  );
 }
 
 function patchWorkflow(current: Installed, module: WorkflowModule): void {
@@ -1569,9 +2057,12 @@ export const adapter: Adapter = {
     // (pnpm, strict) where the app cannot resolve the scoped package itself.
     let globals = (await loadCopies("@llamaindex/core/global")) as GlobalModule[] | null;
     let frameworkPackage = compat.versionString(PACKAGE) !== null ? PACKAGE : CORE_PACKAGE;
+    let retrievers = (await loadCopies("@llamaindex/core/retriever")) as RetrieverModule[] | null;
     if (!globals?.some((module) => module.Settings)) {
       globals = (await compat.requireModuleCopies(PACKAGE, INSTALL)) as GlobalModule[];
       frameworkPackage = PACKAGE;
+      // The umbrella re-exports `BaseRetriever` from the same copy of core.
+      retrievers = globals as RetrieverModule[];
     }
 
     // The workflow package is optional: a legacy-agent or query-engine app does
@@ -1585,7 +2076,11 @@ export const adapter: Adapter = {
       });
       workflows = ((await loadCopies(WORKFLOW_PACKAGE)) ?? []) as WorkflowModule[];
     }
-    attach(options, { globals, workflows, frameworkPackage });
+    // Plain workflows: workflow-core ≥1.1 only (see `hookAsyncContext`). Resolved
+    // from the application, so a layout that does not hoist it (pnpm) leaves
+    // plain workflows unrecorded as runs — their model calls still are.
+    const asyncContexts = ((await loadCopies(ASYNC_CONTEXT_MODULE)) ?? []) as AsyncContextModule[];
+    attach(options, { globals, workflows, retrievers: retrievers ?? [], asyncContexts, frameworkPackage });
   },
 
   uninstall(): void {

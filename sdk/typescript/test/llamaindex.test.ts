@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { performance } from "node:perf_hooks";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,13 +9,17 @@ import * as core from "../src/integrations/core.js";
 import {
   adapter,
   attach,
+  eventCallerStorage,
   parseOptions,
   summarizeNodes,
   usageOf,
+  type AsyncContextModule,
+  type GlobalModule,
+  type RetrieverModule,
   type WorkflowModule,
 } from "../src/integrations/llamaindex.js";
 import { runtime } from "../src/runtime.js";
-import { session } from "../src/scopes.js";
+import { agent as agentScope, session } from "../src/scopes.js";
 import { flushed, useSpool } from "./helpers.js";
 import type { Spool } from "./helpers.js";
 
@@ -1044,6 +1049,683 @@ describe("state after a run ends", () => {
         tasks: 0,
         queries: 0,
       });
+      expect(residue.tracker.openAgents()).toEqual([]);
+      expect((residue.tracker as unknown as { links: Map<unknown, unknown> }).links.size).toBe(0);
+    } finally {
+      runtime.event = original;
+    }
+  }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// Invocation boundaries, retriever names and plain workflows
+// ---------------------------------------------------------------------------
+
+/**
+ * `flushed()`, made deterministic: `flushNow()` hands back a flush the
+ * interval timer already started — one that drained the queue BEFORE the
+ * newest events — so a single call can return without them. The second call
+ * waits for a flush that started after it.
+ */
+async function drained(): Promise<Array<Record<string, unknown>>> {
+  await runtime.writer.flushNow();
+  return flushed(spool);
+}
+
+/**
+ * `@llamaindex/core/global` as the adapter meets it: a REAL `AsyncLocalStorage`
+ * of `EventCaller`s (module-private there too), `getEventCaller`, and the
+ * `withEventCaller` every `@wrapEventCaller` method runs through.
+ */
+function coreGlobal() {
+  const storage = new AsyncLocalStorage<EventCaller>();
+  const getEventCaller = (): EventCaller | null => storage.getStore() ?? null;
+  const withEventCaller = <T>(caller: unknown, fn: () => T): T =>
+    storage.run(new EventCaller(caller, getEventCaller()), fn);
+  return { storage, getEventCaller, withEventCaller };
+}
+
+let li: ReturnType<typeof coreGlobal>;
+
+function installCore(
+  options: Record<string, unknown> = {},
+  extra: { retrievers?: RetrieverModule[]; asyncContexts?: AsyncContextModule[]; workflows?: WorkflowModule[] } = {},
+) {
+  bus = new FakeBus();
+  li = coreGlobal();
+  const globals: GlobalModule[] = [{ Settings: { callbackManager: bus }, getEventCaller: li.getEventCaller }];
+  return attach({ reaperInterval: 0, ...options }, { workflows: [], ...extra, globals });
+}
+
+/** Dispatch the way `CallbackManager.dispatchEvent` does: with the EventCaller bound NOW. */
+const dispatch = (event: string, detail: Event): void => bus.emitReason(event, detail, li.getEventCaller());
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 1));
+/** A property read for an identity check, so a method is compared, never called. */
+const member = (target: object, key: string): unknown => (target as Record<string, unknown>)[key];
+
+/** A first-party provider: `chat` decorated `@wrapEventCaller @wrapLLMEvent`. */
+class OpenAI {
+  metadata = { model: "gpt-x" };
+  constructor(private readonly reply = "It is sunny.") {}
+  chat(options: { fail?: string; stream?: boolean } = {}): Promise<unknown> {
+    return li.withEventCaller(this, async () => {
+      const id = `m-${Math.random()}`;
+      dispatch("llm-start", { id, messages: [{ role: "user", content: "weather?" }] });
+      await tick();
+      if (options.fail) throw new Error(options.fail);
+      const usage = { prompt_tokens: 9, completion_tokens: 4 };
+      if (options.stream) {
+        const reply = this.reply;
+        return (async function* () {
+          yield { delta: reply };
+          await tick();
+          dispatch("llm-end", { id, response: { message: { content: reply }, raw: [{ raw: { usage } }] } });
+        })();
+      }
+      dispatch("llm-end", { id, response: { message: { content: this.reply }, raw: { usage } } });
+      return { message: { content: this.reply } };
+    });
+  }
+}
+
+/** A chat engine: `chat` is `@wrapEventCaller` and dispatches nothing of its own. */
+class ContextChatEngine {
+  constructor(private readonly llm: OpenAI) {}
+  chat(options: { fail?: string; stream?: boolean; retrieveFails?: boolean } = {}): Promise<unknown> {
+    return li.withEventCaller(this, async () => {
+      const rid = `r-${Math.random()}`;
+      dispatch("retrieve-start", { id: rid, query: { query: "weather?" } });
+      await tick();
+      dispatch("retrieve-end", { id: rid, nodes: [{ node: { id_: "n1", text: "Paris is sunny." }, score: 1 }] });
+      const response = await this.llm.chat(options);
+      return options.stream ? response : { message: { content: (response as { message: { content: string } }).message.content } };
+    });
+  }
+}
+
+describe("invocation boundaries", () => {
+  it("records a chat engine — no bus event of its own — as ONE run named after it", async () => {
+    installCore();
+    class SimpleChat {
+      constructor(private readonly llm: OpenAI) {}
+      chat(): Promise<unknown> {
+        return li.withEventCaller(this, async () => {
+          const r = rid();
+          dispatch("retrieve-start", { id: r, query: { query: "weather?" } });
+          dispatch("retrieve-end", { id: r, nodes: [] });
+          await tick();
+          return this.llm.chat();
+        });
+      }
+    }
+    let n = 0;
+    const rid = () => `r${(n += 1)}`;
+    const out = await new SimpleChat(new OpenAI()).chat();
+    expect(out).toEqual({ message: { content: "It is sunny." } });
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "SimpleChat agent_start",
+      "SimpleChat tool_use retriever",
+      "SimpleChat tool_result retriever",
+      "SimpleChat model_request",
+      "SimpleChat model_response",
+      "SimpleChat agent_end",
+    ]);
+    expect(new Set(events.map((e) => e.session_id)).size).toBe(1);
+    const end = events.at(-1)!;
+    expect(end).toMatchObject({ outcome: "success", summary: "It is sunny." });
+    expect(events.find((e) => e.type === "model_request")!.model).toBe("gpt-x");
+  });
+
+  it("ends a streamed chat when its stream has been read, not when chat() returns", async () => {
+    installCore();
+    class StreamChat {
+      constructor(private readonly llm: OpenAI) {}
+      chat(): Promise<unknown> {
+        return li.withEventCaller(this, () => this.llm.chat({ stream: true }));
+      }
+    }
+    const stream = (await new StreamChat(new OpenAI()).chat()) as AsyncIterable<unknown>;
+    let events = await drained();
+    // chat() has returned; the model call is still being read.
+    expect(events.filter((e) => e.type === "agent_end")).toEqual([]);
+    for await (const chunk of stream) {
+      void chunk;
+      // drain
+    }
+    events = await drained();
+    expect(shape(events)).toEqual([
+      "StreamChat agent_start",
+      "StreamChat model_request",
+      "StreamChat model_response",
+      "StreamChat agent_end",
+    ]);
+    expect([events[2]!.input_tokens, events[2]!.output_tokens]).toEqual([9, 4]);
+    expect(events[3]).toMatchObject({ outcome: "success", summary: "It is sunny." });
+  });
+
+  it("closes a model call that threw on its response, and fails the run it ended — reported once", async () => {
+    // `wrapLLMEvent` has no error path: no `llm-end`. The invocation throwing
+    // is the only signal, and it used to leave both open until the reaper.
+    installCore();
+    const engine = new ContextChatEngine(new OpenAI());
+    await expect(engine.chat({ fail: "rate limited" })).rejects.toThrow("rate limited");
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "ContextChatEngine agent_start",
+      "ContextChatEngine tool_use retriever",
+      "ContextChatEngine tool_result retriever",
+      "ContextChatEngine model_request",
+      "ContextChatEngine model_response",
+      "ContextChatEngine agent_end",
+    ]);
+    expect(events.find((e) => e.type === "model_response")!.error).toBe("Error: rate limited");
+    const end = events.at(-1)!;
+    expect(end).toMatchObject({ outcome: "failed", summary: "Error: rate limited" });
+    // The leaves carry the failure; an `error` event on top would count it twice.
+    expect(events.filter((e) => e.type === "error")).toEqual([]);
+  });
+
+  it("fails a bare model call that threw, instead of leaving it for the reaper", async () => {
+    installCore();
+    await expect(new OpenAI().chat({ fail: "boom" })).rejects.toThrow("boom");
+    const events = await drained();
+    expect(shape(events)).toEqual(["OpenAI agent_start", "OpenAI model_request", "OpenAI model_response", "OpenAI agent_end"]);
+    expect(events[2]!.error).toBe("Error: boom");
+    expect(events[3]!.outcome).toBe("failed");
+  });
+
+  it("fails a legacy task whose step threw — it never sends agent-end — straight away", async () => {
+    installCore();
+    class LLMAgent {
+      llm = { metadata: { model: "legacy-model" } };
+      chat(): Promise<unknown> {
+        return li.withEventCaller(this, async () => {
+          dispatch("agent-start", { startStep: { id: "s1", prevStep: null } });
+          await tick();
+          throw new Error("step exploded");
+        });
+      }
+    }
+    await expect(new LLMAgent().chat()).rejects.toThrow("step exploded");
+    const events = await drained();
+    expect(shape(events)).toEqual(["LLMAgent agent_start", "LLMAgent error", "LLMAgent agent_end"]);
+    expect(events[1]).toMatchObject({ error_type: "Error", message: "step exploded" });
+    expect(events[2]).toMatchObject({ outcome: "failed", summary: "Error: step exploded" });
+  });
+
+  it("roots a query made first inside another invocation at that invocation", async () => {
+    // CondenseQuestionChatEngine's shape, when its first act is the query.
+    installCore();
+    class QueryEngine {
+      query(): Promise<unknown> {
+        return li.withEventCaller(this, async () => {
+          dispatch("query-start", { id: "q1", query: "weather?" });
+          await tick();
+          dispatch("query-end", { id: "q1", response: { message: { content: "notes" } } });
+          return "notes";
+        });
+      }
+    }
+    class CondenseChat {
+      chat(): Promise<unknown> {
+        return li.withEventCaller(this, async () => {
+          await new QueryEngine().query();
+          return new OpenAI("final").chat();
+        });
+      }
+    }
+    await new CondenseChat().chat();
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "CondenseChat agent_start",
+      "CondenseChat model_request",
+      "CondenseChat model_response",
+      "CondenseChat agent_end",
+    ]);
+    expect(events.at(-1)!.summary).toBe("final");
+  });
+
+  it("keeps concurrent chats on ONE shared engine in separate sessions", async () => {
+    installCore();
+    const engine = new ContextChatEngine(new OpenAI());
+    await Promise.all(Array.from({ length: 10 }, () => engine.chat()));
+    const events = await drained();
+    const sessions = bySession(events);
+    expect(sessions.size).toBe(10);
+    for (const list of sessions.values()) {
+      expect(list).toEqual([
+        "ContextChatEngine agent_start",
+        "ContextChatEngine tool_use retriever",
+        "ContextChatEngine tool_result retriever",
+        "ContextChatEngine model_request",
+        "ContextChatEngine model_response",
+        "ContextChatEngine agent_end",
+      ]);
+    }
+  });
+
+  it("never changes what an invocation returns or throws", async () => {
+    installCore();
+    const value = { answer: 42 };
+    expect(li.withEventCaller({}, () => value)).toBe(value);
+    const iterable = (async function* () {
+      yield 1;
+    })();
+    expect(li.withEventCaller({}, () => iterable)).toBe(iterable);
+    await expect(li.withEventCaller({}, async () => value)).resolves.toBe(value);
+    const error = new Error("nope");
+    await expect(li.withEventCaller({}, () => Promise.reject(error))).rejects.toBe(error);
+    expect(() =>
+      li.withEventCaller({}, () => {
+        throw error;
+      }),
+    ).toThrow(error);
+    // A thenable that is not a native promise is handed back untouched.
+    const thenable = { then: (resolve: (v: number) => void) => resolve(7) };
+    expect(li.withEventCaller({}, () => thenable)).toBe(thenable);
+    // And the EventCaller is still the one the callback sees.
+    expect(li.withEventCaller("me", () => li.getEventCaller()!.caller)).toBe("me");
+  });
+
+  it("still reports a rejection nobody handles, as the application would have seen it", async () => {
+    installCore();
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown) => seen.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const error = new Error("nobody catches me");
+      void li.withEventCaller({}, () => Promise.reject(error));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toContain(error);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("finds LlamaIndex's storage, touches nothing else, and restores it on uninstall", () => {
+    const g = coreGlobal();
+    const getStore = member(AsyncLocalStorage.prototype, "getStore");
+    expect(eventCallerStorage({ getEventCaller: g.getEventCaller })).toBe(g.storage);
+    expect(member(AsyncLocalStorage.prototype, "getStore")).toBe(getStore);
+    expect(eventCallerStorage({})).toBeNull();
+    expect(eventCallerStorage({ getEventCaller: () => null })).toBeNull();
+
+    installCore();
+    const protoRun = member(AsyncLocalStorage.prototype, "run");
+    expect(Object.prototype.hasOwnProperty.call(li.storage, "run")).toBe(true);
+    expect(member(li.storage, "run")).not.toBe(protoRun);
+    expect(member(new AsyncLocalStorage(), "run")).toBe(protoRun);
+    adapter.uninstall();
+    expect(member(li.storage, "run")).toBe(protoRun);
+    // Uninstalled: an invocation opens nothing.
+    return new OpenAI().chat().then(async () => {
+      expect(await drained()).toEqual([]);
+    });
+  });
+
+  it("falls back to a bare run for an invocation it never saw start", async () => {
+    // A chain built outside the hooked storage (an invocation already running
+    // at instrument() time): no end signal, so the one-leaf rule.
+    installCore();
+    const engine = new RetrieverQueryEngineStandIn();
+    const outer = new EventCaller(engine);
+    emitIn("llm-start", { id: "m1", messages: [] }, new EventCaller(new OpenAIStandIn(), outer));
+    emitIn("llm-end", { id: "m1", response: { message: { content: "x" } } }, new EventCaller(new OpenAIStandIn(), outer));
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "OpenAIStandIn agent_start",
+      "OpenAIStandIn model_request",
+      "OpenAIStandIn model_response",
+      "OpenAIStandIn agent_end",
+    ]);
+  });
+});
+
+describe("retrieval names", () => {
+  /** `@llamaindex/core/retriever`: `retrieve()` dispatches, `_retrieve()` is the subclass's. */
+  class BaseRetriever {
+    async retrieve(query: string): Promise<unknown[]> {
+      const id = `r-${query}`;
+      dispatch("retrieve-start", { id, query: { query } });
+      const nodes = await this._retrieve(query);
+      dispatch("retrieve-end", { id, nodes });
+      return nodes;
+    }
+    async _retrieve(query: string): Promise<unknown[]> {
+      void query;
+      return [];
+    }
+  }
+  class VectorIndexRetriever extends BaseRetriever {
+    override async _retrieve(query: string): Promise<unknown[]> {
+      await tick();
+      return [{ node: { id_: "n1", text: `notes on ${query}` }, score: 0.5 }];
+    }
+  }
+
+  it("names a retrieval after the retriever's class, as Python does — even one built earlier", async () => {
+    const retriever = new VectorIndexRetriever();
+    const original = member(BaseRetriever.prototype, "retrieve");
+    installCore({}, { retrievers: [{ BaseRetriever }] });
+    expect(member(BaseRetriever.prototype, "retrieve")).not.toBe(original);
+    await retriever.retrieve("Paris");
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "VectorIndexRetriever agent_start",
+      "VectorIndexRetriever tool_use VectorIndexRetriever",
+      "VectorIndexRetriever tool_result VectorIndexRetriever",
+      "VectorIndexRetriever agent_end",
+    ]);
+    expect(events[1]!.input).toEqual({ query: "Paris" });
+    expect(events[2]!.output).toEqual({ num_nodes: 1, top: [{ id: "n1", score: 0.5, text: "notes on Paris" }] });
+    adapter.uninstall();
+    expect(member(BaseRetriever.prototype, "retrieve")).toBe(original);
+  });
+
+  it("keeps each concurrent retrieval's own name", async () => {
+    class KeywordRetriever extends BaseRetriever {}
+    installCore({}, { retrievers: [{ BaseRetriever }] });
+    await Promise.all([new VectorIndexRetriever().retrieve("a"), new KeywordRetriever().retrieve("b")]);
+    const events = await drained();
+    const uses = events.filter((e) => e.type === "tool_use").map((e) => [e.tool_name, (e.input as { query: string }).query]);
+    expect(uses.sort()).toEqual([
+      ["KeywordRetriever", "b"],
+      ["VectorIndexRetriever", "a"],
+    ]);
+  });
+});
+
+/**
+ * workflow-core ≥1.1, reduced to what the adapter meets: an exported
+ * `AsyncContext.Variable` class, and a runtime that runs each step handler as
+ * `handlerVariable.run(handlerContext, …)` and sends the handler's output on
+ * once its promise settles — through the runtime's OWN `.then`, as the real
+ * one does, which is why a run cannot end the moment a step does.
+ */
+function workflowCore() {
+  class Variable {
+    private readonly als = new AsyncLocalStorage<unknown>();
+    run<T>(value: unknown, fn: () => T): T {
+      return this.als.run(value, fn);
+    }
+  }
+  const module: AsyncContextModule = { AsyncContext: { Variable } };
+  type Ev = { kind: string; data?: unknown };
+  const createWorkflow = () => {
+    const listeners = new Map<string, (ctx: unknown, event: Ev) => unknown>();
+    return {
+      handle(kind: string, handler: (ctx: unknown, event: Ev) => unknown) {
+        listeners.set(kind, handler);
+      },
+      createContext() {
+        const handlerVariable = new Variable();
+        const sent: Ev[] = [];
+        const root: Record<string, unknown> = { handler: null, inputs: [], outputs: [], prev: null, next: new Set() };
+        const send = (event: Ev, parent: Record<string, unknown>): void => {
+          sent.push(event);
+          const handler = listeners.get(event.kind);
+          if (!handler) return;
+          const hc: Record<string, unknown> = {
+            handler,
+            inputs: [event],
+            outputs: [],
+            prev: parent,
+            next: new Set(),
+            pending: null,
+            get root() {
+              return root;
+            },
+          };
+          (parent.next as Set<unknown>).add(hc);
+          handlerVariable.run(hc, () => {
+            const result = (hc.handler as (c: unknown, e: Ev) => unknown)({}, event);
+            if (result instanceof Promise) {
+              hc.pending = result.then((out: Ev | undefined) => {
+                if (out) send(out, hc);
+                return out;
+              });
+            } else if (result) {
+              send(result as Ev, hc);
+            }
+          });
+        };
+        return {
+          sendEvent: (event: Ev) => send(event, root),
+          sent,
+          async until(kind: string): Promise<void> {
+            while (!sent.some((e) => e.kind === kind)) await new Promise((resolve) => setImmediate(resolve));
+          },
+        };
+      },
+    };
+  };
+  return { module, Variable, createWorkflow };
+}
+
+describe("plain workflows", () => {
+  const twoSteps = (wc: ReturnType<typeof workflowCore>, fail = false) => {
+    const wf = wc.createWorkflow();
+    wf.handle("start", async function research(_ctx, event) {
+      await tick();
+      return { kind: "researched", data: `notes on ${String(event.data)}` };
+    });
+    wf.handle("researched", async function answer() {
+      await new OpenAI("It is sunny in Paris.").chat();
+      if (fail) throw new Error("answer failed");
+      return { kind: "stop", data: "It is sunny in Paris." };
+    });
+    return wf;
+  };
+
+  it("records a createWorkflow() run as an agent with its steps as hooks", async () => {
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module] });
+    const ctx = twoSteps(wc).createContext();
+    ctx.sendEvent({ kind: "start", data: "weather in Paris?" });
+    await ctx.until("stop");
+    const events = await drained();
+    expect(shape(events)).toEqual([
+      "Workflow agent_start",
+      "Workflow hook_triggered research",
+      "Workflow hook_completed research",
+      "Workflow hook_triggered answer",
+      "Workflow model_request",
+      "Workflow model_response",
+      "Workflow hook_completed answer",
+      "Workflow agent_end",
+    ]);
+    expect(events[0]!.goal).toBe("weather in Paris?");
+    expect(events.find((e) => e.type === "hook_triggered")!.trigger_event).toBe("workflow_step");
+    expect(events.at(-1)).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+    expect(new Set(events.map((e) => e.session_id)).size).toBe(1);
+  });
+
+  it("ends the run before the code awaiting it goes on, inside an agent() scope", async () => {
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module] });
+    await agentScope("forecast_flow", async () => {
+      const ctx = twoSteps(wc).createContext();
+      ctx.sendEvent({ kind: "start", data: "q" });
+      await ctx.until("stop");
+    });
+    const events = await drained();
+    expect(shape(events).filter((s) => s.includes("agent_"))).toEqual([
+      "forecast_flow agent_start",
+      "Workflow agent_start",
+      "Workflow agent_end",
+      "forecast_flow agent_end",
+    ]);
+    expect(events.find((e) => e.agent_id === "Workflow" && e.type === "agent_start")!.parent_id).toBe("forecast_flow");
+  });
+
+  it("fails the step and the run when a step throws", async () => {
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module] });
+    const ctx = twoSteps(wc, true).createContext();
+    const onUnhandled = () => undefined;
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      ctx.sendEvent({ kind: "start", data: "q" });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    const events = await drained();
+    const failed = events.find((e) => e.type === "hook_completed" && e.hook_name === "answer")!;
+    expect(failed).toMatchObject({ outcome: "failed", error: "Error: answer failed" });
+    expect(events.at(-1)).toMatchObject({ type: "agent_end", outcome: "failed" });
+    expect(events.filter((e) => e.type === "error")).toEqual([]);
+  });
+
+  it("keeps two concurrent contexts of one workflow in two sessions", async () => {
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module] });
+    const wf = twoSteps(wc);
+    const a = wf.createContext();
+    const b = wf.createContext();
+    a.sendEvent({ kind: "start", data: "A" });
+    b.sendEvent({ kind: "start", data: "B" });
+    await Promise.all([a.until("stop"), b.until("stop")]);
+    const events = await drained();
+    const sessions = bySession(events);
+    expect(sessions.size).toBe(2);
+    for (const list of sessions.values()) expect(list[0]).toBe("Workflow agent_start");
+    expect(events.filter((e) => e.type === "agent_start").map((e) => e.goal).sort()).toEqual(["A", "B"]);
+  });
+
+  it("records a later burst (an event sent from outside) as a new run", async () => {
+    // Documented: a plain workflow has no end of its own, so idle is the end.
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module] });
+    const wf = wc.createWorkflow();
+    wf.handle("ask", async function ask(_ctx, event) {
+      await tick();
+      return { kind: "asked", data: event.data };
+    });
+    const ctx = wf.createContext();
+    ctx.sendEvent({ kind: "ask", data: "first" });
+    await ctx.until("asked");
+    await tick();
+    ctx.sendEvent({ kind: "ask", data: "second" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const events = await drained();
+    expect(events.filter((e) => e.type === "agent_start").map((e) => e.goal)).toEqual(["first", "second"]);
+    expect(events.filter((e) => e.type === "agent_end")).toHaveLength(2);
+  });
+
+  it("leaves an AgentWorkflow's steps to the agent path, and any other value alone", async () => {
+    const wc = workflowCore();
+    installCore({}, { asyncContexts: [wc.module], workflows: [workflowModule()] });
+    const agentWf = new AgentWorkflow(["Agent"], async () => {});
+    agentWf.runStream("q");
+    const wf = wc.createWorkflow();
+    wf.handle("start", agentWf.runAgentStep);
+    const ctx = wf.createContext();
+    ctx.sendEvent({ kind: "start" });
+    await tick();
+    const variable = new wc.Variable();
+    expect(variable.run({ not: "a handler context" }, () => 5)).toBe(5);
+    const events = await drained();
+    expect(events.filter((e) => e.agent_id === "Workflow")).toEqual([]);
+  });
+
+  it("restores the Variable prototype on uninstall", () => {
+    const wc = workflowCore();
+    const original = (wc.Variable.prototype as unknown as Record<string, unknown>).run;
+    installCore({}, { asyncContexts: [wc.module] });
+    expect((wc.Variable.prototype as unknown as Record<string, unknown>).run).not.toBe(original);
+    adapter.uninstall();
+    expect((wc.Variable.prototype as unknown as Record<string, unknown>).run).toBe(original);
+  });
+});
+
+describe("@llamaindex/openai streaming usage", () => {
+  it("records usage from the final chunk that stream_options.include_usage adds", async () => {
+    // @llamaindex/openai (0.1.61 – 0.4.23) streams chat completions and, when
+    // the request carries `stream_options: {include_usage: true}` (set it with
+    // `new OpenAI({additionalChatOptions: {stream_options: {include_usage: true}}})`),
+    // yields OpenAI's content-less usage chunk as `{raw: part, delta: ""}` —
+    // no `options`. Without that option OpenAI never sends it, and there is no
+    // number to record. These are the exact chunks it yields.
+    installCore();
+    const part = (choices: unknown[], usage: unknown = null) => ({
+      id: "chatcmpl-1",
+      object: "chat.completion.chunk",
+      model: "gpt-4o-mini",
+      choices,
+      usage,
+    });
+    const chunks = [
+      { raw: part([{ index: 0, delta: { role: "assistant", content: "It is" }, finish_reason: null }]), options: {}, delta: "It is" },
+      { raw: part([{ index: 0, delta: { content: " sunny." }, finish_reason: null }]), options: {}, delta: " sunny." },
+      { raw: part([{ index: 0, delta: {}, finish_reason: "stop" }]), options: {}, delta: "" },
+      {
+        raw: part([], {
+          prompt_tokens: 21,
+          completion_tokens: 4,
+          total_tokens: 25,
+          prompt_tokens_details: { cached_tokens: 0 },
+        }),
+        delta: "",
+      },
+    ];
+    const llm = new OpenAIStandIn();
+    // What `wrapLLMEvent` hands `llm-end` for a stream: every chunk as `raw`.
+    await li.withEventCaller(llm, async () => {
+      dispatch("llm-start", { id: "s1", messages: [{ role: "user", content: "weather?" }] });
+      for (const chunk of chunks) dispatch("llm-stream", { id: "s1", chunk });
+      dispatch("llm-end", { id: "s1", response: { message: { content: "It is sunny.", role: "assistant", options: {} }, raw: chunks } });
+    });
+    const events = await drained();
+    const response = events.find((e) => e.type === "model_response")!;
+    expect([response.input_tokens, response.output_tokens]).toEqual([21, 4]);
+    expect(response.usage).toMatchObject({ prompt_tokens: 21, completion_tokens: 4, total_tokens: 25 });
+    expect(response.stop_reason).toBe("stop");
+    expect(response.fw_chunks).toBe(4);
+  });
+
+  it("records no token counts — and invents none — for the same stream without include_usage", async () => {
+    installCore();
+    const chunks = [
+      { raw: { choices: [{ delta: { content: "hi" }, finish_reason: null }] }, options: {}, delta: "hi" },
+      { raw: { choices: [{ delta: {}, finish_reason: "stop" }] }, options: {}, delta: "" },
+    ];
+    bus.emit("llm-start", { id: "s2", messages: [] }, [new OpenAIStandIn()]);
+    bus.emit("llm-end", { id: "s2", response: { message: { content: "hi" }, raw: chunks } }, [new OpenAIStandIn()]);
+    const response = (await drained()).find((e) => e.type === "model_response")!;
+    expect(response.input_tokens).toBeUndefined();
+    expect(response.output_tokens).toBeUndefined();
+    expect(response.stop_reason).toBe("stop");
+  });
+});
+
+describe("state after invocation runs and plain workflows end", () => {
+  it("leaves no residue after thousands of chat and workflow runs", async () => {
+    const original = runtime.event;
+    runtime.event = new Proxy({}, { get: () => () => undefined }) as typeof runtime.event;
+    try {
+      const wc = workflowCore();
+      const handle = installCore({}, { asyncContexts: [wc.module] });
+      const engine = new ContextChatEngine(new OpenAI());
+      const wf = wc.createWorkflow();
+      wf.handle("start", async function step() {
+        await new OpenAI().chat();
+        return { kind: "stop" };
+      });
+      for (let i = 0; i < 300; i += 1) {
+        const ctx = wf.createContext();
+        ctx.sendEvent({ kind: "start" });
+        await Promise.all([engine.chat(), engine.chat({ stream: true }).then(async (s) => {
+          for await (const chunk of s as AsyncIterable<unknown>) {
+            void chunk;
+            // drain
+          }
+        }), engine.chat({ fail: "x" }).catch(() => undefined), ctx.until("stop")]);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const residue = handle.residue();
+      expect({ runs: residue.runs, leaves: residue.leaves }).toEqual({ runs: 0, leaves: 0 });
       expect(residue.tracker.openAgents()).toEqual([]);
       expect((residue.tracker as unknown as { links: Map<unknown, unknown> }).links.size).toBe(0);
     } finally {

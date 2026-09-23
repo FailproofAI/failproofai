@@ -87,8 +87,8 @@ describe.each(FIXTURES)("%s", (fixture) => {
   });
 
   describe.each(FORMATS)("as %s", (format) => {
-    const run = (scenario: string) => {
-      const result = runAgent(fixture, format, scenario);
+    const run = (scenario: string, env: Record<string, string> = {}) => {
+      const result = runAgent(fixture, format, scenario, env);
       expect(result.status, describeTrace(result)).toBe(0);
       // Instrumenting must never load a second copy of the framework: LlamaIndex
       // detects it and prints this to the customer's terminal.
@@ -269,8 +269,8 @@ describe.each(FIXTURES)("%s", (fixture) => {
         "shared-query",
         [
           "RetrieverQueryEngine agent_start",
-          "RetrieverQueryEngine tool_use retriever",
-          "RetrieverQueryEngine tool_result retriever",
+          "RetrieverQueryEngine tool_use NotesRetriever",
+          "RetrieverQueryEngine tool_result NotesRetriever",
           ...MODEL("RetrieverQueryEngine"),
           "RetrieverQueryEngine agent_end",
         ],
@@ -312,6 +312,398 @@ describe.each(FIXTURES)("%s", (fixture) => {
       const result = run("uninstrument");
       expect(shape(result.events), describeTrace(result)).toEqual(WORKFLOW());
       expect(result.stdout).toContain('"removed":["llamaindex"]');
+    });
+
+    // -- the coverage sweep ------------------------------------------------------
+    //
+    // Every commonly used surface, each against the Python adapter's golden
+    // trace for the same program (llama-index-core 0.14.24, mock LLM and
+    // embeddings): a top-level chat engine, query engine or retriever call is
+    // the session's root agent named after its class, and a retrieval is a
+    // `tool_use`/`tool_result` named after the retriever's class, its output
+    // summarised. (Python's MockLLM records each call twice, chat inside
+    // complete; that is the mock, not the mapping.)
+
+    /** The fewest checks every trace must pass: sound, one session, the framework's name. */
+    const sound = (result: ReturnType<typeof run>, sessions = 1, scopes: string[] = []) => {
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      expect(new Set(result.events.map((e) => e.session_id)).size, describeTrace(result)).toBe(sessions);
+      // The application's own agent() scope is not the framework's.
+      for (const event of result.events) {
+        if (!scopes.includes(event.agent_id)) expect(event.framework).toBe("llamaindex");
+      }
+    };
+    const RETRIEVAL = (agentId: string, retriever = "VectorIndexRetriever") => [
+      `${agentId} tool_use ${retriever}`,
+      `${agentId} tool_result ${retriever}`,
+    ];
+    /** The retrieval found the Paris note, summarised: count, score, text prefix. */
+    const retrievedParis = (event: Event) => {
+      const output = event.output as { num_nodes: number; top: Array<{ text: string; score: number }> };
+      expect(output.num_nodes).toBe(1);
+      expect(output.top[0]!.text).toBe("Paris is sunny.");
+      expect(typeof output.top[0]!.score).toBe("number");
+    };
+
+    describe.each(["chat-simple", "chat-simple-stream"])("SimpleChatEngine (%s)", (scenario) => {
+      it("is one run named after the engine, with the chat history in the model call", () => {
+        const result = run(scenario);
+        expect(shape(result.events), describeTrace(result)).toEqual([
+          "SimpleChatEngine agent_start",
+          ...MODEL("SimpleChatEngine"),
+          "SimpleChatEngine agent_end",
+        ]);
+        sound(result);
+        const request = ofType(result.events, "model_request")[0]!;
+        expect(request.model).toBe("scripted-1");
+        expect(request.messages).toEqual([
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hello" },
+          { role: "user", content: "weather in Paris?" },
+        ]);
+        const response = ofType(result.events, "model_response")[0]!;
+        expect([response.input_tokens, response.output_tokens]).toEqual([9, 4]);
+        expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+      });
+    });
+
+    describe.each(["chat-context", "chat-context-stream"])("ContextChatEngine (%s)", (scenario) => {
+      it("is one run: the retrieval, then the model call with the history and the context", () => {
+        const result = run(scenario);
+        expect(shape(result.events), describeTrace(result)).toEqual([
+          "ContextChatEngine agent_start",
+          ...RETRIEVAL("ContextChatEngine"),
+          ...MODEL("ContextChatEngine"),
+          "ContextChatEngine agent_end",
+        ]);
+        sound(result);
+        expect(ofType(result.events, "tool_use")[0]!.input).toEqual({ query: "weather in Paris?" });
+        retrievedParis(ofType(result.events, "tool_result")[0]!);
+        const messages = JSON.stringify(ofType(result.events, "model_request")[0]!.messages);
+        expect(messages).toContain("Paris is sunny.");
+        expect(messages).toContain("hello");
+        const response = ofType(result.events, "model_response")[0]!;
+        expect([response.input_tokens, response.output_tokens]).toEqual([9, 4]);
+        expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+      });
+    });
+
+    describe.each(["chat-condense", "chat-condense-stream"])("CondenseQuestionChatEngine (%s)", (scenario) => {
+      it("is one run: the condensing model call, the query's retrieval and its answer", () => {
+        const result = run(scenario);
+        expect(shape(result.events), describeTrace(result)).toEqual([
+          "CondenseQuestionChatEngine agent_start",
+          ...MODEL("CondenseQuestionChatEngine"),
+          ...RETRIEVAL("CondenseQuestionChatEngine"),
+          ...MODEL("CondenseQuestionChatEngine"),
+          "CondenseQuestionChatEngine agent_end",
+        ]);
+        sound(result);
+        // The history reaches the model through the condense prompt.
+        expect(JSON.stringify(ofType(result.events, "model_request")[0]!.messages)).toContain("hello");
+        expect(ofType(result.events, "tool_use")[0]!.input).toEqual({ query: "What is the weather in Paris?" });
+        retrievedParis(ofType(result.events, "tool_result")[0]!);
+        expect(ofType(result.events, "model_response").map((e) => [e.input_tokens, e.output_tokens])).toEqual([
+          [6, 3],
+          [9, 4],
+        ]);
+        expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+      });
+    });
+
+    it("records a retriever used directly as its own run", () => {
+      const result = run("retriever");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "VectorIndexRetriever agent_start",
+        ...RETRIEVAL("VectorIndexRetriever"),
+        "VectorIndexRetriever agent_end",
+      ]);
+      sound(result);
+      expect(ofType(result.events, "tool_use")[0]!.input).toEqual({ query: "weather in Paris?" });
+      retrievedParis(ofType(result.events, "tool_result")[0]!);
+    });
+
+    describe.each(["index-query", "index-query-stream"])("VectorStoreIndex.asQueryEngine() (%s)", (scenario) => {
+      it("is one run named after the engine, with its retrieval and its answer", () => {
+        const result = run(scenario);
+        expect(shape(result.events), describeTrace(result)).toEqual([
+          "RetrieverQueryEngine agent_start",
+          ...RETRIEVAL("RetrieverQueryEngine"),
+          ...MODEL("RetrieverQueryEngine"),
+          "RetrieverQueryEngine agent_end",
+        ]);
+        sound(result);
+        expect(ofType(result.events, "agent_start")[0]!.goal).toBe("weather in Paris?");
+        retrievedParis(ofType(result.events, "tool_result")[0]!);
+        const response = ofType(result.events, "model_response")[0]!;
+        expect([response.input_tokens, response.output_tokens]).toEqual([9, 4]);
+        expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+      });
+    });
+
+    it("records nothing for building an index, with or without embeddings: true", () => {
+      // LlamaIndex.TS dispatches no embedding event on its bus, so there is
+      // nothing for `embeddings: true` to record; the option is accepted and
+      // changes nothing. (Python records embedding calls under it.)
+      expect(run("index-build").events).toEqual([]);
+      expect(run("index-build", { FAILPROOFAI_IT_OPTIONS: JSON.stringify({ embeddings: true }) }).events).toEqual([]);
+    });
+
+    /** workflow-core ≥1.1 exposes the hook plain workflows are recorded through; the floor's runtime does not. */
+    const plainWorkflows = fixture !== "llamaindex-0.11";
+
+    it(
+      plainWorkflows
+        ? "records a createWorkflow() workflow as a run with its steps as hooks"
+        : "leaves a createWorkflow() workflow's model call a run of its own on the floor's runtime",
+      () => {
+        const result = run("custom-workflow");
+        sound(result);
+        if (plainWorkflows) {
+          expect(shape(result.events), describeTrace(result)).toEqual([
+            "Workflow agent_start",
+            ...hook("Workflow", "research"),
+            ...hook("Workflow", "answer", MODEL("Workflow")),
+            "Workflow agent_end",
+          ]);
+          expect(ofType(result.events, "agent_start")[0]!.goal).toBe("weather in Paris?");
+          for (const event of ofType(result.events, "hook_triggered")) expect(event.trigger_event).toBe("workflow_step");
+          expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "success", summary: "It is sunny in Paris." });
+        } else {
+          // @llama-flow/core binds its handler context in a closure: there is
+          // no run boundary and no step to observe, only the model call.
+          expect(shape(result.events), describeTrace(result)).toEqual([
+            "ScriptedLLM agent_start",
+            ...MODEL("ScriptedLLM"),
+            "ScriptedLLM agent_end",
+          ]);
+        }
+      },
+    );
+
+    it("nests a createWorkflow() workflow under an enclosing agent() scope", () => {
+      const result = run("custom-workflow-scoped");
+      sound(result, 1, ["forecast_flow"]);
+      const inner = plainWorkflows
+        ? ["Workflow agent_start", ...hook("Workflow", "research"), ...hook("Workflow", "answer", MODEL("Workflow")), "Workflow agent_end"]
+        : ["ScriptedLLM agent_start", ...MODEL("ScriptedLLM"), "ScriptedLLM agent_end"];
+      expect(shape(result.events), describeTrace(result)).toEqual(["forecast_flow agent_start", ...inner, "forecast_flow agent_end"]);
+      expect(ofType(result.events, "agent_start")[1]!.parent_id).toBe("forecast_flow");
+    });
+
+    it("records a three-agent handoff chain as nested agents under the workflow", () => {
+      const result = run("handoff3");
+      const handingOff = (agentId: string) => [
+        `${agentId} agent_start`,
+        ...hook(agentId, "setupAgent"),
+        `${agentId} hook_triggered runAgentStep`,
+        ...MODEL(agentId),
+        ...hook(agentId, "parseAgentOutput"),
+        `${agentId} hook_completed runAgentStep`,
+        ...hook(agentId, "executeToolCalls", [`${agentId} tool_use handOff`, `${agentId} tool_result handOff`]),
+        ...hook(agentId, "processToolResults"),
+        `${agentId} agent_end`,
+      ];
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "AgentWorkflow agent_start",
+        ...hook("AgentWorkflow", "handleInputStep"),
+        ...handingOff("triage"),
+        ...handingOff("researcher"),
+        "forecaster agent_start",
+        ...agentLoop("forecaster", "get_weather"),
+        "forecaster agent_end",
+        "AgentWorkflow agent_end",
+      ]);
+      sound(result);
+      for (const start of ofType(result.events, "agent_start").slice(1)) expect(start.parent_id).toBe("AgentWorkflow");
+      expect(ofType(result.events, "tool_use").map((e) => e.tool_call_id)).toEqual(["call_h1", "call_h2", "call_1"]);
+      expect(ofType(result.events, "agent_end").at(-1)!.summary).toBe("It is sunny in Paris.");
+    });
+
+    // `responseFormat` arrived after the floor (@llamaindex/workflow 1.1.5 ignores it).
+    it.skipIf(fixture === "llamaindex-0.11")("records agent() with responseFormat: the structured-output call and tool", () => {
+      const result = run("structured");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "Agent agent_start",
+        ...hook("Agent", "handleInputStep"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        "Agent hook_triggered parseAgentOutput",
+        "Agent hook_completed runAgentStep",
+        ...MODEL("Agent"),
+        "Agent tool_use format_output",
+        "Agent tool_result format_output",
+        "Agent hook_completed parseAgentOutput",
+        "Agent agent_end",
+      ]);
+      sound(result);
+      expect(ofType(result.events, "tool_result")[0]!.output).toEqual({ city: "Paris", sky: "sunny" });
+      expect(result.stdout).toContain('"object":{"city":"Paris","sky":"sunny"}');
+    });
+
+    it("records a FunctionTool.from() tool like a tool() one", () => {
+      const result = run("function-tool");
+      expect(shape(result.events), describeTrace(result)).toEqual(WORKFLOW("Agent", "lookup_weather"));
+      sound(result);
+      expect(ofType(result.events, "tool_use")[0]).toMatchObject({ tool_call_id: "call_1", input: { city: "Paris" } });
+      expect(ofType(result.events, "tool_result")[0]!.output).toBe("sunny in Paris");
+    });
+
+    it("records a QueryEngineTool with the query's retrieval and model call inside it", () => {
+      const result = run("query-engine-tool");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "Agent agent_start",
+        ...hook("Agent", "handleInputStep"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        ...hook("Agent", "parseAgentOutput"),
+        "Agent hook_completed runAgentStep",
+        ...hook("Agent", "executeToolCalls", [
+          "Agent tool_use city_notes",
+          ...RETRIEVAL("Agent"),
+          ...MODEL("Agent"),
+          "Agent tool_result city_notes",
+        ]),
+        ...hook("Agent", "processToolResults"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        "Agent hook_triggered parseAgentOutput",
+        "Agent hook_completed runAgentStep",
+        "Agent hook_completed parseAgentOutput",
+        "Agent agent_end",
+      ]);
+      sound(result);
+      expect(ofType(result.events, "tool_result").at(-1)!.output).toEqual({ content: "Paris is sunny." });
+      expect(ofType(result.events, "model_response").map((e) => [e.input_tokens, e.output_tokens])).toEqual([
+        [12, 5],
+        [7, 3],
+        [30, 7],
+      ]);
+    });
+
+    it("records parallel tool calls from one model turn, each on its own id", () => {
+      const result = run("parallel-tools");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "Agent agent_start",
+        ...hook("Agent", "handleInputStep"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        ...hook("Agent", "parseAgentOutput"),
+        "Agent hook_completed runAgentStep",
+        ...hook("Agent", "executeToolCalls", [
+          "Agent tool_use get_weather",
+          "Agent tool_result get_weather",
+          "Agent tool_use get_time",
+          "Agent tool_result get_time",
+        ]),
+        ...hook("Agent", "processToolResults"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        "Agent hook_triggered parseAgentOutput",
+        "Agent hook_completed runAgentStep",
+        "Agent hook_completed parseAgentOutput",
+        "Agent agent_end",
+      ]);
+      sound(result);
+      expect(ofType(result.events, "tool_result").map((e) => [e.tool_call_id, e.output])).toEqual([
+        ["call_1", "sunny in Paris"],
+        ["call_2", "noon in Paris"],
+      ]);
+    });
+
+    it("closes the run as failed when the provider fails mid-stream (an unhandled rejection in LlamaIndex)", () => {
+      // The workflow runtime lets this error escape as an unhandled rejection
+      // and `run()` never settles — LlamaIndex's behaviour, with or without
+      // the SDK. The failed step is the signal: the run still closes, failed.
+      const result = run("stream-error");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "Agent agent_start",
+        ...hook("Agent", "handleInputStep"),
+        ...hook("Agent", "setupAgent"),
+        "Agent hook_triggered runAgentStep",
+        ...MODEL("Agent"),
+        "Agent hook_completed runAgentStep",
+        "Agent agent_end",
+      ]);
+      sound(result);
+      expect(result.stdout).toContain('"settled":"pending"');
+      expect(result.stdout).toContain('"unhandled":["Error: provider dropped the stream"]');
+      expect(ofType(result.events, "model_response")[0]!.error).toMatch(/provider dropped the stream/);
+      expect(ofType(result.events, "hook_completed").at(-1)).toMatchObject({ outcome: "failed" });
+      expect(ofType(result.events, "agent_end")[0]).toMatchObject({ outcome: "failed" });
+      expect(count(result.events, "error")).toBe(0);
+    });
+
+    /**
+     * Ten requests in flight at once on ONE object: each its own session, and
+     * nothing of any other request in it. CityLLM's usage is per city
+     * (`[100 + n, n]`), so every model response says which request it answered.
+     */
+    const CITIES = ["Paris", "Rome", "Oslo", "Lima", "Cairo", "Delhi", "Tokyo", "Quito", "Accra", "Hanoi"];
+    const tenWay = (scenario: string, expected: (agentId: string) => string[], agentId: string) => {
+      const result = run(scenario);
+      sound(result, CITIES.length);
+      const byCity = new Map<string, Event[]>();
+      for (const e of result.events) {
+        const list = [...result.events.filter((x) => x.session_id === e.session_id)];
+        const text = JSON.stringify(list);
+        const city = CITIES.find((c) => text.includes(`weather in ${c}?`));
+        expect(city, describeTrace(result)).toBeDefined();
+        byCity.set(city!, list);
+      }
+      expect([...byCity.keys()].sort()).toEqual([...CITIES].sort());
+      for (const [city, list] of byCity) {
+        expect(shape(list), describeTrace(result)).toEqual(expected(agentId));
+        expect(list[0]!.agent_id).toBe(agentId);
+        expect(list[0]!.parent_id ?? null).toBeNull();
+        const text = JSON.stringify(list);
+        for (const other of CITIES) if (other !== city) expect(text, `${city}'s session mentions ${other}`).not.toContain(other);
+        const n = CITIES.indexOf(city);
+        for (const response of ofType(list, "model_response")) {
+          expect([response.input_tokens, response.output_tokens]).toEqual([100 + n, n]);
+          expect(response.model).toBe("city-1");
+        }
+        expect(ofType(list, "agent_end")[0]).toMatchObject({ outcome: "success", summary: `It is sunny in ${city}.` });
+      }
+      return byCity;
+    };
+
+    it("keeps 10 concurrent run()s of one agent object apart", () => {
+      const byCity = tenWay("concurrent-agents", (id) => WORKFLOW(id), "Agent");
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.tool_call_id).toBe(`call_${city}`);
+        expect(ofType(list, "tool_result")[0]!.output).toBe(`sunny in ${city}`);
+      }
+    });
+
+    it("keeps 10 concurrent queries on one shared query engine apart", () => {
+      const byCity = tenWay(
+        "concurrent-queries",
+        (id) => [`${id} agent_start`, ...RETRIEVAL(id), ...MODEL(id), `${id} agent_end`],
+        "RetrieverQueryEngine",
+      );
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.input).toEqual({ query: `weather in ${city}?` });
+        expect((ofType(list, "tool_result")[0]!.output as { top: Array<{ text: string }> }).top[0]!.text).toBe(
+          `${city} is sunny.`,
+        );
+      }
+    });
+
+    it("keeps 10 concurrent chats on one shared chat engine apart", () => {
+      const byCity = tenWay(
+        "concurrent-chats",
+        (id) => [`${id} agent_start`, ...RETRIEVAL(id), ...MODEL(id), `${id} agent_end`],
+        "ContextChatEngine",
+      );
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.input).toEqual({ query: `weather in ${city}?` });
+      }
     });
   });
 });

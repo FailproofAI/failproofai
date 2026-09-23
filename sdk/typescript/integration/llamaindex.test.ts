@@ -223,6 +223,91 @@ describe.each(FIXTURES)("%s", (fixture) => {
       expect(count(result.events, "error")).toBe(0);
     });
 
+    /**
+     * Two requests in flight on ONE object built at startup (before
+     * instrument()), Paris slow and Rome fast, so Rome starts and ends inside
+     * Paris. Each must be its own session with its own run, and every event in
+     * a session must belong to that session's request.
+     */
+    const concurrent = (scenario: string, expected: string[], agentId: string) => {
+      const result = run(scenario);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      const sessions = new Map<string, Event[]>();
+      for (const e of result.events) sessions.set(e.session_id, [...(sessions.get(e.session_id) ?? []), e]);
+      expect(sessions.size, describeTrace(result)).toBe(2);
+      const byCity = new Map<string, Event[]>();
+      for (const list of sessions.values()) {
+        expect(shape(list), describeTrace(result)).toEqual(expected);
+        const start = list[0]!;
+        expect(start.agent_id).toBe(agentId);
+        expect(start.parent_id ?? null).toBeNull();
+        const city = String(start.goal).includes("Rome") ? "Rome" : "Paris";
+        byCity.set(city, list);
+      }
+      expect([...byCity.keys()].sort()).toEqual(["Paris", "Rome"]);
+      for (const [city, list] of byCity) {
+        const other = city === "Paris" ? "Rome" : "Paris";
+        // Nothing of the other request in this session.
+        expect(JSON.stringify(list), describeTrace(result)).not.toContain(other);
+        for (const response of ofType(list, "model_response")) {
+          expect([response.input_tokens, response.output_tokens]).toEqual(city === "Paris" ? [11, 2] : [21, 3]);
+          expect(response.model).toBe("echo-1");
+        }
+        const end = ofType(list, "agent_end")[0]!;
+        expect(end.outcome).toBe("success");
+        expect(end.summary).toBe(`It is sunny in ${city}.`);
+      }
+      // They really did overlap: Rome started after Paris and ended before it.
+      const index = (city: string, type: string) => result.events.indexOf(ofType(byCity.get(city)!, type)[0]!);
+      expect(index("Rome", "agent_start")).toBeGreaterThan(index("Paris", "agent_start"));
+      expect(index("Rome", "agent_end")).toBeLessThan(index("Paris", "agent_end"));
+      return byCity;
+    };
+
+    it("keeps concurrent queries on one shared query engine in separate sessions", () => {
+      const byCity = concurrent(
+        "shared-query",
+        [
+          "RetrieverQueryEngine agent_start",
+          "RetrieverQueryEngine tool_use retriever",
+          "RetrieverQueryEngine tool_result retriever",
+          ...MODEL("RetrieverQueryEngine"),
+          "RetrieverQueryEngine agent_end",
+        ],
+        "RetrieverQueryEngine",
+      );
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.input).toEqual({ query: `weather in ${city}?` });
+      }
+    });
+
+    it("keeps concurrent chats on one shared legacy LLMAgent in separate sessions", () => {
+      const byCity = concurrent(
+        "shared-legacy",
+        [
+          "LLMAgent agent_start",
+          ...MODEL("LLMAgent"),
+          "LLMAgent tool_use get_weather",
+          "LLMAgent tool_result get_weather",
+          ...MODEL("LLMAgent"),
+          "LLMAgent agent_end",
+        ],
+        "LLMAgent",
+      );
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.tool_call_id).toBe(`call_${city}`);
+        expect(ofType(list, "tool_result")[0]!.output).toBe(`sunny in ${city}`);
+      }
+    });
+
+    it("keeps concurrent runs of one shared workflow agent in separate sessions", () => {
+      const byCity = concurrent("shared-workflow", WORKFLOW(), "Agent");
+      for (const [city, list] of byCity) {
+        expect(ofType(list, "tool_use")[0]!.tool_call_id).toBe(`call_${city}`);
+        expect(ofType(list, "tool_result")[0]!.output).toBe(`sunny in ${city}`);
+      }
+    });
+
     it("records nothing after uninstrument()", () => {
       const result = run("uninstrument");
       expect(shape(result.events), describeTrace(result)).toEqual(WORKFLOW());

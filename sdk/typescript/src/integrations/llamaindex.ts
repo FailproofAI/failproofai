@@ -46,15 +46,34 @@
  *   * our own `AsyncLocalStorage` frame, bound around every workflow step we
  *     wrap. The bus dispatches in a `queueMicrotask`, which Node runs in the
  *     dispatcher's async context, so a handler sees the step that caused it;
- *   * LlamaIndex's own `EventCaller` chain (`event.reason.computedCallers`),
- *     set by `@wrapEventCaller` — on `AgentRunner.chat`, `BaseQueryEngine.query`
- *     and every first-party provider's `chat`. A legacy task or a query run
- *     registers the object that owns it, and anything whose chain includes that
- *     object belongs to it.
+ *   * LlamaIndex's own `EventCaller` (`event.reason`), set by `@wrapEventCaller`
+ *     — on `AgentRunner.chat`, `BaseQueryEngine.query` and every first-party
+ *     provider's `chat`. `withEventCaller` binds a FRESH `EventCaller` per
+ *     invocation in LlamaIndex's own `AsyncLocalStorage`, chained through
+ *     `.parent` to the invocation it ran inside. A legacy task or a query run is
+ *     registered under the `EventCaller` of the invocation that opened it, and
+ *     an event belongs to it when that exact object is on the event's chain.
  *
- * When both match, the deeper run wins. When neither does, the call is a root
- * run of its own — the LangChain/Python precedent for a bare model call — and
- * nests under an enclosing `failproofai.session()`/`agent()` scope if there is one.
+ * The invocation, NOT the object that owns it. One query engine (or one
+ * `LLMAgent`) built at startup and serving every request is the normal
+ * deployment, so the owner is the same object for every concurrent call; keyed
+ * by owner, request B's `query-start` found A's run, treated itself as nested
+ * and recorded nothing of its own. The `EventCaller` is per call and already
+ * flows through the async context, which is why it is used rather than a
+ * prototype patch of `query`/`chat`: `@wrapEventCaller` binds the method onto
+ * each INSTANCE at construction (`this.query = (...) => withEventCaller(...)`),
+ * so a prototype patch would miss every engine built before `instrument()`.
+ *
+ * Only a bus that carries no `EventCaller` (a build without one; the unit
+ * tests' stand-ins) falls back to matching the owner objects in
+ * `computedCallers`, and there a run owned by the object STARTING a new run is
+ * never taken as its parent: without the chain a concurrent sibling on a shared
+ * object is indistinguishable from re-entry, and the sibling is the common case.
+ *
+ * When both our frame and a caller match, the deeper run wins. When neither
+ * does, the call is a root run of its own — the LangChain/Python precedent for a
+ * bare model call — and nests under an enclosing `failproofai.session()`/
+ * `agent()` scope if there is one.
  *
  * ## Known gaps, each one the framework's and each one documented, not faked
  *
@@ -308,6 +327,39 @@ function callersOf(event: unknown): unknown[] {
 }
 
 /**
+ * The `EventCaller` chain of an event's `reason`, innermost first — or `null`
+ * when the reason is not an `EventCaller` (no `caller` field), in which case
+ * only the owner objects in `computedCallers` are known.
+ */
+function invocationChain(reason: unknown): object[] | null {
+  if (!isObject(reason)) return null;
+  try {
+    if (!("caller" in reason)) return null;
+  } catch {
+    return null;
+  }
+  const chain: object[] = [];
+  const seen = new Set<unknown>();
+  let node: unknown = reason;
+  while (isObject(node) && !seen.has(node)) {
+    seen.add(node);
+    chain.push(node);
+    node = read(node, "parent");
+  }
+  return chain;
+}
+
+/** Where an event came from: LlamaIndex's invocation chain, and the owner objects on it. */
+interface Origin {
+  chain: object[] | null;
+  callers: unknown[];
+}
+
+function originOf(event: unknown): Origin {
+  return { chain: invocationChain(read(event, "reason")), callers: callersOf(event) };
+}
+
+/**
  * The model name for a bus event.
  *
  * `llm-start` carries only `{id, messages}`: `wrapLLMEvent` never passes the
@@ -354,6 +406,10 @@ interface Run {
   subSeq: number;
   /** The object whose `@wrapEventCaller` calls belong to this run, if any. */
   owner: object | null;
+  /** LlamaIndex's `EventCaller` for the ONE invocation that opened this run, if any. */
+  caller: object | null;
+  /** Workflow step keys linked to this run and not yet ended. */
+  steps: Set<string>;
   /** Legacy runs have no end signal until their last step; bare runs end with their leaf. */
   bare: boolean;
   /** A run whose end arrived while a streamed leaf was still open. */
@@ -449,6 +505,8 @@ class State {
   private readonly runs = new Map<string, Run>();
   private readonly leaves = new Map<string, Leaf>();
   private readonly owners = new WeakMap<object, Run[]>();
+  /** Runs by the `EventCaller` of the invocation that opened them. */
+  private readonly invocations = new WeakMap<object, Run>();
   /** Legacy task: first step id -> run. */
   private readonly tasks = new Map<string, Run>();
   /** Root query-engine runs, by `query-start` id. */
@@ -483,9 +541,24 @@ class State {
     return run && !run.ended ? run : null;
   }
 
-  private ownerRun(callers: unknown[]): Run | null {
+  /** The innermost run opened by an invocation on this chain — exact, per call. */
+  private invocationRun(chain: object[]): Run | null {
+    for (const node of chain) {
+      const run = this.live(this.invocations.get(node));
+      if (run) return run;
+    }
+    return null;
+  }
+
+  /**
+   * Fallback for a bus without `EventCaller`s: the newest live run of an owner
+   * object on the caller list. `starting` is the owner of a run being opened
+   * now; its own runs are skipped, because without the chain they are far more
+   * likely concurrent siblings on a shared object than this call's parent.
+   */
+  private ownerRun(callers: unknown[], starting?: unknown): Run | null {
     for (const caller of callers) {
-      if (!isObject(caller)) continue;
+      if (!isObject(caller) || caller === starting) continue;
       const stack = this.owners.get(caller);
       const run = this.live(stack?.[stack.length - 1]);
       if (run) return run;
@@ -494,30 +567,36 @@ class State {
   }
 
   /**
-   * The run an event belongs to: our step frame or LlamaIndex's caller chain,
-   * whichever is deeper. `callers` defaults to the chain bound right now, for
-   * callers (a workflow starting) that have no event to read it from.
+   * The run an event belongs to: our step frame or LlamaIndex's invocation
+   * chain, whichever is deeper. `origin` defaults to the chain bound right now,
+   * for callers (a workflow starting) that have no event to read it from.
+   * `starting` is the owner of a run about to be opened (see `ownerRun`).
    */
-  locate(callers?: unknown[]): Located | null {
+  locate(origin?: Origin, starting?: unknown): Located | null {
+    const from = origin ?? this.boundOrigin();
     const frame = this.frames.getStore();
     const fromFrame = frame && this.live(frame.run) ? { parentKey: frame.key, run: frame.run } : null;
-    const owner = this.ownerRun(callers ?? this.boundCallers());
+    // With an `EventCaller` chain, ONLY the chain decides: a run whose owner is
+    // on the caller list but whose invocation is not on the chain belongs to a
+    // different call — a concurrent request on a shared engine — never this one.
+    const owner = from.chain ? this.invocationRun(from.chain) : this.ownerRun(from.callers, starting);
     const fromOwner = owner ? { parentKey: (owner.sub ?? owner).key, run: owner.sub ?? owner } : null;
     if (fromFrame && fromOwner) return fromOwner.run.depth > fromFrame.run.depth ? fromOwner : fromFrame;
     return fromFrame ?? fromOwner;
   }
 
-  private boundCallers(): unknown[] {
+  private boundOrigin(): Origin {
     for (const module of this.globals) {
       try {
         const caller = module.getEventCaller?.();
+        if (!isObject(caller)) continue;
         const callers = read(caller, "computedCallers");
-        if (Array.isArray(callers) && callers.length > 0) return callers;
+        return { chain: invocationChain(caller), callers: Array.isArray(callers) ? callers : [] };
       } catch {
         // An older build without `getEventCaller`; the frame is still consulted.
       }
     }
-    return [];
+    return { chain: null, callers: [] };
   }
 
   // -- runs ---------------------------------------------------------------
@@ -525,7 +604,15 @@ class State {
   openRun(
     prefix: string,
     agentId: string,
-    options: { parent?: Located | null; owner?: object | null; bare?: boolean; goal?: unknown; root?: Run | null; fields?: Json },
+    options: {
+      parent?: Located | null;
+      owner?: object | null;
+      caller?: object | null;
+      bare?: boolean;
+      goal?: unknown;
+      root?: Run | null;
+      fields?: Json;
+    },
   ): Run {
     while (this.runs.size >= MAX_OPEN) {
       const oldest = this.runs.values().next();
@@ -549,6 +636,8 @@ class State {
       sub: null,
       subSeq: 0,
       owner: options.owner ?? null,
+      caller: options.caller ?? null,
+      steps: new Set(),
       bare: options.bare ?? false,
       ending: null,
       ended: false,
@@ -560,6 +649,7 @@ class State {
       stack.push(run);
       this.owners.set(run.owner, stack);
     }
+    if (run.caller) this.invocations.set(run.caller, run);
     return run;
   }
 
@@ -589,7 +679,9 @@ class State {
       const stack = this.owners.get(run.owner);
       const index = stack?.lastIndexOf(run) ?? -1;
       if (stack && index !== -1) stack.splice(index, 1);
+      if (stack?.length === 0) this.owners.delete(run.owner);
     }
+    if (run.caller && this.invocations.get(run.caller) === run) this.invocations.delete(run.caller);
     if (run.root && run.root.sub === run) run.root.sub = null;
     const text = summary ?? (outcome === "success" ? run.lastContent : undefined);
     this.tracker.endAgent(run.key, {
@@ -597,6 +689,12 @@ class State {
       summary: this.options.captureMessages || outcome !== "success" ? text : undefined,
       ...core.fwFields({ run_id: run.key }),
     });
+    // Every tracker link this run made goes with it — its own and any step
+    // still in flight. A leaked link is worse than memory: at the tracker's
+    // FIFO cap, the next eviction takes a LIVE run's link and its events drop.
+    for (const step of run.steps) this.tracker.unlink(step);
+    run.steps.clear();
+    this.tracker.unlink(run.key);
   }
 
   /**
@@ -663,6 +761,7 @@ class State {
         ...extras,
       });
     }
+    this.tracker.unlink(leaf.key);
     this.settle(leaf.run, result.error !== undefined ? "failed" : result.closedBy ? "cancelled" : "success");
   }
 
@@ -670,7 +769,7 @@ class State {
 
   /** Where a bus event goes; opens a bare root run when it belongs to nothing. */
   private placeOrOpen(event: unknown, prefix: string, agentId: () => string): Located {
-    const located = this.locate(callersOf(event));
+    const located = this.locate(originOf(event));
     if (located) return located;
     const run = this.openRun(prefix, agentId(), { parent: null, bare: true });
     return { parentKey: run.key, run };
@@ -751,7 +850,7 @@ class State {
     const call = read(detail(event), "toolCall");
     const name = nonEmpty(read(call, "name")) ?? "tool";
     const rawId = nonEmpty(read(call, "id"));
-    const located = this.locate(callersOf(event));
+    const located = this.locate(originOf(event));
     // Inside a workflow the runtime's own `agentToolCallEvent` opened this call
     // already, synchronously and before the tool ran; this is the same call.
     if (located && this.findTool(rawId, located.run, "workflow")) return;
@@ -797,7 +896,7 @@ class State {
 
   toolResult(event: unknown): void {
     const payload = detail(event);
-    const leaf = this.findTool(nonEmpty(read(read(payload, "toolCall"), "id")), this.locate(callersOf(event))?.run ?? null);
+    const leaf = this.findTool(nonEmpty(read(read(payload, "toolCall"), "id")), this.locate(originOf(event))?.run ?? null);
     if (!leaf) return;
     const result = read(payload, "toolResult");
     const failed = read(result, "isError") === true;
@@ -839,11 +938,13 @@ class State {
    * its retrievals and model calls are what is worth seeing.
    */
   queryStart(event: unknown): void {
-    if (this.locate(callersOf(event))) return;
+    const origin = originOf(event);
+    const owner = origin.callers[0];
+    if (this.locate(origin, owner)) return;
     const payload = detail(event);
-    const owner = callersOf(event)[0];
     const run = this.openRun(`query:${asId(payload.id)}`, className(owner) ?? "query_engine", {
       owner: isObject(owner) ? owner : null,
+      caller: origin.chain?.[0] ?? null,
       goal: queryText(payload.query),
     });
     const id = asId(payload.id);
@@ -878,10 +979,12 @@ class State {
       running.lastActivity = performance.now();
       return;
     }
-    const owner = callersOf(event)[0];
+    const origin = originOf(event);
+    const owner = origin.callers[0];
     const run = this.openRun(`task:${firstId}`, className(owner) ?? "AgentRunner", {
-      parent: this.locate(callersOf(event)),
+      parent: this.locate(origin, owner),
       owner: isObject(owner) ? owner : null,
+      caller: origin.chain?.[0] ?? null,
       goal: textOf((read(read(read(step, "context"), "store"), "messages") as unknown[] | undefined)?.at(-1)),
     });
     run.model = nonEmpty(read(read(read(read(step, "context"), "llm"), "metadata"), "model"));
@@ -1078,6 +1181,7 @@ class State {
     run.lastActivity = owner.lastActivity = performance.now();
     const key = this.nextKey(`${run.key}:step`);
     this.tracker.link(key, owner.key);
+    owner.steps.add(key);
     const agents = read(workflow, "agents");
     const agent = agents instanceof Map ? agents.get(agentName ?? read(workflow, "rootAgentName")) : undefined;
     const model = nonEmpty(read(read(read(agent, "llm"), "metadata"), "model"));
@@ -1128,6 +1232,9 @@ class State {
       if (!reported && !this.options.steps) this.reportError(step.owner, error);
       this.finishRun(step.run, "failed", errorText(error));
     }
+    // Last: the step's leaves and its hook resolve their session through it.
+    step.owner.steps.delete(step.key);
+    this.tracker.unlink(step.key);
   }
 
   /**
@@ -1185,6 +1292,17 @@ class State {
       core.callSafely(() => this.sweep(), [], `${NAME}.reaper`);
     }, this.options.reaperInterval * 1000);
     this.reaper.unref();
+  }
+
+  /** What is still held, for tests: every per-run table, and the tracker. */
+  residue(): { runs: number; leaves: number; tasks: number; queries: number; tracker: core.RunTracker } {
+    return {
+      runs: this.runs.size,
+      leaves: this.leaves.size,
+      tasks: this.tasks.size,
+      queries: this.queries.size,
+      tracker: this.tracker,
+    };
   }
 
   shutdown(): void {
@@ -1295,12 +1413,26 @@ const BUS_EVENTS: Array<[string, keyof State]> = [
  * Separate from `install()` so a test can hand it stand-ins for the framework
  * modules; `install()` is only about FINDING the right copies.
  *
- * @internal
+ * THROWS while an earlier attach is still installed, before touching anything.
+ * Overwriting it would orphan that install's bus subscriptions and prototype
+ * patch — `uninstall()` only reaches the latest — so they would record for the
+ * life of the process, every event twice. A throw rather than a no-op because a
+ * no-op would hand back a handle for an install that did not happen, with
+ * options that were never applied. `instrument()` never reaches this: it skips
+ * an adapter that is already active.
+ *
+ * @internal Not part of the public API.
  */
 export function attach(
   rawOptions: Record<string, unknown>,
   modules: { globals: GlobalModule[]; workflows: WorkflowModule[]; frameworkPackage?: string },
-): { sweep: (now?: number) => number } {
+): { sweep: (now?: number) => number; residue: () => ReturnType<State["residue"]> } {
+  if (installed !== null) {
+    throw new Error(
+      "the llamaindex adapter is already installed; uninstrument(\"llamaindex\") (or " +
+        "adapter.uninstall()) before attaching again.",
+    );
+  }
   const options = parseOptions(rawOptions);
   const state = new State(options, modules.globals, modules.frameworkPackage ?? PACKAGE);
   const current: Installed = { state, unsubscribe: [], patcher: new core.Patcher() };
@@ -1353,7 +1485,7 @@ export function attach(
   }
   state.startReaper();
   logger.debug(`llamaindex adapter subscribed on ${buses.size} bus(es), ${current.patcher.size} patch(es)`);
-  return { sweep: (now?: number) => state.sweep(now) };
+  return { sweep: (now?: number) => state.sweep(now), residue: () => state.residue() };
 }
 
 function patchWorkflow(current: Installed, module: WorkflowModule): void {

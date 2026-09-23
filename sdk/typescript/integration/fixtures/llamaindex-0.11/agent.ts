@@ -19,6 +19,11 @@ import {
   type LLMMetadata,
   type ToolCallLLMMessageOptions,
 } from "@llamaindex/core/llms";
+import { RetrieverQueryEngine, type QueryBundle } from "@llamaindex/core/query-engine";
+import { getResponseSynthesizer } from "@llamaindex/core/response-synthesizers";
+import { BaseRetriever } from "@llamaindex/core/retriever";
+import { TextNode, type NodeWithScore } from "@llamaindex/core/schema";
+import { extractText } from "@llamaindex/core/utils";
 import { agent, multiAgent } from "@llamaindex/workflow";
 import { LLMAgent, tool } from "llamaindex";
 import { z } from "zod";
@@ -76,6 +81,73 @@ class ScriptedLLM extends ToolCallLLM {
   }
 }
 
+// ---------------------------------------------------------------------------
+// One object built once and shared by concurrent requests — the way a server
+// holds its query engine or agent. Everything below is stateless per call, so
+// two calls in flight at once cannot disturb each other: whatever the trace
+// mixes up is the adapter's doing.
+// ---------------------------------------------------------------------------
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const textOf = (content: unknown): string => (typeof content === "string" ? content : JSON.stringify(content));
+/** The city a request is about. Paris is the SLOW request, so Rome starts and ends inside it. */
+const cityIn = (text: string): "Paris" | "Rome" => (text.includes("Rome") ? "Rome" : "Paris");
+const delay = (city: string) => sleep(city === "Paris" ? 40 : 5);
+/** Per-city usage, so a model_response carries which request it answered. */
+const USAGE = { Paris: { prompt_tokens: 11, completion_tokens: 2 }, Rome: { prompt_tokens: 21, completion_tokens: 3 } };
+
+/** A model that answers from its input alone: a tool call first, then the answer. */
+class EchoLLM extends ToolCallLLM {
+  supportToolCall = true;
+  metadata: LLMMetadata = {
+    model: "echo-1",
+    temperature: 0,
+    topP: 1,
+    contextWindow: 4096,
+    tokenizer: undefined,
+    structuredOutput: false,
+  };
+
+  chat(params: LLMChatParamsStreaming<object, Options>): Promise<AsyncIterable<ChatResponseChunk<Options>>>;
+  chat(params: LLMChatParamsNonStreaming<object, Options>): Promise<ChatResponse<Options>>;
+  @wrapEventCaller
+  @wrapLLMEvent
+  async chat(
+    params: LLMChatParamsStreaming<object, Options> | LLMChatParamsNonStreaming<object, Options>,
+  ): Promise<AsyncIterable<ChatResponseChunk<Options>> | ChatResponse<Options>> {
+    const city = cityIn(params.messages.map((m) => textOf(m.content)).join("\n"));
+    await delay(city);
+    const answered = params.messages.some((m) => m.options !== undefined && "toolResult" in m.options);
+    const call = params.tools?.length && !answered ? { name: "get_weather", input: { city }, id: `call_${city}` } : null;
+    const options: Options = call ? { toolCall: [call] } : {};
+    const text = call ? "" : `It is sunny in ${city}.`;
+    const usage = USAGE[city];
+    if (params.stream) {
+      return (async function* (): AsyncGenerator<ChatResponseChunk<Options>> {
+        yield { delta: text, raw: { choices: [{ delta: {} }] }, options };
+        await delay(city);
+        yield { delta: "", raw: { choices: [], usage }, options: {} };
+      })();
+    }
+    const message: ChatMessage<Options> = { role: "assistant", content: text, options };
+    return { message, raw: { choices: [{ finish_reason: call ? "tool_calls" : "stop" }], usage } };
+  }
+}
+
+/** A retriever with no index and no embeddings: one note about the question. */
+class NotesRetriever extends BaseRetriever {
+  // BaseRetriever's constructor is protected; a subclass's is public.
+  constructor() {
+    super();
+  }
+
+  async _retrieve(params: QueryBundle): Promise<NodeWithScore[]> {
+    const question = extractText(params.query);
+    await delay(cityIn(question));
+    return [{ node: new TextNode({ text: `notes on ${question}` }), score: 1 }];
+  }
+}
+
 const getWeather = tool({
   name: "get_weather",
   description: "Current weather for a city",
@@ -98,7 +170,15 @@ const QUESTION = "weather in Paris?";
 async function main(scenario: string): Promise<void> {
   // Built BEFORE instrument(): the adapter must not depend on construction order.
   const early = agent({ llm: new ScriptedLLM(), tools: [getWeather] });
+  // Shared objects, also built at startup, before instrument().
+  const sharedEngine = new RetrieverQueryEngine(
+    new NotesRetriever(),
+    getResponseSynthesizer("compact", { llm: new EchoLLM() }),
+  );
+  const sharedLegacy = new LLMAgent({ llm: new EchoLLM(), tools: [getWeather] });
+  const sharedAgent = agent({ llm: new EchoLLM(), tools: [getWeather] });
   report({ instrumented: await failproofai.instrument("llamaindex") });
+  const QUESTIONS = ["weather in Paris?", "weather in Rome?"];
 
   switch (scenario) {
     case "workflow": {
@@ -170,6 +250,21 @@ async function main(scenario: string): Promise<void> {
       });
       const out = await multiAgent({ agents: [triage, forecaster], rootAgent: triage }).run(QUESTION);
       report({ answer: out.data.result });
+      break;
+    }
+    case "shared-query": {
+      const answers = await Promise.all(QUESTIONS.map((query) => sharedEngine.query({ query })));
+      report({ answers: answers.map((a) => a.message.content) });
+      break;
+    }
+    case "shared-legacy": {
+      const answers = await Promise.all(QUESTIONS.map((message) => sharedLegacy.chat({ message })));
+      report({ answers: answers.map((a) => String(a.message.content)) });
+      break;
+    }
+    case "shared-workflow": {
+      const answers = await Promise.all(QUESTIONS.map((question) => sharedAgent.run(question)));
+      report({ answers: answers.map((a) => a.data.result) });
       break;
     }
     case "uninstrument": {

@@ -143,6 +143,26 @@ describe("buildEnvelope — structured tool input", () => {
     }
   });
 
+  it("redacts a multi-word credential behind a KNOWN scheme", () => {
+    // `Bearer` in front means the rest IS the credential. Asking whether the
+    // rest also reads as English sent `Bearer swordfish for the call` to Jev
+    // verbatim, with `redactions: 0` — and nothing downstream catches it,
+    // because this value never goes through `redactSecrets`.
+    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
+    for (const [value, label] of [
+      ["Bearer swordfish for the call", "bearer token"],
+      ["Token abcdefghijk is the key", "authorization header"],
+      ["Basic secrettoken and then some prose", "authorization header"],
+    ] as Array<[string, string]>) {
+      const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
+      const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
+      const [scheme, ...rest] = value.split(" ");
+      expect((input.headers as Record<string, unknown>).Authorization, value).toBe(`${scheme} <redacted:${label}>`);
+      expect(JSON.stringify(env.state), value).not.toContain(rest.join(" "));
+      expect(env.redactions, value).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it("leaves Authorization references, bare schemes and other headers alone", () => {
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
     for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer", ""]) {
@@ -161,6 +181,27 @@ describe("buildEnvelope — structured tool input", () => {
       expect(env.truncated).toBe(true);
       const sent = Object.keys((env.state.agent_request as { input: Record<string, unknown> }).input)[0];
       expect(sent.length).toBeLessThan(MAX_STRING_CHARS);
+    }
+  });
+
+  it("redacts a full-sized object of Authorization header lines in well under the Jev timeout", () => {
+    // The other budget test's five alphabets have no `authorization` in them,
+    // so they never saw this: the header rule's value ran to the end of the
+    // line and a declined match resumed one character later, which made one
+    // long line quadratic in the number of names on it. 1 100 ms for this
+    // envelope, against the same 600 ms budget; 140 ms once the value is
+    // measured in code, token by token.
+    for (const unit of ["Authorization: ", "authorization: a ", "Authorization: Bearer x "]) {
+      const value = unit.repeat(Math.ceil(MAX_STRING_CHARS / unit.length)).slice(0, MAX_STRING_CHARS);
+      const toolInput: Record<string, Record<string, string>> = {};
+      for (let i = 0; i < 24; i++) {
+        const inner: Record<string, string> = {};
+        for (let j = 0; j < 24; j++) inner[`f${i}_${j}`] = value;
+        toolInput[`k${i}`] = inner;
+      }
+      const t0 = performance.now();
+      buildEnvelope(toolInput, [], facts({ toolName: "mcp__x__y", toolClass: "other", toolIsKnown: false }), null);
+      expect(performance.now() - t0, unit).toBeLessThan(600);
     }
   });
 

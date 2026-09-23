@@ -261,5 +261,51 @@ describe.each(FIXTURES)("%s", (fixture) => {
       expect(result.events, describeTrace(result)).toEqual([]);
       expect(result.stdout).toContain('"removed":["mastra"]');
     });
+
+    // uninstrument() does not reach what an instrumented run already built —
+    // a model behind a proxy, tools behind wrappers, a stream the caller is
+    // still reading — so each of these runs inside a session scope, where a
+    // stray event would have somewhere to land instead of being dropped.
+
+    it("stops a stream in flight at uninstrument(), closing its agent cancelled", () => {
+      const result = run("uninstrument-midstream");
+      expect(result.stdout).toContain('"removed":["mastra"]');
+      // The stream is the caller's: it runs to the end, tool call and all.
+      expect(result.stdout).toContain("It is sunny in Paris.");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "weather-agent agent_start",
+        "weather-agent model_request",
+        "weather-agent model_response",
+        "weather-agent agent_end",
+      ]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      const response = ofType(result.events, "model_response")[0]!;
+      expect(response.stop_reason).toBe("cancelled");
+      expect(response.fw_incomplete).toBe(true);
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("cancelled");
+    });
+
+    it("records nothing from an Agent reused after uninstrument()", () => {
+      const result = run("uninstrument-reuse");
+      expect(result.stdout).toContain('"answers":["It is sunny in Paris.","It is sunny in Paris."]');
+      expect(shape(result.events), describeTrace(result)).toEqual(LOOP);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records a run once after instrument() → uninstrument() → instrument()", () => {
+      const result = run("reinstrument");
+      expect(result.stdout).toContain('"removed":["mastra"]');
+      expect(shape(result.events), describeTrace(result)).toEqual(LOOP);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records an Agent reused across uninstrument() → instrument() once per run", () => {
+      const result = run("reinstrument-reuse");
+      expect(shape(result.events), describeTrace(result)).toEqual([...LOOP, ...LOOP]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      const sessions = result.events.map((e) => e.session_id);
+      expect(new Set(sessions.slice(0, LOOP.length)).size).toBe(1);
+      expect(new Set(sessions.slice(LOOP.length)).size).toBe(1);
+    });
   });
 });

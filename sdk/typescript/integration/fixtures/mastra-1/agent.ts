@@ -15,12 +15,24 @@ import { z } from "zod";
 type Turn = { tool: string; input: Record<string, unknown>; usage: [number, number] } | { text: string; usage: [number, number] };
 
 /**
+ * Holds the FIRST streamed step open after its response metadata: `reached`
+ * fires once the stream is parked there, and it moves on when `wait` settles.
+ */
+type Gate = { reached: () => void; wait: Promise<void> };
+
+function barrier(): { wait: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const wait = new Promise<void>((resolve) => (open = resolve));
+  return { wait, open };
+}
+
+/**
  * A scripted `LanguageModelV2`: `turns` alternate per call, so a two-step tool
  * loop is turn 0 (tool call) then turn 1 (answer). `fail` makes every call
  * throw, which is how a provider error reaches Mastra. Tool call ids are
  * `<callPrefix>_<n>`, so two models in one session never reuse an id.
  */
-function scriptedModel(turns: Turn[], options: { fail?: boolean; callPrefix?: string } = {}) {
+function scriptedModel(turns: Turn[], options: { fail?: boolean; callPrefix?: string; gate?: Gate } = {}) {
   let calls = 0;
   const next = (): Turn => turns[calls++ % turns.length]!;
   const usage = ([input, output]: [number, number]) => ({
@@ -74,6 +86,22 @@ function scriptedModel(turns: Turn[], options: { fail?: boolean; callPrefix?: st
         parts.push({ type: "text-end", id: "t" });
         parts.push({ type: "finish", finishReason: "stop", usage: usage(turn.usage) });
       }
+      const gate = calls === 1 ? options.gate : undefined;
+      if (gate) {
+        let index = 0;
+        return {
+          stream: new ReadableStream({
+            async pull(controller) {
+              if (index === 2) {
+                gate.reached();
+                await gate.wait;
+              }
+              if (index >= parts.length) controller.close();
+              else controller.enqueue(parts[index++]);
+            },
+          }),
+        };
+      }
       return {
         stream: new ReadableStream({
           start(controller) {
@@ -107,7 +135,7 @@ const brokenWeather = createTool({
   },
 });
 
-const weatherAgent = (options: { fail?: boolean; tool?: typeof weather } = {}) =>
+const weatherAgent = (options: { fail?: boolean; tool?: typeof weather; gate?: Gate } = {}) =>
   new Agent({
     id: "weather-agent",
     name: "weather-agent",
@@ -232,6 +260,57 @@ async function main(scenario: string): Promise<void> {
     case "uninstrument": {
       report({ removed: failproofai.uninstrument() });
       await weatherAgent().generate(question);
+      break;
+    }
+    case "uninstrument-midstream": {
+      // uninstrument() lands while the first model step's stream is parked
+      // mid-flight; the caller then reads the run to the end regardless.
+      const reached = barrier();
+      const gate = barrier();
+      await failproofai.session({ sessionId: "req-1" }, async () => {
+        const out = await weatherAgent({ gate: { reached: reached.open, wait: gate.wait } }).stream(question);
+        const reading = (async () => {
+          let text = "";
+          for await (const chunk of out.textStream) text += chunk;
+          return text;
+        })();
+        await reached.wait;
+        report({ removed: failproofai.uninstrument() });
+        gate.open();
+        report({ answer: await reading });
+      });
+      break;
+    }
+    case "uninstrument-reuse": {
+      // One Agent instance: run while instrumented, then again (both ways)
+      // after uninstrument().
+      await failproofai.session({ sessionId: "req-1" }, async () => {
+        const agent = weatherAgent();
+        await agent.generate(question);
+        report({ removed: failproofai.uninstrument() });
+        const again = await agent.generate(question);
+        const streamed = await agent.stream(question);
+        let text = "";
+        for await (const chunk of streamed.textStream) text += chunk;
+        report({ answers: [again.text, text] });
+      });
+      break;
+    }
+    case "reinstrument": {
+      report({ removed: failproofai.uninstrument() });
+      report({ instrumented: await failproofai.instrument("mastra") });
+      const out = await weatherAgent().generate(question);
+      report({ answer: out.text });
+      break;
+    }
+    case "reinstrument-reuse": {
+      // The same Agent instance across an uninstrument()/instrument() cycle.
+      const agent = weatherAgent();
+      await agent.generate(question);
+      report({ removed: failproofai.uninstrument() });
+      report({ instrumented: await failproofai.instrument("mastra") });
+      const out = await agent.generate(question);
+      report({ answer: out.text });
       break;
     }
     default:

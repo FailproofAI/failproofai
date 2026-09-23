@@ -98,19 +98,96 @@ const INSTALL = "npm install @mastra/core";
  */
 const MINIMUM = "0.20.0";
 
+/*
+ * ## Lifetime
+ *
+ * `instrument()` hands Mastra objects that outlive it: a model behind a proxy,
+ * tools behind wrappers, a stream the caller is still reading. Restoring the
+ * prototypes does not reach any of them, so every recording path checks that
+ * the tracker it began on is still LIVE (`live()`), and nothing recreates a
+ * tracker behind `uninstrument()`'s back:
+ *
+ * * `tracker` exists exactly while `enabled` — created by `install()`, dropped
+ *   by `uninstall()`. A proxy, wrapper, span or frame remembers the tracker it
+ *   was built under; once that tracker is gone it is a pass-through for good,
+ *   even after a later `instrument()` creates a new one.
+ * * `uninstall()` turns `enabled` off FIRST, then closes what is still open —
+ *   model steps, tool calls, workflow steps (marked `fw_incomplete`), then
+ *   agents `cancelled` — so the trace ends where the recording did instead of
+ *   leaving spans `ongoing` forever.
+ * * Open spans are tracked only so teardown can close them. Every end path
+ *   removes its own entry; a stream nobody ever consumes has no end path, so
+ *   the registries are bounded like the tracker's own run table.
+ * * `wrapTool()` works without `instrument()` — it is the call-site helper for
+ *   bundled applications — so a call with no live installation records on a
+ *   `standalone` tracker, which is self-contained (its run opens and closes in
+ *   the one call) and never touched by `uninstall()`.
+ */
+
+let enabled = false;
 let tracker: core.RunTracker | null = null;
+let standalone: core.RunTracker | null = null;
 let patcher: core.Patcher | null = null;
 
-function ensureTracker(options: Record<string, unknown> = {}): core.RunTracker {
-  tracker ??= new core.RunTracker(NAME, {
+function newTracker(options: Record<string, unknown> = {}): core.RunTracker {
+  return new core.RunTracker(NAME, {
     baseFields: core.frameworkFields(NAME, PACKAGE),
     fieldLimit: typeof options.captureLimit === "number" ? options.captureLimit : undefined,
   });
-  return tracker;
+}
+
+/** May something begun on `t` still record? */
+function live(t: core.RunTracker | null | undefined): t is core.RunTracker {
+  return t !== null && t !== undefined && ((enabled && t === tracker) || t === standalone);
+}
+
+/** Same bound as `RunTracker`'s own run table. */
+const MAX_OPEN = 10_000;
+
+/** A span that is open until it is `closed`, on the tracker it began on. */
+interface Span {
+  tracker: core.RunTracker;
+  closed: boolean;
+}
+
+/** Open spans, oldest first, forgetting the oldest past `MAX_OPEN`. */
+class OpenSpans<T extends Span> {
+  private readonly items = new Set<T>();
+
+  add(item: T): void {
+    while (this.items.size >= MAX_OPEN) {
+      const oldest = this.items.values().next();
+      if (oldest.done) break;
+      this.items.delete(oldest.value);
+    }
+    this.items.add(item);
+  }
+
+  /** End `item`: true when it was still open on a live tracker. */
+  close(item: T): boolean {
+    this.items.delete(item);
+    if (item.closed) return false;
+    item.closed = true;
+    return live(item.tracker);
+  }
+
+  /** Remove and return everything still open, newest first. */
+  drain(): T[] {
+    const all = [...this.items].reverse().filter((item) => !item.closed);
+    this.items.clear();
+    for (const item of all) item.closed = true;
+    return all;
+  }
+
+  get size(): number {
+    return this.items.size;
+  }
 }
 
 /** The Mastra run currently executing, as far as this adapter is concerned. */
 interface Frame {
+  /** The tracker the run was begun on; a frame from a dead one records nothing. */
+  tracker: core.RunTracker;
   /** Our `RunTracker` key for the agent or workflow run. */
   key: string;
   /** The `Agent` or workflow `Run` instance that owns the run. */
@@ -125,6 +202,15 @@ const frames = new AsyncLocalStorage<Frame>();
 const workflowRuns = new Map<string, string>();
 
 const WRAPPED = Symbol.for("failproofai.wrapped");
+
+/**
+ * Our own model proxies and agent-tool wrappers, to what they wrap. A reused
+ * agent can hand a later run the proxy or tool an earlier run built; that one
+ * is bound to the earlier run (or a dead installation), so it is unwrapped and
+ * observed afresh rather than skipped as "already wrapped".
+ */
+const modelProxies = new WeakMap<object, object>();
+const toolWrappers = new WeakMap<object, (...args: unknown[]) => unknown>();
 
 function markWrapped<T extends object>(wrapper: T, original: unknown): T {
   (wrapper as Record<symbol, unknown>)[WRAPPED] = original;
@@ -270,12 +356,14 @@ function promptOf(options: unknown): {
 // Model steps
 // ---------------------------------------------------------------------------
 
-interface ModelCall {
+interface ModelCall extends Span {
   requestId: string;
   runKey: string;
   model?: string;
   started: number;
 }
+
+const openModels = new OpenSpans<ModelCall>();
 
 interface ModelOutcome {
   model?: string;
@@ -291,8 +379,10 @@ function modelIdOf(model: object): string | undefined {
   return typeof id === "string" && id ? id : undefined;
 }
 
-function beginModelCall(runKey: string, model: object, options: unknown): ModelCall {
-  const t = ensureTracker();
+function beginModelCall(frame: Frame, model: object, options: unknown): ModelCall | undefined {
+  const t = frame.tracker;
+  if (!live(t)) return undefined;
+  const runKey = frame.key;
   const requestId = randomUUID();
   const modelId = modelIdOf(model);
   const provider = (model as { provider?: unknown }).provider;
@@ -303,12 +393,16 @@ function beginModelCall(runKey: string, model: object, options: unknown): ModelC
     requestId,
     ...core.fwFields({ provider: typeof provider === "string" ? provider : undefined }),
   });
-  return { requestId, runKey, model: modelId, started: Date.now() };
+  const call: ModelCall = { tracker: t, closed: false, requestId, runKey, model: modelId, started: Date.now() };
+  openModels.add(call);
+  return call;
 }
 
 function endModelCall(call: ModelCall, outcome: ModelOutcome): void {
+  // Already closed — by teardown, when its installation is gone.
+  if (!openModels.close(call)) return;
   const usage = usageOf(outcome.usage);
-  ensureTracker().emit("modelResponse", call.requestId, {
+  call.tracker.emit("modelResponse", call.requestId, {
     parentKey: call.runKey,
     model: outcome.model ?? call.model,
     stopReason: outcome.finishReason ?? (outcome.error !== undefined ? "error" : undefined),
@@ -453,9 +547,11 @@ type ModelMethod = (options: unknown) => PromiseLike<unknown>;
  * with no tokens and no stop reason. So a result carrying a readable stream is
  * observed as one, whichever method produced it.
  */
-function observedCall(target: object, original: ModelMethod, runKey: string, name: string): ModelMethod {
+function observedCall(target: object, original: ModelMethod, frame: Frame, name: string): ModelMethod {
   const observed = async function (options: unknown): Promise<unknown> {
-    const call = core.callSafely(beginModelCall, [runKey, target, options], `${NAME}.model`);
+    // Built under an installation that is gone: the model, untouched.
+    if (!live(frame.tracker)) return original.call(target, options);
+    const call = core.callSafely(beginModelCall, [frame, target, options], `${NAME}.model`);
     let result: unknown;
     try {
       result = await original.call(target, options);
@@ -495,16 +591,17 @@ function observedCall(target: object, original: ModelMethod, runKey: string, nam
  * the real model as receiver: a provider class that keeps state in `#private`
  * fields throws when one of its methods runs with a proxy as `this`.
  */
-function observeModel(model: unknown, runKey: string): unknown {
+function observeModel(model: unknown, frame: Frame): unknown {
   if (typeof model !== "object" || model === null) return model;
-  const target = model;
+  // One of ours from an earlier run: observe the model it wraps, for THIS run.
+  const target = modelProxies.get(model) ?? model;
   const doGenerate = (target as { doGenerate?: unknown }).doGenerate;
   const doStream = (target as { doStream?: unknown }).doStream;
   if (typeof doGenerate !== "function" && typeof doStream !== "function") return model;
   if ((target as Record<symbol, unknown>)[WRAPPED] !== undefined) return model;
 
   const cache = new Map<PropertyKey, unknown>();
-  return new Proxy(target, {
+  const proxy = new Proxy(target, {
     get(object, property) {
       if (property === WRAPPED) return target;
       const value: unknown = Reflect.get(object, property);
@@ -514,7 +611,7 @@ function observeModel(model: unknown, runKey: string): unknown {
         const method = value as ModelMethod;
         bound =
           property === "doGenerate" || property === "doStream"
-            ? observedCall(object, method, runKey, property)
+            ? observedCall(object, method, frame, property)
             : (method as (...args: unknown[]) => unknown).bind(object);
         markWrapped(bound as object, value);
         cache.set(property, bound);
@@ -522,6 +619,8 @@ function observeModel(model: unknown, runKey: string): unknown {
       return bound;
     },
   });
+  modelProxies.set(proxy, target);
+  return proxy;
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +650,7 @@ function inputRecord(input: unknown): Record<string, unknown> | undefined {
   return { input };
 }
 
-interface ToolCall {
+interface ToolCall extends Span {
   key: string;
   toolName: string;
   toolCallId: string;
@@ -560,13 +659,16 @@ interface ToolCall {
   ownRun?: string;
 }
 
+const openTools = new OpenSpans<ToolCall>();
+
 function beginToolCall(
+  t: core.RunTracker,
   toolName: string,
   toolCallId: string,
   input: unknown,
   parentKey: string | undefined,
-): ToolCall {
-  const t = ensureTracker();
+): ToolCall | undefined {
+  if (!live(t)) return undefined;
   let ownRun: string | undefined;
   if (parentKey === undefined && currentIdentity().sessionId === null) {
     // Nothing is running and no scope is open: a tool called on its own is its
@@ -578,11 +680,15 @@ function beginToolCall(
   }
   const key = `${parentKey ?? "ambient"}:tool:${toolCallId}:${randomUUID()}`;
   t.emit("toolUse", key, { parentKey, toolName, toolCallId, input: inputRecord(input) });
-  return { key, toolName, toolCallId, parentKey, ownRun };
+  const call: ToolCall = { tracker: t, closed: false, key, toolName, toolCallId, parentKey, ownRun };
+  openTools.add(call);
+  return call;
 }
 
 function endToolCall(call: ToolCall, output: unknown, error?: unknown): void {
-  const t = ensureTracker();
+  // Already closed — by teardown, when its installation is gone.
+  if (!openTools.close(call)) return;
+  const t = call.tracker;
   const failure = error ?? failureOf(output);
   t.emit("toolResult", call.key, {
     parentKey: call.parentKey,
@@ -646,23 +752,29 @@ function withExecute<T extends object>(tool: T, execute: unknown): T {
  * both major lines — so the input is the validated arguments and the id is the
  * model's own.
  */
-function observeTools(tools: unknown, runKey: string, agent: object): unknown {
+function observeTools(tools: unknown, runFrame: Frame, agent: object): unknown {
   if (typeof tools !== "object" || tools === null) return tools;
   const out: Record<string, unknown> = { ...(tools as Record<string, unknown>) };
+  const frame: Frame = { tracker: runFrame.tracker, key: runFrame.key, owner: agent, kind: "tool" };
   for (const [name, tool] of Object.entries(out)) {
     const execute = (tool as { execute?: unknown } | null)?.execute;
     if (typeof tool !== "object" || tool === null || typeof execute !== "function") continue;
-    if ((execute as unknown as Record<symbol, unknown>)[WRAPPED] !== undefined) continue;
-    const original = execute as (...args: unknown[]) => unknown;
+    // One of ours from an earlier run: wrap what it wraps, for THIS run.
+    const ours = toolWrappers.get(execute);
+    if (ours === undefined && (execute as unknown as Record<symbol, unknown>)[WRAPPED] !== undefined) continue;
+    const original = ours ?? (execute as (...args: unknown[]) => unknown);
     const wrapped = function failproofaiToolExecute(this: unknown, ...args: unknown[]): unknown {
+      // Built under an installation that is gone: the tool, untouched.
+      if (!live(frame.tracker)) return original.apply(this, args);
       const options = args[1] as { toolCallId?: unknown } | undefined;
       const toolCallId = typeof options?.toolCallId === "string" ? options.toolCallId : randomUUID();
       return runTool(
-        () => beginToolCall(name, toolCallId, args[0], runKey),
+        () => beginToolCall(frame.tracker, name, toolCallId, args[0], frame.key),
         () => original.apply(this, args),
-        { key: runKey, owner: agent, kind: "tool" },
+        frame,
       );
     };
+    toolWrappers.set(wrapped, original);
     out[name] = withExecute(tool, markWrapped(wrapped, original));
   }
   return out;
@@ -710,12 +822,16 @@ export function wrapTool<T extends { id?: string; execute?: (...args: never[]) =
 
   const wrapped = function failproofaiToolExecute(this: unknown, ...args: unknown[]): unknown {
     const frame = frames.getStore();
-    // The agent's own tool wrapper is already recording this very call.
-    if (frame?.kind === "tool") return original.apply(this, args);
+    // The agent's own tool wrapper is already recording this very call; and
+    // inside a run whose installation is gone, nothing records.
+    if (frame?.kind === "tool" || (frame !== undefined && !live(frame.tracker))) {
+      return original.apply(this, args);
+    }
     return runTool(
       () => {
         const { input, toolCallId } = toolCallArgs(args);
-        return beginToolCall(toolName, toolCallId ?? randomUUID(), input, frame?.key);
+        const t = frame?.tracker ?? (enabled && tracker !== null ? tracker : (standalone ??= newTracker()));
+        return beginToolCall(t, toolName, toolCallId ?? randomUUID(), input, frame?.key);
       },
       () => original.apply(this, args),
       undefined,
@@ -732,6 +848,7 @@ export function wrapTool<T extends { id?: string; execute?: (...args: never[]) =
 // ---------------------------------------------------------------------------
 
 interface AgentRun {
+  tracker: core.RunTracker;
   key: string;
   frame: Frame;
   args: unknown[];
@@ -742,7 +859,9 @@ interface AgentRun {
 function endAgentRun(run: AgentRun, outcome: string): void {
   if (run.ended) return;
   run.ended = true;
-  ensureTracker().endAgent(run.key, {
+  // Closed `cancelled` already, by the teardown that made it not live.
+  if (!live(run.tracker)) return;
+  run.tracker.endAgent(run.key, {
     outcome,
     ...core.fwFields({ duration_ms: core.ms(Date.now() - run.started) }),
   });
@@ -783,11 +902,14 @@ function withStreamCallbacks(options: unknown, run: AgentRun): Record<string, un
 }
 
 function beginAgentRun(agent: object, method: string, args: unknown[], streaming: boolean): AgentRun | undefined {
+  const t = tracker;
+  if (!enabled || t === null) return undefined;
   const parent = frames.getStore();
+  // Inside a run whose installation is gone: that whole tree is unrecorded.
+  if (parent !== undefined && !live(parent.tracker)) return undefined;
   // Re-entry from inside the same run — 0.x's `generate` is `stream` under the
   // hood — is the same agent span, not a nested one.
   if (parent?.kind === "agent" && parent.owner === agent) return undefined;
-  const t = ensureTracker();
   const key = randomUUID();
   const { label, rawId } = agentLabel(agent);
   const options = (args[1] ?? {}) as { threadId?: unknown; resourceId?: unknown; memory?: { thread?: unknown; resource?: unknown } };
@@ -804,8 +926,9 @@ function beginAgentRun(agent: object, method: string, args: unknown[], streaming
     }),
   });
   const run: AgentRun = {
+    tracker: t,
     key,
-    frame: { key, owner: agent, kind: "agent" },
+    frame: { tracker: t, key, owner: agent, kind: "agent" },
     args,
     started: Date.now(),
     ended: false,
@@ -876,7 +999,7 @@ function patchBuilder(
   const wrapper = function failproofaiBuilder(this: object, ...args: unknown[]): unknown {
     const frame = frames.getStore();
     const result = fn.apply(this, args);
-    if (frame?.kind !== "agent" || frame.owner !== this) return result;
+    if (frame?.kind !== "agent" || frame.owner !== this || !live(frame.tracker)) return result;
     const apply = (value: unknown): unknown => {
       const observed = core.callSafely(observe, [value, frame, this], site);
       return observed === undefined ? value : observed;
@@ -926,32 +1049,41 @@ function workflowOutcome(status: unknown): string {
   }
 }
 
+interface WorkflowSpan {
+  tracker: core.RunTracker;
+  key: string;
+  frame: Frame;
+  runId?: string;
+  started: number;
+}
+
 function patchRunMethod(prototype: object, method: string): boolean {
   const original = (prototype as Record<string, unknown>)[method];
   if (typeof original !== "function" || core.isWrapped(original)) return false;
   const fn = original as (...args: unknown[]) => unknown;
   const site = `${NAME}.workflow`;
 
-  const begin = (run: WorkflowRunLike & object): { key: string; frame: Frame; runId?: string; started: number } | undefined => {
-    if (isInternalRun(run)) return undefined;
+  const begin = (run: WorkflowRunLike & object): WorkflowSpan | undefined => {
+    const t = tracker;
+    if (!enabled || t === null || isInternalRun(run)) return undefined;
     const parent = frames.getStore();
+    if (parent !== undefined && !live(parent.tracker)) return undefined;
     if (parent?.kind === "workflow" && parent.owner === run) return undefined;
     const key = randomUUID();
     const runId = typeof run.runId === "string" ? run.runId : undefined;
-    ensureTracker().startAgent(key, {
+    t.startAgent(key, {
       agentId: core.normalizeAgentId(run.workflowId, "workflow"),
       parentKey: parent?.key,
       ...core.fwFields({ kind: "workflow", workflow_run_id: runId, method: method.replace(/^_/, "") }),
     });
     if (runId !== undefined) workflowRuns.set(runId, key);
-    return { key, frame: { key, owner: run, kind: "workflow" }, runId, started: Date.now() };
+    return { tracker: t, key, frame: { tracker: t, key, owner: run, kind: "workflow" }, runId, started: Date.now() };
   };
-  const end = (
-    span: { key: string; runId?: string; started: number },
-    outcome: string,
-  ): void => {
+  const end = (span: WorkflowSpan, outcome: string): void => {
     if (span.runId !== undefined && workflowRuns.get(span.runId) === span.key) workflowRuns.delete(span.runId);
-    ensureTracker().endAgent(span.key, {
+    // Closed `cancelled` already, by the teardown that made it not live.
+    if (!live(span.tracker)) return;
+    span.tracker.endAgent(span.key, {
       outcome,
       ...core.fwFields({ duration_ms: core.ms(Date.now() - span.started) }),
     });
@@ -988,13 +1120,17 @@ function patchRunMethod(prototype: object, method: string): boolean {
 
 let stepSequence = 0;
 
-interface StepSpan {
+interface StepSpan extends Span {
   runKey: string;
   hookName: string;
   hookId: string;
 }
 
+const openSteps = new OpenSpans<StepSpan>();
+
 function beginStep(params: unknown): StepSpan | undefined {
+  const t = tracker;
+  if (!enabled || t === null) return undefined;
   const value = (params ?? {}) as {
     step?: { id?: unknown };
     runId?: unknown;
@@ -1007,13 +1143,15 @@ function beginStep(params: unknown): StepSpan | undefined {
   if (runKey === undefined || typeof hookName !== "string" || !hookName) return undefined;
   stepSequence += 1;
   const hookId = `${runKey}:${hookName}:${stepSequence}`;
-  ensureTracker().emit("hookTriggered", runKey, {
+  t.emit("hookTriggered", runKey, {
     hookName,
     hookId,
     triggerEvent: "workflow_step",
     input: value.prevOutput,
   });
-  return { runKey, hookName, hookId };
+  const span: StepSpan = { tracker: t, closed: false, runKey, hookName, hookId };
+  openSteps.add(span);
+  return span;
 }
 
 interface StepResult {
@@ -1052,7 +1190,9 @@ function stepOutcome(value: unknown, thrown?: unknown): { outcome: string; outpu
 }
 
 function endStep(span: StepSpan, value: unknown, thrown?: unknown): void {
-  ensureTracker().emit("hookCompleted", span.runKey, {
+  // Already closed — by teardown, when its installation is gone.
+  if (!openSteps.close(span)) return;
+  span.tracker.emit("hookCompleted", span.runKey, {
     hookName: span.hookName,
     hookId: span.hookId,
     ...stepOutcome(value, thrown),
@@ -1127,10 +1267,10 @@ function installAgent(Agent: ClassLike): number {
   }
   const proto = Agent.prototype as Record<string, unknown>;
   if (compat.probe(NAME, "Agent.resolveModelConfig", () => typeof proto.resolveModelConfig === "function")) {
-    patchBuilder(Agent.prototype, "resolveModelConfig", (model, frame) => observeModel(model, frame.key));
+    patchBuilder(Agent.prototype, "resolveModelConfig", (model, frame) => observeModel(model, frame));
   }
   if (compat.probe(NAME, "Agent.convertTools", () => typeof proto.convertTools === "function")) {
-    patchBuilder(Agent.prototype, "convertTools", (tools, frame, agent) => observeTools(tools, frame.key, agent));
+    patchBuilder(Agent.prototype, "convertTools", (tools, frame, agent) => observeTools(tools, frame, agent));
   }
   return patched;
 }
@@ -1163,48 +1303,125 @@ export const adapter: Adapter = {
       below: "2.0.0",
       reason: "model steps are observed at resolveModelConfig and workflow runs at Run._start",
     });
-    ensureTracker(options);
+    const agentCopies = await compat.requireModuleCopies("@mastra/core/agent", INSTALL);
+    // Workflows are optional: an app with no workflows is ordinary, and a
+    // workflow module that fails to load must not cost the agent patches below.
+    const workflowCopies = await compat
+      .requireModuleCopies("@mastra/core/workflows", INSTALL)
+      .catch(() => [] as unknown[]);
+
+    // A fresh tracker per installation, never one left over: whatever an
+    // earlier installation built stays bound to ITS tracker, which is dead.
+    teardown();
+    tracker = newTracker(options);
     patcher = new core.Patcher();
 
-    const agentCopies = await compat.requireModuleCopies("@mastra/core/agent", INSTALL);
     let patched = 0;
     for (const copy of agentCopies) {
       const Agent = (copy as { Agent?: unknown }).Agent;
       if (typeof Agent === "function") patched += installAgent(Agent);
     }
     if (patched === 0) {
-      patcher.restoreAll();
+      teardown();
       throw new Error(
         "could not patch any Agent generate/stream method — this build of @mastra/core " +
           "exposes none of them under a writable name.",
       );
     }
-
-    // Workflows are optional: an app with no workflows is ordinary, and a
-    // workflow module that fails to load must not cost the agent patches above.
-    const workflowCopies = await compat
-      .requireModuleCopies("@mastra/core/workflows", INSTALL)
-      .catch(() => [] as unknown[]);
     for (const copy of workflowCopies) installWorkflows(copy);
+    enabled = true;
   },
 
   uninstall(): void {
-    patcher?.restoreAll();
-    patcher = null;
-    workflowRuns.clear();
-    tracker?.closeOpenAgents();
-    tracker?.reset();
-    tracker = null;
+    teardown();
   },
 };
 
 /**
- * The pure readers above, for this package's own unit tests.
+ * Stop recording and close what is still open, on the tracker it opened on.
+ * The switch goes FIRST: nothing may begin a span while the rest are closed.
+ */
+function teardown(): void {
+  enabled = false;
+  patcher?.restoreAll();
+  patcher = null;
+  workflowRuns.clear();
+  const t = tracker;
+  tracker = null;
+  const models = openModels.drain();
+  const tools = openTools.drain();
+  const steps = openSteps.drain();
+  if (t === null) return;
+  const site = `${NAME}.uninstall`;
+  const incomplete = core.fwFields({ incomplete: true });
+  // Innermost first — a step's model calls and tools before the step — and
+  // every leaf before the agents that own it.
+  for (const call of models) {
+    if (call.tracker !== t) continue;
+    core.callSafely(
+      () =>
+        t.emit("modelResponse", call.requestId, {
+          parentKey: call.runKey,
+          model: call.model,
+          stopReason: "cancelled",
+          requestId: call.requestId,
+          ...core.fwFields({ duration_ms: core.ms(Date.now() - call.started), incomplete: true }),
+        }),
+      [],
+      site,
+    );
+  }
+  for (const call of tools) {
+    if (call.tracker !== t) continue;
+    core.callSafely(
+      () =>
+        t.emit("toolResult", call.key, {
+          parentKey: call.parentKey,
+          toolName: call.toolName,
+          toolCallId: call.toolCallId,
+          ...incomplete,
+        }),
+      [],
+      site,
+    );
+  }
+  for (const span of steps) {
+    if (span.tracker !== t) continue;
+    core.callSafely(
+      () =>
+        t.emit("hookCompleted", span.runKey, {
+          hookName: span.hookName,
+          hookId: span.hookId,
+          outcome: "cancelled",
+          ...incomplete,
+        }),
+      [],
+      site,
+    );
+  }
+  core.callSafely(() => t.closeOpenAgents("cancelled"), [], site);
+  t.reset();
+}
+
+/**
+ * The pure readers above and two lifecycle probes, for this package's own
+ * unit tests.
  *
- * @internal Not part of the public API: their shapes follow Mastra's and the
- * providers' internals, and change whenever those do.
+ * @internal Not part of the public API — `stripInternal` drops it from the
+ * published declarations: their shapes follow Mastra's and the providers' internals, and
+ * change whenever those do. Nothing exported references it.
  */
 export const _internals = {
+  /** Whether an installation is live. */
+  isEnabled: (): boolean => enabled,
+  /** How many spans of each kind are open, for the bookkeeping tests. */
+  openSpans: (): Record<string, number> => ({
+    models: openModels.size,
+    tools: openTools.size,
+    steps: openSteps.size,
+    workflowRuns: workflowRuns.size,
+    agents: tracker?.openAgents().length ?? 0,
+  }),
   usageOf,
   finishReasonOf,
   promptOf,

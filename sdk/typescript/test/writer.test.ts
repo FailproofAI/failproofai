@@ -332,6 +332,61 @@ describe("process lifetime", () => {
     expect(response.request_id).toBe("r1");
     expect(response.stop_reason).toBe("error");
     expect(response.error).toMatch(/^ProcessExit: the process exited \(code 143\) while the model call/);
+    // Timed like the tools and hooks closed beside it.
+    expect(typeof response.duration_ms).toBe("number");
+  });
+
+  it("names the uncaught exception a crash exited on, in what it closes", async () => {
+    // A timer throwing mid-run used to leave only "the process exited (code 1)"
+    // in the trace — the exception itself was nowhere.
+    const child = await runNode(`
+      const fp = await import(${JSON.stringify(indexUrl())});
+      fp.configure({ baseDir: ${JSON.stringify(spool.dir)}, flushInterval: 3600 });
+      setInterval(() => {}, 1000);
+      class QuotaError extends Error {}
+      setTimeout(() => { throw new QuotaError("boom from a timer"); }, 50);
+      await fp.agent("svc", { sessionId: "crash" }, async () => {
+        await fp.toolCall("slow", { toolCallId: "t1" }, () => new Promise(() => {}));
+      });
+    `);
+    expect(child.code).toBe(1);
+    expect(child.stderr).toContain("boom from a timer"); // still crashes as it would have
+    const events = spool.events();
+    expect(events.map((e) => e.type)).toEqual(["agent_start", "tool_use", "tool_result", "error", "agent_end"]);
+    expect(events[2]!.error).toMatch(/\(code 1\) on an uncaught QuotaError: boom from a timer while tool "slow"/);
+    expect(events[3]!.message).toMatch(/on an uncaught QuotaError: boom from a timer/);
+  });
+
+  it("closes a nested run most-recent-first: a sub-agent ends before the tool that started it", async () => {
+    // Live: a planner's delegate tool ran a writer sub-agent, killed during the
+    // writer's model call. Closing all tools before all agents showed the
+    // delegate tool finishing while the writer it started was still running.
+    const child = await runNode(`
+      const fp = await import(${JSON.stringify(indexUrl())});
+      fp.configure({ baseDir: ${JSON.stringify(spool.dir)}, flushInterval: 3600 });
+      process.once("SIGTERM", () => { fp.flushSync(); process.exit(143); });
+      setInterval(() => {}, 1000);
+      setTimeout(() => process.kill(process.pid, "SIGTERM"), 50);
+      await fp.agent("planner", { sessionId: "nested-term" }, async () => {
+        await fp.toolCall("delegate_writer", { toolCallId: "d1" }, async () => {
+          await fp.agent("writer", async () => {
+            fp.event.modelRequest({ model: "m", requestId: "w1" });
+            await new Promise(() => {});
+          });
+        });
+      });
+    `);
+    expect(child.code).toBe(143);
+    const closing = spool.events().slice(4); // planner start, tool_use, writer start, model_request
+    expect(closing.map((e) => [e.agent_id, e.type])).toEqual([
+      ["writer", "model_response"],
+      ["writer", "error"],
+      ["writer", "agent_end"],
+      ["planner", "tool_result"],
+      ["planner", "error"],
+      ["planner", "agent_end"],
+    ]);
+    expect(closing.find((e) => e.type === "error")!.traceback).toBeUndefined();
   });
 
   it("closes nothing on a flushSync() while the process carries on", async () => {

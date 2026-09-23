@@ -26,7 +26,8 @@ import { randomUUID } from "node:crypto";
 
 import { DEFAULT_AGENT_ID, current as currentIdentity } from "../context.js";
 import type { Identity } from "../context.js";
-import { onProcessExit } from "../exit.js";
+import { nowMicros } from "../clock.js";
+import { fatalSuffix, onProcessExit, type OpenItem } from "../exit.js";
 import { logException, logger } from "../logger.js";
 import { runtime } from "../runtime.js";
 import { DECLARED_FIELD_NAMES } from "../schema.js";
@@ -864,6 +865,8 @@ interface Run {
    * opening its own agent, so it emits neither `agent_start` nor `agent_end`.
    */
   joined?: boolean;
+  /** When it opened, in the event clock's microseconds: the exit path's ordering. */
+  opened?: number;
 }
 
 export type EventMethod =
@@ -939,13 +942,13 @@ export class RunTracker {
     // mid-graph) would otherwise render as running forever. Held weakly, so a
     // tracker an adapter drops is not kept alive by this registration.
     const self = new WeakRef(this);
-    const unregister = onProcessExit((exitCode) => {
+    const unregister = onProcessExit(() => {
       const tracker = self.deref();
       if (tracker === undefined) {
         unregister();
-        return;
+        return [];
       }
-      tracker.closeAtExit(exitCode);
+      return tracker.openAtExit();
     });
   }
 
@@ -1108,7 +1111,7 @@ export class RunTracker {
     };
     this.runs.delete(key);
     this.evict(this.runs);
-    this.runs.set(key, { identity, parentKey });
+    this.runs.set(key, { identity, parentKey, opened: nowMicros() });
     this.link(key, parentKey);
     this.emitWith("agentStart", identity, {
       goal: goal === undefined ? undefined : truncate(goal, this.fieldLimit),
@@ -1188,19 +1191,34 @@ export class RunTracker {
    * except one paused on a human, which is waiting, not abandoned (`pauses`).
    */
   closeAtExit(exitCode = 0): void {
-    // Open tools, hooks and model calls were already closed, in the `leaves`
-    // phase, by the event namespace every adapter emits through (exit.ts).
-    const message = `the process exited (code ${exitCode}) while this run was still running`;
-    for (const key of this.openAgents().reverse()) {
-      if ((this.pauses.get(key) ?? 0) > 0) continue;
-      const identity = this.runs.get(key)?.identity;
-      if (identity && this.runs.get(key)?.joined !== true) {
-        // `error` strictly before `agent_end`, as a scope that threw would.
-        this.emitWith("error", identity, { errorType: "ProcessExit", message });
-      }
-      this.endAgent(key, { outcome: "failed", summary: "the process exited while this run was open" });
-    }
+    for (const item of this.openAtExit().sort((x, y) => y.opened - x.opened)) item.close(exitCode);
   }
+
+  /**
+   * Every open agent, for the exit path to close in one most-recent-first
+   * order with everything else still open (`exit.ts`) — except one paused on a
+   * human, which is waiting, not abandoned (`pauses`), and one that joined a
+   * hand-written scope, which that scope ends.
+   */
+  openAtExit(): OpenItem[] {
+    const items: OpenItem[] = [];
+    for (const [key, run] of this.runs) {
+      if ((this.pauses.get(key) ?? 0) > 0 || run.joined === true) continue;
+      items.push({
+        opened: run.opened ?? 0,
+        close: (exitCode) => {
+          const current = this.runs.get(key);
+          if (current === undefined) return; // ended normally in the meantime
+          const message = `the process exited (code ${exitCode})${fatalSuffix()} while this run was still running`;
+          // `error` strictly before `agent_end`, as a scope that threw would.
+          this.emitWith("error", current.identity, { errorType: "ProcessExit", message });
+          this.endAgent(key, { outcome: "failed", summary: "the process exited while this run was open" });
+        },
+      });
+    }
+    return items;
+  }
+
 
   reset(): void {
     this.runs.clear();

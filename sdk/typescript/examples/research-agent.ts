@@ -86,7 +86,9 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
       role: m.role,
       content: typeof m.content === "string" ? m.content : m.content == null ? "" : JSON.stringify(m.content),
       ...(m.role === "tool" ? { tool_call_id: m.tool_call_id } : {}),
-      ...(m.role === "assistant" && m.tool_calls ? { tool_calls: m.tool_calls.map((c) => c.id) } : {}),
+      ...(m.role === "assistant" && m.tool_calls
+        ? { tool_calls: m.tool_calls.map((c) => ({ id: c.id, name: c.type === "function" ? c.function.name : c.type })) }
+        : {}),
     })),
     tools: TOOLS.flatMap((t) => (t.type === "function" ? [{ name: t.function.name, description: t.function.description ?? "" }] : [])),
   });
@@ -135,7 +137,11 @@ async function dispatch(call: { id: string; function: { name: string; arguments:
   let args: { item?: string } = {};
   let malformed: unknown;
   try {
-    args = JSON.parse(call.function.arguments || "{}") as { item?: string };
+    const parsed: unknown = JSON.parse(call.function.arguments || "{}");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new TypeError("tool arguments must be a JSON object");
+    }
+    args = parsed as { item?: string };
   } catch (error) {
     malformed = error;
   }

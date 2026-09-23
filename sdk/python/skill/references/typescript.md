@@ -136,12 +136,26 @@ for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
 }
 ```
 
-  On the way out the SDK **closes whatever is still open**: an interrupted tool
-  gets its `tool_result` with `error: "ProcessExit: …"`, and each open agent gets an
-  `error` event and `agent_end` with `outcome: "failed"`, innermost first —
-  including runs an adapter opened. So a deploy never leaves a run showing as
-  running forever. (Python gets the same through `SystemExit` unwinding.) A
-  `flushSync()` while the process carries on closes nothing.
+  On the way out the SDK **closes whatever is still open**, most recently opened
+  first — including what an adapter opened: an interrupted tool gets its
+  `tool_result`, a hook its `hook_completed`, a model call its `model_response`
+  (`stop_reason: "error"`), each with a `ProcessExit: …` error, and each open agent
+  gets an `error` event and `agent_end` with `outcome: "failed"`. So a deploy never
+  leaves a run showing as running forever. (Python gets the same through
+  `SystemExit` unwinding.) A `flushSync()` while the process carries on closes
+  nothing, and a run paused on a human is left open for whoever resumes it.
+- **Every exit path, not just signals.** The same closing happens on an uncaught
+  exception or unhandled rejection (the message names it — `… on an uncaught
+  QuotaError: …`), on `process.exit()` from anywhere, and when the event loop
+  drains with a run still pending. A run still open when the process ends is a
+  failed run, whatever the exit code.
+- **Your own records.** `process.exit()` in that handler skips your code's
+  `catch`/`finally`, so a job that records its own result (a database row, a
+  status file) should record "interrupted" in the handler too, before
+  `flushSync()` — or the dashboard shows a failed run your own store never heard of.
+- **Run `node` directly in services and containers.** `npx tsx` does not pass
+  SIGTERM on to the program, which then runs on, finishes, and records `success`
+  for a job that was killed. Use `node --import tsx app.ts`, or compile.
 - **Next.js:** put that handler in its own module and import it from
   `instrumentation.ts` behind the runtime check (see *Next.js* below) — `process.once`
   in `instrumentation.ts` itself makes Turbopack warn about the Edge runtime.
@@ -164,8 +178,10 @@ await failproofai.instrument("langchain"); // name the framework you use
 
 **`instrument()` — the rules:**
 
-- **Await it, before the first run.** An unawaited `instrument()` does not record
-  nothing — it records a *wrong* trace: the root run starts before the adapter
+- **Await it, before the first run.** An unawaited `instrument()` may happen to
+  work when the first run starts late — which is why it passes a local test and
+  fails under load. When it loses the race it does not record nothing; it records a
+  *wrong* trace: the root run starts before the adapter
   exists, so a graph node, a tool or a bare model call becomes the session's agent,
   or each becomes its own one-call session. The LangChain adapter warns when it sees
   this (`… started under a parent run the langchain adapter never saw …`); the
@@ -322,6 +338,12 @@ export async function register() {
   `instrument("ai")` on `ai` 7 both work in a bundled route.
 - `configure()` in `register()` applies to the whole server process, including a copy
   of the SDK bundled into a route.
+- Route handlers have no request id of their own: use the `x-request-id` header your
+  platform or proxy sets, with a fallback —
+  `session({ sessionId: request.headers.get("x-request-id") ?? randomUUID() }, …)`.
+- Pass the request's signal down, so a client that disconnects ends the run
+  (`cancelled`) instead of it running on: `graph.invoke(input, { signal:
+  request.signal })` for LangGraph, `abortSignal: request.signal` for the AI SDK.
 - **Edge runtimes** (Next.js Edge routes, workers) get a no-op build. Importing is
   safe, and nothing is recorded there. Instrument the Node side.
 
@@ -375,7 +397,9 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
       role: m.role,
       content: typeof m.content === "string" ? m.content : m.content == null ? "" : JSON.stringify(m.content),
       ...(m.role === "tool" ? { tool_call_id: m.tool_call_id } : {}),
-      ...(m.role === "assistant" && m.tool_calls ? { tool_calls: m.tool_calls.map((c) => c.id) } : {}),
+      ...(m.role === "assistant" && m.tool_calls
+        ? { tool_calls: m.tool_calls.map((c) => ({ id: c.id, name: c.type === "function" ? c.function.name : c.type })) }
+        : {}),
     })),
     // Tool and tool-call types are unions in openai ≥ 6 (custom tools): narrow them.
     tools: TOOLS.flatMap((t) => (t.type === "function" ? [{ name: t.function.name, description: t.function.description ?? "" }] : [])),
@@ -418,7 +442,11 @@ async function dispatch(call: { id: string; function: { name: string; arguments:
   let input: Record<string, unknown> = {};
   let malformed: unknown;
   try {
-    input = JSON.parse(call.function.arguments || "{}");
+    const parsed: unknown = JSON.parse(call.function.arguments || "{}");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new TypeError("tool arguments must be a JSON object");
+    }
+    input = parsed as Record<string, unknown>;
   } catch (error) {
     malformed = error;
     input = { arguments: call.function.arguments };
@@ -535,4 +563,6 @@ stderr instead):
 
 Then confirm the real thing arrived, from a separate environment, with the
 `fp-cloud-cli` skill: `fp sessions --session-id <id> --since 1h` (the id you bound
-with `session()`, or read with `failproofai.current()`).
+with `session()`, or read with `failproofai.current()`). A session's `status` says
+whether it finished, not whether it succeeded — a killed run is `done` too; its
+`agent_end` `outcome` (`fp events --session-id <id> --full`) is what says `failed`.

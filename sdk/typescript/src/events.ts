@@ -19,7 +19,7 @@ import {
 } from "./schema.js";
 import type { EventWriter } from "./writer.js";
 import { formatMicros, nowMicros } from "./clock.js";
-import { onProcessExit } from "./exit.js";
+import { fatalSuffix, onProcessExit, type OpenItem } from "./exit.js";
 
 /**
  * `sessionId` and `agentId` are named options on every method, so a caller
@@ -407,6 +407,8 @@ interface OpenLeaf {
   id: string;
   /** Tool or hook name; the model, for a model call. */
   name: string | undefined;
+  /** When it opened: the exit path's ordering, and a model call's duration. */
+  startedMicros: number;
 }
 
 export class EventNamespace {
@@ -426,14 +428,14 @@ export class EventNamespace {
   constructor(writer: EventWriter) {
     this.writer = writer;
     const self = new WeakRef(this);
-    const unregister = onProcessExit((exitCode) => {
+    const unregister = onProcessExit(() => {
       const namespace = self.deref();
       if (namespace === undefined) {
         unregister();
-        return;
+        return [];
       }
-      namespace.closeLeavesAtExit(exitCode);
-    }, "leaves");
+      return namespace.openAtExit();
+    });
   }
 
   private openLeaf(key: string, leaf: OpenLeaf): void {
@@ -445,31 +447,44 @@ export class EventNamespace {
   }
 
   /**
-   * The process is exiting: close every open tool call, hook and model call,
-   * newest first, with a `ProcessExit` error — except in a session paused on a
-   * human, which another process may resume. Agents close after this, in the
-   * `agents` phase (`exit.ts`), so a leaf always ends before its agent does.
+   * The process is exiting: every open tool call, hook and model call, for the
+   * exit path to close in one most-recent-first order with everything else
+   * still open (`exit.ts`) — except in a session paused on a human, which
+   * another process may resume.
    */
-  closeLeavesAtExit(exitCode: number): void {
-    const why = (what: string) =>
-      `ProcessExit: the process exited (code ${exitCode}) while ${what} was still running`;
-    for (const [key, leaf] of [...this.openLeaves].reverse()) {
+  openAtExit(): OpenItem[] {
+    const items: OpenItem[] = [];
+    for (const [key, leaf] of this.openLeaves) {
       if ((this.pausedSessions.get(leaf.sessionId) ?? 0) > 0) continue;
-      this.openLeaves.delete(key);
-      try {
-        const identity = { sessionId: leaf.sessionId, agentId: leaf.agentId };
-        if (leaf.kind === "tool") {
-          this.toolResult({ ...identity, toolName: leaf.name ?? "tool", toolCallId: leaf.id, error: why(`tool ${JSON.stringify(leaf.name)}`) });
-        } else if (leaf.kind === "hook") {
-          this.hookCompleted({ ...identity, hookName: leaf.name ?? "hook", hookId: leaf.id, outcome: "failed", error: why(`hook ${JSON.stringify(leaf.name)}`) });
-        } else {
-          this.modelResponse({ ...identity, requestId: leaf.id, model: leaf.name, stopReason: "error", error: why("the model call") });
-        }
-      } catch {
-        // One leaf that cannot be closed must not cost the others, or the flush.
-      }
+      items.push({ opened: leaf.startedMicros, close: (exitCode) => this.closeLeaf(key, leaf, exitCode) });
+    }
+    return items;
+  }
+
+  private closeLeaf(key: string, leaf: OpenLeaf, exitCode: number): void {
+    if (!this.openLeaves.delete(key)) return; // closed normally in the meantime
+    const why = (what: string) =>
+      `ProcessExit: the process exited (code ${exitCode})${fatalSuffix()} while ${what} was still running`;
+    const identity = { sessionId: leaf.sessionId, agentId: leaf.agentId };
+    if (leaf.kind === "tool") {
+      this.toolResult({ ...identity, toolName: leaf.name ?? "tool", toolCallId: leaf.id, error: why(`tool ${JSON.stringify(leaf.name)}`) });
+    } else if (leaf.kind === "hook") {
+      this.hookCompleted({ ...identity, hookName: leaf.name ?? "hook", hookId: leaf.id, outcome: "failed", error: why(`hook ${JSON.stringify(leaf.name)}`) });
+    } else {
+      // Model calls are not timed by the SDK (a caller passes duration_ms);
+      // one closed here is, so it matches the tools and hooks closed beside it.
+      const elapsed = Math.round((nowMicros() - leaf.startedMicros) / 1000);
+      this.modelResponse({
+        ...identity,
+        requestId: leaf.id,
+        model: leaf.name,
+        stopReason: "error",
+        error: why("the model call"),
+        ...(elapsed >= 0 ? { duration_ms: elapsed } : {}),
+      });
     }
   }
+
 
   private trackPending(key: string, ts: number): void {
     // No lock and no tolerance for a concurrent evictor, unlike the Python SDK:
@@ -545,7 +560,7 @@ export class EventNamespace {
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
     if (typeof toolCallId === "string") {
-      this.openLeaf(`tool:${sid}:${toolCallId}`, { kind: "tool", sessionId: sid, agentId: aid, id: toolCallId, name: toolName });
+      this.openLeaf(`tool:${sid}:${toolCallId}`, { kind: "tool", sessionId: sid, agentId: aid, id: toolCallId, name: toolName, startedMicros: nowMicros() });
     }
     const ts = this.now();
     this.trackPending(toolKey(sid, toolCallId), ts);
@@ -590,7 +605,7 @@ export class EventNamespace {
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
     if (typeof requestId === "string" && requestId !== "") {
-      this.openLeaf(`model:${sid}:${requestId}`, { kind: "model", sessionId: sid, agentId: aid, id: requestId, name: model ?? undefined });
+      this.openLeaf(`model:${sid}:${requestId}`, { kind: "model", sessionId: sid, agentId: aid, id: requestId, name: model ?? undefined, startedMicros: nowMicros() });
     }
     this.writer.submit(
       modelRequestEvent({
@@ -728,7 +743,7 @@ export class EventNamespace {
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
     if (typeof hookId === "string") {
-      this.openLeaf(`hook:${sid}:${hookId}`, { kind: "hook", sessionId: sid, agentId: aid, id: hookId, name: hookName });
+      this.openLeaf(`hook:${sid}:${hookId}`, { kind: "hook", sessionId: sid, agentId: aid, id: hookId, name: hookName, startedMicros: nowMicros() });
     }
     const ts = this.now();
     this.trackPending(hookKey(sid, hookId), ts);

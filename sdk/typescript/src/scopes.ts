@@ -28,6 +28,7 @@
 import { randomUUID } from "node:crypto";
 
 import * as context from "./context.js";
+import { nowMicros } from "./clock.js";
 import { ProcessExit, onProcessExit } from "./exit.js";
 import type { Identity, Store } from "./context.js";
 import { runtime } from "./runtime.js";
@@ -89,6 +90,7 @@ function errorName(error: unknown): string {
 /** One open scope; `close` emits its closing event with a `ProcessExit`. */
 interface OpenScope {
   closed: boolean;
+  opened: number;
   close(exitCode: number): void;
 }
 
@@ -100,7 +102,7 @@ const openScopes = new Set<OpenScope>();
  * never emitted twice.
  */
 function trackOpen(close: (exitCode: number) => void): { settle(): boolean } {
-  const entry: OpenScope = { closed: false, close };
+  const entry: OpenScope = { closed: false, opened: nowMicros(), close };
   openScopes.add(entry);
   return {
     settle(): boolean {
@@ -112,15 +114,17 @@ function trackOpen(close: (exitCode: number) => void): { settle(): boolean } {
   };
 }
 
-onProcessExit((exitCode) => {
-  // Newest first: a tool inside an agent closes before the agent does.
-  for (const entry of [...openScopes].reverse()) {
-    openScopes.delete(entry);
-    if (entry.closed) continue;
-    entry.closed = true;
-    entry.close(exitCode);
-  }
-});
+onProcessExit(() =>
+  [...openScopes].map((entry) => ({
+    opened: entry.opened,
+    close(exitCode: number): void {
+      openScopes.delete(entry);
+      if (entry.closed) return;
+      entry.closed = true;
+      entry.close(exitCode);
+    },
+  })),
+);
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -352,7 +356,8 @@ function emitAgentEnd(
       agentId,
       errorType: errorName(error),
       message: errorMessage(error),
-      traceback: stackOf(error),
+      // A ProcessExit's stack is the SDK's own exit path — noise, not a cause.
+      traceback: error instanceof ProcessExit ? undefined : stackOf(error),
     });
   }
   // The literal is `"failed"`, never `"failure"` — only

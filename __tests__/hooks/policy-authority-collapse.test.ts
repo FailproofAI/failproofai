@@ -170,7 +170,7 @@ describe("two installed packs sharing one artifact", () => {
     name, description: "d", category: "Ops", defaultEnabled: true, match: { events: ["PreToolUse"] }, ...extra,
   });
 
-  function install(packs: Array<{ id: string; version: string; policies: unknown[] }>): void {
+  function install(packs: Array<{ id: string; version: string; policies: unknown[]; semantic?: unknown[] }>): void {
     const digest = sha(SOURCE);
     mkdirSync(join(packRoot, "artifacts"), { recursive: true });
     writeFileSync(join(packRoot, "artifacts", `${digest}.mjs`), SOURCE);
@@ -258,6 +258,68 @@ describe("two installed packs sharing one artifact", () => {
     expect(stderr.join("")).toMatch(
       /packs lenient\/ops and strict\/ops share one artifact and do not all declare prod-guard reviewable, so it stays hard/,
     );
+  });
+
+  /**
+   * The same collapse, for a pack that ships BOTH tiers — which is the shipped
+   * configuration, and the case the merge got wrong.
+   *
+   * `reviewedBy` here names a check that exists only because a pack declared it,
+   * so it is in no compiled-in set. The merge used to judge both declarations
+   * against the builtins, where that name is unknown: the reviewable entry and
+   * its hard peer resolved alike, the first raw declaration was carried forward,
+   * and registration — which does read the pack's checks — honoured it. So a
+   * hard declaration behind the same artifact was cleared by Jev, decided by
+   * which pack `installed.json` listed first.
+   */
+  describe("with a pack-declared reviewer behind the artifact", () => {
+    const CHECK = "pack-prod-infra";
+    const semantic = [
+      {
+        name: CHECK,
+        title: "Changed production infrastructure",
+        appliesTo: ["shell"],
+        mode: "deny",
+        userCanOverride: true,
+        probes: [{ id: "touches_prod", instructions: "It changes production infrastructure." }],
+        guidance: "Confirm the target environment with the user first.",
+      },
+    ];
+    const reviewable = {
+      id: "lenient/ops",
+      version: "1.0.0",
+      policies: [entry("prod-guard", { authority: "reviewable", reviewedBy: [CHECK] })],
+      semantic,
+    };
+
+    it.each(ORDERS)("stays hard beside a hard peer, %s", async (_l, flip) => {
+      const strict = { id: "strict/ops", version: "2.0.0", policies: [entry("prod-guard", { authority: "hard" })] };
+      install(flip ? [strict, reviewable] : [reviewable, strict]);
+      configureJev();
+      const packs = under(await registeredAfterOneEvent(), "pack/");
+      expect(authorityOf(packs.get("prod-guard"))).toEqual({ authority: "hard" });
+    });
+
+    it.each(ORDERS)("stays hard beside a peer that declares it and says nothing, %s", async (_l, flip) => {
+      const silent = { id: "silent/ops", version: "2.0.0", policies: [entry("prod-guard")] };
+      install(flip ? [silent, reviewable] : [reviewable, silent]);
+      configureJev();
+      const packs = under(await registeredAfterOneEvent(), "pack/");
+      expect(authorityOf(packs.get("prod-guard"))).toEqual({ authority: "hard" });
+    });
+
+    it("is still reviewable with no peer to overrule it, and says nothing about it", async () => {
+      // The control, and the reason this is not fixed by hardening everything:
+      // one pack carrying both tiers is the shipped pairing, and its policy is
+      // reviewable by its own check. The diagnostic has to agree with the
+      // registry about that — it used to be computed against the builtins and
+      // told every such policy it stays hard while registering it reviewable.
+      install([reviewable]);
+      configureJev();
+      const packs = under(await registeredAfterOneEvent(), "pack/");
+      expect(authorityOf(packs.get("prod-guard"))).toEqual({ authority: "reviewable", reviewedBy: [CHECK] });
+      expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
+    });
   });
 
   it("changes nothing for packs that declare no authority at all", async () => {

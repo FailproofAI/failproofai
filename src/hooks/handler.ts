@@ -38,7 +38,13 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { authorityDeclarationFor, resolvePolicyAuthority, warnAuthority } from "./policy-authority";
+import { effectiveReviewerNames } from "./effective-reviewers";
+import {
+  authorityDeclarationFor,
+  refusedAuthorityWarning,
+  resolvePolicyAuthority,
+  warnAuthority,
+} from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
@@ -791,8 +797,13 @@ export async function evaluateHookEvent(
         // aloud when a `reviewable` claim is refused and Jev is configured, so
         // an author is not left wondering why Jev never clears it.
         const authority = authorityDeclarationFor(hook, { cloudManaged, pack });
-        const refused = resolvePolicyAuthority(authority).downgraded;
-        if (refused) warnAuthority(`${registeredName} asks to be reviewable, but ${refused} — it stays hard`);
+        // Against the same set `registerPolicy` judges it by, or this warning
+        // describes a different machine than the registry does: a pack that
+        // ships its own semantic checks registers reviewable and was told, on
+        // every one of those policies, that it stays hard. `effectiveReviewerNames`
+        // is cached for the registration pass, so this costs nothing extra.
+        const refused = resolvePolicyAuthority(authority, effectiveReviewerNames()).downgraded;
+        if (refused) warnAuthority(refusedAuthorityWarning(registeredName, refused));
         registerPolicy(
           registeredName,
           hook.description ?? "",

@@ -33,7 +33,8 @@ import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
-import { warnAuthority, withMergedAuthority } from "./policy-authority";
+import { effectiveReviewerNames } from "./effective-reviewers";
+import { refusedAuthorityWarning, warnAuthority, withMergedAuthority } from "./policy-authority";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -453,13 +454,27 @@ export async function loadAllCustomHooks(
     // every assignment behind these bytes says so. Keeping one record's
     // declaration let the order of active.json decide, so a team's reviewable
     // assignment could clear what an org-wide hard one enforces.
+    //
+    // Judged against the checks THIS MACHINE can ask, which is what registration
+    // will judge these same declarations by. Against the builtin set instead, a
+    // `reviewedBy` naming a check an installed pack ships reads as unknown here,
+    // both assignments resolve hard, and the merge has no way to tell the
+    // reviewable one from the hard one. Read inside this branch, so a deployment
+    // with no duplicate artifact does not pay for the manifest read at all.
+    const knownReviewers = effectiveReviewerNames();
     const winner = existing.effect !== "enforce" && policy.effect === "enforce" ? policy : existing;
-    const { merged, overruled } = withMergedAuthority(winner, [existing, policy]);
+    const { merged, overruled, refused } = withMergedAuthority(winner, [existing, policy], knownReviewers);
     if (overruled) {
       warnAuthority(
         `cloud-managed policies ${existing.id} and ${policy.id} share one artifact and do not all declare it ` +
           `reviewable, so it stays hard`,
       );
+    }
+    // The merge hardened the record, so registration will not see the refused
+    // declaration and cannot report it. Said here instead, naming both
+    // assignments — which is more than registration could have said.
+    if (refused) {
+      warnAuthority(refusedAuthorityWarning(`cloud-managed policies ${existing.id} and ${policy.id}`, refused));
     }
     cloudManagedByPath.set(key, merged);
   }
@@ -501,16 +516,27 @@ export async function loadAllCustomHooks(
    * the policy all the same, undeclared, and an undeclared pack policy is hard.
    * Winner precedence here would let one pack's manifest make another pack's
    * policy reviewable, which is the one thing a manifest may never do.
+   *
+   * `knownReviewers` is what makes that hold for a pack that ships BOTH tiers.
+   * Judged against the compiled-in set, a `reviewedBy` naming one of the pack's
+   * own checks is a name nothing here has, so the reviewable entry and its hard
+   * peer resolved alike and the merge could not tell them apart — while
+   * registration, which reads the manifest's own checks, honoured it. The set
+   * passed here is that same one.
    */
   const unionCatalog = (
     winner: PolicyCatalogEntry[],
     other: PolicyCatalogEntry[],
-  ): { policies: PolicyCatalogEntry[]; overruled: string[] } => {
+    knownReviewers: ReadonlySet<string>,
+  ): { policies: PolicyCatalogEntry[]; overruled: string[]; refused: string[] } => {
     /** Names a pack asked to be reviewable and did not get, for the warning. */
     const overruled: string[] = [];
+    /** The refusals themselves, which registration will no longer see to report. */
+    const refused: string[] = [];
     const harden = (entry: PolicyCatalogEntry, peer: PolicyCatalogEntry | undefined) => {
-      const r = withMergedAuthority(entry, [entry, peer ?? {}]);
+      const r = withMergedAuthority(entry, [entry, peer ?? {}], knownReviewers);
       if (r.overruled) overruled.push(entry.name);
+      if (r.refused) refused.push(refusedAuthorityWarning(entry.name, r.refused));
       return r.merged;
     };
     return {
@@ -519,6 +545,7 @@ export async function loadAllCustomHooks(
         ...other.filter((p) => !winner.some((w) => w.name === p.name)).map((p) => harden(p, undefined)),
       ],
       overruled,
+      refused,
     };
   };
 
@@ -566,7 +593,9 @@ export async function loadAllCustomHooks(
     // being intersected away.
     const winner = existing.effect !== "enforce" && pack.effect === "enforce" ? pack : existing;
     const other = winner === existing ? pack : existing;
-    const catalog = unionCatalog(winner.policies, other.policies);
+    // Read here rather than at the top of the load: only a duplicate artifact
+    // needs it, and this is the branch that has one.
+    const catalog = unionCatalog(winner.policies, other.policies, effectiveReviewerNames());
     packByPath.set(key, {
       ...winner,
       policies: catalog.policies,
@@ -579,6 +608,9 @@ export async function loadAllCustomHooks(
           `${catalog.overruled.join(", ")} reviewable, so ${catalog.overruled.length === 1 ? "it stays" : "they stay"} hard`,
       );
     }
+    // A refused `reviewable` is now hardened here rather than passed on to
+    // registration, so this is the only place left that can name the reason.
+    for (const message of catalog.refused) warnAuthority(message);
   }
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using

@@ -238,37 +238,76 @@ export function manifestAuthority(
  * So it resolves toward HARD, the way the collapse resolves the effect toward
  * enforce: reviewable only when EVERY declaration resolves to reviewable, and
  * then through the UNION of their checks (more checks that must all come back
- * clear is stricter, never weaker). Otherwise it takes the first declaration
- * that is not reviewable, so a refused one is still reported at registration.
+ * clear is stricter, never weaker).
+ *
+ * ## What the merged record may carry, and why it is the RESOLUTION
+ *
+ * Nothing here copies a declaration through. It used to keep the first one that
+ * was not reviewable, so that a refused `reviewable` would be reported again at
+ * registration — and that was the hole: a declaration is only ever resolved
+ * against the reviewer set of whoever is looking, so a `reviewable` naming a
+ * PACK's own check resolved to hard here, against the builtin set, and was
+ * copied forward verbatim. `registerPolicy` then resolved that same raw
+ * declaration against `effectiveReviewerNames()`, which does have the pack's
+ * check — and the policy registered reviewable, with a hard peer behind the same
+ * artifact overruled by nothing more than which pack was listed first.
+ *
+ * Two changes close it. The reviewer set is now a PARAMETER, so the merge judges
+ * by the same names registration will; and a non-reviewable merge emits
+ * `{ authority: "hard" }` — the resolved value — rather than the fields it was
+ * asked for. Either alone would have been enough for the case above; both,
+ * because the first is an agreement between two callers and the second holds
+ * whether or not they agree.
+ *
+ * The reason a refused declaration carried is not lost: it comes back as
+ * `refused`, for the caller to say through {@link refusedAuthorityWarning} at
+ * the point where it knows which artifact and which packs are involved.
  *
  * Returns `record` itself when its own fields already say that, and a copy with
  * only the two authority fields replaced otherwise. `overruled` is true when
  * some declaration asked for reviewable, validly, and did not get it.
+ *
+ * @param knownReviewers - the checks that can be asked on this machine. Callers
+ *   that merge what will be REGISTERED must pass `effectiveReviewerNames()`;
+ *   the default is this build's compiled-in set, which is what a machine with no
+ *   pack runs.
  */
 export function withMergedAuthority<T extends AuthorityFields>(
   record: T,
   declarations: ReadonlyArray<AuthorityFields>,
-): { merged: T; overruled: boolean } {
-  const resolved = declarations.map((d) => resolvePolicyAuthority(d));
+  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+): { merged: T; overruled: boolean; refused?: string } {
+  const resolved = declarations.map((d) => resolvePolicyAuthority(d, knownReviewers));
   const allReviewable = resolved.length > 0 && resolved.every((r) => r.authority === "reviewable");
+  // The declaration that decided it is hard. Its own fields are not carried —
+  // only whether it said anything at all, because a record that declared
+  // nothing is already hard and rewriting it to say so would touch a record the
+  // collapse has no business touching.
+  const decided = declarations[resolved.findIndex((r) => r.authority !== "reviewable")] ?? {};
   const fields: AuthorityFields = allReviewable
     ? { authority: "reviewable", reviewedBy: [...new Set(resolved.flatMap((r) => r.reviewedBy ?? []))] }
-    : fieldsOf(declarations[resolved.findIndex((r) => r.authority !== "reviewable")] ?? {});
+    : decided.authority === undefined
+      ? {}
+      : { authority: "hard" };
   const overruled = !allReviewable && resolved.some((r) => r.authority === "reviewable");
+  const refused = resolved.find((r) => r.downgraded !== undefined)?.downgraded;
+  const extra = refused === undefined ? {} : { refused };
   const same =
     record.authority === fields.authority &&
     JSON.stringify(record.reviewedBy) === JSON.stringify(fields.reviewedBy);
-  if (same) return { merged: record, overruled };
+  if (same) return { merged: record, overruled, ...extra };
   const { authority: _a, reviewedBy: _r, ...rest } = record;
-  return { merged: { ...rest, ...fields } as T, overruled };
+  return { merged: { ...rest, ...fields } as T, overruled, ...extra };
 }
 
-/** The authority fields a record actually carries, and nothing else. */
-function fieldsOf(d: AuthorityFields): AuthorityFields {
-  return {
-    ...(d.authority !== undefined ? { authority: d.authority } : {}),
-    ...(d.reviewedBy !== undefined ? { reviewedBy: d.reviewedBy } : {}),
-  };
+/**
+ * The warning for a `reviewable` declaration that was not honored. One
+ * phrasing, wherever it is noticed — registration for a policy that reaches it
+ * with its declaration intact, and the loader for one the collapse hardened
+ * before it got there.
+ */
+export function refusedAuthorityWarning(subject: string, reason: string): string {
+  return `${subject} asks to be reviewable, but ${reason} — it stays hard`;
 }
 
 const warnedAuthority = new Set<string>();

@@ -388,15 +388,44 @@ describe("withMergedAuthority — several declarations, one registration", () =>
     }
   });
 
-  it("keeps a refused declaration's reason, so registration still reports it", () => {
+  it("hands back the refusal rather than the declaration that was refused", () => {
+    // It used to copy the raw declaration forward so that registration would
+    // report it, and that was the hole: a declaration is only ever refused
+    // relative to a reviewer SET, so one naming a pack's own check resolved hard
+    // here, against the builtins, and then reviewable at registration, against
+    // the pack's. The merged record now carries the resolution — `hard`, and no
+    // `reviewedBy` for anything to re-read — and the reason comes back beside it.
     const typo = R("databse-destruction");
-    const { merged, overruled } = withMergedAuthority<Rec>({ id: "x", ...R("database-destruction") }, [
+    const { merged, overruled, refused } = withMergedAuthority<Rec>({ id: "x", ...R("database-destruction") }, [
       R("database-destruction"),
       typo,
     ]);
-    expect(merged).toEqual({ id: "x", ...typo });
-    expect(resolvePolicyAuthority(merged).downgraded).toMatch(/"databse-destruction"/);
+    expect(merged).toEqual({ id: "x", authority: "hard" });
+    expect(resolvePolicyAuthority(merged).authority).toBe("hard");
+    expect(refused).toMatch(/"databse-destruction"/);
     expect(overruled).toBe(true);
+  });
+
+  it("judges the declarations against the reviewer set it is given, not this build's", () => {
+    // The shipped pairing: the regex policies name checks that live in another
+    // pack, so the names in `reviewedBy` are in neither `SEMANTIC_POLICY_NAMES`
+    // nor this build's set. Without the set, both declarations below resolve
+    // hard, the merge cannot tell them apart, and the reviewable one wins by
+    // being first — which registration then honours.
+    const packCheck = new Set(["production-infra-change-v2"]);
+    const reviewable: Rec = { id: "r", authority: "reviewable", reviewedBy: ["production-infra-change-v2"] };
+    for (const decls of [
+      [reviewable, H],
+      [H, reviewable],
+    ]) {
+      const { merged, overruled } = withMergedAuthority<Rec>(reviewable, decls, packCheck);
+      expect(merged).toEqual({ id: "r", authority: "hard" });
+      expect(overruled).toBe(true);
+    }
+    // And still reviewable when both packs behind the artifact say so.
+    const both = withMergedAuthority<Rec>(reviewable, [reviewable, reviewable], packCheck);
+    expect(both.merged).toEqual({ id: "r", authority: "reviewable", reviewedBy: ["production-infra-change-v2"] });
+    expect(both.overruled).toBe(false);
   });
 
   it("drops the fields entirely when the hard vote declared nothing", () => {

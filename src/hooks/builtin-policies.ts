@@ -2215,17 +2215,29 @@ const READ_LIKE_CMDS =
  * separator characters that appear in compound argv tokens (':' for Docker
  * volume mounts and PATH-like lists, '=' for env var assignments) so that a
  * suffix like '/dashboard.mdx' in 'docs/STAR/dashboard.mdx' or '/docs' in
- * '-v HOST_DIR:/docs' is not misread as a standalone absolute path.
+ * '-v HOST_DIR:/docs' is not misread as a standalone absolute path. '/' is in
+ * that list too, so a match cannot START on the second slash of a protocol
+ * separator: 'http://localhost:3000/x' used to yield '/localhost:3000/x'.
+ * A match that starts on the FIRST slash is untouched, so '//etc/passwd' —
+ * a real, working spelling of /etc/passwd — is still extracted and still
+ * resolves to /etc/passwd.
+ *
+ * Runs of slashes with nothing else ('//', '///') are dropped: those are a
+ * line-comment marker, not a directory. They used to resolve to the filesystem
+ * root, which denied any read-like command carrying a '// …' comment — a
+ * heredoc writing a TypeScript file into the project, say. A lone '/' is the
+ * root and is kept.
  */
 function extractAbsolutePaths(command: string): string[] {
   const paths: string[] = [];
-  const pathRe = /(?<![a-zA-Z0-9_.\-~\\*?:=])(?:~\/[^\s;|&"'()\[\]{}]*|~(?=\s|$|[;|&"'()\[\]{}])|\/[^\s;|&"'()\[\]{}]*)/g;
+  const pathRe = /(?<![a-zA-Z0-9_.\-~\\*?:=/])(?:~\/[^\s;|&"'()\[\]{}]*|~(?=\s|$|[;|&"'()\[\]{}])|\/[^\s;|&"'()\[\]{}]*)/g;
 
   function addPaths(s: string): void {
     pathRe.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = pathRe.exec(s)) !== null) {
       let p = m[0];
+      if (/^\/{2,}$/.test(p)) continue; // a `//` comment marker, not the root
       if (p === "~") p = homedir();
       else if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
       paths.push(p);

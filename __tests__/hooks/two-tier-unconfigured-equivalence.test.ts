@@ -10,6 +10,21 @@
  * `evaluatePolicies`, and real tool calls through `evaluateHookEvent` with
  * every builtin enabled. A difference here is a behaviour change for every
  * customer who never configured Jev, which is all of them on day one.
+ *
+ * It is still byte-identical, and that is now a slightly narrower claim than
+ * it reads. `block-read-outside-cwd`'s path extractor DID change in #833: a
+ * run of slashes with nothing else (`//`, a line-comment marker) is no longer
+ * read as the filesystem root, and a match can no longer start on the second
+ * slash of a protocol separator (`http://host/x` no longer yields `/host/x`).
+ * That is a real, user-visible change for a machine with no Jev configured.
+ *
+ * Three corpus strings are read differently by the new extractor —
+ * `bash:curl-pipe-sh`, `bash:aws` and `post:conn`'s output — and none of them
+ * changes a verdict: the first two are not read-like commands, so
+ * `blockReadOutsideCwd` returns before extracting anything, and the third is a
+ * tool response, which the extractor never sees. So the recording still holds,
+ * and `__tests__/hooks/block-read-outside-cwd.test.ts` is where that change is
+ * pinned — not here. Do not read this file's silence as coverage of it.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";

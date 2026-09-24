@@ -559,6 +559,104 @@ describe("block-read-outside-cwd policy", () => {
     expect(result.reason).toContain("/etc/passwd");
   });
 
+  // -- `//` is a comment marker, not the filesystem root ----------------------
+  // The path extractor read a bare `//` as an absolute path, which resolves to
+  // `/` — outside every project. So a read-like command carrying a `// …`
+  // comment was denied for naming the root, most often a heredoc writing a
+  // TypeScript or Rust file INSIDE the project. Its reviewer never saw it
+  // either: the semantic tier reads the same text and finds only an in-project
+  // path, so the deny could not be cleared.
+
+  it("allows a heredoc that writes a file inside the project with a `//` comment in it", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: {
+        command: "cat > src/x.ts <<'EOF'\n// note: the width is fixed\nexport const x = 1;\nEOF",
+      },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("allow");
+  });
+
+  it("allows a read-like command whose only slash-run is a `///` doc comment", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "cat > src/lib.rs <<'EOF'\n/// The kit.\npub fn x() {}\nEOF" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("allow");
+  });
+
+  it("still denies `//etc/passwd` — a leading `//` is a real spelling of a real path", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "cat //etc/passwd" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toContain("/etc/passwd");
+  });
+
+  it("still denies a real absolute path that appears in a heredoc body", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "cat > src/x.ts <<'EOF'\n// reads /etc/shadow at boot\nexport const x = 1;\nEOF" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toContain("/etc/shadow");
+  });
+
+  it("still denies `ls /` — a single slash is the root, not a comment", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "ls /" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("deny");
+  });
+
+  // -- a URL's `//` is a protocol separator, not the start of a path ----------
+  // The `:` lookbehind already stopped the FIRST slash of `://` starting a
+  // match; the second one was preceded by a slash, which was not excluded, so
+  // `http://localhost:3000/x` yielded `/localhost:3000/x`.
+
+  it("allows a read-like command that mentions an http URL", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "curl -sS http://localhost:3000/api/health | head -n 5" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("allow");
+  });
+
+  it("allows a quoted https URL in the first pipeline segment", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: 'cat notes.txt "https://example.com/v1/models"' },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("allow");
+  });
+
+  it("still denies an outside path that sits beside a URL", async () => {
+    const ctx = makeCtx({
+      toolName: "Bash",
+      toolInput: { command: "curl -sS http://localhost:3000/x && cat /etc/passwd" },
+      session: { cwd: "/home/user/project" },
+    });
+    const result = await policy.fn(ctx);
+    expect(result.decision).toBe("deny");
+    expect(result.reason).toContain("/etc/passwd");
+  });
+
   it("denies Read of ~/.claude-other/file (not whitelisted)", async () => {
     const os = await import("node:os");
     const home = os.homedir();

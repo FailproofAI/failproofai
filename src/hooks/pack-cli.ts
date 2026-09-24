@@ -1876,7 +1876,7 @@ function bundleEntry(
  */
 const PUBLISH_VALUE_FLAGS = new Set([
   "--repo", "--version", "--id", "--tag", "--notes", "--out", "--effect", "--entry", "--init",
-  "--commit",
+  "--commit", "--min-cli-version",
 ]);
 function publishEntryArg(rest: string[]): string | undefined {
   const consumed = new Set<number>();
@@ -2278,6 +2278,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ...(provenance && !provenance.dirty ? ["--commit", provenance.sha] : []),
     ...outFlagFrom(rest),
     ...effectFlagFrom(rest),
+    ...minCliVersionFlagFrom(rest),
   ]);
   if (built.exitCode !== 0) return built;
 
@@ -2438,6 +2439,18 @@ function outFlagFrom(rest: string[]): string[] {
 }
 function effectFlagFrom(rest: string[]): string[] {
   const i = rest.findIndex((a) => a === "--effect" || a.startsWith("--effect="));
+  if (i === -1) return [];
+  return rest[i].includes("=") ? [rest[i]] : [rest[i], rest[i + 1]];
+}
+/**
+ * Same again for `--min-cli-version`, and it has to be forwarded explicitly
+ * because `publish` hands `build` a list it assembles rather than its own
+ * `rest`. Left off, the flag parsed, validated, refused an uncomparable value —
+ * and then never reached the manifest, so the field the whole ordering
+ * constraint rests on was silently absent from the published artifact.
+ */
+function minCliVersionFlagFrom(rest: string[]): string[] {
+  const i = rest.findIndex((a) => a === "--min-cli-version" || a.startsWith("--min-cli-version="));
   if (i === -1) return [];
   return rest[i].includes("=") ? [rest[i]] : [rest[i], rest[i + 1]];
 }

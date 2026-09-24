@@ -236,6 +236,46 @@ describe("publish without a release", () => {
     expect(requests).toEqual([]);
   });
 
+  it("forwards --min-cli-version into the manifest it builds", async () => {
+    // `publish` hands `build` an argument list it ASSEMBLES, rather than its own
+    // `rest` — so every flag `build` understands has to be forwarded by name.
+    // `--min-cli-version` was not, and the failure was invisible from either
+    // side: `publish` parsed the flag and refused an uncomparable value, and
+    // `build`'s own tests passed because they call `build` directly. The
+    // published manifest simply had no `minCliVersion`, which is the field the
+    // whole publish-after-the-release ordering rests on — an older CLI ignores
+    // a pack's semantic half silently, and this is what is supposed to stop it.
+    const entry = writeEntry();
+    const out = join(work, "dist-pack");
+    const r = await publish([
+      entry, "--repo", "acme/support", "--version", "1.0.0",
+      "--min-cli-version", "1.0.7-beta.0", "--out", out, "--dry-run",
+    ]);
+
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(out, PACK_MANIFEST_ASSET), "utf8"));
+    expect(manifest.minCliVersion).toBe("1.0.7-beta.0");
+    expect(r.lines.join("\n")).toMatch(/Requires failproofai 1\.0\.7-beta\.0 or newer/);
+    expect(requests).toEqual([]);
+  });
+
+  it("reads the entry as the entry when --min-cli-version comes first", async () => {
+    // The flag also has to be in PUBLISH_VALUE_FLAGS, or its VALUE is a
+    // candidate for the positional entry argument: `publish --min-cli-version
+    // 1.0.7-beta.0 pack.mjs` took the version as the file to publish and failed
+    // on ENOENT. The same bug this set was introduced to fix, one flag later.
+    const entry = writeEntry();
+    const out = join(work, "dist-pack");
+    const r = await publish([
+      "--min-cli-version", "1.0.7-beta.0", entry,
+      "--repo", "acme/support", "--version", "1.0.0", "--out", out, "--dry-run",
+    ]);
+
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(JSON.parse(readFileSync(join(out, PACK_MANIFEST_ASSET), "utf8")).minCliVersion)
+      .toBe("1.0.7-beta.0");
+  });
+
   it("stops at the assets, and says which repository it is missing, when no --repo is named", async () => {
     const entry = writeEntry();
     const out = join(work, "dist-pack");

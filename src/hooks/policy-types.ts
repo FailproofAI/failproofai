@@ -162,6 +162,70 @@ export interface CustomHook {
   reviewedBy?: string[];
 }
 
+/**
+ * The tool classes a semantic policy may be asked about.
+ *
+ * A structural copy of `ToolClass` in `src/hooks/semantic/types.ts`, and
+ * deliberately not an import of it. This module is the public API's type
+ * surface — every custom policy file and every pack entry imports it — and the
+ * semantic modules must stay off the import graph of a machine with no
+ * `jev.json` (see `precondition-names.ts` for what that costs when it slips).
+ * A type import would be erased, but the two lists still have to agree, so
+ * `__tests__/hooks/semantic/pack-semantic-registry.test.ts` pins them.
+ */
+export type SemanticToolClass = "shell" | "write" | "read" | "network" | "other";
+
+/** One yes/no question in a semantic policy, as a pack declares it. */
+export interface SemanticProbeDeclaration {
+  /** Lowercase slug, unique within the policy. The answer map is keyed `<policy>.<id>`. */
+  id: string;
+  instructions: string;
+  criteria?: { true: string; false: string };
+}
+
+/**
+ * A semantic (Jev) policy as its author DECLARES it — a question set, not code.
+ *
+ * The compiled-in equivalent is `SemanticPolicy` in `semantic/types.ts`, and
+ * the one difference is the whole reason both exist: there, `precondition` is a
+ * function over the computed facts; here it is the NAME of one, because a
+ * declaration has to survive a trip through a JSON manifest and because a
+ * downloaded artifact must not hand this process an expression to evaluate on
+ * every tool call. `semantic/preconditions.ts` binds the name to its predicate.
+ *
+ * There is no `fn` and no `match`: a semantic policy never executes locally and
+ * is never selected by event or tool name — `appliesTo` and `precondition`
+ * decide what it is asked about, and Jev answers it. That is also why it is
+ * registered through `semanticPolicies`, its own namespace, rather than as a
+ * variant of `customPolicies.add`.
+ */
+export interface SemanticPolicyDeclaration {
+  /** Short slug. Reported as `semantic/<name>`, and what a `reviewedBy` names. */
+  name: string;
+  /** Past-tense phrase for what was caught, e.g. "Deleted something irreplaceable". */
+  title: string;
+  appliesTo: SemanticToolClass[];
+  /** `deny` blocks on strong evidence and warns on moderate; `instruct` only ever warns. */
+  mode: "deny" | "instruct";
+  /**
+   * Whether the human's own explicit request may clear this policy.
+   *
+   * Required, with no default anywhere in the stack. It is the field that
+   * decides whether a prompt injection can talk its way past the policy, and a
+   * default for it would be a security decision made by absence — the author
+   * would never learn which way it went.
+   */
+  userCanOverride: boolean;
+  /** A name from `PACK_PRECONDITION_NAMES`. Absent, or `"always"`, means no precondition. */
+  precondition?: string;
+  /** Every probe must hold for the policy to fire (conjunction). 1–6 of them. */
+  probes: SemanticProbeDeclaration[];
+  /** If this holds, the policy does not fire — the documented exceptions. */
+  exempt?: SemanticProbeDeclaration;
+  /** Shown to the agent when the policy fires. */
+  guidance: string;
+}
+
 export interface LlmConfig {
   baseUrl?: string;
   apiKey?: string;

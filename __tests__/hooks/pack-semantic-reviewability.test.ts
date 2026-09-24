@@ -5,7 +5,7 @@
  * A pack that ships both tiers replaces the compiled-in semantic set where it
  * installs, so its regex policies name its OWN checks in `reviewedBy`. Counted
  * against this build's sixteen, every one of those names is "a check this build
- * does not have" — so `jev status` would say "0 of 38 enabled policies are
+ * does not have" — so `jev status` would say "0 of 39 enabled policies are
  * reviewable" and point at the remedy, on exactly the machines that already took
  * it. A diagnostic that lies on the state it was written for is worse than no
  * diagnostic: it sends people to re-take a pack they are already running.

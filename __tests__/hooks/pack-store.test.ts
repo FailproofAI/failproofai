@@ -360,7 +360,7 @@ describe("addPack", () => {
   describe("how much of the pack you get", () => {
     it("installs the pack's defaults, NOT everything, when no flag is given", async () => {
       // A pack carries an opinion about which of its policies are safe to switch
-      // on unattended — for the builtins that is 10 of 38. Enabling all of them
+      // on unattended — for the builtins that is 10 of 39. Enabling all of them
       // overrode that opinion with one nobody held, switching on things like
       // block-kubectl that are off by default precisely because they interrupt
       // legitimate work.

@@ -623,8 +623,15 @@ const GIT_DESTRUCTIVE_SUBCOMMANDS = new Set([
  */
 const GIT_FLAGS_WITH_OPERANDS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
 
-/** The `git` subcommand, with git's own global options walked off first. */
-function gitSubcommand(args: string[]): string | undefined {
+/**
+ * Where the `git` subcommand sits in `args`, with git's own global options
+ * walked off first, or `-1` when there is no subcommand at all.
+ *
+ * The index rather than the value, because a caller that wants to read the
+ * SUBCOMMAND's flags (`warnGitClean`) needs to know where they start, and
+ * `args.indexOf("clean")` would land on a `-C clean` operand instead.
+ */
+function gitSubcommandIndex(args: string[]): number {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (GIT_FLAGS_WITH_OPERANDS.has(arg)) {
@@ -632,9 +639,15 @@ function gitSubcommand(args: string[]): string | undefined {
       continue;
     }
     if (arg.startsWith("-")) continue;
-    return arg;
+    return i;
   }
-  return undefined;
+  return -1;
+}
+
+/** The `git` subcommand, with git's own global options walked off first. */
+function gitSubcommand(args: string[]): string | undefined {
+  const i = gitSubcommandIndex(args);
+  return i < 0 ? undefined : args[i];
 }
 
 /**
@@ -1378,6 +1391,48 @@ const GIT_AMEND_RE = /\bgit\s+commit\b.*--amend\b/;
 
 // warnGitStashDrop
 const GIT_STASH_DROP_RE = /\bgit\s+stash\s+(?:drop|clear)\b/;
+
+// warnGitClean
+/**
+ * `git`, however the command line spells it. Same shape as {@link RM_CMD_RE}:
+ * an absolute path to the binary does not change what it does.
+ */
+const GIT_CMD_RE = /^(?:\/\S*\/)?git$/;
+
+/** A short-flag cluster: `-f`, `-fdx`, `-xdf`. */
+const SHORT_FLAG_CLUSTER_RE = /^-[A-Za-z]+$/;
+
+/**
+ * `clean.requireForce=false`, the config that makes `git clean` delete with no
+ * `-f` at all — and settable per invocation as `git -c
+ * clean.requireForce=false clean -xd`. Reading the subcommand's flags alone
+ * would call that "no force, no warning" on the one spelling that needs none.
+ */
+const GIT_CLEAN_FORCE_WAIVED_RE = /^clean\.requireforce=(?:false|0|no|off)$/i;
+
+/**
+ * The default `destructiveFlags`, and why the condition is these three letters
+ * rather than "any `git clean`".
+ *
+ * `git clean` deletes nothing without `-f` / `--force` (or the config above),
+ * and `-n` / `--dry-run` only prints — so force is the precondition and
+ * dry-run is the exemption. What force ALONE removes is untracked files in the
+ * current directory: the narrowest spelling, and the one people mean when they
+ * tidy up. These are the letters that widen the blast radius past that:
+ *
+ * - `-x` also removes IGNORED files — `.env`, local config, editor state,
+ *   scratch work. That is the data that genuinely cannot be rebuilt by running
+ *   a command, and it is what makes `git clean -fdx` the severe spelling.
+ * - `-X` removes ONLY ignored files: the same loss, tracked tree untouched.
+ * - `-d` also removes untracked DIRECTORIES — whole new subtrees git has never
+ *   had a copy of.
+ *
+ * A bare `git clean -f` is deliberately absent. It has the smallest radius and
+ * by far the most traffic, and a guard that fires on the ordinary spelling is
+ * one people switch off — which would cost them the `-fdx` warning too. Add
+ * `"f"` to `destructiveFlags` to opt into it.
+ */
+const GIT_CLEAN_DESTRUCTIVE_FLAGS = ["d", "x", "X"];
 
 // warnAllFilesStaged
 const GIT_ADD_ALL_RE = /\bgit\s+add\s+(?:-A\b|--all\b|\.(?:\s|$|;|&&|\|\|))/;
@@ -2528,6 +2583,101 @@ function warnGitStashDrop(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/** What one `git clean` argument list asks for. */
+interface GitCleanFlags {
+  force: boolean;
+  dryRun: boolean;
+  /** Short-flag letters, with `--force` counted as `f` so widening works either way. */
+  letters: Set<string>;
+}
+
+/**
+ * Read `git clean`'s own options: clusters (`-fdx`) and the two long forms
+ * that matter (`--force`, `--dry-run`).
+ *
+ * Everything after `--` is a pathspec, not a flag — `git clean -n -- -fdx`
+ * asks about a file literally called `-fdx` and deletes nothing.
+ */
+function readGitCleanFlags(args: string[]): GitCleanFlags {
+  const letters = new Set<string>();
+  let force = false;
+  let dryRun = false;
+  let sawEndOfOptions = false;
+  for (const token of args) {
+    if (token === "--") {
+      sawEndOfOptions = true;
+      continue;
+    }
+    if (sawEndOfOptions) continue;
+    if (token === "--force") {
+      force = true;
+      continue;
+    }
+    if (token === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (token.startsWith("--")) continue;
+    if (!SHORT_FLAG_CLUSTER_RE.test(token)) continue;
+    for (const letter of token.slice(1)) {
+      if (letter === "f") force = true;
+      if (letter === "n") dryRun = true;
+      letters.add(letter);
+    }
+  }
+  if (force) letters.add("f");
+  return { force, dryRun, letters };
+}
+
+/** True when git's own `-c key=value` options waive `clean.requireForce`. */
+function gitCleanForceWaived(globalOptions: string[]): boolean {
+  for (let i = 0; i < globalOptions.length; i++) {
+    const token = globalOptions[i];
+    const value =
+      token === "-c" ? globalOptions[i + 1] : token.startsWith("-c") ? token.slice(2) : undefined;
+    if (value !== undefined && GIT_CLEAN_FORCE_WAIVED_RE.test(value)) return true;
+  }
+  return false;
+}
+
+/**
+ * The gap this closes: `git clean -fdx` was caught by NEITHER tier — no regex
+ * builtin matched the string at all, and the semantic check that covers
+ * unrecoverable deletion cannot fire on it. See the note on the catalog entry
+ * for the measurement and for why this policy is `hard`.
+ */
+function warnGitClean(ctx: PolicyContext): PolicyResult {
+  if (ctx.toolName !== "Bash") return allow();
+  const destructiveFlags = ((ctx.params?.destructiveFlags ?? GIT_CLEAN_DESTRUCTIVE_FLAGS) as string[]);
+  if (destructiveFlags.length === 0) return allow();
+
+  for (const segment of shellSegments(getCommand(ctx))) {
+    const tokens = parseArgvTokens(segment);
+    // `findIndex`, not `tokens[0]`, so an env prefix (`GIT_DIR=x git clean …`)
+    // and an absolute binary path both still resolve to the git invocation.
+    const gitIdx = tokens.findIndex((t) => GIT_CMD_RE.test(t));
+    if (gitIdx < 0) continue;
+    const args = tokens.slice(gitIdx + 1);
+    const subIdx = gitSubcommandIndex(args);
+    if (subIdx < 0 || args[subIdx] !== "clean") continue;
+
+    const flags = readGitCleanFlags(args.slice(subIdx + 1));
+    // `-n` / `--dry-run` prints what would go and removes nothing, whatever
+    // else is on the line — the safe inspection form, never a warning.
+    if (flags.dryRun) continue;
+    if (!flags.force && !gitCleanForceWaived(args.slice(0, subIdx))) continue;
+    if (!destructiveFlags.some((f) => flags.letters.has(f))) continue;
+
+    return instruct(
+      "STOP: This command deletes untracked files from the working tree (git clean). Git has no copy of " +
+        "untracked or ignored files, so nothing it removes can be recovered: -d takes whole untracked " +
+        "directories, and -x / -X also take .gitignore'd files such as .env, local config and scratch work. " +
+        "Re-run it with --dry-run and confirm the exact paths with the user before executing.",
+    );
+  }
+  return allow();
+}
+
 function warnAllFilesStaged(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
@@ -3090,7 +3240,7 @@ function requireCiGreenBeforeStop(ctx: PolicyContext): PolicyResult {
  * Each value is the identical hoisted function object, never a wrapper. Two
  * things depend on that and neither fails loudly: `audit/cache.ts` hashes
  * `fn.toString()` into the audit cache's `engineVersion`, so wrapping every
- * entry would collapse 39 distinct hashes into one and freeze the key — stale
+ * entry would collapse 40 distinct hashes into one and freeze the key — stale
  * audit results would then be served for the full 30-day TTL with no symptom;
  * and `gitBranchCache` is module-scoped, so a per-call factory would silently
  * reset it on every hook event.
@@ -3121,6 +3271,7 @@ const POLICY_IMPLEMENTATIONS: Record<string, PolicyFunction> = {
   "block-work-on-main": blockWorkOnMain,
   "warn-git-amend": warnGitAmend,
   "warn-git-stash-drop": warnGitStashDrop,
+  "warn-git-clean": warnGitClean,
   "warn-all-files-staged": warnAllFilesStaged,
   "warn-destructive-sql": warnDestructiveSql,
   "warn-schema-alteration": warnSchemaAlteration,

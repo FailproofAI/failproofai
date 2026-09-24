@@ -469,7 +469,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
     // out was not cosmetic: `registerPolicy` takes a pack policy's schema from the
     // MANIFEST by name, so a pack published without it evaluates every one of its
     // policies with `ctx.params = {}` — which discards the user's own configured
-    // values too, not just the defaults. Of the 38 builtins, 19 carry a schema:
+    // values too, not just the defaults. Of the 39 builtins, 20 carry a schema:
     // `prefer-package-manager` would have been inert, and `block-sudo`'s
     // `allowPatterns`, `block-rm-rf`'s and `block-read-outside-cwd`'s `allowPaths`
     // would all have stopped working — every one of them failing silently
@@ -2693,7 +2693,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
     ];
     const skipped = result.available.filter((n) => !result.enabled.includes(n));
 
-    // Say WHY this set is on. Without it, "10 of 38 enabled" reads like
+    // Say WHY this set is on. Without it, "10 of 39 enabled" reads like
     // something went wrong rather than like the pack's own recommendation.
     const why = {
       defaults: "the pack's defaults",

@@ -814,7 +814,7 @@ export function slugifyCategory(category: string): string {
  *
  * The default is the pack's OWN `defaultEnabled` set, not everything. A pack
  * carries an opinion about which of its policies are safe to switch on
- * unattended — for the builtins that is 10 of 38 — and installing the whole
+ * unattended — for the builtins that is 10 of 39 — and installing the whole
  * thing overrode that opinion with one nobody held. `block-kubectl`,
  * `block-terraform` and `require-ci-green-before-stop` are off by default in the
  * npm package precisely because they interrupt legitimate work.

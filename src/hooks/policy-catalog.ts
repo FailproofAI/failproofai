@@ -419,6 +419,67 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     category: "Git",
   },
   {
+    name: "warn-git-clean",
+    displayTitle: "Tried to delete untracked or ignored files with git clean",
+    impact: "`git clean -fdx` takes `.env`, local config and unstaged work — git never had a copy of any of it.",
+    description: "Warns before git clean deletes untracked directories (-d) or ignored files (-x / -X)",
+    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Hard, and deliberately NOT `reviewable` through `destructive-deletion`,
+    // although that check is the one whose whole subject is deleting data that
+    // cannot be regenerated.
+    //
+    // Measured on a real machine, through the real hook, with a Jev config
+    // present, on `git clean -fdx`:
+    //
+    //     jev:    ok decision=allow applied=two-tier 495ms
+    //     probes: destructive-deletion.destroys=0.94  beyond_task=0.79  task_step=0.78
+    //
+    // `destroys` came back 0.94 — the check sees the destruction; its own
+    // instructions name `git clean -fdx` by example. The policy still did not
+    // fire, because evidence is the MIN over a policy's probes and the partner
+    // probe `irreplaceable` came back low (it is absent from the probe line,
+    // which lists only what answered above the display floor). That is not a
+    // tuning accident: `git clean` carries NO path operand, so `facts.paths` is
+    // empty (measured — `extractPaths` skips `clean` as not path-like and
+    // `-fdx` as a flag), while `irreplaceable` is written to read
+    // `facts.paths[].relation` and to answer false for "only regenerable data
+    // inside the project: build output, dist/, caches, node_modules, …". With
+    // nothing to point at, the false branch is the honest answer to the
+    // question as written.
+    //
+    // A named check that is asked and does not fire answers "no concern", and
+    // that CLEARS (`combine.ts`, "A warning-level answer clears the deny"). So
+    // pairing this policy with `destructive-deletion` would not hand the
+    // decision to Jev — it would switch the policy off on every machine that
+    // configured Jev, which is exactly the `block-work-on-main` mistake. The
+    // test is "is there anything left that can DENY", and no other deny-mode
+    // semantic check covers untracked-file deletion, so a clear would leave the
+    // concern enforced by nothing. Hard until the probe is recalibrated against
+    // the corpus; the proposed wording and why it needs a replay are in
+    // `PROBE-FOLLOWUP.md`.
+    authority: "hard",
+    // Off by default, and `instruct` rather than `deny`, because `git clean
+    // -fdx` is a command developers run on purpose and often — it is the
+    // standard way to get a genuinely clean tree before a build. A default-on
+    // deny would fire on ordinary work, and a guard people switch off protects
+    // nothing; every policy in this category except `block-push-master` is
+    // default-off for the same reason, and `block-read-outside-cwd` was
+    // demoted out of the audit's archetype signal for being exactly this kind
+    // of ambient. What IS worth saying every time it is enabled is that the
+    // blast radius is wider than the operator usually means, so the policy
+    // warns and names what goes.
+    defaultEnabled: false,
+    category: "Git",
+    params: {
+      destructiveFlags: {
+        type: "string[]",
+        description:
+          "git clean flag letters that make it worth warning about, checked alongside --force. Narrow to ['x','X'] to allow `git clean -fd`, or widen with 'f' to warn on a bare `git clean -f`.",
+        default: ["d", "x", "X"],
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
     name: "warn-all-files-staged",
     displayTitle: "Staged all files with git add -A / .",
     impact: "Wide stages routinely catch generated files or secrets you didn't intend to commit.",

@@ -9,7 +9,7 @@
  * them, filled defaults, or wrapped every implementation in a closure.
  *
  * These are also the tripwires the pack migration leans on. When implementations
- * move out of the package entirely, "the catalog says 39 and 39 ran" stops being
+ * move out of the package entirely, "the catalog says 40 and 40 ran" stops being
  * a tautology and becomes the thing worth checking.
  */
 import { describe, it, expect } from "vitest";
@@ -32,7 +32,7 @@ const EXPECTED_ORDER = [
   "block-rm-rf", "block-failproofai-commands", "block-kubectl", "block-terraform",
   "block-aws-cli", "block-gcloud", "block-az-cli", "block-helm", "block-gh-pipeline",
   "block-secrets-write", "block-push-master", "block-force-push", "block-work-on-main",
-  "warn-git-amend", "warn-git-stash-drop", "warn-all-files-staged",
+  "warn-git-amend", "warn-git-stash-drop", "warn-git-clean", "warn-all-files-staged",
   "warn-destructive-sql", "warn-schema-alteration", "warn-package-publish",
   "warn-global-package-install", "prefer-package-manager", "warn-large-file-write",
   "warn-background-process", "warn-repeated-tool-calls", "require-commit-before-stop",
@@ -43,8 +43,8 @@ const EXPECTED_ORDER = [
 describe("policy catalog / implementation split", () => {
   describe("the join", () => {
     it("keeps catalog and joined view the same length and order", () => {
-      expect(POLICY_CATALOG).toHaveLength(39);
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+      expect(POLICY_CATALOG).toHaveLength(40);
+      expect(BUILTIN_POLICIES).toHaveLength(40);
       expect(BUILTIN_POLICIES.map((p) => p.name)).toEqual(POLICY_CATALOG.map((e) => e.name));
     });
 
@@ -59,20 +59,20 @@ describe("policy catalog / implementation split", () => {
       expect(holes).toEqual([]);
     });
 
-    it("assigns 39 DISTINCT implementations, never a shared wrapper", () => {
-      // The wrapper-collapse guard. `fn: (ctx) => IMPLS[name](ctx)` yields 39
+    it("assigns 40 DISTINCT implementations, never a shared wrapper", () => {
+      // The wrapper-collapse guard. `fn: (ctx) => IMPLS[name](ctx)` yields 40
       // distinct function OBJECTS with near-identical source text, which freezes
       // audit/cache.ts's engineVersion — it then stops changing when policy logic
       // changes and stale audit results are served for the full 30-day TTL with
       // no symptom anywhere.
-      expect(new Set(BUILTIN_POLICIES.map((p) => p.fn.toString())).size).toBe(39);
+      expect(new Set(BUILTIN_POLICIES.map((p) => p.fn.toString())).size).toBe(40);
     });
 
     it("has unique names", () => {
       // findBuiltin takes the FIRST match and registerPolicy takes the LAST — a
       // duplicate silently registers one policy fewer while the audit title comes
       // from the other copy.
-      expect(new Set(BUILTIN_POLICIES.map((p) => p.name)).size).toBe(39);
+      expect(new Set(BUILTIN_POLICIES.map((p) => p.name)).size).toBe(40);
     });
 
     it("adds no fields the catalog did not have", () => {
@@ -102,9 +102,9 @@ describe("policy catalog / implementation split", () => {
         "sanitize-api-keys", "block-read-outside-cwd", "block-sudo", "block-rm-rf",
         "block-kubectl", "block-terraform", "block-aws-cli", "block-gcloud",
         "block-az-cli", "block-helm", "block-gh-pipeline", "block-secrets-write",
-        "block-push-master", "block-work-on-main", "prefer-package-manager",
-        "warn-large-file-write", "require-push-before-stop", "require-pr-before-stop",
-        "require-no-conflicts-before-stop",
+        "block-push-master", "block-work-on-main", "warn-git-clean",
+        "prefer-package-manager", "warn-large-file-write", "require-push-before-stop",
+        "require-pr-before-stop", "require-no-conflicts-before-stop",
       ]);
     });
   });

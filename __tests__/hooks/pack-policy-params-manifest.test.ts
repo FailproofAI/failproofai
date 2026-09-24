@@ -7,7 +7,7 @@
  * nothing anywhere said so. Registration reads a pack policy's schema from the
  * MANIFEST by name, so a published pack evaluated every one of its policies with
  * `ctx.params = {}` — which discards the values the USER configured, not merely
- * the declared defaults. Of the 38 builtins 19 carry a schema, and every one of
+ * the declared defaults. Of the 39 builtins 20 carry a schema, and every one of
  * them would have failed in the same direction: stricter than asked for, which is
  * the direction people work around instead of reporting.
  *

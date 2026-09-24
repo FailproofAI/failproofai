@@ -1108,7 +1108,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   // `packCount` counts ENABLED policies, so a pack installed with everything
   // switched off reaches zero the same way an empty machine does — and the
   // advice for the two could not be more different. Telling somebody who has
-  // just unticked all 38 to `policies add FailproofAI/policies` sends them to
+  // just unticked all 39 to `policies add FailproofAI/policies` sends them to
   // install what they already have, and doing it would change nothing: the
   // selection is what is empty, not the shelf.
   const packsInstalled = (() => {

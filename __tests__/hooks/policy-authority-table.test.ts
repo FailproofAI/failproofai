@@ -40,6 +40,15 @@ const REVIEWABLE: Record<string, string[]> = {
  */
 const FLOOR = [
   "block-work-on-main",
+  // `warn-git-clean` is here for the same reason, reached from the other side:
+  // `destructive-deletion` is deny-mode and covers exactly its concern, but
+  // measurably cannot fire on `git clean -fdx` — `destroys` answered 0.94 while
+  // `irreplaceable` answered low, and evidence is the MIN over a policy's
+  // probes. `git clean` carries no path operand, so `facts.paths` is empty and
+  // `irreplaceable` has nothing to reason about. A check that is asked and does
+  // not fire answers "no concern", which CLEARS, so the pairing would have made
+  // the policy inert rather than reviewed. See PROBE-FOLLOWUP.md.
+  "warn-git-clean",
   "block-rm-rf", "block-sudo", "block-curl-pipe-sh", "block-push-master",
   "block-kubectl", "block-terraform", "block-aws-cli", "block-gcloud",
   "block-az-cli", "block-helm", "block-gh-pipeline",

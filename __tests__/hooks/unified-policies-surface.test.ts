@@ -191,7 +191,7 @@ describe("a name or a source, told apart by the slash", () => {
   it("still routes a RETIRED spelling to the pack lane, so it can say what to type", async () => {
     // `core` no longer resolves — but it has to reach the layer that knows
     // that. Sent anywhere else it reads as an unknown POLICY name and the reply
-    // lists 38 names, none of which is the answer.
+    // lists 39 names, none of which is the answer.
     //
     // Read from the layer that OWNS the set. Restating it here is the drift
     // that already shipped once, when the dashboard could not resolve a name

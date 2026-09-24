@@ -95,6 +95,7 @@ And because an instruct-mode semantic policy can never answer deny, pairing a *b
 | `block-helm` | hard | | Changes live cluster state. |
 | `block-gh-pipeline` | hard | | Triggers pipelines, merges and secret changes. |
 | `warn-git-stash-drop` | hard | | No semantic check covers discarding stashed work. |
+| `warn-git-clean` | hard | | `destructive-deletion` covers the concern but demonstrably cannot fire on it: `git clean` names no path, so its `irreplaceable` probe has nothing to judge and answers low, and evidence is the minimum over a policy's probes. A check that is asked and does not fire clears the verdict, so pairing here would switch the policy off. |
 | `warn-all-files-staged` | hard | | No semantic check covers what a wide `git add` picks up. |
 | `warn-schema-alteration` | hard | | `database-destruction` covers dropping data, not altering a schema. |
 | `warn-package-publish` | hard | | Publishing is irreversible and no semantic check covers it. |

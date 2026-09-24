@@ -204,27 +204,45 @@ describe("the final scrub pass", () => {
 
   it("scrubs a maximal envelope's worth of distinct secrets in one pass", () => {
     // 17 280 distinct credentials over 634 KB of state, every one of them
-    // present in the text. Measured 87-90 ms here (62 ms of that compiling the
-    // automaton, 25 ms scanning), against the 200 ms a PreToolUse hook can
-    // afford to spend on redaction. The budget is 300 and not 200 because this
-    // file's worker shares the machine with every other test file, and a
-    // number with 2x margin is what made the budgets below flake; 3x on a
-    // best-of-three is a real regression, not a busy neighbour.
+    // present in the text. Measured 87-90 ms here — 62 of that compiling the
+    // automaton, 25 scanning — against the 200 ms a PreToolUse hook can afford
+    // to spend on redaction.
+    //
+    // The budget is 600: the same number, and the same margin, as the envelope
+    // test below, and it is deliberately loose. About 70% of what it measures
+    // is BUILDING the automaton, which is allocation-bound and so the most
+    // load-sensitive number in this file — 396 ms has been measured for this
+    // same work on a busy runner, which was under the old 300 ms bound by
+    // nothing but luck. So treat this assertion as what it is: a catch for a
+    // CATASTROPHIC regression (an automaton rebuilt per string, a scan that
+    // went quadratic), not a measurement. What pins the SHAPE of the curve is
+    // the ratio test below, which moves both its numbers together on a loaded
+    // machine and therefore cannot be flaked by one.
+    //
+    // The build and the scan are timed apart so a failure says which half
+    // moved, and only their sum is asserted: two absolute bounds would be two
+    // things to flake for no coverage the ratio does not already give.
     const { strings, found } = maximalStrings();
     // The fixture's own pin: a change that stops FINDING the credentials would
     // otherwise pass this budget by having nothing to scrub.
     expect(found.size).toBeGreaterThan(10_000);
-    let best = Infinity;
+    let bestBuild = Infinity;
+    let bestScan = Infinity;
     let markers = 0;
     for (let pass = 0; pass < 3; pass++) {
       const t0 = performance.now();
       const scrubber = buildSecretScrubber(found);
+      const built = performance.now();
       markers = 0;
       for (const s of strings) markers += scrubber.scrub(s).count;
-      best = Math.min(best, performance.now() - t0);
+      bestBuild = Math.min(bestBuild, built - t0);
+      bestScan = Math.min(bestScan, performance.now() - built);
     }
     expect(markers).toBeGreaterThan(10_000);
-    expect(best, `${found.size} secrets, ${markers} markers`).toBeLessThan(300);
+    expect(
+      bestBuild + bestScan,
+      `${found.size} secrets, ${markers} markers: ${bestBuild.toFixed(1)} ms building the automaton, ${bestScan.toFixed(1)} ms scanning`,
+    ).toBeLessThan(600);
   }, 60_000);
 
   it("costs the same per string whether there are 500 secrets or 15 000", () => {

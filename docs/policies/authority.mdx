@@ -106,19 +106,6 @@ Reviewable only where a semantic policy genuinely covers the same concern. Every
 | `require-no-conflicts-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
 | `require-ci-green-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
 
-These built-in policies cover commands Jev is known to miss, so they are hard by design. They are off by default.
-
-{/* These four arrived with the hard-floor additions (build task T7). Two more
-    were drafted — `block-mass-kill` and `block-no-verify` — and cut from the
-    scope, so they are deliberately absent here. */}
-
-| Policy | Authority | Reviewed by | Why |
-| --- | --- | --- | --- |
-| `block-disk-destruction` | hard | | Covers `dd` to a device, `mkfs` and `wipefs`, which Jev misses. |
-| `block-gh-destructive` | hard | | Covers `gh release delete` and `gh api -X DELETE`, which Jev misses. |
-| `block-indirect-exec` | hard | | Covers destructive binaries run through a variable, which Jev misses. |
-| `block-chmod-777` | hard | | Covers world-writable permission changes. |
-
 ## Semantic policy names
 
 These are the values `reviewedBy` accepts. Each is a check Jev answers about the tool call in front of it.

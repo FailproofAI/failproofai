@@ -37,16 +37,6 @@ const FLOOR = [
   "block-secrets-write", "block-force-push", "block-failproofai-commands",
 ];
 
-/**
- * The hard-floor additions of T7 (decision D5) have LANDED, so every one of
- * them is a builtin the checks below reach through `POLICY_CATALOG`, and this
- * set is empty on purpose: nothing but a builtin may appear in the docs table
- * any more, so a typo'd or cut-policy row fails. Two drafted floor policies
- * (`block-mass-kill`, `block-no-verify`) were cut from the scope and must not
- * come back here — four ship, not six.
- */
-const ARRIVING_HARD = new Set<string>([]);
-
 const DOC = readFileSync(resolve(__dirname, "../../docs/policies/authority.mdx"), "utf8");
 
 /** Rows of every `| \`name\` | authority | reviewedBy | why |` table in the doc. */
@@ -174,13 +164,10 @@ describe("the docs page (docs/policies/authority.mdx) matches the table", () => 
     }
   });
 
-  it("lists nothing that is not a builtin, except the announced hard-floor additions, as hard", () => {
+  it("lists nothing that is not a builtin, so a typo'd or removed policy fails", () => {
     const names = new Set(POLICY_CATALOG.map((p) => p.name));
-    for (const [name, row] of docRows()) {
-      if (names.has(name)) continue;
-      expect(ARRIVING_HARD.has(name), `${name} is in the docs table but is not a builtin`).toBe(true);
-      expect(row.authority, name).toBe("hard");
-    }
+    const strangers = [...docRows().keys()].filter((name) => !names.has(name));
+    expect(strangers).toEqual([]);
   });
 
   it("lists exactly the semantic policy names reviewedBy accepts", () => {

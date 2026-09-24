@@ -97,6 +97,7 @@ import {
   daemonVersionSkew,
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
+  type DaemonServiceStatus,
 } from "./daemon-service";
 
 export interface ResetOutcome {
@@ -1094,7 +1095,24 @@ async function drainSpoolAfterMigrating(): Promise<number> {
   }
 }
 
-export async function checkLayoutForCli(): Promise<LayoutCheck> {
+/**
+ * Injectable for tests, matching `refreshDaemonToCliVersion`'s shape in
+ * `daemon-service.ts`.
+ *
+ * `healDaemonFlag` asks systemd whether the unit is installed, and on a machine
+ * with no unit that call blocks for seconds before answering. Two tests here
+ * set `daemon.configured` and so reach it, and they were timing out at vitest's
+ * 5 s default against the real service manager — a check about what this command
+ * PRINTS, failing on how long the host takes to say "not-installed". A
+ * `vi.spyOn` cannot intercept it either: this module calls its own local
+ * binding, so without a seam a stub is ignored and the test passes or fails for
+ * the wrong reason.
+ */
+export interface LayoutCheckDeps {
+  daemonStatus?: () => DaemonServiceStatus;
+}
+
+export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<LayoutCheck> {
   const state = detectLayout();
 
   if (state.kind === "future") {
@@ -1220,7 +1238,7 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
     state,
     fatal: false,
     didReset: false,
-    lines: [...(await healDaemonFlag()), ...staleDaemonHint()],
+    lines: [...(await healDaemonFlag(deps)), ...staleDaemonHint()],
   };
 }
 
@@ -1239,13 +1257,13 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
  * downgrade a healthy machine to the in-process path — trading a loud, correct
  * failure for a quiet, wrong one.
  */
-async function healDaemonFlag(): Promise<string[]> {
+async function healDaemonFlag(deps: LayoutCheckDeps = {}): Promise<string[]> {
   try {
     const cfg = readConfig();
     if (!cfg.daemon.configured) return [];
     if (!isDaemonSupportedPlatform()) return [];
 
-    const status = daemonServiceStatus();
+    const status = (deps.daemonStatus ?? daemonServiceStatus)();
     if (status === "not-installed") {
       updateConfig({ daemon: { configured: false } });
       return [

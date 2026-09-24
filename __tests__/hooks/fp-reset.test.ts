@@ -546,13 +546,23 @@ describe("checkLayoutForCli", () => {
       writeFileSync(resolve(binDir(), `failproofaid-${ver}`), "ELF");
     }
 
+    /**
+     * The two cases below set `daemon.configured`, which is what makes
+     * `healDaemonFlag` ask systemd whether the unit is installed. On a host with
+     * no unit that call blocks for seconds, and both tests were timing out at
+     * vitest's 5 s default — a check about what this command PRINTS, failing on
+     * how long the machine takes to answer "not-installed". Stubbed, because
+     * the service manager is not what is under test here.
+     */
+    const noUnit = { daemonStatus: () => "not-installed" as const };
+
     it("warns hard when the machine REQUIRES a daemon that will not start", async () => {
       seedLayoutOne();
       installedDaemon("0.0.1-old");
       writeVersionFile({ daemon: "0.0.1-old" });
       updateConfig({ daemon: { configured: true } });
 
-      const text = (await checkLayoutForCli()).lines.join("\n");
+      const text = (await checkLayoutForCli(noUnit)).lines.join("\n");
 
       expect(text).toContain("0.0.1-old");
       // Must name the consequence, not just the mismatch: the reason to act now
@@ -581,7 +591,7 @@ describe("checkLayoutForCli", () => {
       seedLayoutOne();
       updateConfig({ daemon: { configured: true } });
 
-      const text = (await checkLayoutForCli()).lines.join("\n");
+      const text = (await checkLayoutForCli(noUnit)).lines.join("\n");
 
       expect(text).not.toContain("failproofai update");
     });

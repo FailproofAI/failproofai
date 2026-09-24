@@ -4,9 +4,9 @@
   "type": "module",
   "description": "Integration fixture: Mastra 0.x (@mastra/core, last 0.x release) against the packed @failproofai/sdk.",
   "dependencies": {
-    "@mastra/core": "0.24.9",
+    "@mastra/core": "1.70.0",
     "@mastra/mcp": "0.14.5",
-    "@mastra/memory": "0.15.13",
+    "@mastra/memory": "1.32.0",
     "zod": "4.6.5"
   },
   "devDependencies": {

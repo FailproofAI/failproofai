@@ -57,9 +57,10 @@
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
-import { effectiveAuthority, type HooksConfig } from "./policy-types";
+import type { HooksConfig } from "./policy-types";
 
 /** Anything that carries an authority declaration: a catalog entry, a pack entry, a cloud record. */
 export interface AuthorityRecord {
@@ -81,9 +82,21 @@ export interface ReviewableCoverage {
 export const RETAKE_PACK_COMMAND = "failproofai policies add FailproofAI/policies";
 
 /**
- * Count a policy set, by EFFECTIVE authority — `effectiveAuthority`, the same
- * §7 contract `jev-review.ts` asks at evaluation time, so this cannot report a
- * clear that would not happen or hide one that would.
+ * Count a policy set by the authority it would REGISTER with —
+ * `resolvePolicyAuthority`, the rule `registerPolicy` applies — so this cannot
+ * report a clear that would not happen or hide one that would.
+ *
+ * Deliberately not `effectiveAuthority`, the looser §7 contract `jev-review.ts`
+ * asks at evaluation time. That one needs a single non-empty name and is right
+ * where it is asked, because by then the registry holds a `reviewedBy` that
+ * registration already cleaned, and on cleaned records the two rules agree.
+ * Nothing counted HERE has been through registration: these records are read
+ * straight off a pack manifest, this build's catalog and the cloud deployment.
+ * So a declaration naming a check this build does not have — `reviewedBy:
+ * ["future-check"]`, which is what a pack built against a NEWER semantic set
+ * looks like here — is reviewable to the loose rule and hard in the registry,
+ * and counting it would report a clear that can never happen while
+ * `reviewableProblem` stayed silent about the machine it exists to warn.
  */
 export function countReviewable(policies: Iterable<AuthorityRecord>): {
   enabled: number;
@@ -93,7 +106,7 @@ export function countReviewable(policies: Iterable<AuthorityRecord>): {
   let reviewable = 0;
   for (const p of policies) {
     enabled += 1;
-    if (effectiveAuthority(p) === "reviewable") reviewable += 1;
+    if (resolvePolicyAuthority(p).authority === "reviewable") reviewable += 1;
   }
   return { enabled, reviewable };
 }

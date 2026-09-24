@@ -21,6 +21,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parsePackPolicy } from "@/src/hooks/pack-manifest";
+import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "@/src/hooks/policy-authority";
 import { POLICY_CATALOG } from "@/src/hooks/policy-catalog";
 import {
   RETAKE_PACK_COMMAND,
@@ -82,10 +83,10 @@ describe("counting what Jev may clear", () => {
     expect(reviewableProblem(coverage)).toBeNull();
   });
 
-  it("counts by EFFECTIVE authority, so a declaration that does not hold does not count", () => {
-    // Each of these asks to be reviewable and is hard anyway
-    // (`effectiveAuthority`): the self-protection guard, an empty `reviewedBy`,
-    // and a `reviewedBy` that is not a list of names.
+  it("counts by the authority a policy will REGISTER with, so a declaration that does not hold does not count", () => {
+    // Each of these asks to be reviewable and is hard anyway: the
+    // self-protection guard, an empty `reviewedBy`, and a `reviewedBy` that is
+    // not a list of names. Both rules refuse all four.
     const wishful = [
       { authority: "reviewable", reviewedBy: ["secret-exposure"], alwaysOn: true },
       { authority: "reviewable", reviewedBy: [] },
@@ -93,6 +94,32 @@ describe("counting what Jev may clear", () => {
       { authority: "reviewable" },
     ];
     expect(countReviewable(wishful)).toEqual({ enabled: 4, reviewable: 0 });
+  });
+
+  it("counts a reviewer this build does not have as hard, and says so", () => {
+    // The case where the two rules disagree, and the only one that could make
+    // this module lie: a pack built against a NEWER semantic set, where
+    // `future-check` is a reviewer, installed on this build, where it is not.
+    // `effectiveAuthority` — the §7 contract asked at EVALUATION time, of
+    // records registration has already cleaned — sees one usable name and says
+    // reviewable. `resolvePolicyAuthority`, which is what `registerPolicy`
+    // stores, makes the whole declaration hard, because `reviewedBy` is a
+    // conjunction and this build cannot ask that check at all. The count has to
+    // follow registration: counting these as clears reports a clear that can
+    // never happen, and silences the one diagnostic that would have explained
+    // why `cleared` says `nothing` forever.
+    const fromANewerPack = [
+      { authority: "reviewable", reviewedBy: ["future-check"] },
+      { authority: "reviewable", reviewedBy: ["secret-exposure", "future-check"] },
+    ];
+    expect(SEMANTIC_REVIEWER_NAMES.has("future-check")).toBe(false);
+    expect(fromANewerPack.map((p) => effectiveAuthority(p))).toEqual(["reviewable", "reviewable"]);
+    expect(fromANewerPack.map((p) => resolvePolicyAuthority(p).authority)).toEqual(["hard", "hard"]);
+
+    const coverage = { ...countReviewable(fromANewerPack), customFiles: 0 };
+    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0 });
+    expect(reviewableSummary(coverage)).toBe("0 of 2 enabled policies are reviewable.");
+    expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
 
   it("says there is nothing to clear, rather than blaming a pack, for an empty set", () => {
@@ -192,6 +219,24 @@ describe("surveying a real machine", () => {
     const coverage = surveyReviewableCoverage(project);
     expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 7, customFiles: 0 });
     expect(reviewableProblem(coverage)).toBeNull();
+  });
+
+  it("a pack built against a NEWER semantic set: hard here, with the remedy", () => {
+    // Version skew in the other direction, end to end through the real
+    // manifest parser (which keeps the names verbatim — whether a name is a
+    // check is a property of the BUILD reading it). Registration will make
+    // every one of these hard, so the count must say zero and the diagnostic
+    // must fire: this is the machine whose `cleared` says `nothing` forever.
+    writeConfig({ enabledPolicies: [] });
+    installPack(
+      PACKABLE.map((p) =>
+        effectiveAuthority(p) === "reviewable" ? { ...p, reviewedBy: ["future-check"] } : p,
+      ) as unknown as Array<Record<string, unknown>>,
+    );
+
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0 });
+    expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
 
   it("counts only what a pack's owner actually took from it", () => {

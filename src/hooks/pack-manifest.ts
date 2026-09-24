@@ -41,10 +41,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { version as cliVersion } from "../../package.json";
 import { packsDir, packsInstalledFile } from "./fp-home";
 import { resolveManagedPath } from "./cloud-managed-policies";
 import { authorityFieldsOf } from "./policy-authority";
-import type { PolicyCatalogEntry } from "./policy-types";
+import { compareVersions } from "./semver-precedence";
+// Strings only, and the one semantic module this file may touch: it runs on
+// every hook event, and the predicate bodies pull in all sixteen of Jev's
+// prompts. See the header of `semantic/precondition-names.ts`.
+import { isPackPreconditionName, PACK_PRECONDITION_NAMES } from "./semantic/precondition-names";
+import type { SemanticPolicyDeclaration, SemanticProbeDeclaration, PolicyCatalogEntry } from "./policy-types";
 import type { PolicyEffect } from "./cloud-managed-policies";
 
 /** Manifest schemas this reader accepts. */
@@ -83,6 +89,52 @@ export const PACK_COMMIT_RE = /^[0-9a-f]{7,40}$/;
  */
 const PACK_POLICY_NAME_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
+/**
+ * A semantic probe's id. Lowercase and underscore only, because it is half of a
+ * Jev question id (`<policy>.<probe>`) that `decide.ts` reads answers back by.
+ */
+const PROBE_ID_RE = /^[a-z][a-z0-9_]{0,31}$/;
+
+/**
+ * Probe ids `decide.ts` has already taken in the answer map: `<policy>.exempt`
+ * is the documented-exception question and `<policy>.user_asked` is the "did the
+ * human ask for this" one. A probe claiming either name would not collide
+ * loudly — it would OVERWRITE that question in the compiled request, so the
+ * exemption or the override silently becomes whatever the pack wrote.
+ */
+const RESERVED_PROBE_IDS: ReadonlySet<string> = new Set(["exempt", "user_asked"]);
+
+const SEMANTIC_TOOL_CLASSES: ReadonlySet<string> = new Set(["shell", "write", "read", "network", "other"]);
+
+/**
+ * Cheap count guards on the question set, applied where the manifest is read.
+ *
+ * They are NOT the real budget. Every probe is a question in one Jev request,
+ * and what that request has to fit is a character budget
+ * (`MAX_REQUEST_CHARS - MAX_STATE_CHARS`) — which these counts cannot express,
+ * because a probe is between a sentence and a paragraph long. Counting to 24
+ * and 6 here rejects the obviously abusive shapes for free, on the hook path,
+ * without reaching a semantic module; `semantic/pack-policies.ts` owns the
+ * budget that actually decides, measured the way `compile.ts` measures it.
+ *
+ * There is deliberately no total probe count across packs. An earlier draft had
+ * one (80), and at the real average probe length that ceiling permits a question
+ * set 23,032 characters over what one request can carry — a cap that reads as a
+ * guarantee and is not one.
+ */
+export const MAX_SEMANTIC_POLICIES_PER_PACK = 24;
+/** Per-policy conjunction width. The builtin set's widest policy uses three probes. */
+export const MAX_PROBES_PER_POLICY = 6;
+const MAX_TITLE_CHARS = 120;
+const MAX_INSTRUCTIONS_CHARS = 600;
+const MAX_CRITERION_CHARS = 300;
+const MAX_GUIDANCE_CHARS = 600;
+
+/** A semantic policy as a manifest carries it: validated, normalized, code-free. */
+export type SemanticManifestEntry = SemanticPolicyDeclaration & {
+  probes: SemanticProbeDeclaration[];
+};
+
 export interface InstalledPackRecord {
   id: string;
   version: string;
@@ -95,6 +147,25 @@ export interface InstalledPackRecord {
   commit?: string;
   effect?: string;
   policies?: unknown;
+  /**
+   * The pack's semantic (Jev) policies, as the manifest declared them.
+   *
+   * `unknown` like `policies`, and optional like it is not: a pack published
+   * before this field existed carries none, and every one of them must keep
+   * parsing. A pack that declares at least one REPLACES the compiled-in
+   * semantic set wholesale — see `semantic/pack-policies.ts`.
+   */
+  semantic?: unknown;
+  /**
+   * The oldest CLI that may run this pack, as a semver string.
+   *
+   * Optional, and the ordering of its release is the reason it has to exist at
+   * all: a CLI with no support for this field ignores it AND ignores `semantic`,
+   * so it installs a pack whose Jev half does nothing and says so nowhere. A
+   * publisher can only protect against that by naming a minimum that the old
+   * CLI cannot read — which is why this ships before any pack declares one.
+   */
+  minCliVersion?: string;
   /**
    * Which of the pack's policies to register. Absent means ALL of them.
    *
@@ -132,6 +203,22 @@ export interface ResolvedPack {
   effect: PolicyEffect;
   /** The pack's own catalog, in declared order. */
   policies: PolicyCatalogEntry[];
+  /**
+   * The pack's semantic policies, in declared order — EMPTY when it declared
+   * none, which is what every pack published before this release says. Entries
+   * that failed validation are not here; they were dropped, and the reason is in
+   * `PackReadResult.warnings`.
+   *
+   * `readInstalledPacks` always sets it, so on a record that came from a
+   * manifest this is an array. It is optional only so that a hand-built record —
+   * the loader fixtures, `pack-failclosed`'s guards — does not have to name a
+   * field it has no opinion about. Read it through {@link packSemantic} rather
+   * than `?? []` at each site, so "absent" and "empty" cannot come to mean
+   * different things.
+   */
+  semantic?: SemanticManifestEntry[];
+  /** The minimum CLI this pack declared, once it has been checked against ours. */
+  minCliVersion?: string;
   /** Selected policy names, or null when the user took the whole pack. */
   enabled: string[] | null;
   /** Agent CLIs this pack guards, or null for all of them. */
@@ -172,6 +259,24 @@ export interface PackReadResult {
   packs: ResolvedPack[];
   /** Every pack that was declared and refused, and why. Never silently dropped. */
   errors: PackError[];
+  /**
+   * What was dropped from a pack that LOADED anyway, and why: a malformed
+   * semantic policy, an unknown precondition name, one entry past the cap, a
+   * `minCliVersion` nobody can compare.
+   *
+   * A SEPARATE channel from `errors`, and it has to be. An entry in `errors`
+   * means a pack was refused, and `pack-failclosed.ts` turns that into a deny
+   * for every event the missing policies claimed. Everything here is the
+   * opposite situation: the pack's regex policies are registered and enforcing,
+   * and what was lost is a reviewer (so a deny can no longer be CLEARED) or an
+   * unreadable version claim. Filing either as a pack failure would deny a
+   * machine over a typo in the half of the system whose job is to let more real
+   * work through.
+   *
+   * Absent rather than an empty array when there is nothing to say, so the
+   * common result stays the exact shape it has always been.
+   */
+  warnings?: string[];
 }
 
 export function packsRoot(): string {
@@ -227,11 +332,12 @@ export function hasInstalledPacks(): boolean {
   }
 }
 
-function installedFilePath(): string {
+export function installedFilePath(): string {
   return process.env.FAILPROOFAI_PACK_DIR
     ? resolve(process.env.FAILPROOFAI_PACK_DIR, "installed.json")
     : packsInstalledFile();
 }
+
 
 /** Validate one serialized catalog entry carried by a pack. */
 export function parsePackPolicy(packId: string, value: unknown, index: number): PolicyCatalogEntry {
@@ -293,7 +399,277 @@ export function parsePackPolicy(packId: string, value: unknown, index: number): 
   return raw as unknown as PolicyCatalogEntry;
 }
 
-function parsePack(root: string, value: unknown): ResolvedPack {
+/**
+ * What this build makes of a pack's declared `minCliVersion`.
+ *
+ * Three outcomes, not two, because "the pack states no requirement" and "the
+ * pack states one nobody can read" are different facts and only one of them is
+ * worth saying out loud.
+ */
+export type MinCliVerdict =
+  /** Satisfied, or nothing was claimed. `declared` is present only when it was. */
+  | { kind: "satisfied"; declared?: string }
+  /** The field was there and unusable. It is DROPPED; the pack still loads. */
+  | { kind: "unreadable"; reason: string }
+  /** This CLI is genuinely older than the pack requires. The pack is refused. */
+  | { kind: "too-old"; reason: string };
+
+/**
+ * Judge one pack's `minCliVersion` against the running CLI — the ONE place that
+ * decision is written down.
+ *
+ * ## Absent satisfies
+ *
+ * Every pack published before this release declares nothing, and those packs
+ * work. Treating silence as an unmet requirement would refuse them all, and a
+ * refused `enforce` pack denies every tool call its policies cover
+ * (`pack-failclosed.ts`) — a machine-wide lockout produced by an upgrade.
+ *
+ * ## Unreadable also satisfies, and says so
+ *
+ * The rule `parsePackPolicy` already applies to a malformed `authority`: drop
+ * the field, record it, do not refuse the pack. A publisher's typo in a version
+ * string must not be able to fail somebody's machine closed. It is recorded
+ * rather than ignored, because a requirement that quietly evaporates is how a
+ * pack ends up enforcing less than its README says.
+ *
+ * This is the one place the two differ from each other, which is why neither is
+ * a boolean: a caller reading `false` to refuse would ignore the typo, and one
+ * reading `!== true` would refuse the world.
+ *
+ * ## Too old refuses, and that is the field's entire purpose
+ *
+ * A CLI too old to know this field ignores it AND ignores `semantic` with it,
+ * installing a pack whose Jev half does nothing on a machine that reports
+ * healthy. Only a build new enough to have this check can act on the
+ * requirement, so here it acts. It rides the ordinary `PackError` path, which
+ * carries `effect` and `clis`, so refusing an `observe` pack does not make the
+ * machine deny on its behalf.
+ */
+export function checkPackMinCliVersion(
+  packId: string,
+  declared: unknown,
+  current: string = cliVersion,
+): MinCliVerdict {
+  if (declared === undefined) return { kind: "satisfied" };
+  const ordered = compareVersions(current, declared);
+  if (ordered === null) {
+    return {
+      kind: "unreadable",
+      reason:
+        `pack ${packId} declares minCliVersion ${JSON.stringify(declared)}, which is not a version this CLI can ` +
+        `compare against its own (${current}) — the requirement was ignored`,
+    };
+  }
+  if (ordered < 0) {
+    return {
+      kind: "too-old",
+      reason:
+        `pack ${packId} needs failproofai ${String(declared)} or newer and this is ${current} — ` +
+        "run `npm i -g failproofai && failproofai update`",
+    };
+  }
+  return { kind: "satisfied", declared: declared as string };
+}
+
+/** A bounded, non-empty string field. The cap is part of the envelope budget, not taste. */
+function boundedString(where: string, field: string, value: unknown, max: number): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${where} is missing ${field}`);
+  }
+  if (value.length > max) {
+    throw new Error(`${where} has a ${field} of ${value.length} characters, over the ${max}-character cap`);
+  }
+  return value;
+}
+
+/**
+ * One probe (or the `exempt` question), validated.
+ *
+ * `forcedId` is how `exempt` gets its id: the answer map keys it
+ * `<policy>.exempt` whatever the manifest wrote, so the field is overwritten
+ * rather than checked. Refusing a mismatch there would fail a pack over a
+ * value that has no effect.
+ */
+function parseSemanticProbe(where: string, value: unknown, forcedId: string | null): SemanticProbeDeclaration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${where} is not an object`);
+  const raw = value as Record<string, unknown>;
+
+  let id: string;
+  if (forcedId !== null) {
+    id = forcedId;
+  } else {
+    if (typeof raw.id !== "string" || !PROBE_ID_RE.test(raw.id)) {
+      throw new Error(`${where} has an unsafe id ${JSON.stringify(raw.id)}`);
+    }
+    if (RESERVED_PROBE_IDS.has(raw.id)) {
+      throw new Error(`${where} uses the reserved probe id ${JSON.stringify(raw.id)}`);
+    }
+    id = raw.id;
+  }
+
+  const instructions = boundedString(where, "instructions", raw.instructions, MAX_INSTRUCTIONS_CHARS);
+  if (raw.criteria === undefined) return { id, instructions };
+  if (!raw.criteria || typeof raw.criteria !== "object" || Array.isArray(raw.criteria)) {
+    throw new Error(`${where} has criteria that is not an object`);
+  }
+  const criteria = raw.criteria as Record<string, unknown>;
+  // Both halves or neither. Jev answers the question as written, and a `true`
+  // description with no `false` one is a question with only one side explained —
+  // the authoring mistake the criteria exist to prevent.
+  return {
+    id,
+    instructions,
+    criteria: {
+      true: boundedString(where, "criteria.true", criteria.true, MAX_CRITERION_CHARS),
+      false: boundedString(where, "criteria.false", criteria.false, MAX_CRITERION_CHARS),
+    },
+  };
+}
+
+/**
+ * Validate one serialized SEMANTIC policy carried by a pack. Sibling of
+ * {@link parsePackPolicy}, and the rules are its rules where they overlap.
+ *
+ * It THROWS on every violation and the CALLER decides what a throw costs.
+ * `readInstalledPacks` drops the one entry and records why, because a semantic
+ * policy is what CLEARS a reviewable regex verdict: losing one leaves the regex
+ * block standing, which is noisier and never weaker. `failproofai publish`
+ * fails the whole build on the same throw, because nothing is installed yet and
+ * refusing there costs nobody anything.
+ *
+ * The returned entry is NORMALIZED, unlike a regex entry — which is returned
+ * as-is so a field this build does not know about survives into `params`. There
+ * is no equivalent here: the entry's entire use is to be compiled into a
+ * question set, so a field nothing reads is a field that would be published,
+ * digest-pinned and then ignored.
+ */
+export function parsePackSemanticPolicy(packId: string, value: unknown, index: number): SemanticManifestEntry {
+  const where = `${packId} semantic policy #${index}`;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${where} is not an object`);
+  const raw = value as Record<string, unknown>;
+
+  const name = raw.name;
+  if (typeof name !== "string" || !PACK_POLICY_NAME_RE.test(name)) {
+    throw new Error(`${where} has an unsafe name ${JSON.stringify(name)}`);
+  }
+  if ("alwaysOn" in raw) {
+    // The same refusal `parsePackPolicy` makes, for the same reason, and it has
+    // to be restated rather than inherited: nothing else stops a semantic entry
+    // from carrying the field, and a reader that ever honoured it would be
+    // honouring it on a downloaded file no local command can switch off.
+    throw new Error(`${where} declares alwaysOn, which packs may not set`);
+  }
+  const title = boundedString(`${packId} semantic policy ${name}`, "title", raw.title, MAX_TITLE_CHARS);
+  const scope = `${packId} semantic policy ${name}`;
+
+  if (!Array.isArray(raw.appliesTo) || raw.appliesTo.length === 0) {
+    throw new Error(`${scope} has no appliesTo tool classes`);
+  }
+  const unknownClass = raw.appliesTo.find((c) => typeof c !== "string" || !SEMANTIC_TOOL_CLASSES.has(c));
+  if (unknownClass !== undefined) {
+    throw new Error(
+      `${scope} applies to ${JSON.stringify(unknownClass)}, which is not a tool class ` +
+        `(${[...SEMANTIC_TOOL_CLASSES].join(", ")})`,
+    );
+  }
+
+  if (raw.mode !== "deny" && raw.mode !== "instruct") {
+    throw new Error(`${scope} has mode ${JSON.stringify(raw.mode)}, which must be "deny" or "instruct"`);
+  }
+  // REQUIRED, with no default. It decides whether a prompt injection that talks
+  // the human's words back at us can clear the policy, so a default here would
+  // be a security decision made by absence — and the direction it fell would
+  // depend on which of the two engines read the entry.
+  if (typeof raw.userCanOverride !== "boolean") {
+    throw new Error(`${scope} is missing userCanOverride, which has no default`);
+  }
+
+  if (!Array.isArray(raw.probes) || raw.probes.length === 0) {
+    throw new Error(`${scope} declares no probes`);
+  }
+  if (raw.probes.length > MAX_PROBES_PER_POLICY) {
+    throw new Error(`${scope} declares ${raw.probes.length} probes, over the cap of ${MAX_PROBES_PER_POLICY}`);
+  }
+  const probes = raw.probes.map((p, i) => parseSemanticProbe(`${scope} probe #${i}`, p, null));
+  const ids = new Set<string>();
+  for (const probe of probes) {
+    if (ids.has(probe.id)) throw new Error(`${scope} declares probe ${probe.id} twice`);
+    ids.add(probe.id);
+  }
+
+  const exempt = raw.exempt === undefined ? undefined : parseSemanticProbe(`${scope} exempt`, raw.exempt, "exempt");
+
+  if (raw.precondition !== undefined && !isPackPreconditionName(raw.precondition)) {
+    throw new Error(
+      `${scope} names precondition ${JSON.stringify(raw.precondition)}, which this build does not have ` +
+        `(${PACK_PRECONDITION_NAMES.join(", ")})`,
+    );
+  }
+
+  const guidance = boundedString(scope, "guidance", raw.guidance, MAX_GUIDANCE_CHARS);
+
+  return {
+    name,
+    title,
+    appliesTo: raw.appliesTo as SemanticManifestEntry["appliesTo"],
+    mode: raw.mode,
+    userCanOverride: raw.userCanOverride,
+    probes,
+    ...(exempt ? { exempt } : {}),
+    ...(raw.precondition !== undefined ? { precondition: raw.precondition } : {}),
+    guidance,
+  };
+}
+
+/** A pack's semantic entries. Absent and empty are the same answer: it declares none. */
+export function packSemantic(pack: Pick<ResolvedPack, "semantic">): ReadonlyArray<SemanticManifestEntry> {
+  return pack.semantic ?? [];
+}
+
+/** The questions one entry compiles to: one per probe, plus one for the exemption. */
+export function semanticQuestions(
+  entry: Pick<SemanticManifestEntry, "probes" | "exempt">,
+): ReadonlyArray<SemanticProbeDeclaration> {
+  return entry.exempt ? [...entry.probes, entry.exempt] : entry.probes;
+}
+
+/**
+ * The semantic entries a pack declared, with the unusable ones dropped.
+ *
+ * Per ENTRY, not per pack: one malformed question set must not take the rest of
+ * a publisher's semantic policies with it, for the same reason one malformed
+ * pack does not take the other packs with it.
+ */
+function parsePackSemantic(packId: string, value: unknown, warnings: string[]): SemanticManifestEntry[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    warnings.push(`pack ${packId} semantic is not an array, so none of it was loaded`);
+    return [];
+  }
+  const entries: SemanticManifestEntry[] = [];
+  const names = new Set<string>();
+  for (const [index, raw] of value.entries()) {
+    if (entries.length >= MAX_SEMANTIC_POLICIES_PER_PACK) {
+      warnings.push(
+        `pack ${packId} declares more than ${MAX_SEMANTIC_POLICIES_PER_PACK} semantic policies; ` +
+          `the ${value.length - MAX_SEMANTIC_POLICIES_PER_PACK} past that cap were dropped`,
+      );
+      break;
+    }
+    try {
+      const entry = parsePackSemanticPolicy(packId, raw, index);
+      if (names.has(entry.name)) throw new Error(`pack ${packId} declares semantic policy ${entry.name} twice`);
+      names.add(entry.name);
+      entries.push(entry);
+    } catch (err) {
+      warnings.push(errText(err));
+    }
+  }
+  return entries;
+}
+
+function parsePack(root: string, value: unknown, warnings: string[]): ResolvedPack {
   if (!value || typeof value !== "object") throw new Error("pack entry is not an object");
   const raw = value as InstalledPackRecord;
 
@@ -307,6 +683,12 @@ function parsePack(root: string, value: unknown): ResolvedPack {
   // Recorded before anything that can fail, so a later throw can still say what
   // this pack was for.
   const effect = identity.effect;
+
+  // Checked before the artifact is read: there is no point hashing bytes this
+  // build may have just been told it must not run.
+  const minCli = checkPackMinCliVersion(identity.id, raw.minCliVersion);
+  if (minCli.kind === "too-old") throw new Error(minCli.reason);
+  if (minCli.kind === "unreadable") warnings.push(minCli.reason);
 
   const path = resolveManagedPath(root, raw.entry);
   const actual = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -356,6 +738,8 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     sha256: raw.sha256,
     effect,
     policies,
+    semantic: parsePackSemantic(identity.id, raw.semantic, warnings),
+    ...(minCli.kind === "satisfied" && minCli.declared ? { minCliVersion: minCli.declared } : {}),
     enabled,
   };
 }
@@ -404,6 +788,7 @@ export function readInstalledPacks(): PackReadResult {
   const root = packsRoot();
   const packs: ResolvedPack[] = [];
   const errors: PackError[] = [];
+  const warnings: string[] = [];
   const seen = new Set<string>();
 
   for (const entry of manifest.packs) {
@@ -411,11 +796,16 @@ export function readInstalledPacks(): PackReadResult {
       entry && typeof entry === "object" && typeof (entry as InstalledPackRecord).id === "string"
         ? (entry as InstalledPackRecord).id
         : null;
+    // Collected per pack and merged only on success. A pack that throws after
+    // some of its semantic entries were dropped is refused whole, and reporting
+    // the drops as well would describe a policy set that is not loaded at all.
+    const packWarnings: string[] = [];
     try {
-      const pack = parsePack(root, entry);
+      const pack = parsePack(root, entry, packWarnings);
       if (seen.has(pack.id)) throw new Error(`duplicate pack id ${pack.id}`);
       seen.add(pack.id);
       packs.push(pack);
+      warnings.push(...packWarnings);
     } catch (err) {
       const rec = entry as InstalledPackRecord | null;
       const declaredEffect =
@@ -438,7 +828,7 @@ export function readInstalledPacks(): PackReadResult {
       });
     }
   }
-  return { packs, errors };
+  return { packs, errors, ...(warnings.length > 0 ? { warnings } : {}) };
 }
 
 /** Policy entries that at least carry a name and a match, for narrowing a deny. */

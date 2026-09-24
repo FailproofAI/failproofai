@@ -37,6 +37,30 @@
  */
 import type { PolicyCatalogEntry, PolicyParamsSchema } from "./policy-types";
 
+/**
+ * ── On `authority` and `reviewedBy` in this file ──
+ *
+ * `reviewable` means Jev may CLEAR this policy's verdict, and only through the
+ * semantic checks named here — every one of which must have been asked.
+ *
+ * Both ways of getting a pairing wrong are silent, and the asymmetry between
+ * them is what decides these rows:
+ *
+ *   - a check that is never ASKED never clears, so the block becomes permanent
+ *   - a check that is asked and does not FIRE answers "no concern", and no
+ *     concern CLEARS — so naming a check that does not model this policy's
+ *     shapes does not review the policy, it switches it off for exactly the
+ *     inputs that check does not understand
+ *
+ * And an `instruct`-mode check can never answer deny. So the test is not "can
+ * the named reviewer keep this block" but "is there anything left that can
+ * deny": a deny-mode name in the conjunction, or a deny-mode check covering the
+ * same concern independently, or a policy that never denied in the first place.
+ * `block-work-on-main` fails all three and is hard for that reason.
+ *
+ * Each row's own comment says which of those applies. The reasoning was worked
+ * out policy by policy in FailproofAI/jev-policies' DECISIONS.md.
+ */
 export const POLICY_CATALOG: PolicyCatalogEntry[] = [
   {
     name: "sanitize-jwt",
@@ -143,6 +167,17 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // PermissionRequest is Codex's escalation-approval event; fire the same
     // sudo guard there so Codex sandbox bypasses are blocked too.
     match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    // Hard, although `privilege-escalation` is deny-mode and its probe is a strict superset
+    // of this matcher — so the pairing would pass the "is there anything left that can
+    // deny" test. The reason it stays hard is the OTHER clearing path: that check is
+    // `userCanOverride: true`, so a human naming the operation clears it, and this policy
+    // is `defaultEnabled: true`. Reviewable would therefore turn "sudo is blocked" into
+    // "sudo is blocked unless you asked for it" on every machine with Jev configured.
+    // Measured against what that buys: the false-block reduction on the labelled corpus
+    // came from `block-read-outside-cwd`, `protect-env-vars` and `block-env-files`, which
+    // were already reviewable. Sudo contributed nothing to it, so the trade is a headline
+    // guarantee for no measured gain. The nine opt-in policies that ARE reviewable here
+    // reach only people who switched them on deliberately.
     authority: "hard",
     defaultEnabled: true,
     category: "Dangerous Commands",
@@ -160,6 +195,12 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "`curl ... | sh` runs unverified remote code on your machine.",
     description: "Block piping downloads to shell",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // Hard, for the same reason as `block-sudo` above: the `remote-code-execution` pairing is
+    // sound, but the check is overridable by an explicit request and this policy is on by
+    // default, so reviewable would mean "piping a download to a shell is blocked unless you
+    // asked for it". The substring false positive it has — `grep -rn "curl x | sh"` is
+    // denied — is real and is the argument for pairing it; it is also rare enough not to
+    // pay for weakening the default.
     authority: "hard",
     defaultEnabled: true,
     category: "Dangerous Commands",
@@ -170,7 +211,13 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Catches catastrophic `rm -rf /` and Windows equivalents.",
     description: "Prevent catastrophic deletions",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: `destructive-deletion` is deny-mode, and its second probe is this
+    // policy's path-depth heuristic done properly — `irreplaceable`'s false criteria
+    // (build output, dist/, caches, node_modules, virtualenvs, coverage, temp files) is
+    // exactly this heuristic's error term. `rm -rf /` keeps both probes true and stays
+    // denied; `rm -rf node_modules` is the false block this pairing exists to remove.
+    authority: "reviewable",
+    reviewedBy: ["destructive-deletion"],
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {
@@ -209,7 +256,12 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "kubectl can change live cluster state — gated unless allow-listed.",
     description: "Block kubectl commands (Kubernetes cluster mutations)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: `production-infra-change` is deny-mode and names kubectl explicitly. This
+    // policy denies the whole CLI, read-only subcommands included; the probe's false
+    // criteria is the split a regex cannot make — get, list, describe, logs, status,
+    // plan, diff, validate, whoami, --dry-run.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -226,7 +278,10 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Terraform mutates real infrastructure — gated unless allow-listed.",
     description: "Block terraform and tofu (OpenTofu) commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: same pairing as `block-kubectl`; the probe names terraform and tofu, and
+    // clears `terraform plan` and `terraform validate`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -243,7 +298,10 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "AWS CLI can spend money or break prod — gated.",
     description: "Block aws CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: same pairing; the probe names aws, and clears `aws sts
+    // get-caller-identity` and `aws s3 ls`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -260,7 +318,10 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "gcloud can spend money or break prod — gated.",
     description: "Block gcloud (Google Cloud) CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: same pairing; the probe names gcloud, and clears `gcloud auth list` and
+    // `gcloud config list`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -277,7 +338,9 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "az can spend money or break prod — gated.",
     description: "Block az (Azure) CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: same pairing; the probe names az, and clears `az account show`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -294,7 +357,10 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Helm releases mutate cluster state — gated.",
     description: "Block helm commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: same pairing; the probe names helm, and clears `helm list` and
+    // `helm status`.
+    authority: "reviewable",
+    reviewedBy: ["production-infra-change"],
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -328,7 +394,13 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
     description: "Block writing secret key files",
     match: { events: ["PreToolUse"], toolNames: ["Write"] },
-    authority: "hard",
+    // Reviewable: `secret-exposure` is deny-mode and `write` is in its `appliesTo`, so a
+    // real private key still comes back deny. What clears is this matcher's substring
+    // problem — `/credentials/` and `id_rsa` unanchored against a whole path, which
+    // catches `src/auth/credentials.ts`. `credential-exfiltration` would have been a
+    // dead name here: it applies to shell and network, and a file write is neither.
+    authority: "reviewable",
+    reviewedBy: ["secret-exposure"],
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {
@@ -362,7 +434,13 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Force-pushes rewrite history and can clobber teammates' work.",
     description: "Prevent force-pushing to any branch",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "hard",
+    // Reviewable: `git-history-rewrite` is deny-mode and its probe is a superset of this
+    // matcher — it counts `--force-with-lease` (which `isForcePushFlag` deliberately
+    // treats as safe), a `+refspec`, and a remote-branch delete, and says `git -C dir`
+    // and an absolute binary path change nothing. A real force-push stays blocked; what
+    // clears is the user asking to force-push their own branch.
+    authority: "reviewable",
+    reviewedBy: ["git-history-rewrite"],
     defaultEnabled: false,
     category: "Git",
   },

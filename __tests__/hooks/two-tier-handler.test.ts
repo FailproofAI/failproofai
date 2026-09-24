@@ -376,10 +376,37 @@ describe("a hard deny", () => {
   });
 
   it("stands even when Jev would have allowed it", async () => {
+    // `block-sudo` rather than `block-rm-rf`: this case is about a HARD policy
+    // outlasting an allow, and `block-rm-rf` is `reviewable` now — a Jev allow
+    // clearing it is the feature, not a regression. The command also matches
+    // the reviewable `block-rm-rf`, which is the point: the most-severe merge
+    // keeps the hard deny even though the other half of it was clearable.
     jevConfig = CFG;
+    respond = answers();
+    const { outcome } = await bash("sudo rm -rf /var/lib/app");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-sudo");
+  });
+
+  it("a reviewable deletion is NOT cleared when the check itself denies", async () => {
+    // The assertion the `block-rm-rf` -> `destructive-deletion` pairing earns.
+    // Marking the policy reviewable is only safe because that check answers
+    // both of its probes high on a catastrophic target: `rm -rf /` destroys,
+    // and what it destroys is not regenerable. A clear here would mean the mark
+    // had turned the policy off rather than handed it to Jev.
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
     const { outcome } = await bash("rm -rf /");
     expect(outcome.evaluation?.decision).toBe("deny");
-    expect(outcome.evaluation?.policyName).toBe("failproofai/block-rm-rf");
+  });
+
+  it("a reviewable deletion IS cleared when the check sees regenerable data", async () => {
+    // The other half, and the reason the mark exists: the same policy matches
+    // `rm -rf node_modules`, which is the false block it was costing.
+    jevConfig = CFG;
+    respond = answers();
+    const { outcome } = await bash("rm -rf node_modules");
+    expect(outcome.evaluation?.decision).not.toBe("deny");
   });
 
   it("the always-on self-protection guard stays hard even when declared reviewable", async () => {

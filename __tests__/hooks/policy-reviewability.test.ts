@@ -12,7 +12,7 @@
  * thing. Before this module nothing on any surface said so.
  *
  * So: a pack-shaped policy set with no authority fields must report zero-of-N
- * with the remedy, this build's builtins must report the six Jev may clear,
+ * with the remedy, this build's builtins must report the fifteen Jev may clear,
  * and neither may change what any policy is allowed to do.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -34,7 +34,7 @@ import { effectiveAuthority } from "@/src/hooks/policy-types";
 
 /** Every builtin a pack may carry: `alwaysOn` is refused in a pack manifest. */
 const PACKABLE = POLICY_CATALOG.filter((p) => !p.alwaysOn);
-/** The six in this build; pinned by `policy-authority-table.test.ts` too. */
+/** The fifteen in this build; pinned by `policy-authority-table.test.ts` too. */
 const REVIEWABLE_BUILTINS = POLICY_CATALOG.filter((p) => effectiveAuthority(p) === "reviewable");
 
 /**
@@ -64,19 +64,31 @@ describe("counting what Jev may clear", () => {
     expect(problem).toContain(RETAKE_PACK_COMMAND);
   });
 
-  it("reports the six reviewable builtins, and diagnoses nothing", () => {
+  it("reports the fifteen reviewable builtins, and diagnoses nothing", () => {
     const coverage = { ...countReviewable(POLICY_CATALOG), customFiles: 0 };
-    expect(coverage.reviewable).toBe(6);
+    expect(coverage.reviewable).toBe(15);
     expect(REVIEWABLE_BUILTINS.map((p) => p.name)).toEqual([
+      // Catalog order. The nine after `block-read-outside-cwd` arrived with the pack
+      // work; `block-sudo` and `block-curl-pipe-sh` pass the same pairing test and are
+      // deliberately absent, being on by default with overridable reviewers.
       "protect-env-vars",
       "block-env-files",
       "block-read-outside-cwd",
+      "block-rm-rf",
+      "block-kubectl",
+      "block-terraform",
+      "block-aws-cli",
+      "block-gcloud",
+      "block-az-cli",
+      "block-helm",
+      "block-secrets-write",
+      "block-force-push",
       "warn-git-amend",
       "warn-destructive-sql",
       "warn-global-package-install",
     ]);
     expect(reviewableSummary(coverage)).toBe(
-      `6 of ${POLICY_CATALOG.length} enabled policies are reviewable: ` +
+      `15 of ${POLICY_CATALOG.length} enabled policies are reviewable: ` +
         "Jev may clear a deny or an instruction from those, and from no others.",
     );
     expect(reviewableProblem(coverage)).toBeNull();
@@ -199,7 +211,7 @@ describe("surveying a real machine", () => {
   it("a pack from before this release: zero of N, with the remedy", () => {
     // The machine's own `enabledPolicies` is deliberately full: once a pack is
     // installed the migration shim stops registering builtins, so counting them
-    // here would report six clears that cannot happen.
+    // here would report fifteen clears that cannot happen.
     writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
     installPack(packEntriesWithoutAuthority() as unknown as Array<Record<string, unknown>>);
 
@@ -211,12 +223,12 @@ describe("surveying a real machine", () => {
     expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
 
-  it("a pack built by this release: the six it marks, and no complaint", () => {
+  it("a pack built by this release: the fifteen it marks, and no complaint", () => {
     writeConfig({ enabledPolicies: [] });
     installPack(PACKABLE as unknown as Array<Record<string, unknown>>);
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 6, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 15, customFiles: 0 });
     expect(reviewableProblem(coverage)).toBeNull();
   });
 
@@ -251,7 +263,7 @@ describe("surveying a real machine", () => {
     writeConfig({ enabledPolicies: REVIEWABLE_BUILTINS.map((p) => p.name).concat("block-sudo") });
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: 8, reviewable: 6, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: 17, reviewable: 15, customFiles: 0 });
     expect(reviewableProblem(coverage)).toBeNull();
   });
 

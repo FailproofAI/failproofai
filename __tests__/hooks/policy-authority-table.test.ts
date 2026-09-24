@@ -26,6 +26,21 @@ const REVIEWABLE: Record<string, string[]> = {
   "warn-git-amend": ["git-history-rewrite"],
   "warn-destructive-sql": ["database-destruction"],
   "warn-global-package-install": ["system-modification"],
+  // The nine below arrived with the pack work. Every one is `defaultEnabled:
+  // false`, which is why they are here and `block-sudo` / `block-curl-pipe-sh`
+  // are not: those two pass the same pairing test, but they are on by default,
+  // and their reviewers are overridable by an explicit request — so reviewable
+  // would have turned "sudo is blocked" into "sudo is blocked unless you asked
+  // for it" on every machine. See their catalog entries.
+  "block-rm-rf": ["destructive-deletion"],
+  "block-kubectl": ["production-infra-change"],
+  "block-terraform": ["production-infra-change"],
+  "block-aws-cli": ["production-infra-change"],
+  "block-gcloud": ["production-infra-change"],
+  "block-az-cli": ["production-infra-change"],
+  "block-helm": ["production-infra-change"],
+  "block-secrets-write": ["secret-exposure"],
+  "block-force-push": ["git-history-rewrite"],
 };
 
 /**
@@ -48,11 +63,7 @@ const FLOOR = [
   // `irreplaceable` has nothing to reason about. A check that is asked and does
   // not fire answers "no concern", which CLEARS, so the pairing would have made
   // the policy inert rather than reviewed. See PROBE-FOLLOWUP.md.
-  "warn-git-clean",
-  "block-rm-rf", "block-sudo", "block-curl-pipe-sh", "block-push-master",
-  "block-kubectl", "block-terraform", "block-aws-cli", "block-gcloud",
-  "block-az-cli", "block-helm", "block-gh-pipeline",
-  "block-secrets-write", "block-force-push", "block-failproofai-commands",
+  "warn-git-clean", "block-sudo", "block-curl-pipe-sh", "block-push-master", "block-gh-pipeline", "block-failproofai-commands",
 ];
 
 const DOC = readFileSync(resolve(__dirname, "../../docs/policies/authority.mdx"), "utf8");

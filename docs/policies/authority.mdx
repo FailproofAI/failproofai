@@ -80,19 +80,19 @@ And because an instruct-mode semantic policy can never answer deny, pairing a *b
 | `warn-destructive-sql` | reviewable | `database-destruction` | Jev also asks whether the target is a real database rather than a disposable test one. |
 | `warn-global-package-install` | reviewable | `system-modification` | The same concern: changing the machine outside the project. |
 | `block-failproofai-commands` | hard | | `alwaysOn` self-protection. Never reviewable. |
-| `block-rm-rf` | hard | | Catastrophic and irreversible. |
+| `block-rm-rf` | reviewable | `destructive-deletion` | The path-depth heuristic gets `rm -rf node_modules` wrong; Jev asks whether what would be destroyed is regenerable. `rm -rf /` keeps both probes true. |
 | `block-sudo` | hard | | Privilege escalation. |
 | `block-curl-pipe-sh` | hard | | Runs code downloaded from the internet. |
 | `block-push-master` | hard | | Pushes directly to a protected branch. |
 | `block-work-on-main` | hard | | `commit-on-protected-branch` covers exactly this concern but is instruct-mode, so it can never answer deny — and no other check covers it. Reviewable here would have meant "off". |
-| `block-force-push` | hard | | Overwrites remote history. |
-| `block-secrets-write` | hard | | Writes secret key files. |
-| `block-kubectl` | hard | | Changes live cluster state. |
-| `block-terraform` | hard | | Changes real infrastructure. |
-| `block-aws-cli` | hard | | Changes cloud resources. |
-| `block-gcloud` | hard | | Changes cloud resources. |
-| `block-az-cli` | hard | | Changes cloud resources. |
-| `block-helm` | hard | | Changes live cluster state. |
+| `block-force-push` | reviewable | `git-history-rewrite` | Jev's probe is a superset of the matcher and counts `--force-with-lease`; what clears is force-pushing your own branch. |
+| `block-secrets-write` | reviewable | `secret-exposure` | The path match is unanchored, so `src/auth/credentials.ts` is caught; Jev asks whether real key material is being written. |
+| `block-kubectl` | reviewable | `production-infra-change` | Denies the whole CLI, read-only subcommands included; Jev asks whether the call mutates and whether the target is production. |
+| `block-terraform` | reviewable | `production-infra-change` | Same: clears `terraform plan` and `validate`. |
+| `block-aws-cli` | reviewable | `production-infra-change` | Same: clears `aws s3 ls`, `aws sts get-caller-identity`. |
+| `block-gcloud` | reviewable | `production-infra-change` | Same: clears `gcloud auth list`, `gcloud config list`. |
+| `block-az-cli` | reviewable | `production-infra-change` | Same: clears `az account show`. |
+| `block-helm` | reviewable | `production-infra-change` | Same: clears `helm list`, `helm status`. |
 | `block-gh-pipeline` | hard | | Triggers pipelines, merges and secret changes. |
 | `warn-git-stash-drop` | hard | | No semantic check covers discarding stashed work. |
 | `warn-git-clean` | hard | | `destructive-deletion` covers the concern but demonstrably cannot fire on it: `git clean` names no path, so its `irreplaceable` probe has nothing to judge and answers low, and evidence is the minimum over a policy's probes. A check that is asked and does not fire clears the verdict, so pairing here would switch the policy off. |

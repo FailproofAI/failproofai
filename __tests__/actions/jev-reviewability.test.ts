@@ -135,9 +135,9 @@ describe("getJevSettingsAction — what Jev may clear", () => {
     const view = await getJevSettingsAction();
     expect(view.reviewable).toEqual({
       enabled: POLICY_CATALOG.length,
-      reviewable: 6,
+      reviewable: 15,
       summary:
-        `6 of ${POLICY_CATALOG.length} enabled policies are reviewable: ` +
+        `15 of ${POLICY_CATALOG.length} enabled policies are reviewable: ` +
         "Jev may clear a deny or an instruction from those, and from no others.",
       problem: null,
     });

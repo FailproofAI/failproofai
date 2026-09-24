@@ -55,6 +55,9 @@ import { evaluateSemantic, prepareSemantic, verdictLogRow, type SemanticOptions 
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
 import type { Facts, JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+// The PEM armour, joined at runtime — see `redaction-fixtures.ts` and this
+// file's "Fixtures are assembled at runtime and never written as literals".
+import { pemBegin, pemEnd } from "./redaction-fixtures";
 
 const DANGEROUS = "rm -rf / --no-preserve-root";
 
@@ -916,7 +919,7 @@ describe("the scan form of SECRET_PATTERNS still finds every shape", () => {
     ["a bearer token", `Authorization: Bearer ${A(40)}`],
     ["a connection string", `${["postgres", "://"].join("")}appuser:hunter2hunter2@db.example.com:5432/app`],
     ["a mongodb+srv URL", `${["mongodb+srv", "://"].join("")}u:hunter2hunter2@cluster0.example.net/app`],
-    ["a PEM header", "-----BEGIN RSA PRIVATE KEY-----"],
+    ["a PEM header", pemBegin("RSA")],
   ];
 
   /**
@@ -1153,7 +1156,7 @@ describe("nothing can be hidden from Jev without the cut being reported", () => 
     ["inside an array", { edits: [{ new_string: MARK }] }],
     ["inside a long array", { edits: [...Array.from({ length: 400 }, () => ({ new_string: pad(500) })), { new_string: MARK }] }],
     ["in a shell comment", { command: `echo hi # ${MARK}` }],
-    ["in a fake private key block", { note: `-----BEGIN RSA PRIVATE KEY-----\n${MARK}\n-----END RSA PRIVATE KEY-----` }],
+    ["in a fake private key block", { note: `${pemBegin("RSA")}\n${MARK}\n${pemEnd("RSA")}` }],
     ["behind a value JSON cannot carry", { a: Symbol("s"), b: MARK }],
     ["behind a getter that throws", (() => ({ get boom(): string { throw new Error("no"); }, b: MARK })) as never],
   ];
@@ -1180,23 +1183,34 @@ describe("nothing can be hidden from Jev without the cut being reported", () => 
  * one fits under any cap here.
  */
 describe("a private key is redacted whole, not just its header", () => {
-  const pem = (label: string, lines: number, close = true): string =>
-    `-----BEGIN ${label}-----\n${Array.from({ length: lines }, (_, i) => `MIIEowIBAAKCAQEAwXyz${String(i).padStart(4, "0")}abcdefghijklmnopqrstuvwxyzABCDEFGH`).join("\n")}\n${
-      close ? `-----END ${label}-----\n` : ""
+  /**
+   * The armour and the key body, assembled at runtime like every other fixture
+   * here: a whole BEGIN…PRIVATE KEY line, or the DER prefix a real RSA body
+   * opens with, is what a secret scanner reads as a key sitting in the source —
+   * this repo's own `sanitize-private-key-content` included, which reads this
+   * file whenever an agent does. The runtime strings are unchanged.
+   */
+  const keyLine = (i: number) => `${["MII", "EowIBAAKCAQEAwXyz"].join("")}${String(i).padStart(4, "0")}`;
+  const pem = (open: string, close: string | null, lines: number): string =>
+    `${open}\n${Array.from({ length: lines }, (_, i) => `${keyLine(i)}abcdefghijklmnopqrstuvwxyzABCDEFGH`).join("\n")}\n${
+      close ? `${close}\n` : ""
     }`;
+  /** A certificate is public, and is here to prove it is NOT treated as a key. */
+  const CERT_BEGIN = "-----BEGIN CERTIFICATE-----";
+  const CERT_END = "-----END CERTIFICATE-----";
 
   const cases: Array<[string, string]> = [
-    ["RSA PRIVATE KEY", pem("RSA PRIVATE KEY", 25)],
-    ["PRIVATE KEY", pem("PRIVATE KEY", 25)],
-    ["OPENSSH PRIVATE KEY", pem("OPENSSH PRIVATE KEY", 25)],
-    ["EC PRIVATE KEY with no END line", pem("EC PRIVATE KEY", 25, false)],
+    ["RSA PRIVATE KEY", pem(pemBegin("RSA"), pemEnd("RSA"), 25)],
+    ["PRIVATE KEY", pem(pemBegin(), pemEnd(), 25)],
+    ["OPENSSH PRIVATE KEY", pem(pemBegin("OPENSSH"), pemEnd("OPENSSH"), 25)],
+    ["EC PRIVATE KEY with no END line", pem(pemBegin("EC"), null, 25)],
   ];
 
   it.each(cases)("%s: none of the body is in the request", (_label, key) => {
     const env = built({ file_path: "/work/project/deploy_key", content: key });
     const body = JSON.stringify(env.state);
-    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
-    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0020");
+    expect(body).not.toContain(keyLine(0));
+    expect(body).not.toContain(keyLine(20));
     expect(env.redactions).toBeGreaterThan(0);
     // And it is NOT a cut: a key body is base64, the redaction removes only
     // base64 lines, and nothing that could be an operation went with it. So
@@ -1214,31 +1228,31 @@ describe("a private key is redacted whole, not just its header", () => {
     const hidden = "find . -name '*.sqlite' -delete";
     const env = built({
       command: `echo ok`,
-      note: `-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAwXyz0000abcdefghijklmnop\n${hidden}\nMIIEowIBAAKCAQEAwXyz0001abcdefghijklmnop\n-----END RSA PRIVATE KEY-----`,
+      note: `${pemBegin("RSA")}\n${keyLine(0)}abcdefghijklmnop\n${hidden}\n${keyLine(1)}abcdefghijklmnop\n${pemEnd("RSA")}`,
     });
     const body = JSON.stringify(env.state);
     expect(body).toContain(hidden);
-    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+    expect(body).not.toContain(keyLine(0));
   });
 
   it("an encrypted key's own headers survive; only the body goes", () => {
     const env = built({
       file_path: "/work/project/id_rsa",
-      content: "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,9F2B\n\nMIIEowIBAAKCAQEAwXyz0000abcdefghijklmnop\n-----END RSA PRIVATE KEY-----",
+      content: `${pemBegin("RSA")}\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,9F2B\n\n${keyLine(0)}abcdefghijklmnop\n${pemEnd("RSA")}`,
     });
     const body = JSON.stringify(env.state);
     expect(body).toContain("Proc-Type: 4,ENCRYPTED");
-    expect(body).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+    expect(body).not.toContain(keyLine(0));
   });
 
   it("a key in a shell heredoc goes the same way", () => {
-    const env = built({ command: `cat > /work/project/id_rsa <<'EOF'\n${pem("RSA PRIVATE KEY", 25)}EOF` });
-    expect(JSON.stringify(env.state)).not.toContain("MIIEowIBAAKCAQEAwXyz0000");
+    const env = built({ command: `cat > /work/project/id_rsa <<'EOF'\n${pem(pemBegin("RSA"), pemEnd("RSA"), 25)}EOF` });
+    expect(JSON.stringify(env.state)).not.toContain(keyLine(0));
   });
 
   it("a CERTIFICATE is not a private key, and is carried", () => {
-    const env = built({ file_path: "/work/project/server.crt", content: pem("CERTIFICATE", 4) });
-    expect(JSON.stringify(env.state)).toContain("MIIEowIBAAKCAQEAwXyz0000");
+    const env = built({ file_path: "/work/project/server.crt", content: pem(CERT_BEGIN, CERT_END, 4) });
+    expect(JSON.stringify(env.state)).toContain(keyLine(0));
     expect(env.requestCut).toBe(false);
   });
 });

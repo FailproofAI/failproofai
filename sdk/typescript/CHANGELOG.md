@@ -8,6 +8,12 @@ Headings are `## <version> — <YYYY-MM-DD>`, and the section matching the versi
 in `src/version.ts` becomes that release's GitHub Release body. A release whose
 section is missing or empty is refused before anything is built.
 
+## 0.0.1-beta.1 — 2026-09-24
+
+### Fixes
+
+- _Nothing yet._
+
 ## 0.0.1-beta.0 — 2026-09-23
 
 ### Added

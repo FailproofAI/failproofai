@@ -1,6 +1,6 @@
 {
   "name": "@failproofai/sdk",
-  "version": "0.0.1-beta.0",
+  "version": "0.0.1-beta.1",
   "description": "Emit agent telemetry to FailproofAI Cloud \u2014 zero-dependency, Node stdlib only",
   "keywords": [
     "agents",

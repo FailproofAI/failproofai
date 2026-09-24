@@ -339,8 +339,49 @@ export function installedFilePath(): string {
 }
 
 
+/** The param types a schema may declare. Mirrors {@link PolicyParamsSchema}. */
+const PARAM_TYPES: ReadonlySet<string> = new Set(["string", "number", "boolean", "string[]", "pattern[]"]);
+
+/**
+ * Why a `params` schema cannot be used, or `undefined` when it can.
+ *
+ * A pack's schema is what `registerPolicy` stores and `evaluatePolicies` merges
+ * the user's configured values ON TOP OF, so a malformed one is not cosmetic: it
+ * decides what `ctx.params` contains, and a policy reading a param that is not
+ * there falls back to whatever its own code says — usually the stricter thing.
+ *
+ * Validated as a whole rather than per param. A partial schema would leave one
+ * param live and another silently absent inside the same policy, which is the
+ * hardest version of this to diagnose from the outside.
+ */
+function paramsSchemaProblem(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "params is not an object";
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (name.length === 0) return "params has an empty parameter name";
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return `params.${name} is not an object`;
+    const spec = raw as Record<string, unknown>;
+    if (typeof spec.type !== "string" || !PARAM_TYPES.has(spec.type)) {
+      return `params.${name} has type ${JSON.stringify(spec.type)}, which is not one of ${[...PARAM_TYPES].join(", ")}`;
+    }
+    if (typeof spec.description !== "string" || spec.description.length === 0) {
+      return `params.${name} is missing a description`;
+    }
+    // The KEY has to be there, whatever it holds: an absent default and a
+    // `default: undefined` merge the same way, but only one of them says the
+    // author thought about it, and the merge is what the user's own value lands on.
+    if (!("default" in spec)) return `params.${name} is missing a default`;
+  }
+  return undefined;
+}
+
 /** Validate one serialized catalog entry carried by a pack. */
-export function parsePackPolicy(packId: string, value: unknown, index: number): PolicyCatalogEntry {
+export function parsePackPolicy(
+  packId: string,
+  value: unknown,
+  index: number,
+  /** Where a DROPPED field is reported. Optional: most callers only care that the entry parsed. */
+  warnings?: string[],
+): PolicyCatalogEntry {
   const where = `${packId} policy #${index}`;
   if (!value || typeof value !== "object") throw new Error(`${where} is not an object`);
   const raw = value as Record<string, unknown>;
@@ -391,12 +432,37 @@ export function parsePackPolicy(packId: string, value: unknown, index: number): 
   // entry with nothing to drop is returned as is.
   const valid = authorityFieldsOf(raw);
   const invalid = (["authority", "reviewedBy"] as const).filter((k) => k in raw && !(k in valid));
+  // `params` follows the same rule, and is dropped for the same reason: refusing
+  // the pack fails it closed and denies every tool call it covers, while dropping
+  // the schema leaves the policy running on its own internal fallbacks. Recorded
+  // rather than silent, because the drop is a change to what the policy DOES —
+  // `block-sudo` without its `allowPatterns` is stricter than the user asked for,
+  // and stricter is the direction nobody reports as a bug.
+  if ("params" in raw) {
+    const problem = paramsSchemaProblem(raw.params);
+    if (problem) {
+      warnings?.push(`${where} declares a params schema that was dropped: ${problem}`);
+      invalid.push("params" as never);
+    }
+  }
   if (invalid.length > 0) {
     return Object.fromEntries(
       Object.entries(raw).filter(([k]) => !(invalid as readonly string[]).includes(k)),
     ) as unknown as PolicyCatalogEntry;
   }
   return raw as unknown as PolicyCatalogEntry;
+}
+
+/**
+ * Why a `params` schema cannot be PUBLISHED, or `undefined` when it can.
+ *
+ * The build-time half of the rule above: at build time nothing is installed, so
+ * refusing costs nobody anything, while shipping the schema means every machine
+ * that installs the pack runs the policy without its parameters and says so only
+ * in its own log.
+ */
+export function packParamsProblem(params: unknown): string | undefined {
+  return params === undefined ? undefined : paramsSchemaProblem(params);
 }
 
 /**
@@ -699,7 +765,7 @@ function parsePack(root: string, value: unknown, warnings: string[]): ResolvedPa
   }
 
   if (!Array.isArray(raw.policies)) throw new Error(`pack ${raw.id} policies is not an array`);
-  const policies = raw.policies.map((p, i) => parsePackPolicy(raw.id, p, i));
+  const policies = raw.policies.map((p, i) => parsePackPolicy(raw.id, p, i, warnings));
   const names = new Set<string>();
   for (const p of policies) {
     if (names.has(p.name)) throw new Error(`pack ${raw.id} declares ${p.name} twice`);

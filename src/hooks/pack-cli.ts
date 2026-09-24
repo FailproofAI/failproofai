@@ -14,6 +14,7 @@ import { INTEGRATION_TYPES } from "./types";
 import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
 import { detectInstalledClis } from "./integrations";
 import {
+  packParamsProblem,
   parsePackIdentity,
   parsePackPolicy,
   parsePackSemanticPolicy,
@@ -463,13 +464,31 @@ async function build(rest: string[]): Promise<PackCliResult> {
     // FALSE: a pack's declared defaults are what `pack add` switches on with no
     // flags, and switching on a stranger's every policy unattended is the
     // installer opinion this lane already refused once.
-    const extra = hook as unknown as { category?: unknown; defaultEnabled?: unknown };
+    const extra = hook as unknown as { category?: unknown; defaultEnabled?: unknown; params?: unknown };
+    // `params` is read off the registration for the same reason, and leaving it
+    // out was not cosmetic: `registerPolicy` takes a pack policy's schema from the
+    // MANIFEST by name, so a pack published without it evaluates every one of its
+    // policies with `ctx.params = {}` — which discards the user's own configured
+    // values too, not just the defaults. Of the 38 builtins, 19 carry a schema:
+    // `prefer-package-manager` would have been inert, and `block-sudo`'s
+    // `allowPatterns`, `block-rm-rf`'s and `block-read-outside-cwd`'s `allowPaths`
+    // would all have stopped working — every one of them failing silently
+    // STRICTER, which is the direction users work around instead of reporting.
+    const paramsProblem = packParamsProblem(extra.params);
+    if (paramsProblem) {
+      return fail([
+        `${hook.name} declares a params schema this build cannot publish: ${paramsProblem}`,
+        "A machine reads the schema from the manifest, so an unusable one is a policy",
+        "that quietly runs without its parameters. Fix the declaration, or leave params out.",
+      ]);
+    }
     const candidate = {
       name: hook.name,
       description: hook.description ?? "",
       category: typeof extra.category === "string" && extra.category ? extra.category : "General",
       defaultEnabled: extra.defaultEnabled === true,
       match: hook.match ?? {},
+      ...(extra.params !== undefined ? { params: extra.params } : {}),
       // Whether Jev may clear this policy's verdict. A pack's MANIFEST is what
       // a machine reads it from, so a declaration left on the registration
       // alone would be published as nothing — silently hard. Checked above, so

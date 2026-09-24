@@ -30,7 +30,7 @@ import type { Facts, PathFact, SemanticPolicy } from "./types";
  * cleared. That fails closed, and closing it needs `facts.ts` to carry the
  * effective protected list — not a precondition change.
  */
-const PROTECTED_BRANCHES = new Set(["main", "master", "production", "prod", "release", "trunk"]);
+export const PROTECTED_BRANCHES = new Set(["main", "master", "production", "prod", "release", "trunk"]);
 
 /**
  * Every `facts.paths[].relation` that means "not in the project".
@@ -63,7 +63,7 @@ const OUTSIDE_PROJECT: ReadonlySet<PathFact["relation"]> = new Set<PathFact["rel
  *
  * Asking is not firing: the probe's own wording decides, and it is unchanged.
  */
-function outsideProject(facts: Facts, p: PathFact): boolean {
+export function outsideProject(facts: Facts, p: PathFact): boolean {
   if (OUTSIDE_PROJECT.has(p.relation)) return true;
   const cwd = facts.cwd;
   if (cwd === null) return false;

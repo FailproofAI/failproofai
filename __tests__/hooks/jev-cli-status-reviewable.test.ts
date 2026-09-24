@@ -159,14 +159,14 @@ describe("failproofai jev status — what Jev may clear", () => {
 
     const r = await runJevCommand(["status"], RENDER);
     const out = text(r);
-    expect(out).toContain(`7 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+    expect(out).toContain(`6 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
     expect(out).toContain("Jev may clear a deny or an instruction from those, and from no others.");
     expect(out).not.toContain(RETAKE_PACK_COMMAND);
 
     const j = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
     expect(j.reviewablePolicies).toEqual({
       enabled: POLICY_CATALOG.length,
-      reviewable: 7,
+      reviewable: 6,
       customPolicyFiles: 0,
       problem: null,
     });

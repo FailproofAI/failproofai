@@ -9,5 +9,8 @@
   },
   "devDependencies": {
     "@types/node": "22.20.4"
+  },
+  "overrides": {
+    "undici": "7.29.0"
   }
 }

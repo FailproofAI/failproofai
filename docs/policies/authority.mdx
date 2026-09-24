@@ -64,12 +64,18 @@ customPolicies.add({
 
 Reviewable only where a semantic policy genuinely covers the same concern. Every other built-in policy is hard.
 
+Covering the concern is necessary but not sufficient, and both ways of getting it wrong are quiet:
+
+- **A check that is never asked** makes the block permanent. `reviewedBy` is a conjunction and a check that was not asked never clears, so a policy paired with a check whose precondition does not fire for the shapes the policy matches can never be cleared at all.
+- **A check that is asked but does not fire** answers "no concern", and no concern clears. So pairing with a check that does not model your policy's shapes does not review the policy — it switches it off for exactly the inputs the check does not understand.
+
+And because an instruct-mode semantic policy can never answer deny, pairing a *blocking* policy with instruct-mode checks alone leaves the conjunction one reachable outcome. The question to ask is not "can the reviewer keep this block" but **"is there anything left that can deny"** — a policy may still be reviewable when a clear hands the decision to other deny-mode checks that are asked about the same call and merge at the most severe verdict. It must be hard when a clear leaves the concern enforced by nothing.
+
 | Policy | Authority | Reviewed by | Why |
 | --- | --- | --- | --- |
 | `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | The pattern fires on any variable reference; Jev asks whether secret values would actually be printed. |
 | `block-env-files` | reviewable | `secret-exposure` | The pattern matches any `.env` path, templates included; Jev asks whether real secret values would be read or written. |
 | `block-read-outside-cwd` | reviewable | `read-outside-workspace` | Measured as noisy on real traffic; Jev asks whether file contents outside the project are read. |
-| `block-work-on-main` | reviewable | `commit-on-protected-branch` | The same concern: a commit written directly on a protected branch. |
 | `warn-git-amend` | reviewable | `git-history-rewrite` | Amending an unpushed commit is ordinary; the harm is rewriting history others may have pulled. |
 | `warn-destructive-sql` | reviewable | `database-destruction` | Jev also asks whether the target is a real database rather than a disposable test one. |
 | `warn-global-package-install` | reviewable | `system-modification` | The same concern: changing the machine outside the project. |
@@ -78,6 +84,7 @@ Reviewable only where a semantic policy genuinely covers the same concern. Every
 | `block-sudo` | hard | | Privilege escalation. |
 | `block-curl-pipe-sh` | hard | | Runs code downloaded from the internet. |
 | `block-push-master` | hard | | Pushes directly to a protected branch. |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` covers exactly this concern but is instruct-mode, so it can never answer deny — and no other check covers it. Reviewable here would have meant "off". |
 | `block-force-push` | hard | | Overwrites remote history. |
 | `block-secrets-write` | hard | | Writes secret key files. |
 | `block-kubectl` | hard | | Changes live cluster state. |

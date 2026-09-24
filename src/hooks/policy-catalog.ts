@@ -372,8 +372,21 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Work should land via PR — direct commits skip review.",
     description: "Block git commits and merges on main/master branch",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    authority: "reviewable",
-    reviewedBy: ["commit-on-protected-branch"],
+    // Hard, although `commit-on-protected-branch` covers exactly this concern.
+    // That check is `mode: "instruct"`, and an instruct-mode reviewer can never
+    // answer deny — so the conjunction had one reachable outcome, cleared, and
+    // marking this reviewable did not hand the decision to Jev. It switched the
+    // policy off on every machine that configured Jev, while the mark said
+    // otherwise.
+    //
+    // The test that matters is not "can the reviewer keep this block" but "is
+    // there anything left that can deny". `block-read-outside-cwd` also has only
+    // an instruct reviewer and stays reviewable, because when it clears,
+    // `secret-exposure` and `credential-exfiltration` are still asked about the
+    // same read and still deny on their own through the most-severe merge. Here
+    // nothing else covers committing on a protected branch, so a clear leaves
+    // the concern unenforced by anything.
+    authority: "hard",
     defaultEnabled: false,
     category: "Git",
     params: {

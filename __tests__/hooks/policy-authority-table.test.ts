@@ -23,14 +23,23 @@ const REVIEWABLE: Record<string, string[]> = {
   "block-read-outside-cwd": ["read-outside-workspace"],
   "protect-env-vars": ["env-secrets-dump", "secret-exposure"],
   "block-env-files": ["secret-exposure"],
-  "block-work-on-main": ["commit-on-protected-branch"],
   "warn-git-amend": ["git-history-rewrite"],
   "warn-destructive-sql": ["database-destruction"],
   "warn-global-package-install": ["system-modification"],
 };
 
-/** The research floor. Named individually so none can drift to reviewable unseen. */
+/**
+ * The research floor. Named individually so none can drift to reviewable unseen.
+ *
+ * `block-work-on-main` is here rather than in REVIEWABLE although
+ * `commit-on-protected-branch` covers exactly its concern: that check is
+ * instruct-mode, so it can never answer deny, and it is the only check for the
+ * concern — the pairing switched the policy off instead of reviewing it. See the
+ * note on its catalog entry for why `block-read-outside-cwd`, which also has only
+ * an instruct reviewer, correctly stays reviewable.
+ */
 const FLOOR = [
+  "block-work-on-main",
   "block-rm-rf", "block-sudo", "block-curl-pipe-sh", "block-push-master",
   "block-kubectl", "block-terraform", "block-aws-cli", "block-gcloud",
   "block-az-cli", "block-helm", "block-gh-pipeline",

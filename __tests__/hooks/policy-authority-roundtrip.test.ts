@@ -156,7 +156,7 @@ describe("catalog → build-policy-pack → policies add → loader → registry
         ...(p.reviewedBy ? { reviewedBy: p.reviewedBy } : {}),
       })),
     ).toEqual(expected);
-    expect(manifest.policies.filter((p) => p.authority === "reviewable")).toHaveLength(7);
+    expect(manifest.policies.filter((p) => p.authority === "reviewable")).toHaveLength(6);
   });
 
   it("does not bundle the semantic policies into the pack's entry", () => {
@@ -210,7 +210,7 @@ describe("catalog → build-policy-pack → policies add → loader → registry
     const reviewable = [...registered.values()].filter((p) => p.authority === "reviewable").map((p) => p.name);
     expect(reviewable.sort()).toEqual(
       [
-        "block-env-files", "block-read-outside-cwd", "block-work-on-main", "protect-env-vars",
+        "block-env-files", "block-read-outside-cwd", "protect-env-vars",
         "warn-destructive-sql", "warn-git-amend", "warn-global-package-install",
       ].map((n) => prefix + n),
     );

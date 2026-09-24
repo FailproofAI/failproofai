@@ -35,8 +35,17 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { PACK_COMMIT_RE, packsRoot, parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
-import type { ResolvedPack } from "./pack-manifest";
+import {
+  MAX_SEMANTIC_POLICIES_PER_PACK,
+  PACK_COMMIT_RE,
+  checkPackMinCliVersion,
+  packsRoot,
+  parsePackIdentity,
+  parsePackPolicy,
+  parsePackSemanticPolicy,
+  readInstalledPacks,
+} from "./pack-manifest";
+import type { ResolvedPack, SemanticManifestEntry } from "./pack-manifest";
 import type { InstalledPackRecord } from "./pack-manifest";
 import type { PolicyCatalogEntry } from "./policy-types";
 import type { PolicyEffect } from "./cloud-managed-policies";
@@ -86,6 +95,13 @@ export interface AddPackResult {
   selection: SelectionReason;
   /** Category slugs the pack offers, for `--category`. */
   categories: string[];
+  /**
+   * How many Jev question sets came with it, and not a list of names: they are
+   * not selectable and not switchable, so a name here would invite a `--policy`
+   * that cannot work. A non-zero count is what stops a semantic-only install
+   * reporting "the pack is installed and enforcing nothing".
+   */
+  semantic: number;
   artifact: string;
 }
 
@@ -454,11 +470,75 @@ interface FetchedPack {
   id: string;
   version: string;
   policies: PolicyCatalogEntry[];
+  /** The pack's Jev question sets, validated. Empty when it declares none. */
+  semantic: SemanticManifestEntry[];
+  /** The minimum CLI it claims, once this one has been checked against it. */
+  minCliVersion?: string;
   effect?: PolicyEffect;
   /** The git commit the publisher built this from, when they had one. */
   commit?: string;
   artifact: Buffer;
   artifactDigest: string;
+}
+
+/**
+ * The shape both fetch paths read a manifest's `semantic` array through.
+ *
+ * REFUSES what the loader would only drop, and the asymmetry is the same one
+ * `parsePackPolicy` already has on this path: nothing has been written yet, so
+ * refusing costs the user a clear error message and the publisher a fix —
+ * whereas dropping an entry here would install a pack that enforces less than
+ * the preview just showed, with the difference recorded only in a hook log. The
+ * loader drops instead because by then the pack IS installed and refusing it
+ * denies every tool call its regex policies cover.
+ *
+ * The per-pack cap is checked for the same reason. Over it, the loader keeps the
+ * first 24 in declared order and records the rest as dropped; letting that
+ * happen silently at install time means a machine quietly running a subset of
+ * what the user agreed to.
+ *
+ * The CHARACTER budget is deliberately not checked here. It lives in
+ * `semantic/pack-policies.ts`, and importing that module would pull Jev's
+ * sixteen prompts into this one — which is reachable from a Next.js server
+ * action (`app/actions/pack-actions.ts`), not just from the CLI. `failproofai
+ * publish` refuses an over-budget pack at build time, and a pack built by some
+ * other tool has its overflow dropped at resolve time with a recorded reason.
+ */
+function parseManifestSemantic(packId: string, value: unknown): SemanticManifestEntry[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`pack ${packId} semantic is not an array`);
+  if (value.length > MAX_SEMANTIC_POLICIES_PER_PACK) {
+    throw new Error(
+      `pack ${packId} declares ${value.length} semantic policies, over the cap of ${MAX_SEMANTIC_POLICIES_PER_PACK}`,
+    );
+  }
+  const entries = value.map((entry, i) => parsePackSemanticPolicy(packId, entry, i));
+  const names = new Set<string>();
+  for (const entry of entries) {
+    if (names.has(entry.name)) throw new Error(`pack ${packId} declares semantic policy ${entry.name} twice`);
+    names.add(entry.name);
+  }
+  return entries;
+}
+
+/**
+ * Refuse a pack this CLI is too old to run — HERE, where the message is
+ * something the person who typed the command can act on.
+ *
+ * The loader refuses it too, and that refusal is the fail-closed one: on a
+ * machine where it lands, every tool call the pack's policies cover is denied
+ * until somebody works out why. Catching it at install turns the same fact into
+ * one line at the moment of choosing.
+ *
+ * A minimum this build cannot compare is IGNORED, exactly as the loader ignores
+ * it: a publisher's typo in a version string must not be able to stop anyone
+ * installing a pack. `failproofai publish` refuses to write one, so this is
+ * only reachable from a pack built by some other tool.
+ */
+function assertMinCliVersion(packId: string, declared: unknown): string | undefined {
+  const verdict = checkPackMinCliVersion(packId, declared);
+  if (verdict.kind === "too-old") throw new Error(verdict.reason);
+  return verdict.kind === "satisfied" ? verdict.declared : undefined;
 }
 
 /** Fetch and fully validate a pack, without writing anything. */
@@ -543,6 +623,19 @@ export interface PackPreview {
   /** The git commit the publisher built this from, when they had one. */
   commit?: string;
   policies: PolicyCatalogEntry[];
+  /**
+   * The pack's Jev question sets. Shown, not selectable: a pack's `enabled`
+   * narrowing picks which of its REGEX policies register, and its semantic set
+   * replaces this build's wholesale or not at all.
+   *
+   * Carried on the preview because the preview is what somebody consents to. A
+   * pack that quietly brings sixteen new questions to the classifier — and
+   * replaces the sixteen this build shipped — is not something to discover after
+   * installing it.
+   */
+  semantic: SemanticManifestEntry[];
+  /** The minimum CLI this pack declares, when it declares one this build can read. */
+  minCliVersion?: string;
   /** The exact source the preview was read from, tag resolved and pinned. */
   source: string;
   /** True when the tag was resolved rather than typed. */
@@ -589,20 +682,50 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
   if (!raw || typeof raw !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
   const value = raw as {
     id?: unknown; version?: unknown; policies?: unknown; effect?: unknown; commit?: unknown;
+    semantic?: unknown; minCliVersion?: unknown;
   };
   const identity = parsePackIdentity(value);
-  if (!Array.isArray(value.policies) || value.policies.length === 0) {
-    throw new Error("pack manifest declares no policies");
-  }
+  const minCliVersion = assertMinCliVersion(identity.id, value.minCliVersion);
+  const semantic = parseManifestSemantic(identity.id, value.semantic);
+  const policies = parseManifestPolicies(identity.id, value.policies);
+  assertDeclaresSomething(policies, semantic);
   return {
     id: identity.id,
     version: identity.version,
     effect: identity.effect,
     ...(identity.commit ? { commit: identity.commit } : {}),
-    policies: value.policies.map((policy, i) => parsePackPolicy(identity.id, policy, i)),
+    policies,
+    semantic,
+    ...(minCliVersion ? { minCliVersion } : {}),
     source: formatPackSpec(spec),
     resolvedFromLatest,
   };
+}
+
+/**
+ * The regex half of a manifest. ABSENT is an empty list, not an error: a pack of
+ * Jev questions alone is a legitimate thing to publish now, and ours writes
+ * `policies: []` for one. Present and not an array is still malformed.
+ */
+function parseManifestPolicies(packId: string, value: unknown): PolicyCatalogEntry[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`pack ${packId} policies is not an array`);
+  return value.map((policy, i) => parsePackPolicy(packId, policy, i));
+}
+
+/**
+ * A pack has to bring SOMETHING, and either half counts.
+ *
+ * It used to be "at least one regex policy", which made a pack of Jev questions
+ * alone impossible to install — and that is a legitimate pack: the regex floor
+ * may already be somebody else's, and the two halves version independently. This
+ * is the same widening `build()` makes to its "registered no policies" refusal,
+ * so the two ends of the lane agree on what an empty pack is.
+ */
+function assertDeclaresSomething(policies: PolicyCatalogEntry[], semantic: SemanticManifestEntry[]): void {
+  if (policies.length === 0 && semantic.length === 0) {
+    throw new Error("pack manifest declares no policies");
+  }
 }
 
 /**
@@ -647,20 +770,26 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   if (!parsed || typeof parsed !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
   const raw = parsed as {
     id?: unknown; version?: unknown; policies?: unknown; effect?: unknown; commit?: unknown;
+    semantic?: unknown; minCliVersion?: unknown;
   };
   const identity = parsePackIdentity(raw);
-  if (!Array.isArray(raw.policies) || raw.policies.length === 0) {
-    throw new Error("pack manifest declares no policies");
-  }
+  // Before the shape checks below, because being too old for the pack is not a
+  // complaint about the pack: the message to give is "update the CLI", and a
+  // manifest field this build cannot read yet must not be reported as malformed.
+  const minCliVersion = assertMinCliVersion(identity.id, raw.minCliVersion);
   // Validated with the SAME rules the loader applies, so a pack that could never
   // load is refused here — while nothing has been written — rather than
   // installing cleanly and failing silently on the next tool call.
-  const policies = raw.policies.map((p, i) => parsePackPolicy(identity.id, p, i));
+  const policies = parseManifestPolicies(identity.id, raw.policies);
+  const semantic = parseManifestSemantic(identity.id, raw.semantic);
+  assertDeclaresSomething(policies, semantic);
 
   return {
     id: identity.id,
     version: identity.version,
     policies,
+    semantic,
+    ...(minCliVersion ? { minCliVersion } : {}),
     ...(raw.effect !== undefined ? { effect: identity.effect } : {}),
     ...(identity.commit ? { commit: identity.commit } : {}),
     artifact,
@@ -931,6 +1060,22 @@ export async function addPack(
     entry: artifactRel,
     sha256: fetched.artifactDigest,
     policies: fetched.policies,
+    // Both halves of the manifest reach the record, because `installed.json` is
+    // the only thing enforcement reads. Left off, a pack's Jev questions were
+    // fetched, verified, shown in the preview and then dropped on the floor: the
+    // resolver found no `semantic` on any installed pack, kept this build's
+    // compiled set, and every pack policy naming one of the pack's own checks in
+    // `reviewedBy` registered as hard. Nothing failed, and the half the user
+    // installed did nothing.
+    //
+    // Omitted when empty for the same reason the manifest omits it: an empty
+    // array reads as "this pack declares semantic entries", and the replacement
+    // rule would then have it replace the compiled-in set with nothing.
+    ...(fetched.semantic.length > 0 ? { semantic: fetched.semantic } : {}),
+    // Recorded so the READER re-checks it. This CLI has already satisfied it or
+    // refused the install, but the record outlives this CLI: a downgrade, or a
+    // machine restored from another's home directory, has to meet it again.
+    ...(fetched.minCliVersion ? { minCliVersion: fetched.minCliVersion } : {}),
     // Provenance, carried through from the manifest so `policies` and the
     // dashboard can say which source produced what is installed. NOT part of
     // verification — `sha256` above is the pin, and this is a label beside it.
@@ -978,6 +1123,7 @@ export async function addPack(
     available,
     selection: reason,
     categories: [...new Set(fetched.policies.map((p) => slugifyCategory(p.category)))],
+    semantic: fetched.semantic.length,
     artifact: artifactAbs,
   };
 }

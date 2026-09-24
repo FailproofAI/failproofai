@@ -139,6 +139,16 @@ export interface PackPreviewResult {
   source?: string;
   effect?: "enforce" | "observe";
   policies?: Array<{ name: string; description: string; category: string; defaultEnabled: boolean }>;
+  /**
+   * Names of the pack's Jev checks, not a policy list: they are not selectable,
+   * and they REPLACE the ones this build ships rather than adding to them.
+   *
+   * Carried because the preview is what somebody consents to. A pack whose
+   * semantic half is invisible here is half a pack agreed to unseen.
+   */
+  semantic?: string[];
+  /** The minimum CLI the pack declares, when it declares one. */
+  minCliVersion?: string;
   error?: string;
 }
 
@@ -167,6 +177,8 @@ export async function previewPackWebAction(source: string): Promise<PackPreviewR
         category: p.category,
         defaultEnabled: p.defaultEnabled,
       })),
+      ...(preview.semantic.length > 0 ? { semantic: preview.semantic.map((s) => s.name) } : {}),
+      ...(preview.minCliVersion ? { minCliVersion: preview.minCliVersion } : {}),
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

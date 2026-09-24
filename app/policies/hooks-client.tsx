@@ -2006,6 +2006,12 @@ function PackSection({
             <span className="text-[0.7rem] text-muted-foreground">
               {preview.policies?.length ?? 0} policies ·{" "}
               {preview.policies?.filter((p) => p.defaultEnabled).length ?? 0} on by default
+              {/* The half with no rows below it. A pack's Jev checks are not
+                  selectable and they replace the ones this build ships, so the
+                  count belongs beside the policy count rather than in the list. */}
+              {preview.semantic && preview.semantic.length > 0
+                ? ` · ${preview.semantic.length} Jev ${preview.semantic.length === 1 ? "check" : "checks"}`
+                : ""}
             </span>
             {preview.effect === "observe" && (
               <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">

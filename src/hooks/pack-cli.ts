@@ -2494,11 +2494,35 @@ async function pickClis(
  * Returns null when the user cancelled, which must not be confused with an
  * empty selection: one means "install nothing", the other means "do nothing".
  */
+/**
+ * How a pack's semantic half is named to a person: "3 Jev checks", never "3
+ * semantic policies".
+ *
+ * They are not policies in the sense every other number on these screens uses —
+ * nothing switches them on or off, `--policy` cannot name one, and they do not
+ * appear in `failproofai policies`. Calling them policies would make every count
+ * beside them read as the same kind of thing.
+ */
+function semanticPhrase(count: number): string {
+  return `${count} Jev ${count === 1 ? "check" : "checks"}`;
+}
+
 async function pickFromSource(
   source: string,
   io: { stdin: TTYIn; stdout: TTYOut },
 ): Promise<string[] | null> {
   const preview = await fetchPackPreview(source);
+  // Nothing to pick. A pack of Jev questions alone has no selectable policies —
+  // its semantic set is not switchable per entry — so the picker would draw an
+  // empty list and ask a question with no answers. `[]` rather than `null`: the
+  // user cancelled nothing, there was simply nothing to choose.
+  if (preview.policies.length === 0) {
+    io.stdout.write(
+      `\n  ${preview.id}@${preview.version} carries no selectable policies` +
+        `${preview.semantic.length > 0 ? `, only ${semanticPhrase(preview.semantic.length)}` : ""}.\n\n`,
+    );
+    return [];
+  }
   const categories = [...new Set(preview.policies.map((p) => p.category))];
   const rows: MultiChoice<string>[] = [];
   for (const category of categories) {
@@ -2513,6 +2537,15 @@ async function pickFromSource(
     }
   }
   const on = preview.policies.filter((p) => p.defaultEnabled).length;
+  // Said BEFORE the list, because the list cannot say it: a pack's Jev checks are
+  // not rows here, they arrive whole, and they replace the ones this build ships.
+  // Somebody ticking boxes should know that is part of what they are agreeing to.
+  if (preview.semantic.length > 0) {
+    io.stdout.write(
+      `\n  This pack also brings ${semanticPhrase(preview.semantic.length)}, which are not selectable —\n` +
+        `  they replace the ones this build ships with. See: failproofai policies show ${source}\n\n`,
+    );
+  }
   const picked = await multiSelect<string>({
     message: `${preview.id}@${preview.version} — which of these should be on?`,
     choices: rows,
@@ -2629,9 +2662,25 @@ async function add(rest: string[]): Promise<PackCliResult> {
     // rendered as if something had gone missing.
     lines.push(
       result.enabled.length === 0
-        ? `  enabled (0/${result.available.length}, ${why}): none — the pack is installed and enforcing nothing`
+        ? // "enforcing nothing" is only true when the pack brought nothing else.
+          // A pack of Jev checks alone enforces through the semantic tier with no
+          // regex policy enabled at all, and telling that user their install does
+          // nothing is worse than saying nothing.
+          `  enabled (0/${result.available.length}, ${why}): none` +
+          (result.semantic > 0 ? "" : " — the pack is installed and enforcing nothing")
         : `  enabled (${result.enabled.length}/${result.available.length}, ${why}): ${summarise(result.enabled)}`,
     );
+    // Counted separately, and without an on/off ratio, because there is none:
+    // a pack's Jev checks arrive whole and REPLACE the ones this build ships.
+    // Silence here was the shape of the original bug — the manifest's semantic
+    // half was fetched, verified and then never written to `installed.json`, so
+    // the half somebody installed did nothing and nothing said so.
+    if (result.semantic > 0) {
+      lines.push(
+        `  ${semanticPhrase(result.semantic)} for Jev, replacing this build's own set. ` +
+          "They apply only where you configured Jev (`failproofai jev status`).",
+      );
+    }
 
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
@@ -2923,7 +2972,8 @@ async function listRemote(source: string): Promise<PackCliResult> {
     stack(
       title(
         `${preview.id}@${preview.version}`,
-        `${preview.policies.length} policies · ${categories.length} categories`,
+        `${preview.policies.length} policies · ${categories.length} categories` +
+          (preview.semantic.length > 0 ? ` · ${semanticPhrase(preview.semantic.length)}` : ""),
         opts,
       ),
       note(
@@ -2931,6 +2981,20 @@ async function listRemote(source: string): Promise<PackCliResult> {
           (preview.effect === "observe" ? " This pack OBSERVES — it records and blocks nothing." : ""),
         opts,
       ),
+      // The half that is not in the table below, said in words. It is not
+      // selectable, so it has no rows; and it REPLACES this build's own question
+      // set rather than adding to it, which is the part worth knowing before
+      // installing rather than after.
+      preview.semantic.length > 0
+        ? note(
+            `It also carries ${semanticPhrase(preview.semantic.length)} — ${preview.semantic
+              .map((s) => s.name)
+              .join(", ")}. They are not selectable, they apply only where you configured Jev, and they ` +
+              "replace the checks this build ships with.",
+            opts,
+          )
+        : null,
+      preview.minCliVersion ? note(`Requires failproofai ${preview.minCliVersion} or newer.`, opts) : null,
       preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
       table({ head: ["", "", ""], rows }, opts),
       nextStep(`failproofai policies add ${source}`, "Install the defaults with:", opts),

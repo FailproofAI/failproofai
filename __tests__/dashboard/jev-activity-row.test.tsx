@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { configure, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { HooksConfigPayload } from "@/app/actions/get-hooks-config";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
@@ -14,6 +14,17 @@ import type { HookActivityEntry } from "@/src/hooks/hook-activity-store";
  * `<JevPill>` or `<JevNote>` from hooks-client.tsx fails here — and a row
  * without Jev fields, the unconfigured machine, gets neither.
  */
+
+/**
+ * This file renders the WHOLE activity client, not a single component, so a
+ * click-then-assert costs a real re-render — 1.4s of it on a shared CI runner,
+ * against Testing Library's 1s default. That timed out in the `hook-log-file`
+ * env config while passing in the other two, which is a runner-speed
+ * measurement, not a defect. Five seconds is still far below vitest's own test
+ * timeout, so a genuinely missing element still fails the test rather than
+ * hanging the suite.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 const NOW = Date.now();
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { configure, render, screen, within } from "@testing-library/react";
+import { configure, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { HooksConfigPayload } from "@/app/actions/get-hooks-config";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
@@ -146,6 +146,29 @@ async function rowFor(tool: string): Promise<HTMLElement> {
   return tr;
 }
 
+/**
+ * Open a row's detail panel, re-querying the row at the moment of the click.
+ *
+ * The row must NOT be held across an await. This page drives seven mocked
+ * server actions — activity, config, pauses, packs and three more — which
+ * settle independently, so the table re-renders after `rowFor` has already
+ * handed back a node. Clicking a detached node does nothing at all, silently:
+ * no error, no state change, and then a five-second wait for a panel that was
+ * never going to open. It failed on one CI env config while passing on the
+ * other two, which is the signature of that race rather than of a wrong
+ * expectation.
+ *
+ * The open-marker check is what makes the retry safe: clicking a row toggles
+ * it, so a blind retry would close the panel it had just opened.
+ */
+async function openRow(user: ReturnType<typeof userEvent.setup>, tool: string, marker: string) {
+  await waitFor(async () => {
+    if (screen.queryByText(marker, { exact: false })) return;
+    await user.click(await rowFor(tool));
+    expect(screen.queryByText(marker, { exact: false })).not.toBeNull();
+  });
+}
+
 describe("the activity tab with Jev rows", () => {
   beforeEach(() => {
     entries = [];
@@ -165,12 +188,11 @@ describe("the activity tab with Jev rows", () => {
     ];
     const user = userEvent.setup();
     render(<HooksClient initialTab="activity" />);
-    const tr = await rowFor("Read");
-    expect(within(tr).getByText("jev cleared")).toBeInTheDocument();
+    expect(within(await rowFor("Read")).getByText("jev cleared")).toBeInTheDocument();
     expect(screen.queryByText("Semantic review:", { exact: false })).toBeNull();
 
-    await user.click(tr);
-    expect(await screen.findByText("Semantic review:", { exact: false })).toBeInTheDocument();
+    await openRow(user, "Read", "Semantic review:");
+    expect(screen.queryByText("Semantic review:", { exact: false })).not.toBeNull();
     expect(
       screen.getByText("Jev verdict: allow · cleared block-read-outside-cwd · 38 ms · jev-1.13.0"),
     ).toBeInTheDocument();
@@ -191,22 +213,19 @@ describe("the activity tab with Jev rows", () => {
     ];
     const user = userEvent.setup();
     render(<HooksClient initialTab="activity" />);
-    const tr = await rowFor("Bash");
-    expect(within(tr).getByText("jev fallback")).toBeInTheDocument();
-    await user.click(tr);
+    expect(within(await rowFor("Bash")).getByText("jev fallback")).toBeInTheDocument();
+    await openRow(user, "Bash", "Jev unavailable: timeout");
     expect(
-      await screen.findByText("Jev unavailable: timeout · the regex policies decided alone · 1500 ms"),
-    ).toBeInTheDocument();
+      screen.queryByText("Jev unavailable: timeout · the regex policies decided alone · 1500 ms"),
+    ).not.toBeNull();
   });
 
   it("shows nothing Jev-related for a row written without Jev", async () => {
     entries = [row({ toolName: "Grep" })];
     const user = userEvent.setup();
     render(<HooksClient initialTab="activity" />);
-    const tr = await rowFor("Grep");
-    expect(within(tr).queryByText(/^jev /)).toBeNull();
-    await user.click(tr);
-    await screen.findByText("event detail", { exact: false });
+    expect(within(await rowFor("Grep")).queryByText(/^jev /)).toBeNull();
+    await openRow(user, "Grep", "event detail");
     expect(screen.queryByText("Semantic review:", { exact: false })).toBeNull();
   });
 });

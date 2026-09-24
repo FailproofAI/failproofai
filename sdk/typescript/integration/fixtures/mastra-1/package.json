@@ -1,0 +1,15 @@
+{
+  "name": "failproofai-it-mastra-1",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: Mastra 1.x (@mastra/core) against the packed @failproofai/sdk.",
+  "dependencies": {
+    "@mastra/core": "1.68.0",
+    "@mastra/mcp": "2.0.0",
+    "@mastra/memory": "1.31.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

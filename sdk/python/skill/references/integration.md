@@ -1,5 +1,9 @@
 # Writing the integration
 
+> TypeScript/JavaScript: the same three scopes exist as `session()`, `agent()` and
+> `toolCall()` on `AsyncLocalStorage`, and a hand-built loop is three edit sites —
+> see `typescript.md` → *An agent with no framework*. This page is the Python SDK.
+
 Identity is ambient. Bind it once per run with a context manager and every
 `event.*` call inside — including calls in functions that have never heard of
 Failproof AI — lands on the right session and agent.
@@ -50,8 +54,8 @@ a session is *defined* as something that emitted `agent_start`.
   one run rather than splitting it in two.
 - `parent_id` defaults to the enclosing agent from the scope stack. Pass
   `parent_id=None` to force a root span, or a string to override.
-- `tool_call_id` defaults to `uuid4().hex` — unique process-wide, which is what
-  the correlation map needs (see `events.md`).
+- `tool_call_id` defaults to `uuid4().hex` — unique everywhere, so it can never
+  collide in the correlation map (see `events.md`).
 
 ## What `agent()` does on the way out
 

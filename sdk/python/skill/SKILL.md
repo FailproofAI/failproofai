@@ -1,19 +1,28 @@
 ---
 name: failproofai-sdk
 description: |-
-  The way to make an AI agent report what it did to Failproof AI — planning what to record, writing the instrumentation, and proving the events land. Reach for it on vague phrasing too: "add observability to my agent", "why isn't my agent showing up?"
+  Make a custom AI agent — Python or TypeScript/JavaScript, on a framework or hand-built — report what it did to Failproof AI, and run your own evaluator worker (the "eval pod") that scores those runs. Reach for it on vague phrasing too: "add observability to my agent", "why isn't my agent showing up?", "run an LLM judge on our own infra".
 
   Trigger when the user wants to:
-  • plan an integration — which points in their agent loop to record, and what the platform must see before sessions, errors, and evals work at all;
-  • write or fix instrumentation — add the `failproofai_sdk` Python SDK to an agent codebase, thread session/agent identity through it, emit tool, model, hook, or human events;
-  • verify it — confirm events are being written, or debug an integration that looks correct and produces nothing.
+  • plan an integration — which points in the agent loop to record;
+  • instrument — add `failproofai-sdk` (Python) or `@failproofai/sdk` (Node, Bun, Deno, Next.js): turn on an adapter (LangChain/LangGraph, CrewAI, LlamaIndex, Pydantic AI, Vercel AI SDK, Mastra) or wire a hand-built loop;
+  • verify — confirm events are written, or debug an integration that produces nothing;
+  • evaluate — write, deploy or debug an Evaluator worker in Python or TypeScript.
 
-  Served by the `failproofai_sdk` Python SDK, inside the user's own agent.
-
-  NOT for reading telemetry that already landed or operating a deployment (that's `fp-cloud-cli`), or building the evaluator service that scores runs (that's `agenteye-evaluator`).
+  NOT for reading telemetry or scores that already landed (that's `fp-cloud-cli`), or deciding what is worth evaluating (that's `failproofai-eval-brainstorm`).
 ---
 
-# Failproof AI Python SDK
+# Failproof AI SDK — Python and TypeScript
+
+Two packages, one pipe: `failproofai-sdk` (Python, imported as `failproofai_sdk`)
+and `@failproofai/sdk` (TypeScript/JavaScript). They write the same 15 events in
+the same wire format into the same spool directory. Everything in this file is
+language-neutral unless it says otherwise, and code blocks are Python.
+**For a TypeScript or JavaScript agent, read `references/typescript.md` alongside
+it**: it has the camelCase names, the adapters, bundler and Next.js setup, the
+no-framework wiring, shutdown and verification. Both packages also ship the
+**evaluator worker** that scores finished sessions on your own infrastructure (§7,
+`references/evaluator.md`).
 
 The SDK records what your agent did, from inside your agent. You call it at points
 you choose; it appends structured events to local `.jsonl` files. A separate
@@ -34,9 +43,13 @@ and it is verifiable on a laptop with no server, no API key, and no network.
 The API is small — 15 event methods, all keyword-only. The hard parts are
 **deciding where to call them** and **knowing which silences are bugs**, because
 this SDK does not raise when you get it wrong. Sections 1-3 are the plan, 4 is the
-code, 5-6 are the proof.
+code, 5-6 are the proof, 7 is scoring the runs.
 
 ## 1. Install it
+
+TypeScript/JavaScript: `npm install @failproofai/sdk` — zero dependencies, Node ≥
+20.9, Bun or Deno, ESM and CommonJS. The npm name has no lookalike trap; the rest of
+this section is Python. See `references/typescript.md`.
 
 ```bash
 pip install failproofai-sdk        # or: uv add failproofai-sdk
@@ -135,6 +148,10 @@ Full field-by-field catalog: `references/events.md`.
 ## 3. The contract
 
 Work with these; none of them raise, so none of them show up in testing.
+
+(TypeScript: the same contract with camelCase spellings, the same `"dev"` default,
+the same reserved names and the same `duration_ms` rule, but a different shutdown
+recipe — `references/typescript.md` → *The contract, in TypeScript* and *Shutdown*.)
 
 - **There IS an ambient session, and it is the ergonomic path.** `session()`,
   `agent()` and `tool_call()` bind identity on contextvars, so `session_id` and
@@ -277,7 +294,10 @@ Threading `session_id` and `agent_id` through every call site by hand is the thi
 that makes integrations ugly and abandoned. Don't. Bind identity once per run and
 let the call sites read it.
 
-`references/frameworks.md` covers the four adapters. `references/integration.md` has the hand-written wrapper — one small
+`references/frameworks.md` covers the four Python adapters; `references/typescript.md`
+covers the four TypeScript ones (LangChain.js/LangGraph.js, Vercel AI SDK, Mastra,
+LlamaIndex.TS), Next.js, bundlers, and the three-edit-site wiring for a hand-built
+TypeScript loop. `references/integration.md` has the hand-written wrapper — one small
 module, correct under `asyncio` and threads, adaptable to any codebase — plus
 worked shapes for a tool dispatcher, an LLM client wrapper, and framework-specific
 callback layers. Read it before writing your own; the naive version (a module
@@ -288,6 +308,9 @@ Match the codebase you're in. If it's async, the wrapper is async. If it already
 has a request context or a trace id, bind to that instead of inventing one.
 
 ## 5. Verify — watch the files
+
+(TypeScript: same directory, same checklist; the commands are in
+`references/typescript.md` → *Verify*.)
 
 **This is the whole point of the file boundary: you can prove the integration
 without a server.** Run the agent and look.
@@ -319,7 +342,7 @@ cat ~/.failproofai/custom-agents/events/*.jsonl | python -m json.tool --json-lin
 
 Then check, in this order — the first failure explains everything downstream:
 
-1. **Any files at all — or do they stop mid-run?** Look at stderr for
+1. **Any files at all — or do they stop mid-run?** (Python) Look at stderr for
    `Exception in thread failproofai-sdk-flush`. **This is the first thing to check and
    the worst thing to miss**: one non-JSON-serializable value killed the writer,
    and everything after it — including the at-exit flush — is gone (§3). The tell
@@ -342,8 +365,8 @@ Then check, in this order — the first failure explains everything downstream:
    even when identity is a module global, and mixing only appears once two runs
    overlap — which is production, not your laptop (§4).
 7. **Do `tool_use` and `tool_result` share a `tool_call_id`?** Unpaired means no
-   duration. Also confirm your ids are unique *process-wide* — a collision pairs
-   the wrong two events and reports a confident wrong duration (§3).
+   duration. Also confirm no id repeats *within a session* for the same kind — a
+   collision pairs the wrong two events and reports a confident wrong duration (§3).
 
 A test-mode loop that costs nothing:
 
@@ -388,6 +411,10 @@ Compare the two paths first: print the directory your agent is actually writing 
 (`python -c "import failproofai_sdk._resolver as r; print(r.get_base_dir())"` in the
 agent's own environment, with the agent's own env vars) and check the collector is
 running and pointed at the same one. A `.jsonl` count that only grows is the tell.
+The reverse is healthy: with `failproofaid` running, the directory empties seconds
+after each flush, because the daemon ships each file and deletes it — so an empty
+real spool proves nothing either way. Verify content with the throwaway
+`FAILPROOFAI_HOME` loop in §5, and arrival with `fp-cloud-cli`.
 
 Confirming events arrived on the *platform* is deliberately not this skill's job —
 that is the `fp-cloud-cli` skill, from a **separate environment** (§1). Collector
@@ -396,4 +423,23 @@ setup and deployment are your platform's own documentation.
 If the files look right (§5) and the collector is running against the same
 directory, the integration is done.
 
-<!-- ci: no-op touch to exercise the skill-sync trigger (safe to remove) -->
+## 7. Score the runs — your own evaluator worker
+
+Sessions that land can be scored. Hosted evaluations are written in the dashboard
+(**Analyze → eval authoring**) and run on Failproof AI's managed evaluator: that is
+the default. When an evaluation needs your own model keys, packages, secrets,
+private network or heavy compute, run it in **your own worker** — the eval pod.
+
+It ships in the same packages: `failproofai_sdk.evaluator` and
+`@failproofai/sdk/evaluator`. You declare an `Evaluator`, register versioned
+evaluations with an optional `when` condition, and start it with an
+`evaluations:run` key in `FAILPROOFAI_EVALUATOR_TOKEN`. It only calls out over
+HTTPS — claim finished sessions, score them, submit — so a pod needs egress and a
+secret, and no ingress. Its results carry the **customer** tag.
+
+Two things to settle before writing one: the agents must already produce finished
+sessions (§2 — nothing scores a run with no `agent_end`), and bump an evaluation's
+`version` whenever its logic changes. Everything else — the API in both languages,
+env vars, a Dockerfile, SIGTERM drain vs. the pod's grace period, scaling, and a
+debugging order for a worker that scores nothing — is in `references/evaluator.md`.
+

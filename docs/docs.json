@@ -219,6 +219,7 @@
                   "reference/harnesses",
                   "reference/jev-intent",
                   "reference/custom-agents",
+                  "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"

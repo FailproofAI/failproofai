@@ -1,0 +1,13 @@
+{
+  "name": "failproofai-it-ai-6",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: Vercel AI SDK 6.x against the packed @failproofai/sdk.",
+  "dependencies": {
+    "ai": "6.0.288",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "failproofai-it-nextjs",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: a Next.js App Router app with one route handler per framework and a server action, built with `next build` and served with `next start` against the packed @failproofai/sdk. Framework pins match the langchain-1, ai-7, mastra-1 and llamaindex-0.12 fixtures, so each route's trace is compared with the same program's trace under plain Node.",
+  "scripts": {
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.12",
+    "@langchain/langgraph": "1.4.17",
+    "@llamaindex/core": "0.6.22",
+    "@llamaindex/workflow": "1.1.24",
+    "@mastra/core": "1.68.0",
+    "ai": "7.0.111",
+    "llamaindex": "0.12.1",
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}

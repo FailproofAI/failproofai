@@ -898,6 +898,7 @@ finish. If any job fails, **stop and fix it before continuing**. Never leave a r
 | build | `bun run build` (Next.js + `dist/index.js` + `dist/cli.mjs` + `dist/worker.mjs`) |
 | test-e2e | `bun run test:e2e` |
 | docs | docs build/validation |
+| failproofai-ts-sdk | `sdk/typescript`, across four Node majors: `npm run typecheck` + `npm run lint` + `npm run build` + `vitest run`, then `npm pack` and a smoke test of the TARBALL — installed with `--omit=peer`, loaded from both ESM and CommonJS, events read back off disk, and the evaluator sandbox resolved through the package's own `./sandbox-worker` export. That last one cannot be exercised from inside the repo and is the difference between managed evaluations working and being refused. |
 
 A separate `.github/workflows/build-daemon.yml` ("Build failproofaid") cross-compiles the
 4 real `failproofaid` release binaries (linux-x64/arm64, darwin-x64/arm64), gzips each one
@@ -1273,9 +1274,47 @@ sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               or the SDK writes where no daemon reads, with NO error
                               on either side. tests/test_spool_contract.py checks the
                               Rust and the TypeScript directly and never skips
+sdk/typescript/              The telemetry SDK (TypeScript, npm, vitest). npm package
+                              `@failproofai/sdk`. The same 15 events, wire format,
+                              spool directory and Evaluator v2 protocol as
+                              sdk/python — a fleet running both writes into one
+                              pipe. Zero runtime dependencies for the same reason,
+                              enforced by a test AND by scripts/finalize-build.mjs.
+                              Its OWN npm package: its own package-lock.json,
+                              tsconfig, eslint config and vitest config, excluded
+                              from the root tsconfig and the root eslint config so
+                              this project's dependency tree cannot decide whether
+                              that package's zero-dependency claim holds.
+  src/writer.ts               Interval flush, `unref`'d so importing the SDK never
+                              stops a script exiting; sync flush on `process.exit`.
+                              `renameSync` inside an otherwise-async write is
+                              load-bearing: it is what lets the exit path tell a
+                              durable chunk from an un-written one with no window
+  src/context.ts              AsyncLocalStorage, the analogue of Python's
+                              contextvars. The agent stack is a FROZEN array,
+                              replaced never mutated — a store object is shared by
+                              reference with every async branch below it
+  src/evaluator/expression.ts A restricted expression language, PARSED AND
+                              INTERPRETED. Not `eval`, not `node:vm`: JavaScript
+                              reaches arbitrary code through `x["constructor"]`,
+                              whose key is computed at runtime, so no source-level
+                              allowlist closes it and a vm context has its own
+                              `Function`. `readProperty` checks the ACTUAL key at
+                              the moment of the read; that is the boundary
+  src/evaluator/source.ts     The worker_threads sandbox around it — V8 heap
+                              limits, wall-clock terminate(), bounded result,
+                              concurrency cap. The RESOURCE bound, and it fails
+                              CLOSED: no sandbox means managed source is refused
+  scripts/release.mjs         The npm release scheme (`X.Y.Z-beta.N`), and the only
+                              place it is written down; the ts-sdk release workflow
+                              calls it. Node stdlib only, because it runs in the
+                              preflight job, which installs nothing precisely so no
+                              third-party code decides whether a release proceeds
 __tests__/                   Unit + e2e tests (vitest) — TypeScript only; the Python
                               components' tests live in fp-cloud-cli/tests/ and
-                              sdk/python/tests/ and run under pytest
+                              sdk/python/tests/ and run under pytest, and the
+                              TypeScript SDK's live in sdk/typescript/test/ under
+                              its own vitest config
 examples/                    Sample custom policy files
 ```
 
@@ -1318,7 +1357,10 @@ any `packages/*/package.json` files against root; that directory does not curren
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and
 `failproofai-sdk` share no version line with the npm package and never have. Do not move
-them to match it.
+them to match it. Neither does `@failproofai/sdk`: it is a second npm package with its own
+line in `sdk/typescript/src/version.ts` and `sdk/typescript/package.json`, which
+`sdk/typescript/scripts/release.mjs` keeps in step and `__tests__/ci/ts-sdk-pipeline.test.ts`
+asserts agree.
 
 ### The Python packages' scheme
 

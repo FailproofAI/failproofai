@@ -24,7 +24,20 @@ import type { HookActivityEntry } from "@/src/hooks/hook-activity-store";
  * timeout, so a genuinely missing element still fails the test rather than
  * hanging the suite.
  */
+// Testing Library's async budget has to sit BELOW vitest's own, or the two
+// race and the wrong one wins. At 5s each — vitest's default is 5s — a single
+// `findByText` on a slow runner can consume the whole test budget, so vitest
+// kills the test before Testing Library can say which element it could not
+// find. That is what this file did on CI while passing locally in 1.8s: three
+// jobs reported "Test timed out in 5000ms" and one reported an element missing,
+// which were the same slowness surfacing at whichever await got there first.
+//
+// The test renders, waits for a row, clicks it, and waits for a detail panel —
+// several awaits, each allowed 5s — so the test needs room for all of them. The
+// click is the part that really needs it: landing before React has attached its
+// handlers does nothing at all, and the panel then never opens.
 configure({ asyncUtilTimeout: 5_000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 const NOW = Date.now();
 

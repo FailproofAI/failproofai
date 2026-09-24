@@ -55,6 +55,7 @@
  *   about a policy set that is coming back shortly would be noise.
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { contestedSemanticNames } from "./effective-reviewers";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledPacks, packSemantic, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority } from "./policy-authority";
@@ -147,11 +148,17 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   const packReviewers = new Set<string>();
   try {
     packsInstalled = hasInstalledPacks();
-    for (const pack of readInstalledPacks().packs) {
+    const packs = readInstalledPacks().packs;
+    for (const pack of packs) {
       const selected = pack.enabled;
       records.push(...(selected ? pack.policies.filter((p) => selected.includes(p.name)) : pack.policies));
       for (const entry of packSemantic(pack)) packReviewers.add(entry.name);
     }
+    // A name two packs claim differently is asked for neither of them, so
+    // registration will not honour it and neither may this count — the panel and
+    // `jev status` would otherwise promise a clear that cannot happen. Same
+    // function, same read, so the two cannot disagree.
+    for (const name of contestedSemanticNames(packs).keys()) packReviewers.delete(name);
   } catch {
     // An unreadable manifest enforces nothing; `readInstalledPacks` already
     // reports that to the hook log on the path that cares.

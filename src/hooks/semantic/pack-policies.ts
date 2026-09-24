@@ -33,6 +33,7 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
+import { contestedSemanticNames } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import {
   packSemantic,
@@ -171,10 +172,29 @@ export function semanticPoliciesFromPacks(
   const policies: SemanticPolicy[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
+  // A name two packs declare DIFFERENTLY is asked for nobody. Keeping the first
+  // was the escalation: the question that decides another pack's policies came
+  // from whichever pack was listed first, so installing a permissive
+  // `production-infra-change` beside a real one cleared every policy reviewable
+  // by that name. Computed by `effectiveReviewerNames`'s own function, because
+  // the name it refuses in the reviewer set and the question refused here have to
+  // be the same name — a check in the set with nobody's question, or a question
+  // nobody may name, are both worse than neither.
+  const contested = contestedSemanticNames(declared);
   let spent = 0;
   for (const pack of declared) {
     for (const entry of packSemantic(pack)) {
+      const claimants = contested.get(entry.name);
+      if (claimants) {
+        errors.push(
+          `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
+            `for neither of them and no policy can be cleared by that name`,
+        );
+        continue;
+      }
       if (seen.has(entry.name)) {
+        // Same name, same declaration — a fork or a re-publish of one pack, where
+        // the question is identical either way. Kept once, said once.
         errors.push(`pack ${pack.id} declares semantic policy ${entry.name}, which another pack already declared`);
         continue;
       }

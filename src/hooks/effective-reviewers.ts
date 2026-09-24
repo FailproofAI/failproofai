@@ -38,14 +38,100 @@
  * — loudly here, but it is the shape of a change that would later break them
  * silently.
  */
-import { readInstalledPacks } from "./pack-manifest";
+import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 
 let cached: ReadonlySet<string> | null = null;
 
 /**
+ * A stable serialization, for comparing two declarations of the same name.
+ * Key order is a manifest's business, not a difference in what is asked.
+ */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * The semantic check names that more than one installed pack claims, with
+ * declarations that are not the same check — and which this machine must
+ * therefore honour for nobody. Keyed by name, valued with the packs that
+ * claimed it, for the warning.
+ *
+ * ## Why a contested name has to be refused rather than resolved
+ *
+ * The reviewer set is the whole protection: a policy is `reviewable` only when
+ * every name its `reviewedBy` lists is a check this machine can actually ask.
+ * The union across packs is deliberate and must keep working — the shipped
+ * configuration is exactly that, `FailproofAI/policies` naming checks that live
+ * in `FailproofAI/jev-policies` — but the union was AMBIGUOUS. Two packs may be
+ * installed at once, `semanticPoliciesFromPacks` keeps the first declaration of
+ * a duplicated name and drops the later one, and nothing tied a name to the pack
+ * that meant it. So a second pack declaring `production-infra-change` with a
+ * question that answers "no concern" to everything supplies the reviewer for the
+ * FIRST pack's policies: install it, and every policy reviewable by that name is
+ * cleared on every call. The pack doing it never declares a regex policy, and
+ * scoping reviewers per pack is not the fix — that would break the pairing the
+ * product ships.
+ *
+ * So the name leaves the set. The policies naming it resolve to `hard`, the
+ * question is not asked, and the pack that tried it gains nothing: stricter than
+ * either author asked for, with the regex deny simply standing. Nothing is
+ * failed closed over it — one policy being hard is a cost; a pack that denies
+ * every tool call is a different order of failure (`pack-failclosed.ts`).
+ *
+ * ## Why identical declarations are not a contest
+ *
+ * Content-addressed artifacts mean a fork or a re-publish arrives as two packs
+ * carrying the same semantic entries, and `custom-hooks-loader.ts` treats that
+ * shape as expected rather than as a corner. Both declarations are then the same
+ * question, so whichever the resolver keeps asks exactly what the other would
+ * have: nothing is ambiguous, and refusing the name would switch off the
+ * clearing half on a machine whose two packs agree to the byte.
+ *
+ * Pure, and takes the packs rather than reading them, so the two callers that
+ * already have them do not read `installed.json` again — and so both answer from
+ * the same list. They MUST agree: a name in the reviewer set whose question is
+ * another pack's is the bug this function exists to remove.
+ */
+export function contestedSemanticNames(
+  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic">>,
+): ReadonlyMap<string, string[]> {
+  const claims = new Map<string, { form: string; ids: string[] }>();
+  const contested = new Map<string, string[]>();
+  for (const pack of packs) {
+    for (const entry of pack.semantic ?? []) {
+      const form = canonical(entry);
+      const claim = claims.get(entry.name);
+      if (claim === undefined) {
+        claims.set(entry.name, { form, ids: [pack.id] });
+        continue;
+      }
+      claim.ids.push(pack.id);
+      // The array is the live one, so a third claimant is named too.
+      if (claim.form !== form) contested.set(entry.name, claim.ids);
+    }
+  }
+  return contested;
+}
+
+/**
  * The installed packs' semantic policy names when any pack declares some, and
  * this build's compiled-in set otherwise.
+ *
+ * A name two packs claim differently is left out — see
+ * {@link contestedSemanticNames}. When that leaves nothing, the compiled-in set
+ * stands, which is not a softening but the same rule
+ * `semanticPoliciesFromPacks` applies to the QUESTIONS: a declaring pack whose
+ * every entry was unusable leaves the compiled-in semantic set live, so the
+ * names honoured here are the names of the questions that will actually be
+ * asked, and each of those is one of ours.
  *
  * Never throws: an unreadable manifest declares nothing, and the builtin set
  * stands. That is the same fail-open posture every other reader of the pack
@@ -57,7 +143,11 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
   let names: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES;
   try {
-    const declared = readInstalledPacks().packs.flatMap((p) => (p.semantic ?? []).map((s) => s.name));
+    const packs = readInstalledPacks().packs;
+    const contested = contestedSemanticNames(packs);
+    const declared = packs
+      .flatMap((p) => (p.semantic ?? []).map((s) => s.name))
+      .filter((name) => !contested.has(name));
     // Only when a pack actually declared some. A machine whose packs carry only
     // the regex floor still runs the compiled-in semantic set, so its builtin
     // reviewer names are the live ones.

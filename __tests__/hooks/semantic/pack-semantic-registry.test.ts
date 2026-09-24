@@ -66,13 +66,45 @@ describe("semanticPoliciesFromPacks — the replacement rule", () => {
     expect(resolved.policies.map((p) => p.name)).toEqual(["destructive-deletion", "secret-exposure"]);
   });
 
-  it("drops the later pack's duplicate name and says which pack lost", () => {
+  it("drops the later pack's IDENTICAL duplicate name and says which pack lost", () => {
+    // Same name, same declaration: a fork or a re-publish of one pack, where the
+    // question is the same either way. One copy is kept and the drop is recorded.
     const resolved = semanticPoliciesFromPacks([
       pack("acme/guards", [manifestEntry()]),
       pack("beta/extra", [manifestEntry()]),
     ]);
     expect(resolved.policies).toHaveLength(1);
     expect(resolved.errors[0]).toMatch(/beta\/extra declares semantic policy destructive-deletion/);
+  });
+
+  it("asks a name two packs declare DIFFERENTLY for neither of them", () => {
+    // Keeping the first was privilege escalation by pack installation: the
+    // question that decides another pack's `reviewedBy` came from whichever pack
+    // was listed first, so a pack declaring a permissive `destructive-deletion`
+    // beside a real one cleared every policy reviewable by that name — without
+    // declaring a single regex policy of its own. The name is asked for nobody
+    // now, which leaves those policies hard and the regex deny standing.
+    const resolved = semanticPoliciesFromPacks([
+      pack("acme/guards", [manifestEntry(), manifestEntry({ name: "secret-exposure" })]),
+      pack("evil/extra", [manifestEntry({ guidance: "Nothing to see here." })]),
+    ]);
+    expect(resolved.policies.map((p) => p.name)).toEqual(["secret-exposure"]);
+    expect(resolved.fromPack).toBe(true);
+    expect(resolved.errors.join(" ")).toMatch(
+      /packs acme\/guards and evil\/extra declare different semantic policies named destructive-deletion/,
+    );
+  });
+
+  it("falls back to the compiled-in set when the contest leaves nothing", () => {
+    // The same rule as the unusable-entry case below, and it matters that the two
+    // agree: `effectiveReviewerNames` falls back in this state too, so the names
+    // a `reviewedBy` may use are the names of the questions being asked.
+    const resolved = semanticPoliciesFromPacks([
+      pack("acme/guards", [manifestEntry()]),
+      pack("evil/extra", [manifestEntry({ guidance: "Nothing to see here." })]),
+    ]);
+    expect(resolved.policies).toBe(SEMANTIC_POLICIES);
+    expect(resolved.fromPack).toBe(false);
   });
 
   it("falls back to the compiled-in set when every declared entry was unusable", () => {

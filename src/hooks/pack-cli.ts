@@ -13,7 +13,19 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { INTEGRATION_TYPES } from "./types";
 import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
 import { detectInstalledClis } from "./integrations";
-import { parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
+import {
+  parsePackIdentity,
+  parsePackPolicy,
+  parsePackSemanticPolicy,
+  readInstalledPacks,
+  type SemanticManifestEntry,
+} from "./pack-manifest";
+import { parseSemver } from "./semver-precedence";
+// The build step measures a pack's question set against the envelope's own
+// budget, which means reaching the semantic side. This is a CLI module — loaded
+// by `failproofai publish`, never by a hook — so the rule that keeps those
+// modules off an unconfigured machine's hook path does not apply here.
+import { MAX_PACK_QUESTION_CHARS, questionChars } from "./semantic/pack-policies";
 import {
   AmbiguousPackId,
   PACK_CHECKSUMS_ASSET,
@@ -30,7 +42,9 @@ import {
 } from "./pack-store";
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
+import { getSemanticRegistrations } from "./custom-hooks-registry";
 import { authorityFieldsOf, authorityProblem } from "./policy-authority";
+import type { SemanticPolicyDeclaration } from "./policy-types";
 import type { MultiChoice, TTYIn, TTYOut } from "./tui";
 import {
   chip,
@@ -295,12 +309,23 @@ async function build(rest: string[]): Promise<PackCliResult> {
   const version = flag("version");
   const commit = flag("commit");
   const effect = flag("effect") ?? "enforce";
+  const minCliVersion = flag("min-cli-version");
   const outDir = resolve(flag("out") ?? "dist-pack");
 
   if (!entry || !id || !version) {
     return fail([
       "Usage: failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>",
-      "       [--out <dir>] [--effect enforce|observe]",
+      "       [--out <dir>] [--effect enforce|observe] [--min-cli-version <version>]",
+    ]);
+  }
+  // Refused here rather than written and refused by every machine that installs
+  // it. A `minCliVersion` nobody can order is a requirement nobody can check,
+  // and the loader treats one as grounds to refuse the whole pack — so a typo
+  // published here is a pack that installs nowhere.
+  if (minCliVersion !== undefined && parseSemver(minCliVersion) === null) {
+    return fail([
+      `--min-cli-version ${JSON.stringify(minCliVersion)} is not a version that can be compared.`,
+      "It must be plain semver — 1.0.7, or 1.0.7-beta.0 for a pre-release.",
     ]);
   }
   let identity: { id: string; version: string; effect: PolicyEffect; commit?: string };
@@ -325,15 +350,25 @@ async function build(rest: string[]): Promise<PackCliResult> {
   }
 
   let hooks;
+  let semanticDeclarations: SemanticPolicyDeclaration[];
   try {
     hooks = await loadCustomHooks(entryPath, { strict: true });
+    // Read AFTER the load, from the same registration pass `clearCustomHooks`
+    // resets: a semantic policy has no `fn`, so it never travels back through
+    // `loadCustomHooks`'s return value.
+    semanticDeclarations = [...getSemanticRegistrations()];
   } catch (err) {
     return fail([`Could not load ${entryPath}: ${err instanceof Error ? err.message : String(err)}`]);
   }
-  if (hooks.length === 0) {
+  // BOTH registries, or a pack that ships only Jev questions — a legitimate
+  // thing to publish, since the regex floor may already be somebody else's pack
+  // — is refused for registering nothing.
+  if (hooks.length === 0 && semanticDeclarations.length === 0) {
     return fail([
       `${entryPath} registered no policies.`,
-      "A pack entry calls customPolicies.add({ name, description, match, fn }) for each one.",
+      "A pack entry calls customPolicies.add({ name, description, match, fn }) for each one,",
+      "and semanticPolicies.add({ name, title, appliesTo, mode, userCanOverride, probes, guidance })",
+      "for each Jev question set.",
     ]);
   }
 
@@ -360,14 +395,54 @@ async function build(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
+  // The pack's Jev question sets, validated with the LOADER's own rules — the
+  // same deal `parsePackPolicy` gets above, so a semantic policy that could
+  // never load fails here, where the author can fix it.
+  const semantic: SemanticManifestEntry[] = [];
+  for (const [index, declaration] of semanticDeclarations.entries()) {
+    try {
+      const parsed = parsePackSemanticPolicy(identity.id, declaration, index);
+      // Same reason two regex policies cannot share a name, one layer over: the
+      // answer map is keyed `<policy>.<probe>`, so a duplicate would overwrite
+      // the first policy's questions in the compiled request.
+      if (semantic.some((s) => s.name === parsed.name)) {
+        throw new Error(`two semantic policies are called ${JSON.stringify(parsed.name)}`);
+      }
+      semantic.push(parsed);
+    } catch (err) {
+      return fail([err instanceof Error ? err.message : String(err)]);
+    }
+  }
+
+  // The question budget, checked against what one Jev request can carry. A pack
+  // over it installs and then has its overflow policies dropped one by one on
+  // the user's machine, in manifest order — a pack that enforces less than it
+  // says, which is the failure this whole lane is built to avoid.
+  const questionCost = semantic.reduce((total, entry) => total + questionChars(entry), 0);
+  if (questionCost > MAX_PACK_QUESTION_CHARS) {
+    return fail([
+      `This pack's ${semantic.length} semantic policies compile to ${questionCost} characters of questions, ` +
+        `over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for.`,
+      "Shorten the probe instructions and criteria, or ship fewer policies per pack.",
+    ]);
+  }
+
   // An authority declaration the manifest would lose, or that registration
   // would quietly downgrade to hard, is refused HERE. Every machine that
   // installs the pack would otherwise make the policy hard with only a warning
   // in its own log — the author's decision, silently not taking effect — while
   // at build time nothing is installed yet and refusing costs nobody anything.
   // The same rule `scripts/build-policy-pack.mjs` applies to the core pack.
+  //
+  // Judged against the reviewers the PACK SHIPS WITH, not this build's: a pack
+  // that carries both tiers replaces the compiled semantic set on every machine
+  // that installs it, so `reviewedBy: ["its-own-check"]` is exactly right and
+  // the builtin list would call it a name "this build does not have". A pack
+  // with no semantic entries still answers to the builtin set, which is what its
+  // machines will be running.
+  const reviewers = semantic.length > 0 ? new Set(semantic.map((s) => s.name)) : undefined;
   const authorityProblems = hooks.flatMap((hook) => {
-    const problem = authorityProblem({ authority: hook.authority, reviewedBy: hook.reviewedBy });
+    const problem = authorityProblem({ authority: hook.authority, reviewedBy: hook.reviewedBy }, reviewers);
     return problem ? [`  ${hook.name}: ${problem}`] : [];
   });
   if (authorityProblems.length > 0) {
@@ -412,14 +487,21 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // The manifest is hashed and the hash is the pin, so every byte in here is
   // part of what a machine verifies — a field carrying "there was nothing to
   // say" earns none of that cost. Readers already treat absence as ordinary.
+  //
+  // `minCliVersion` and `semantic` follow the same rule, and for `semantic` it is
+  // load-bearing rather than tidy: an EMPTY array would still be "a pack that
+  // declares semantic entries" to a careless reader, and the replacement rule
+  // turns that into "this pack replaced the compiled-in set with nothing".
   const manifest =
     JSON.stringify(
       {
         id: identity.id,
         version: identity.version,
+        ...(minCliVersion ? { minCliVersion } : {}),
         effect: identity.effect,
         ...(identity.commit ? { commit: identity.commit } : {}),
         policies,
+        ...(semantic.length > 0 ? { semantic } : {}),
       },
       null,
       2,
@@ -439,6 +521,16 @@ async function build(rest: string[]): Promise<PackCliResult> {
   const on = policies.filter((p) => (p as { defaultEnabled?: boolean }).defaultEnabled).length;
   return ok([
     `Built ${identity.id}@${identity.version} — ${policies.length} policies, ${on} on by default.`,
+    // Said separately, and said at all, because this half replaces the compiled-in
+    // semantic set on every machine that installs the pack. An author who did not
+    // mean to ship it should find that out here.
+    ...(semantic.length > 0
+      ? [
+          `  ${semantic.length} semantic ${semantic.length === 1 ? "policy" : "policies"} for Jev ` +
+            `(${questionCost} characters of questions), replacing this build's own set where it installs.`,
+        ]
+      : []),
+    ...(minCliVersion ? [`  Requires failproofai ${minCliVersion} or newer.`] : []),
     `  ${outDir}/${PACK_MANIFEST_ASSET}`,
     `  ${outDir}/${PACK_ENTRY_ASSET}`,
     `  ${outDir}/${PACK_CHECKSUMS_ASSET}`,
@@ -1025,7 +1117,13 @@ function inferTaggedVersion(entryPath: string, sources?: string[]): string | nul
  * Identified by CONTENT, not by filename. A name convention would either miss
  * `guards.mjs` or match an unrelated `policies.mjs` that configures something
  * else entirely; a file that imports `failproofai` and calls
- * `customPolicies.add` is a policy file whatever it is called.
+ * `customPolicies.add` — or `semanticPolicies.add` — is a policy file whatever
+ * it is called.
+ *
+ * Both registries count, and leaving one out was not a cosmetic gap: a file that
+ * registers only Jev questions was undiscoverable, so `failproofai publish` in
+ * its own directory reported no policy file at all rather than reaching the
+ * "registered no policies" check and explaining itself.
  *
  * Returns ALL of them. Splitting policies across files is the normal thing to
  * do past about three, and they are one pack — so several files is an answer,
@@ -1034,8 +1132,11 @@ function inferTaggedVersion(entryPath: string, sources?: string[]): string | nul
  *
  * Non-recursive on purpose. Walking the tree finds fixtures, examples and
  * anything vendored, and publishing those is the failure this avoids.
+ *
+ * Takes the directory rather than reading `process.cwd()` so the discovery rule
+ * can be tested against a real folder without a `chdir`.
  */
-function findEntry(dir: string): string[] {
+export function findEntry(dir: string): string[] {
   let names: string[];
   try {
     names = readdirSync(dir);
@@ -1051,7 +1152,10 @@ function findEntry(dir: string): string[] {
       // would be the expensive half of this scan.
       if (statSync(full).size > 512 * 1024) continue;
       const text = readFileSync(full, "utf8");
-      if (/from\s+["']failproofai["']/.test(text) && /customPolicies\s*\.\s*add\s*\(/.test(text)) {
+      if (
+        /from\s+["']failproofai["']/.test(text) &&
+        /(?:customPolicies|semanticPolicies)\s*\.\s*add\s*\(/.test(text)
+      ) {
         found.push(full);
       }
     } catch {

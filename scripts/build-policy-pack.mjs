@@ -39,6 +39,16 @@
  * silently hard everywhere it is installed. The entry passes the same fields to
  * `customPolicies.add`, so a manifest rebuilt from the entry (`failproofai
  * publish`) says the same thing.
+ *
+ * **It emits no `semantic` array, deliberately.** A pack that declares one
+ * REPLACES this build's compiled-in semantic set wholesale
+ * (`semantic/pack-policies.ts`), and this pack is the dress rehearsal for the
+ * regex floor leaving the package — not for Jev's question set leaving it. So
+ * the 39 builtins travel and the 16 semantic policies stay compiled in, which
+ * also keeps `manifestAuthority` below judging `reviewedBy` against the right
+ * list: the builtin reviewer names, which is what a machine installing this pack
+ * will still be running. The separate `FailproofAI/jev-policies` pack is where
+ * the semantic half ships, and it declares its own `minCliVersion`.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

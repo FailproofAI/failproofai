@@ -156,7 +156,10 @@ describe("the reviews column is inverted from the manifest", () => {
       [policy("block-rm-rf", undefined, { authority: "hard", reviewedBy: ["destructive-deletion"] })],
       [check("destructive-deletion")],
     );
-    expect(rowFor(lines, "destructive-deletion").slice(2)).toEqual(["—", "nothing in the 1 covers this"]);
+    expect(rowFor(lines, "destructive-deletion").slice(2)).toEqual([
+      "—",
+      "the one policy here does not cover this",
+    ]);
   });
 
   it("leaves out a policy that also names a check the pack does not declare", () => {
@@ -183,7 +186,10 @@ describe("a check no policy names says why it is there", () => {
     );
     // Deny, unnamed: nothing in the pack's regex half covers the concern, so
     // this check can only ever ADD a deny. The count is the pack's own.
-    expect(rowFor(lines, "credential-exfiltration").slice(2)).toEqual(["—", "nothing in the 1 covers this"]);
+    expect(rowFor(lines, "credential-exfiltration").slice(2)).toEqual([
+      "—",
+      "the one policy here does not cover this",
+    ]);
     // Instruct, unnamed: it can never answer deny, so pairing it with a policy
     // could only ever clear that policy — which is why nothing pairs with it.
     expect(rowFor(lines, "push-to-protected-branch").slice(2)).toEqual([
@@ -196,9 +202,22 @@ describe("a check no policy names says why it is there", () => {
     );
   });
 
-  it("does not say 'nothing in the 0' for a pack that ships only checks", () => {
-    const lines = section([], [check("destructive-deletion")]);
-    expect(rowFor(lines, "destructive-deletion").slice(2)).toEqual(["—", "nothing here covers this"]);
+  it("has a grammatical answer for a pack of checks alone, and for one policy", () => {
+    // "nothing in the 38" borrows the count from the heading, and has no form at
+    // zero or one. A pack of Jev checks alone is a legitimate thing to publish,
+    // so neither spelling may fall out as "nothing in the 0".
+    const none = section([], [check("destructive-deletion")]);
+    expect(rowFor(none, "destructive-deletion").slice(2)).toEqual([
+      "—",
+      "this pack has no policies to clear",
+    ]);
+    expect(none.join("\n")).toContain("This pack ships no regex policies");
+    expect(none.join("\n")).not.toMatch(/\b0 policies\b/);
+    const many = section(
+      Array.from({ length: 38 }, (_, i) => policy(`p-${i}`)),
+      [check("destructive-deletion")],
+    );
+    expect(rowFor(many, "destructive-deletion")[3]).toBe("nothing in the 38 covers this");
   });
 });
 

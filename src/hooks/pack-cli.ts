@@ -3049,7 +3049,13 @@ function reviewersCell(names: ReadonlyArray<string>): string {
  */
 function unreviewedCell(mode: SemanticManifestEntry["mode"], policies: number): string {
   if (mode === "instruct") return "instruct-only — it can never deny";
-  return policies === 0 ? "nothing here covers this" : `nothing in the ${policies} covers this`;
+  // "the 38" borrows the count from the heading above, where it has just been
+  // read. The other two spellings exist because that sentence has no grammatical
+  // form at one or zero — and a pack of Jev checks alone, with no regex half at
+  // all, is a legitimate thing to publish.
+  if (policies === 0) return "this pack has no policies to clear";
+  if (policies === 1) return "the one policy here does not cover this";
+  return `nothing in the ${policies} covers this`;
 }
 
 /**
@@ -3100,9 +3106,14 @@ export function jevChecksSection(
       opts,
     ),
     ...note(
-      `\`reviews\` is which of this pack's own ${pack.policies.length} policies each check can clear. ` +
-        "A deny check that reviews nothing can only ever ADD a deny; an instruct check never answers " +
-        "deny, so nothing pairs with one.",
+      // A pack of Jev checks alone has no regex half for the column to be about,
+      // so the sentence says what IS true of it rather than "its own 0 policies".
+      pack.policies.length === 0
+        ? "This pack ships no regex policies, so none of these checks clears anything here: a deny " +
+            "check can only ADD a deny, and an instruct check only ever warns."
+        : `\`reviews\` is which of this pack's own ${pack.policies.length} policies each check can clear. ` +
+            "A deny check that reviews nothing can only ever ADD a deny; an instruct check never answers " +
+            "deny, so nothing pairs with one.",
       opts,
     ),
   ];

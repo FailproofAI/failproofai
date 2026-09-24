@@ -114,6 +114,20 @@ for (const policy of BUILTIN_POLICIES) {
     defaultEnabled: policy.defaultEnabled === true,
     match: policy.match,
     fn: policy.fn,
+    // The parameter schema. It has to be registered here as well as written
+    // into the manifest this script builds, because there are TWO manifest
+    // producers for this pack and they have to agree: this script builds one
+    // from POLICY_CATALOG, and the publish command rebuilds one by importing
+    // the entry and reading back what it registered. A field the entry does
+    // not register is a field the second producer cannot know about.
+    //
+    // params is the one that fails silently STRICTER. Registration reads a
+    // pack policy's schema from the manifest, so an absent schema means the
+    // policy sees empty params: block-sudo's allowPatterns, and block-rm-rf's
+    // and block-read-outside-cwd's allowPaths, stop applying -- taking the
+    // user's own configured values with them. No backticks in this comment:
+    // see the note above entrySource.
+    ...(policy.params !== undefined ? { params: policy.params } : {}),
     // Whether Jev may clear it; see the note on authority at the top.
     ...(policy.authority !== undefined ? { authority: policy.authority } : {}),
     ...(policy.reviewedBy !== undefined ? { reviewedBy: policy.reviewedBy } : {}),

@@ -56,7 +56,7 @@
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { hasInstalledPacks, packSemantic, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
@@ -98,7 +98,17 @@ export const RETAKE_PACK_COMMAND = "failproofai policies add FailproofAI/policie
  * and counting it would report a clear that can never happen while
  * `reviewableProblem` stayed silent about the machine it exists to warn.
  */
-export function countReviewable(policies: Iterable<AuthorityRecord>): {
+export function countReviewable(
+  policies: Iterable<AuthorityRecord>,
+  /**
+   * The semantic checks that can be asked on this machine. Defaults to the
+   * compiled-in set; `surveyReviewableCoverage` passes the pack's when one
+   * declares its own, because otherwise this diagnostic reports "0 of 11
+   * reviewable" on exactly the machines the feature was built for — the ones
+   * running a pack that carries both tiers.
+   */
+  knownReviewers?: ReadonlySet<string>,
+): {
   enabled: number;
   reviewable: number;
 } {
@@ -106,7 +116,7 @@ export function countReviewable(policies: Iterable<AuthorityRecord>): {
   let reviewable = 0;
   for (const p of policies) {
     enabled += 1;
-    if (resolvePolicyAuthority(p).authority === "reviewable") reviewable += 1;
+    if (resolvePolicyAuthority(p, knownReviewers).authority === "reviewable") reviewable += 1;
   }
   return { enabled, reviewable };
 }
@@ -124,11 +134,23 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   const records: AuthorityRecord[] = [];
 
   let packsInstalled = false;
+  /**
+   * The reviewers a pack brought with it. Collected from the SAME read as the
+   * policies rather than through `effectiveReviewerNames()`, which would re-read
+   * and re-verify every artifact for an answer already in hand — and would, for
+   * one read of a manifest being rewritten underneath, be able to disagree with
+   * the records counted here.
+   *
+   * A pack's `enabled` selection is deliberately not applied: it narrows which
+   * of its REGEX policies register, and its semantic set is not selectable.
+   */
+  const packReviewers = new Set<string>();
   try {
     packsInstalled = hasInstalledPacks();
     for (const pack of readInstalledPacks().packs) {
       const selected = pack.enabled;
       records.push(...(selected ? pack.policies.filter((p) => selected.includes(p.name)) : pack.policies));
+      for (const entry of packSemantic(pack)) packReviewers.add(entry.name);
     }
   } catch {
     // An unreadable manifest enforces nothing; `readInstalledPacks` already
@@ -163,7 +185,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records), customFiles };
+  return { ...countReviewable(records, packReviewers.size > 0 ? packReviewers : undefined), customFiles };
 }
 
 /**

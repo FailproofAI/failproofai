@@ -7,6 +7,7 @@
  */
 import type { HookEventType } from "./types";
 import type { PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
+import { effectiveReviewerNames, forgetEffectiveReviewerNames } from "./effective-reviewers";
 import { resolvePolicyAuthority, type AuthorityDeclaration } from "./policy-authority";
 
 const REGISTRY_KEY = "__FAILPROOFAI_POLICY_REGISTRY__";
@@ -72,7 +73,14 @@ export function registerPolicy(
   const canonical = normalizePolicyName(name);
   const registry = getRegistry();
   const idx = registry.findIndex((p) => p.name === canonical);
-  const authority = meta ? resolvePolicyAuthority(meta) : undefined;
+  // Judged against the reviewers this MACHINE can ask, not against the ones this
+  // build compiled in. A pack that ships its own `semantic` set replaces the
+  // compiled one, so its policies name checks that exist here and nowhere in
+  // `SEMANTIC_POLICY_NAMES` — and judging them by the builtin list would
+  // downgrade the whole rewritten set to `hard` while reporting nothing but a
+  // warning. `effectiveReviewerNames` reads the manifest — already where a
+  // pack's `reviewedBy` itself comes from — once per registration pass.
+  const authority = meta ? resolvePolicyAuthority(meta, effectiveReviewerNames()) : undefined;
   const entry: RegisteredPolicy = {
     name: canonical, description, fn, match, priority,
     // Absent stays absent: `evaluatePolicies` distinguishes "declares a schema"
@@ -123,6 +131,10 @@ export function clearPolicies(): void {
   const g = globalThis as GlobalWithRegistry;
   g[REGISTRY_KEY] = [];
   setIndexCache(null);
+  // The reviewer set describes the policies that are about to be registered, so
+  // it is rebuilt with them. Dropping it here is also what keeps one read per
+  // evaluation instead of one per policy.
+  forgetEffectiveReviewerNames();
 }
 
 /**

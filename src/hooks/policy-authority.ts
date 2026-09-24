@@ -85,6 +85,16 @@ export const SEMANTIC_POLICY_NAMES = [
   "external-data-egress",
 ] as const;
 
+/**
+ * The compiled-in reviewer set, and the DEFAULT rather than the only one.
+ *
+ * A pack that declares its own `semantic` entries replaces
+ * `SEMANTIC_POLICIES` wholesale on the machine that installed it, so the names
+ * a `reviewedBy` may use there are the pack's. Callers that know which set is
+ * live pass it (`effectiveReviewerNames()` in `pack-manifest.ts`, which reads
+ * the manifest and imports nothing from `semantic/`); everyone else gets this
+ * one, which is what a machine with no pack runs.
+ */
 export const SEMANTIC_REVIEWER_NAMES: ReadonlySet<string> = new Set(SEMANTIC_POLICY_NAMES);
 
 const isName = (n: unknown): n is string => typeof n === "string" && n.length > 0;
@@ -103,8 +113,18 @@ const isName = (n: unknown): n is string => typeof n === "string" && n.length > 
  *
  * What this returns is what `registerPolicy` stores, so a registered policy's
  * `reviewedBy` is always clean and the two functions agree on it.
+ *
+ * @param knownReviewers - the semantic policies that CAN be asked on this
+ *   machine. Defaults to the compiled-in set, which is what runs until a pack
+ *   ships its own; see {@link SEMANTIC_REVIEWER_NAMES}. It is a parameter rather
+ *   than a lookup because this module is imported by the registry, and reading
+ *   which set is live means reading a file — a cost registration is willing to
+ *   pay once and this judgement must not pay per call.
  */
-export function resolvePolicyAuthority(decl: AuthorityDeclaration | undefined): ResolvedAuthority {
+export function resolvePolicyAuthority(
+  decl: AuthorityDeclaration | undefined,
+  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+): ResolvedAuthority {
   const declaredReviewable = decl?.authority === "reviewable";
   if (!decl || effectiveAuthority(decl) === "hard") {
     if (!declaredReviewable) return { authority: "hard" };
@@ -114,7 +134,7 @@ export function resolvePolicyAuthority(decl: AuthorityDeclaration | undefined): 
   if (!names.every(isName)) {
     return { authority: "hard", downgraded: "reviewedBy is not a list of semantic policy names" };
   }
-  const unknown = names.filter((n) => !SEMANTIC_REVIEWER_NAMES.has(n));
+  const unknown = names.filter((n) => !knownReviewers.has(n));
   if (unknown.length > 0) {
     return {
       authority: "hard",
@@ -167,7 +187,16 @@ export function authorityFieldsOf(raw: Record<string, unknown>): AuthorityFields
  *
  * An empty `reviewedBy` on a hard policy is not a problem: it says nothing.
  */
-export function authorityProblem(decl: AuthorityDeclaration): string | undefined {
+export function authorityProblem(
+  decl: AuthorityDeclaration,
+  /**
+   * The reviewers the pack being built will SHIP WITH — its own `semantic`
+   * entries when it declares any, this build's set otherwise. A pack that
+   * carries both halves of the two-tier set names its own checks, and refusing
+   * that would make the feature unpublishable by the tool that implements it.
+   */
+  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+): string | undefined {
   if (decl.authority !== undefined && decl.authority !== "hard" && decl.authority !== "reviewable") {
     const t = typeof decl.authority;
     return `authority must be "hard" or "reviewable", and is ${t === "string" ? JSON.stringify(decl.authority) : `${/^[aeiou]/.test(t) ? "an" : "a"} ${t}`}`;
@@ -175,7 +204,7 @@ export function authorityProblem(decl: AuthorityDeclaration): string | undefined
   if (decl.reviewedBy !== undefined && !(Array.isArray(decl.reviewedBy) && decl.reviewedBy.every(isName))) {
     return "reviewedBy must be a list of semantic policy names";
   }
-  const { downgraded } = resolvePolicyAuthority(decl);
+  const { downgraded } = resolvePolicyAuthority(decl, knownReviewers);
   return downgraded ? `authority "reviewable" was refused — ${downgraded}` : undefined;
 }
 
@@ -184,13 +213,16 @@ export function authorityProblem(decl: AuthorityDeclaration): string | undefined
  * the registry will store them, so the manifest says exactly what takes effect.
  * Throws, naming the entry, on anything {@link authorityProblem} refuses.
  */
-export function manifestAuthority(entry: AuthorityDeclaration & { name: string }): {
+export function manifestAuthority(
+  entry: AuthorityDeclaration & { name: string },
+  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+): {
   authority: PolicyAuthority;
   reviewedBy?: string[];
 } {
-  const problem = authorityProblem(entry);
+  const problem = authorityProblem(entry, knownReviewers);
   if (problem) throw new Error(`${entry.name}: ${problem}`);
-  const { authority, reviewedBy } = resolvePolicyAuthority(entry);
+  const { authority, reviewedBy } = resolvePolicyAuthority(entry, knownReviewers);
   return reviewedBy ? { authority, reviewedBy } : { authority };
 }
 

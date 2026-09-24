@@ -16,11 +16,11 @@
  * ## The token never comes back
  *
  * This is the rule the whole module is built around: nothing returned here
- * carries the API key, not even from a file the loader refused. The view has a
- * `token` field, and it holds a SOURCE and at most the last four characters —
- * enough for a person to recognise which key they stored, useless to anyone who
- * did not already have it. A GET that returns the key would hand it to any page
- * that can reach this origin, and the dashboard has no authentication.
+ * carries the API key or any piece of it, not even from a file the loader
+ * refused. The view has a `token` field and it holds a SOURCE — whether a key is
+ * there and where it came from, which is what the panel has to say. A GET that
+ * returns the key, or four characters of it, hands that to any page which can
+ * reach this origin, and the dashboard has no authentication.
  *
  * So the routing fields of a refused file are copied out one by one
  * (`routingFromRaw`) rather than spread: a spread is how `apiKey` gets carried
@@ -78,15 +78,18 @@ export interface JevSettingsStats {
 }
 
 /**
- * Presence of a stored key, never the key.
+ * Presence of a stored key, and nothing else about it.
  *
- * `hint` is the last four characters, and only for a key long enough that four
- * characters are a negligible share of it. A short key gets no hint at all
- * rather than a proportionally large piece of itself.
+ * It used to carry the last four characters, so the panel could say "configured,
+ * ending 1eb9". That is a recognisable fragment of a live credential rendered
+ * into a web page on an origin with no authentication, and it buys the reader
+ * nothing they could not get by re-pasting the key: the panel already says
+ * whether one is stored, where it came from, and that leaving the field blank
+ * keeps it. So the fragment is not shown, and — the part that matters — it is
+ * not computed and not sent.
  */
 export interface JevTokenPresence {
   source: "file" | "env";
-  hint: string | null;
 }
 
 /**
@@ -140,9 +143,19 @@ export interface JevSettingsView {
   status: JevSettingsStatus;
   /** True only when a hook running right now would consult Jev. */
   on: boolean;
-  /** `~/.failproofai/jev.json`, whether or not it exists. */
+  /**
+   * `~/.failproofai/jev.json`, whether or not it exists, and its permission
+   * bits as `0600` when it has some.
+   *
+   * Both are part of this inspection because `failproofai jev status` prints
+   * them, and this module is that command's answer read from the same
+   * `inspectJevConfig`. The PANEL does not draw them: a config path and a mode
+   * are not something anybody acts on from a browser, and the one case where
+   * the bits decide anything — a file the loader refuses for being
+   * group-writable — already names the file in `problem` and the `chmod` in
+   * `fix`. See `jev-panel.tsx`.
+   */
   path: string;
-  /** The file's permission bits as `0600`, or null when it has none to show. */
   permissions: string | null;
   provider: JevProviderKind | null;
   /** The stored base URL, or "" for the provider's own API. Form value. */
@@ -156,7 +169,16 @@ export interface JevSettingsView {
    * nothing needs it back to round-trip it.
    */
   model: JevModelView;
-  /** Where requests actually go, query string elided. Null when unroutable. */
+  /**
+   * Where requests actually go, query string elided. Null when unroutable.
+   *
+   * The computed route, which is not what any form field holds — `baseUrl` may
+   * be empty for the provider's own API, and Cloudflare's route is built from
+   * `accountId`. `jev status` prints it for that reason. The panel does not: for
+   * Cloudflare the route IS `/accounts/<id>/ai/run`, so a read-only row above
+   * the form repeated the endpoint field and the account id field at once,
+   * putting a per-account address on the page twice.
+   */
   endpoint: string | null;
   mode: NonNullable<JevConfig["mode"]>;
   timeoutMs: number | null;
@@ -170,8 +192,6 @@ export interface JevSettingsView {
   reviewable: JevReviewabilityView | null;
 }
 
-const MIN_HINTABLE_KEY_LENGTH = 12;
-
 /**
  * Fills the key slot when a route is computed for DISPLAY only. The key does
  * not decide where requests go, but `jevRoute` validates the whole config
@@ -180,11 +200,6 @@ const MIN_HINTABLE_KEY_LENGTH = 12;
  * written, never sent.
  */
 const KEY_STAND_IN = "display-only";
-
-/** The last four characters of a key, or null when the key is too short to spare them. */
-function maskedHint(key: string): string | null {
-  return key.length >= MIN_HINTABLE_KEY_LENGTH ? key.slice(-4) : null;
-}
 
 /** Longer than any model id a Jev route knows, and well inside a pasted key's length. */
 const MAX_SHOWABLE_MODEL_LENGTH = 40;
@@ -334,9 +349,9 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       endpoint: endpointFor(cfg),
       mode: cfg.mode ?? DEFAULT_JEV_MODE,
       timeoutMs: cfg.timeoutMs ?? null,
-      // The only place a key is touched on this path, and only its length and
-      // last four characters leave the function.
-      token: { source: inspection.keySource, hint: maskedHint(cfg.apiKey) },
+      // The key is read here and nothing derived from it leaves the function —
+      // not a mask, not a fragment, not its length.
+      token: { source: inspection.keySource },
       stats: await statsOrNull(true),
       reviewable: reviewableOrNull(true),
     };

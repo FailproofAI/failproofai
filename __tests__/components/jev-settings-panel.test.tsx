@@ -65,7 +65,7 @@ function configured(over: Partial<JevSettingsView> = {}): JevSettingsView {
     provider: "typesafe",
     permissions: "0600",
     endpoint: "https://api.typesafe.ai/v1/systemone",
-    token: { source: "file", hint: "3f2a" },
+    token: { source: "file" },
     timeoutMs: 3000,
     ...over,
   });
@@ -110,10 +110,46 @@ describe("what it says about the machine", () => {
     expect(screen.getByText(/can clear a reviewable deny/i)).toBeInTheDocument();
   });
 
-  it("shows the endpoint, the file and its permissions", async () => {
-    renderPanel(configured());
-    expect(screen.getByText("https://api.typesafe.ai/v1/systemone")).toBeInTheDocument();
-    expect(screen.getByText(/jev\.json · 0600/)).toBeInTheDocument();
+  it("says each thing once: no endpoint row above the endpoint field, and no file row", async () => {
+    // The endpoint the server computes is what the form field already holds —
+    // and for Cloudflare that URL is `/accounts/<id>/ai/run`, so a read-only row
+    // printed a per-account address, and the id inside it, a second time on one
+    // screen. The config path and its mode are not something anybody acts on
+    // from a browser; when they do decide something, `problem` and `fix` name
+    // the file and the chmod (see the refused-file case below).
+    renderPanel(
+      configured({
+        provider: "cloudflare",
+        baseUrl: "https://api.cloudflare.com/client/v4/accounts/abc/ai/run",
+        accountId: "abc",
+        endpoint: "https://api.cloudflare.com/client/v4/accounts/abc/ai/run",
+        permissions: "0600",
+      }),
+    );
+    await waitFor(() => expect(getViewMock).toHaveBeenCalled());
+    // Once, as the value of the editable field — never as a second read-only row.
+    expect(screen.getAllByDisplayValue("https://api.cloudflare.com/client/v4/accounts/abc/ai/run")).toHaveLength(1);
+    expect(screen.queryByText("https://api.cloudflare.com/client/v4/accounts/abc/ai/run")).toBeNull();
+    expect(screen.queryByText(/jev\.json/)).toBeNull();
+    expect(screen.queryByText(/0600/)).toBeNull();
+  });
+
+  it("keeps the rows that answer whether it is working", async () => {
+    // What the block is FOR: the model it asks, how much it may clear, and how
+    // often it fell back. Removing the repeats must not take these with them.
+    renderPanel(
+      configured({
+        model: { kind: "id", id: "typesafe/jev-1.13" },
+        stats: { windowMs: 86_400_000, total: 72, answered: 69, fallbacks: 3, fallbackRate: 0.04 },
+        reviewable: { enabled: 38, reviewable: 17, summary: "17 of 38 enabled policies are reviewable.", problem: null },
+      }),
+    );
+    expect(screen.getByText("typesafe/jev-1.13")).toBeInTheDocument();
+    expect(screen.getByText(/17 of 38 enabled policies are reviewable/)).toBeInTheDocument();
+    expect(screen.getByText(/4% of 72 calls in the last 1d/)).toBeInTheDocument();
+    // The provider is still named — in the sentence that says Jev is on, and as
+    // the value of the field that changes it.
+    expect(screen.getByText(/also asked of typesafe/)).toBeInTheDocument();
   });
 
   it("shows the fallback rate so a person can see whether it is working", async () => {
@@ -198,11 +234,21 @@ describe("what it says about the machine", () => {
 });
 
 describe("the token field is write-only", () => {
-  it("never renders a stored token — only presence and four characters", async () => {
+  it("never renders a stored token, nor any fragment of one — presence only", async () => {
     renderPanel(configured());
     await waitFor(() => expect(getViewMock).toHaveBeenCalled());
-    expect(document.body.textContent ?? "").not.toContain(TOKEN);
-    expect(screen.getAllByText(/configured, ending 3f2a/i).length).toBeGreaterThan(0);
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain(TOKEN);
+    // It used to say "configured, ending 3f2a" in two places at once: the status
+    // row and the field's hint. Four characters of a live key are a recognisable
+    // piece of it on a page with no authentication, and they answer nothing the
+    // reader could not settle by re-pasting the key. The server does not send
+    // them any more, so there is nothing here to print.
+    expect(text).not.toContain(TOKEN.slice(-4));
+    expect(text).not.toMatch(/ending/i);
+    expect(screen.getAllByText(/configured/i).length).toBeGreaterThan(0);
+    // The one thing the field's reader has to know is still said.
+    expect(screen.getByText(/leave blank to keep it/i)).toBeInTheDocument();
   });
 
   it("is a password field and starts empty even when one is stored", async () => {

@@ -43,7 +43,8 @@ import {
   type JevConfigInput,
 } from "../../app/actions/update-jev-config";
 
-/** A token no provider issued, long enough that the panel shows a four-character hint. */
+/** A token no provider issued, and long enough that a four-character tail of it would
+ *  be a negligible share — which is no longer sent for any length. */
 const TOKEN = "jevtoken-0123456789-3f2a";
 /** A second one, for the "it was replaced" case. */
 const OTHER_TOKEN = "jevtoken-9876543210-c41b";
@@ -177,19 +178,21 @@ describe("saving writes the file the hooks read", () => {
 });
 
 describe("the token never reaches the browser", () => {
-  it("is absent from the save result, which carries presence and four characters", async () => {
+  it("is absent from the save result, which carries presence and nothing else", async () => {
     const res = await saveJevConfigAction(input());
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(whole(res)).not.toContain(TOKEN);
-    expect(res.view.token).toEqual({ source: "file", hint: "3f2a" });
+    // Presence and source, with no piece of the key: `{ source }` exactly, so a
+    // field carrying a mask or a length cannot be added back unnoticed.
+    expect(res.view.token).toEqual({ source: "file" });
   });
 
   it("is absent from the read action, which is what the page renders from", async () => {
     await saveJevConfigAction(input());
     const view = await getJevSettingsAction();
     expect(whole(view)).not.toContain(TOKEN);
-    expect(view.token?.hint).toBe("3f2a");
+    expect(view.token).toEqual({ source: "file" });
     // The file itself of course holds it — that is the point of 0600.
     expect(readFileSync(configPath(), "utf8")).toContain(TOKEN);
   });
@@ -200,12 +203,20 @@ describe("the token never reaches the browser", () => {
     expect(whole(res)).not.toContain(TOKEN);
   });
 
-  it("gives a short token no hint at all, rather than a large share of itself", async () => {
-    const res = await saveJevConfigAction(input({ token: "abc123" }));
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    expect(res.view.token).toEqual({ source: "file", hint: null });
-    expect(whole(res)).not.toContain("abc123");
+  it("sends no fragment of the key either, whatever its length", async () => {
+    // It used to send the last four characters for a key long enough to spare
+    // them, so the panel could say "configured, ending 3f2a". That is a
+    // recognisable piece of a live credential rendered into a page on an origin
+    // with no authentication, and it told the reader nothing they could not get
+    // by re-pasting the key.
+    for (const token of [TOKEN, "abc123"]) {
+      const res = await saveJevConfigAction(input({ token }));
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.view.token).toEqual({ source: "file" });
+      expect(whole(res)).not.toContain(token);
+      expect(whole(res)).not.toContain(token.slice(-4));
+    }
   });
 });
 
@@ -532,7 +543,7 @@ describe("a config whose key lives in the environment", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.view.on).toBe(true);
-    expect(res.view.token).toEqual({ source: "env", hint: "3f2a" });
+    expect(res.view.token).toEqual({ source: "env" });
     // The key was never in the file and this save did not put it there.
     expect(readFileSync(configPath(), "utf8")).not.toContain(TOKEN);
   });

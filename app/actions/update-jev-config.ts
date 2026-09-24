@@ -38,7 +38,7 @@
  *
  * It arrives, it is validated, it is written at 0600, and it is never returned.
  * Both actions answer with a `JevSettingsView`, which carries a presence flag
- * and at most the last four characters — see `get-jev-config.ts`.
+ * and no part of the key itself — see `get-jev-config.ts`.
  *
  * A stored token is KEPT only when the provider and the base URL are both
  * unchanged and the file was owner-only. Anything else — a new provider, a

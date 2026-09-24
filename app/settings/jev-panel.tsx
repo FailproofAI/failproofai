@@ -9,12 +9,19 @@
  * valid `~/.failproofai/jev.json` exists; without it the hook path is byte for
  * byte what it was before. So this panel has two jobs, in this order:
  *
- *   1. say whether it is on, where it sends requests, in which mode, how much
- *      of the enabled policy set it is allowed to clear, and — once it has run
- *      — how often it fell back to the regex engine. A panel that only took
- *      input would leave "is this thing working" unanswerable from the
+ *   1. say whether it is on, in which mode, against which provider and model,
+ *      how much of the enabled policy set it is allowed to clear, and — once it
+ *      has run — how often it fell back to the regex engine. A panel that only
+ *      took input would leave "is this thing working" unanswerable from the
  *      dashboard.
  *   2. take the endpoint and the token.
+ *
+ * Each fact is stated ONCE. The status block says nothing the form below it
+ * already holds: the endpoint and the account id are form values, and printing
+ * them above the fields put a per-account URL — and the id inside it — twice on
+ * one screen. The config file's path and permission bits are gone for a
+ * different reason: nobody repairs a 0644 from a browser, and the loader's own
+ * refusal already names the file when it matters.
  *
  * It is a full-width cell in the same hairline console as the scheduled-audit
  * panel, using the same tokens, the same `.btn-press` action and the same
@@ -24,11 +31,12 @@
  * ## The token is write-only
  *
  * The field is always blank on load, whatever is stored. `JevSettingsView`
- * carries a presence flag and at most the last four characters, so the panel
- * can say "configured, ending 3f2a" and nothing more; the value itself never
- * leaves the machine's filesystem. Leaving the field empty on save KEEPS the
- * key where it is — the stored one, or the environment's for a config that takes
- * it from there — which the server decides, not this component.
+ * carries presence and nothing else, so the panel can say "configured" — or
+ * that the key is read from the environment — and no more; the value itself
+ * never leaves the machine's filesystem, and neither does a fragment of it.
+ * Leaving the field empty on save KEEPS the key where it is — the stored one, or
+ * the environment's for a config that takes it from there — which the server
+ * decides, not this component.
  *
  * The stored MODEL is shown the same way when it does not look like a model id,
  * for the same reason: it is the one routing field someone can paste a key into.
@@ -258,9 +266,11 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
     : stored
       ? stored.source === "env"
         ? "configured, read from the environment — leave blank to keep it"
-        : stored.hint
-          ? `configured, ending ${stored.hint} — leave blank to keep it`
-          : "configured — leave blank to keep it"
+        : // Presence and the keep rule, which is everything this field's reader
+          // has to decide. Naming the last four characters of the stored key
+          // here put that fragment on the page a second time, next to the input
+          // it would be re-typed into.
+          "configured — leave blank to keep it"
       : // The file names the environment as the key's source and the variable is
         // unset in this process. Leaving the field blank keeps that arrangement,
         // which is not the same thing as "there is no key" — the endpoint and the
@@ -292,38 +302,32 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
         </div>
       </div>
 
+      {/* Where requests GO is not in this block, deliberately. The editable
+          field below holds it, and for Cloudflare that URL is
+          `/accounts/<id>/ai/run` — so a read-only row above the form printed the
+          same per-account address, and the account id inside it, a second time
+          on one screen. The path of the config file and its mode were here too;
+          nobody acts on either from a browser. */}
       {view && configured && (
         <dl className="set-how-list">
-          {view.endpoint && (
-            <div className="set-how-row">
-              <dt className="set-how-label">endpoint</dt>
-              <dd className="set-how-body">{view.endpoint}</dd>
-            </div>
-          )}
           <div className="set-how-row">
             <dt className="set-how-label">model</dt>
             <dd className="set-how-body">{fmtModel(view.model)}</dd>
           </div>
+          {/* Presence, and where it came from. Not four characters of it: that
+              is a recognisable fragment of a live credential on a page with no
+              authentication, and it tells the reader nothing they cannot get by
+              re-pasting the key. The server no longer sends it either. */}
           <div className="set-how-row">
             <dt className="set-how-label">token</dt>
             <dd className="set-how-body">
               {stored
                 ? stored.source === "env"
                   ? "from FAILPROOFAI_JEV_API_KEY"
-                  : stored.hint
-                    ? `configured, ending ${stored.hint}`
-                    : "configured"
+                  : "configured"
                 : "none stored"}
             </dd>
           </div>
-          {view.permissions && (
-            <div className="set-how-row">
-              <dt className="set-how-label">file</dt>
-              <dd className="set-how-body">
-                {`${view.path} · ${view.permissions}`}
-              </dd>
-            </div>
-          )}
           {view.reviewable && (
             <div className="set-how-row">
               <dt className="set-how-label">reviewable</dt>

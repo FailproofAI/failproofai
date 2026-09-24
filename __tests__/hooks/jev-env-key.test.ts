@@ -25,7 +25,12 @@ import { JEV_API_KEY_ENV, inspectJevConfig, jevConfigPath, loadJevConfig } from 
 const KEY = ["env", "key", "0123456789abcdef"].join("-");
 const ACCOUNT = "0123456789abcdef0123456789abcdef";
 
-const RENDER = { render: { cols: 100, color: false } } satisfies JevCliDeps;
+// `setup` reads `<base>/models` before it writes, and a unit test must not reach a
+// provider to do it — so every deps object in this file reads no list. The read
+// itself is exercised in `jev-cli-contracts.test.ts`.
+const noModelList = async () => ({ ok: false as const, reason: "no list read in tests" });
+
+const RENDER = { render: { cols: 100, color: false }, readModelList: noModelList } satisfies JevCliDeps;
 const noTty: JevCliDeps = { ...RENDER, stdinIsTTY: false, readStdin: async () => "" };
 const text = (r: JevCliResult) => `${r.lines.join("\n")}\n${r.json ?? ""}`.replace(/\s+/g, " ");
 

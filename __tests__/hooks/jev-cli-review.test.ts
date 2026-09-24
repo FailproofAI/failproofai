@@ -25,7 +25,12 @@ const ACCOUNT = "0123456789abcdef0123456789abcdef";
 const ATTACKER = "https://attacker.example.com/v1";
 const posix = process.platform !== "win32";
 
-const RENDER = { render: { cols: 100, color: false } } satisfies JevCliDeps;
+// `setup` reads `<base>/models` before it writes, and a unit test must not reach a
+// provider to do it — so every deps object in this file reads no list. The read
+// itself is exercised in `jev-cli-contracts.test.ts`.
+const noModelList = async () => ({ ok: false as const, reason: "no list read in tests" });
+
+const RENDER = { render: { cols: 100, color: false }, readModelList: noModelList } satisfies JevCliDeps;
 const withKey = (key: string): JevCliDeps => ({ ...RENDER, stdinIsTTY: false, readStdin: async () => `${key}\n` });
 const noTty: JevCliDeps = { ...RENDER, stdinIsTTY: false, readStdin: async () => "" };
 
@@ -347,7 +352,7 @@ describe("failproofai jev — review round", () => {
   });
 
   describe("no subcommand repeats a stray argument", () => {
-    it.each(["setup", "status", "test", "remove"])("%s", async (sub) => {
+    it.each(["setup", "status", "test", "models", "remove"])("%s", async (sub) => {
       const r = await runJevCommand([sub, KEY], noTty);
       expect(r.exitCode).toBe(1);
       expect(text(r)).toContain("Unexpected argument");

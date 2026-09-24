@@ -929,6 +929,7 @@ async function runCli() {
               ["failproofai jev setup --provider <kind> --key-stdin [options]"],
               ["failproofai jev status [--json]"],
               ["failproofai jev test [--json]"],
+              ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
               ["failproofai jev remove"],
             ],
           },
@@ -952,7 +953,14 @@ async function runCli() {
               ["cloudflare", "Workers AI, model typesafe/jev; needs --account-id"],
               ["custom", "any TypeSafe-compatible endpoint; needs --base-url"],
             ],
-            after: ["--url reads the provider off the host, so it needs no --provider;", "any other host is custom, with that URL as its base."],
+            after: [
+              "--url reads the provider off the host, so it needs no --provider;",
+              "any other host is custom, with that URL as its base. It is a BASE:",
+              "/systemone is appended to it, and a URL that already names an",
+              "endpoint (/models, /chat/completions, /systemone, …) is refused",
+              "with the base it implies. `failproofai jev models` says which",
+              "model ids a base serves, and setup refuses one it does not.",
+            ],
           },
           {
             label: "setup options",
@@ -992,6 +1000,7 @@ async function runCli() {
               "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
               "failproofai jev test",
               "failproofai jev status",
+              "failproofai jev models",
             ],
           },
         ],
@@ -1012,7 +1021,7 @@ async function runCli() {
       // The subcommand only — never the provider, a URL, a model id or the key.
       // An argv opening with an option is the one-shot form of `setup`, and is
       // reported as `setup`: the literal, never the option or what follows it.
-      sub: subArgs[0].startsWith("-") ? "setup" : ["setup", "status", "test", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+      sub: subArgs[0].startsWith("-") ? "setup" : ["setup", "status", "test", "models", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);

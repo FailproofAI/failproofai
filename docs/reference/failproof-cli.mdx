@@ -61,6 +61,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai jev setup --provider <kind> --key-stdin` | Let [Jev](/policies/jev-byok) judge tool calls through your own endpoint and key |
 | `failproofai jev status` | Show the Jev config, its permissions and recent fallbacks; never the key |
 | `failproofai jev test` | Send one live Jev request and show its latency and version |
+| `failproofai jev models` | List the model ids `GET <base>/models` says an endpoint serves |
 | `failproofai jev remove` | Turn Jev off; hooks run the regex policies exactly as before |
 | `failproofai flush --wait` | Deliver the current event spool |
 | `failproofai backfill --since 30d` | Re-read previously passed history |

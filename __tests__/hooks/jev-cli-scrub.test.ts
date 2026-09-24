@@ -31,7 +31,12 @@ const { runJevCommand } = await import("../../src/hooks/jev-cli");
 const { JevError } = await import("../../src/hooks/semantic/jev-client");
 const { JEV_API_KEY_ENV } = await import("../../src/hooks/semantic/jev-config");
 
-const RENDER = { render: { cols: 100, color: false } };
+// `setup` reads `<base>/models` before it writes, and a unit test must not reach a
+// provider to do it — so every deps object in this file reads no list. The read
+// itself is exercised in `jev-cli-contracts.test.ts`.
+const noModelList = async () => ({ ok: false as const, reason: "no list read in tests" });
+
+const RENDER = { render: { cols: 100, color: false }, readModelList: noModelList };
 const withKey = { ...RENDER, stdinIsTTY: false, readStdin: async () => `${KEY}\n` };
 
 describe("jev test: the last line of defence", () => {

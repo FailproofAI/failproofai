@@ -22,7 +22,12 @@ const TOKEN = ["url", "token", "0123456789abcdef"].join("-");
 const ACCOUNT = "0123456789abcdef0123456789abcdef";
 const posix = process.platform !== "win32";
 
-const RENDER = { render: { cols: 100, color: false }, stdinIsTTY: false } satisfies JevCliDeps;
+// `setup` reads `<base>/models` before it writes, and a unit test must not reach a
+// provider to do it — so every deps object in this file reads no list. The read
+// itself is exercised in `jev-cli-contracts.test.ts`.
+const noModelList = async () => ({ ok: false as const, reason: "no list read in tests" });
+
+const RENDER = { render: { cols: 100, color: false }, stdinIsTTY: false, readModelList: noModelList } satisfies JevCliDeps;
 // A stdin that would hand over a second key if anything ever read it: the
 // mutual-exclusion cases must fail before this is touched.
 const withStdin = (key: string): JevCliDeps => ({ ...RENDER, readStdin: async () => `${key}\n` });
@@ -372,17 +377,25 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(out).not.toContain(TOKEN);
     });
 
-    it("says nothing of the kind for the provider's own API, or for its endpoint path in full", async () => {
+    it("says nothing of the kind for the provider's own API", async () => {
       const api = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--token", TOKEN], RENDER);
       expect(api.exitCode).toBe(0);
       expect(text(api)).not.toContain("Saved as given");
+    });
 
-      // `<base>/systemone` is where a native request goes anyway, so giving the
-      // whole endpoint is an override that works, and is not warned about.
-      const endpoint = await runJevCommand(["--url", "https://api.typesafe.ai/v1/systemone", "--token", TOKEN], RENDER);
-      expect(endpoint.exitCode).toBe(0);
-      expect(readFile()).toMatchObject({ provider: "typesafe", baseUrl: "https://api.typesafe.ai/v1/systemone" });
-      expect(text(endpoint)).not.toContain("Saved as given");
+    // This used to be saved with no comment, because `<base>/systemone` is where a
+    // native request goes anyway so the override happened to work. It is refused
+    // now: the field is a BASE, `/systemone` is appended to it, and the one real
+    // paste of an endpoint into it — `…/typesafe/v1/models` — was saved just as
+    // silently and then failed with `http-404` on every call.
+    it("refuses the endpoint path in full, naming the base it implies", async () => {
+      const r = await runJevCommand(["--url", "https://api.typesafe.ai/v1/systemone", "--token", TOKEN], RENDER);
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).toContain("names an endpoint, not an API base");
+      expect(text(r)).toContain("/systemone");
+      expect(text(r)).toContain("https://api.typesafe.ai/v1");
+      expect(text(r)).not.toContain(TOKEN);
+      expect(existsSync(jevConfigPath())).toBe(false);
     });
 
     it("says nothing for another host, whose layout is the customer's own", async () => {

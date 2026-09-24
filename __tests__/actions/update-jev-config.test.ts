@@ -500,7 +500,11 @@ describe("a save keeps the fields the form does not show", () => {
     const { runJevCommand } = await import("../../src/hooks/jev-cli");
     // `jev setup --mode shadow`: the same change, named the same way, with no
     // terminal to prompt on — the key is kept from the existing config.
-    const cli = await runJevCommand(["setup", "--mode", "shadow"], { stdinIsTTY: false });
+    const cli = await runJevCommand(["setup", "--mode", "shadow"], {
+      stdinIsTTY: false,
+      // No provider is reached from a unit test; see jev-cli-contracts.test.ts.
+      readModelList: async () => ({ ok: false, reason: "no list read in tests" }),
+    });
     expect(cli.exitCode).toBe(0);
 
     expect(viaPanel).toEqual(onDisk());

@@ -10,7 +10,27 @@
  *               enabled policy set Jev is allowed to clear, and how Jev has
  *               been doing (fallbacks, latency, clears) — never the key
  *   jev test    one tiny live request: latency and the Jev version that answered
+ *   jev models  what `GET <base>/models` says this endpoint serves
  *   jev remove  delete the file; hooks go back to the regex engine unchanged
+ *
+ * # `--url` is a BASE, and the model has to exist
+ *
+ * Two contract mistakes cost a customer on a LiteLLM proxy real time, and both
+ * were things this command already knew enough to say:
+ *
+ * - `--url https://…/typesafe/v1/models` was an ENDPOINT given where a BASE
+ *   belongs. It saved without complaint, `/systemone` was appended to it, and the
+ *   only signal was `http-404: Not Found` from `jev test`. Setup now refuses a URL
+ *   whose path ends in `/models`, `/chat/completions`, `/completions`,
+ *   `/embeddings` or `/systemone` and names the base it implies
+ *   (`endpointGivenAsBase`).
+ * - the model then still did not exist: `custom`'s default is `jev-1.13.0` and
+ *   that proxy serves `jev-latest` and `jev-preview`. Setup now reads
+ *   `GET <base>/models` before it writes, and refuses a model the list does not
+ *   carry, naming the ones it does. When the list cannot be read — no key yet, a
+ *   proxy that serves no list, Cloudflare, an unreachable host — setup proceeds
+ *   exactly as it did before: this is a check where one is possible, never a
+ *   dependency on a model-list endpoint existing.
  *
  * # The provider is read off the URL
  *
@@ -82,23 +102,33 @@ import {
   JEV_API_KEY_ENV,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
   JEV_PROVIDER_KINDS,
+  endpointGivenAsBase,
   inspectJevConfig,
   jevConfigPath,
   readJevConfigFileForUpdate,
   validateApiKey,
   validateBaseUrl,
   validateJevConfig,
+  type EndpointGivenAsBase,
   type JevConfig,
   type JevProviderKind,
 } from "./semantic/jev-config";
 import {
+  JEV_MODEL_LIST_TIMEOUT_MS,
   JEV_PROVIDER_DEFAULTS,
   JevError,
   displayEndpoint,
+  jevModelsUrl,
   jevRoute,
+  listDescribesSystemOne,
+  modelListHasModel,
+  modelsUrlForBase,
   readAnswers,
+  readJevModelList,
   scrubSecret,
   transportForConfig,
+  type JevModelListRead,
+  type JevModelListResult,
 } from "./semantic/jev-client";
 import {
   reviewableProblem,
@@ -117,6 +147,9 @@ export interface JevCliResult {
   json?: string;
 }
 
+/** `GET <base>/models`, as `setup` and `models` reach it. */
+export type JevModelListReader = (modelsUrl: string, apiKey: string | null) => Promise<JevModelListResult>;
+
 export interface JevCliDeps {
   /** Everything piped on stdin (for `--key-stdin` off a terminal). */
   readStdin?: () => Promise<string>;
@@ -125,8 +158,18 @@ export interface JevCliDeps {
   stdinIsTTY?: boolean;
   /** Budget for `jev test`'s single request. */
   testTimeoutMs?: number;
+  /**
+   * How `<base>/models` is read. The default reaches the network, which `setup`
+   * did not used to do at all — so it is injectable, and a unit test that is not
+   * about the list injects a reader that reads nothing rather than calling out to
+   * a provider from a test run.
+   */
+  readModelList?: JevModelListReader;
   render?: RenderOpts;
 }
+
+/** The real reader, on its own budget: see `JEV_MODEL_LIST_TIMEOUT_MS`. */
+const liveModelListReader: JevModelListReader = (url, apiKey) => readJevModelList(url, apiKey, AbortSignal.timeout(JEV_MODEL_LIST_TIMEOUT_MS));
 
 const ok = (lines: string[], json?: string): JevCliResult => ({ lines, exitCode: 0, ...(json !== undefined ? { json } : {}) });
 const fail = (lines: string[], json?: string): JevCliResult => ({ lines, exitCode: 1, ...(json !== undefined ? { json } : {}) });
@@ -137,6 +180,7 @@ export const JEV_USAGE = [
   "  failproofai jev setup --provider <kind> [--key-stdin | --key-from-env] [options]",
   "  failproofai jev status [--json]",
   "  failproofai jev test [--json]",
+  "  failproofai jev models [--provider <kind>] [--url <base>] [--json]",
   "  failproofai jev remove",
 ];
 
@@ -242,6 +286,11 @@ function scrubbed(e: { code: string; message: string }, key: string): { code: st
 function remedy(code: string): string {
   if (code === "http-401" || code === "http-403") return "The provider refused the key. Re-run `failproofai jev setup` with the right one.";
   if (code === "out-of-credits") return "The account is out of credits (HTTP 402). Top it up with the provider; until then hooks fall back to regex.";
+  // The message from `httpFailureMessage` has already said what a 404 there
+  // means; this is the part that is an instruction rather than a diagnosis.
+  if (code === "http-404") {
+    return "Set the base URL to the provider's version root, without the endpoint path: `failproofai jev setup --base-url <base>`. `failproofai jev models` says what a base serves.";
+  }
   if (code === "http-429") return "The provider rate-limited this key. Hooks fall back to regex whenever that happens.";
   if (code.startsWith("http-5")) return "The provider had a server error. Hooks fall back to regex whenever that happens; try again shortly.";
   if (code === "timeout") return "No answer in time. Check the endpoint and your network.";
@@ -402,6 +451,70 @@ function offProviderBase(cfg: JevConfig, endpoint: string): { endpoint: string; 
   }
 }
 
+/**
+ * The refusal for a URL that is an endpoint where a base belongs.
+ *
+ * Both URLs go through `displayEndpoint`, which replaces a query string with
+ * `?…`: a proxy base may legitimately carry `?api-version=` — or a token — and a
+ * refusal is not a reason to print one. That does make the suggested command a
+ * shape rather than something to paste, which is the right trade: the person has
+ * their own URL, and the point of the line is which segment to drop.
+ */
+function endpointAsBaseRefusal(flag: string, given: string, found: EndpointGivenAsBase): string[] {
+  return [
+    `Not saved: ${flag} names an endpoint, not an API base — its path ends in ${found.suffix}.`,
+    `A Jev request goes to <base>/systemone, and failproofai appends that itself, so ${displayEndpoint(given)} would be asked at ${displayEndpoint(`${given.replace(/\/+$/, "")}/systemone`)}.`,
+    "Give the base it sits under:",
+    `  failproofai jev ${flag} ${displayEndpoint(found.base)}`,
+    "",
+    "Nothing was written.",
+  ];
+}
+
+/** At most this many names in one refusal or one rendered list; the rest are counted. */
+const MAX_SHOWN_MODELS = 20;
+
+/** Model names for one line, bounded — the list came from a provider and may be long. */
+function shownModels(models: string[]): string {
+  if (models.length <= MAX_SHOWN_MODELS) return models.join(", ");
+  return `${models.slice(0, MAX_SHOWN_MODELS).join(", ")} … and ${models.length - MAX_SHOWN_MODELS} more`;
+}
+
+/**
+ * The list this config's endpoint serves, when it both could be read AND is
+ * authoritative about `<base>/systemone` AND does not carry the configured model
+ * — i.e. the one case that is worth refusing. Null in every other case, so a
+ * caller's "carry on unchanged" path is the default rather than the exception.
+ *
+ * `apiKey` is passed separately because a `--key-from-env` config in a shell with
+ * no variable set holds a stand-in, which must not be sent anywhere; the public
+ * lists (Vercel's, OpenRouter's) answer without a key anyway.
+ */
+async function modelAbsentFromList(
+  cfg: JevConfig,
+  model: string,
+  apiKey: string | null,
+  read: JevModelListReader,
+): Promise<{ list: JevModelListRead; url: string } | null> {
+  let url: string | null;
+  try {
+    url = jevModelsUrl(cfg);
+  } catch {
+    return null;
+  }
+  if (url === null) return null;
+  let list: JevModelListResult;
+  try {
+    list = await read(url, apiKey);
+  } catch {
+    // A reader that throws is a reader that read nothing, which is the case this
+    // whole check is required to survive.
+    return null;
+  }
+  if (!list.ok || !listDescribesSystemOne(list) || modelListHasModel(list, model)) return null;
+  return { list, url };
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
@@ -524,6 +637,21 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     // (`custom` has no API of its own — its URL is the whole address).
     values.set("--base-url", kind !== "custom" && isProviderDefaultUrl(kind, normalized) ? "default" : normalized);
     values.delete("--url");
+  }
+
+  // An endpoint given where a base belongs, whichever flag carried it — `--url`
+  // has already become `--base-url` above, so the flag NAMED here is the one the
+  // person typed. Before the key is asked for, and before anything is written:
+  // the fix is one segment, and nothing should be stored or prompted for first.
+  const baseArg = values.get("--base-url");
+  if (baseArg !== undefined && baseArg !== "default") {
+    const checkedBase = validateBaseUrl(baseArg);
+    // An unusable URL is refused by validation below, in its own words; this
+    // check only has something to say about one that parses.
+    if (checkedBase.ok) {
+      const asEndpoint = endpointGivenAsBase(checkedBase.value);
+      if (asEndpoint) return fail(endpointAsBaseRefusal(urlArg !== undefined ? "--url" : "--base-url", checkedBase.value, asEndpoint));
+    }
   }
 
   const existingFile = readJevConfigFileForUpdate();
@@ -717,6 +845,42 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   const checked = validateJevConfig(next, keyFromEnv ? envKey || ENV_KEY_STAND_IN : null);
   if (!checked.ok) return fail([`Not saved: ${checked.problem}.`, "", "Nothing was written."]);
   const cfg = checked.value;
+
+  // The model, against what the endpoint says it serves. This is the second half
+  // of the LiteLLM-proxy failure: the URL was fixed and the default model still
+  // did not exist there, which nothing said until `jev test` returned a 404 and
+  // the person curled the endpoint by hand.
+  //
+  // Never a hard requirement: a list that cannot be read (no key yet, a proxy
+  // that serves none, Cloudflare, an unreachable host, a shape nobody knows) and
+  // a list that is not authoritative about `/systemone` both fall through to the
+  // write, so this can only ever turn a silent misconfiguration into a refusal —
+  // it can never turn a working setup into a failing one.
+  const routeForCheck = ((): ReturnType<typeof jevRoute> | null => {
+    try {
+      return jevRoute(cfg);
+    } catch {
+      return null;
+    }
+  })();
+  if (routeForCheck !== null) {
+    // The stand-in is not a key and must not be sent; the public lists answer
+    // without one, so the read is still worth making.
+    const listKey = keyFromEnv && !envKey ? null : cfg.apiKey;
+    const absent = await modelAbsentFromList(cfg, routeForCheck.model, listKey, deps.readModelList ?? liveModelListReader);
+    if (absent) {
+      return fail([
+        `Not saved: ${displayEndpoint(absent.url)} does not list ${routeForCheck.model}, so every request would fail there.`,
+        `  it serves: ${shownModels(absent.list.models)}`,
+        routeForCheck.modelIsDefault
+          ? `${routeForCheck.model} is this build's default for provider ${provider}, and this endpoint names Jev differently — so --model is not optional here. Add it to the command you just ran:`
+          : "Pick one of the names above:",
+        `  --model ${absent.list.models[0]}`,
+        "",
+        "Nothing was written.",
+      ]);
+    }
+  }
 
   const path = jevConfigPath();
   try {
@@ -1190,6 +1354,178 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
   }
 }
 
+// ── models ───────────────────────────────────────────────────────────────────
+
+/** What a shape means, which decides what the names in it can be used for. */
+function shapeMeans(shape: JevModelListRead["shape"]): string {
+  return shape === "typesafe"
+    ? "TypeSafe's own inventory — these are the names <base>/systemone answers to"
+    : "an OpenAI-shaped gateway catalog — it lists what the gateway serves, not what <base>/systemone answers to, so it is shown and never used to refuse a model";
+}
+
+/**
+ * `failproofai jev models` — what `GET <base>/models` says an endpoint serves.
+ *
+ * The question a person asks after `jev test` fails, and the one the LiteLLM-proxy
+ * customer answered by curling the endpoint by hand. With no flags it asks the
+ * configured route; `--provider` asks a provider's own API and `--url` any base.
+ *
+ * The stored key is sent only to the origin it was stored for. `--url` takes a URL
+ * off the command line, and a key issued for one gateway must not go to another
+ * because a diagnostic named it — the same rule `setup` applies when a new
+ * `--base-url` moves the host. Vercel's and OpenRouter's lists are public, so an
+ * unkeyed read is often still an answer, and the output says which it was.
+ */
+async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
+  const parsed = parseFlags(argv, new Set(["--json", "--provider", "--url"]));
+  if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
+  const asJson = parsed.bools.has("--json");
+  const { values } = parsed;
+
+  // Checked before anything else uses it, and never echoed — the same rule
+  // `setup` follows, for the same reason: the likeliest wrong value is a key.
+  const named = values.get("--provider");
+  if (named !== undefined && !(JEV_PROVIDER_KINDS as readonly string[]).includes(named)) {
+    return fail([
+      "Unknown provider (not repeated here, in case it is a key).",
+      `Providers: ${JEV_PROVIDER_KINDS.join(", ")} — exactly as spelled here, lower-case.`,
+    ]);
+  }
+
+  // The configured route, for the default base, for the key, and for the model to
+  // mark. `key-missing` counts: the file's routing is sound, it just has no key
+  // here, and a public list answers anyway.
+  const inspection = inspectJevConfig();
+  const routing: Omit<JevConfig, "apiKey"> | null =
+    inspection.status === "ok" ? inspection.config : inspection.status === "key-missing" ? inspection.routing : null;
+  const storedKey = inspection.status === "ok" ? inspection.config.apiKey : null;
+
+  let provider: JevProviderKind;
+  let base: string | null;
+  const urlArg = values.get("--url");
+  if (urlArg !== undefined) {
+    const checked = validateBaseUrl(urlArg);
+    if (!checked.ok) return fail([`Cannot read a model list: ${checked.problem}.`]);
+    const asEndpoint = endpointGivenAsBase(checked.value);
+    if (asEndpoint) return fail(endpointAsBaseRefusal("--url", checked.value, asEndpoint));
+    base = checked.value;
+    provider = (named as JevProviderKind | undefined) ?? providerForUrl(base);
+  } else if (named !== undefined) {
+    provider = named as JevProviderKind;
+    base = JEV_PROVIDER_DEFAULTS[provider].baseUrl;
+    if (base === null) {
+      return fail(["Provider custom has no API of its own — its URL is the whole address.", "  failproofai jev models --url <base>"]);
+    }
+  } else if (routing !== null) {
+    provider = routing.provider;
+    base = routing.baseUrl ?? JEV_PROVIDER_DEFAULTS[routing.provider].baseUrl;
+  } else {
+    return fail([
+      `Jev is not configured here (no ${inspection.path}), so there is no endpoint to ask.`,
+      "Name one:",
+      "  failproofai jev models --provider vercel",
+      "  failproofai jev models --url https://your-proxy.example.com/typesafe/v1",
+    ]);
+  }
+
+  // Cloudflare is the one route with no `<base>/models`: Workers AI runs models at
+  // `/accounts/<id>/ai/run` and keeps its inventory behind a different API, so
+  // there is nothing here to read rather than something that failed to read.
+  const modelsUrl = provider === "cloudflare" || base === null ? null : modelsUrlForBase(base);
+  if (modelsUrl === null) {
+    return fail([
+      provider === "cloudflare"
+        ? "Cloudflare Workers AI serves no <base>/models: its models are listed through the Cloudflare API, not through the Jev base URL."
+        : "That base URL names no endpoint a model list could be read from.",
+    ]);
+  }
+
+  const askOrigin = originOf(provider, base);
+  const configuredOrigin = routing !== null ? originOf(routing.provider, routing.baseUrl) : null;
+  const sameOrigin = askOrigin !== null && askOrigin === configuredOrigin;
+  const apiKey = sameOrigin ? storedKey : null;
+  // Only meaningful for the route that is actually configured: marking a name on
+  // some other host as "configured" would be saying something untrue.
+  const configuredModel = sameOrigin && routing !== null ? (routing.model ?? JEV_PROVIDER_DEFAULTS[routing.provider].model) : null;
+
+  let list: JevModelListResult;
+  try {
+    list = await (deps.readModelList ?? liveModelListReader)(modelsUrl, apiKey);
+  } catch (err) {
+    list = { ok: false, reason: scrubSecret(err instanceof Error ? err.message : String(err), apiKey ?? "") };
+  }
+
+  const shown = displayEndpoint(modelsUrl);
+  const keyNote = apiKey
+    ? "the configured key for this origin"
+    : sameOrigin
+      ? `none stored here — set ${JEV_API_KEY_ENV}, or store one with \`failproofai jev setup --key-stdin\``
+      : storedKey !== null
+        ? "none sent: a stored key belongs to the endpoint it was stored for"
+        : "none: nothing is configured for this endpoint, and some lists are public";
+
+  if (!list.ok) {
+    if (asJson) {
+      return fail([], JSON.stringify({ ok: false, provider, endpoint: shown, error: { code: "model-list-unread", message: list.reason } }, null, 2));
+    }
+    return fail(
+      stack(
+        title("failproofai jev models", "not read", opts),
+        rows(
+          [
+            ["provider", provider],
+            ["endpoint", shown],
+            ["key", keyNote],
+            ["reason", list.reason],
+          ],
+          opts,
+        ),
+        note(
+          "Not every endpoint serves a model list — a proxy may expose only /systemone — and nothing depends on one: setup and hooks work without it.",
+          opts,
+        ),
+      ),
+    );
+  }
+
+  if (asJson) {
+    return ok(
+      [],
+      JSON.stringify({ ok: true, provider, endpoint: shown, shape: list.shape, models: list.models, configuredModel, keySent: apiKey !== null }, null, 2),
+    );
+  }
+  const listed = list.models.slice(0, MAX_SHOWN_MODELS);
+  return ok(
+    stack(
+      title("failproofai jev models", `${list.models.length} · ${provider}`, opts),
+      rows(
+        [
+          ["provider", provider],
+          ["endpoint", shown],
+          ["key", keyNote],
+          ["list", shapeMeans(list.shape)],
+        ],
+        opts,
+      ),
+      rows(
+        listed.map((name) => [name, name === configuredModel ? "configured" : ""] as [string, string]),
+        opts,
+      ),
+      list.models.length > listed.length ? note(`… and ${list.models.length - listed.length} more.`, opts) : null,
+      configuredModel !== null && !modelListHasModel(list, configuredModel) && listDescribesSystemOne(list)
+        ? warning(
+            [
+              `The configured model ${configuredModel} is not one of these, so every evaluation would fail at this endpoint and hooks would fall back to regex.`,
+              `Point it at one of them: failproofai jev setup --model ${list.models[0]}`,
+            ],
+            opts,
+          )
+        : null,
+    ),
+  );
+}
+
 // ── remove ───────────────────────────────────────────────────────────────────
 
 function remove(argv: string[], opts: RenderOpts): JevCliResult {
@@ -1232,6 +1568,8 @@ export async function runJevCommand(argv: string[], deps: JevCliDeps = {}): Prom
       return status(rest, opts);
     case "test":
       return test(rest, deps, opts);
+    case "models":
+      return models(rest, deps, opts);
     case "remove":
       return remove(rest, opts);
     default: {

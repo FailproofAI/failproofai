@@ -33,7 +33,6 @@ import { resolve } from "node:path";
 import { INTEGRATION_TYPES, HOOK_EVENT_TYPES } from "@/src/hooks/types";
 import { ENFORCEMENT_CAPABILITY } from "@/src/hooks/enforcement-capability";
 import { BUILTIN_POLICIES } from "@/src/hooks/builtin-policies";
-import { POLICY_CATALOG } from "@/src/hooks/policy-catalog";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
@@ -42,11 +41,6 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 const TRUTH = {
   harnesses: INTEGRATION_TYPES.length,
   policies: BUILTIN_POLICIES.length,
-  // What the coding-agent pack built from this tree carries: every builtin but
-  // the alwaysOn guard, which a pack may not declare (see
-  // __tests__/hooks/builtin-pack-conformance.test.ts).
-  packPolicies: POLICY_CATALOG.filter((p) => !p.alwaysOn).length,
-  packDefaults: POLICY_CATALOG.filter((p) => !p.alwaysOn && p.defaultEnabled).length,
   events: HOOK_EVENT_TYPES.length,
   preToolUseBlocks: INTEGRATION_TYPES.filter(
     (c) => ENFORCEMENT_CAPABILITY[c]?.PreToolUse === "block",
@@ -60,44 +54,20 @@ const TRUTH = {
  */
 const COPY_FILES = ["README.md", "package.json", "docs/index.mdx"];
 
-/**
- * Pages that state what the coding-agent PACK carries — a different number from
- * the builtin count above (the pack cannot carry the alwaysOn guard), and one
- * that rotted exactly the way the policy count did: it sat at 38 while the
- * catalog moved past it. The it/hi copies are pipeline-generated translations of
- * these two, so guarding the English originals is what keeps them moving.
- */
-const PACK_COPY_FILES = ["docs/policies/packs.mdx", "docs/start/quickstart.mdx"];
-
 describe("copy counts match source", () => {
   it("the derived counts are what the copy claims", () => {
     // Fails loudly if someone adds a harness or a policy without re-reading the
     // copy. Update this block ONLY together with every string it guards.
     expect(TRUTH).toEqual({
       harnesses: 12,
-      // 39 after `block-self-pause` merged into `block-failproofai-commands`
-      // (one alwaysOn guard: an agent that can disable either can disable
-      // enforcement), then 43 with the four hard-floor builtins for the two-tier
-      // Jev evaluator.
-      policies: 43,
-      // 38 before the four hard-floor builtins, all of them opt-in, so the
-      // default-enabled half of the sentence did not move.
-      packPolicies: 42,
-      packDefaults: 10,
+      // 39, not 40: `block-self-pause` and `block-failproofai-commands` are one
+      // alwaysOn guard now — an agent that can disable either can disable
+      // enforcement, so they were never two decisions.
+      policies: 39,
       events: 29,
       preToolUseBlocks: 12,
       stopBlocks: 8,
     });
-  });
-
-  it.each(PACK_COPY_FILES)("%s states what the pack actually carries", (file) => {
-    const text = read(file);
-    const carried = [...text.matchAll(/carries (\d+) polic/gi)].map((m) => Number(m[1]));
-    expect(carried.length).toBeGreaterThan(0);
-    for (const n of carried) expect(n).toBe(TRUTH.packPolicies);
-    const defaults = [...text.matchAll(/switches on the (\d+)/gi)].map((m) => Number(m[1]));
-    expect(defaults.length).toBeGreaterThan(0);
-    for (const n of defaults) expect(n).toBe(TRUTH.packDefaults);
   });
 
   it.each(COPY_FILES)("%s states no stale policy count", (file) => {

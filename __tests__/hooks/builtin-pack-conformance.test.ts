@@ -108,7 +108,7 @@ describe("builtin pack conformance", () => {
   it("packages every builtin except the one packs may not carry", () => {
     const expected = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => p.name);
     expect(manifest.policies.map((p) => p.name)).toEqual(expected);
-    expect(manifest.policies).toHaveLength(42);
+    expect(manifest.policies).toHaveLength(38);
     // The omitted one is the guard against disabling failproofai. pack-manifest
     // REFUSES a pack declaring alwaysOn, so shipping it here would produce a
     // pack our own loader rejects.
@@ -132,7 +132,7 @@ describe("builtin pack conformance", () => {
     }
   });
 
-  it("registers all 42 policies when loaded through the pack lane", async () => {
+  it("registers all 38 policies when loaded through the pack lane", async () => {
     const hooks = await loadPack();
     expect(hooks.map((h) => h.name)).toEqual(manifest.policies.map((p) => p.name));
   });

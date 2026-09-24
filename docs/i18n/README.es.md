@@ -21,7 +21,7 @@
 **Traducciones:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Observabilidad y control para cada entorno en el que corren tus agentes.**
-Donde sea que corran tus agentes, nosotros lo vemos — y podemos decir que no. Failproof se conecta a 12 entornos de agentes — CLIs de codificación como Claude Code y Codex, pasarelas de chat como Hermes, asistentes autoalojados como OpenClaw — capturando cada ejecución y bloqueando llamadas a herramientas peligrosas antes de que se ejecuten. 43 políticas integradas. Cero latencia. Corre localmente.
+Donde sea que corran tus agentes, nosotros lo vemos — y podemos decir que no. Failproof se conecta a 12 entornos de agentes — CLIs de codificación como Claude Code y Codex, pasarelas de chat como Hermes, asistentes autoalojados como OpenClaw — capturando cada ejecución y bloqueando llamadas a herramientas peligrosas antes de que se ejecuten. 39 políticas integradas. Cero latencia. Corre localmente.
 
 </div>
 
@@ -160,7 +160,7 @@ Hasta que llegue un paquete, lo único que aplica control es `block-failproofai-
 
 Cada una de estas compuertas actúa *antes* de que la llamada se ejecute, por lo que funcionan en los doce entornos. Las primeras cuatro aplican a cualquier agente que pueda invocar una herramienta; las últimas tres son las favoritas de los desarrolladores — los CLIs de codificación son la clase de entorno que cubrimos con mayor profundidad. La familia `sanitize-*` es distinta: se ejecuta después de que una herramienta devuelve su resultado, por lo que reporta un secreto en la salida de la herramienta en lugar de evitar que llegue al contexto.
 
-→ [Las 43 políticas integradas](https://docs.befailproof.ai/policies/packs)
+→ [Las 39 políticas integradas](https://docs.befailproof.ai/policies/packs)
 
 ---
 

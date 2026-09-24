@@ -21,7 +21,7 @@
 **Traduções:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Observabilidade e controle de acesso para todos os harnesses em que seus agentes rodam.**
-Onde quer que seus agentes executem, nós enxergamos — e podemos dizer não. O Failproof conecta 12 harnesses de agentes — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes auto-hospedados como OpenClaw — capturando cada execução e bloqueando chamadas de ferramentas perigosas antes que aconteçam. 43 políticas embutidas. Zero latência. Roda localmente.
+Onde quer que seus agentes executem, nós enxergamos — e podemos dizer não. O Failproof conecta 12 harnesses de agentes — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes auto-hospedados como OpenClaw — capturando cada execução e bloqueando chamadas de ferramentas perigosas antes que aconteçam. 39 políticas embutidas. Zero latência. Roda localmente.
 
 </div>
 
@@ -160,7 +160,7 @@ Até que um pacote chegue, a única coisa em vigor é `block-failproofai-command
 
 Cada uma dessas políticas intercepta a chamada *antes* de executar, então funcionam nos doze harnesses. As quatro primeiras se aplicam a qualquer agente que possa chamar uma ferramenta; as três últimas são as favoritas dos desenvolvedores — CLIs de codificação são a classe de harness que cobrimos com mais profundidade. A família `sanitize-*` é separada: ela roda após o retorno de uma ferramenta, então reporta um segredo na saída da ferramenta em vez de impedi-lo de entrar no contexto.
 
-→ [Todas as 43 políticas embutidas](https://docs.befailproof.ai/policies/packs)
+→ [Todas as 39 políticas embutidas](https://docs.befailproof.ai/policies/packs)
 
 ---
 

@@ -44,9 +44,9 @@ import {
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
 import { getSemanticRegistrations } from "./custom-hooks-registry";
-import { authorityFieldsOf, authorityProblem } from "./policy-authority";
-import type { SemanticPolicyDeclaration } from "./policy-types";
-import type { MultiChoice, TTYIn, TTYOut } from "./tui";
+import { authorityFieldsOf, authorityProblem, resolvePolicyAuthority } from "./policy-authority";
+import type { PolicyCatalogEntry, SemanticPolicyDeclaration } from "./policy-types";
+import type { MultiChoice, RenderOpts, TTYIn, TTYOut } from "./tui";
 import {
   chip,
   emptyState,
@@ -2987,6 +2987,127 @@ function relativeAge(iso: string): string {
   return `${value} ${label}${value === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * Which of a pack's OWN regex policies each of its Jev checks can clear, keyed
+ * by check name and empty for a check nothing names.
+ *
+ * INVERTED out of the same manifest's `reviewedBy` rather than declared beside
+ * the checks. A semantic entry says nothing about the policies that name it, so
+ * the only other way to show this column is a second list kept by hand — which
+ * is wrong the first time a publisher adds a reviewer to one policy, and wrong
+ * in the direction that overstates what Jev may clear.
+ *
+ * Judged with `resolvePolicyAuthority` against the pack's OWN check names,
+ * because that is the rule the installing machine applies: a pack declaring
+ * semantic entries replaces the compiled-in set (`effectiveReviewerNames`), so
+ * its `reviewedBy` may name only its own checks, and a declaration that names
+ * anything else — or one sitting under `authority: "hard"`, which a manifest may
+ * carry because the two fields are parsed independently — registers HARD. A
+ * policy in either state can never be cleared, so naming it under a check would
+ * promise a clear that cannot happen.
+ */
+function reviewersByCheck(
+  policies: ReadonlyArray<PolicyCatalogEntry>,
+  semantic: ReadonlyArray<SemanticManifestEntry>,
+): Map<string, string[]> {
+  const ownChecks = new Set(semantic.map((s) => s.name));
+  const byCheck = new Map<string, string[]>(semantic.map((s) => [s.name, []]));
+  for (const policy of policies) {
+    const { authority, reviewedBy } = resolvePolicyAuthority(policy, ownChecks);
+    if (authority !== "reviewable") continue;
+    for (const check of reviewedBy ?? []) byCheck.get(check)?.push(policy.name);
+  }
+  return byCheck;
+}
+
+/** Reviewers named in full. Past this the cell names two and counts the rest. */
+const REVIEWERS_LISTED = 3;
+
+/**
+ * A check's reviewers as one cell.
+ *
+ * The question a reader brings to this column is "can this check clear anything
+ * of mine", which two names and a count answer as well as ten do — and ten
+ * names in a cell push the column past the terminal, where `table` cuts one of
+ * them mid-word and the row stops being readable at all.
+ */
+function reviewersCell(names: ReadonlyArray<string>): string {
+  if (names.length <= REVIEWERS_LISTED) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")}, +${names.length - 2}`;
+}
+
+/**
+ * Why a check that no policy names is in the pack at all — and the two answers
+ * are different facts, so the row has to tell them apart.
+ *
+ * A `deny` check with no reviewer is a concern the pack's regex half does not
+ * cover: it can only ever ADD a deny, never clear one, and that is a gap in the
+ * regex tier rather than a mistake in the manifest. An `instruct` check can
+ * never answer deny, so every conjunction naming it has one reachable outcome —
+ * a clear — which is why nothing names it and why nothing should (the
+ * `block-work-on-main` entry in CHANGELOG 1.0.7-beta.1 is that bug, shipped).
+ */
+function unreviewedCell(mode: SemanticManifestEntry["mode"], policies: number): string {
+  if (mode === "instruct") return "instruct-only — it can never deny";
+  return policies === 0 ? "nothing here covers this" : `nothing in the ${policies} covers this`;
+}
+
+/**
+ * A pack's Jev checks as a section of rows — the shape the category sections
+ * use, deliberately NOT their columns.
+ *
+ * It replaces a prose paragraph that listed sixteen names comma-separated above
+ * a screen where everything else was a scannable row. The rows are not policy
+ * rows and must not read as ones: there is no on/off chip, because nothing
+ * toggles a check, `--policy` cannot name one, and none of them appears in
+ * `failproofai policies`. What the columns carry instead is the pair of facts
+ * that decide what a check does on a real machine — its mode, and which of this
+ * pack's own policies it can clear.
+ *
+ * Null when the pack declares none, so a pack with no semantic half prints no
+ * section rather than an empty one.
+ */
+export function jevChecksSection(
+  pack: {
+    policies: ReadonlyArray<PolicyCatalogEntry>;
+    semantic: ReadonlyArray<SemanticManifestEntry>;
+  },
+  opts?: RenderOpts,
+): string[] | null {
+  if (pack.semantic.length === 0) return null;
+  const reviewers = reviewersByCheck(pack.policies, pack.semantic);
+  const rows = pack.semantic.map((check) => {
+    const named = reviewers.get(check.name) ?? [];
+    return named.length > 0
+      ? [check.mode, check.name, "reviews", reviewersCell(named)]
+      : [check.mode, check.name, "—", unreviewedCell(check.mode, pack.policies.length)];
+  });
+  return [
+    // The count is on the heading rather than in a row, the way every other
+    // section on this screen carries its own total.
+    ...rule(
+      `Jev checks — ${pack.semantic.length} · not selectable · only where Jev is configured`,
+      opts,
+    ),
+    // The reviewers column is the only one allowed to shrink: a mode or a check
+    // name cut in half is a fact nobody can act on, while a cut reviewer list is
+    // one that was already abbreviated.
+    ...table({ head: ["", "", "", ""], rows, protect: [0, 1, 2] }, opts),
+    "",
+    ...note(
+      "Nothing toggles them: `--policy` cannot name one, `failproofai policies` never lists them, " +
+        "and a pack's checks replace the ones this build ships with.",
+      opts,
+    ),
+    ...note(
+      `\`reviews\` is which of this pack's own ${pack.policies.length} policies each check can clear. ` +
+        "A deny check that reviews nothing can only ever ADD a deny; an instruct check never answers " +
+        "deny, so nothing pairs with one.",
+      opts,
+    ),
+  ];
+}
+
 async function listRemote(source: string): Promise<PackCliResult> {
   const opts = optsFor(process.stdout);
   let preview;
@@ -3029,22 +3150,13 @@ async function listRemote(source: string): Promise<PackCliResult> {
           (preview.effect === "observe" ? " This pack OBSERVES — it records and blocks nothing." : ""),
         opts,
       ),
-      // The half that is not in the table below, said in words. It is not
-      // selectable, so it has no rows; and it REPLACES this build's own question
-      // set rather than adding to it, which is the part worth knowing before
-      // installing rather than after.
-      preview.semantic.length > 0
-        ? note(
-            `It also carries ${semanticPhrase(preview.semantic.length)} — ${preview.semantic
-              .map((s) => s.name)
-              .join(", ")}. They are not selectable, they apply only where you configured Jev, and they ` +
-              "replace the checks this build ships with.",
-            opts,
-          )
-        : null,
       preview.minCliVersion ? note(`Requires failproofai ${preview.minCliVersion} or newer.`, opts) : null,
       preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
       table({ head: ["", "", ""], rows }, opts),
+      // The half the table above cannot hold: its own section, under the
+      // policies rather than above them, because a check is read against the
+      // policies it can clear and those are the rows just passed.
+      jevChecksSection(preview, opts),
       nextStep(`failproofai policies add ${source}`, "Install the defaults with:", opts),
       note("Or take part of it: --policy <a,b>, --category <x,y>, --all", opts),
     ),

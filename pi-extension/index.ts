@@ -405,10 +405,15 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       cwd: resolveCwd(e.cwd),
       hook_event_name: "UserPromptSubmit",
       // "interactive" | "rpc" | "extension": which channel the input came
-      // through. It names the channel, not the author — `pi -p "<text>"`
-      // reports `interactive` too — so the Jev evaluator records no Pi prompt
-      // as the human's (src/hooks/semantic/intent.ts). Forwarded anyway: it
-      // is what a policy or a later Pi build would read.
+      // through, and the only mark Pi gives about who wrote the prompt. It
+      // names the channel, not the author — `pi -p "<text>"` reports
+      // `interactive` exactly as a person typing does — so the Jev evaluator
+      // uses it only in the direction it is reliable in (`piMachineTurn`,
+      // src/hooks/semantic/intent.ts): `extension`, another extension's
+      // `sendUserMessage()` whose text can be model-written or repo-derived,
+      // is refused, while `interactive`, `rpc` and an absent value are all
+      // recorded as the human's request. Policies read it too, and a later Pi
+      // build may say more here.
       input_source: e.source,
     });
     if (decision.block) {

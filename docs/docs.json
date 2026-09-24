@@ -217,6 +217,7 @@
                   "reference/overview",
                   "reference/harnesses",
                   "reference/custom-agents",
+                  "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"

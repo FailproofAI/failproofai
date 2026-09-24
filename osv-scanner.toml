@@ -1,6 +1,6 @@
 # OSV-Scanner allow-list — auto-loaded by the Supply Chain CI gate
-# (.github/workflows/osv-scanner.yml) when it scans bun.lock, Cargo.lock and
-# the two uv.lock files.
+# (.github/workflows/osv-scanner.yml) when it scans bun.lock, Cargo.lock, the
+# two uv.lock files and sdk/typescript/package-lock.json.
 #
 # The gate blocks on ANY known-vulnerable or malicious dependency. When a finding
 # has no available fix (e.g. an unpatched transitive advisory), add a justified,

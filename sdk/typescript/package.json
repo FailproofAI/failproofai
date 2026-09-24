@@ -1,0 +1,401 @@
+{
+  "name": "@failproofai/sdk",
+  "version": "0.0.1-beta.0",
+  "description": "Emit agent telemetry to FailproofAI Cloud \u2014 zero-dependency, Node stdlib only",
+  "keywords": [
+    "agents",
+    "observability",
+    "ai",
+    "monitoring",
+    "failproofai",
+    "telemetry",
+    "sdk",
+    "langchain",
+    "langgraph",
+    "ai-sdk",
+    "mastra",
+    "llamaindex",
+    "evals"
+  ],
+  "homepage": "https://befailproof.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FailproofAI/failproofai.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/FailproofAI/failproofai/issues"
+  },
+  "author": "Failproof AI <failproofai@exosphere.host>",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "ai": [
+        "./dist/cjs/integrations/ai.d.ts"
+      ],
+      "mastra": [
+        "./dist/cjs/integrations/mastra.d.ts"
+      ],
+      "langchain": [
+        "./dist/cjs/integrations/langchain.d.ts"
+      ],
+      "llamaindex": [
+        "./dist/cjs/integrations/llamaindex.d.ts"
+      ],
+      "evaluator": [
+        "./dist/cjs/evaluator/index.d.ts"
+      ],
+      "sandbox-worker": [
+        "./dist/cjs/evaluator/sandbox-worker.d.ts"
+      ],
+      "next": [
+        "./dist/cjs/next.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "edge-light": {
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
+      },
+      "workerd": {
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
+      },
+      "worker": {
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/esm/index.d.ts",
+          "default": "./dist/esm/edge/index.js"
+        },
+        "require": {
+          "types": "./dist/cjs/index.d.ts",
+          "default": "./dist/cjs/edge/index.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./ai": {
+      "edge-light": {
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
+      },
+      "workerd": {
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
+      },
+      "worker": {
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/esm/integrations/ai.d.ts",
+          "default": "./dist/esm/edge/ai.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/ai.d.ts",
+          "default": "./dist/cjs/edge/ai.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/integrations/ai.d.ts",
+        "default": "./dist/esm/integrations/ai.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/ai.d.ts",
+        "default": "./dist/cjs/integrations/ai.js"
+      }
+    },
+    "./mastra": {
+      "edge-light": {
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
+      },
+      "workerd": {
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
+      },
+      "worker": {
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/esm/integrations/mastra.d.ts",
+          "default": "./dist/esm/edge/mastra.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/mastra.d.ts",
+          "default": "./dist/cjs/edge/mastra.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/integrations/mastra.d.ts",
+        "default": "./dist/esm/integrations/mastra.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/mastra.d.ts",
+        "default": "./dist/cjs/integrations/mastra.js"
+      }
+    },
+    "./langchain": {
+      "edge-light": {
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
+      },
+      "workerd": {
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
+      },
+      "worker": {
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/esm/integrations/langchain.d.ts",
+          "default": "./dist/esm/edge/langchain.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/langchain.d.ts",
+          "default": "./dist/cjs/edge/langchain.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/integrations/langchain.d.ts",
+        "default": "./dist/esm/integrations/langchain.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/langchain.d.ts",
+        "default": "./dist/cjs/integrations/langchain.js"
+      }
+    },
+    "./llamaindex": {
+      "edge-light": {
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
+      },
+      "workerd": {
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
+      },
+      "worker": {
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/esm/integrations/llamaindex.d.ts",
+          "default": "./dist/esm/edge/llamaindex.js"
+        },
+        "require": {
+          "types": "./dist/cjs/integrations/llamaindex.d.ts",
+          "default": "./dist/cjs/edge/llamaindex.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/integrations/llamaindex.d.ts",
+        "default": "./dist/esm/integrations/llamaindex.js"
+      },
+      "require": {
+        "types": "./dist/cjs/integrations/llamaindex.d.ts",
+        "default": "./dist/cjs/integrations/llamaindex.js"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/esm/next.d.ts",
+        "default": "./dist/esm/next.js"
+      },
+      "require": {
+        "types": "./dist/cjs/next.d.ts",
+        "default": "./dist/cjs/next.js"
+      }
+    },
+    "./evaluator": {
+      "import": {
+        "types": "./dist/esm/evaluator/index.d.ts",
+        "default": "./dist/esm/evaluator/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/evaluator/index.d.ts",
+        "default": "./dist/cjs/evaluator/index.js"
+      }
+    },
+    "./sandbox-worker": {
+      "types": "./dist/cjs/evaluator/sandbox-worker.d.ts",
+      "require": "./dist/cjs/evaluator/sandbox-worker.js",
+      "default": "./dist/cjs/evaluator/sandbox-worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "failproofai-evaluator": "./dist/esm/evaluator/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/esm/writer.js",
+    "./dist/cjs/writer.js",
+    "./dist/esm/runtime.js",
+    "./dist/cjs/runtime.js",
+    "./dist/esm/evaluator/sandbox-worker.js",
+    "./dist/cjs/evaluator/sandbox-worker.js",
+    "./dist/esm/evaluator/cli.js",
+    "./dist/cjs/evaluator/cli.js"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/finalize-build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --config eslint.config.mjs",
+    "test": "npm run build && vitest run",
+    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0 <2",
+    "@mastra/core": ">=0.20.0 <2",
+    "ai": ">=4.0.0 <8",
+    "llamaindex": ">=0.11.4 <1"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    },
+    "@mastra/core": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "llamaindex": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.38.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^5.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

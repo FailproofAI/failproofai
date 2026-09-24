@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  // Declarations are emitted here too, and `exports[*].require.types` points
+  // at them. Under dist/cjs's `"type": "commonjs"` they ARE CommonJS
+  // declarations; handing `require` the ESM ones instead is what made every
+  // CommonJS project on `module: node16` fail with TS1479.
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist/cjs",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "noEmit": false,
+    // `@internal` exports (test hooks such as `_stats`, `_internals`,
+    // `attach`) stay out of the published declarations: a name in a `.d.ts`
+    // is a name a customer can come to depend on.
+    "stripInternal": true
+  },
+  "include": ["src/**/*.ts"]
+}

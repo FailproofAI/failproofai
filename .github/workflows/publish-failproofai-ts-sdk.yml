@@ -1,0 +1,421 @@
+name: Publish @failproofai/sdk to npm
+
+# The TypeScript telemetry SDK ships on its own cadence, separate from the
+# `failproofai` npm package in publish.yml, from the daemon binaries, and from
+# its Python sibling in publish-failproofai-sdk.yml. It is a pure-JavaScript
+# package with no platform matrix and no release assets, so it shares nothing
+# with those pipelines beyond credentials it does not use.
+#
+# AUTHENTICATION is the `NPM_TOKEN` secret publish.yml already uses, plus
+# `--provenance`, which needs `id-token: write` on the publish job and nothing
+# configured out of band. Provenance is what lets a consumer verify this tarball
+# was built by this workflow from this commit, and it costs one flag.
+#
+# TWO SETTINGS LIVE OUTSIDE THIS FILE, and they are the ones a branch edit
+# cannot reach. Every check below lives on the ref being dispatched, so a writer
+# can delete them on a branch and click Run:
+#
+#   1. Repo -> Settings -> Environments -> `npm-failproofai-ts-sdk`:
+#        Deployment branches: `main` only (add required reviewers if you want a
+#        second pair of eyes on every release).
+#      A job referencing this environment from any other ref is refused before
+#      it starts. NOTE: GitHub creates a missing environment implicitly, WITHOUT
+#      protection rules — so this is not self-configuring; set it up by hand.
+#   2. The `NPM_TOKEN` secret scoped to that environment rather than to the
+#      repository, so a workflow on another ref cannot read it.
+#
+# WHO MAY PUBLISH. Every publish is restricted to the logins in
+# `RELEASE_ACTORS`, checked against BOTH `github.actor` and
+# `github.triggering_actor`. Both, because on a RE-RUN `github.actor` stays the
+# user who started the ORIGINAL run while `triggering_actor` is whoever pressed
+# re-run: a guard reading only the former lets anyone with write access re-run a
+# maintainer's failed publish and ship from it.
+#
+# VERSION MANAGEMENT lives in `sdk/typescript/scripts/release.mjs`, which this
+# workflow calls rather than restating:
+#
+#     beta    X.Y.Z-beta.N  ->  X.Y.Z-beta.(N+1)
+#     stable  X.Y.Z         ->  X.Y.(Z+1)-beta.0
+#
+# `preflight` resolves it, refuses one npm has already taken, and computes what
+# `main` moves to; `bump` pushes that to `main` after a successful upload — the
+# version line AND a stub CHANGELOG section for it, in one commit, because a
+# version with no section is a release `preflight` refuses. Cutting a release is
+# therefore: edit ONE line only when you want to LEAVE the current beta line (a
+# stable cut, or a minor/major bump), then dispatch. A plain beta needs no edit
+# at all.
+#
+# The bump pushes to `main`, which the org ruleset protects, so it authenticates
+# as the version-bot GitHub App — the SAME app and the SAME two secrets
+# (`VERSION_BOT_APP_ID` / `VERSION_BOT_PRIVATE_KEY`) publish.yml and its
+# siblings already use. No new out-of-band setup.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify, but do not upload to npm
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-failproofai-ts-sdk
+  cancel-in-progress: false
+
+env:
+  RELEASE_ACTORS: NiveditJain
+
+jobs:
+  # Cheap, fail-fast, and holding NO identity of any kind: it resolves the
+  # version, refuses one npm has already taken, checks the CHANGELOG section
+  # exists, and computes what `main` moves to afterwards. Everything here is
+  # stdlib Node, `git` and one `curl` — no dependency is installed, so there is
+  # no third-party code in the job that decides whether a release may proceed.
+  #
+  # Separate from `build` because failing here is nearly free, and because npm —
+  # like PyPI — never releases a version for reuse, so discovering a burned one
+  # after a full build costs the whole run and fixes nothing.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      next_version: ${{ steps.resolve.outputs.next_version }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+      dist_tag: ${{ steps.resolve.outputs.dist_tag }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Authorize actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::releases are cut from main only (got ${{ github.ref }})"
+            exit 1
+          fi
+          for who in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            allowed=0
+            for candidate in $RELEASE_ACTORS; do
+              if [ "$(echo "$who" | tr 'A-Z' 'a-z')" = "$(echo "$candidate" | tr 'A-Z' 'a-z')" ]; then
+                allowed=1
+              fi
+            done
+            if [ "$allowed" -ne 1 ]; then
+              echo "::error::$who is not authorized to publish @failproofai/sdk"
+              exit 1
+            fi
+          done
+
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+
+      - name: Resolve the version
+        id: resolve
+        working-directory: sdk/typescript
+        run: node scripts/release.mjs resolve
+
+      # Refused here, before anything is built. npm returns the version's
+      # metadata for a version that exists and a 404 for one that does not, so
+      # this is one request and no ambiguity.
+      - name: Refuse a version npm has already taken
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://registry.npmjs.org/@failproofai%2Fsdk/$VERSION")
+          case "$status" in
+            404) echo "$VERSION is available" ;;
+            200)
+              echo "::error::@failproofai/sdk@$VERSION is already published. npm never releases a version for reuse — move src/version.ts and package.json to the next one."
+              exit 1
+              ;;
+            *)
+              echo "::error::could not query the registry (HTTP $status); refusing to guess"
+              exit 1
+              ;;
+          esac
+
+      # The GitHub Release body. A version whose changes nobody can read is a
+      # version that may as well not have shipped, so its absence stops the run
+      # here rather than producing a release with an empty description.
+      - name: Require a CHANGELOG section for this version
+        working-directory: sdk/typescript
+        run: node scripts/release.mjs changelog "${{ steps.resolve.outputs.version }}" > /dev/null
+
+  # Everything the CI job does, plus the checks that only make sense against a
+  # release artifact. Holds no identity either: it uploads the tarball for the
+  # publish job rather than publishing it, so the job that CAN publish does no
+  # building and runs no third-party build script.
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npx vitest run
+
+      - name: Pack
+        run: npm pack --pack-destination "$RUNNER_TEMP"
+
+      # The tarball is the thing being released, so assert its contents rather
+      # than the source tree's. A `files` list that stopped shipping `dist/`
+      # would publish a SUCCESSFUL but empty package, and npm would install it.
+      - name: Verify the tarball actually contains the package
+        run: |
+          set -euo pipefail
+          tarball=$(ls "$RUNNER_TEMP"/failproofai-sdk-*.tgz)
+          names=$(tar -tzf "$tarball")
+          echo "$names" | grep -q 'package/dist/esm/index.js' || { echo "::error::dist/esm is missing"; exit 1; }
+          echo "$names" | grep -q 'package/dist/cjs/index.js' || { echo "::error::dist/cjs is missing"; exit 1; }
+          echo "$names" | grep -q 'package/dist/esm/index.d.ts' || { echo "::error::type declarations are missing"; exit 1; }
+          echo "$names" | grep -q 'package/dist/cjs/package.json' || { echo "::error::the CommonJS type marker is missing — Node would read that build as ESM"; exit 1; }
+          echo "$names" | grep -q 'package/dist/esm/evaluator/cli.js' || { echo "::error::the evaluator CLI is missing"; exit 1; }
+          echo "$names" | grep -q 'package/dist/cjs/evaluator/sandbox-worker.js' || { echo "::error::the sandbox worker is missing — managed evaluations would be refused"; exit 1; }
+          echo "$names" | grep -q 'package/LICENSE' || { echo "::error::LICENSE is missing"; exit 1; }
+          echo "$names" | grep -q 'package/README.md' || { echo "::error::README.md is missing"; exit 1; }
+          echo "$names" | grep -qv 'package/src/' || true
+          modules=$(echo "$names" | grep -c 'package/dist/esm/.*\.js$' || true)
+          if [ "$modules" -lt 15 ]; then
+            echo "::error::the tarball looks empty — only $modules modules under dist/esm"
+            exit 1
+          fi
+          echo "$modules modules, both builds, types, CLI and sandbox present"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ts-sdk-tarball
+          path: ${{ runner.temp }}/failproofai-sdk-*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-failproofai-ts-sdk
+    permissions:
+      contents: write
+      # `--provenance` mints an OIDC token to attest that this tarball came from
+      # this workflow at this commit.
+      id-token: write
+    steps:
+      - name: Authorize actor
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          for who in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            allowed=0
+            for candidate in $RELEASE_ACTORS; do
+              if [ "$(echo "$who" | tr 'A-Z' 'a-z')" = "$(echo "$candidate" | tr 'A-Z' 'a-z')" ]; then
+                allowed=1
+              fi
+            done
+            if [ "$allowed" -ne 1 ]; then
+              echo "::error::$who is not authorized to publish @failproofai/sdk"
+              exit 1
+            fi
+          done
+
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+          registry-url: "https://registry.npmjs.org"
+
+      # Into RUNNER_TEMP, never the checkout: a tarball inside the working tree
+      # is a tarball the next `npm pack` would include.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ts-sdk-tarball
+          path: ${{ runner.temp }}/tarball
+
+      - name: Verify the token can authenticate before doing anything else
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! who=$(npm whoami 2>&1); then
+            echo "::error::NPM_TOKEN cannot authenticate with the registry: $who"
+            exit 1
+          fi
+          echo "authenticated as $who"
+
+      # `--ignore-scripts`, because a tarball's lifecycle scripts must not run
+      # on a machine holding a publish token. The package was already built and
+      # verified in the `build` job; there is nothing left for a script to do.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ needs.preflight.outputs.dist_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          tarball=$(ls "$RUNNER_TEMP"/tarball/failproofai-sdk-*.tgz)
+          if [ "$DRY_RUN" = "true" ]; then
+            # --provenance is dropped here on purpose: attestation needs a real
+            # publish to attach to, and a dry run has none.
+            npm publish "$tarball" --dry-run --ignore-scripts --tag "$DIST_TAG" --access public
+          else
+            npm publish "$tarball" --provenance --ignore-scripts --tag "$DIST_TAG" --access public
+          fi
+
+      - name: Extract the release notes
+        if: inputs.dry_run != true
+        id: notes
+        working-directory: sdk/typescript
+        run: node scripts/release.mjs changelog "${{ needs.preflight.outputs.version }}"
+
+      - name: Create the GitHub Release
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PRERELEASE: ${{ needs.preflight.outputs.is_prerelease }}
+          NOTES: ${{ steps.notes.outputs.body }}
+        run: |
+          set -euo pipefail
+          flags=(--title "@failproofai/sdk $VERSION" --notes "$NOTES" --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}"
+
+  # The registry is eventually consistent, so this runs after the publish rather
+  # than as part of it: a package that published and cannot be installed is the
+  # failure worth catching, and only a real install from the real registry can.
+  verify-install:
+    needs: [preflight, publish]
+    if: inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+
+      - name: Install the published version and emit real events
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify && cd /tmp/verify
+          npm init -y > /dev/null
+          for attempt in 1 2 3 4 5; do
+            if npm install --no-audit --no-fund --omit=optional --omit=peer "@failproofai/sdk@$VERSION"; then
+              break
+            fi
+            echo "the registry has not caught up yet (attempt $attempt); waiting"
+            sleep 20
+          done
+          test ! -d node_modules/@failproofai/sdk/node_modules \
+            || { echo "::error::the published package brought transitive dependencies"; exit 1; }
+          cat > verify.mjs <<'EOF'
+          import * as fp from "@failproofai/sdk";
+          fp.configure({ baseDir: "/tmp/verify-spool" });
+          await fp.agent("verify", { goal: "post-publish" }, () => undefined);
+          await fp.flush();
+          console.log(fp.version);
+          EOF
+          published=$(node verify.mjs)
+          test "$published" = "$VERSION" || { echo "::error::installed $published, expected $VERSION"; exit 1; }
+          test -n "$(ls /tmp/verify-spool/events/*.jsonl)" \
+            || { echo "::error::the published package wrote no events"; exit 1; }
+          echo "installed $VERSION and it works"
+
+  # Opens the next line on main: the version AND a stub CHANGELOG section for
+  # it, in one commit. Both halves together on purpose — a version with no
+  # section is what `preflight` refuses at release time, and a bump commit
+  # carries a skip-ci marker, so that state would go red on the next unrelated
+  # PR rather than on itself.
+  bump:
+    needs: [preflight, publish]
+    if: inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
+          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+
+      - name: Move to the next version and open its CHANGELOG section
+        env:
+          NEXT: ${{ needs.preflight.outputs.next_version }}
+          RELEASED: ${{ needs.preflight.outputs.version }}
+        working-directory: sdk/typescript
+        run: |
+          set -euo pipefail
+          current=$(node -e "process.stdout.write(require('./package.json').version)")
+          if [ "$current" != "$RELEASED" ]; then
+            echo "main has moved to $current since $RELEASED was released; leaving it alone"
+            exit 0
+          fi
+          node scripts/release.mjs write "$NEXT"
+          today=$(date -u +%Y-%m-%d)
+          node - "$NEXT" "$today" <<'EOF'
+          const { readFileSync, writeFileSync } = require("node:fs");
+          const [version, today] = process.argv.slice(2);
+          const path = "CHANGELOG.md";
+          const text = readFileSync(path, "utf8");
+          const marker = "\n## ";
+          const at = text.indexOf(marker);
+          if (at === -1) throw new Error("CHANGELOG.md has no version sections");
+          const stub = `\n## ${version} — ${today}\n\n### Fixes\n\n- _Nothing yet._\n`;
+          writeFileSync(path, text.slice(0, at) + stub + text.slice(at));
+          EOF
+
+      - name: Commit
+        env:
+          NEXT: ${{ needs.preflight.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git config user.name "failproofai-version-bot[bot]"
+          git config user.email "failproofai-version-bot[bot]@users.noreply.github.com"
+          git add sdk/typescript/src/version.ts sdk/typescript/package.json sdk/typescript/CHANGELOG.md
+          git commit -m "chore(@failproofai/sdk): open $NEXT after publishing ${{ needs.preflight.outputs.version }} [skip ci]"
+          git push origin main

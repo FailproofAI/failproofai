@@ -5,4 +5,5 @@
 
 # Let Codex auto-select this skill when a task matches the description
 # (set to false to require explicit `$failproofai-sdk` invocation).
-allow_implicit_invocation: true
+policy:
+  allow_implicit_invocation: true

@@ -1,5 +1,8 @@
 # Framework integrations
 
+> TypeScript/JavaScript (LangChain.js/LangGraph.js, Vercel AI SDK, Mastra,
+> LlamaIndex.TS, Next.js): see `typescript.md`. This page is the Python SDK.
+
 If the agent runs on LangChain/LangGraph, CrewAI, LlamaIndex or Pydantic AI, you
 do not write the instrumentation — you turn it on. The adapters ship inside the
 SDK wheel and are imported only when you ask for them.

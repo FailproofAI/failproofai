@@ -1,0 +1,15 @@
+{
+  "name": "failproofai-it-runtimes",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: the pinned non-Node runtimes (Bun, Deno) that the core smoke (agent.ts), the short-lived-handler cases and every framework fixture's agent run under. Installed with --ignore-scripts, so each runtime is its platform package's own binary, which the harness locates. `ai` and `zod` are for deno-npm.ts, which imports them through `npm:` specifiers.",
+  "dependencies": {
+    "ai": "6.0.288",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "bun": "1.4.2",
+    "deno": "2.9.6"
+  }
+}

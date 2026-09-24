@@ -1,0 +1,18 @@
+{
+  "name": "lc-weather-provider",
+  "version": "1.0.0",
+  "description": "Integration fixture: a LangChain provider package that pins its OWN @langchain/core as a hard dependency, the way @langchain/community and many third-party integrations did, so npm nests a second core under it.",
+  "license": "MIT",
+  "main": "./index.cjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    }
+  },
+  "dependencies": {
+    "@langchain/core": "0.3.80"
+  }
+}

@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { selectPolicies } from "../../../src/hooks/semantic/compile";
+import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
 import type { Facts, PathFact } from "../../../src/hooks/semantic/types";
 
@@ -94,6 +95,28 @@ describe("read-outside-workspace is asked wherever block-read-outside-cwd can de
   it("is asked on Bash as well as the read tools — the partner matches both", () => {
     const bash = facts({ toolName: "Bash", toolClass: "shell", paths: [path("/tmp/claude-501/x", "system")] });
     expect(asks(bash, "read-outside-workspace")).toBe(true);
+  });
+
+  // The rows above hand `selectPolicies` a `Facts` written by hand. These two
+  // go through the real `computeFacts`, because the gap they pin was not in the
+  // precondition at all: `extractPaths` consumed a `cd` target to rebase the
+  // paths after it and never emitted it, so a command whose ONLY out-of-project
+  // path was the `cd` target arrived with `paths: []` — nothing to ask about,
+  // while `block-read-outside-cwd` read the same text and denied the target.
+  describe("a cd out of the project is a path, so the question is asked", () => {
+    const shell = (command: string): Facts =>
+      computeFacts("Bash", { command }, PROJECT, null, scanCommand(command));
+
+    it("cd to a sibling repo, then run its local tsc", () => {
+      const f = shell("cd ../some-other-repo && ./node_modules/.bin/tsc 2>&1 | tail -2");
+      expect(f.paths.map((p) => p.resolved)).toContain("/home/dev/some-other-repo");
+      expect(asks(f, "read-outside-workspace")).toBe(true);
+    });
+
+    it("but a cd that stays inside the project raises nothing", () => {
+      const f = shell("cd packages/web && ls src");
+      expect(asks(f, "read-outside-workspace")).toBe(false);
+    });
   });
 });
 

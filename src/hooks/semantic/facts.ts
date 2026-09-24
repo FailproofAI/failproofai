@@ -201,9 +201,22 @@ export function extractPaths(
     let base = base0;
     for (const seg of scanned.segments) {
       if (seg[0] === "cd") {
-        const target = seg[1] ?? "~";
-        const f = pathFact(target, base, projectRoot, home);
-        if (f) base = f.resolved;
+        // A `cd` does two things and only one of them used to be recorded. Its
+        // target rebases every relative path after it — that is the `base`
+        // assignment, unchanged — but it is also a directory the call names in
+        // its own right. Consuming it silently left `facts.paths` empty on
+        // `cd ../other-repo && ./node_modules/.bin/tsc`, while the regex
+        // partner reads the same text, resolves the target against the session
+        // cwd and denies it. A deny whose paired question was never asked can
+        // never clear, so the target is emitted as a path too.
+        const written = seg[1];
+        const f = pathFact(written ?? "~", base, projectRoot, home);
+        if (!f) continue;
+        base = f.resolved;
+        // Only when the agent wrote a target. A bare `cd` (or `cd -`) leaves
+        // the partner no token to deny, so there is no verdict to pair with,
+        // and naming a directory nobody wrote would ask about it for nothing.
+        if (written !== undefined && !written.startsWith("-")) add(f);
         continue;
       }
       // Skip argv[0]: `/usr/local/bin/kubectl` is the program, not its target.

@@ -74,8 +74,59 @@ describe("semantic/facts", () => {
     const project = "/home/tester/work/app";
 
     it("resolves a glob after cd to the directory it expands in", () => {
+      // The `cd` target is now recorded in its own right as well (see the
+      // `cd` cases below), so this asserts the rebasing it is here for — that
+      // `*` expands in `/`, not in the project — beside that first entry.
       const facts = extractPaths({ command: "cd / && rm -rf *" }, project, project, scanCommand("cd / && rm -rf *"), home);
-      expect(facts).toEqual([{ asWritten: "*", resolved: "/", relation: "root" }]);
+      expect(facts).toEqual([
+        { asWritten: "/", resolved: "/", relation: "root" },
+        { asWritten: "*", resolved: "/", relation: "root" },
+      ]);
+    });
+
+    // A `cd` target used to be consumed: it rebased the paths after it and was
+    // never emitted. `block-read-outside-cwd` reads the same text, resolves the
+    // target against the session cwd and denies it — so its reviewer,
+    // `read-outside-workspace`, had no path to fire a precondition on and was
+    // never asked. A deny whose reviewer is never asked can never clear.
+    it("records a cd target as a path, not only as the frame for what follows", () => {
+      // The reported shape: the only path outside the project is the `cd`
+      // target, and the command that follows it is a bare argv[0] — which is
+      // skipped as the program, not a target. So this used to come out `[]`.
+      const cmd = "cd ../some-other-repo && ./node_modules/.bin/tsc 2>&1 | tail -2";
+      const facts = extractPaths({ command: cmd }, project, project, scanCommand(cmd), home);
+      expect(facts).toEqual([
+        {
+          asWritten: "../some-other-repo",
+          resolved: "/home/tester/work/some-other-repo",
+          relation: "outside_project_in_home",
+        },
+      ]);
+    });
+
+    it("keeps rebasing what follows the cd, as well as recording it", () => {
+      const cmd = "cd ../some-other-repo && cat ./package.json";
+      const facts = extractPaths({ command: cmd }, project, project, scanCommand(cmd), home);
+      expect(facts.map((f) => f.resolved)).toEqual([
+        "/home/tester/work/some-other-repo",
+        "/home/tester/work/some-other-repo/package.json",
+      ]);
+    });
+
+    it("records a `cd ~` target, and keeps rebasing what follows it", () => {
+      const cmd = "cd ~ && cat ./notes.txt";
+      const facts = extractPaths({ command: cmd }, project, project, scanCommand(cmd), home);
+      expect(facts).toEqual([
+        { asWritten: "~", resolved: home, relation: "home_root" },
+        { asWritten: "./notes.txt", resolved: `${home}/notes.txt`, relation: "outside_project_in_home" },
+      ]);
+    });
+
+    it("invents nothing for a bare `cd` or a `cd -`: the partner has no token to deny there", () => {
+      const bare = "cd && ls";
+      expect(extractPaths({ command: bare }, project, project, scanCommand(bare), home)).toEqual([]);
+      const back = "cd - && ls";
+      expect(extractPaths({ command: back }, project, project, scanCommand(back), home)).toEqual([]);
     });
 
     it("gives ~/ and /home/ spellings of the same directory the same relation", () => {

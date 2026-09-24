@@ -12,7 +12,20 @@ section is missing or empty is refused before anything is built.
 
 ### Fixes
 
-- _Nothing yet._
+- **The integration fixtures stop carrying 32 open security advisories.** Nothing
+  the published package ships changed — every fixture under `integration/fixtures/`
+  is `"private": true` and exists only to run the adapters against real framework
+  releases — but their committed lockfiles are read by GitHub's dependency graph,
+  and the old majors those fixtures deliberately pin (`ai@4.3.19`,
+  `@langchain/core@0.3.80`, `@mastra/core@0.24.9`) pin *their* transitive deps
+  exactly, so nothing moved in range. Five fixtures now carry a minimal `overrides`
+  entry — `undici`, `langsmith`, `uuid`, `jsondiffpatch` and five OpenTelemetry
+  packages — clearing the advisories with every framework pin, and
+  `langchain-dup-core`'s two-copies-of-`@langchain/core` shape, unchanged.
+  Four alerts remain: two low-severity advisories against `ai` 4.x itself, whose
+  only fix is the major these fixtures exist to stay below; `SECURITY.md` records
+  them and the rule for the next one. (`nextjs`'s `postcss` is handled in #836.)
+  (#837)
 
 ## 0.0.1-beta.0 — 2026-09-23
 

@@ -129,6 +129,53 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(existsSync(jevConfigPath())).toBe(false);
     });
 
+    it("takes the account id out of the run URL, which already names it", async () => {
+      // Cloudflare's endpoint IS per-account, so the URL copied out of the
+      // dashboard carries the id. The refusal above asked for it a second time,
+      // and the first person to configure Cloudflare hit exactly that: the id
+      // was visible in the string being rejected.
+      const r = await runJevCommand(
+        ["--url", `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/ai/run`, "--token", TOKEN],
+        RENDER,
+      );
+      expect(r.exitCode, text(r)).toBe(0);
+      expect(readFile().accountId).toBe(ACCOUNT);
+      expect(readFile().provider).toBe("cloudflare");
+      expect(text(r)).not.toContain(TOKEN);
+    });
+
+    it("refuses an account id given twice and differently, rather than picking one", async () => {
+      // Silently preferring either one would send every request to an account
+      // the person did not name on the line they are looking at.
+      const other = "ffffffffffffffffffffffffffffffff";
+      const r = await runJevCommand(
+        [
+          "--url", `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/ai/run`,
+          "--account-id", other,
+          "--token", TOKEN,
+        ],
+        RENDER,
+      );
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).toContain(ACCOUNT);
+      expect(text(r)).toContain(other);
+      expect(text(r)).not.toContain(TOKEN);
+      expect(existsSync(jevConfigPath())).toBe(false);
+    });
+
+    it("accepts the same account id given both ways", async () => {
+      const r = await runJevCommand(
+        [
+          "--url", `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/ai/run`,
+          "--account-id", ACCOUNT,
+          "--token", TOKEN,
+        ],
+        RENDER,
+      );
+      expect(r.exitCode, text(r)).toBe(0);
+      expect(readFile().accountId).toBe(ACCOUNT);
+    });
+
     it("a URL that is the provider's own API writes no baseUrl override; any other path does", async () => {
       await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--token", TOKEN], RENDER);
       expect(readFile().baseUrl).toBeUndefined();

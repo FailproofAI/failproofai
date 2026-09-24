@@ -345,6 +345,29 @@ function providerForUrl(url: string): JevProviderKind {
   }
 }
 
+/**
+ * The account id a Cloudflare URL already carries, or null.
+ *
+ * Cloudflare's run endpoint IS per-account — `…/client/v4/accounts/<id>/ai/run`
+ * — so the id is in the canonical URL, and asking for it again as a flag asks
+ * for something the person has already typed. The first real attempt to
+ * configure Cloudflare pasted exactly that URL and was refused with "pass the
+ * account id as well", with the id visible in the string being rejected.
+ *
+ * Read from the path only, never from a query or fragment, and only on a host
+ * this build already recognises as Cloudflare's, so nothing else can inject one.
+ */
+export function accountIdFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (PROVIDER_BY_HOST[parsed.hostname.toLowerCase()] !== "cloudflare") return null;
+    const m = /\/accounts\/([0-9a-f]{32})(?:\/|$)/i.exec(parsed.pathname);
+    return m ? m[1].toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a validated URL is exactly where this provider's requests already go. */
 function isProviderDefaultUrl(kind: JevProviderKind, url: string): boolean {
   const base = JEV_PROVIDER_DEFAULTS[kind].baseUrl;
@@ -468,6 +491,34 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     }
     const kind = explicit ?? urlProvider.kind;
     if (explicit === null) values.set("--provider", kind);
+    // Cloudflare's endpoint IS per-account, so the run URL copied out of the
+    // dashboard already names the account. Read it from there rather than
+    // demanding a value that is sitting in the string being read — the first
+    // person to configure Cloudflare pasted exactly that URL and was told to
+    // "pass the account id as well", with the id visible in the refusal.
+    //
+    // Set into `values` here, while the URL is still in scope, because the
+    // block below deletes `--url` once it has moved the address to
+    // `--base-url`. Everything downstream then treats it as a flag that was
+    // given, including the 32-hex validation.
+    if (kind === "cloudflare") {
+      const fromUrl = accountIdFromUrl(normalized);
+      const given = values.get("--account-id");
+      if (fromUrl !== null && given === undefined) {
+        values.set("--account-id", fromUrl);
+      } else if (fromUrl !== null && given !== undefined && given.toLowerCase() !== fromUrl) {
+        // Preferring either one silently would send every request to an account
+        // the person did not name on the line they are looking at.
+        return fail([
+          "Not saved: --account-id and the account id in --url are different.",
+          `  --url names ${fromUrl}`,
+          `  --account-id names ${given.toLowerCase()}`,
+          "Drop one of them.",
+          "",
+          "Nothing was written.",
+        ]);
+      }
+    }
     // The provider's own API is where its key belongs anyway, so a URL naming
     // it clears the override instead of writing the same address into the file
     // (`custom` has no API of its own — its URL is the whole address).
@@ -546,9 +597,14 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   // host with another provider asked for is settled above, and nothing here
   // demands an id the file would not keep.
   if (kind === "cloudflare" && urlProvider?.kind === "cloudflare" && typeof next.accountId !== "string") {
+    // Reached only when the URL did not carry one either — a bare
+    // `/client/v4`, say. The URL form is named as well as the flag, because it
+    // is the address the dashboard hands out.
     return fail([
       `Not saved: ${urlProvider.host} is Cloudflare Workers AI, whose endpoint is per-account.`,
-      "Pass the account id as well: --account-id <32 hex characters>.",
+      "Pass the account id as well: --account-id <32 hex characters>,",
+      "or give the full run URL, which already contains it:",
+      "  https://api.cloudflare.com/client/v4/accounts/<id>/ai/run",
       "",
       "Nothing was written.",
     ]);

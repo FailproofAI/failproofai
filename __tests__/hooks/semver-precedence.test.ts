@@ -74,8 +74,15 @@ describe("compareSemver precedence", () => {
     expect(compareVersions("1.0.7-beta.0", "1.0.7")).toBe(-1);
     // And therefore: this branch's own version does NOT satisfy a 1.0.7 minimum.
     expect(compareVersions(packageVersion, "1.0.7")).toBe(-1);
-    // While it does satisfy its own, exactly.
-    expect(compareVersions(packageVersion, "1.0.7-beta.0")).toBe(0);
+    // While it DOES satisfy the minimum FailproofAI/jev-policies declares, which
+    // is the comparison with something riding on it: that pack's manifest says
+    // `minCliVersion: 1.0.7-beta.0`, and a build that failed this check would
+    // refuse to install the pack it was written for.
+    //
+    // Not pinned to equality. It was, and the first beta bump broke it — which
+    // is the wrong thing for this test to notice. Every later 1.0.7 prerelease
+    // must keep satisfying that minimum, and that is what this asserts.
+    expect(compareVersions(packageVersion, "1.0.7-beta.0")).toBeGreaterThanOrEqual(0);
   });
 
   it("compares numeric identifiers numerically, not as strings", () => {

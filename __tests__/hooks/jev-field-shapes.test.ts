@@ -14,7 +14,7 @@
  * crates/fpai-collect/tests/hooks_jev.rs with the same cases.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -176,13 +176,16 @@ describe("model ids", () => {
     }
   });
 
-  it("is the same rule as jev.json's model validator, where that is present", () => {
-    // T1's `MODEL_RE` in semantic/jev-config.ts. Before the two-tier branches
-    // are merged the file is the contract stub and has no validator.
+  it("is the same rule as jev.json's model validator", () => {
+    // T1's `MODEL_RE` in semantic/jev-config.ts. The declaration not being
+    // there is a FAILURE, not a skip: this read was guarded while that file
+    // was still the contract stub, and a guard that outlives its reason is a
+    // test that stops testing the moment the thing it reads is renamed or
+    // reshaped — silently, and exactly when the two rules could drift apart.
     const path = join(ROOT, "src", "hooks", "semantic", "jev-config.ts");
-    const src = existsSync(path) ? readFileSync(path, "utf-8") : "";
-    const m = /const MODEL_RE = \/(.+)\/;/.exec(src);
-    if (m) expect(m[1]).toBe(JEV_MODEL_RE.source);
+    const m = /const MODEL_RE = \/(.+)\/;/.exec(readFileSync(path, "utf-8"));
+    expect(m, `${path} must declare \`const MODEL_RE = /…/;\``).not.toBeNull();
+    expect(m?.[1]).toBe(JEV_MODEL_RE.source);
   });
 
   it("is the same rule the collector applies", () => {

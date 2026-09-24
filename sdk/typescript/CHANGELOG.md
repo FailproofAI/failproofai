@@ -12,7 +12,15 @@ section is missing or empty is refused before anything is built.
 
 ### Fixes
 
-- _Nothing yet._
+- **The integration fixtures stay on the framework majors they pin.** Each
+  fixture directory holds one end of a declared range — `ai-4` is the only one
+  that speaks LanguageModelV1, `langchain-0.3` and `mastra-0` are the floors the
+  peer ranges are actually tested at — so bumping the pin is not an upgrade, it
+  is deleting the test. A security update that reached transitive advisories by
+  moving four of those pins is reverted; `nextjs` keeps its half of it, a
+  lockfile-only change that drops the second `next@15` npm installed to satisfy
+  `@llamaindex/workflow-core`'s peer, and with it the `postcss@8.4.31` behind
+  GHSA-qx2v-qp2m-jg93. Nothing in the published package changes.
 
 ## 0.0.1-beta.0 — 2026-09-23
 

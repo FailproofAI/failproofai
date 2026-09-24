@@ -98,6 +98,28 @@ describe("the section's shape", () => {
     expect(rowFor(lines, "push-to-protected-branch")[0]).toBe("instruct");
   });
 
+  it("keeps a reason whole on an 80-column terminal, cutting a list before a sentence", () => {
+    // 80 columns is the default a piped or narrow render gets, and the widest
+    // builtin check name is 27 characters. `reviews` and `—` therefore lead the
+    // last cell instead of holding a column of their own: padding every `—` out
+    // to the width of `reviews` cost nine characters of the only column allowed
+    // to shrink, which was enough to ellipsize the reason.
+    const lines =
+      jevChecksSection(
+        {
+          policies: Array.from({ length: 38 }, (_, i) => policy(`p-${i}`)),
+          semantic: [
+            check("external-destructive-action"),
+            check("read-outside-workspace", { mode: "instruct" }),
+          ],
+        },
+        { cols: 80, color: false },
+      ) ?? [];
+    expect(rowFor(lines, "external-destructive-action")[3]).toBe("nothing in the 38 covers this");
+    expect(rowFor(lines, "read-outside-workspace")[3]).toBe("instruct-only — it can never deny");
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(80);
+  });
+
   it("carries no on/off chip, because a check is not something you can switch", () => {
     const lines = section([policy("block-rm-rf", ["destructive-deletion"])], [check("destructive-deletion")]);
     // `chip("on")` / `chip("off")` are what every selectable row on this screen

@@ -3084,9 +3084,18 @@ export function jevChecksSection(
   const reviewers = reviewersByCheck(pack.policies, pack.semantic);
   const rows = pack.semantic.map((check) => {
     const named = reviewers.get(check.name) ?? [];
-    return named.length > 0
-      ? [check.mode, check.name, "reviews", reviewersCell(named)]
-      : [check.mode, check.name, "—", unreviewedCell(check.mode, pack.policies.length)];
+    // `reviews` and `—` lead the same cell rather than sitting in a column of
+    // their own. A fourth column would pad every `—` out to the width of
+    // `reviews`, which costs nine characters of the only column allowed to
+    // shrink — enough to ellipsize the reason on an 80-column terminal, where
+    // this way everything fits whole.
+    return [
+      check.mode,
+      check.name,
+      named.length > 0
+        ? `reviews  ${reviewersCell(named)}`
+        : `—  ${unreviewedCell(check.mode, pack.policies.length)}`,
+    ];
   });
   return [
     // The count is on the heading rather than in a row, the way every other
@@ -3098,7 +3107,7 @@ export function jevChecksSection(
     // The reviewers column is the only one allowed to shrink: a mode or a check
     // name cut in half is a fact nobody can act on, while a cut reviewer list is
     // one that was already abbreviated.
-    ...table({ head: ["", "", "", ""], rows, protect: [0, 1, 2] }, opts),
+    ...table({ head: ["", "", ""], rows, protect: [0, 1] }, opts),
     "",
     ...note(
       "Nothing toggles them: `--policy` cannot name one, `failproofai policies` never lists them, " +

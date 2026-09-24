@@ -342,10 +342,10 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // Refused rather than bundled: see the note above. A relative specifier is the
   // only kind that would be rewritten by the loader and left outside the digest.
   const source = readFileSync(entryPath, "utf8");
-  const localImport = /(?:^|\n)\s*(?:import|export)[^;\n]*from\s+["'](\.[^"']*)["']/.exec(source);
+  const localImport = firstRelativeSpecifier(source);
   if (localImport) {
     return fail([
-      `${entryPath} imports ${localImport[1]}, and only the entry file is digest-pinned.`,
+      `${entryPath} imports ${localImport}, and only the entry file is digest-pinned.`,
       "Bundle it to a single file first (esbuild, bun build, rollup), then build the pack from that.",
     ]);
   }
@@ -1878,6 +1878,44 @@ const PUBLISH_VALUE_FLAGS = new Set([
   "--repo", "--version", "--id", "--tag", "--notes", "--out", "--effect", "--entry", "--init",
   "--commit", "--min-cli-version",
 ]);
+/**
+ * The first relative specifier an entry imports, or null.
+ *
+ * Two callers read this and they must agree, because between them they are the
+ * only two outcomes: `publish` bundles a multi-file entry into the one artifact
+ * a pack has to be, and `build` REFUSES one, since only the entry file is
+ * digest-pinned. A shape that neither recognises gets bundled by neither and
+ * refused by neither, and the author sees whatever the loader's rewrite makes of
+ * it — which is an esbuild parse error naming a token, not a file.
+ *
+ * Both sites previously used `[^;\n]*` between `import` and `from`, which cannot
+ * cross a newline and requires a `from` clause to exist. So both missed:
+ *
+ *   import "./policies/regex"        // side-effect only: there is no `from`
+ *   import {
+ *     aLongList,
+ *   } from "./shared"                // the `from` is on another line
+ *
+ * and a pack entry written either way — the natural way to write one whose
+ * halves register at module scope — failed to publish with `Expected "from" but
+ * found "{"`. Now `[^;]*?` spans newlines and stops at a statement end, and the
+ * bare form is matched on its own. Over-reaching to a later `from` is harmless:
+ * the answer is only ever used as "is there a relative import, and name one".
+ */
+export function firstRelativeSpecifier(source: string): string | null {
+  const patterns = [
+    /(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["'](\.[^"']*)["']/,
+    /(?:^|\n)\s*import\s*["'](\.[^"']*)["']/,
+    /\bimport\s*\(\s*["'](\.[^"']*)["']\s*\)/,
+    /\brequire\s*\(\s*["'](\.[^"']*)["']\s*\)/,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(source);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function publishEntryArg(rest: string[]): string | undefined {
   const consumed = new Set<number>();
   for (let i = 0; i < rest.length; i += 1) {
@@ -2255,10 +2293,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // a bundler for a step this tool already performs for its own pack.
   let entryToBuild = entry;
   const needsBundle =
-    discovered.length > 1 ||
-    /(?:^|\n)\s*(?:import|export)[^;\n]*from\s+["']\.[^"']*["']/.test(
-      readFileSync(entry, "utf8"),
-    );
+    discovered.length > 1 || firstRelativeSpecifier(readFileSync(entry, "utf8")) !== null;
   if (needsBundle) {
     const sources = discovered.length > 1 ? discovered : [entry];
     const bundled = bundleEntry(sources, outDirEarly);

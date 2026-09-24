@@ -20,12 +20,13 @@ section is missing or empty is refused before anything is built.
   `@langchain/core@0.3.80`, `@mastra/core@0.24.9`) pin *their* transitive deps
   exactly, so nothing moved in range. Five fixtures now carry a minimal `overrides`
   entry — `undici`, `langsmith`, `uuid`, `jsondiffpatch` and five OpenTelemetry
-  packages — clearing the advisories with every framework pin, and
+  packages — clearing 32 of them with every framework pin, and
   `langchain-dup-core`'s two-copies-of-`@langchain/core` shape, unchanged.
-  Four alerts remain: two low-severity advisories against `ai` 4.x itself, whose
-  only fix is the major these fixtures exist to stay below; `SECURITY.md` records
-  them and the rule for the next one. (`nextjs`'s `postcss` is handled in #836.)
-  (#837)
+  Four alerts remain, from two low-severity advisories: one against `ai@4.3.19`
+  (GHSA-rwvc-j5jr-mgvh) and one against the `@ai-sdk/provider-utils@2.2.8` that
+  ships inside it (GHSA-866g-f22w-33x8). Both are fixed only in the major these
+  fixtures exist to stay below, so `SECURITY.md` records them and the rule for
+  the next one. (`nextjs`'s `postcss` is handled in #836.) (#837)
 
 ## 0.0.1-beta.0 — 2026-09-23
 

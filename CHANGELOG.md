@@ -12,7 +12,6 @@
 - Add `failproofai jev` — `setup`, `status`, `test`, `remove` — and the one-shot `failproofai jev --url <url> --token <token>`, which reads the provider off the URL's host and refuses a `--provider` that contradicts it. (#833)
 - Add a Jev cell to the local dashboard's settings gear: provider, endpoint, token, mode and Cloudflare account id, saved through the same validator and atomic writer `jev setup` uses. The token is write-only — the view carries a presence flag and at most the last four characters, never the key. (#833)
 - Give every policy an `authority` (`hard` or `reviewable`) and a `reviewedBy` list naming the semantic checks that may clear it. Absent, invalid or `alwaysOn` means hard, so an unknown custom, pack or cloud-managed policy can never be weakened, and `failproofai publish` refuses a pack whose declaration would not be honoured. Seven builtins are reviewable. (#833)
-- Add four hard builtins, all off by default: `block-disk-destruction`, `block-gh-destructive`, `block-indirect-exec` and `block-chmod-777`. (#833)
 - Record the prompt the harness hands the hook — harness wrapping stripped, secrets redacted, capped, `0600`, the last five per session inside a six-hour window — as the only channel that can clear a reviewable policy. (#833)
 - Harden redaction on everything the evaluator sends: gateway keys the shared secret rules walk past, Anthropic and OpenAI project keys, Vercel AI Gateway keys, `Authorization` and `Proxy-Authorization` values whatever the scheme, credential-bearing command flags, and private-key bodies. (#833)
 - Cache Jev answers by the request itself and rate-limit what reaches the provider (default 5 req/s, burst 5). Over budget a call falls back to the regex result with a recorded reason rather than degrading silently, and a provider 429 empties the bucket. (#833)
@@ -32,7 +31,7 @@
 ### Docs
 
 - Document ending an issue three ways (resolve / close / archive) and clearing a board after an agent change, in the audits guide and the Cloud CLI reference. (#815)
-- Document the two-tier evaluator: Jev setup, providers and fallback reasons (`policies/jev-byok`), policy authority and which builtins are reviewable (`policies/authority`), and what intent capture records and the risk it accepts (`reference/jev-intent`). The built-in policy count moves 39 → 43 in `README.md`, its 14 translations and the package description. (#833)
+- Document the two-tier evaluator: Jev setup, providers and fallback reasons (`policies/jev-byok`), policy authority and which builtins are reviewable (`policies/authority`), and what intent capture records and the risk it accepts (`reference/jev-intent`). (#833)
 
 ## 1.0.6 — 2026-09-16
 

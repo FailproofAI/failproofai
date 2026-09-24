@@ -507,6 +507,11 @@ describe("hooks/builtin-policies", () => {
       const ctx = makeCtx({ toolName: "Read", toolInput: { file_path: "/app/src/main.ts" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
     });
+
+    it("allows git commit with .env mentioned in quoted message", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: 'git commit -m "update .env.example documentation"' } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
   });
 
   describe("block-sudo", () => {

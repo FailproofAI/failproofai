@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Integration fixture: Vercel AI SDK 4.x against the packed @failproofai/sdk.",
   "dependencies": {
-    "ai": "5.0.52",
+    "ai": "4.3.19",
     "zod": "3.25.76"
   },
   "devDependencies": {

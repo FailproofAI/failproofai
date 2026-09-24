@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Integration fixture: LangChain.js 0.3 + LangGraph.js 0.4 (the floor of the declared peer range) against the packed @failproofai/sdk.",
   "dependencies": {
-    "@langchain/core": "1.2.12",
-    "@langchain/langgraph": "1.4.17",
+    "@langchain/core": "0.3.80",
+    "@langchain/langgraph": "0.4.10",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.2"
   },

@@ -156,14 +156,16 @@ describe("failproofai jev — review round", () => {
     });
 
     it("status shows the endpoint a too-open file names, next to the chmod hint (human and --json)", async () => {
-      writeOpenFile({ provider: "typesafe", apiKey: KEY, baseUrl: `${ATTACKER}?sig=abc` }, 0o664);
+      // A routing parameter: `?sig=` would now be refused by the loader as a
+      // credential, which is a different state than the one under test here.
+      writeOpenFile({ provider: "typesafe", apiKey: KEY, baseUrl: `${ATTACKER}?api-version=2` }, 0o664);
       const r = await runJevCommand(["status"], RENDER);
       expect(r.exitCode).toBe(1);
       const out = text(r);
       expect(out).toContain("endpoint it names https://attacker.example.com/v1/systemone?…");
       expect(out).toContain("check that endpoint is one you chose");
       expect(out).toContain(`chmod 600 ${jevConfigPath()}`);
-      expect(out).not.toContain("sig=abc");
+      expect(out).not.toContain("api-version=2");
       expect(out).not.toContain(KEY);
 
       const j = await runJevCommand(["status", "--json"], RENDER);
@@ -231,21 +233,37 @@ describe("failproofai jev — review round", () => {
   });
 
   describe("an endpoint's query string is never shown", () => {
-    const QUERY_URL = "https://proxy.example.com/v1?token=x";
+    // A ROUTING parameter, which is the only kind a base URL may still carry: a
+    // credential-shaped one is refused outright now (the case below), because
+    // eliding it on screen left it in the file, the logs and the dashboard.
+    const QUERY_URL = "https://proxy.example.com/v1?api-version=2";
     const SHOWN = "https://proxy.example.com/v1/systemone?…";
+
+    it("refuses a credential in the query string instead of eliding it", async () => {
+      const r = await runJevCommand(
+        ["setup", "--provider", "typesafe", "--base-url", "https://proxy.example.com/v1?token=x", "--key-stdin"],
+        withKey(KEY),
+      );
+      expect(r.exitCode).toBe(1);
+      // Named, so the owner knows which parameter to take out; the value is not.
+      expect(text(r)).toContain("?token=");
+      // Refused before anything was written: the URL never reaches the file, so
+      // it never reaches the log, `jev status` or the dashboard either.
+      expect(existsSync(jevConfigPath())).toBe(false);
+    });
 
     it("by setup, status (human and --json) or test (success and failure) — but is still sent", async () => {
       const setup = await runJevCommand(["setup", "--provider", "typesafe", "--base-url", QUERY_URL, "--key-stdin"], withKey(KEY));
       expect(setup.exitCode).toBe(0);
       expect(text(setup)).toContain(SHOWN);
-      expect(text(setup)).not.toContain("token=x");
+      expect(text(setup)).not.toContain("api-version=2");
 
       const status = await runJevCommand(["status"], RENDER);
       expect(text(status)).toContain(SHOWN);
-      expect(text(status)).not.toContain("token=x");
+      expect(text(status)).not.toContain("api-version=2");
       const statusJson = await runJevCommand(["status", "--json"], RENDER);
       expect(JSON.parse(statusJson.json as string).endpoint).toBe(SHOWN);
-      expect(statusJson.json).not.toContain("token=x");
+      expect(statusJson.json).not.toContain("api-version=2");
 
       const urls: string[] = [];
       let status200 = true;
@@ -259,19 +277,19 @@ describe("failproofai jev — review round", () => {
       const test = await runJevCommand(["test"], RENDER);
       expect(test.exitCode).toBe(0);
       expect(text(test)).toContain(SHOWN);
-      expect(text(test)).not.toContain("token=x");
+      expect(text(test)).not.toContain("api-version=2");
       const testJson = await runJevCommand(["test", "--json"], RENDER);
       expect(JSON.parse(testJson.json as string).endpoint).toBe(SHOWN);
-      expect(testJson.json).not.toContain("token=x");
+      expect(testJson.json).not.toContain("api-version=2");
 
       status200 = false;
       const failed = await runJevCommand(["test"], RENDER);
       expect(failed.exitCode).toBe(1);
       expect(text(failed)).toContain(SHOWN);
-      expect(text(failed)).not.toContain("token=x");
+      expect(text(failed)).not.toContain("api-version=2");
 
       // Hidden on screen, not dropped from the request.
-      expect(urls[0]).toBe("https://proxy.example.com/v1/systemone?token=x");
+      expect(urls[0]).toBe("https://proxy.example.com/v1/systemone?api-version=2");
     });
   });
 

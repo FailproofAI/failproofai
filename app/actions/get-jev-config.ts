@@ -49,6 +49,7 @@ import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
   JEV_PROVIDER_KINDS,
+  baseUrlWithoutQuery,
   inspectJevConfig,
   looksLikeCredential,
   readJevConfigForUpdate,
@@ -158,8 +159,24 @@ export interface JevSettingsView {
   path: string;
   permissions: string | null;
   provider: JevProviderKind | null;
-  /** The stored base URL, or "" for the provider's own API. Form value. */
+  /**
+   * The stored base URL, or "" for the provider's own API. Form value, and
+   * NEVER its query string — see `baseUrlView` below for why, and
+   * `baseUrlQueryWithheld` for what the panel says about the part it did not
+   * get.
+   */
   baseUrl: string;
+  /**
+   * True when the stored base URL carries a query string that `baseUrl` above
+   * does not.
+   *
+   * The panel needs it to avoid lying twice over: the field would otherwise
+   * show a URL that is not the stored one, and an untouched save would look
+   * like it kept a query string the person never saw. `update-jev-config.ts`
+   * keeps a stored query that the loader accepts when the field comes back
+   * unchanged, and this is how the panel can say so.
+   */
+  baseUrlQueryWithheld: boolean;
   /** Cloudflare only; "" otherwise. Form value. */
   accountId: string;
   /**
@@ -211,6 +228,27 @@ function modelView(stored: string): JevModelView {
     return { kind: "withheld" };
   }
   return { kind: "id", id: stored };
+}
+
+/**
+ * A stored base URL as the browser may see it: never its query string.
+ *
+ * `validateBaseUrl` now refuses a credential-bearing query parameter, so a file
+ * written by THIS build cannot carry one. A file written by an older one can,
+ * and that file is precisely the one this module hands back for repair — the
+ * refused branch below copies the raw routing fields out on purpose. Only the
+ * derived `endpoint` was elided (`displayEndpoint`), so the base URL carried
+ * the secret through a response whose whole documented rule is that the
+ * credential never comes back.
+ *
+ * Every branch goes through this one function rather than reading `baseUrl`
+ * itself, for the reason `routingFromRaw` copies field by field: the next field
+ * added should not be able to quietly reintroduce it.
+ */
+function baseUrlView(stored: string | undefined): { baseUrl: string; baseUrlQueryWithheld: boolean } {
+  if (!stored) return { baseUrl: "", baseUrlQueryWithheld: false };
+  const { url, hadQuery } = baseUrlWithoutQuery(stored);
+  return { baseUrl: url, baseUrlQueryWithheld: hadQuery };
 }
 
 function octal(mode: number | null): string | null {
@@ -321,6 +359,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
     permissions: null as string | null,
     provider: null as JevProviderKind | null,
     baseUrl: "",
+    baseUrlQueryWithheld: false,
     accountId: "",
     model: { kind: "default" } as JevModelView,
     endpoint: null as string | null,
@@ -340,7 +379,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       on: true,
       permissions: octal(inspection.mode),
       provider: cfg.provider,
-      baseUrl: cfg.baseUrl ?? "",
+      ...baseUrlView(cfg.baseUrl),
       accountId: cfg.accountId ?? "",
       // A loadable config's model already passed `validateModel`, so this can
       // only be an id — run through the same gate anyway, because the gate is
@@ -365,7 +404,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       on: false,
       permissions: octal(inspection.mode),
       provider: r.provider,
-      baseUrl: r.baseUrl ?? "",
+      ...baseUrlView(r.baseUrl),
       accountId: r.accountId ?? "",
       model: modelView(r.model ?? ""),
       endpoint: endpointFor({ ...r, apiKey: KEY_STAND_IN }),
@@ -390,7 +429,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       on: false,
       permissions: octal(inspection.mode),
       provider: r.provider,
-      baseUrl: r.baseUrl,
+      ...baseUrlView(r.baseUrl),
       accountId: r.accountId,
       // This is the branch the rule exists for: a file whose `model` slot holds
       // a pasted key IS a refused file, and these fields are copied raw.

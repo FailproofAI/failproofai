@@ -116,10 +116,20 @@ describe("failproofai jev and each provider's contract", () => {
       expect(prompted).toBe(false);
     });
 
-    it("hides a query string, which may carry a token", async () => {
-      const r = await runJevCommand(["--url", `${PROXY}/models?token=${KEY}`, "--token", KEY], deps(PROXY_LIST));
+    it("hides a query string from the refusal, whatever it carries", async () => {
+      const r = await runJevCommand(["--url", `${PROXY}/models?api-version=2`, "--token", KEY], deps(PROXY_LIST));
       expect(r.exitCode).toBe(1);
       expect(text(r)).toContain("?…");
+      expect(text(r)).not.toContain("api-version=2");
+      expect(text(r)).not.toContain(KEY);
+    });
+
+    it("refuses a credential in the query string before it gets that far", async () => {
+      // Elided output was never enough on its own: the URL would still have been
+      // written to the file, printed by `jev status` and sent to the dashboard.
+      const r = await runJevCommand(["--url", `${PROXY}/models?token=${KEY}`, "--token", KEY], deps(PROXY_LIST));
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).toContain("?token=");
       expect(text(r)).not.toContain(KEY);
     });
 

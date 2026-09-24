@@ -203,6 +203,61 @@ describe("the token never reaches the browser", () => {
     expect(whole(res)).not.toContain(TOKEN);
   });
 
+  /**
+   * A base URL is the OTHER place a credential fits, and it used to cross the
+   * wire whole: only the derived `endpoint` was query-elided, while `baseUrl`
+   * was handed back raw as the form's value. The loader now refuses such a URL
+   * (`validateBaseUrl`), so this file is one an older build wrote — which is
+   * exactly the file this action describes field by field so its owner can
+   * repair it.
+   */
+  it("carries no query string off a base URL an older build stored, credential or not", async () => {
+    const secret = ["qk", "live", "0123456789abcdef"].join("-");
+    seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: `https://gw.example.com/v1?api_key=${secret}` });
+    const view = await getJevSettingsAction();
+    expect(whole(view)).not.toContain(secret);
+    expect(view.baseUrl).toBe("https://gw.example.com/v1");
+    expect(view.baseUrlQueryWithheld).toBe(true);
+    // Refused, because the credential is in the file and not just in the
+    // response — eliding it here would leave it in the file, the logs and
+    // `jev status`.
+    expect(view.status).toBe("refused");
+  });
+
+  it("withholds a routing query string too, and keeps it when the field comes back untouched", async () => {
+    seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: "https://gw.example.com/v1?api-version=2026-01-01" });
+    const view = await getJevSettingsAction();
+    // A query the loader accepts: the config is fine, and the browser still
+    // does not get the query.
+    expect(view.status).toBe("ok");
+    expect(view.baseUrl).toBe("https://gw.example.com/v1");
+    expect(view.baseUrlQueryWithheld).toBe(true);
+    expect(whole(view)).not.toContain("api-version");
+
+    // The panel posts back what it was given. Writing that verbatim would delete
+    // a routing parameter the person never saw, so an unchanged field keeps it.
+    const res = await saveJevConfigAction(input({ provider: "custom", baseUrl: view.baseUrl, token: "" }));
+    expect(res.ok).toBe(true);
+    expect(onDisk().baseUrl).toBe("https://gw.example.com/v1?api-version=2026-01-01");
+
+    // A URL they actually typed replaces it, query and all.
+    const typed = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: "https://other.example.com/v1", token: TOKEN }),
+    );
+    expect(typed.ok).toBe(true);
+    expect(onDisk().baseUrl).toBe("https://other.example.com/v1");
+  });
+
+  it("does not carry back a credential query the loader refuses, because dropping it is the repair", async () => {
+    const secret = ["qk", "live", "0123456789abcdef"].join("-");
+    seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: `https://gw.example.com/v1?token=${secret}` });
+    const view = await getJevSettingsAction();
+    const res = await saveJevConfigAction(input({ provider: "custom", baseUrl: view.baseUrl, token: TOKEN }));
+    expect(res.ok).toBe(true);
+    expect(onDisk().baseUrl).toBe("https://gw.example.com/v1");
+    expect(readFileSync(configPath(), "utf8")).not.toContain(secret);
+  });
+
   it("sends no fragment of the key either, whatever its length", async () => {
     // It used to send the last four characters for a key long enough to spare
     // them, so the panel could say "configured, ending 3f2a". That is a

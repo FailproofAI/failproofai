@@ -386,11 +386,21 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
         <Field
           id="jev-url"
           label="endpoint url"
-          hint={
+          hint={[
             form.provider === "custom"
               ? "required — https, or http to localhost in shadow mode"
-              : "leave blank for the provider's own api"
-          }
+              : "leave blank for the provider's own api",
+            // The stored query string is not sent to this page (see
+            // `baseUrlView` in `get-jev-config.ts`), so the field holds the URL
+            // without it. Said out loud, because the alternative is a field that
+            // silently disagrees with the file and a save that looks like it
+            // kept something the person was never shown.
+            view?.baseUrlQueryWithheld
+              ? "the stored url's query string is not shown here — leave the url as it is to keep it"
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         >
           <input
             id="jev-url"

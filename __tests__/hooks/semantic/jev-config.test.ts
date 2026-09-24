@@ -7,6 +7,7 @@ import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
+  baseUrlWithoutQuery,
   inspectJevConfig,
   isCalibratedJevModel,
   jevConfigPath,
@@ -266,6 +267,61 @@ describe("semantic/jev-config", () => {
       expect(a.ok && a.value).toBe("https://jev.example.com/v1");
       const b = validateBaseUrl("https://jev.example.com/v1/?api-version=2");
       expect(b.ok && b.value).toBe("https://jev.example.com/v1?api-version=2");
+    });
+
+    /**
+     * A key in the query string is a key in the endpoint: it is logged, printed
+     * by `jev status`, put in error messages and returned to the dashboard,
+     * while the field built to carry one is sent as a bearer and never printed.
+     * So it is refused where it is written rather than elided where it is read
+     * — eliding leaves the secret in the file and in everything the file feeds.
+     */
+    it.each([
+      "https://gw.example.com/v1?token=s3cr3t-value",
+      "https://gw.example.com/v1?api_key=s3cr3t-value",
+      "https://gw.example.com/v1?apiKey=s3cr3t-value",
+      "https://gw.example.com/v1?api-key=s3cr3t-value",
+      "https://gw.example.com/v1?access_token=s3cr3t-value",
+      "https://gw.example.com/v1?x-api-key=s3cr3t-value",
+      "https://gw.example.com/v1?subscription-key=s3cr3t-value",
+      "https://gw.example.com/v1?secret=s3cr3t-value",
+      "https://gw.example.com/v1?password=s3cr3t-value",
+      "https://gw.example.com/v1?auth=s3cr3t-value",
+      "https://gw.example.com/v1?authorization=s3cr3t-value",
+      "https://gw.example.com/v1?sig=s3cr3t-value",
+      "https://gw.example.com/v1?api-version=2&token=s3cr3t-value",
+    ])("refuses a credential-shaped query parameter: %s", (url) => {
+      const r = validateBaseUrl(url);
+      expect(r.ok).toBe(false);
+      // The name is named — it is what the owner has to remove — and the value
+      // never is, for the same reason a refused `model` is never quoted.
+      expect(r.ok === false && r.problem).not.toContain("s3cr3t-value");
+    });
+
+    it("refuses a query value shaped like a credential under a name no list could carry", () => {
+      const r = validateBaseUrl("https://gw.example.com/v1?t=sk-live-0123456789abcdefghij");
+      expect(r.ok).toBe(false);
+      expect(r.ok === false && r.problem).not.toContain("sk-live");
+    });
+
+    it("still accepts the routing parameters the query string is permitted for", () => {
+      // The case the comment in `validateBaseUrl` names, and the reason this is
+      // a rule about parameter NAMES rather than about having a query at all.
+      expect(validateBaseUrl("https://gw.example.com/v1?api-version=2026-01-01").ok).toBe(true);
+      expect(validateBaseUrl("https://gw.example.com/v1?deployment=prod&region=eu").ok).toBe(true);
+    });
+
+    it("takes a query string off a base URL, parseable or not", () => {
+      expect(baseUrlWithoutQuery("https://gw.example.com/v1?api-version=2")).toEqual({
+        url: "https://gw.example.com/v1",
+        hadQuery: true,
+      });
+      expect(baseUrlWithoutQuery("https://gw.example.com/v1")).toEqual({
+        url: "https://gw.example.com/v1",
+        hadQuery: false,
+      });
+      // A refused file is where this matters most, and its value may not parse.
+      expect(baseUrlWithoutQuery("htp:/gw?token=s3cr3t-value")).toEqual({ url: "htp:/gw", hadQuery: true });
     });
   });
 

@@ -171,10 +171,61 @@ export function validateApiKey(key: unknown): string | null {
 }
 
 /**
+ * Query parameter names that carry a CREDENTIAL rather than a routing choice.
+ *
+ * Matched on the parameter's name with everything but letters and digits
+ * removed, so `api_key`, `api-key`, `X-Api-Key` and `apiKey` are one rule
+ * rather than four — and `?api-version=`, the parameter the query string is
+ * permitted for in the first place, matches none of them.
+ *
+ * Substrings, because the real names are compounds: `access_token`,
+ * `subscription-key`, `authToken`, `x-functions-key`. The short ones that have
+ * no word to be a substring of are matched whole instead.
+ */
+const CREDENTIAL_PARAM_PARTS = ["key", "token", "secret", "password", "passwd", "credential", "auth", "signature"] as const;
+const CREDENTIAL_PARAM_NAMES = new Set(["pw", "pass", "sig", "sid", "jwt", "bearer", "session", "code", "access"]);
+
+/** A parameter name safe to quote back: it goes into a message the CLI prints. */
+const QUOTABLE_PARAM_RE = /^[A-Za-z0-9._-]{1,40}$/;
+
+/**
+ * Why a base URL's query string may not be stored, or null when it may.
+ *
+ * A credential in a base URL is a mistake wherever it ends up, because the
+ * config file already has an `apiKey` field that is sent as a bearer and never
+ * printed — while the endpoint DERIVED from the base URL is logged, printed by
+ * `jev status`, put in error messages and returned to the dashboard. So this
+ * refuses the credential at the door rather than eliding it on the way out:
+ * eliding leaves the secret in the file and in everything the file feeds.
+ *
+ * It refuses on the parameter NAME, not on the presence of a query, because
+ * some proxies genuinely route on one (`?api-version=`) — see the comment on
+ * the normalization below. The VALUE is checked too, through the same
+ * `looksLikeCredential` that refuses a key pasted into `--model`: a parameter
+ * called `t` whose value is `sk-…` is the same mistake under a name no list
+ * can carry. A false refusal there turns Jev off and leaves the regex tier
+ * enforcing, which is the direction this whole module errs in.
+ */
+function credentialQueryProblem(url: URL): string | null {
+  for (const [name, value] of url.searchParams) {
+    const shown = QUOTABLE_PARAM_RE.test(name) ? `?${name}=` : "one of its query parameters";
+    const flat = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (CREDENTIAL_PARAM_PARTS.some((part) => flat.includes(part)) || CREDENTIAL_PARAM_NAMES.has(flat)) {
+      return `baseUrl must not carry a credential in its query string, and ${shown} is one; put the key in the key field`;
+    }
+    if (looksLikeCredential(value)) {
+      return `baseUrl's ${shown} value is shaped like a credential (not repeated here); put the key in the key field`;
+    }
+  }
+  return null;
+}
+
+/**
  * An endpoint base URL: https, or http to a loopback host only (a local proxy).
- * No credentials in the URL and no fragment — a key belongs in the key field,
- * where it is sent as a bearer and never printed. `validateJevConfig` further
- * accepts the loopback http form only in shadow mode.
+ * No credentials in the URL — not as userinfo, not as a query parameter — and no
+ * fragment, because a key belongs in the key field, where it is sent as a bearer
+ * and never printed. `validateJevConfig` further accepts the loopback http form
+ * only in shadow mode.
  */
 export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string" || raw.trim() === "") return { ok: false, problem: "baseUrl must be a non-empty string" };
@@ -189,11 +240,46 @@ export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   }
   if (url.username || url.password) return { ok: false, problem: "baseUrl must not carry credentials; put the key in the key field" };
   if (url.hash) return { ok: false, problem: "baseUrl must not have a #fragment" };
+  const credentialQuery = credentialQueryProblem(url);
+  if (credentialQuery) return { ok: false, problem: credentialQuery };
   // Trailing slashes come off the PATH, never the string: a query string is legal
   // (some proxies want `?api-version=`), and the endpoint path is appended to
   // the pathname, so it must never end up inside the query.
   url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return { ok: true, value: url.toString() };
+}
+
+export interface BaseUrlWithoutQuery {
+  /** The URL with any `?query` taken off. */
+  url: string;
+  /** Whether there was one to take off. */
+  hadQuery: boolean;
+}
+
+/**
+ * A stored base URL with its query string removed, and whether it had one.
+ *
+ * The refusal above is the source fix, and this is what makes the way OUT safe
+ * regardless: a file written by an older build can already carry `?token=`, and
+ * that file is exactly the one whose owner is being shown the URL so they can
+ * repair it. So nothing that crosses the wire to the dashboard, and nothing the
+ * CLI prints, carries a query string off a base URL — `displayEndpoint` does it
+ * for the derived endpoint, and this does it for the base URL itself.
+ *
+ * Takes a string rather than a `URL` because the callers that need it most are
+ * reading a REFUSED file, where the value may not parse at all. An unparseable
+ * one is cut at the first `?`, which is strictly more aggressive than parsing.
+ */
+export function baseUrlWithoutQuery(raw: string): BaseUrlWithoutQuery {
+  try {
+    const url = new URL(raw);
+    if (!url.search) return { url: raw, hadQuery: false };
+    url.search = "";
+    return { url: url.toString(), hadQuery: true };
+  } catch {
+    const cut = raw.indexOf("?");
+    return cut < 0 ? { url: raw, hadQuery: false } : { url: raw.slice(0, cut), hadQuery: true };
+  }
 }
 
 /**

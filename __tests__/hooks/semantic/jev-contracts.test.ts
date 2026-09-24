@@ -338,16 +338,30 @@ describe("through a transport: the code stays stable and the words reach the mes
     }
   });
 
-  it("hides a query string from the 404 message, which may carry a token", async () => {
+  it("hides a query string from the 404 message, whatever it carries", async () => {
     serve({}, 404);
     try {
-      await send({ provider: "custom", apiKey: KEY, baseUrl: `https://proxy.example.com/v1?token=${KEY}` });
+      // A routing parameter, because a credential-shaped one no longer reaches
+      // this code at all: `validateBaseUrl` refuses it, so the only query string
+      // that can be in a loadable config is one like this — and it is elided
+      // anyway, because what a proxy routes on is not ours to print.
+      await send({ provider: "custom", apiKey: KEY, baseUrl: "https://proxy.example.com/v1?api-version=2" });
       throw new Error("expected a JevError");
     } catch (err) {
       const message = (err as JevError).message;
       expect(message).toContain("https://proxy.example.com/v1/systemone?…");
+      expect(message).not.toContain("api-version=2");
       expect(message).not.toContain(KEY);
     }
+  });
+
+  it("refuses a config whose base URL hides a credential in its query string", () => {
+    // The transport is never built, so nothing can print that URL, log it or
+    // return it — which is why this throws where the route is resolved rather
+    // than rejecting where the request would have been sent.
+    expect(() => send({ provider: "custom", apiKey: KEY, baseUrl: `https://proxy.example.com/v1?token=${KEY}` })).toThrow(
+      /must not carry a credential/,
+    );
   });
 
   it("leaves every other status saying exactly what it said before", async () => {

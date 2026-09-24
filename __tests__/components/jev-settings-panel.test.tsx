@@ -40,6 +40,9 @@ function view(over: Partial<JevSettingsView> = {}): JevSettingsView {
     permissions: null,
     provider: null,
     baseUrl: "",
+    // The server never sends the stored query string; this says whether there
+    // was one, so the field can admit it is showing less than the file holds.
+    baseUrlQueryWithheld: false,
     accountId: "",
     // A view, not a form value: the panel is handed what it may SAY about the
     // stored model, never the stored string.
@@ -337,6 +340,18 @@ describe("the form", () => {
     renderPanel(view());
     fireEvent.change(screen.getByLabelText("provider"), { target: { value: "custom" } });
     expect(screen.getByText(/required — https/i)).toBeInTheDocument();
+  });
+
+  it("admits the endpoint field is showing less than the file holds", async () => {
+    // The server does not send a stored query string — it is where a credential
+    // fits, and a page on this origin is not authenticated. Without the hint the
+    // field would silently disagree with the file, and an untouched save would
+    // look like it kept something the person was never shown.
+    renderPanel(configured({ provider: "custom", baseUrl: "https://gw.example.com/v1", baseUrlQueryWithheld: true }));
+    expect(screen.getByText(/query string is not shown here/i)).toBeInTheDocument();
+    cleanup();
+    renderPanel(configured({ provider: "custom", baseUrl: "https://gw.example.com/v1" }));
+    expect(screen.queryByText(/query string is not shown here/i)).toBeNull();
   });
 
   it("shows the server's refusal on the page instead of a generic failure", async () => {

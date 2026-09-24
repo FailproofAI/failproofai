@@ -108,6 +108,7 @@ import {
 } from "@/lib/dashboard-host";
 import {
   JEV_PROVIDER_KINDS,
+  baseUrlWithoutQuery,
   jevConfigPath,
   readJevConfigFileForUpdate,
   validateApiKey,
@@ -226,6 +227,32 @@ function originOf(raw: string): string | null {
 }
 
 /**
+ * The base URL to WRITE for a submitted one.
+ *
+ * The panel is never sent a stored query string (`baseUrlView` in
+ * `get-jev-config.ts`), so what comes back from an untouched field is the stored
+ * URL with its query removed. Writing that verbatim would delete a query the
+ * person never saw — `?api-version=`, which some proxies route on — on any save
+ * that only meant to change the mode. So a submission that is exactly the
+ * stored URL minus its query keeps the stored one, and anything else is a URL
+ * they actually typed and is written as typed.
+ *
+ * Only a stored query the LOADER accepts is carried back. One it refuses is a
+ * credential in a base URL (`validateBaseUrl`), which is the very thing the
+ * person is on this page to repair: dropping it is the repair, and re-saving the
+ * file is the only way the panel has to perform it.
+ */
+function baseUrlToStore(submitted: string, stored: unknown): string {
+  if (typeof stored !== "string" || stored === "") return submitted;
+  const keep = validateBaseUrl(stored);
+  if (!keep.ok) return submitted;
+  const shown = baseUrlWithoutQuery(keep.value);
+  if (!shown.hadQuery) return submitted;
+  const typed = validateBaseUrl(submitted);
+  return typed.ok && typed.value === shown.url ? keep.value : submitted;
+}
+
+/**
  * `~/.failproofai` at the umask is group-writable on a umask-002 machine, and a
  * directory others can write into defeats the file's 0600 — they unlink it and
  * leave their own, which every check on the file then passes. The one command
@@ -287,7 +314,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
   }
   next.provider = provider;
 
-  if (baseUrl) next.baseUrl = baseUrl;
+  if (baseUrl) next.baseUrl = baseUrlToStore(baseUrl, existing?.baseUrl);
   else delete next.baseUrl;
 
   // `model` is NOT touched here, and that is the point: `JevConfigInput` has no

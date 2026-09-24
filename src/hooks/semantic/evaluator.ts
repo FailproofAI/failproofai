@@ -30,7 +30,7 @@ import { computeFacts, scanCommand } from "./facts";
 import { cleanUserSaid } from "./intent";
 import { JevError, readAnswers, type JevTransport } from "./jev-client";
 import type { JevProviderKind } from "./jev-config";
-import { SEMANTIC_POLICIES } from "./policies";
+import { resolveSemanticPolicies } from "./pack-policies";
 import type { Facts, IntentMode, SemanticInput, SemanticPolicy, SemanticVerdict } from "./types";
 
 /**
@@ -98,6 +98,7 @@ export interface SemanticOptions {
    */
   signal?: AbortSignal;
   model?: string;
+  /** Overrides the resolved set (an installed pack's, else the compiled-in one). */
   policies?: ReadonlyArray<SemanticPolicy>;
   thresholds?: Thresholds;
   /** How "did the human ask for this?" is asked; see {@link IntentMode}. Defaults to v0. */
@@ -296,7 +297,13 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
   const command = input.toolInput.command;
   const scanned = typeof command === "string" ? scanCommand(command) : null;
   const facts = computeFacts(input.toolName, input.toolInput, input.cwd ?? null, input.permissionMode ?? null, scanned);
-  const selected = selectPolicies(opts.policies ?? SEMANTIC_POLICIES, facts);
+  // The set an installed pack declared, or the compiled-in one when no pack
+  // declares any — see `pack-policies.ts` for the replacement rule. Resolved
+  // here rather than by the caller because this is the one place the policy set
+  // is read, and a second resolution site is a second answer to "what does this
+  // machine ask Jev". A caller that supplies `policies` (a replay, an ablation,
+  // `jev test`) still decides for itself.
+  const selected = selectPolicies(opts.policies ?? resolveSemanticPolicies(), facts);
   const intent = opts.intent ?? "v0";
   const cleaned = intent === "v1" && opts.cleanHarnessText !== false ? cleanUserSaid(input.userSaid) : input.userSaid;
   const agentLastMessage =

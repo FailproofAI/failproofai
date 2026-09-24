@@ -12,6 +12,13 @@
  * | cloudflare | `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` |
  * | custom     | `<baseUrl>/systemone`                                 | `jev-1.13.0`         |
  *
+ * `baseUrl` is a BASE — the provider's version root — and `/systemone` is this
+ * file's own suffix (`nativeEndpoint`). Measured 2026-09-25, unauthenticated:
+ * `POST <base>/systemone` answers 403 / 401 / 400 / 401 on the four bases above
+ * and NEVER 404, so a 404 from it is evidence that the base is wrong rather
+ * than that the service is down — which is what `postJson` says when it sees
+ * one.
+ *
  * TypeSafe, OpenRouter, Vercel and a custom URL all take TypeSafe's native body
  * `{model, state, questions}` and answer `{model, answers, usage}`, so one
  * transport (`nativeTransport`) serves all four: base URL, `Bearer` key and the
@@ -24,6 +31,59 @@
  *
  * Auth everywhere is `Authorization: Bearer <key>`. The key never appears in an
  * error message: provider error text is passed through with the key scrubbed.
+ *
+ * # `GET <base>/models`: two shapes, and only one of them answers the question
+ *
+ * Measured 2026-09-25, unauthenticated except where noted:
+ *
+ * | base                                     | status | body                                                   |
+ * |------------------------------------------|--------|--------------------------------------------------------|
+ * | `https://api.typesafe.ai/v1`             | 403    | `{detail:{error_type,message}}`                        |
+ * | `https://openrouter.ai/api/v1`           | 200    | `{data:[{id,canonical_slug,name,…}]}` — OpenAI shape   |
+ * | `https://ai-gateway.vercel.sh/typesafe/v1` | 200  | `{models:[{name,description,release_date}]}` — TypeSafe shape |
+ * | a LiteLLM proxy (`…/typesafe/v1`)        | 401    | `{error:{message,type,param,code}}`                     |
+ * | the same proxy, with a key               | 200    | TypeSafe shape: `jev-latest`, `jev-preview`             |
+ *
+ * `readJevModelList` parses both shapes, and `parseJevModelList` reports "could
+ * not read the list" rather than throwing, because a proxy may serve neither.
+ *
+ * The two shapes do not mean the same thing, and only one of them may be used to
+ * REFUSE a model (`jev setup`, see `listDescribesSystemOne`):
+ *
+ * - The TypeSafe shape IS the System One inventory of the base it was read from.
+ *   Vercel's typesafe-scoped passthrough and a LiteLLM passthrough both return
+ *   it, naming exactly what `<base>/systemone` will accept.
+ * - The OpenAI shape is a gateway's chat-completions catalog, and demonstrably
+ *   does not enumerate `/systemone`: OpenRouter's 458-model catalog contains no
+ *   Jev entry of any spelling, while `POST https://openrouter.ai/api/v1/systemone`
+ *   exists (401, not 404) and this table addresses it as `typesafe/jev-1.13`. So
+ *   an OpenAI-shaped list is shown to a person and never used to refuse one.
+ *
+ * # Vercel names the same model twice, once per base
+ *
+ * `JEV_PROVIDER_DEFAULTS.vercel.model` is `typesafe-ai/jev` while Vercel's own
+ * `/typesafe/v1/models` calls it `jev`. Both are real, at two different bases
+ * (measured 2026-09-25):
+ *
+ * - `GET https://ai-gateway.vercel.sh/v1/models` — the gateway's own
+ *   OpenAI-shaped catalog, 390 models — carries exactly one match:
+ *   `{id: "typesafe-ai/jev", owned_by: "typesafe-ai", name: "Jev", type: "evaluation"}`.
+ *   `<owner>/<model>` is how that catalog addresses every model in it
+ *   (`alibaba/qwen-3-14b`, …), so the longer form is the GATEWAY-level id.
+ * - `GET https://ai-gateway.vercel.sh/typesafe/v1/models` — the typesafe-scoped
+ *   passthrough, which is the base we POST to — reports the provider-native
+ *   `jev`.
+ *
+ * Which one `POST /typesafe/v1/systemone` wants cannot be settled from outside:
+ * that route validates the BODY before the key (400 `model: Invalid input:
+ * expected string, received undefined` with no model, 401 `Authentication
+ * failed` with any model, valid or not), so an unauthenticated probe cannot
+ * distinguish a model it knows from one it does not. The default is therefore
+ * left as it is — it is what the route was configured and verified with — and
+ * `modelListHasModel` treats a listed `jev` as covering a configured
+ * `typesafe-ai/jev`, since Vercel's two catalogs differ by exactly that
+ * `<owner>/` prefix. Settling it needs one authenticated request with each
+ * spelling.
  *
  * # Which Jev answered
  *
@@ -49,6 +109,14 @@
  * a 402 inside a 200 body — see `paymentRequiredCode`), `upstream-error`,
  * `cloudflare-error`, `cloudflare-incomplete`, `malformed`, `model-mismatch`,
  * `config`.
+ *
+ * The CODE is the stable part — the activity store keeps a closed list of them
+ * (`JEV_REASON_CODE_LIST`, and its twin in `fpai-collect`) — so the provider's
+ * own sentence goes in the MESSAGE, which nothing parses.
+ * `providerErrorDetail` reads it out of whichever envelope arrived; all three
+ * observed shapes are in that comment, and one of them (TypeSafe's
+ * `{detail:{message}}`) used to be dropped on the floor, which is how "Must
+ * supply an API key!" reached a person as the bare words `HTTP 403`.
  *
  * # When the provider refuses the call
  *
@@ -91,6 +159,7 @@ import { JEV_REASON_PROVIDER_REFUSED } from "../jev-activity";
 import {
   CLOUDFLARE_ACCOUNT_ID_RE,
   isCalibratedJevModel,
+  isModelIdShaped,
   jevModelVersion,
   validateJevConfig,
   type JevConfig,
@@ -200,8 +269,26 @@ export function transportFor(provider: JevProvider): JevTransport {
 
 const MAX_ERROR_DETAIL = 300;
 
-/** The provider's own words about a failure, from whichever envelope it uses, with the key scrubbed. */
-function errorDetail(body: unknown, secret: string): string {
+/**
+ * The provider's own words about a failure, from whichever envelope it uses,
+ * with the key scrubbed. Every shape below was observed live; none is guessed at,
+ * because a shape nobody has seen adds a branch that can only ever misread a
+ * body some future provider sends.
+ *
+ * | shape                       | seen on                                              |
+ * |-----------------------------|------------------------------------------------------|
+ * | `{errors:[{message}]}`      | Cloudflare Workers AI                                |
+ * | `{error:{message}}`         | OpenRouter, and LiteLLM-style proxies                |
+ * | `{error:"…"}`               | gateways that report an upstream failure as a string |
+ * | `{message}`                 | Vercel AI Gateway (`400 model: Invalid input: …`)    |
+ * | `{detail:{message}}`        | TypeSafe direct (`403 Must supply an API key!`)      |
+ * | `{detail:"…"}`              | a FastAPI 404 behind a proxy (`Not Found`)           |
+ *
+ * `{detail:{message}}` is the one that was missing, and it is TypeSafe's own —
+ * so the provider this whole file exists to talk to was the one provider whose
+ * explanation never reached a screen.
+ */
+export function providerErrorDetail(body: unknown, secret: string): string {
   const b = body as {
     errors?: Array<{ message?: unknown }>;
     error?: unknown;
@@ -213,15 +300,21 @@ function errorDetail(body: unknown, secret: string): string {
     if (Array.isArray(b.errors)) {
       detail = b.errors.map((e) => (typeof e?.message === "string" ? e.message : "")).filter(Boolean).join("; ");
     }
-    if (!detail && b.error && typeof b.error === "object") {
-      const m = (b.error as { message?: unknown }).message;
-      if (typeof m === "string") detail = m;
-    }
-    if (!detail && typeof b.error === "string") detail = b.error;
+    if (!detail) detail = messageOf(b.error);
     if (!detail && typeof b.message === "string") detail = b.message;
-    if (!detail && typeof b.detail === "string") detail = b.detail;
+    if (!detail) detail = messageOf(b.detail);
   }
   return scrubSecret(detail, secret).slice(0, MAX_ERROR_DETAIL);
+}
+
+/** An envelope member that is either the sentence itself or an object carrying it. */
+function messageOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const m = (value as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return "";
 }
 
 /**
@@ -279,6 +372,42 @@ function paymentRequiredCode(detail: string): string {
   return MODEL_EXECUTION_402_RE.test(detail) ? JEV_REASON_PROVIDER_REFUSED : "out-of-credits";
 }
 
+/** Whether this URL is one THIS file built by appending its own suffix (see `nativeEndpoint`). */
+function isSystemOneUrl(url: string): boolean {
+  try {
+    return /\/systemone$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The message for a failed status, which is the provider's own sentence when it
+ * sent one — except for a 404 on `<base>/systemone`, which needs saying rather
+ * than repeating.
+ *
+ * `/systemone` is appended here, not typed by the customer, and every provider
+ * serves it at its version root: measured 2026-09-25, an unauthenticated POST to
+ * that path answers 403 / 401 / 400 / 401 on TypeSafe, OpenRouter, Vercel and a
+ * LiteLLM proxy, and 404 on none of them. So a 404 there is near-certain evidence
+ * that the BASE is wrong — and the body is no help, because the one seen in the
+ * field said `Not Found` and nothing else. The URL is named because it is the
+ * constructed one, which is what the person has to compare against what they
+ * typed; it goes through `displayEndpoint`, so a base carrying a token in its
+ * query string does not put it in an error message.
+ */
+function httpFailureMessage(status: number, url: string, detail: string): string {
+  if (status === 404 && isSystemOneUrl(url)) {
+    // No `HTTP 404:` prefix: every caller prints the code beside the message.
+    return (
+      `nothing is served at ${displayEndpoint(url)}${detail ? ` (${detail})` : ""}. ` +
+      "`/systemone` is appended to the base URL you configured, and every Jev route serves it at the provider's version root — " +
+      "so this is a base URL that is wrong, not a provider that is down."
+    );
+  }
+  return detail || `HTTP ${status}`;
+}
+
 /** A redirect, including the opaque form a browser-style fetch returns for `redirect: "manual"` (status 0). */
 function isRedirect(res: Response): boolean {
   return res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
@@ -319,18 +448,20 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     // No provider words to read, so nothing distinguishes a refusal from an
     // empty account: the status's own meaning stands (see `paymentRequiredCode`).
     if (res.status === 402) throw new JevError("out-of-credits", "HTTP 402: the account is out of credits");
-    if (!res.ok) throw new JevError(`http-${res.status}`, `HTTP ${res.status}`);
+    // A 404 needs no body to be diagnosed, and the ones seen in the field carry
+    // none worth reading: the URL is the diagnosis (see `httpFailureMessage`).
+    if (!res.ok) throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, ""));
     throw new JevError("malformed", "response body is not JSON");
   }
   if (res.status === 402) {
     // A refusal is only ever recognised FROM the provider's words, so a 402
     // with none is `out-of-credits` and this message fits it. Anything the
     // provider did say is the message, refusal or not.
-    const detail = errorDetail(parsed, bearer);
+    const detail = providerErrorDetail(parsed, bearer);
     throw new JevError(paymentRequiredCode(detail), detail || "HTTP 402: the account is out of credits");
   }
   if (!res.ok) {
-    throw new JevError(`http-${res.status}`, errorDetail(parsed, bearer) || `HTTP ${res.status}`);
+    throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, providerErrorDetail(parsed, bearer)));
   }
   return parsed;
 }
@@ -368,7 +499,7 @@ function normalizeNative(body: unknown, sentModel: string, opts: NativeTransport
     // Gateways sometimes report an upstream failure inside a 200.
     if (b.error !== undefined) {
       const code = typeof b.error === "object" && b.error !== null ? (b.error as { code?: unknown }).code : undefined;
-      const detail = errorDetail(body, opts.apiKey) || "the provider reported an error";
+      const detail = providerErrorDetail(body, opts.apiKey) || "the provider reported an error";
       // Same two meanings, one layer in; same rule (see `paymentRequiredCode`).
       if (code === 402 || code === "402") throw new JevError(paymentRequiredCode(detail), detail);
       if (typeof code === "number" && (code === 429 || code >= 500)) throw new JevError(`http-${code}`, detail);
@@ -571,6 +702,203 @@ export function displayEndpoint(endpoint: string): string {
   } catch {
     return "(invalid URL)";
   }
+}
+
+// ── The model list ───────────────────────────────────────────────────────────
+
+/**
+ * Which envelope a model list arrived in. The difference decides what may be
+ * DONE with it, not just how it is parsed — see the header.
+ */
+export type JevModelListShape =
+  /** `{models:[{name, description?, release_date?}]}` — the System One inventory of this base. */
+  | "typesafe"
+  /** `{data:[{id, name?}]}` — a gateway's chat catalog, which does not enumerate `/systemone`. */
+  | "openai";
+
+export interface JevModelListRead {
+  ok: true;
+  shape: JevModelListShape;
+  /** Model ids, in the order the provider gave them, deduplicated. */
+  models: string[];
+}
+
+export interface JevModelListUnread {
+  ok: false;
+  /** Why, in words meant for a person. Never a code: nothing stores or branches on this. */
+  reason: string;
+  /** The HTTP status, when the read got that far. */
+  status?: number;
+}
+
+export type JevModelListResult = JevModelListRead | JevModelListUnread;
+
+/**
+ * A model list read is a diagnostic, and the whole point of it is to be
+ * available BEFORE a config is written — so it gets its own budget rather than
+ * the config's `timeoutMs`, which is sized for the hook path (3000 ms, and every
+ * millisecond of it lands on a tool call).
+ */
+export const JEV_MODEL_LIST_TIMEOUT_MS = 2_500;
+
+/**
+ * Names kept from one list. OpenRouter's catalog is 458 entries and a proxy's
+ * could be anything; this is a terminal, and a bound here is cheaper than a
+ * bound at every place that prints one.
+ */
+const MAX_LISTED_MODELS = 200;
+
+/**
+ * `<base>/models`, or null where there is no such thing.
+ *
+ * Cloudflare is the null: Workers AI has no `<base>/models` — the run endpoint is
+ * `/accounts/<id>/ai/run` and its inventory lives behind a different API — so
+ * nothing here can read a list for it, and every caller treats that exactly like
+ * a list it failed to read.
+ *
+ * A base that names the full request URL (`…/v1/systemone`, which `jev setup`
+ * now refuses but an older file may carry) still has its version root one
+ * segment up, and that is where the list is.
+ */
+export function jevModelsUrl(input: JevConfig): string | null {
+  const cfg = validated(input);
+  if (cfg.provider === "cloudflare") return null;
+  const base = cfg.baseUrl ?? JEV_PROVIDER_DEFAULTS[cfg.provider].baseUrl;
+  return base ? modelsUrlForBase(base) : null;
+}
+
+/** `<base>/models` for a base URL, keeping any query string the base carried. */
+export function modelsUrlForBase(base: string): string | null {
+  try {
+    const url = new URL(base);
+    url.pathname = `${url.pathname.replace(/\/systemone$/i, "").replace(/\/+$/, "")}/models`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The model ids in a list body, or why it could not be read. Never throws: a
+ * customer's proxy may serve neither shape, or an HTML error page, and an
+ * unreadable list must leave every caller exactly where it was.
+ *
+ * `secret` is the key the list was fetched with. Names are scrubbed of it and
+ * then kept only if they are SHAPED like model ids, because these strings come
+ * from a remote endpoint and are about to be printed on a terminal — a name
+ * carrying control characters, or a kilobyte of them, is not a name.
+ *
+ * A shape that is present but yields no usable name is reported as unread rather
+ * than as "this endpoint has no models": an empty list is far likelier to be a
+ * shape misread than a provider serving nothing, and "unread" is the direction
+ * that changes no behaviour.
+ */
+export function parseJevModelList(body: unknown, secret = ""): JevModelListResult {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, reason: "the list endpoint did not answer with a JSON object" };
+  }
+  const b = body as { models?: unknown; data?: unknown };
+  for (const [shape, entries, keys] of [
+    ["typesafe", b.models, ["name"]],
+    ["openai", b.data, ["id", "name"]],
+  ] as Array<[JevModelListShape, unknown, string[]]>) {
+    if (!Array.isArray(entries)) continue;
+    const models = listedModelNames(entries, keys, secret);
+    return models.length > 0 ? { ok: true, shape, models } : { ok: false, reason: "the list named no models this build could read" };
+  }
+  return { ok: false, reason: "the list endpoint answered in a shape this build does not know (neither {models:[…]} nor {data:[…]})" };
+}
+
+function listedModelNames(entries: unknown[], keys: string[], secret: string): string[] {
+  const out: string[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    for (const key of keys) {
+      const raw = row[key];
+      if (typeof raw !== "string" || raw === "") continue;
+      const name = scrubSecret(raw, secret);
+      if (isModelIdShaped(name) && !out.includes(name)) out.push(name);
+      break;
+    }
+    if (out.length >= MAX_LISTED_MODELS) break;
+  }
+  return out;
+}
+
+/**
+ * `GET <base>/models`. Returns a reading or a reason, never a throw, because
+ * every caller's fallback is to carry on as if the endpoint served no list.
+ *
+ * `apiKey` may be null: Vercel's and OpenRouter's lists are public, and reading
+ * one with no key is better than not reading it. Redirects are not followed, for
+ * the reason `postJson` gives — a list read is less dangerous than an answer, but
+ * an endpoint that moves this GET somewhere unchecked has not earned the key that
+ * would ride along with it.
+ */
+export async function readJevModelList(url: string, apiKey: string | null, signal: AbortSignal): Promise<JevModelListResult> {
+  const secret = apiKey ?? "";
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+      signal,
+      redirect: "manual",
+    });
+  } catch (err) {
+    if (signal.aborted) return { ok: false, reason: `it did not answer within ${JEV_MODEL_LIST_TIMEOUT_MS} ms` };
+    return { ok: false, reason: scrubSecret(err instanceof Error ? err.message : String(err), secret).slice(0, MAX_ERROR_DETAIL) };
+  }
+  if (isRedirect(res)) {
+    try {
+      void res.body?.cancel().catch(() => {});
+    } catch {
+      // The body is irrelevant; freeing it is best effort.
+    }
+    return { ok: false, reason: "it answered with a redirect, which is never followed" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = await res.json();
+  } catch {
+    if (signal.aborted) return { ok: false, reason: `it did not answer within ${JEV_MODEL_LIST_TIMEOUT_MS} ms` };
+    return { ok: false, reason: `HTTP ${res.status}: it answered with no JSON`, status: res.status };
+  }
+  if (!res.ok) {
+    // The provider's own sentence, from whichever envelope — which for a list
+    // read is usually "Must supply an API key!", and is the answer.
+    const detail = providerErrorDetail(parsed, secret);
+    return { ok: false, reason: detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`, status: res.status };
+  }
+  return parseJevModelList(parsed, secret);
+}
+
+/**
+ * Whether a reading is authoritative about what `<base>/systemone` accepts, and
+ * so may be used to REFUSE a model rather than only to show one.
+ *
+ * Only the TypeSafe shape is. The evidence is in the header: OpenRouter serves an
+ * OpenAI-shaped catalog of 458 models with no Jev entry in it, while its
+ * `/systemone` exists and is addressed as `typesafe/jev-1.13` — so refusing on an
+ * OpenAI-shaped list would refuse a route that works.
+ */
+export function listDescribesSystemOne(list: JevModelListRead): boolean {
+  return list.shape === "typesafe";
+}
+
+/**
+ * Whether a list covers a configured model id.
+ *
+ * Exact match, or the id without an `<owner>/` prefix. That second case is
+ * measured, not a convenience: Vercel names one model `typesafe-ai/jev` in its
+ * gateway catalog and `jev` in the typesafe-scoped list at the base we POST to,
+ * differing by exactly that prefix (see the header).
+ */
+export function modelListHasModel(list: JevModelListRead, model: string): boolean {
+  if (list.models.includes(model)) return true;
+  const slash = model.lastIndexOf("/");
+  return slash > 0 && list.models.includes(model.slice(slash + 1));
 }
 
 /**

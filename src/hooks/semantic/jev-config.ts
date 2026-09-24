@@ -196,6 +196,53 @@ export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   return { ok: true, value: url.toString() };
 }
 
+/**
+ * Path suffixes that are an ENDPOINT, never a base. Longest first, so
+ * `/v1/chat/completions` strips back to `/v1` rather than to `/v1/chat`.
+ *
+ * `/systemone` is this product's own suffix; the other four are what an OpenAI-
+ * compatible base serves. Every one of them is the LAST segment of a request URL
+ * whose base is its parent, which is what makes the repair unambiguous.
+ */
+const ENDPOINT_SUFFIXES = ["/chat/completions", "/systemone", "/completions", "/embeddings", "/models"] as const;
+
+export interface EndpointGivenAsBase {
+  /** The suffix that gave it away, e.g. `/models`. */
+  suffix: string;
+  /** The base that was probably meant: the same URL with the suffix taken off. */
+  base: string;
+}
+
+/**
+ * Whether a URL is obviously an endpoint rather than an API base, and the base it
+ * implies.
+ *
+ * This is checked at `jev setup` only, and deliberately not in `validateBaseUrl`:
+ * a config already on disk that names an endpoint as its base keeps working
+ * (`nativeEndpoint` does not append a second `/systemone`), and turning Jev off on
+ * an upgrade for a file that was routing correctly would be a worse failure than
+ * the one this prevents.
+ *
+ * What it prevents: `--url https://…/typesafe/v1/models` was saved without
+ * complaint, requests then went to `…/v1/models/systemone`, and the only signal
+ * was `http-404: Not Found` from `jev test`. The CLI knows `/systemone` is its own
+ * suffix and that a provider's base ends at a version root, so it can say so
+ * before anything is written.
+ */
+export function endpointGivenAsBase(url: string): EndpointGivenAsBase | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const path = parsed.pathname.replace(/\/+$/, "");
+  const suffix = ENDPOINT_SUFFIXES.find((s) => path.toLowerCase().endsWith(s));
+  if (suffix === undefined) return null;
+  parsed.pathname = path.slice(0, path.length - suffix.length) || "/";
+  return { suffix, base: parsed.toString() };
+}
+
 function isPlainHttp(url: string): boolean {
   try {
     return new URL(url).protocol === "http:";
@@ -221,6 +268,16 @@ const CREDENTIAL_PREFIX_RE = /^(?:(?:sk|rk)[-_]|gh[pousr]_|github_pat_|glpat-|xo
 export function looksLikeCredential(s: string): boolean {
   if (CREDENTIAL_PREFIX_RE.test(s)) return true;
   return s.length >= 32 && !s.includes("/") && !/jev/i.test(s) && /[A-Za-z]/.test(s) && /[0-9]/.test(s);
+}
+
+/**
+ * Whether a string is shaped like a model id. Used on names that came back from
+ * a provider's `/models` endpoint and are about to be printed: those are remote
+ * strings, so anything carrying a control character, an ANSI escape or a
+ * kilobyte of padding is dropped rather than rendered.
+ */
+export function isModelIdShaped(s: string): boolean {
+  return MODEL_RE.test(s);
 }
 
 function validateModel(raw: unknown): ValidationResult<string> {

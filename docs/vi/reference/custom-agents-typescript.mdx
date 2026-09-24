@@ -1,0 +1,399 @@
+---
+title: "Custom agents (TypeScript)"
+description: "Configuration, the event catalog, the scopes and the framework adapters for @failproofai/sdk."
+icon: "square-js"
+---
+
+Tất cả các cài đặt, phương thức và trường của TypeScript SDK là gì. Nếu bạn đang dụng công cụ lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dành cho việc tra cứu.
+
+<Columns cols={2}>
+  <Card title="Custom agents guide" icon="code" href="/vi/start/integrations/custom-agents">
+    Cài đặt, dụng công cụ, các phương thức sự kiện, một ví dụ thực tế, và các vấn đề thường gặp.
+  </Card>
+  <Card title="Using Python?" icon="python" href="/vi/reference/custom-agents">
+    Cùng các sự kiện, cùng định dạng dây, cùng spool — từ Python.
+  </Card>
+</Columns>
+
+Node 20.9 hoặc mới hơn. ESM và CommonJS. Không có phụ thuộc runtime.
+
+<Note>
+  SDK này và SDK Python **ghi cùng các sự kiện vào cùng một spool**. Một đội tàu với các agent Node và agent Python tạo ra một bộ phiên, không phải hai, và không có gì trong bảng điều khiển phân biệt chúng. Chọn theo dịch vụ, không phải theo công ty.
+</Note>
+
+## Cài đặt
+
+```bash
+npm install @failproofai/sdk
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+
+await failproofai.agent("planner", { goal: question }, async () => {
+  const hits = await failproofai.toolCall("web_search", { input: { q } }, () => search(q));
+});
+```
+
+Các bộ điều hợp khung được gửi trong chính gói. Các khung là **phụ thuộc ngang hàng tùy chọn** — được khai báo để các phạm vi được hỗ trợ hiển thị, không bao giờ được cài đặt thay bạn, và được nhập chỉ khi bạn gọi `instrument()`.
+
+## Kết nối daemon Failproof
+
+Giống với SDK Python: tạo khóa `events:add` dưới **Admin → Keys**, rồi [kết nối daemon](/vi/start/setup#connect-a-machine-to-cloud) trên máy agent. SDK ghi vào đĩa; daemon vận chuyển.
+
+## Cấu hình
+
+```ts
+failproofai.configure({
+  environment: "production",
+  flushInterval: 0.5,
+  baseDir: undefined,
+});
+```
+
+| Tùy chọn | Chức năng |
+| --- | --- |
+| `environment` | Nhãn trên mọi sự kiện — `production`, `staging`, `prod-eu`. Mặc định là `dev`. |
+| `flushInterval` | Bao thường xuyên bộ hẹn giờ ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
+| `baseDir` | Nơi để ghi. Mặc định là spool của daemon, đó là những gì bạn muốn trừ khi bạn biết khác. |
+
+Không có gì được áp dụng trừ khi tất cả được xác thực, vì vậy một cuộc gọi bị từ chối để lại SDK chính xác như trước đó thay vì có `baseDir` mới và khoảng thời gian cũ.
+
+Đặt bằng biến môi trường thay thế:
+
+| Biến | Chức năng |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không thay đổi mã. Một tùy chọn `configure()` sẽ thắng nó. |
+| `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI chứa spool. |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (mặc định), `error`, `silent`. |
+| `FAILPROOFAI_SDK_STRICT` | `1` làm cho lỗi dụng công cụ ném ra thay vì được ghi lại. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích khung ném ra thay vì cảnh báo và tiếp tục. |
+
+<Warning>
+  **Không có dấu phẩy trong `environment`.** Ingest chia trường đó trên dấu phẩy để xây dựng bộ lọc của nó, và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ quá trình chạy vanish im lặng. Viết `prod-eu`, không phải `prod,eu`.
+
+  `configure({ environment: "prod,eu" })` ném ra để bạn tìm hiểu ngay. `AGENTEYE_ENVIRONMENT` không thể ném ra — không có gì gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
+</Warning>
+
+Định tuyến các dòng nhật ký của chính SDK vào trình ghi nhật ký của bạn với `failproofai.setLogger({ debug, info, warn, error })`.
+
+## Tắt
+
+Các sự kiện được đệm được xóa trên `process.on("exit")`.
+
+Một quá trình bị giết bởi một tín hiệu không bao giờ đạt được điều đó, và mặc định của Node cho `SIGTERM` là chấm dứt mà không chạy các trình xử lý thoát — vì vậy một agent được chứa trong vùng chứa mất bất cứ thứ gì khoảng thời gian cuối cùng không đã viết.
+
+<Warning>
+  **SDK này sẽ không cài đặt trình xử lý tín hiệu cho bạn.** Đăng ký một thay đổi hành vi của quá trình của bạn: người nghe triệt tiêu mặc định của Node, vì vậy một thư viện đã thêm một sẽ im lặng dừng Ctrl-C hoạt động. Thêm của riêng bạn:
+
+  ```ts
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      failproofai.flushSync();
+      process.exit(0);
+    });
+  }
+  ```
+</Warning>
+
+Một tập lệnh ngắn hoặc một trình xử lý serverless sẽ `await failproofai.flush()` trước khi trả về — khoảng thời gian một mình không đảm bảo giao hàng.
+
+## Nhận dạng
+
+Mọi sự kiện thuộc về một phiên và một agent. **Các phạm vi điền cả hai**, vì vậy bạn hiếm khi chuyển chúng:
+
+```ts
+await failproofai.session(async () => {
+  await failproofai.agent("planner", async () => {
+    failproofai.event.toolUse({ toolName: "search", toolCallId: "c1" });
+  });
+});
+```
+
+Truyền `sessionId` hoặc `agentId` một cách rõ ràng vẫn hoạt động và chiến thắng. Không có cái nào được ràng buộc cũng không truyền, cuộc gọi ném ra thay vì phát hành một sự kiện Cloud sẽ im lặng loại bỏ.
+
+<Note>
+  Nhận dạng chạy trên `AsyncLocalStorage`. Nó theo `await`, `.then()`, bộ hẹn giờ và bất kỳ lệnh gọi lại nào được tạo bên trong phạm vi. Nó **không** theo một lệnh gọi lại được lưu trữ trong một lần chạy và được gọi trong lần khác, hoặc công việc được chuyển qua ranh giới `worker_threads` — bọc những cái đó trong `failproofai.propagate()` hoặc sự kiện của chúng hạ cánh không được gắn.
+</Note>
+
+### Phạm vi
+
+| Phạm vi | Phát hành | Trả về |
+| --- | --- | --- |
+| `session(body)` | không có gì — chỉ nhận dạng | bất cứ `body` trả về |
+| `agent(id, options?, body)` | `agent_start`, sau đó `agent_end` | bất cứ `body` trả về |
+| `toolCall(name, options?, body)` | `tool_use`, sau đó `tool_result` | bất cứ `body` trả về |
+
+Phần thân đồng bộ vẫn đồng bộ: `agent("x", () => 1)` trả về `1`, không phải một lời hứa.
+
+`toolCall` ghi giá trị đã giải quyết của phần thân dưới dạng `output` của công cụ, trừ khi bạn tự gán `call.output`.
+
+<Accordion title="Ngữ nghĩa thoát" icon="arrow-right-from-bracket">
+
+| Điều gì đã xảy ra | Sự kiện | `outcome` |
+| --- | --- | --- |
+| khối đã trả về | `agent_end` | `"success"`, hoặc `outcome` của bạn |
+| khối đã ném | `error`, sau đó `agent_end` | `"failed"` |
+| một `AbortError` | chỉ `agent_end` | `"cancelled"` |
+
+Lỗi luôn bị ném lại.
+
+Một lỗi công cụ được ghi lại trên lá — `tool_result` với chuỗi `error` — và phát hành **không có** sự kiện `error` cấp độ chạy. Một điều mà vòng lặp agent bắt được không phải là một lỗi chạy, và một điều lan truyền được báo cáo chính xác một lần, bởi `agent()` kèm theo.
+
+</Accordion>
+
+<Accordion title="Biểu mẫu `using`" icon="brackets-curly">
+
+Khi công việc không phải là một hàm duy nhất — một phạm vi được mở trong một hàm tạo và đóng trong một teardown, hoặc một phạm vi xen kẽ luồng điều khiển hiện có:
+
+```ts
+{
+  using span = failproofai.agent.open("planner", { goal });
+  using call = failproofai.toolCall.open("search", { input: { q } });
+  call.call.output = await search(q);
+}  // tool_result, sau đó agent_end
+```
+
+Cả hai hình thức phát hành các sự kiện giống hệt nhau. Ưu tiên hình thức callback: nó chạy bên trong `AsyncLocalStorage.run()`, vì vậy không có gì để giải tỏa và toàn bộ lớp lỗi mở tại đây, đóng lại ở đó không thể tiếp cận.
+
+Một khối `using` bắt lỗi riêng của nó báo cáo nó với `span.fail(error)` — disposer không có kênh ngoại lệ riêng.
+
+</Accordion>
+
+## Danh mục sự kiện
+
+Cùng mười lăm phương thức như SDK Python, trong camelCase. Hầu hết đến trong **cặp** — bạn gọi người mở, sau đó người đóng, và SDK đo khoảng cách.
+
+| | Mở | Đóng |
+| --- | --- | --- |
+| **Agents** | `agentStart` | `agentEnd` |
+| | `agentPause` | `agentResume` |
+| **Models** | `modelRequest` | `modelResponse` |
+| **Tools** | `toolUse` | `toolResult` |
+| **Hooks** | `hookTriggered` | `hookCompleted` |
+| **Humans** | `humanWait` | `humanInput` |
+
+Ba đứng một mình: `error`, `humanPause`, `humanInterrupt`.
+
+<Accordion title="Mọi trường, theo phương thức" icon="table">
+
+Mọi phương thức cũng lấy `sessionId` và `agentId`, mà các phạm vi điền cho bạn. Bất cứ thứ gì bị bỏ qua được bỏ ra chứ không phải được gửi dưới dạng `null` JSON.
+
+| Phương thức | Bắt buộc | Tùy chọn |
+| --- | --- | --- |
+| `agentStart` | — | `goal`, `parentId` |
+| `agentEnd` | — | `outcome`, `summary` |
+| `agentPause` | `pauseId` | `reason`, `userId` |
+| `agentResume` | `pauseId` | `reason`, `userId` |
+| `modelRequest` | — | `model`, `messages`, `system`, `tools`, `requestId` |
+| `modelResponse` | — | `model`, `stopReason`, `inputTokens`, `outputTokens`, `content`, `role`, `requestId` |
+| `toolUse` | `toolName`, `toolCallId` | `input` |
+| `toolResult` | `toolName`, `toolCallId` | `output`, `error` |
+| `hookTriggered` | `hookName`, `hookId` | `triggerEvent`, `input` |
+| `hookCompleted` | `hookName`, `hookId` | `outcome`, `output`, `error` |
+| `error` | `errorType`, `message` | `traceback` |
+| `humanWait` | `inputId` | `prompt`, `options`, `reason` |
+| `humanInput` | `inputId` | `response` |
+| `humanPause` | — | `reason`, `userId` |
+| `humanInterrupt` | — | `reason`, `userId`, `atStep` |
+
+Bất kỳ khóa nào khác bạn thêm trở thành trường tải trọng tùy chỉnh. Không gian bất cứ điều gì dành riêng cho khung `fw_*`; một tên va chạm với một trường được khai báo bị từ chối chứ không phải im lặng ghi đè một cột được quảng bá.
+
+</Accordion>
+
+<Warning>
+  **`duration_ms` được tính toán, không được chấp nhận.** Bốn phương thức đóng đo khoảng cách từ người mở của chúng và từ chối một `duration_ms` do người gọi cung cấp — một khoảng thời gian được báo cáo là không thể thay đổi được.
+
+  Các cặp được ghép nối trên **phiên** và id, không bao giờ trên agent. Một công cụ được mở dưới `planner` và đóng dưới `worker` vẫn được ghép nối, đó là những gì chạy multi-agent lồng nhau thực tế làm.
+</Warning>
+
+## Bộ điều hợp khung
+
+```ts
+await failproofai.instrument();              // bất cứ thứ gì nó có thể tìm thấy
+await failproofai.instrument("langchain");   // chính xác một
+failproofai.uninstrument();                  // đặt mọi thứ lại
+```
+
+| Khung | Hỗ trợ | Cách nó gắn |
+| --- | --- | --- |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, vì vậy mọi `invoke`/`stream`/`batch` được bao phủ mà không cần truyền `callbacks:` ở bất kỳ nơi nào — hoặc truyền `langchainHandler()` tự mình và không vá gì. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` tại trang web cuộc gọi, hoặc `instrument("ai")` cho toàn bộ quá trình trên `ai` 7 (trên 4–6 đó là opt-in — xem bên dưới). |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, độ phân giải mô hình của agent và công cụ, và công cụ chạy/bước quy trình. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (đăng ký) cộng với `AgentWorkflow.runStream`, cho chạy quy trình và các bước của chúng. |
+
+Mọi phạm vi được kiểm tra chống lại các bản phát hành khung thực tế, ở cả hai đầu, như một mô-đun ES và như CommonJS, trên mọi lần chạy CI.
+
+Bản đồ là của SDK Python, vì vậy chương trình tương tự rút ra cùng một cây ở một trong hai ngôn ngữ. Một cấu trúc là một **agent** chỉ nếu nó sở hữu một vòng lặp quyết định LLM — chạy biểu đồ hoặc chuỗi, một lệnh gọi AI SDK `generateText`/`streamText`, một agent Mastra, một lần chạy agent LlamaIndex. Một nút LangGraph hoặc một bước quy trình là một **hook** (`hook_triggered`/`hook_completed`), không bao giờ một agent lồng nhau. Các lệnh gọi mô hình là `model_request`/`model_response` cặp với số lượng token; các lệnh gọi công cụ mang id lệnh gọi công cụ riêng của mô hình. Một lỗi được ghi lại một lần, trên sự kiện xảy ra. Một bộ điều hợp không thành công cài đặt được ghi lại và bỏ qua; những cái khác vẫn cài đặt, vì một LlamaIndex bị hỏng sẽ không tốn kém bạn LangGraph.
+
+<Note>
+  `instrument()` không có đối số phát hiện khung bằng cách nó **giải quyết**, không phải bằng cách nó đã được nhập — Node không hiển thị tương đương Python của `sys.modules` cho mô-đun ES. Một khung bạn đã cài đặt nhưng không sử dụng sẽ được nhập và vá. Đặt tên cái bạn muốn nếu điều đó quan trọng.
+</Note>
+
+<Note>
+  Hầu hết các khung này gửi xây dựng mô-đun ES và xây dựng CommonJS, mà Node tải dưới dạng hai bản sao không liên quan. Các bộ điều hợp vá bản sao ứng dụng của bạn tải (và bản sao CommonJS cũng nếu điều gì đó đã `require`d nó), vì vậy cả hai hệ thống mô-đun hoạt động. Một khung **được gói vào đầu ra của chính bạn** bởi esbuild hoặc webpack không thể tiếp cận — sử dụng trình giúp trang web ở đó: `langchainHandler()`, `telemetry()`, `wrapTool()`.
+</Note>
+
+### LangChain mà không vá
+
+```ts
+import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+Trình xử lý hoạt động với hoặc không có `instrument()` và không bao giờ ghi đôi. `instrument("langchain")` lấy `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` và `captureLimit`, như bộ điều hợp Python làm; `metadata: { failproofai_sdk_session_id }` trên lệnh gọi chọn phiên cho lần gọi đó.
+
+### Vercel AI SDK
+
+AI SDK xuất các hàm thuần khỏi một mô-đun ES, và một không gian tên mô-đun ES là bất biến theo thông số kỹ thuật — không có nơi nào để vá. Nó sử dụng các điểm mở rộng mà SDK tự nó ghi lại:
+
+```ts
+import { telemetry } from "@failproofai/sdk/ai";
+
+const { text } = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // trên ai 7, `telemetry: telemetry({ … })` — đối tượng tương tự, tên mới
+});
+```
+
+Đó là tích hợp hoàn chỉnh: một khoảng agent, một cặp yêu cầu/phản hồi mô hình cho mỗi bước với số lượng token, và mọi lệnh gọi công cụ. Một trang web cuộc gọi hoạt động trên mọi chủ yếu — `ai` 4–6 đọc tracer nó mang, `ai` 7 tích hợp telemetry.
+
+`instrument("ai")` thực hiện cùng quá trình toàn cầu **trên `ai` 7**: mọi cuộc gọi, thông qua danh sách tích hợp telemetry toàn cầu của AI SDK, là tính cộng và không lấy gì từ bất kỳ ai khác.
+
+**Trên `ai` 4–6, `instrument("ai")` không ghi bất cứ thứ gì tự nó, và ghi lại một cảnh báo nói rằng vậy.** Khe cắm toàn cầu duy nhất mà những chủ đề đó có là nhà cung cấp tracer OpenTelemetry toàn cầu — một khe cắm duy nhất OpenTelemetry từ chối bàn giao một khi được lấy. Đăng ký của chúng tôi sẽ im lặng từ chối `NodeSDK.start()` của riêng bạn sau đó trong khởi động và gửi các khoảng http/database của bạn đến một tracer không xuất gì. Sử dụng `telemetry()` tại trang web cuộc gọi hoặc `wrapModel` ở đó. Nếu quá trình không chạy OpenTelemetry riêng của nó, tham gia với `instrument("ai", { registerGlobalTracer: true })`: sau đó nó ghi mọi cuộc gọi chuyển qua `experimental_telemetry: { isEnabled: true }`, và chỉ lấy khe cắm nếu nó vẫn trống. `registerGlobalTracer: false` giữ mặc định và im lặng cảnh báo.
+
+Nếu bạn muốn bọc mô hình một lần, `wrapModel` chỉ nhìn thấy lệnh gọi mô hình, bởi vì lệnh gọi công cụ xảy ra phía trên lớp mô hình. Một mô hình được bọc được gọi mà không có gì xung quanh nó được ghi là chạy riêng của nó. Một lệnh gọi được phát trực tiếp đóng bất cứ cách dòng dừng — `stop_reason: "cancelled"` khi người tiêu dùng hủy nó, `"error"` với lỗi khi nó không thành công:
+
+```ts
+import { wrapModel } from "@failproofai/sdk/ai";
+const model = await wrapModel(openai("gpt-4o"));
+```
+
+Sử dụng cả hai là tốt: phần mềm trung gian nhận thấy lệnh gọi đã được ghi và hoãn lại, vì vậy mỗi lệnh gọi được ghi một lần.
+
+`functionId` đặt tên cho khoảng agent. Giữ nó cardinality thấp — nó đáp ứng trong `agent_id`, khía cạnh bảng điều khiển chính.
+
+### Next.js
+
+`next build` gói phụ thuộc máy chủ của bạn theo mặc định, và một khung được gói vào bản dựng là một bản sao `instrument()` không thể đạt được. Bọc cấu hình một lần và gọi `instrument()` từ khe cắm khởi động Next:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` thêm LangChain, Mastra, LlamaIndex và SDK tự nó để `serverExternalPackages`, giữ danh sách của riêng bạn. Nếu không có nó, `instrument()` cảnh báo một lần cho mỗi khung nó không thể đạt được chứ không phải không thành công im lặng; nếu bạn liệt kê các gói tự mình, đặt `FAILPROOFAI_NEXT_EXTERNALS=1`. Vercel AI SDK và các trình giúp trang web hoạt động bằng cách nào. Một tuyến Edge nhận xây dựng không hoạt động: nhập SDK là an toàn và ghi bất cứ thứ gì.
+
+### Số lượng token trên lệnh gọi được phát trực tiếp
+
+Các API tương thích OpenAI chỉ báo cáo mức sử dụng trên luồng khi máy khách hỏi. LangChain và Vercel AI SDK hỏi; đối với LlamaIndex vượt qua `additionalChatOptions: { stream_options: { include_usage: true } }` để LLM `OpenAI` của nó, và đối với Mastra xây dựng mô hình với mức sử dụng được bật (ví dụ `createOpenAICompatible({ includeUsage: true })`). Nếu không, các lệnh gọi mô hình được phát trực tiếp không mang số lượng token.
+
+### Runtimes
+
+Node ≥ 20.9, Bun và Deno — mọi khung, như một mô-đun ES và như CommonJS, được kiểm tra trên mỗi chống lại trace của Node. SDK chạy bên cạnh daemon `failproofaid`, cái mà vận chuyển những gì nó viết.
+
+## Agent riêng của bạn — không có khung
+
+Cho một vòng lặp agent bạn viết tự mình, hoặc một khung không có bộ điều hợp. Bạn phát hành các sự kiện với cùng API mà các bộ điều hợp sử dụng bên dưới, vì vậy trace có cùng hình dạng và chất lượng.
+
+Bạn không cần biết agent được tổ chức như thế nào. Mọi agent được xây dựng tay đã có ba nơi, bất kể các hàm của nó được gọi là gì, và ba cái đó là toàn bộ tích hợp:
+
+| Nơi | Cái gì để thêm | Phát hành |
+| --- | --- | --- |
+| Nơi **một lần chạy** bắt đầu và kết thúc | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **Một hàm gọi mô hình** | `event.modelRequest` trước, `event.modelResponse` sau — cả hai nửa, thậm chí khi thất bại | một cặp cho mỗi lượt mô hình |
+| **Một hàm chạy công cụ** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+Nhận dạng là môi trường: mọi thứ bên trong `agent()` hạ cánh trên phiên chạy đó mà không cần id, và không có gì khác trong chương trình thay đổi — bao gồm bất cứ điều gì agent đã viết vào cơ sở dữ liệu riêng của nó.
+
+- **Một dịch vụ hoặc một công nhân:** chuyển id yêu cầu hoặc công việc của riêng bạn dưới dạng `sessionId`, vì vậy một phiên trên bảng điều khiển và bản ghi trong nhật ký hoặc cơ sở dữ liệu của riêng bạn là chuỗi giống nhau.
+- **Sub-agents:** lồng các lệnh gọi `agent()`. Cái bên trong tham gia phiên với bên ngoài vì `parent_id`.
+- **Phát hành các cặp.** Một `modelRequest` không có `modelResponse` là khoảng bảng điều khiển hiển thị chạy mãi mãi — do đó `catch`.
+
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) trong kho lưu trữ là phiên bản hoàn chỉnh, có thể chạy được: một vòng lặp công cụ OpenAI thực được dụng công cụ chính xác như thế này, chạy trong CI trên mọi thay đổi như một mô-đun ES và như CommonJS.
+
+## Đánh giá
+
+```ts
+import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
+
+export const app = new Evaluator({ name: "my-evals", version: "1" });
+
+app.eval("tool_success_rate", { version: "1" }, (session) => {
+  const results = session.eventsOfType("tool_result");
+  const failures = results.filter((event) => event.payload.error != null).length;
+  return new EvalResult({
+    score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
+    reasoning: `${failures} of ${results.length} tool calls failed`,
+  });
+});
+```
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
+  npx failproofai-evaluator ./my-evals.js
+```
+
+Xem [tham chiếu Evaluator SDK](/vi/reference/evaluator-sdk) cho giao thức, cài đặt công nhân và các loại kết quả.
+
+<Warning>
+  **Một đánh giá phải mang lại.** Một hàm đồng bộ không bao giờ trả về khóa chặn một luồng Node có, và không có hết thời gian nào có thể kích hoạt trong khi nó thực hiện. Viết đánh giá `async`.
+</Warning>
+
+## Điều nó sẽ không làm với quá trình của bạn
+
+| | |
+| --- | --- |
+| **Chặn vòng lặp agent của bạn** | Sự kiện đi vào hàng đợi trong bộ nhớ; một bộ hẹn giờ ghi chúng. Bộ hẹn giờ là `unref`'d, vì vậy nhập gói này không bao giờ dừng tập lệnh thoát. |
+| **Phát triển mà không ràng buộc** | Hàng đợi được giới hạn theo số lượng *và* theo byte đo. Quá mỗi, các sự kiện cũ nhất bị loại bỏ và một cảnh báo nói như vậy — một mất điện telemetry phải không trở thành một vụ giết OOM. |
+| **Đưa quá trình xuống** | Một sự kiện không thể mã hóa bị bỏ một mình, không phải đợt xung quanh nó. Một getter ném, một tham chiếu tuần hoàn, một `BigInt`, một sự thay thế duy nhất: mỗi được xử lý chứ không được truyền. |
+| **Để lại một đợt bán viết** | Nội dung là `fsync`ed trước một đổi tên nguyên tử, thư mục được `fsync`ed sau đó, và ghi lại không thành công làm sạch tệp tạm thời của nó. |
+| **Để bản sao được đọc được** | Đợt là `0600` bên trong một thư mục `0700`. Chúng mang mục tiêu, lời nhắc, đối số công cụ và đầu ra công cụ. |
+| **Tàu thông tin xác thực** | Khóa API, token, JWT, tiêu đề người mang và phân công hình dạng bí mật được biên tập lại trước khi byte đạt đĩa. Daemon biên tập lại trước khi tải lên. |

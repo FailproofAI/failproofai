@@ -1,0 +1,401 @@
+---
+title: "自定义 Agent（TypeScript）"
+description: "面向 @failproofai/sdk 的配置说明、事件目录、作用域及框架适配器。"
+icon: "square-js"
+---
+
+本页介绍 TypeScript SDK 中每项配置、方法和字段的作用。如果你是初次接入，请先阅读入门指南——本页面供查阅参考之用。
+
+<Columns cols={2}>
+  <Card title="自定义 Agent 指南" icon="code" href="/zh/start/integrations/custom-agents">
+    安装、接入、事件方法、完整示例及常见问题。
+  </Card>
+  <Card title="使用 Python？" icon="python" href="/zh/reference/custom-agents">
+    相同的事件、相同的传输格式、相同的 spool——Python 版本。
+  </Card>
+</Columns>
+
+需要 Node 20.9 或更高版本。支持 ESM 和 CommonJS，无运行时依赖。
+
+<Note>
+  本 SDK 与 Python SDK **将相同的事件写入同一个 spool**。由 Node agent 和 Python agent 混合组成的集群只会产生一组 session，而非两组，且 Dashboard 不会区分二者。请按服务选择语言，而非按公司统一使用一种。
+</Note>
+
+## 安装
+
+```bash
+npm install @failproofai/sdk
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+
+await failproofai.agent("planner", { goal: question }, async () => {
+  const hits = await failproofai.toolCall("web_search", { input: { q } }, () => search(q));
+});
+```
+
+框架适配器已内置于包中。各框架均为**可选的对等依赖**——声明方式使支持的版本范围清晰可见，不会代为安装，仅在调用 `instrument()` 时才会被导入。
+
+## 连接 Failproof 守护进程
+
+与 Python SDK 相同：在 **Admin → Keys** 下创建 `events:add` 密钥，然后在 agent 机器上[连接守护进程](/zh/start/setup#connect-a-machine-to-cloud)。SDK 负责写入磁盘，守护进程负责上传。
+
+## 配置
+
+```ts
+failproofai.configure({
+  environment: "production",
+  flushInterval: 0.5,
+  baseDir: undefined,
+});
+```
+
+| 选项 | 说明 |
+| --- | --- |
+| `environment` | 每条事件上的环境标签，如 `production`、`staging`、`prod-eu`。默认为 `dev`。 |
+| `flushInterval` | 定时器将事件写入磁盘的时间间隔，单位为秒。默认为 `0.5`。 |
+| `baseDir` | 写入路径。默认为守护进程的 spool 目录，通常无需修改。 |
+
+只有全部配置项通过验证，配置才会生效。若某次调用被拒绝，SDK 保持原有状态，不会出现 `baseDir` 已更新但时间间隔未变的情况。
+
+也可通过环境变量配置：
+
+| 变量 | 说明 |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | 无需修改代码即可设置 `environment`。`configure()` 中的同名选项优先级更高。 |
+| `FAILPROOFAI_HOME` | 移动存放 spool 的 Failproof AI 根目录。 |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | 可选值：`debug`、`info`、`warn`（默认）、`error`、`silent`。 |
+| `FAILPROOFAI_SDK_STRICT` | 设为 `1` 时，接入错误将抛出异常，而非仅记录日志。 |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | 设为 `1` 时，框架兼容性问题将抛出异常，而非警告后继续执行。 |
+
+<Warning>
+  **`environment` 中不能包含英文逗号。** 数据摄取会按逗号拆分该字段以构建过滤器，标签中包含逗号的事件会被丢弃——整次运行的数据会悄无声息地消失。请写 `prod-eu`，而非 `prod,eu`。
+
+  `configure({ environment: "prod,eu" })` 会直接抛出异常，帮你及时发现问题。`AGENTEYE_ENVIRONMENT` 无法抛出异常（没有调用方接收），因此它会警告一次并回退到 `dev`。
+</Warning>
+
+使用 `failproofai.setLogger({ debug, info, warn, error })` 可将 SDK 自身的日志输出接入你的日志系统。
+
+## 关闭
+
+缓冲的事件会在 `process.on("exit")` 时刷入磁盘。
+
+被信号终止的进程永远不会执行到该回调，而 Node 对 `SIGTERM` 的默认行为是直接退出而不运行退出处理程序——因此容器化的 agent 可能会丢失最后一个时间间隔内尚未写入的事件。
+
+<Warning>
+  **本 SDK 不会替你注册信号处理程序。** 注册信号处理程序会改变进程的行为：一旦注册了监听器，Node 的默认终止逻辑就会被抑制，因此由库来添加处理程序会悄悄导致 Ctrl-C 失效。请自行添加：
+
+  ```ts
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      failproofai.flushSync();
+      process.exit(0);
+    });
+  }
+  ```
+</Warning>
+
+短生命周期的脚本或 serverless 处理函数在返回前应执行 `await failproofai.flush()`——仅靠定时器无法保证事件送达。
+
+## 身份标识
+
+每条事件都属于某个 session 和某个 agent。**作用域会自动填充两者**，因此通常无需手动传入：
+
+```ts
+await failproofai.session(async () => {
+  await failproofai.agent("planner", async () => {
+    failproofai.event.toolUse({ toolName: "search", toolCallId: "c1" });
+  });
+});
+```
+
+显式传入 `sessionId` 或 `agentId` 同样有效，且优先级更高。若两者均未绑定也未传入，调用将抛出异常，而非发出一条会被 Cloud 静默丢弃的事件。
+
+<Note>
+  身份标识依赖 `AsyncLocalStorage` 传递，可跟随 `await`、`.then()`、定时器以及作用域内创建的任何回调。但它**不会**跟随在一次运行中存储、在另一次运行中调用的回调，也无法跨越 `worker_threads` 边界传递——请将这类情况用 `failproofai.propagate()` 包装，否则对应事件将无法关联到正确的运行。
+</Note>
+
+### 作用域
+
+| 作用域 | 发出的事件 | 返回值 |
+| --- | --- | --- |
+| `session(body)` | 无——仅用于设置身份标识 | `body` 的返回值 |
+| `agent(id, options?, body)` | `agent_start`，然后 `agent_end` | `body` 的返回值 |
+| `toolCall(name, options?, body)` | `tool_use`，然后 `tool_result` | `body` 的返回值 |
+
+同步函数体保持同步：`agent("x", () => 1)` 返回 `1`，而非 Promise。
+
+`toolCall` 会将函数体的 resolved 值记录为工具的 `output`，除非你手动赋值给 `call.output`。
+
+<Accordion title="退出语义" icon="arrow-right-from-bracket">
+
+| 发生了什么 | 事件 | `outcome` |
+| --- | --- | --- |
+| 代码块正常返回 | `agent_end` | `"success"`，或你指定的 `outcome` |
+| 代码块抛出异常 | `error`，然后 `agent_end` | `"failed"` |
+| 抛出 `AbortError` | 仅 `agent_end` | `"cancelled"` |
+
+错误始终会被重新抛出。
+
+工具失败记录在叶节点上——`tool_result` 带有 `error` 字符串——且**不会**触发运行级别的 `error` 事件。被 agent 循环捕获的错误不属于运行失败；向上传播的错误仅由外层的 `agent()` 报告一次。
+
+</Accordion>
+
+<Accordion title="`using` 形式" icon="brackets-curly">
+
+当操作不是单个函数时——例如作用域在构造函数中打开、在析构函数中关闭，或横跨现有控制流时：
+
+```ts
+{
+  using span = failproofai.agent.open("planner", { goal });
+  using call = failproofai.toolCall.open("search", { input: { q } });
+  call.call.output = await search(q);
+}  // tool_result, then agent_end
+```
+
+两种形式发出的事件字节完全相同。建议优先使用回调形式：它在 `AsyncLocalStorage.run()` 内部运行，无需手动清理，也完全避免了"在这里打开、在别处关闭"这类 bug。
+
+通过 `using` 块捕获到自身失败时，需使用 `span.fail(error)` 报告——disposer 本身没有异常通道。
+
+</Accordion>
+
+## 事件目录
+
+与 Python SDK 相同的十五个方法，采用驼峰命名。大多数方法**成对出现**——调用开启方法，再调用关闭方法，SDK 会自动记录时间差。
+
+| | 开启 | 关闭 |
+| --- | --- | --- |
+| **Agent** | `agentStart` | `agentEnd` |
+| | `agentPause` | `agentResume` |
+| **模型** | `modelRequest` | `modelResponse` |
+| **工具** | `toolUse` | `toolResult` |
+| **Hook** | `hookTriggered` | `hookCompleted` |
+| **人工** | `humanWait` | `humanInput` |
+
+以下三个方法独立使用：`error`、`humanPause`、`humanInterrupt`。
+
+<Accordion title="每个方法的完整字段" icon="table">
+
+每个方法还接受 `sessionId` 和 `agentId`，作用域会自动填充。未传入的字段会被直接丢弃，而不会以 JSON `null` 的形式发送。
+
+| 方法 | 必填 | 可选 |
+| --- | --- | --- |
+| `agentStart` | — | `goal`、`parentId` |
+| `agentEnd` | — | `outcome`、`summary` |
+| `agentPause` | `pauseId` | `reason`、`userId` |
+| `agentResume` | `pauseId` | `reason`、`userId` |
+| `modelRequest` | — | `model`、`messages`、`system`、`tools`、`requestId` |
+| `modelResponse` | — | `model`、`stopReason`、`inputTokens`、`outputTokens`、`content`、`role`、`requestId` |
+| `toolUse` | `toolName`、`toolCallId` | `input` |
+| `toolResult` | `toolName`、`toolCallId` | `output`、`error` |
+| `hookTriggered` | `hookName`、`hookId` | `triggerEvent`、`input` |
+| `hookCompleted` | `hookName`、`hookId` | `outcome`、`output`、`error` |
+| `error` | `errorType`、`message` | `traceback` |
+| `humanWait` | `inputId` | `prompt`、`options`、`reason` |
+| `humanInput` | `inputId` | `response` |
+| `humanPause` | — | `reason`、`userId` |
+| `humanInterrupt` | — | `reason`、`userId`、`atStep` |
+
+你添加的其他键会成为自定义 payload 字段。框架特定的字段请以 `fw_*` 为命名前缀；与已声明字段重名的键会被拒绝，而非静默覆盖已提升的列。
+
+</Accordion>
+
+<Warning>
+  **`duration_ms` 由 SDK 计算，不接受外部传入。** 四个关闭方法会计算与对应开启方法之间的时间差，并拒绝调用方提供的 `duration_ms`——上报的时长必须是不可伪造的。
+
+  配对匹配基于 **session** 和 id，而非 agent。在 `planner` 下开启、在 `worker` 下关闭的工具调用仍可配对，这正是嵌套多 agent 运行的实际工作方式。
+</Warning>
+
+## 框架适配器
+
+```ts
+await failproofai.instrument();              // 自动检测所有可用框架
+await failproofai.instrument("langchain");   // 仅指定一个框架
+failproofai.uninstrument();                  // 还原所有修改
+```
+
+| 框架 | 支持版本 | 接入方式 |
+| --- | --- | --- |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x，LangGraph.js 0.4 – 1.x | 通过 `CallbackManager.configure` 接入，无需在任何 `invoke`/`stream`/`batch` 调用处传入 `callbacks:`——也可自行传入 `langchainHandler()` 而不进行任何 patch。 |
+| **Vercel AI SDK** | `ai` 4 – 7 | 在调用处使用 `telemetry()`，或对 `ai` 7 使用 `instrument("ai")` 进行全局接入（`ai` 4–6 需手动选择——详见下文）。 |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | 覆盖 `Agent.generate`/`.stream`、agent 的模型和工具解析，以及工作流的运行/步骤引擎。 |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | 订阅 `Settings.callbackManager` 以及 `AgentWorkflow.runStream`，用于记录工作流运行及其步骤。 |
+
+每个版本范围均在真实框架发布版本的两端进行测试，包括 ES 模块和 CommonJS 两种模式，且在每次 CI 运行时都会执行。
+
+映射关系与 Python SDK 一致，因此同一程序在两种语言中绘制出相同的调用树。只有拥有 LLM 决策循环的构件才会被记录为 **agent**——包括 graph 或 chain 运行、AI SDK 的 `generateText`/`streamText` 调用、Mastra agent、LlamaIndex agent 运行。LangGraph 节点或工作流步骤记录为 **hook**（`hook_triggered`/`hook_completed`），而非嵌套 agent。模型调用记录为带有 token 计数的 `model_request`/`model_response` 对；工具调用携带模型自身的工具调用 id。失败仅记录一次，记录在发生失败的事件上。
+
+若某个适配器安装失败，会记录日志并跳过；其他适配器仍会正常安装——LlamaIndex 出错不应影响 LangGraph。
+
+<Note>
+  不带参数调用 `instrument()` 时，框架检测依据是能否**解析到该框架**，而非是否已经导入——Node 没有类似 Python `sys.modules` 的机制可用于 ES 模块。已安装但未使用的框架会被导入并 patch。如果这一点对你有影响，请明确指定要接入的框架名称。
+</Note>
+
+<Note>
+  大多数框架同时提供 ES 模块和 CommonJS 两种构建产物，Node 会将它们作为两个独立副本加载。适配器会 patch 你应用实际加载的那个副本（如果已有代码 `require` 过 CommonJS 副本，也会一并 patch），因此两种模块系统均可正常工作。若框架被 esbuild 或 webpack **打包进你自己的输出**，则无法被 patch——此时请使用调用处的辅助函数：`langchainHandler()`、`telemetry()`、`wrapTool()`。
+</Note>
+
+### 不 patch 的 LangChain 接入方式
+
+```ts
+import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+该 handler 无论是否调用过 `instrument()` 均可使用，且不会重复记录。`instrument("langchain")` 接受 `sessionId`、`captureContent`、`includeChains`、`graphCallbacks` 和 `captureLimit` 参数，与 Python 适配器一致；在调用时传入 `metadata: { failproofai_sdk_session_id }` 可为该次调用指定 session。
+
+### Vercel AI SDK
+
+AI SDK 从 ES 模块导出纯函数，而 ES 模块命名空间按规范是不可变的——没有可供 patch 的位置。因此接入方式使用 SDK 自身文档中说明的扩展点：
+
+```ts
+import { telemetry } from "@failproofai/sdk/ai";
+
+const { text } = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // 在 ai 7 上，使用 `telemetry: telemetry({ … })` —— 对象相同，只是换了新名称
+});
+```
+
+这就是完整的接入方式：一个 agent span、每个步骤一对带有 token 计数的模型请求/响应，以及所有工具调用。同一个调用处代码兼容所有主版本——`ai` 4–6 读取其携带的 tracer，`ai` 7 使用 telemetry integration。
+
+**在 `ai` 7 上**，`instrument("ai")` 可通过 AI SDK 的全局 telemetry integration 列表实现全进程覆盖——该机制是累加式的，不影响任何其他使用者。
+
+**在 `ai` 4–6 上，`instrument("ai")` 本身不会记录任何内容，并会输出一条相应警告。** 这些主版本唯一的全进程 hook 是全局 OpenTelemetry tracer provider——这是一个单一槽位，一旦被占用，OpenTelemetry 就会拒绝后续注册。若注册我们的 tracer，会导致你后续在启动阶段调用的 `NodeSDK.start()` 静默失败，并将 http/数据库 span 发送到一个不导出任何数据的 tracer。请在调用处使用 `telemetry()` 或 `wrapModel`。若进程本身不使用 OpenTelemetry，可通过 `instrument("ai", { registerGlobalTracer: true })` 主动选择接入：届时所有传入 `experimental_telemetry: { isEnabled: true }` 的调用都会被记录，且仅在槽位空闲时才会占用。`registerGlobalTracer: false` 保持默认行为并静默该警告。
+
+如果你希望只包装一次模型，可使用 `wrapModel`——但它只能捕获模型调用，因为工具调用发生在模型层之上。没有外层包裹的被包装模型调用会被记录为独立运行。流式调用的关闭时机取决于流的结束方式——消费者取消时为 `stop_reason: "cancelled"`，中途失败时为 `"error"` 并附带错误信息：
+
+```ts
+import { wrapModel } from "@failproofai/sdk/ai";
+const model = await wrapModel(openai("gpt-4o"));
+```
+
+同时使用两种方式也没有问题：中间件会检测到该调用已在被记录，并自动跳过，确保每次调用只记录一次。
+
+`functionId` 用于命名 agent span。请保持低基数——它会落在 `agent_id` 字段，这是 Dashboard 的主要分面。
+
+### Next.js
+
+`next build` 默认会将服务端依赖打包进构建产物，被打包进去的框架是 `instrument()` 无法触达的副本。将配置包裹一次，并从 Next 的启动 hook 中调用 `instrument()`：
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* 你的配置 */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` 会将 LangChain、Mastra、LlamaIndex 以及 SDK 本身加入 `serverExternalPackages`，并保留你已有的列表。若不使用它，`instrument()` 会针对每个无法触达的框架输出一次警告，而不是静默失败；如果你自己手动列出了这些包，设置 `FAILPROOFAI_NEXT_EXTERNALS=1` 即可。Vercel AI SDK 和调用处辅助函数无论哪种方式均可正常使用。Edge 路由会得到一个空操作构建：导入 SDK 是安全的，不会记录任何内容。
+
+### 流式调用的 token 计数
+
+兼容 OpenAI 的 API 只有在客户端主动请求时才会在流中报告用量。LangChain 和 Vercel AI SDK 会自动请求；对于 LlamaIndex，需向其 `OpenAI` LLM 传入 `additionalChatOptions: { stream_options: { include_usage: true } }`；对于 Mastra，需在构建模型时启用 usage（例如 `createOpenAICompatible({ includeUsage: true })`）。否则流式模型调用将不包含 token 计数。
+
+### 运行时
+
+Node ≥ 20.9、Bun 和 Deno——每个框架，包括 ES 模块和 CommonJS 两种形式，都在各运行时上针对 Node 的 trace 进行测试。SDK 与 `failproofaid` 守护进程配合运行，由守护进程负责上传写入的数据。
+
+## 手写 agent——不使用框架
+
+适用于你自己编写的 agent 循环，或没有适配器的框架。你使用与适配器底层相同的 API 来发出事件，因此 trace 具有相同的结构和质量。
+
+你不需要了解 agent 的内部组织方式。无论函数叫什么名字，每个手写 agent 都有三个关键位置，而这三个位置就是完整的接入点：
+
+| 位置 | 需要添加的内容 | 发出的事件 |
+| --- | --- | --- |
+| **单次运行**的开始和结束处 | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **调用模型的函数** | 调用前执行 `event.modelRequest`，调用后执行 `event.modelResponse`——即使失败也要两个都发 | 每次模型调用一对 |
+| **执行工具的函数** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+身份标识是环境感知的：`agent()` 内部的所有内容都会归属到该次运行的 session，无需传入任何 id，程序中的其他部分也不受任何影响——包括 agent 已经写入自有数据库的内容。
+
+- **作为服务或 worker 运行时：** 将你自己的请求或任务 id 作为 `sessionId` 传入，这样 Dashboard 上的 session 与你自己的日志或数据库中的记录就是同一个字符串。
+- **子 agent：** 嵌套调用 `agent()`。内层调用会以外层为 `parent_id` 加入同一 session。
+- **成对发出事件。** 没有对应 `modelResponse` 的 `modelRequest` 会在 Dashboard 上显示为一个永远在运行的 span——这就是为什么需要 `catch`。
+
+仓库中的 [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) 是完整可运行的版本：一个使用真实 OpenAI 工具循环、按照上述方式接入的示例，以 ES 模块和 CommonJS 两种形式在每次变更时通过 CI 运行。
+
+## 评估
+
+```ts
+import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
+
+export const app = new Evaluator({ name: "my-evals", version: "1" });
+
+app.eval("tool_success_rate", { version: "1" }, (session) => {
+  const results = session.eventsOfType("tool_result");
+  const failures = results.filter((event) => event.payload.error != null).length;
+  return new EvalResult({
+    score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
+    reasoning: `${failures} of ${results.length} tool calls failed`,
+  });
+});
+```
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
+  npx failproofai-evaluator ./my-evals.js
+```
+
+有关协议、worker 设置和结果类型，请参阅 [Evaluator SDK 参考文档](/zh/reference/evaluator-sdk)。
+
+<Warning>
+  **评估函数必须能够 yield。** 永不返回的同步函数会阻塞 Node 的单线程，且在此期间任何 timeout 都无法触发。请将评估函数写成 `async` 形式。
+</Warning>
+
+## 对进程的影响保证
+
+| | |
+| --- | --- |
+| **不阻塞 agent 循环** | 事件进入内存队列，由定时器写入磁盘。定时器已 `unref`，因此导入本包不会阻止脚本正常退出。 |
+| **不无限增长** | 队列同时受数量和字节数双重上限约束。超出任一上限时，最旧的事件会被丢弃并输出警告——遥测故障不能演变为 OOM 崩溃。 |
+| **不导致进程崩溃** | 单个无法编码的事件会被单独丢弃，不影响同批次的其他事件。抛出异常的 getter、循环引用、`BigInt`、单独的代理项——每种情况都会被妥善处理，而非向上传播。 |
+| **不留下半写入的批次** | 内容在原子重命名前执行 `fsync`，目录在重命名后执行 `fsync`，写入失败时会清理临时文件。 |
+| **不让记录内容可被他人读取** | 批次文件权限为 `0600`，位于权限为 `0700` 的目录内。这些文件包含目标、提示词、工具参数和工具输出。 |
+| **不上传凭证** | API 密钥、token、JWT、Bearer 请求头以及形似 secret 的赋值语句在字节写入磁盘前就会被脱敏。守护进程在上传前还会再次脱敏。 |

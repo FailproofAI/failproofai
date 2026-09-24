@@ -1,55 +1,55 @@
 ---
 title: "Juízes LLM"
-description: "Avalie sessões em aspectos que código não consegue medir — correção, tom, se o agente seguiu uma política — descrevendo como deve ser o resultado ideal e deixando um modelo ler a conversa."
+description: "Avalie sessões em aspectos que o código não consegue medir — correção, tom, se o agente seguiu uma política — descrevendo como é um bom resultado e deixando um modelo ler a conversa."
 icon: "scale"
 ---
 
-Uma avaliação hospedada em Python consegue contar e comparar: quantas chamadas de ferramenta, quantos erros, quanto tempo durou uma sessão. Ela não consegue dizer se uma resposta foi *correta*, se uma resposta foi rude ou se o agente verificou uma política antes de agir.
+Uma avaliação Python hospedada pode contar e comparar: quantas chamadas de ferramentas, quantos erros, quanto tempo durou uma sessão. Ela não consegue dizer se uma resposta foi *correta*, se uma reply foi rude ou se o agente verificou uma política antes de agir.
 
-Um **juiz LLM** consegue. Você descreve como deve ser o resultado ideal em linguagem natural, e um modelo lê a sessão e retorna uma pontuação de 0 a 1 com seu raciocínio.
+Um **juiz LLM** consegue. Você descreve como é um bom resultado em linguagem simples, e um modelo lê a sessão e retorna uma pontuação de 0 a 1 com seu raciocínio.
 
 <Note>
-Um juiz consome uma chamada de modelo para cada sessão em que é executado, enquanto uma avaliação em código não tem custo. Use um juiz apenas para perguntas que exigem que a conversa seja *compreendida* — e defina uma condição para que ele execute apenas nas sessões sobre as quais a pergunta realmente se aplica.
+Um juiz custa uma chamada de modelo para cada sessão em que é executado, enquanto uma avaliação de código não custa nada. Use um juiz apenas para perguntas que precisam que a conversa seja *compreendida* — e defina uma condição para que ele execute somente nas sessões sobre as quais a pergunta realmente se aplica.
 </Note>
 
 ## Qual devo usar?
 
-| Pergunta | Usar |
+| Pergunta | Use |
 | --- | --- |
 | Ele chamou a mesma ferramenta duas vezes? | código |
 | Quantos erros ocorreram? | código |
 | A sessão durou menos de 30 segundos? | código |
 | O cliente expressou urgência? | [classificador](/pt-br/evaluations/jev) |
 | Quão frustrado estava o cliente? | [classificador](/pt-br/evaluations/jev) |
-| A resposta estava realmente correta? | **juiz** |
-| A resposta foi rude ou indiferente? | **juiz** |
+| A resposta foi de fato correta? | **juiz** |
+| A reply foi rude ou dismissiva? | **juiz** |
 | Ele verificou a política de reembolso antes de prometer um reembolso? | **juiz** |
 
-A regra geral é: **contável → código, respostas que você pode listar antecipadamente → [classificador](/pt-br/evaluations/jev), precisa de explicação → juiz.** O juiz é o que escreve um texto sobre o que observou; recorra a ele quando o número vai fazer alguém perguntar "por quê?".
+A regra geral: **contável → código, respostas que você pode listar com antecedência → [classificador](/pt-br/evaluations/jev), exige explicação → juiz.** Um juiz é aquele que escreve um texto sobre o que viu; recorra a ele quando o número leve alguém a perguntar "por quê?".
 
-Você não precisa decidir antecipadamente. Descreva o que quer medir e o assistente escolhe, depois informa qual foi escolhido e por quê. Você pode mudar a escolha.
+Você não precisa decidir com antecedência. Descreva o que quer medir e o assistente escolhe, informando qual escolheu e por quê. Você pode mudar.
 
 ## Como criar um
 
 1. Acesse **Analyze → eval authoring** e selecione **new eval**.
-2. Descreva o que você quer avaliar e selecione **draft**.
-3. Revise os **critérios**, o **threshold** e a **condição**, depois publique.
+2. Descreva o que quer que seja avaliado e selecione **draft**.
+3. Revise os **critérios**, o **threshold** e a **condição**, depois faça o deploy.
 
 ### Critérios
 
-Uma ou duas frases, escritas como um requisito e não como uma pergunta:
+Uma ou duas frases, escritas como um requisito em vez de uma pergunta:
 
-> O assistente não deve prometer nem aprovar um reembolso sem antes verificar a política de reembolsos.
+> O assistente não deve prometer ou aprovar um reembolso sem antes verificar a política de reembolso.
 
-Seja específico sobre o que faria a avaliação *reprovar*. "A resposta foi boa?" produz um número sem significado; a frase acima produz um número sobre o qual você pode agir.
+Seja específico sobre o que faria a avaliação *falhar*. "A resposta foi boa?" dá um número sem significado; a frase acima dá um número sobre o qual você pode agir.
 
 ### Threshold
 
-A pontuação igual ou acima da qual a sessão passa. `0.7` é um ponto de partida razoável. A pontuação completa de 0 a 1 é sempre armazenada, então o threshold apenas determina aprovação/reprovação — você pode ver a distribuição e ajustá-lo.
+A pontuação a partir da qual a sessão é aprovada. `0.7` é um bom ponto de partida. A pontuação completa de 0 a 1 é sempre armazenada, então o threshold apenas determina aprovação/reprovação — você pode ver a distribuição e ajustar.
 
 ### Condição
 
-A mesma condição em Python que qualquer outra avaliação, e ela importa muito mais aqui. Sem uma condição, o juiz executa em **todas** as sessões da sua organização, com uma chamada de modelo cada:
+A mesma condição Python de qualquer outra avaliação, e ela importa muito mais aqui. Sem uma condição, o juiz é executado em **todas** as sessões da sua organização, com uma chamada de modelo cada:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-O dashboard exibe um aviso se você publicar um juiz sem condição. Às vezes isso é intencional — um agente de baixo volume que você quer avaliar completamente — mas deve ser uma decisão deliberada, não um acidente.
+O dashboard avisa se você fizer o deploy de um juiz sem condição. Às vezes isso é correto — um agente de baixo volume que você quer avaliar por completo — mas deve ser uma decisão deliberada, não um acidente.
 
 ## O que o juiz vê
 
-A conversa, em turnos, do mais recente para o mais antigo se a sessão for longa:
+A conversa, em turnos, do mais recente ao mais antigo quando a sessão é longa:
 
 - o que o usuário disse
 - o que o assistente respondeu
-- **cada ferramenta que o agente chamou, e o que essa chamada retornou, em ordem**
+- **cada ferramenta que o agente chamou e o que essa chamada retornou, em ordem**
 
-Essa última parte é o que torna a pergunta "ele fez X *antes* de Y" justa. Uma chamada de ferramenta com falha é exibida como falha, então "ele se recuperou adequadamente de um erro" também funciona.
+Essa última parte é o que torna "ele fez X *antes* de Y" uma pergunta justa de se fazer. Uma chamada de ferramenta com falha é mostrada como falha, então "ele se recuperou graciosamente de um erro" também funciona.
 
-Sessões muito longas são truncadas para caber no contexto do modelo. Quando isso acontece, o raciocínio indica explicitamente — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se tivesse sido feito sobre ela por completo.
+Sessões muito longas são truncadas para caber no contexto do modelo. Quando isso acontece, o raciocínio informa explicitamente — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre ela toda.
 
 ## Lendo os resultados
 
-Um juiz produz uma **pontuação** como qualquer outra avaliação com pontuação, então ela aparece em gráficos, filtros e aciona alertas da mesma forma. Junto ao número, ele armazena o **raciocínio** do juiz — o parágrafo que explica o que ele observou. Leia esse raciocínio primeiro quando uma pontuação surpreender você; geralmente é ou uma sessão genuinamente interessante ou um sinal de que os critérios precisam ser refinados.
+Um juiz produz uma **pontuação** como qualquer outra avaliação pontuada, então ela aparece em gráficos, filtros e aciona alertas da mesma forma. Além do número, ele armazena o **raciocínio** do juiz — o parágrafo que explica o que ele viu. Leia isso primeiro quando uma pontuação surpreender você; geralmente é uma sessão genuinamente interessante ou um sinal de que os critérios precisam ser refinados.
 
-As pontuações são estáveis para casos claros, mas não são determinísticas bit a bit. Trate uma pontuação limítrofe isolada como um motivo para ir ler a sessão, não como um veredicto definitivo.
+As pontuações são estáveis para casos claros, mas não são determinísticas bit a bit. Trate uma pontuação limítrofe individual como um motivo para ir ler a sessão, não como um veredicto final.
 
 ## Limitações
 
-- **Testes ainda não estão disponíveis.** Uma execução de teste não tem atribuição de sessão associada, e é essa atribuição que autoriza o uso do seu orçamento de modelo — portanto, não há nada para uma chamada de teste cobrar. Publique com uma condição restrita e leia os primeiros resultados.
-- **Backfill não está disponível.** Fazer backfill de uma avaliação em código sobre meses de histórico é gratuito; fazer isso com um juiz consumiria todo o seu orçamento em minutos.
+- **Testes ainda não estão disponíveis.** Uma execução de teste não tem uma sessão atribuída por trás, e essa atribuição é o que autoriza o uso do seu orçamento de modelo — portanto, não há nada para uma chamada de teste cobrar. Faça o deploy com uma condição restrita e leia os primeiros resultados.
+- **Backfill não está disponível.** Fazer backfill de uma avaliação de código sobre meses de histórico é gratuito; fazer isso com um juiz consumiria todo o seu orçamento em minutos.
 - **Editar os critérios publica uma nova versão.** Pontuações antigas e novas não são comparáveis, então são mantidas separadas em vez de misturadas em uma única linha de tendência.
 - **Um juiz sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
 
-## Quando seu orçamento se esgota
+## Quando seu orçamento acabar
 
-Juízes consomem o orçamento de modelo da sua organização. Quando ele se esgota, as avaliações com juízes param com um motivo claro em vez de falhar silenciosamente, e **as avaliações em código continuam funcionando normalmente**. Aumente o orçamento e elas retomam na próxima sessão.
+Os juízes consomem o orçamento de modelo da sua organização. Quando ele se esgota, as avaliações de juízes param com um motivo claro em vez de falhar silenciosamente, e as **avaliações de código continuam funcionando normalmente**. Aumente o orçamento e elas retomam na próxima sessão.

@@ -1,49 +1,53 @@
 ---
-title: "Özel aracılar"
-description: "Konfigürasyon, olay kataloğu, korelasyon kuralları ve failproofai-sdk için teslimat."
+title: "Özel ajanlar"
+description: "failproofai-sdk için yapılandırma, olay kataloğu, korelasyon kuralları ve teslimat."
 icon: "python"
 ---
 
-Her ayarın, metodun ve alanın ne işe yaradığı. İlk kez enstrümantasyon yapıyorsanız, rehberi okuyarak başlayın — bu sayfa referans amaçlıdır.
+Her ayarın, metodun ve alanın ne yaptığı. İlk kez enstrümantasyon yapıyorsanız, kılavuzla başlayın — bu sayfa başvuru içindir.
 
 <Columns cols={2}>
-  <Card title="Özel aracılar rehberi" icon="code" href="/tr/start/integrations/custom-agents">
-    Kurulum, enstrümantasyon, olay metodları, pratik örnek ve yaygın sorunlar.
+  <Card title="Özel ajanlar kılavuzu" icon="code" href="/tr/start/integrations/custom-agents">
+    Yükleme, enstrümantasyon, olay metodları, çalışan bir örnek ve yaygın sorunlar.
   </Card>
-  <Card title="Framework kullanıyor musunuz?" icon="plug" href="/tr/start/integrations">
-    LangChain, CrewAI, LlamaIndex ve Pydantic AI kendilerini tek çağrı ile enstrümante ederler.
+  <Card title="TypeScript kullanıyor musunuz?" icon="square-js" href="/tr/reference/custom-agents-typescript">
+    Aynı olaylar, aynı tel formatı, aynı spool — Node'dan.
   </Card>
 </Columns>
 
-Python 3.10 veya daha yeni. Runtime bağımlılığı yok.
+Python 3.10 veya daha yeni. Çalışma zamanı bağımlılığı yok. Bir çerçeve kullanıyor musunuz? [LangChain, CrewAI, LlamaIndex ve Pydantic AI](/tr/start/integrations) kendilerini tek bir çağrıyla enstrümente ederler.
 
-## Kurulum
+<Note>
+  Bir **TypeScript SDK** de var ve her ikisi de aynı olay setini aynı spool'a yazıyor. Node ajanları ve Python ajanları olan bir filo bir oturum seti üretir, iki tane değil. Her hizmet için seçin, her şirket için değil.
+</Note>
+
+## Yükle
 
 ```bash
 pip install failproofai-sdk
 ```
 
-Paket `failproofai-sdk` olarak yüklenir ve Python'da `failproofai_sdk` olarak içe aktarılır. `failproofai-sdk[langgraph]` gibi framework ek paketleri framework'ü kendisini yükler; adaptörler her zaman temel wheel'de bulunur.
+Paket `failproofai-sdk` olarak yüklenir ve Python'da `failproofai_sdk` olarak içe aktarılır. `failproofai-sdk[langgraph]` gibi çerçeve ek paketleri çerçevenin kendisini yükler; adaptörler her zaman temel wheel'de gelir.
 
-## Failproof daemon'ını bağlayın
+## Failproof daemon'u bağla
 
 <Tabs>
   <Tab title="Gösterge Paneli">
-    1. **Admin → Keys** bölümüne gidin ve `events:add` ile bir anahtar oluşturun.
-    2. [Failproof daemon'ını Cloud'a bağlayın](/tr/start/setup#bir-makineyi-buluta-bağlayın) ajan makinesinde.
-    3. Bir enstrümante edilmiş oturum çalıştırın, sonra **Observe → Events** altında tam ID'sini bulun.
-    4. **Observe → Sessions** bölümüne gidin, aynı ortamı seçin ve yeniden oluşturulan iz'i açın.
+    1. **Admin → Keys** sayfasına gidin ve `events:add` ile bir anahtar oluşturun.
+    2. [Failproof daemon'u Cloud'a bağlayın](/tr/start/setup#connect-a-machine-to-cloud) ajan makinesinde.
+    3. Bir enstrümente oturum çalıştırın, sonra **Observe → Events** altında tam ID'sini bulun.
+    4. **Observe → Sessions** sayfasına gidin, aynı ortamı seçin ve yeniden yapılandırılmış trace'i açın.
 
-    ![Bir özel Python ajan oturumu yürütme grafiği ve sıralı olay izi olarak yeniden oluşturulmuş.](/images/dashboard/session-detail.png)
+    ![Bir özel Python ajan oturumu yürütme grafı ve sıralı olay trace'i olarak yeniden yapılandırılmış.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
-    `events:add` anahtarını shell'e okuyun. `read -s` bunu yankılanmayan bir istemiçinde alır, bu nedenle hiçbir komutta veya shell geçmişinde görünmez:
+    `events:add` anahtarını shell'e okuyun. `read -s` bunu yankılanmayan bir komut isteminde alır, böylece komutta veya shell geçmişinde asla görünmez:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    Ardından makineyi ayarlayın ve bağlandığını kontrol edin:
+    Sonra makineyi kurun ve bağlandığını kontrol edin:
 
     ```bash
     failproofai config
@@ -52,7 +56,7 @@ Paket `failproofai-sdk` olarak yüklenir ve Python'da `failproofai_sdk` olarak i
   </Tab>
 </Tabs>
 
-## Konfigürasyon
+## Yapılandırma
 
 ```python
 import failproofai_sdk
@@ -64,32 +68,32 @@ failproofai_sdk.configure(
 )
 ```
 
-| Bağımsız Değişken | Ne işe yarar |
+| Argüman | Ne yaptığı |
 | --- | --- |
-| `environment` | Her olaydaki etiket — `production`, `staging`, `prod-eu`. Varsayılan `dev`'dir. |
-| `flush_interval` | Arka plan iş parçacığının diske ne sıklıkta yazacağı, saniye cinsinden. Varsayılan `0.5`'tir. |
-| `base_dir` | Yazılanacak yer. Varsayılan olarak daemon'ın spool'u olup, aksi takdirde bilmiyorsanız istediğiniz yerdir. |
+| `environment` | Her olaya verilen etiket — `production`, `staging`, `prod-eu`. Varsayılan olarak `dev` |
+| `flush_interval` | Arka plan iş parçacığının diske yazma sıklığı, saniye cinsinden. Varsayılan olarak `0.5` |
+| `base_dir` | Nereye yazılacağı. Varsayılan olarak daemon'un spool'u, aksi takdirde bilmiyorsanız istediğiniz şeydir. |
 
-Bunun yerine ortam değişkeni tarafından ayarlayın:
+Bunun yerine ortam değişkeni ile ayarlayın:
 
-| Değişken | Ne işe yarar |
+| Değişken | Ne yaptığı |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | Kod değişikliği olmadan `environment`'ı ayarlar, etiket dağıtıma ait olduğunda. Bir `configure()` bağımsız değişkeni bunu geçersiz kılar. |
+| `AGENTEYE_ENVIRONMENT` | Kod değişikliği olmadan `environment` ayarlar, etiketi dağıtıma ait olduğunda. Bir `configure()` argümanı bunu geçersiz kılar. |
 | `FAILPROOFAI_HOME` | Spool'u tutan Failproof AI kökünü taşır. |
-| `FAILPROOFAI_SDK_STRICT` | `1` enstrümantasyon hatalarının kaydedilmek yerine yükseltilmesini sağlar. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` framework uyumluluğu sorununda uyarı verip devam etmek yerine yükseltmeyi sağlar. |
+| `FAILPROOFAI_SDK_STRICT` | `1` enstrümantasyon hatalarının günlüğe kaydedilmesi yerine yükseltilmesini sağlar. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` bir çerçeve uyumluluk sorunun uyarı verip devam etmesi yerine yükseltilmesini sağlar. |
 
 <Warning>
-  **`environment`'da virgül yok.** Ingest bu alanı virgülle bölmesi için filtreler oluşturur ve virgül içeren herhangi bir olayı atlar — böylece tüm bir çalıştırma sessizce kaybolur. `prod,eu` değil `prod-eu` yazın.
+  **`environment` içinde virgül yok.** Sorgu bu alanı virgülle bölünerek filtrelerini oluşturur ve virgül içeren herhangi bir olayı atlar — yani tüm bir çalışma sessizce kaybolur. `prod,eu` değil `prod-eu` yazın.
 
-  `configure(environment="prod,eu")` yükseltir böylece hemen fark edersiniz. `AGENTEYE_ENVIRONMENT` yükseltemez — hiç sizi aramıyor — bu nedenle bir kez uyarır ve `dev`'e geri döner.
+  `configure(environment="prod,eu")` yükseltir böylece hemen öğrenirsiniz. `AGENTEYE_ENVIRONMENT` yükseltemez — sizi hiç kimse çağırmıyor — bu yüzden bir kez uyarır ve `dev` olarak geri döner.
 </Warning>
 
-Olaylar bellekte sıraya alınır ve arka planda her `flush_interval` saniyede diske yazılır; yorumlayıcı çıkışında son bir flush yapılır. Doğrudan öldürülen bir işlem henüz yazılmış olmayan her şeyi kaybeder.
+Olaylar bellekte kuyruğa alınır ve arka planda her `flush_interval` saniyede diske yazılır, tercüman çıkışında son bir temizlik işlemi yapılır. Tamamen öldürülen bir işlem henüz yazılmamış şeyleri kaybeder.
 
 ## Kimlik
 
-Her olay bir oturum ve bir ajanına aittir. **Kapsamlar her ikisini de doldurur**, bu nedenle nadiren bunları geçersiniz:
+Her olay bir oturuma ve bir ajana aittir. **Kapsamlar her ikisini de doldurur**, bu nedenle nadiren onları iletirsiniz:
 
 ```python
 with failproofai_sdk.session():
@@ -97,30 +101,30 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-`session_id` veya `agent_id`'yi açıkça geçmek hala çalışır ve kazanır. Bağlı ne de geçilmiş olmadan, çağrı Cloud'un sessizce atılacağı bir olayı yayınlamak yerine `TypeError` yükseltir.
+`session_id` veya `agent_id` açıkça iletmek hala işe yarar ve kazanır. Ne bağlanmış ne de iletilmiş olmadan, çağrı Cloud'un sessizce atacağı bir olayı yayan `TypeError` yükseltir.
 
 <Note>
-  Kimlik bağlam değişkenlerinde durur. `asyncio` görevlerini otomatik olarak takip eder, ancak **yeni iş parçacıklarını değil** — bir işçiyi `failproofai_sdk.propagate()` içine sarın veya olayları bağlantısız kalırlar.
+  Kimlik bağlam değişkenleri üzerinde hareket eder. `asyncio` görevlerini otomatik olarak takip eder, ancak **yeni iş parçacıklarını değil** — bir çalışanı `failproofai_sdk.propagate()` ile sarın veya olayları bağlantısız bir şekilde iletir.
 </Note>
 
 ## Olay kataloğu
 
-On beş metod. Çoğu **çiftler halinde** gelir — açanı çağırırısınız, sonra kapatıcısını, ve SDK açıklığı ölçer.
+On beş metod. Çoğu **çiftler** halinde gelir — açıcıyı çağırırsınız, sonra kapatıcıyı, ve SDK boşluğu zamanlar.
 
 | | Açar | Kapar |
 | --- | --- | --- |
-| **Aracılar** | `agent_start` | `agent_end` |
+| **Ajanlar** | `agent_start` | `agent_end` |
 | | `agent_pause` | `agent_resume` |
 | **Modeller** | `model_request` | `model_response` |
 | **Araçlar** | `tool_use` | `tool_result` |
 | **Kancalar** | `hook_triggered` | `hook_completed` |
 | **İnsanlar** | `human_wait` | `human_input` |
 
-Üçü bağımsız: `error`, `human_pause`, `human_interrupt`.
+Üç bağımsız olarak durur: `error`, `human_pause`, `human_interrupt`.
 
-<Accordion title="Her alan, her metod başına" icon="table">
+<Accordion title="Her metod başına her alan" icon="table">
 
-Her metod ayrıca `session_id` ve `agent_id` alır, kapsamlar bunları sizin için doldurur. `None` olarak bırakılan her şey JSON `null` olarak gönderilmek yerine atılır ve her metod `None` döndürür.
+Her metod ayrıca `session_id` ve `agent_id` alır, kapsamlar bunları sizin için doldurur. `None` olarak bırakılan herhangi bir şey JSON `null` olarak gönderilmesi yerine bırakılır ve her metod `None` döndürür.
 
 | Metod | Gerekli | İsteğe Bağlı |
 | --- | --- | --- |
@@ -143,14 +147,14 @@ Her metod ayrıca `session_id` ve `agent_id` alır, kapsamlar bunları sizin iç
 </Accordion>
 
 <Warning>
-  Bir çalıştırmayı başarısız olarak işaretlemek için, `outcome` şunlardan biri olmalıdır: `failed`, `error`, `timeout` veya `rejected`. Başka bir şey — yakın kaçış `"failure"` dahil — başarı olarak sayılır.
+  Bir çalışmayı başarısız olarak işaretlemek için `outcome` şunlardan biri olmalıdır: `failed`, `error`, `timeout` veya `rejected`. Başka herhangi bir şey — yakın kaçış olan `"failure"` da dahil olmak üzere — bir başarı sayılır.
 </Warning>
 
 ## Eşleştirme ve süre
 
-**Bir kural: kapatıcı olayına açıcısı ile aynı id'yi verin.** Bunun ne eşleştirdikleri ne de SDK'nın boşluğu zamanlamasını sağlayan şeydir.
+**Bir kural: kapatma olayına açıcı ile aynı id'yi verin.** Bu onları eşleştirir ve SDK'nın boşluğu zamanlamasını sağlar.
 
-| Çift | Eşleştirilen |
+| Çift | Eşleştirilmiş |
 | --- | --- |
 | `tool_use` → `tool_result` | `tool_call_id` |
 | `hook_triggered` → `hook_completed` | `hook_id` |
@@ -158,37 +162,37 @@ Her metod ayrıca `session_id` ve `agent_id` alır, kapsamlar bunları sizin iç
 | `human_wait` → `human_input` | `input_id` |
 | `model_request` → `model_response` | `request_id` |
 
-**Kendiniz `duration_ms` geçmeyin.** SDK onu ölçer ve geçmesi `ValueError` yükseltir.
+**`duration_ms` kendiniz iletmeyin.** SDK bunu ölçer ve iletmek `ValueError` yükseltir.
 
-Tek istisna `model_response`'tir, burada yalnızca siz gerçek sağlayıcı gecikmesini bilirsiniz. Tam bir milisaniye sayısı geçin — kayan sayı yükseltir, çünkü sütun 32-bit bir tamsayıdır ve aksi takdirde boş kalırdı.
+Tek istisna `model_response`, burada sadece siz gerçek sağlayıcı gecikmesini bilirsiniz. Tam sayı olarak milisaniye iletmek — bir float yükseltir, çünkü sütun 32 bit tam sayıdır ve aksi takdirde boş kalırdı.
 
 <Accordion title="Kenar durumları" icon="circle-help">
 
-- **ID'ler yalnızca tür başına, oturum başına benzersiz olması gerekir.** Bir araç çağrısı ve bir kanca bir taneyi paylaşabilir; aynı anda çalışan iki oturum çarpışma olmadan aynı ID'leri yeniden kullanabilir.
-- **Onlar bir ajanın kapsamında değildir.** Bir çift bir ajan altında açılıp başka bir ajan altında kapatılırsa yine eşleşir — bu, çok ajanın kodunda normal durumdur.
-- **`request_id` isteğe bağlıdır ancak önerilir.** Olmadan, model olayları gelişte sıraya alınırlar, bu nedenle aynı ajan içindeki iki eşzamanlı çağrı hatalı eşleşebilir.
-- **İşlemler arasında bölünmüş bir çift** Cloud'da yine eşleşir, ancak SDK onu zamanlamaz — hiçbir işlem her iki yarıyı da görmedi.
-- **En fazla 10.000 açıcı aynı anda kapatıcıyı bekler.** Bunun ötesinde en eski atılır, böylece bir sızıntı sınırsızca büyüyemez.
+- **ID'ler sadece tür başına, oturum başına benzersiz olması gerekir.** Bir araç çağrısı ve bir kanca bir tane paylaşabilir; aynı anda çalışan iki oturum çarpışmadan aynı ID'leri yeniden kullanabilir.
+- **Bir ajana kapsamlı değildir.** Bir çift bir ajan altında açılıp başka bir ajan altında kapatılmış hala eşleşir — bu çok ajanı kodda normal durumdur.
+- **`request_id` isteğe bağlı ancak önerilir.** Olmadan, model olayları geldi sırasına göre eşleşir, bu nedenle aynı ajan içinde iki eş zamanlı çağrı yanlış eşleşebilir.
+- **İşlemler arasında bölünmüş bir çift** yine Cloud'da eşleşir, ancak SDK bunu zamanlamaz — hiçbir işlem her iki yarısını da görmedi.
+- **En fazla 10.000 açıcı aynı anda bir kapatıcıyı bekler.** Bunun ötesinde en eski bırakılır, bu nedenle bir sızıntı sınırsızca büyüyemez.
 
 </Accordion>
 
 ## Kendi alanlarınız
 
-Geçtiğiniz herhangi bir ekstra anahtar sözcük olayda depolanır:
+İlettiğiniz herhangi bir ek anahtar sözcük olay ile depolanır:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # sizin
+    fw_tenant="acme", fw_region="eu-west-1",     # sizin kendi
 )
 ```
 
-Daha sonra sorgulamak istiyorsanız JSON türlerini tercih edin. Başka bir şey — bir UUID, tarih/saat, bir `Decimal`, küme, bayt, bir model nesnesi — bir dizi olarak depolanır.
+Daha sonra sorgulamak istiyorsanız JSON türlerini tercih edin. Başka her şey — bir UUID, bir datetime, bir `Decimal`, bir küme, baytlar, bir model nesnesi — bir dize olarak depolanır.
 
 <Warning>
-  **Alan adlarınızı önek yapın.** Ekstralar son olarak uygulanır, bu nedenle `model`, `tool_name` veya `outcome` adlı bir alan sessizce gerçek olanın yerini alır. Framework adaptörleri `fw_` kullanır; aynısını yapın ve hiçbir şey çarpışamaz.
+  **Alan adlarınızı ön ekleyin.** Ekstralar son olarak uygulanır, bu nedenle `model`, `tool_name` veya `outcome` adı verilen bir alan sessizce gerçek olanı geçersiz kılar. Çerçeve adaptörleri `fw_` kullanır; aynısını yapın ve hiçbir şey çarpışamaz.
 
-  Bu aynı zamanda yanlış yazılmış isteğe bağlı bir alanın neden hiçbir zaman hata vermediğinin nedenidir — sadece yeni bir özel alan olur. Standart bir alan Cloud'da eksikse, ilk olarak yazımı kontrol edin.
+  Bu aynı zamanda neden yanlış yazılmış isteğe bağlı bir alan hiçbir zaman hata vermez — sadece yeni bir özel alan olur. Cloud'da standart bir alan eksikse, önce yazımı kontrol edin.
 </Warning>
 
 Bu beş ad ayrılmıştır ve tamamen reddedilir: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
@@ -197,7 +201,7 @@ Bu beş ad ayrılmıştır ve tamamen reddedilir: `timestamp`, `session_id`, `ag
 
 <Tabs>
   <Tab title="Gösterge Paneli">
-    **Observe → Events** bölümünde önce `agent_start` var mı kontrol edin ve `agent_end` sonunda var mı. Sonra **Observe → Sessions** bölümünü açın ve model, araç, insan, kanca ve hata olaylarının amaçlanan sırada göründüğünü doğrulayın. Oturum ID'sini birincil sorun giderme anahtarı olarak kullanın.
+    **Observe → Events** içinde, ilk olarak `agent_start`'ın var olduğunu, ardından `agent_end`'in son olduğunu doğrulayın. Sonra **Observe → Sessions** açın ve model, araç, insan, kanca ve hata olaylarının amaçlanan sırada görüneceğini doğrulayın. Oturum ID'sini birincil sorun giderme anahtarı olarak kullanın.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -209,14 +213,14 @@ Bu beş ad ayrılmıştır ve tamamen reddedilir: `timestamp`, `session_id`, `ag
   </Tab>
 </Tabs>
 
-Cloud boşsa, `$FAILPROOFAI_HOME/custom-agents/events` bölümünü inceleyin, aksi takdirde `~/.failproofai/custom-agents/events` bölümünü inceleyin. JSONL dosyaları SDK yayınını kanıtlar; büyüyen bir spool daemon konfigürasyonunu veya teslimatı gösterirken boş bir spool enstrümantasyonu veya süreç ömrünü gösterir.
+Cloud boşsa, `$FAILPROOFAI_HOME/custom-agents/events` veya aksi takdirde `~/.failproofai/custom-agents/events` inceleyin. JSONL dosyaları SDK yayınını kanıtlar; büyüyen bir spool daemon yapılandırmasını veya teslimini işaret eder, boş bir spool enstrümantasyonu veya işlem yaşam süresini işaret eder.
 
 <Note>
-  Spool'u yalnızca daemon durdurulmuş durumdayken inceleyin. Çalışırken, her topluyu milisaniye cinsinden toplar ve siler, bu nedenle bir dizin listesi toplayıcıyla yarışır ve yayınlanan etkinliklerden çok daha azını gösterir.
+  Spool'u yalnızca daemon durdurulduğunda inceleyin. Çalışırken, her batch'i milisaniye içinde toplar ve siler, bu nedenle bir dizin listesi toplayıcı ile yarışır ve yayılanlardan çok daha az olay gösterir.
 </Note>
 
-## Özel runtime'da başarısızlıkları önleyin
+## Özel çalışma zamanında hataları önleyin
 
-Güvensiz eylemi, gerekli kanıtı ve amaçlanan yanıtı tanımlamak için denetim bulgularını ve bağlı izleri kullanın. Özel bir uygulama entegrasyonu, yürütülmeden önce eylemi ortaya çıkarmalı, yapılandırılmış girdisini ilke motoruna geçirmeli ve ortaya çıkan allow, instruct veya deny kararını uygulamalıdır.
+Güvenli olmayan işlemi, gerekli kanıtı ve amaçlanan yanıtı tanımlamak için denetim bulgularını ve bağlantılı trace'leri kullanın. Özel bir zorlama entegrasyonu, yürütmeden önce işlemi açığa vuracak, yapılandırılmış girdisini politika motoruna iletmeli ve ortaya çıkan allow, instruct veya deny kararını uygulamalıdır.
 
-[Failproof AI ile iletişime geçin](mailto:support@befailproof.ai) ve runtime'ınızın model, araç ve yaşam döngüsü sınırlarını ilke kancalarına eşlemesine yardımcı olacak, ardından entegrasyonu sizle doğrulayacağız.
+[Failproof AI ile iletişime geçin](mailto:support@befailproof.ai) ve runtime'ınızın modelini, aracını ve yaşam döngüsü sınırlarını politika kancalarına eşleştirmemize yardımcı oluruz, sonra entegrasyonu sizinle doğrularız.

@@ -1,32 +1,32 @@
 ---
-title: "Avaliações por classificador"
-description: "Pontue sessões com base em respostas que você pode definir com antecedência — isso é verdadeiro, ou em que medida isso ocorre — usando um pequeno classificador calibrado em vez de um modelo de uso geral."
+title: "Avaliações com classificador"
+description: "Pontue sessões com respostas que você pode definir com antecedência — isso é verdadeiro, ou em que medida — usando um classificador pequeno e calibrado em vez de um modelo de uso geral."
 icon: "list-checks"
 ---
 
-Algumas perguntas precisam que um modelo *leia* a conversa, mas não que *escreva* sobre ela. "O cliente expressou urgência?" tem duas respostas. "Quão frustrado ele estava?" tem algumas, em ordem. Você conhece todas as respostas antes mesmo de perguntar.
+Algumas perguntas precisam que um modelo *leia* a conversa, mas não que *escreva* sobre ela. "O cliente demonstrou urgência?" tem duas respostas. "O quanto ele estava frustrado?" tem algumas, em ordem. Você conhece todas as respostas antes mesmo de perguntar.
 
-Uma **avaliação por classificador** é exatamente para isso. Você escreve a pergunta e as respostas possíveis, e um pequeno modelo construído para classificação retorna um número calibrado — nunca texto livre.
+Uma **avaliação com classificador** é exatamente para isso. Você escreve a pergunta e as possíveis respostas, e um modelo pequeno desenvolvido para classificação retorna um número calibrado — nunca texto livre.
 
 <Note>
-Assim como um juiz, uma avaliação por classificador consome uma chamada de modelo por sessão. Ao contrário de um juiz, é um modelo pequeno e de propósito único, não um modelo geral — portanto, é mais rápido e barato. Porém, ele nunca vai se explicar. Se você precisar do raciocínio, use um [juiz](/pt-br/evaluations/judge).
+Assim como um juiz, uma avaliação com classificador consome uma chamada de modelo por sessão. Diferentemente de um juiz, trata-se de um modelo pequeno e de propósito único, e não um de uso geral — portanto é mais rápido e mais barato, mas nunca irá se explicar. Se você precisar do raciocínio, use um [juiz](/pt-br/evaluations/judge).
 </Note>
 
 ## Qual devo usar?
 
-| Pergunta | Use |
+| Pergunta | Usar |
 | --- | --- |
 | Quantas chamadas de ferramenta houve? | código |
 | A sessão durou menos de 30 segundos? | código |
-| O cliente expressou urgência? | **classificador** |
-| Qual equipe deve tratar isso: cobrança, técnica ou vendas? | **classificador** |
-| Quão frustrado estava o cliente? | **classificador** |
+| O cliente demonstrou urgência? | **classificador** |
+| Qual equipe deve lidar com isso: financeiro, técnico ou vendas? | **classificador** |
+| O quanto o cliente estava frustrado? | **classificador** |
 | A resposta estava realmente correta? | **juiz** |
-| Ele seguiu nossa política de escalonamento? Por que você acha isso? | **juiz** |
+| Seguiu nossa política de escalonamento? Por que você acha isso? | **juiz** |
 
 A regra geral: **contável → código, respostas que você pode listar → classificador, precisa de explicação → juiz.**
 
-Você não precisa decidir com antecedência. Descreva o que quer medir e o assistente escolhe, informa qual selecionou e por quê, e você pode mudar.
+Você não precisa decidir de antemão. Descreva o que quer medir e o assistente escolhe, informa qual foi escolhido e o motivo, e você pode mudar.
 
 ## Os dois tipos de pergunta
 
@@ -44,11 +44,11 @@ Duas respostas, e você descreve as duas. O resultado é a probabilidade de que 
 }
 ```
 
-Descreva os dois lados. "Nenhuma urgência expressa" é uma resposta real, e descrevê-la torna o outro lado mais preciso.
+Descreva os dois lados. "Nenhuma urgência expressa" é uma resposta real e dizê-la torna a outra mais precisa.
 
 ### `score` — em que medida isso ocorre?
 
-Uma rubrica ordenada, **do pior para o melhor**. O resultado indica onde a sessão se encaixa nela, reescalonado para 0–1:
+Uma rubrica ordenada, **do pior ao melhor**. O resultado é onde a sessão se posiciona nela, reescalonado para 0–1:
 
 ```json
 {
@@ -57,32 +57,32 @@ Uma rubrica ordenada, **do pior para o melhor**. O resultado indica onde a sess�
 }
 ```
 
-**Uma rubrica deve ter de três a cinco níveis, e todos devem ser diferentes.** Ambos os limites são medidos, não estilísticos:
+**Uma rubrica tem de três a cinco níveis, e todos devem ser diferentes.** Ambos os limites são medidos, não estilísticos:
 
-- **Dois níveis** colapsam no que o `noul` já faz melhor, e **mais de cinco** faz o modelo ficar em cima do muro em vez de se comprometer. A mesma pergunta sobre a mesma sessão pontuou 0,00 com dois níveis, 0,01 com três e 0,55 com dez.
-- **Níveis repetidos** dividem a resposta arbitrariamente entre eles. Uma sessão com raiva evidente pontuou 1,00 contra `["Calm", "Frustrated", "Very angry"]` e 0,66 contra `["Angry", "Angry", "Angry"]` — um número bem formado que não significa nada.
+- **Dois níveis** colapsa para o que `noul` já faz melhor, e **mais de cinco** faz o modelo ficar indeciso em torno do meio em vez de se comprometer. A mesma pergunta sobre a mesma sessão obteve 0,00 com dois níveis, 0,01 com três e 0,55 com dez.
+- **Níveis repetidos** dividem a resposta arbitrariamente entre eles. Uma sessão claramente raivosa obteve 1,00 com `["Calm", "Frustrated", "Very angry"]` e 0,66 com `["Angry", "Angry", "Angry"]` — um número bem formado que não significa nada.
 
-Categorias sem ordem — "cobrança, técnica ou vendas" — não formam uma rubrica. Pergunte-as como `noul` por categoria, ou use um juiz.
+Categorias sem ordem — "financeiro, técnico ou vendas" — não são uma rubrica. Faça-as como `noul` por categoria ou use um juiz.
 
 ## Interpretando os resultados
 
-Um classificador produz uma **pontuação** de 0 a 1, exatamente como um juiz — portanto, aparece em gráficos, filtros e alertas da mesma forma. Duas diferenças valem a pena conhecer:
+Um classificador produz uma **pontuação** de 0 a 1, exatamente como um juiz, então ela é representada em gráficos, filtrada e aciona alertas da mesma forma. Duas diferenças merecem atenção:
 
-- **Não há raciocínio.** O campo está vazio, deliberadamente. Esse modelo não se explica, e inventar uma explicação seria uma fabricação, não um recurso.
-- **A incerteza é rotulada.** Uma pergunta do tipo `score` reporta sua própria confiança, e um resultado sobre o qual o modelo estava inseguro recebe a tag `low_confidence` — assim, "quais desses devem ser revisados por um humano" é um filtro, não um palpite. Uma pergunta do tipo `noul` não reporta confiança, portanto nunca recebe essa tag.
+- **Não há raciocínio.** O campo fica vazio, intencionalmente. Esse modelo não se explica, e inventar uma explicação seria uma fabricação, não um recurso.
+- **A incerteza é indicada.** Uma pergunta do tipo `score` informa sua própria confiança, e um resultado sobre o qual o modelo não tinha certeza é marcado como `low_confidence` — então "quais desses um humano deve revisar" é um filtro, não um palpite. Uma pergunta do tipo `noul` não reporta confiança, portanto nunca é marcada.
 
-Sessões muito longas são lidas em trechos e combinadas. Quando uma sessão é longa demais para ser lida integralmente, o resultado informa quantos turnos foram omitidos — você nunca verá um julgamento feito sobre parte de uma sessão sendo apresentado como se fosse sobre ela toda.
+Sessões muito longas são lidas em trechos e combinadas. Quando uma sessão é longa demais para ser lida integralmente, o resultado indica quantos turnos foram omitidos — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre a totalidade dela.
 
 ## Limites
 
 - **De três a cinco níveis de rubrica, todos distintos.** Veja acima; ambos os limites são aplicados no momento da criação.
-- **Uma pergunta por avaliação.** Pergunte duas coisas e você terá duas avaliações — o que também é o que você quer em um gráfico.
-- **Editar a pergunta publica uma nova versão.** Pontuações antigas e novas não são comparáveis, por isso são mantidas separadas em vez de misturadas em uma única linha de tendência.
+- **Uma pergunta por avaliação.** Pergunte duas coisas e você obtém duas avaliações, que é também o que você quer em um gráfico.
+- **Editar a pergunta publica uma nova versão.** Pontuações antigas e novas não são comparáveis, então são mantidas separadas em vez de misturadas em uma única linha de tendência.
 - **Um classificador sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
-- **Sem raciocínio**, como mencionado acima. Se um número vai fazer alguém perguntar "por quê?", escreva um juiz em vez disso.
+- **Sem raciocínio**, conforme acima. Se um número vai fazer alguém perguntar "por quê?", escreva um juiz.
 
-## Testes e retroprocessamento
+## Testes e retropreenchimento
 
-Ao contrário de um juiz, uma avaliação por classificador **pode** ser testada antes de você implantá-la — [teste-a](/pt-br/evaluations/test) contra sessões reais da mesma forma que faria com uma avaliação de código, e leia as pontuações antes de qualquer coisa entrar em produção.
+Ao contrário de um juiz, uma avaliação com classificador **pode** ser testada antes de ser implantada — [teste-a](/pt-br/evaluations/test) com sessões reais da mesma forma que você faria com uma avaliação de código, e veja as pontuações antes de qualquer coisa entrar em produção.
 
-Ela também pode ser [retroprocessada](/pt-br/evaluations/deploy#score-sessions-you-already-have) em sessões que você já tem. Isso consome uma chamada de modelo por sessão, portanto delimite a janela de forma deliberada em vez de reprocessar tudo.
+Ela também pode ser [retropreenchida](/pt-br/evaluations/deploy#score-sessions-you-already-have) com sessões que você já possui. O custo é de uma chamada de modelo por sessão, então delimite a janela deliberadamente em vez de reprocessar tudo.

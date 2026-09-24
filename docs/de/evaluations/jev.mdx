@@ -1,38 +1,38 @@
 ---
-title: "Klassifikator-Auswertungen"
-description: "Bewerten Sie Sitzungen anhand von Antworten, die Sie im Voraus festlegen können — ist das wahr oder wie stark trifft das zu — mithilfe eines kleinen, kalibrierten Klassifikators statt eines Allzweckmodells."
+title: "Klassifizierer-Auswertungen"
+description: "Bewerte Sitzungen anhand von Antworten, die du im Voraus festlegen kannst — ist das wahr, oder wie viel davon — mithilfe eines kleinen, kalibrierten Klassifizierers statt eines Allzweckmodells."
 icon: "list-checks"
 ---
 
-Manche Fragen erfordern ein Modell, das die Konversation *liest* — aber nicht darüber *schreibt*. „Hat der Kunde Dringlichkeit signalisiert?" hat zwei Antworten. „Wie frustriert war er?" hat eine Handvoll, in geordneter Reihenfolge. Alle möglichen Antworten sind Ihnen bekannt, bevor Sie die Frage stellen.
+Manche Fragen erfordern ein Modell, das die Unterhaltung *liest*, aber nicht *darüber schreibt*. „Hat der Kunde Dringlichkeit geäußert?" hat zwei Antworten. „Wie frustriert war er?" hat eine Handvoll, in einer bestimmten Reihenfolge. Du kennst jede Antwort, bevor du fragst.
 
-Eine **Klassifikator-Auswertung** ist genau dafür gedacht. Sie schreiben die Frage und die möglichen Antworten, und ein kleines, speziell für Klassifikation entwickeltes Modell gibt eine kalibrierte Zahl zurück — niemals Freitext.
+Eine **Klassifizierer-Auswertung** ist genau dafür gedacht. Du formulierst die Frage und die möglichen Antworten, und ein kleines, speziell für die Klassifizierung trainiertes Modell gibt eine kalibrierte Zahl zurück — niemals freien Text.
 
 <Note>
-Wie ein Beurteilungsmodell kostet eine Klassifikator-Auswertung einen Modellaufruf pro Sitzung. Anders als ein Beurteilungsmodell ist es jedoch ein kleines, zweckgebundenes Modell und kein allgemeines — daher ist es schneller und günstiger, erklärt sich aber nie selbst. Falls Sie die Begründung benötigen, verwenden Sie einen [Judge](/de/evaluations/judge).
+Wie ein Richter benötigt auch eine Klassifizierer-Auswertung einen Modellaufruf pro Sitzung. Im Unterschied zu einem Richter handelt es sich jedoch um ein kleines, zweckgebundenes Modell statt einem allgemeinen — es ist daher schneller und günstiger, erklärt sich aber nie selbst. Wenn du die Begründung benötigst, verwende einen [Richter](/de/evaluations/judge).
 </Note>
 
 ## Welche Option ist die richtige?
 
-| Frage | Verwenden |
+| Frage | Verwende |
 | --- | --- |
 | Wie viele Tool-Aufrufe gab es? | Code |
-| War die Sitzung kürzer als 30 Sekunden? | Code |
-| Hat der Kunde Dringlichkeit signalisiert? | **Klassifikator** |
-| Welches Team soll sich darum kümmern: Abrechnung, Technik oder Vertrieb? | **Klassifikator** |
-| Wie frustriert war der Kunde? | **Klassifikator** |
-| War die Antwort tatsächlich korrekt? | **Judge** |
-| Hat das System unsere Eskalationsrichtlinie befolgt, und warum glauben Sie das? | **Judge** |
+| Dauerte die Sitzung weniger als 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit geäußert? | **Klassifizierer** |
+| Welches Team soll sich darum kümmern: Abrechnung, Technik oder Vertrieb? | **Klassifizierer** |
+| Wie frustriert war der Kunde? | **Klassifizierer** |
+| War die Antwort tatsächlich korrekt? | **Richter** |
+| Hat es unsere Eskalationsrichtlinie befolgt, und warum denkst du das? | **Richter** |
 
-Die Faustregel: **Zählbares → Code, auflistbare Antworten → Klassifikator, Begründung erforderlich → Judge.**
+Die Faustregel lautet: **Zählbares → Code, aufzählbare Antworten → Klassifizierer, Begründung nötig → Richter.**
 
-Sie müssen sich nicht im Voraus entscheiden. Beschreiben Sie, was gemessen werden soll, und der Assistent wählt die passende Option, erklärt die Wahl und ermöglicht Ihnen, sie zu ändern.
+Du musst dich nicht von Anfang an entscheiden. Beschreibe, was du messen möchtest, und der Assistent wählt aus, teilt dir mit, was er gewählt hat und warum — und du kannst jederzeit wechseln.
 
 ## Die zwei Fragetypen
 
-### `noul` — Trifft das zu?
+### `noul` — ist das wahr?
 
-Zwei Antworten, und Sie beschreiben beide. Das Ergebnis ist die Wahrscheinlichkeit, dass die „Wahr"-Beschreibung zutrifft:
+Zwei Antworten, und du beschreibst beide. Das Ergebnis ist die Wahrscheinlichkeit, dass die Beschreibung für „wahr" zutrifft:
 
 ```json
 {
@@ -44,11 +44,11 @@ Zwei Antworten, und Sie beschreiben beide. Das Ergebnis ist die Wahrscheinlichke
 }
 ```
 
-Beschreiben Sie beide Seiten. „Keine Dringlichkeit signalisiert" ist eine echte Antwort, und sie macht die andere Seite schärfer.
+Beschreibe beide Seiten. „Keine Dringlichkeit geäußert" ist eine echte Antwort, und sie zu benennen macht die andere schärfer.
 
-### `score` — Wie stark trifft das zu?
+### `score` — wie viel davon?
 
-Eine geordnete Rubrik, **beginnend mit dem schlechtesten Wert**. Das Ergebnis gibt an, wo die Sitzung auf der Skala liegt, normiert auf 0–1:
+Eine geordnete Rubrik, **schlechtestes zuerst**. Das Ergebnis gibt an, wo die Sitzung darauf einzuordnen ist, normiert auf 0–1:
 
 ```json
 {
@@ -57,32 +57,32 @@ Eine geordnete Rubrik, **beginnend mit dem schlechtesten Wert**. Das Ergebnis gi
 }
 ```
 
-**Eine Rubrik umfasst drei bis fünf Stufen, die sich alle voneinander unterscheiden müssen.** Beide Grenzen sind empirisch begründet, nicht stilistisch:
+**Eine Rubrik umfasst drei bis fünf Stufen, die sich alle voneinander unterscheiden müssen.** Beide Grenzen sind messbar begründet, nicht stilistisch:
 
-- **Zwei Stufen** reduzieren die Frage auf das, was `noul` bereits besser abdeckt; **mehr als fünf Stufen** verleiten das Modell dazu, sich zur Mitte hin zu orientieren, statt sich festzulegen. Dieselbe Frage über dieselbe Sitzung ergab 0,00 mit zwei Stufen, 0,01 mit drei und 0,55 mit zehn.
-- **Doppelte Stufen** verteilen die Antwort willkürlich auf sie auf. Eine eindeutig aufgebrachte Sitzung erzielte 1,00 gegenüber `["Calm", "Frustrated", "Very angry"]` und 0,66 gegenüber `["Angry", "Angry", "Angry"]` — eine formal korrekte Zahl, die nichts aussagt.
+- **Zwei Stufen** reduzieren sich auf das, was `noul` bereits besser leistet, und **mehr als fünf** bringen das Modell dazu, zur Mitte hin auszuweichen, statt sich festzulegen. Dieselbe Frage über dieselbe Sitzung ergab 0,00 mit zwei Stufen, 0,01 mit drei und 0,55 mit zehn.
+- **Wiederholte Stufen** teilen die Antwort willkürlich zwischen ihnen auf. Eine Sitzung, die eindeutig wütend war, erzielte 1,00 mit `["Calm", "Frustrated", "Very angry"]` und 0,66 mit `["Angry", "Angry", "Angry"]` — eine wohlgeformte Zahl, die jedoch nichts bedeutet.
 
-Kategorien ohne Ordnung — „Abrechnung, Technik oder Vertrieb" — bilden keine Rubrik. Stellen Sie diese als separate `noul`-Fragen pro Kategorie, oder verwenden Sie einen Judge.
+Kategorien ohne Reihenfolge — „Abrechnung, Technik oder Vertrieb" — sind keine Rubrik. Stelle sie als `noul` pro Kategorie oder verwende einen Richter.
 
-## Ergebnisse interpretieren
+## Die Ergebnisse interpretieren
 
-Ein Klassifikator liefert einen **Score** von 0 bis 1, genau wie ein Judge — er lässt sich also genauso in Diagrammen darstellen, filtern und für Warnmeldungen verwenden. Zwei Unterschiede sind wichtig:
+Ein Klassifizierer liefert einen **Score** von 0 bis 1, genau wie ein Richter — er lässt sich also genauso in Diagrammen darstellen, filtern und für Warnmeldungen nutzen. Zwei Unterschiede sind wichtig:
 
-- **Es gibt keine Begründung.** Das Feld bleibt absichtlich leer. Dieses Modell erklärt sich nicht selbst, und eine erfundene Erklärung wäre eine Fälschung, kein Feature.
-- **Unsicherheit wird gekennzeichnet.** Bei einer `score`-Frage wird das Konfidenzintervall mitgeliefert, und ein Ergebnis, bei dem das Modell unsicher war, wird mit `low_confidence` markiert — was auf menschliche Überprüfung hinweist, lässt sich damit filtern statt raten. Eine `noul`-Frage liefert keinen Konfidenzwert und wird daher nie so markiert.
+- **Es gibt keine Begründung.** Das Feld ist bewusst leer. Dieses Modell erklärt sich nicht, und eine Erklärung zu erfinden wäre eine Fälschung, kein Feature.
+- **Unsicherheit wird gekennzeichnet.** Eine `score`-Frage gibt ihre eigene Konfidenz an, und ein Ergebnis, bei dem das Modell unsicher war, wird mit `low_confidence` markiert — so wird die Frage „Welche davon soll ein Mensch prüfen?" zum Filter statt zur Vermutung. Eine `noul`-Frage gibt keine Konfidenz an und wird daher nie markiert.
 
-Sehr lange Sitzungen werden auszugsweise gelesen und zusammengeführt. Wenn eine Sitzung zu lang ist, um vollständig gelesen zu werden, gibt das Ergebnis an, wie viele Gesprächsrunden ausgelassen wurden — eine auf einem Teilausschnitt basierende Bewertung wird nie als vollständige Bewertung ausgegeben.
+Sehr lange Sitzungen werden in Auszügen gelesen und kombiniert. Wenn eine Sitzung zu lang ist, um sie vollständig zu lesen, gibt das Ergebnis an, wie viele Gesprächszüge weggelassen wurden — du wirst nie eine Beurteilung sehen, die nur auf einem Teil einer Sitzung basiert, aber als vollständig dargestellt wird.
 
-## Einschränkungen
+## Grenzen
 
-- **Drei bis fünf Rubrikstufen, alle unterschiedlich.** Siehe oben; beide Grenzen werden bei der Erstellung geprüft.
-- **Eine Frage pro Auswertung.** Zwei Dinge zu fragen ergibt zwei Auswertungen — was auch sinnvoller für Diagramme ist.
-- **Das Bearbeiten der Frage veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar und werden deshalb getrennt statt in einer gemeinsamen Trendlinie dargestellt.
-- **Ein Klassifikator liefert immer einen Score**, niemals eine Metrik oder eine Aussage.
-- **Keine Begründung**, wie oben beschrieben. Wenn eine Zahl die Frage „Warum?" aufwerfen wird, schreiben Sie stattdessen einen Judge.
+- **Drei bis fünf Rubrikstufen, alle unterschiedlich.** Siehe oben; beide Grenzen werden beim Erstellen erzwungen.
+- **Eine Frage pro Auswertung.** Stelle zwei Dinge in Frage und du erhältst zwei Auswertungen — was auch das ist, was du in einem Diagramm möchtest.
+- **Das Bearbeiten der Frage veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar und werden daher getrennt gehalten, statt in eine gemeinsame Trendlinie eingemischt zu werden.
+- **Ein Klassifizierer liefert immer einen Score**, niemals eine Metrik oder eine Aussage.
+- **Keine Begründung**, wie oben. Wenn eine Zahl jemanden dazu bringen wird zu fragen „warum?", schreibe stattdessen einen Richter.
 
-## Testen und Nachbefüllen
+## Testen und Rückwirkende Auswertung
 
-Anders als ein Judge kann eine Klassifikator-Auswertung **vor** dem Deployment getestet werden — [testen Sie sie](/de/evaluations/test) anhand echter Sitzungen genauso wie eine Code-Auswertung, und lesen Sie die Scores, bevor etwas live geht.
+Im Gegensatz zu einem Richter **kann** eine Klassifizierer-Auswertung getestet werden, bevor du sie einsetzt — [teste sie](/de/evaluations/test) an echten Sitzungen genauso wie eine Code-Auswertung, und lies die Scores, bevor etwas live geht.
 
-Sie kann auch [nachträglich](/de/evaluations/deploy#score-sessions-you-already-have) auf bereits vorhandene Sitzungen angewendet werden. Da pro Sitzung ein Modellaufruf anfällt, sollten Sie das Zeitfenster gezielt eingrenzen, statt alles erneut zu verarbeiten.
+Sie kann auch [rückwirkend](/de/evaluations/deploy#score-sessions-you-already-have) auf bereits vorhandene Sitzungen angewendet werden. Da dabei ein Modellaufruf pro Sitzung anfällt, solltest du den Zeitraum bewusst eingrenzen, anstatt alles erneut auszuführen.

@@ -1,36 +1,36 @@
 ---
-title: "Đánh giá bằng Classifier"
-description: "Chấm điểm các phiên làm việc so với các câu trả lời mà bạn có thể viết trước — đúng hay sai, hoặc mức độ như thế nào — sử dụng một classifier nhỏ được hiệu chỉnh thay vì một mô hình đa năng."
+title: "Đánh giá phân loại"
+description: "Chấm điểm các phiên làm việc dựa trên các câu trả lời bạn có thể viết trước — cái này đúng hay không, hoặc bao nhiêu phần của cái này — bằng cách sử dụng một bộ phân loại nhỏ được hiệu chuẩn thay vì một mô hình mục đích chung."
 icon: "list-checks"
 ---
 
-Một số câu hỏi cần mô hình để *đọc* cuộc trò chuyện, nhưng không cần để *viết* về nó. "Khách hàng có thể hiện sự khẩn cấp không?" có hai câu trả lời. "Họ bực bội đến mức nào?" có một số câu trả lời, theo thứ tự. Bạn biết mọi câu trả lời trước khi hỏi.
+Một số câu hỏi cần một mô hình để *đọc* cuộc trò chuyện, nhưng không cần để *viết* về nó. "Khách hàng có bày tỏ sự khẩn cấp?" có hai câu trả lời. "Họ bực bội đến mức nào?" có một vài, theo thứ tự. Bạn biết mọi câu trả lời trước khi hỏi.
 
-**Đánh giá bằng classifier** là dành cho những trường hợp đó. Bạn viết câu hỏi và các câu trả lời có thể có, và một mô hình nhỏ được xây dựng cho phân loại sẽ trả về một con số được hiệu chỉnh — không bao giờ là văn bản tự do.
+**Đánh giá phân loại** là cho chính xác những trường hợp đó. Bạn viết câu hỏi và các câu trả lời mà nó có thể đưa ra, và một mô hình nhỏ được xây dựng để phân loại sẽ trả về một số được hiệu chuẩn — không bao giờ là văn bản tự do.
 
 <Note>
-Giống như một thẩm phán, đánh giá bằng classifier tốn một lần gọi mô hình cho mỗi phiên. Không giống như thẩm phán, đó là một mô hình nhỏ, chuyên dụng thay vì mô hình đa năng, vì vậy nó nhanh hơn và rẻ hơn — nhưng nó sẽ không bao giờ giải thích chính nó. Nếu bạn cần lý do, hãy sử dụng [judge](/vi/evaluations/judge).
+Giống như một thẩm phán, đánh giá phân loại tốn một lần gọi mô hình cho mỗi phiên. Không giống như thẩm phán, nó là một mô hình nhỏ, chuyên dụng đơn lẻ thay vì mô hình mục đích chung, do đó nó nhanh hơn và rẻ hơn — nhưng nó sẽ không bao giờ giải thích chính nó. Nếu bạn cần lý do, hãy sử dụng một [thẩm phán](/vi/evaluations/judge).
 </Note>
 
-## Tôi nên chọn cái nào?
+## Tôi muốn cái nào?
 
 | Câu hỏi | Sử dụng |
 | --- | --- |
-| Có bao nhiêu lệnh gọi tool? | code |
+| Có bao nhiêu lệnh gọi công cụ? | code |
 | Phiên có dưới 30 giây không? | code |
-| Khách hàng có thể hiện sự khẩn cấp không? | **classifier** |
-| Đội nào nên xử lý: billing, technical, hay sales? | **classifier** |
+| Khách hàng có bày tỏ sự khẩn cấp? | **classifier** |
+| Đội nào nên xử lý: thanh toán, kỹ thuật hay bán hàng? | **classifier** |
 | Khách hàng bực bội đến mức nào? | **classifier** |
-| Câu trả lời thực sự chính xác không? | **judge** |
-| Nó có tuân theo chính sách escalation của chúng ta không, và tại sao bạn nghĩ vậy? | **judge** |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Nó có tuân theo chính sách leo thang của chúng tôi, và bạn nghĩ sao? | **judge** |
 
-Quy tắc cơ bản: **có thể đếm được → code, các câu trả lời có thể liệt kê → classifier, cần giải thích → judge.**
+Quy tắc ngón tay cái: **đếm được → code, các câu trả lời bạn có thể liệt kê → classifier, cần giải thích → judge.**
 
-Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, cho bạn biết nó chọn cái nào và tại sao, và bạn có thể chuyển đổi.
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý chọn, báo cho bạn biết nó đã chọn cái nào và tại sao, và bạn có thể chuyển đổi.
 
 ## Hai loại câu hỏi
 
-### `noul` — đây có phải là sự thật không?
+### `noul` — cái này có đúng không?
 
 Hai câu trả lời, và bạn mô tả cả hai. Kết quả là xác suất mà mô tả "đúng" phù hợp:
 
@@ -44,11 +44,11 @@ Hai câu trả lời, và bạn mô tả cả hai. Kết quả là xác suất m
 }
 ```
 
-Mô tả cả hai phía. "Không thể hiện khẩn cấp" là một câu trả lời thực sự và nêu ra điều đó làm cho cái khác sắc nét hơn.
+Mô tả cả hai phía. "Không bày tỏ sự khẩn cấp" là một câu trả lời thực sự và nói như vậy làm cho cái khác sắc nét hơn.
 
-### `score` — mức độ bao nhiêu?
+### `score` — bao nhiêu phần của cái này?
 
-Một bảng đánh giá có thứ tự, **tệ nhất trước**. Kết quả là nơi phiên đặt trên nó, được tái định cỡ thành 0–1:
+Một thang đo có thứ tự, **tệ nhất trước tiên**. Kết quả là nơi phiên đó hạ cánh, được tỷ lệ lại thành 0–1:
 
 ```json
 {
@@ -57,32 +57,32 @@ Một bảng đánh giá có thứ tự, **tệ nhất trước**. Kết quả l
 }
 ```
 
-**Một bảng đánh giá có ba đến năm cấp độ, và chúng phải tất cả khác nhau.** Cả hai giới hạn được đo lường, không phải theo phong cách:
+**Một thang đo có từ ba đến năm mức, và chúng phải tất cả khác nhau.** Cả hai giới hạn được đo lường, không phải phong cách:
 
-- **Hai cấp độ** sẽ sụp đổ thành những gì `noul` đã làm tốt hơn, và **nhiều hơn năm** khiến mô hình đưa ra những lựa chọn thay thế hướng tới giữa thay vì cam kết. Câu hỏi tương tự trên cùng một phiên được chấm điểm 0.00 với hai cấp độ, 0.01 với ba, và 0.55 với mười.
-- **Các cấp độ lặp lại** chia câu trả lời một cách tùy ý giữa chúng. Một phiên rõ ràng là tức giận được chấm điểm 1.00 so với `["Calm", "Frustrated", "Very angry"]` và 0.66 so với `["Angry", "Angry", "Angry"]` — một con số được hình thành tốt không có ý nghĩa.
+- **Hai mức** sụp đổ thành những gì `noul` đã làm tốt hơn, và **hơn năm** làm cho mô hình chênh vênh về phía giữa thay vì cam kết. Cùng một câu hỏi trên cùng một phiên được chấm 0,00 với hai mức, 0,01 với ba, và 0,55 với mười.
+- **Các mức lặp lại** chia câu trả lời tùy tiện giữa chúng. Một phiên mà không rõ ràng là tức giận được chấm 1,00 so với `["Calm", "Frustrated", "Very angry"]` và 0,66 so với `["Angry", "Angry", "Angry"]` — một số được hình thành tốt có nghĩa là không có gì.
 
-Các danh mục không có thứ tự — "billing, technical, hay sales" — không phải là một bảng đánh giá. Hỏi chúng như một `noul` cho mỗi danh mục, hoặc sử dụng một judge.
+Các danh mục không có thứ tự — "thanh toán, kỹ thuật, hoặc bán hàng" — không phải là một thang đo. Hỏi chúng dưới dạng `noul` cho mỗi danh mục, hoặc sử dụng một thẩm phán.
 
 ## Đọc kết quả
 
-Một classifier tạo ra một **score** từ 0 đến 1, giống hệt như một judge, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Hai sự khác biệt đáng để biết:
+Một bộ phân loại tạo ra một **score** từ 0 đến 1, chính xác giống như một thẩm phán, do đó nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Hai sự khác biệt đáng để biết:
 
-- **Không có lý do.** Trường này rỗng, cố ý. Mô hình này không giải thích chính nó, và phát minh một lý do sẽ là bịa đặt hơn là một tính năng.
-- **Sự không chắc chắn được gắn nhãn.** Một câu hỏi `score` báo cáo sự tự tin của riêng nó, và một kết quả mà mô hình không chắc chắn được gắn thẻ `low_confidence` — vì vậy "cái nào trong số này một người nên xem xét" là một bộ lọc hơn là một phỏng đoán. Một câu hỏi `noul` không báo cáo sự tự tin, vì vậy nó không bao giờ được gắn thẻ.
+- **Không có lý do.** Trường này trống, cố ý. Mô hình này không giải thích chính nó, và phát minh một giải thích sẽ là một sự bịa đặt chứ không phải một tính năng.
+- **Sự không chắc chắn được gắn nhãn.** Một câu hỏi `score` báo cáo độ tin cậy của riêng nó, và một kết quả mà mô hình không chắc chắn được gắn thẻ `low_confidence` — vì vậy "những cái nào trong số này một người phải xem" là một bộ lọc chứ không phải một đoán. Một câu hỏi `noul` không báo cáo độ tin cậy, do đó nó không bao giờ được gắn thẻ.
 
-Các phiên rất dài được đọc trong các đoạn và kết hợp lại. Khi một phiên quá dài để đọc hết, kết quả cho biết có bao nhiêu lượt bị bỏ qua — bạn sẽ không bao giờ nhìn thấy một phán quyết được đưa ra trên một phần của phiên được trình bày như được đưa ra trên tất cả nó.
+Các phiên rất dài được đọc trong các đoạn trích và kết hợp. Khi một phiên quá dài để đọc đầy đủ, kết quả cho biết bao nhiêu lượt bị bỏ qua — bạn sẽ không bao giờ thấy một phán quyết được đưa ra trên một phần của phiên được trình bày như một phán quyết trên tất cả nó.
 
 ## Giới hạn
 
-- **Ba đến năm cấp độ bảng đánh giá, tất cả riêng biệt.** Xem ở trên; cả hai giới hạn được thực thi tại thời điểm tác giả.
-- **Một câu hỏi cho mỗi đánh giá.** Hỏi hai điều và bạn nhận được hai đánh giá, đó cũng là những gì bạn muốn trên một biểu đồ.
-- **Chỉnh sửa câu hỏi xuất bản một phiên bản mới.** Điểm số cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng hơn là trộn lẫn thành một dòng xu hướng.
-- **Một classifier luôn tạo ra một score**, không bao giờ là một chỉ số hay một khẳng định.
-- **Không có lý do**, như ở trên. Nếu một con số sẽ khiến ai đó hỏi "tại sao?", hãy viết một judge thay thế.
+- **Ba đến năm mức thang đo, tất cả khác biệt.** Xem trên; cả hai giới hạn được thực thi tại thời điểm tác giả.
+- **Một câu hỏi cho mỗi đánh giá.** Hỏi hai điều và bạn nhận được hai đánh giá, điều này cũng là những gì bạn muốn trên một biểu đồ.
+- **Chỉnh sửa câu hỏi công bố một phiên bản mới.** Điểm cũ và mới không so sánh được, do đó chúng được giữ riêng biệt chứ không phải được trộn lẫn thành một đường xu hướng.
+- **Một bộ phân loại luôn tạo ra một điểm**, không bao giờ một chỉ số hoặc một khẳng định.
+- **Không có lý do**, như trên. Nếu một số sẽ làm cho ai đó hỏi "tại sao?", hãy viết một thẩm phán thay thế.
 
-## Kiểm tra và backfill
+## Kiểm tra và điền lại
 
-Không giống như một judge, một đánh giá bằng classifier **có thể** được kiểm tra trước khi bạn triển khai nó — [kiểm tra nó](/vi/evaluations/test) so với các phiên thực tế cùng cách bạn sẽ kiểm tra một đánh giá code, và đọc các điểm số trước khi bất cứ điều gì xuất hiện trực tiếp.
+Không giống như một thẩm phán, đánh giá phân loại **có thể** được kiểm tra trước khi bạn triển khai nó — [kiểm tra nó](/vi/evaluations/test) so với các phiên thực tế theo cách bạn sẽ kiểm tra một đánh giá code, và đọc các điểm trước khi bất cứ điều gì được triển khai trực tiếp.
 
-Nó cũng có thể được [backfilled](/vi/evaluations/deploy#score-sessions-you-already-have) trên các phiên bạn đã có. Nó tốn một lần gọi mô hình cho mỗi phiên, vì vậy hãy xác định phạm vi cửa sổ một cách cố ý hơn là phát lại mọi thứ.
+Nó cũng có thể được [điền lại](/vi/evaluations/deploy#score-sessions-you-already-have) trên các phiên bạn đã có. Nó tốn một lần gọi mô hình cho mỗi phiên, vì vậy hãy xác định phạm vi cửa sổ một cách cố ý chứ không phải phát lại mọi thứ.

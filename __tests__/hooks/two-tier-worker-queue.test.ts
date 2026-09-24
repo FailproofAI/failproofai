@@ -114,6 +114,10 @@ describe("two-tier in the warm worker: the Jev wait does not hold the queue", ()
     projectDir = mkdtempSync(join(tmpdir(), "fpai-two-tier-queue-"));
     homeDir = mkdtempSync(join(tmpdir(), "fpai-two-tier-queue-home-"));
     process.env.FAILPROOFAI_HOME = homeDir;
+    // The opt-in file, as a throwaway stand-in: the handler stats this path
+    // before it loads the config module (`readJevConfig`), so it must exist for
+    // the mocked `loadJevConfig` to be reached. Its contents are never read.
+    writeFileSync(join(homeDir, "jev.json"), "{}");
     mkdirSync(join(projectDir, ".failproofai"), { recursive: true });
     writeFileSync(join(projectDir, ".failproofai", "policies-config.json"), JSON.stringify({ enabledPolicies: ["block-sudo"] }));
     socketPath = join(tmpdir(), `fpai-two-tier-queue-${process.pid}-${Date.now()}.sock`);

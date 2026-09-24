@@ -114,6 +114,10 @@ describe("turning Jev off on a daemon-configured machine", () => {
     mkdirSync(join(root, "fphome"), { recursive: true });
     process.env.HOME = join(root, "home");
     process.env.FAILPROOFAI_HOME = join(root, "fphome");
+    // The opt-in file, as a throwaway stand-in: the handler stats this path
+    // before it loads the config module (`readJevConfig`), so it must exist for
+    // the mocked `loadJevConfig` to be reached. Its contents are never read.
+    writeFileSync(join(root, "fphome", "jev.json"), "{}");
     delete process.env.FAILPROOFAI_EVALUATOR;
     writeFileSync(join(projectDir, ".failproofai", "policies-config.json"), JSON.stringify({ enabledPolicies: ["block-sudo"] }));
     socketPath = join(tmpdir(), `fpai-two-tier-optout-${process.pid}-${Date.now()}.sock`);

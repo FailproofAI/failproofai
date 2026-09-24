@@ -107,6 +107,10 @@ beforeEach(() => {
     join(home, ".failproofai", "policies-config.json"),
     JSON.stringify({ enabledPolicies: ["block-read-outside-cwd", "block-sudo"] }),
   );
+  // The opt-in file, as a throwaway stand-in: the handler stats this path
+  // before it loads the config module (`readJevConfig`), so it must exist for
+  // the mocked `loadJevConfig` to be reached. Its contents are never read.
+  writeFileSync(join(home, ".failproofai", "jev.json"), "{}");
   store._resetForTest(join(root, "activity"));
   jevConfig = CFG;
   jevCalls.length = 0;

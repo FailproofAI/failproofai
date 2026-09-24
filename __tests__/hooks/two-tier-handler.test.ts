@@ -17,8 +17,9 @@
  * - the builtin AUTHORITY table (T2) — simulated by re-registering the
  *   user-approved (D1) reviewable builtins with their `reviewedBy` meta.
  *
- * Every throwaway directory (HOME, FAILPROOFAI_HOME, packs) is per-test; no
- * real `jev.json` is ever read or written.
+ * Every throwaway directory (HOME, FAILPROOFAI_HOME, packs) is per-test; the
+ * only `jev.json` is an empty stand-in inside one of them (the handler stats
+ * the path before it loads anything), and no real one is ever read or written.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -234,6 +235,13 @@ beforeEach(() => {
   delete process.env.FAILPROOFAI_EVALUATOR;
   delete process.env.CLAUDE_PROJECT_DIR;
   writeFileSync(join(home, ".failproofai", "policies-config.json"), JSON.stringify({ enabledPolicies: ENABLED }));
+  // A throwaway stand-in for the one file that opts a machine in. The handler
+  // stats this path before it loads the config module at all (`readJevConfig`),
+  // so it has to exist for the mocked `loadJevConfig` below to be reached —
+  // and a machine where that function answers with a config while no file
+  // exists is not a machine that can be. Its CONTENTS are never read: the mock
+  // is what says whether Jev is on, and for which config.
+  writeFileSync(join(home, ".failproofai", "jev.json"), "{}");
   store._resetForTest(join(root, "activity"));
 
   jevConfig = null;

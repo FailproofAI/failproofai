@@ -24,6 +24,7 @@ import {
   OPENCLAW_EVENT_MAP,
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
+import { existsSync } from "node:fs";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import { normalizeCliPayload } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
@@ -53,6 +54,7 @@ import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from 
 import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
+import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
 
 /**
@@ -259,9 +261,20 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
  * every configured-but-broken Jev path: warn-level lines reach the hook's
  * stderr, which is the deny text itself on some CLIs (Factory's exit 2).
  * `failproofai jev status` is where a broken config is made visible.
+ *
+ * The file is checked for BEFORE the import, and that order is the point. With
+ * no `jev.json` the answer is null however the module would have read it — so
+ * the stat decides it, and a machine that never configured Jev never evaluates
+ * a line of the semantic modules to be told what their absence already says.
+ * The same stat-rather-than-load trade `warnAuthority` makes, for the same
+ * reason. It short-circuits nothing but a null `loadJevConfig` would have
+ * returned itself: that function reads this path, and an absent file, an
+ * unreadable directory above it and a path that is not a file are all null
+ * there too.
  */
 async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
   try {
+    if (!existsSync(jevConfigFile())) return null;
     const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
     const config = loadJevConfig();
     return config ? { config, defaultMode: DEFAULT_JEV_MODE } : null;

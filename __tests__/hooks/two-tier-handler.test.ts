@@ -23,7 +23,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IntegrationType } from "../../src/hooks/types";
@@ -311,6 +311,83 @@ describe("opt-in", () => {
     const strip = (o: typeof legacy) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
     expect(strip(legacy)).toEqual(strip(unconfigured));
     expect(jevKeysOf(legacy.row)).toEqual([]);
+  });
+
+  describe("mode off", () => {
+    const outside = () => readFile(join(home, "other", "notes.txt"));
+    const deletion = () => bash("find . -name '*.sqlite' -delete");
+    const strip = (o: Awaited<ReturnType<typeof outside>>) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
+    const stripRow = (row: Record<string, unknown>) => {
+      const { timestamp: _t, durationMs: _d, ...rest } = row;
+      return rest;
+    };
+    // Were Jev asked, both would come out differently: it clears the
+    // outside-the-project read (reviewable) and denies the deletion itself.
+    const WOULD_CHANGE_BOTH = answers({ "read-outside-workspace": 0.01, "destructive-deletion": 0.97 });
+
+    it("reaching the handler, it is stopped by the handler's OWN off-check: byte-identical to unconfigured", async () => {
+      respond = WOULD_CHANGE_BOTH;
+      const plainRead = await outside();
+      store._resetForTest(join(root, "activity-plain-delete"));
+      const plainDelete = await deletion();
+
+      // The real loader never returns an off config — it reports `off` and
+      // returns null — so a loader that DOES hand one over leaves the handler's
+      // own check as the only thing between this config and Jev. Without it,
+      // `off` would fall to the default mode, which is enforce.
+      jevConfig = { ...CFG, mode: "off" };
+      vi.mocked(loadJevConfig).mockClear();
+      store._resetForTest(join(root, "activity-off-read"));
+      const offRead = await outside();
+      store._resetForTest(join(root, "activity-off-delete"));
+      const offDelete = await deletion();
+
+      expect(loadJevConfig).toHaveBeenCalled();
+      expect(startJevReview).not.toHaveBeenCalled();
+      expect(transportForConfig).not.toHaveBeenCalled();
+      expect(jevCalls).toHaveLength(0);
+      expect(plainRead.outcome.evaluation?.decision).toBe("deny");
+      expect(plainDelete.outcome.evaluation?.decision).toBe("allow");
+      for (const [off, plain] of [
+        [offRead, plainRead],
+        [offDelete, plainDelete],
+      ] as const) {
+        expect(off.outcome.stdout).toBe(plain.outcome.stdout);
+        expect(off.outcome.stderr).toBe(plain.outcome.stderr);
+        expect(off.outcome.exitCode).toBe(plain.outcome.exitCode);
+        expect(strip(off)).toEqual(strip(plain));
+        expect(stripRow(off.row)).toEqual(stripRow(plain.row));
+        expect(jevKeysOf(off.row)).toEqual([]);
+      }
+    });
+
+    it("on disk, through the REAL loader: status off, and byte-identical to unconfigured", async () => {
+      respond = WOULD_CHANGE_BOTH;
+      const plain = await outside();
+
+      const actual = await vi.importActual<typeof import("../../src/hooks/semantic/jev-config")>("../../src/hooks/semantic/jev-config");
+      const fpHome = join(home, ".failproofai");
+      chmodSync(fpHome, 0o700);
+      writeFileSync(join(fpHome, "jev.json"), JSON.stringify({ ...CFG, mode: "off" }), { mode: 0o600 });
+      chmodSync(join(fpHome, "jev.json"), 0o600);
+      // Off because the file says so — not refused, not absent.
+      expect(actual.inspectJevConfig().status).toBe("off");
+
+      vi.mocked(loadJevConfig).mockImplementation(actual.loadJevConfig);
+      try {
+        store._resetForTest(join(root, "activity-real-off"));
+        const off = await outside();
+        expect(loadJevConfig).toHaveBeenCalled();
+        expect(startJevReview).not.toHaveBeenCalled();
+        expect(jevCalls).toHaveLength(0);
+        expect(off.outcome.stdout).toBe(plain.outcome.stdout);
+        expect(strip(off)).toEqual(strip(plain));
+        expect(stripRow(off.row)).toEqual(stripRow(plain.row));
+        expect(jevKeysOf(off.row)).toEqual([]);
+      } finally {
+        vi.mocked(loadJevConfig).mockImplementation(() => jevConfig);
+      }
+    });
   });
 
   it("only gate events are reviewed: PostToolUse, UserPromptSubmit and SessionStart never reach Jev", async () => {

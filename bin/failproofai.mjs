@@ -920,13 +920,14 @@ async function runCli() {
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
         command: "jev",
-        tagline: "judge tool calls with your own Jev endpoint, above a hard regex floor",
+        tagline: "judge tool calls with Jev — FailproofAI Cloud or your own endpoint — above a hard regex floor",
         sections: [
           {
             label: "usage",
             entries: [
               ["failproofai jev --url <url> --key-stdin [options]"],
               ["failproofai jev setup --provider <kind> --key-stdin [options]"],
+              ["failproofai jev setup --provider failproofai [--mode <m>]"],
               ["failproofai jev status [--json]"],
               ["failproofai jev test [--json]"],
               ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
@@ -952,6 +953,7 @@ async function runCli() {
               ["vercel", "Vercel AI Gateway, model typesafe-ai/jev"],
               ["cloudflare", "Workers AI, model typesafe/jev; needs --account-id"],
               ["custom", "any TypeSafe-compatible endpoint; needs --base-url"],
+              ["failproofai", "FailproofAI Cloud, on your org's plan; no key or URL of your own"],
             ],
             after: [
               "--url reads the provider off the host, so it needs no --provider;",
@@ -960,6 +962,11 @@ async function runCli() {
               "endpoint (/models, /chat/completions, /systemone, …) is refused",
               "with the base it implies. `failproofai jev models` says which",
               "model ids a base serves, and setup refuses one it does not.",
+              "",
+              "FailproofAI Cloud needs no setup here: `failproofai config --token",
+              "<key>` with a key that carries jev:evaluate (the \"machine\" preset)",
+              "turns it on in shadow mode when there is no jev.json yet. Its key",
+              "stays in credentials.json; no --url ever selects it.",
             ],
           },
           {
@@ -973,7 +980,7 @@ async function runCli() {
               ["--account-id <id>", "Cloudflare account id (32 hex characters)."],
               ["--base-url <url>", "Override the API base; `default` clears it."],
               ["--model <id>", "Override the model id; `default` clears it."],
-              ["--mode <m>", "enforce (default) or shadow: log Jev, enforce regex."],
+              ["--mode <m>", "enforce (default), shadow (log Jev, enforce regex), or off."],
               ["--timeout-ms <n>", "Per-call budget before falling back. Default 3000."],
             ],
           },
@@ -998,6 +1005,9 @@ async function runCli() {
               "failproofai jev --url https://openrouter.ai/api/v1 --token <token>",
               "failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key",
               "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
+              "failproofai config --token <key>          (FailproofAI Cloud, shadow mode)",
+              "failproofai jev setup --mode enforce      (switch the configured route's mode)",
+              "failproofai jev setup --mode off          (keep the config, stop asking Jev)",
               "failproofai jev test",
               "failproofai jev status",
               "failproofai jev models",

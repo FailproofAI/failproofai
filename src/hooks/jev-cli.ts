@@ -105,6 +105,7 @@ import {
   JEV_PROVIDER_KINDS,
   endpointGivenAsBase,
   inspectJevConfig,
+  jevCloudBaseUrl,
   jevConfigPath,
   readJevConfigFileForUpdate,
   validateApiKey,
@@ -138,7 +139,7 @@ import {
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
-import { readJevCloudCredential } from "./fp-config";
+import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
 
@@ -180,6 +181,7 @@ export const JEV_USAGE = [
   "Usage:",
   "  failproofai jev --url <url> [--key-stdin | --token <token>] [options]",
   "  failproofai jev setup --provider <kind> [--key-stdin | --key-from-env] [options]",
+  "  failproofai jev setup --provider failproofai [--mode off|shadow|enforce]   (FailproofAI Cloud: no key, no URL)",
   "  failproofai jev status [--json]",
   "  failproofai jev test [--json]",
   "  failproofai jev models [--provider <kind>] [--url <base>] [--json]",
@@ -321,8 +323,32 @@ function scrubbed(e: { code: string; message: string }, key: string): { code: st
   return { code: e.code, message: scrubSecret(e.message, key) };
 }
 
+/**
+ * What the person should do about a failed FailproofAI Cloud request, by cause,
+ * or null where the generic advice already fits. The remedies differ from a
+ * BYOK provider's because the key and the budget are the Cloud connection's and
+ * the org's, not anything `jev setup` holds.
+ */
+function cloudRemedy(code: string): string | null {
+  if (code === "http-401" || code === "http-403") {
+    return "FailproofAI Cloud refused this machine's key: it was revoked, or it does not carry jev:evaluate. Reconnect with a key that does (the \"machine\" preset on the Keys page): failproofai config --token <key>";
+  }
+  if (code === "out-of-credits") {
+    return "Your FailproofAI Cloud org has used its plan allowance (HTTP 402). Until it resets or the plan changes, hooks fall back to regex.";
+  }
+  if (code === "http-429") return "FailproofAI Cloud is rate-limiting Jev for this org right now. Hooks fall back to regex whenever that happens.";
+  if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
+  if (code === "http-503") return "Jev is unavailable on FailproofAI Cloud right now. Hooks fall back to regex whenever that happens; try again shortly.";
+  if (code === "model-mismatch") return "FailproofAI Cloud answered with a model outside the Jev 1.13 family, so hooks would fall back to regex. This is the server's to fix.";
+  return null;
+}
+
 /** What the person should do about a failed request, by cause. */
-function remedy(code: string): string {
+function remedy(code: string, provider?: JevProviderKind): string {
+  if (provider === JEV_CLOUD_PROVIDER) {
+    const cloud = cloudRemedy(code);
+    if (cloud) return cloud;
+  }
   if (code === "http-401" || code === "http-403") return "The provider refused the key. Re-run `failproofai jev setup` with the right one.";
   if (code === "out-of-credits") return "The account is out of credits (HTTP 402). Top it up with the provider; until then hooks fall back to regex.";
   // The message from `httpFailureMessage` has already said what a 404 there
@@ -600,6 +626,22 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
       "",
       "Nothing was written.",
     ]);
+  }
+
+  // FailproofAI Cloud has a setup of its own: its endpoint and key come from the
+  // machine's connection, so none of the flags below that choose them apply.
+  // Reached by naming it, or by re-running setup (a mode switch, say) over a
+  // Cloud file without naming another provider or a URL — never by a URL: a
+  // `--url` is a BYOK endpoint whatever host it names (`PROVIDER_BY_HOST`
+  // deliberately has no Cloud entry).
+  if (
+    namedProvider === JEV_CLOUD_PROVIDER ||
+    (namedProvider === undefined &&
+      !values.has("--url") &&
+      !values.has("--base-url") &&
+      readJevConfigFileForUpdate()?.raw.provider === JEV_CLOUD_PROVIDER)
+  ) {
+    return cloudSetup(values, bools, opts);
   }
 
   // `--url` is `--base-url` that also picks the provider. It is validated here,
@@ -1011,6 +1053,151 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   );
 }
 
+// ── setup: FailproofAI Cloud ─────────────────────────────────────────────────
+
+/** How `inspectJevConfig` opens a refusal that is about credentials.json. */
+const CLOUD_CREDENTIAL_REFUSED = "the FailproofAI Cloud credential was refused";
+
+/**
+ * `jev setup --provider failproofai`, and any setup run over a Cloud file.
+ *
+ * The Cloud route has nothing to choose but its mode and timeout: the endpoint
+ * is `<Cloud base>/enforcement/v1/jev` on the origin the machine connected to,
+ * the key is the connection's own (`credentials.json`, never this file) and the
+ * model is pinned by the server. So every flag that would choose one of those is
+ * refused — naming it would be asking for something this route cannot honour —
+ * and the file is rebuilt from the connection. An `apiKey` a hand-edited file
+ * carries is dropped, which is also what makes such a file valid again.
+ *
+ * A mode or timeout change on an existing Cloud file does not need the machine
+ * to be connected: it changes nothing about where a key goes. Creating one,
+ * or rebuilding its endpoint, does.
+ */
+async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts: RenderOpts): Promise<JevCliResult> {
+  const refusedFlag = (["--token", "--url", "--base-url", "--account-id", "--model"] as const).find((f) => values.has(f)) ??
+    (["--key-stdin", "--key-from-env"] as const).find((f) => bools.has(f));
+  if (refusedFlag !== undefined) {
+    const why =
+      refusedFlag === "--model"
+        ? `FailproofAI Cloud runs ${JEV_PROVIDER_DEFAULTS.failproofai.model}, pinned on the server; there is no model to choose.`
+        : refusedFlag === "--account-id"
+          ? "--account-id is Cloudflare's; FailproofAI Cloud has no use for one."
+          : refusedFlag === "--url" || refusedFlag === "--base-url"
+            ? "FailproofAI Cloud's endpoint is the one this machine connected to; to change it, reconnect: failproofai config --token <key> --url <url>"
+            : "FailproofAI Cloud's key is this machine's connection key, kept in credentials.json and never in jev.json; to change it, reconnect: failproofai config --token <key>";
+    return fail([`Not saved: ${refusedFlag} does not apply to provider failproofai. ${why}`, "", "Nothing was written."]);
+  }
+
+  const existing = readJevConfigFileForUpdate();
+  const sameProvider = existing?.raw.provider === JEV_CLOUD_PROVIDER;
+  const credential = readJevCloudCredential();
+  if (credential.status === "refused") {
+    return fail([`Not saved: ${credential.problem}.`, "", "Nothing was written."]);
+  }
+
+  const next: Record<string, unknown> = sameProvider ? { ...existing!.raw } : { provider: JEV_CLOUD_PROVIDER };
+  // Never a key in a Cloud file, and nothing only another provider reads.
+  delete next.apiKey;
+  delete next.accountId;
+  if (!sameProvider && existing?.raw.timeoutMs !== undefined) next.timeoutMs = existing.raw.timeoutMs;
+  // Shadow unless told otherwise, as `config --token` starts it: Jev on a new
+  // route is logged before it is allowed to clear anything. A mode already in a
+  // Cloud file is kept.
+  const mode = values.get("--mode") ?? (sameProvider && typeof next.mode === "string" ? next.mode : "shadow");
+  next.mode = mode;
+  if (values.has("--timeout-ms")) {
+    const rawTimeout = values.get("--timeout-ms") as string;
+    const n = Number(rawTimeout);
+    if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(n)) return fail(["Could not read --timeout-ms. Give a whole number of milliseconds."]);
+    next.timeoutMs = n;
+  }
+
+  let keySource: JevCloudCredential | null = null;
+  if (credential.status === "ok") {
+    keySource = credential.credential;
+    // The endpoint, from the connection: kept when it is already on the
+    // credential's origin, else rebuilt — under the policy connection's base
+    // when that is on the same origin, so a path prefix survives.
+    const onOrigin = (u: unknown) => {
+      try {
+        return typeof u === "string" && new URL(u).origin === new URL(credential.credential.url).origin;
+      } catch {
+        return false;
+      }
+    };
+    if (!onOrigin(next.baseUrl)) {
+      const policyBase = readCredentials().cloud?.url;
+      next.baseUrl = jevCloudBaseUrl(onOrigin(policyBase) ? (policyBase as string) : credential.credential.url);
+    }
+  } else if (!sameProvider || typeof next.baseUrl !== "string") {
+    return fail([
+      "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
+      "Connect it first — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
+      "  failproofai config --token <key>",
+      "",
+      "Nothing was written.",
+    ]);
+  }
+
+  // The loader's own rules, with the connection's key or — for a mode switch
+  // on a machine that is not connected right now — a stand-in on the file's own
+  // origin, which is never written or sent.
+  let standInOrigin = "";
+  try {
+    standInOrigin = new URL(String(next.baseUrl)).origin;
+  } catch {
+    standInOrigin = "";
+  }
+  const checked = validateJevConfig(next, null, keySource ?? { url: standInOrigin, key: ENV_KEY_STAND_IN });
+  if (!checked.ok) return fail([`Not saved: ${checked.problem}.`, "", "Nothing was written."]);
+
+  const path = jevConfigPath();
+  try {
+    writeJsonAtomically(path, next, { mode: 0o600, dirMode: 0o700 });
+  } catch (err) {
+    return fail([`Could not write ${path}: ${(err as NodeJS.ErrnoException).code ?? "error"}.`]);
+  }
+  if (process.platform !== "win32") {
+    try {
+      const dir = dirname(path);
+      const before = statSync(dir).mode & 0o777;
+      if ((before & 0o022) !== 0) chmodSync(dir, before & ~0o022);
+    } catch {
+      // Not fatal: the loader reports a directory it will not read from.
+    }
+  }
+  let fileMode: number | null = null;
+  try {
+    fileMode = statSync(path).mode & 0o777;
+  } catch {
+    // Reported as unknown below.
+  }
+
+  const cfg = checked.value;
+  const route = jevRoute(cfg);
+  const shownMode = cfg.mode ?? DEFAULT_JEV_MODE;
+  return ok(
+    stack(
+      title("failproofai jev setup", `saved · FailproofAI Cloud · ${shownMode}`, opts),
+      rows(
+        [
+          ["provider", providerLabel(JEV_CLOUD_PROVIDER)],
+          ["endpoint", shownEndpoint(JEV_CLOUD_PROVIDER, route.endpoint)],
+          ["model", `${route.model} (pinned by FailproofAI Cloud)`],
+          ["mode", modeLine(shownMode)],
+          ["timeout", `${cfg.timeoutMs} ms`],
+          ["key", keySource ? CLOUD_KEY_SOURCE : `${CLOUD_KEY_SOURCE} — not connected right now, so Jev stays off until it is`],
+          ["config", path],
+          ["permissions", permissions(fileMode)],
+        ],
+        opts,
+      ),
+      note("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
+      shownMode === "off" ? null : nextStep("failproofai jev test", "Check it with one live request:", opts),
+    ),
+  );
+}
+
 // ── status ───────────────────────────────────────────────────────────────────
 
 /**
@@ -1184,6 +1371,12 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
           },
           opts,
         ),
+        note(
+          cloudCredentialPresent()
+            ? "Or through FailproofAI Cloud, on your org's plan — this machine's key already carries jev:evaluate: failproofai jev setup --provider failproofai"
+            : "Or through FailproofAI Cloud, on your org's plan, with no key of your own: connect with a key that carries jev:evaluate (the \"machine\" preset) — failproofai config --token <key>",
+          opts,
+        ),
         jevStatsLines(stats, opts),
       ),
     );
@@ -1293,20 +1486,34 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     // A file other users could change may name an endpoint its owner never
     // chose, and `chmod 600` would start trusting it with the key — so say
     // where it points before suggesting that.
-    const named = inspection.reason === "too-open" ? namedEndpoint(readJevConfigFileForUpdate()?.raw ?? null) : null;
+    const raw = readJevConfigFileForUpdate()?.raw ?? null;
+    const named = inspection.reason === "too-open" ? namedEndpoint(raw) : null;
+    const cloudFile = raw?.provider === JEV_CLOUD_PROVIDER;
+    // The Cloud route's key file is credentials.json, and a refusal can be
+    // about THAT file: its fix is a chmod on it, and the key it holds was put
+    // there by `config --token`, not by anything `jev setup` could re-ask for.
+    const credentialRefused = cloudFile && inspection.problem.startsWith(CLOUD_CREDENTIAL_REFUSED);
     return fail(
       stack(
         title("failproofai jev status", "off (config refused)", opts),
         warning([`Jev is off: ${inspection.path} was refused — ${inspection.problem}.`, "Hooks run the regex policies exactly as before."], opts),
         named ? rows([["endpoint it names", named]], opts) : null,
-        inspection.reason === "too-open"
+        credentialRefused
           ? nextStep(
-              // Either the file or the directory it sits in; `fix` says which.
-              inspection.fix ?? `chmod 600 ${inspection.path}`,
-              "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+              inspection.fix ?? "failproofai config --token <key>",
+              "credentials.json holds the key Jev sends to FailproofAI Cloud, and other users could change it. Make it owner-only (or reconnect, which rewrites it at 0600):",
               opts,
             )
-          : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
+          : inspection.reason === "too-open"
+            ? nextStep(
+                // Either the file or the directory it sits in; `fix` says which.
+                inspection.fix ?? `chmod 600 ${inspection.path}`,
+                "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+                opts,
+              )
+            : cloudFile
+              ? nextStep("failproofai jev setup --provider failproofai", "Rewrite it from this machine's FailproofAI Cloud connection:", opts)
+              : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
         legacyNote,
         jevStatsLines(stats, opts),
       ),
@@ -1501,7 +1708,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ],
           opts,
         ),
-        note(remedy(e.code), opts),
+        note(remedy(e.code, cfg.provider), opts),
       ),
     );
   }

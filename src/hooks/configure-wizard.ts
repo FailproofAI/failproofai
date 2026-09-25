@@ -1518,9 +1518,13 @@ export async function runConfigureWizard(
         token: connect.token,
         machineId: connect.machineId,
         machineLabel: connect.machineLabel,
-        // Both streams, as disclosed at the connect question. This is the one
-        // place that decision becomes a written setting.
-        sessions: true,
+        // Both streams, as disclosed at the connect question, unless the run
+        // said `--no-transcripts`. This is the one place that decision becomes
+        // a written setting — and it used to be a literal `true`, so the flag
+        // was parsed, carried here in `answers`, and silently ignored: a fleet
+        // that asked for decisions only shipped every prompt, file and command
+        // output. The separate `--connect` path always honoured it.
+        sessions: answers.noTranscripts !== true,
       });
       connected = outcome.anyConfigured;
       // Show the human label with the id in parentheses when they differ.
@@ -1530,6 +1534,11 @@ export async function runConfigureWizard(
           : `${connect.machineLabel} (${connect.machineId})`;
       for (const line of describeOutcome(outcome, shownAs, connect.url)) {
         stdout.write(`${line}\n`);
+      }
+      // Said when it took effect, as `--connect` says it: the default carries
+      // prompts and file contents, so the opt-out is worth confirming.
+      if (outcome.ingest.ok && answers.noTranscripts === true) {
+        stdout.write("  Session transcripts are NOT being sent (--no-transcripts). Decisions only.\n");
       }
       // Never the key, the URL, or the count — only that it happened and which
       // capabilities the server actually granted.

@@ -1588,3 +1588,34 @@ describe("config --token with --url", () => {
     expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "https://app.befailproof.ai" });
   });
 });
+
+describe("config --token with --no-transcripts", () => {
+  // The flag was parsed into `answers.noTranscripts` and never read: the apply
+  // step passed a literal `sessions: true`, so a run that asked for decisions
+  // only shipped every prompt, file and command output.
+  beforeEach(() => {
+    vi.mocked(connectToCloud)
+      .mockReset()
+      .mockResolvedValue({ policy: { ok: true, policyCount: 2, deployment: 7 }, ingest: { ok: true }, anyConfigured: true });
+    vi.mocked(validateIngestKey).mockClear().mockResolvedValue({ ok: true });
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    delete process.env.FAILPROOFAI_CLOUD_URL;
+  });
+
+  it("connects with transcripts OFF, and says so", async () => {
+    const io = headlessIO();
+    const result = await runConfigureWizard(io, { token: "k".repeat(20), noTranscripts: true });
+    expect(result.connected).toBe(true);
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ sessions: false });
+    const written = vi.mocked(io.stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("Session transcripts are NOT being sent (--no-transcripts)");
+  });
+
+  it("still defaults to transcripts ON without the flag", async () => {
+    const io = headlessIO();
+    await runConfigureWizard(io, { token: "k".repeat(20) });
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ sessions: true });
+    const written = vi.mocked(io.stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).not.toContain("--no-transcripts");
+  });
+});

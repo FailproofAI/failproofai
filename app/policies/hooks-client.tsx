@@ -492,9 +492,9 @@ function ActivityTab({
     const v = url.get("cli");
     return isKnownCli(v) ? v : "";
   });
-  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack">(() => {
+  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack" | "jev">(() => {
     const v = url.get("source");
-    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "";
+    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" || v === "jev" ? v : "";
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterTelemetryFirstRunRef = useRef(true);
@@ -665,7 +665,7 @@ function ActivityTab({
               onChange={(e) => {
                 const v = e.target.value;
                 setFilterSource(
-                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "",
+                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" || v === "jev" ? v : "",
                 );
               }}
               className="filter-input"
@@ -676,6 +676,8 @@ function ActivityTab({
               <option value="convention">convention</option>
               <option value="cloud">cloud</option>
               <option value="pack">pack</option>
+              {/* Jev's own verdict, in enforce mode: no registered policy decided. */}
+              <option value="jev">jev</option>
             </select>
           </div>
           <div className="filter-group">

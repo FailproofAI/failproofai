@@ -245,13 +245,14 @@
  * and then there is nothing to clear anyway.
  */
 import type { PolicyAuthority } from "../policy-types";
-// The one value import, and deliberately from the activity vocabulary rather
-// than a local literal: the fallback reason this module writes itself has to
+// The only value imports, and deliberately from the activity vocabulary rather
+// than local literals: the fallback reason this module writes itself has to
 // be a code the activity store's closed list names, or it is stored and
-// shipped as `other`. Importing the constant makes a rename a compile error
-// here. `jev-activity.ts` is pure (no node imports, no semantic modules), so
-// this costs the hook path nothing.
-import { JEV_REASON_REQUEST_CUT } from "../jev-activity";
+// shipped as `other`, and a shadow verdict's model id has to pass the same
+// shape check the row's own `jevModel` does. Importing them makes a rename a
+// compile error here. `jev-activity.ts` is pure (no node imports, no semantic
+// modules), so this costs the hook path nothing.
+import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT } from "../jev-activity";
 
 export type Decision = "allow" | "deny" | "instruct";
 export type JevMode = "shadow" | "enforce";
@@ -392,6 +393,23 @@ export interface JevActivityFields {
   jevMode: JevMode;
 }
 
+/**
+ * Jev's own deny or instruct in SHADOW mode — the verdict enforce mode would
+ * have applied, recorded rather than applied. The handler files it in the
+ * activity row's `observed` list, the "would have" record observe-mode cloud
+ * and pack policies already use, so FailproofAI Cloud's policy page counts it
+ * with no change on its side.
+ */
+export interface ShadowVerdict {
+  /** `semantic/<check>` — the name enforce mode would have attributed it to. */
+  policyName: string;
+  decision: "deny" | "instruct";
+  /** The same fixed template reason enforce mode would have shown. */
+  reason: string;
+  /** The Jev model id that answered, or `jev` when it named none this build can store. */
+  version: string;
+}
+
 export interface CombineOutcome {
   final: FinalVerdict;
   /** Reviewable regex policies Jev cleared (in shadow: would have cleared). */
@@ -406,6 +424,12 @@ export interface CombineOutcome {
    */
   decidedByJev: boolean;
   activity: JevActivityFields;
+  /**
+   * Shadow mode only, and only when Jev's own verdict was deny or instruct.
+   * Absent otherwise — including every enforce outcome, where the verdict was
+   * APPLIED and `decidedByJev` / the final entries already say so.
+   */
+  shadowVerdict?: ShadowVerdict;
 }
 
 /**
@@ -500,11 +524,30 @@ export function combineTwoTier(
     jevMode: mode,
   };
 
-  if (mode === "shadow") return { final: legacy, cleared, decidedByJev: false, activity };
+  // Built once, for both modes: enforce applies it, shadow records it, and the
+  // two must never disagree about what the verdict WAS.
+  const jevEntry = { policyName: review.policyName, reason: review.reason ?? `Flagged by semantic review (${review.policyName})` };
+
+  if (mode === "shadow") {
+    // Jev's own deny or instruct, exactly as enforce mode would have applied it
+    // (upward only: a cut or injected call keeps it, as the enforce branch
+    // below does). A clear is recorded in `jevCleared`, not here.
+    const shadowVerdict: ShadowVerdict | undefined =
+      review.decision === "deny" || review.decision === "instruct"
+        ? {
+            policyName: jevEntry.policyName,
+            decision: review.decision,
+            reason: jevEntry.reason,
+            // The model id is shape-checked like the row's own `jevModel`, so
+            // this list can carry nothing the activity store would not.
+            version: review.model && JEV_MODEL_RE.test(review.model) ? review.model : "jev",
+          }
+        : undefined;
+    return { final: legacy, cleared, decidedByJev: false, activity, ...(shadowVerdict ? { shadowVerdict } : {}) };
+  }
 
   const clearedSet = new Set(cleared);
   const remaining = verdicts.filter((v) => !clearedSet.has(v.policyName));
-  const jevEntry = { policyName: review.policyName, reason: review.reason ?? `Flagged by semantic review (${review.policyName})` };
 
   // Most severe wins; within a severity, the regex engine's own order first.
   const regexDeny = remaining.find((v) => v.decision === "deny");

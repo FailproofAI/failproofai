@@ -63,9 +63,11 @@ pub struct HookRow {
     // is exactly the substring-parsing this data was added to replace: every
     // row arrives unattributed, so "how much is my org's policy actually
     // doing" has no answer.
-    /// `builtin` | `custom` | `convention` | `cloud` | `pack`. Absent on rows
-    /// written before attribution existed, which is meaningful — see the note in
-    /// `hook-activity-store.ts` about not guessing a bucket.
+    /// `builtin` | `custom` | `convention` | `cloud` | `pack` | `jev`. Absent on
+    /// rows written before attribution existed, which is meaningful — see the
+    /// note in `hook-activity-store.ts` about not guessing a bucket. `jev` means
+    /// Jev's own verdict decided (enforce mode), not a registered policy; older
+    /// builds left such rows unattributed.
     ///
     /// Deliberately `Option<String>` and forwarded verbatim rather than a typed
     /// enum: this side has no opinion about the value, so adding a source on the
@@ -112,7 +114,9 @@ pub struct HookRow {
     pub pause_expires_at: Option<i64>,
 
     /// Verdicts from observe-mode policies: evaluated, then discarded. The
-    /// whole measurement a trial exists to produce.
+    /// whole measurement a trial exists to produce. Jev in shadow mode files
+    /// its own deny/instruct here too (`policyId: "semantic/<check>"`, the Jev
+    /// model id as `version`), and ships the same way: whole, un-rolled-up.
     pub observed: Option<Value>,
 
     // ---- Jev (two-tier evaluator) ----------------------------------------

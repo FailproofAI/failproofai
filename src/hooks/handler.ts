@@ -928,6 +928,21 @@ export async function evaluateHookEvent(
           releaseRegistry: opts?.releaseRegistry,
         })
       : await evaluatePolicies(canonicalEventType, parsed, session, config);
+    // Shadow mode: what Jev WOULD have done, filed where observe-mode policies
+    // file theirs, so the "would have" view counts it with no second channel.
+    // `semantic/<check>` cannot be mistaken for a cloud policy — cloud ids
+    // carry no `/` (`POLICY_ID_RE` in cloud-managed-policies.ts) — and the
+    // version is a Jev model id or `jev`, never a deployment number. Only on
+    // the two-tier path, so an unconfigured row is untouched.
+    const shadowVerdict = result.twoTier?.shadowVerdict;
+    if (shadowVerdict) {
+      observedResults.push({
+        policyId: shadowVerdict.policyName,
+        version: shadowVerdict.version,
+        decision: shadowVerdict.decision,
+        reason: shadowVerdict.reason,
+      });
+    }
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
@@ -964,8 +979,11 @@ export async function evaluateHookEvent(
       // Attribution. A builtin is anything registered that is not in the map,
       // so its absence is meaningful rather than missing — but only when a
       // policy actually decided; a plain allow names nobody. When Jev's own
-      // verdict decided, no registered policy did: `evaluator` + `jevDecision`
-      // say so, and claiming "builtin" here would be false.
+      // verdict decided, no registered policy did, and claiming "builtin" here
+      // would be false — so it is attributed to Jev itself. Leaving it out
+      // instead filed every Jev block under "unattributed" on FailproofAI
+      // Cloud's policy page, beside rows written before attribution existed.
+      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const } : {}),
       ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);

@@ -126,8 +126,12 @@ export interface HookActivityEntry {
    * Where the policy that DECIDED came from. Absent when nothing decided (a
    * plain allow) and on rows written before this existed — so, like
    * `matchedPolicies`, `undefined` means "unknown", not "builtin".
+   *
+   * `jev`: no registered policy decided — Jev's own verdict did (enforce mode;
+   * `policyName` is then `semantic/<check>`). Rows written before this value
+   * existed leave it out on such calls.
    */
-  policySource?: "builtin" | "custom" | "convention" | "cloud" | "pack";
+  policySource?: "builtin" | "custom" | "convention" | "cloud" | "pack" | "jev";
   /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
   cloudPolicyId?: string;
   /** Immutable version of that policy — the half of attribution that identifies WHICH version ran. */
@@ -154,10 +158,14 @@ export interface HookActivityEntry {
    * record is the entire point of observe mode: without it the row is
    * indistinguishable from one where the policy never matched, and the rollout
    * being trialled is unmeasurable.
+   *
+   * Jev in shadow mode files its own deny/instruct here too, as
+   * `{policyId: "semantic/<check>", version: <Jev model id or "jev">}`: the
+   * same question — what would this have done — for the same reader.
    */
   observed?: Array<{
     policyId: string;
-    /** A cloud deployment number, or a pack's version string. */
+    /** A cloud deployment number, a pack's version string, or a Jev model id (`jev` when unknown). */
     version: string | number;
     decision: "deny" | "instruct";
     reason: string | null;
@@ -175,7 +183,7 @@ export interface HookActivityFilters {
    * organization's policies decided" is the question cloud rollout reporting
    * is built on, and it is unanswerable without this.
    */
-  source?: "builtin" | "custom" | "convention" | "cloud" | "pack";
+  source?: "builtin" | "custom" | "convention" | "cloud" | "pack" | "jev";
 }
 
 export interface HookActivityStats {

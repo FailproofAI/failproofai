@@ -17,7 +17,16 @@ export { packPolicyParamKey } from "./pack-param-key";
 import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry";
 // Type-only apart from the two pure functions: the semantic evaluator itself is
 // loaded by handler.ts, lazily, and only when a Jev config exists.
-import { combineTwoTier, regexOnly, type FinalVerdict, type JevActivityFields, type JevReview, type RegexVerdict, type TwoTierReview } from "./semantic/combine";
+import {
+  combineTwoTier,
+  regexOnly,
+  type FinalVerdict,
+  type JevActivityFields,
+  type JevReview,
+  type RegexVerdict,
+  type ShadowVerdict,
+  type TwoTierReview,
+} from "./semantic/combine";
 // The code, not a copy of the string: the log line below turns on it, and a
 // rename should break the build here rather than quietly print "unavailable"
 // for a call Jev actually answered.
@@ -51,6 +60,8 @@ export interface EvaluationResult {
     activity: JevActivityFields;
     /** True when Jev's own verdict is what `policyName` names. */
     decidedByJev: boolean;
+    /** Shadow mode: Jev's own deny/instruct, recorded as a "would have" (see `ShadowVerdict`). */
+    shadowVerdict?: ShadowVerdict;
   };
 }
 
@@ -234,7 +245,11 @@ export async function evaluatePolicies(
   }
   return {
     ...formatVerdict(eventType, session, toolName, combined.final),
-    twoTier: { activity: combined.activity, decidedByJev: combined.decidedByJev },
+    twoTier: {
+      activity: combined.activity,
+      decidedByJev: combined.decidedByJev,
+      ...(combined.shadowVerdict ? { shadowVerdict: combined.shadowVerdict } : {}),
+    },
   };
 }
 

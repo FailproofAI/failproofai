@@ -610,8 +610,9 @@ describe("Jev's own verdict", () => {
     expect(claude.outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
     expect(claude.outcome.stdout).toContain('"permissionDecision":"deny"');
     expect(claude.outcome.stdout).toContain("semantic/destructive-deletion");
-    // No registered policy decided, so none is claimed.
-    expect(claude.row.policySource).toBeUndefined();
+    // No registered policy decided, so none is claimed: the row is attributed
+    // to Jev itself (contract §5A), which is what files it on the Cloud's chart.
+    expect(claude.row.policySource).toBe("jev");
     expect(claude.row).toMatchObject({ evaluator: "jev", jevDecision: "deny" });
 
     const factory = await bash("find . -name '*.sqlite' -delete", "factory");
@@ -756,8 +757,8 @@ describe("a padded call cannot make Jev's own deny go away", () => {
       jevDecision: "deny",
       jevMode: "enforce",
     });
-    // No registered policy decided, and nothing was cleared on a cut call.
-    expect(row.policySource).toBeUndefined();
+    // No registered policy decided (Jev did), and nothing was cleared on a cut call.
+    expect(row.policySource).toBe("jev");
     expect(row.jevCleared).toBeUndefined();
     expect(
       telemetryEvents.filter((e) => e.event === "hook_policy_triggered").map((e) => e.props),
@@ -784,7 +785,7 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
     // Not `request-too-large`, which carried no decision at all.
     expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
-    expect(row.policySource).toBeUndefined();
+    expect(row.policySource).toBe("jev");
   });
 
   /**
@@ -1818,5 +1819,81 @@ describe("configured-but-broken Jev paths stay off the hook's stderr", () => {
     const lines = await stderrOf(() => bash("ls"));
     expect(loadJevConfig).toHaveBeenCalled();
     expect(lines).toEqual([]);
+  });
+});
+
+// ── Policy-page data (contract §5) ───────────────────────────────────────────
+
+describe("what the policy page reads", () => {
+  const DELETE_ALL = "find . -name '*.sqlite' -delete";
+
+  it("A: a call Jev's own verdict decided is attributed to jev, not left unattributed", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await bash(DELETE_ALL);
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ policyName: "semantic/destructive-deletion", policySource: "jev", evaluator: "jev", jevMode: "enforce" });
+    // Jev decided, so nothing was recorded as a "would have".
+    expect(row.observed).toBeUndefined();
+  });
+
+  it("A: a registered policy's decision keeps its own source on a two-tier row", async () => {
+    jevConfig = CFG;
+    const { row } = await bash("sudo ls");
+    expect(row).toMatchObject({ policyName: "failproofai/block-sudo", policySource: "builtin" });
+  });
+
+  it("B: in shadow mode, Jev's deny is a 'would have' in observed — and the regex result is enforced", async () => {
+    jevConfig = { ...CFG, mode: "shadow" };
+    respond = answers({ "destructive-deletion": 0.97 });
+    const shadow = await bash(DELETE_ALL);
+    expect(shadow.outcome.evaluation?.decision).toBe("allow");
+    expect(shadow.row.policySource).toBeUndefined();
+    expect(shadow.row).toMatchObject({ evaluator: "jev", jevDecision: "deny", jevMode: "shadow" });
+
+    // The reason is the one enforce mode shows for the same answer.
+    jevConfig = CFG;
+    store._resetForTest(join(root, "activity-enforce"));
+    const enforce = await bash(DELETE_ALL);
+    expect(shadow.row.observed).toEqual([
+      {
+        policyId: "semantic/destructive-deletion",
+        version: "jev-1.13.0",
+        decision: "deny",
+        reason: enforce.outcome.evaluation?.reason,
+      },
+    ]);
+  });
+
+  it("B: a shadow instruct is recorded as an instruct", async () => {
+    jevConfig = { ...CFG, mode: "shadow" };
+    // An instruct-mode check firing: a warning, not a block.
+    respond = answers({ "system-modification": 0.9 });
+    const { row } = await bash("sysctl -w vm.swappiness=10");
+    const jevObserved = (row.observed as Array<Record<string, unknown>> | undefined)?.filter((o) =>
+      String(o.policyId).startsWith("semantic/"),
+    );
+    expect(row.jevDecision).toBe("instruct");
+    expect(jevObserved).toHaveLength(1);
+    expect(jevObserved?.[0]).toMatchObject({ decision: "instruct", version: "jev-1.13.0" });
+  });
+
+  it("B: nothing is recorded when Jev allowed, or fell back", async () => {
+    jevConfig = { ...CFG, mode: "shadow" };
+    respond = answers();
+    expect((await bash("ls -la")).row.observed).toBeUndefined();
+    respond = async () => {
+      throw new Error("down");
+    };
+    store._resetForTest(join(root, "activity-down"));
+    const down = await bash(DELETE_ALL);
+    expect(down.row.evaluator).toBe("jev-fallback");
+    expect(down.row.observed).toBeUndefined();
+  });
+
+  it("an unconfigured row carries neither", async () => {
+    const { row } = await bash(DELETE_ALL);
+    expect(row.policySource).toBeUndefined();
+    expect(row.observed).toBeUndefined();
   });
 });

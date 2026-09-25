@@ -1423,3 +1423,125 @@ async fn a_rollups_latency_is_the_mean_and_max_of_valid_values_only() {
 
     cleanup(&[&store, &state, &spool]);
 }
+
+// ---------------------------------------------------------------------------
+// What the policy page reads (contract §5)
+// ---------------------------------------------------------------------------
+//
+// A. A call Jev's own verdict decided (enforce) is attributed
+//    `policySource: "jev"`, which must reach the server as `policy_source` —
+//    the chart's source bucket — rather than leaving the block "unattributed".
+// B. In shadow mode, Jev's own deny / instruct is a "would have" in the row's
+//    `observed` list, which must reach the server whole in the observed
+//    payload key. Those rows are ALLOWS, so an allow roll-up would fold them
+//    into a count and the "would have" would vanish.
+
+/// `fixtures/hook-activity-jev-policy-page.jsonl`: rows in exactly those
+/// shapes, persisted by the TypeScript store from
+/// `__tests__/fixtures/jev-policy-page-rows.ts` (a TypeScript test fails if the
+/// store stops producing it byte for byte).
+fn policy_page_golden() -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hook-activity-jev-policy-page.jsonl"),
+    )
+    .unwrap()
+}
+
+/// The payload keys these tests read, spelled once.
+const OBSERVED_KEY: &str = concat!("failproof", "ai_observed");
+const POLICY_KEY: &str = concat!("failproof", "ai_policy");
+const ALLOW_COUNT_KEY: &str = concat!("failproof", "ai_allow_count");
+
+#[test]
+fn a_jev_decided_row_ships_attributed_to_jev() {
+    let rows: Vec<HookRow> = policy_page_golden()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
+        .collect();
+    assert_eq!(rows.len(), 3);
+
+    let end = completed(&transform::to_events(&rows[0], 0, "local")).clone();
+    assert_eq!(end["outcome"], "deny");
+    assert_eq!(end["policy_source"], "jev");
+    assert_eq!(end[POLICY_KEY], "semantic/destructive-deletion");
+    assert_eq!(end["jev_mode"], "enforce");
+    assert_eq!(end["jev_decision"], "deny");
+    assert!(end.get(OBSERVED_KEY).is_none(), "{end:#}");
+}
+
+#[test]
+fn a_shadow_would_have_ships_whole_in_observed() {
+    let rows: Vec<HookRow> = policy_page_golden()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
+        .collect();
+    for (i, (row, decision, policy)) in [
+        (&rows[1], "deny", "semantic/destructive-deletion"),
+        (&rows[2], "instruct", "semantic/system-modification"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(row.has_observation(), "row {i} carries a would-have");
+        let end = completed(&transform::to_events(row, i as u64, "local")).clone();
+        assert_eq!(end["outcome"], "allow");
+        assert!(
+            end.get("policy_source").is_none(),
+            "nothing decided: {end:#}"
+        );
+        assert_eq!(end["jev_mode"], "shadow");
+        let observed = end[OBSERVED_KEY]
+            .as_array()
+            .expect("observed ships as an array");
+        assert_eq!(observed.len(), 1);
+        // The server's would-have queries read exactly these two with
+        // JSONExtractString, so they must be strings, with these values.
+        assert_eq!(observed[0]["policyId"], policy);
+        assert_eq!(observed[0]["decision"], decision);
+        assert_eq!(observed[0]["version"], "jev-1.13.0");
+        assert!(
+            observed[0]["reason"]
+                .as_str()
+                .is_some_and(|r| r.contains(policy)),
+            "the fixed template reason names the check: {end:#}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn policy_page_rows_are_never_rolled_up() {
+    for verbosity in [HooksVerbosity::All, HooksVerbosity::Decisions] {
+        let (store, state, spool) = (tmpdir("pp-s"), tmpdir("pp-st"), tmpdir("pp-sp"));
+        fs::write(store.join("current.jsonl"), policy_page_golden()).unwrap();
+        run_once(&store, &state, &spool, verbosity).await;
+
+        let events = spooled(&spool);
+        let completions: Vec<&Value> = events
+            .iter()
+            .filter(|e| e["type"] == "hook_completed")
+            .collect();
+        assert_eq!(
+            completions.len(),
+            3,
+            "each row ships on its own under {verbosity:?}: {events:#?}"
+        );
+        for end in &completions {
+            assert!(
+                end.get(ALLOW_COUNT_KEY).is_none(),
+                "never an aggregate under {verbosity:?}: {end:#}"
+            );
+        }
+        let attributed = completions
+            .iter()
+            .filter(|e| e["policy_source"] == "jev")
+            .count();
+        assert_eq!(attributed, 1, "{completions:#?}");
+        let observed = completions
+            .iter()
+            .filter(|e| e[OBSERVED_KEY].is_array())
+            .count();
+        assert_eq!(observed, 2, "{completions:#?}");
+        cleanup(&[&store, &state, &spool]);
+    }
+}

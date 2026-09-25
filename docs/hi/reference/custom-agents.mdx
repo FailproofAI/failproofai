@@ -1,25 +1,21 @@
 ---
-title: "कस्टम एजेंट्स"
-description: "failproofai-sdk के लिए कॉन्फ़िगरेशन, इवेंट कैटलॉग, सहसंबंध नियम और डिलीवरी।"
+title: "कस्टम agents"
+description: "failproofai-sdk के लिए कॉन्फ़िगरेशन, इवेंट कैटलॉग, सहसंबंध नियम, और डिलीवरी।"
 icon: "python"
 ---
 
-हर सेटिंग, मेथड और फील्ड क्या करता है। यदि आप पहली बार इंस्ट्रुमेंट कर रहे हैं, तो गाइड से शुरू करें — यह पृष्ठ चीजों को खोजने के लिए है।
+हर सेटिंग, मेथड और फील्ड क्या करता है। यदि आप पहली बार instrumentation कर रहे हैं, तो गाइड से शुरू करें — यह पृष्ठ चीजों को देखने के लिए है।
 
 <Columns cols={2}>
-  <Card title="कस्टम एजेंट्स गाइड" icon="code" href="/hi/start/integrations/custom-agents">
-    इंस्टॉल करें, इंस्ट्रुमेंट करें, इवेंट मेथड्स, एक व्यावहारिक उदाहरण और सामान्य समस्याएं।
+  <Card title="कस्टम agents गाइड" icon="code" href="/hi/start/integrations/custom-agents">
+    इंस्टॉल, instrumentation, इवेंट मेथड, एक व्यावहारिक उदाहरण, और सामान्य समस्याएं।
   </Card>
-  <Card title="TypeScript का उपयोग कर रहे हैं?" icon="square-js" href="/hi/reference/custom-agents-typescript">
-    वही इवेंट्स, वही वायर फॉर्मेट, वही स्पूल — Node से।
+  <Card title="कोई फ्रेमवर्क उपयोग कर रहे हैं?" icon="plug" href="/hi/start/integrations">
+    LangChain, CrewAI, LlamaIndex और Pydantic AI एक कॉल के साथ खुद को instrument करते हैं।
   </Card>
 </Columns>
 
-Python 3.10 या नया। कोई रनटाइम निर्भरता नहीं। कोई फ्रेमवर्क का उपयोग कर रहे हैं? [LangChain, CrewAI, LlamaIndex और Pydantic AI](/hi/start/integrations) एक कॉल से स्वयं को इंस्ट्रुमेंट करते हैं।
-
-<Note>
-  एक **TypeScript SDK** भी है, और दोनों समान स्पूल में समान इवेंट्स लिखते हैं। Node एजेंट्स और Python एजेंट्स के साथ एक फ्लीट एक सेशन सेट तैयार करता है, दो नहीं। कंपनी के अनुसार नहीं, प्रति सेवा चुनें।
-</Note>
+Python 3.10 या नया। कोई runtime dependency नहीं।
 
 ## इंस्टॉल करें
 
@@ -27,27 +23,27 @@ Python 3.10 या नया। कोई रनटाइम निर्भर�
 pip install failproofai-sdk
 ```
 
-पैकेज को `failproofai-sdk` के रूप में इंस्टॉल किया जाता है और Python में `failproofai_sdk` के रूप में आयात किया जाता है। `failproofai-sdk[langgraph]` जैसे फ्रेमवर्क एक्स्ट्रास फ्रेमवर्क को ही इंस्टॉल करते हैं; एडाप्टर हमेशा बेस व्हील में शिप होते हैं।
+पैकेज को `failproofai-sdk` के रूप में इंस्टॉल किया जाता है और Python में `failproofai_sdk` के रूप में आयात किया जाता है। फ्रेमवर्क extras जैसे `failproofai-sdk[langgraph]` फ्रेमवर्क को ही इंस्टॉल करते हैं; adapters हमेशा base wheel में शिप होते हैं।
 
-## Failproof डेमन को कनेक्ट करें
+## Failproof daemon को कनेक्ट करें
 
 <Tabs>
   <Tab title="डैशबोर्ड">
-    1. **Admin → Keys** पर जाएं और `events:add` के साथ एक कुंजी बनाएं।
-    2. [एजेंट मशीन पर Failproof डेमन को Cloud से कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud)।
-    3. एक इंस्ट्रुमेंटेड सेशन चलाएं, फिर **Observe → Events** के तहत इसकी सटीक ID खोजें।
-    4. **Observe → Sessions** पर जाएं, समान परिवेश का चयन करें और पुनर्निर्मित ट्रेस खोलें।
+    1. **Admin → Keys** पर जाएं और `events:add` के साथ एक key बनाएं।
+    2. [Failproof daemon को Cloud से कनेक्ट करें](/hi/start/setup#एक-मशीन-को-cloud-से-कनेक्ट-करें) agent मशीन पर।
+    3. एक instrumented सेशन चलाएं, फिर **Observe → Events** के तहत इसकी सटीक ID खोजें।
+    4. **Observe → Sessions** पर जाएं, एक ही environment चुनें, और पुनर्निर्मित trace खोलें।
 
-    ![एक कस्टम Python एजेंट सेशन एक्सीक्यूशन ग्राफ और क्रमबद्ध इवेंट ट्रेस के रूप में पुनर्निर्मित।](/images/dashboard/session-detail.png)
+    ![एक कस्टम Python agent सेशन को एक execution graph और ordered event trace के रूप में पुनर्निर्मित किया गया।](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
-    `events:add` कुंजी को शेल में पढ़ें। `read -s` इसे एक प्रॉम्प्ट पर लेता है जो गूंज नहीं करता, इसलिए यह कभी कमांड या शेल हिस्ट्री में नहीं दिखता:
+    `events:add` key को shell में पढ़ें। `read -s` इसे एक प्रॉम्प्ट पर लेता है जो echo नहीं करता, इसलिए यह कभी command में या shell history में दिखाई नहीं देता:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    फिर मशीन को सेट अप करें और जांचें कि यह कनेक्ट हो गया:
+    फिर मशीन को सेट अप करें और जांचें कि यह कनेक्ट हुआ:
 
     ```bash
     failproofai config
@@ -68,32 +64,32 @@ failproofai_sdk.configure(
 )
 ```
 
-| तर्क | यह क्या करता है |
+| Argument | यह क्या करता है |
 | --- | --- |
-| `environment` | हर इवेंट पर लेबल — `production`, `staging`, `prod-eu`। डिफ़ॉल्ट `dev`। |
-| `flush_interval` | बैकग्राउंड थ्रेड कितनी बार डिस्क में लिखता है, सेकंड में। डिफ़ॉल्ट `0.5`। |
-| `base_dir` | कहां लिखना है। डिफ़ॉल्ट डेमन का स्पूल, जो वही है जो आप चाहते हैं जब तक आप अन्यथा नहीं जानते। |
+| `environment` | हर event पर लेबल — `production`, `staging`, `prod-eu`। डिफ़ॉल्ट `dev` है। |
+| `flush_interval` | बैकग्राउंड thread कितनी बार disk में लिखता है, सेकंड में। डिफ़ॉल्ट `0.5` है। |
+| `base_dir` | कहाँ लिखना है। डिफ़ॉल्ट daemon का spool है, जो आप चाहते हैं जब तक आप अन्यथा न जानते हों। |
 
-इसके बजाय पर्यावरण चर द्वारा सेट करें:
+इसके बजाय environment variable द्वारा सेट करें:
 
-| चर | यह क्या करता है |
+| Variable | यह क्या करता है |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | कोड परिवर्तन के बिना `environment` सेट करता है, जब लेबल डिप्लॉयमेंट के बजाय ऐप के लिए हो। एक `configure()` तर्क इसे जीतता है। |
-| `FAILPROOFAI_HOME` | Failproof AI रूट को स्थानांतरित करता है जो स्पूल रखता है। |
-| `FAILPROOFAI_SDK_STRICT` | `1` इंस्ट्रुमेंटेशन त्रुटियों को लॉग किए जाने के बजाय उठाता है। |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` एक फ्रेमवर्क-संगतता समस्या को चेतावनी के बजाय उठाता है और जारी रखता है। |
+| `AGENTEYE_ENVIRONMENT` | कोड परिवर्तन के बिना `environment` सेट करता है, जब लेबल deployment के बजाय app से संबंधित हो। एक `configure()` argument इसे ओवरराइड करता है। |
+| `FAILPROOFAI_HOME` | Failproof AI root को स्थानांतरित करता है जो spool रखता है। |
+| `FAILPROOFAI_SDK_STRICT` | `1` instrumentation errors को log किए जाने की जगह raise करता है। |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` एक framework-compatibility समस्या को warn करने और जारी रखने की जगह raise करता है। |
 
 <Warning>
-  **`environment` में कोई अल्पविराम नहीं।** Ingest उस फील्ड को अल्पविराम पर विभाजित करता है अपने फ़िल्टर बनाने के लिए, और किसी भी इवेंट को छोड़ देता है जिसमें एक हो — तो पूरा रन चुपचाप गायब हो जाता है। `prod,eu` नहीं, `prod-eu` लिखें।
+  **`environment` में कोई comma नहीं।** Ingest उस फील्ड को commas पर split करता है इसके filters बनाने के लिए, और किसी भी event को skip करता है जिसके लेबल में एक है — इसलिए एक पूरा run चुप चाप गायब हो जाता है। `prod,eu` नहीं, `prod-eu` लिखें।
 
-  `configure(environment="prod,eu")` उठाता है तो आप तुरंत पता लगा जाते हैं। `AGENTEYE_ENVIRONMENT` नहीं उठा सकता — कुछ भी आपको कॉल नहीं कर रहा — तो यह एक बार चेतावनी देता है और `dev` पर वापस गिरता है।
+  `configure(environment="prod,eu")` raise करता है इसलिए आप तुरंत पता चलता है। `AGENTEYE_ENVIRONMENT` raise नहीं कर सकता — कोई आपको कॉल नहीं कर रहा — इसलिए यह एक बार warn करता है और `dev` पर वापस जाता है।
 </Warning>
 
-इवेंट्स मेमोरी में क्यूड होते हैं और हर `flush_interval` सेकंड में बैकग्राउंड में लिखे जाते हैं, इंटरप्रेटर एक्जिट पर अंतिम फ्लश के साथ। एक प्रक्रिया जो पूरी तरह से मार दी जाती है वह जो अभी तक लिखा नहीं गया था उसे खो देती है।
+Events को memory में queue किया जाता है और हर `flush_interval` सेकंड में बैकग्राउंड में लिखा जाता है, interpreter exit पर एक final flush के साथ। एक प्रक्रिया जो सीधे kill की जाती है, वह कुछ खो देती है जो अभी तक लिखी नहीं गई थी।
 
-## पहचान
+## Identity
 
-हर इवेंट एक सेशन और एक एजेंट के अंतर्गत होता है। **स्कोप दोनों को भरते हैं**, तो आप शायद ही कभी उन्हें पास करते हैं:
+हर event एक session और एक agent से संबंधित है। **Scopes दोनों को भरते हैं**, इसलिए आप शायद ही कभी उन्हें pass करते हैं:
 
 ```python
 with failproofai_sdk.session():
@@ -101,32 +97,32 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-`session_id` या `agent_id` को स्पष्ट रूप से पास करना अभी भी काम करता है और जीतता है। न तो बाउंड और न ही पास होने के साथ, कॉल `TypeError` उठाता है बजाय एक इवेंट उत्सर्जित करने के जिसे Cloud चुपचाप छोड़ देगा।
+`session_id` या `agent_id` को explicitly pass करना अभी भी काम करता है और जीतता है। न bound और न ही passed के साथ, कॉल `TypeError` raise करता है, न कि एक event emit करता है जो Cloud quietly discard करेगा।
 
 <Note>
-  पहचान संदर्भ चर पर सवारी करती है। यह `asyncio` कार्यों को स्वचालित रूप से अनुसरण करता है, लेकिन **नहीं** नए थ्रेड — एक वर्कर को `failproofai_sdk.propagate()` में लपेटें या इसके इवेंट्स अलग रहते हैं।
+  Identity context variables पर सवार होती है। यह `asyncio` tasks को automatically follow करता है, लेकिन **नहीं** नए threads को — एक worker को `failproofai_sdk.propagate()` में wrap करें या इसके events unattached land करते हैं।
 </Note>
 
-## इवेंट कैटलॉग
+## Event कैटलॉग
 
-पंद्रह मेथड्स। अधिकांश **जोड़ी में आते हैं** — आप ओपनर को कॉल करते हैं, फिर क्लोजर को, और SDK अंतराल को समय करता है।
+पंद्रह मेथड। अधिकांश **pairs** में आते हैं — आप opener को कॉल करते हैं, फिर closer को, और SDK gap को time करता है।
 
-| | खोलता है | बंद करता है |
+| | Opens | Closes |
 | --- | --- | --- |
-| **एजेंट्स** | `agent_start` | `agent_end` |
+| **Agents** | `agent_start` | `agent_end` |
 | | `agent_pause` | `agent_resume` |
-| **मॉडल्स** | `model_request` | `model_response` |
-| **टूल्स** | `tool_use` | `tool_result` |
-| **हुक्स** | `hook_triggered` | `hook_completed` |
-| **मनुष्य** | `human_wait` | `human_input` |
+| **Models** | `model_request` | `model_response` |
+| **Tools** | `tool_use` | `tool_result` |
+| **Hooks** | `hook_triggered` | `hook_completed` |
+| **Humans** | `human_wait` | `human_input` |
 
-तीन अकेले खड़े हैं: `error`, `human_pause`, `human_interrupt`।
+तीन standalone हैं: `error`, `human_pause`, `human_interrupt`।
 
 <Accordion title="हर फील्ड, प्रति मेथड" icon="table">
 
-हर मेथड `session_id` और `agent_id` भी लेता है, जिन्हें स्कोप आपके लिए भरते हैं। कुछ भी `None` के रूप में छोड़ा गया JSON `null` के रूप में भेजे जाने के बजाय ड्रॉप किया जाता है, और हर मेथड `None` रिटर्न करता है।
+हर मेथड `session_id` और `agent_id` भी लेता है, जो scopes आपके लिए भरते हैं। कुछ भी `None` के रूप में छोड़ा गया JSON `null` के रूप में भेजे जाने की जगह dropped है, और हर मेथड `None` return करता है।
 
-| मेथड | आवश्यक | वैकल्पिक |
+| Method | आवश्यक | Optional |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -147,14 +143,14 @@ with failproofai_sdk.session():
 </Accordion>
 
 <Warning>
-  एक रन को विफल के रूप में चिह्नित करने के लिए, `outcome` `failed`, `error`, `timeout` या `rejected` में से एक होना चाहिए। कुछ भी और — निकट-मिस `"failure"` सहित — एक सफलता के रूप में गिना जाता है।
+  एक run को failed के रूप में चिह्नित करने के लिए, `outcome` को `failed`, `error`, `timeout` या `rejected` में से एक होना चाहिए। कुछ भी और — near-miss `"failure"` सहित — एक success के रूप में counts करता है।
 </Warning>
 
-## जोड़ी बनाना और अवधि
+## Pairing और duration
 
-**एक नियम: बंद करने वाले इवेंट को इसके ओपनर के समान id दें।** वह क्या उन्हें जोड़ता है, और SDK को अंतराल को समय करने देता है।
+**एक नियम: closing event को अपने opener के समान id दें।** वह क्या उन्हें pairs करता है, और क्या SDK को gap को time करने देता है।
 
-| जोड़ी | मेल खाता है पर |
+| Pair | Matched on |
 | --- | --- |
 | `tool_use` → `tool_result` | `tool_call_id` |
 | `hook_triggered` → `hook_completed` | `hook_id` |
@@ -162,46 +158,46 @@ with failproofai_sdk.session():
 | `human_wait` → `human_input` | `input_id` |
 | `model_request` → `model_response` | `request_id` |
 
-**`duration_ms` स्वयं पास न करें।** SDK इसे मापता है, और इसे पास करना `ValueError` उठाता है।
+**`duration_ms` को yourself pass न करें।** SDK इसे measure करता है, और इसे pass करना `ValueError` raise करता है।
 
-एक अपवाद `model_response` है, जहां केवल आप वास्तविक प्रदाता विलंबता जानते हैं। मिलीसेकंड की पूरी संख्या पास करें — एक फ्लोट उठाता है, क्योंकि कॉलम एक 32-बिट पूर्णांक है और अन्यथा खाली उतरेगा।
+एक अपवाद `model_response` है, जहां केवल आप real provider latency को जानते हैं। milliseconds की एक पूरी संख्या pass करें — एक float raise करता है, क्योंकि column एक 32-bit integer है और अन्यथा empty land करेगी।
 
-<Accordion title="किनारे के मामले" icon="circle-help">
+<Accordion title="सीमांत स्थितियां" icon="circle-help">
 
-- **Ids को केवल प्रति सेशन, प्रति प्रकार अद्वितीय होने की आवश्यकता है।** एक टूल कॉल और एक हुक एक साझा कर सकते हैं; एक ही समय में दो सेशन समान ids को टकराव के बिना पुन: उपयोग कर सकते हैं।
-- **वे एजेंट के अंतर्गत नहीं हैं।** एक जोड़ी एक एजेंट के तहत खुलती है और दूसरे के तहत बंद हो जाती है अभी भी मेल खाती है — जो बहु-एजेंट कोड में सामान्य मामला है।
-- **`request_id` वैकल्पिक है लेकिन अनुशंसित है।** इसके बिना, मॉडल इवेंट्स वह क्रम में जोड़ी बनाते हैं जिसमें वे आते हैं, तो समान एजेंट में दो समवर्ती कॉल गलत जोड़ी बना सकते हैं।
-- **प्रक्रियाओं में विभाजित एक जोड़ी** अभी भी Cloud में मेल खाती है, लेकिन SDK इसे समय नहीं कर सकता — किसी भी प्रक्रिया में कुछ भी दोनों हल्फ नहीं देखा।
-- **सबसे ज्यादा 10,000 ओपनर एक बार एक क्लोजर की प्रतीक्षा करते हैं।** इससे अधिक सबसे पुराना ड्रॉप किया जाता है, तो एक रिसाव बिना सीमा के बढ़ नहीं सकता।
+- **Ids केवल kind per, per session के लिए unique होना चाहिए।** एक tool call और एक hook एक share कर सकते हैं; दो sessions एक साथ चल सकते हैं एक ही ids को reuse कर सकते हैं बिना colliding के।
+- **वे agent को scoped नहीं हैं।** एक pair एक agent के तहत open किया गया और दूसरे agent के तहत close किया गया अभी भी match करता है — जो multi-agent code में सामान्य case है।
+- **`request_id` optional है लेकिन अनुशंसित है।** इसके बिना, model events उनके आने के क्रम में pair up करते हैं, इसलिए एक ही agent में दो concurrent calls mispair कर सकते हैं।
+- **एक pair processes में split** अभी भी Cloud में match करता है, लेकिन SDK इसे time नहीं कर सकता — दोनों processes में कुछ भी दोनों halves नहीं देखा।
+- **अधिकतम 10,000 openers एक बार में एक closer के लिए wait करते हैं।** उसके बाद oldest को drop किया जाता है, इसलिए एक leak बिना bound के grow नहीं कर सकता।
 
 </Accordion>
 
-## आपकी अपनी फील्ड्स
+## अपने स्वयं के फील्ड
 
-कोई भी अतिरिक्त कीवर्ड जो आप पास करते हैं इवेंट के साथ स्टोर किया जाता है:
+कोई भी extra keyword जो आप pass करते हैं event के साथ stored है:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # आपकी अपनी
+    fw_tenant="acme", fw_region="eu-west-1",     # आपके अपने
 )
 ```
 
-यदि आप बाद में उन्हें क्वेरी करना चाहते हैं तो JSON प्रकारों को प्राथमिकता दें। कुछ भी और — एक UUID, एक datetime, एक `Decimal`, एक सेट, बाइट्स, एक मॉडल ऑब्जेक्ट — एक स्ट्रिंग के रूप में स्टोर किया जाता है।
+यदि आप बाद में query करना चाहते हैं तो JSON types को prefer करें। कुछ भी और — एक UUID, एक datetime, एक `Decimal`, एक set, bytes, एक model object — एक string के रूप में stored है।
 
 <Warning>
-  **अपनी फील्ड नेम्स को प्रीफ़िक्स करें।** अतिरिक्त आखिरी में लागू होते हैं, तो `model`, `tool_name` या `outcome` नामक एक फील्ड चुपचाप वास्तविक को अधिलेखित करता है। फ्रेमवर्क एडाप्टर `fw_` का उपयोग करते हैं; वही करें और कुछ नहीं टकरा सकता।
+  **अपने फील्ड names को prefix करें।** Extras अंत में apply किए जाते हैं, इसलिए एक field `model`, `tool_name` या `outcome` को called करना silently real one को overwrite करता है। Framework adapters `fw_` उपयोग करते हैं; वही करें और कुछ भी collide नहीं कर सकता।
 
-  यह भी है कि एक गलत वर्तनी वाली वैकल्पिक फील्ड कभी त्रुटि नहीं देती — यह सिर्फ एक नई कस्टम फील्ड बन जाती है। यदि Cloud में एक मानक फील्ड गायब है, तो पहले वर्तनी की जांच करें।
+  यह भी है क्यों एक misspelled optional field कभी errors नहीं करता — यह बस एक नया custom field बन जाता है। यदि एक standard field Cloud में missing है, तो पहले spelling check करें।
 </Warning>
 
-ये पांच नाम सुरक्षित हैं और सीधे अस्वीकृत होते हैं: `timestamp`, `session_id`, `agent_id`, `type`, `environment`।
+ये पाँच names reserved हैं और सीधे rejected हैं: `timestamp`, `session_id`, `agent_id`, `type`, `environment`।
 
-## डिलीवर करें और सत्यापित करें
+## Deliver और verify करें
 
 <Tabs>
   <Tab title="डैशबोर्ड">
-    **Observe → Events** में, पहले सत्यापित करें `agent_start` मौजूद है और `agent_end` अंतिम में मौजूद है। फिर **Observe → Sessions** खोलें और पुष्टि करें कि मॉडल, टूल, मानव, हुक और त्रुटि इवेंट्स इच्छित क्रम में दिखाई देते हैं। प्राथमिक समस्या निवारण कुंजी के रूप में सेशन ID का उपयोग करें।
+    **Observe → Events** में, पहले verify करें `agent_start` exists है और `agent_end` exists अंत में है। फिर **Observe → Sessions** खोलें और confirm करें model, tool, human, hook, और error events intended order में दिखाई देते हैं। Session ID को primary troubleshooting key के रूप में उपयोग करें।
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -213,14 +209,14 @@ failproofai_sdk.event.tool_use(
   </Tab>
 </Tabs>
 
-यदि Cloud खाली है, तो `$FAILPROOFAI_HOME/custom-agents/events` का निरीक्षण करें, अन्यथा `~/.failproofai/custom-agents/events`। JSONL फाइलें SDK उत्सर्जन साबित करती हैं; एक बढ़ता स्पूल डेमन कॉन्फ़िगरेशन या डिलीवरी की ओर इंगित करता है, जबकि एक खाली स्पूल इंस्ट्रुमेंटेशन या प्रक्रिया जीवनकाल की ओर इंगित करता है।
+यदि Cloud खाली है, तो `$FAILPROOFAI_HOME/custom-agents/events` inspect करें, अन्यथा `~/.failproofai/custom-agents/events`। JSONL files SDK emission को prove करती हैं; एक growing spool daemon configuration या delivery को point करता है, जबकि एक empty spool instrumentation या process lifetime को point करता है।
 
 <Note>
-  केवल तब स्पूल का निरीक्षण करें जब डेमन बंद हो। जबकि यह चलता है, यह प्रत्येक बैच को मिलीसेकंड के भीतर एकत्र और हटा देता है, तो एक निर्देशिका सूची संग्राहक की दौड़ करती है और उत्सर्जित इवेंट्स की तुलना में कहीं कम दिखाती है।
+  Spool को केवल तब inspect करें जब daemon बंद हो। जबकि यह चलता है, यह collects करता है और हर batch को milliseconds में delete करता है, इसलिए एक directory listing races करता है collector के साथ और emit किए गए events से far fewer दिखाता है।
 </Note>
 
-## कस्टम रनटाइम में विफलताओं को रोकें
+## कस्टम runtime में failures को prevent करें
 
-असुरक्षित कार्य, आवश्यक साक्ष्य और इच्छित प्रतिक्रिया को परिभाषित करने के लिए ऑडिट निष्कर्षों और जुड़े हुए ट्रेस का उपयोग करें। एक कस्टम प्रवर्तन एकीकरण को कार्य को निष्पादन से पहले उजागर करना चाहिए, इसके संरचित इनपुट को नीति इंजन में पास करना चाहिए, और परिणामी allow, instruct या deny निर्णय लागू करना चाहिए।
+Audit findings और linked traces का use करके unsafe action, required evidence, और intended response को define करें। एक custom enforcement integration को execution से पहले action को expose करना चाहिए, इसके structured input को policy engine में pass करना चाहिए, और resulting allow, instruct, या deny decision को apply करना चाहिए।
 
-[Failproof AI से संपर्क करें](mailto:support@befailproof.ai) और हम आपके रनटाइम के मॉडल, टूल और जीवनचक्र सीमाओं को नीति हुक्स के साथ मैप करने में मदद करेंगे, फिर एकीकरण को आपके साथ सत्यापित करेंगे।
+[Failproof AI से contact करें](mailto:support@befailproof.ai) और हम आपके runtime के model, tool और lifecycle boundaries को policy hooks से map करने में मदद करेंगे, फिर integration को आपके साथ validate करेंगे।

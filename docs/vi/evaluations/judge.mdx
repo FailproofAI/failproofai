@@ -1,55 +1,55 @@
 ---
-title: "Trọng tài LLM"
-description: "Chấm điểm các phiên làm việc dựa trên những điều mà code không thể đo lường — độ chính xác, tone giọng, liệu agent có tuân thủ chính sách hay không — bằng cách mô tả tiêu chuẩn tốt và để mô hình đọc cuộc hội thoại."
+title: "Các LLM judge"
+description: "Đánh giá các phiên trò chuyện dựa trên những yếu tố mà code không thể đo lường — tính chính xác, giọng điệu, liệu agent có tuân theo chính sách — bằng cách mô tả tiêu chuẩn tốt và cho phép một model đọc cuộc trò chuyện."
 icon: "scale"
 ---
 
-Một đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lệnh gọi công cụ, bao nhiêu lỗi, phiên làm việc kéo dài bao lâu. Nó không thể cho bạn biết liệu câu trả lời có *chính xác* hay không, liệu câu trả lời có thô lỗ hay không, hoặc liệu agent có kiểm tra chính sách trước khi hành động hay không.
+Một quá trình đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lời gọi công cụ, bao nhiêu lỗi, phiên trò chuyện mất bao lâu. Nó không thể cho bạn biết liệu một câu trả lời có *chính xác*, liệu một phản hồi có thô lỗ hay agent có kiểm tra chính sách trước khi hành động.
 
-Một **trọng tài LLM** có thể làm được. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ tự nhiên, và mô hình sẽ đọc phiên làm việc và trả về điểm số từ 0 đến 1 cùng với lý do của nó.
+Một **LLM judge** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ tự nhiên, và một model sẽ đọc phiên trò chuyện và trả về một điểm từ 0 đến 1 kèm theo lý do của nó.
 
 <Note>
-Một trọng tài tốn một lệnh gọi mô hình cho mỗi phiên nó chạy, và một đánh giá code không tốn gì cả. Chỉ sử dụng trọng tài cho những câu hỏi cần cuộc hội thoại được *hiểu rõ* — và đặt một điều kiện cho nó, để nó chỉ chạy trên các phiên mà câu hỏi thực sự liên quan.
+Một judge tiêu tốn một lần gọi model cho mỗi phiên trò chuyện nó chạy trên, và một đánh giá code không tốn phí gì. Chỉ sử dụng judge cho những câu hỏi cần cuộc trò chuyện được *hiểu* — và cho nó một điều kiện, để nó chạy trên những phiên trò chuyện mà câu hỏi thực sự liên quan.
 </Note>
 
-## Tôi cần cái nào?
+## Tôi muốn cái nào?
 
 | Câu hỏi | Sử dụng |
 | --- | --- |
 | Nó có gọi cùng một công cụ hai lần không? | code |
 | Có bao nhiêu lỗi? | code |
-| Phiên làm việc có dưới 30 giây không? | code |
-| Khách hàng có thể hiện sự khẩn cấp không? | [classifier](/vi/evaluations/jev) |
-| Khách hàng bực tức đến mức nào? | [classifier](/vi/evaluations/jev) |
-| Câu trả lời có thực sự chính xác không? | **trọng tài** |
-| Câu trả lời có thô lỗ hoặc bỏ qua không? | **trọng tài** |
-| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **trọng tài** |
+| Phiên trò chuyện có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự khẩn cấp không? | [classifier](/vi/evaluations/jev) |
+| Khách hàng bực bội đến mức nào? | [classifier](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Phản hồi có thô lỗ hoặc coi thường không? | **judge** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **judge** |
 
-Nguyên tắc cơ bản: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần lời giải thích → trọng tài.** Trọng tài là cái viết bằng văn bản về những gì nó thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+Quy tắc căn bản: **có thể đếm → code, câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần giải thích → judge.** Một judge là cái viết văn bản về những gì nó nhìn thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
 
-Bạn không cần phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó đã chọn cái nào và tại sao. Bạn có thể chuyển đổi nó.
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, rồi cho bạn biết nó đã chọn cái nào và tại sao. Bạn có thể thay đổi nó.
 
 ## Viết một cái
 
 1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả những gì bạn muốn chấm điểm, và chọn **draft**.
-3. Xem lại **criteria**, **threshold**, và **condition**, sau đó triển khai.
+2. Mô tả những gì bạn muốn được đánh giá, và chọn **draft**.
+3. Xem xét **criteria**, **threshold** và **condition**, rồi triển khai.
 
 ### Criteria
 
-Một hoặc hai câu, được viết dưới dạng yêu cầu thay vì câu hỏi:
+Một hoặc hai câu, viết như một yêu cầu chứ không phải một câu hỏi:
 
-> Trợ lý không được hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
+> The assistant must not promise or approve a refund without first checking the refund policy.
 
-Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" cho bạn một con số có nghĩa là không có gì; câu ở trên cho bạn một con số bạn có thể hành động.
+Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" cho bạn một con số không có ý nghĩa; câu ở trên cho bạn một con số bạn có thể hành động.
 
 ### Threshold
 
-Điểm số tại hoặc trên đó phiên làm việc được coi là đạt. `0.7` là một điểm khởi đầu hợp lý. Toàn bộ điểm số từ 0 đến 1 luôn được lưu trữ, vì vậy threshold chỉ quyết định pass/fail — bạn có thể xem phân bố và điều chỉnh.
+Điểm mà tại hoặc trên đó phiên trò chuyện sẽ vượt qua. `0.7` là một điểm khởi đầu hợp lý. Toàn bộ điểm từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định vượt qua/không vượt — bạn có thể xem phân phối và điều chỉnh.
 
 ### Condition
 
-Điều kiện Python giống như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có nó, trọng tài sẽ chạy trên **mỗi** phiên trong tổ chức của bạn, với một lệnh gọi mô hình cho mỗi phiên:
+Điều kiện Python tương tự như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có điều kiện, judge sẽ chạy trên **mọi** phiên trò chuyện trong tổ chức của bạn, mỗi lần một lời gọi model:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Bảng điều khiển sẽ cảnh báo bạn nếu bạn triển khai trọng tài mà không có điều kiện. Đôi khi điều này là đúng — một agent volume thấp mà bạn muốn được chấm điểm hoàn toàn — nhưng nó phải là một quyết định, không phải một sự cố.
+Bảng điều khiển cảnh báo bạn nếu bạn triển khai một judge mà không có điều kiện. Đôi khi điều đó là đúng — một agent có lưu lượng thấp mà bạn muốn được đánh giá hoàn toàn — nhưng nó phải là một quyết định, không phải một tai nạn.
 
-## Trọng tài thấy gì
+## Judge nhìn thấy cái gì
 
-Cuộc hội thoại, dưới dạng các lượt trò chuyện, lượt mới nhất trước nếu phiên dài:
+Cuộc trò chuyện, như các lượt lặp lại, mới nhất trước nếu phiên trò chuyện dài:
 
 - những gì người dùng nói
 - những gì trợ lý trả lời
-- **mỗi công cụ mà agent gọi, và lệnh gọi đó trả về cái gì, theo thứ tự**
+- **mọi công cụ mà agent gọi, và lệnh gọi đó trả về cái gì, theo thứ tự**
 
-Phần cuối cùng này là những gì làm cho "nó có làm X *trước* Y không?" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ thất bại được hiển thị dưới dạng lỗi, vì vậy "nó có phục hồi một cách duyên dáng từ lỗi không?" cũng hoạt động.
+Phần cuối cùng là những gì làm cho "nó có làm X *trước* Y không" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ thất bại được hiển thị là một thất bại, vì vậy "nó có phục hồi một cách duyên dáng từ một lỗi không" cũng hoạt động.
 
-Các phiên rất dài sẽ bị cắt ngắn để phù hợp với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý do giải thích rõ ràng — bạn sẽ không bao giờ thấy một phán quyết được đưa ra trên một phần của phiên được trình bày như được đưa ra trên toàn bộ nó.
+Các phiên trò chuyện rất dài được cắt ngắn để phù hợp với ngữ cảnh của model. Khi điều đó xảy ra, lý do cho biết rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra trên một phần của phiên trò chuyện được trình bày như một phán xét được đưa ra trên toàn bộ nó.
 
 ## Đọc kết quả
 
-Một trọng tài tạo ra một **score** giống như bất kỳ đánh giá có điểm số nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của trọng tài — đoạn giải thích những gì nó thấy. Hãy đọc điều đó trước khi một điểm số làm bạn ngạc nhiên; nó thường là một phiên thực sự thú vị hoặc một dấu hiệu rằng criteria cần được sắc bén hơn.
+Một judge tạo ra một **score** giống như bất kỳ đánh giá có điểm nào khác, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cùng một cách. Bên cạnh con số, nó lưu trữ **reasoning** của judge — đoạn văn giải thích những gì nó nhìn thấy. Hãy đọc điều đó trước tiên khi một điểm khiến bạn ngạc nhiên; nó thường là một phiên trò chuyện thực sự thú vị hoặc dấu hiệu cho thấy criteria cần được sắc nét hơn.
 
-Điểm số ổn định cho các trường hợp rõ ràng nhưng không phải bit-for-bit xác định. Coi một điểm số biên giới đơn lẻ là một lời nhắc để đi đọc phiên, không phải là một phán quyết.
+Các điểm là ổn định cho các trường hợp rõ ràng nhưng không hoàn toàn xác định. Coi một điểm biên giới duy nhất là một lời nhắc để đi đọc phiên trò chuyện, không phải là một bản án.
 
-## Hạn chế
+## Giới hạn
 
-- **Thử nghiệm chưa có sẵn.** Một lần chạy khô không có gán phiên phía sau nó, và gán đó là những gì cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì cho một lệnh gọi thử nghiệm để tính phí. Triển khai theo một điều kiện hẹp và đọc một vài kết quả đầu tiên.
-- **Backfill không có sẵn.** Backfill một đánh giá code trong nhiều tháng lịch sử là miễn phí; làm điều đó với một trọng tài sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
-- **Chỉnh sửa criteria công bố một phiên bản mới.** Điểm số cũ và mới không thể so sánh, vì vậy chúng được giữ riêng thay vì trộn lẫn vào một dòng xu hướng.
-- **Trọng tài luôn tạo ra một điểm số**, không bao giờ là số liệu hoặc xác nhận.
+- **Thử nghiệm chưa có sẵn.** Một dry run không có phân bổ phiên trò chuyện đằng sau nó, và phân bổ đó là những gì cho phép chi tiêu ngân sách model của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai với một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không có sẵn.** Backfill một đánh giá code trong nhiều tháng lịch sử là miễn phí; làm điều đó với một judge sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
+- **Chỉnh sửa criteria sẽ xuất bản một phiên bản mới.** Các điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng thay vì trộn lẫn vào một đường xu hướng.
+- **Một judge luôn tạo ra một điểm**, không bao giờ là một số liệu hoặc một khẳng định.
 
 ## Khi ngân sách của bạn hết
 
-Trọng tài chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, đánh giá trọng tài dừng với một lý do rõ ràng thay vì thất bại im lặng, và **đánh giá code tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên tiếp theo.
+Judges chi tiêu ngân sách model của tổ chức bạn. Khi nó hết, các đánh giá judge dừng lại với một lý do rõ ràng thay vì thất bại im lặng, và **các đánh giá code tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên trò chuyện tiếp theo.

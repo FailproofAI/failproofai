@@ -31,8 +31,9 @@ import {
   loadJevConfig,
   validateJevConfig,
   validateLoadedJevConfig,
+  type JevConfig,
 } from "../../../src/hooks/semantic/jev-config";
-import { jevRoute, transportForConfig } from "../../../src/hooks/semantic/jev-client";
+import { JevError, jevRoute, transportForConfig } from "../../../src/hooks/semantic/jev-client";
 import {
   clearJevCloudCredential,
   readCredentials,
@@ -258,6 +259,48 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(() => transportForConfig(r.config)).not.toThrow();
       expect(transportForConfig(r.config).via).toBe("failproofai");
       expect(validateLoadedJevConfig(r.config).ok).toBe(true);
+    });
+
+    describe("validateLoadedJevConfig checks the origin again, for real", () => {
+      const loaded = () => {
+        connect();
+        writeJev(cloudFile());
+        const cfg = loadJevConfig();
+        if (!cfg) throw new Error("expected a loaded config");
+        return cfg;
+      };
+
+      it("the loader records the credential's origin, and the loaded config passes", () => {
+        const cfg = loaded();
+        expect(cfg.credentialOrigin).toBe(ORIGIN);
+        expect(validateLoadedJevConfig(cfg).ok).toBe(true);
+      });
+
+      it("a Cloud config built by hand, with no credential origin, is refused — no route, no transport", () => {
+        const byHand: JevConfig = { provider: "failproofai", apiKey: KEY, baseUrl: BASE, mode: "enforce", timeoutMs: 3000 };
+        const r = validateLoadedJevConfig(byHand);
+        expect(r.ok).toBe(false);
+        expect(!r.ok && r.problem).not.toContain(KEY);
+        expect(() => jevRoute(byHand)).toThrow(JevError);
+        expect(() => transportForConfig(byHand)).toThrow(JevError);
+      });
+
+      it("a loaded config whose base URL has since moved to another origin is refused", () => {
+        const moved = { ...loaded(), baseUrl: "https://evil.example.com/enforcement/v1/jev" };
+        expect(validateLoadedJevConfig(moved).ok).toBe(false);
+        expect(() => transportForConfig(moved)).toThrow(JevError);
+      });
+
+      it("…and so is one whose credential origin was swapped for another", () => {
+        const swapped = { ...loaded(), credentialOrigin: "https://evil.example.com" };
+        expect(validateLoadedJevConfig(swapped).ok).toBe(false);
+      });
+
+      it("a credentialOrigin written into jev.json is ignored: only the credential sets it", () => {
+        connect();
+        writeJev(cloudFile({ credentialOrigin: "https://evil.example.com" }));
+        expect(loadJevConfig()?.credentialOrigin).toBe(ORIGIN);
+      });
     });
 
     it("defaults to enforce when the file names no mode, like every provider", () => {

@@ -126,6 +126,8 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     baseUrl: `http://127.0.0.1:${port}/enforcement/v1/jev`,
     mode: "shadow",
     timeoutMs: 3000,
+    // The loader records the origin of the credential it validated against.
+    credentialOrigin: `http://127.0.0.1:${port}`,
   });
 
   const send = () => transportForConfig(cloud()).transport(request, AbortSignal.timeout(5_000));

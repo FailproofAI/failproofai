@@ -1253,15 +1253,30 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
  */
 function routeForRouting(routing: Omit<JevConfig, "apiKey">): ReturnType<typeof jevRoute> | null {
   try {
-    return jevRoute({ ...routing, apiKey: ENV_KEY_STAND_IN });
+    return jevRoute({ ...routing, apiKey: ENV_KEY_STAND_IN, ...displayOnlyCloudOrigin(routing) });
   } catch {
     return null;
   }
 }
 
+/**
+ * For DISPLAY only, like the stand-in key beside it: a FailproofAI Cloud route
+ * is built only against the origin of the credential it was validated with
+ * (`validateLoadedJevConfig`), and a config shown here has no credential behind
+ * it, so the file's own origin stands in. Nothing built with it is ever sent.
+ */
+function displayOnlyCloudOrigin(routing: { provider?: unknown; baseUrl?: unknown }): { credentialOrigin?: string } {
+  if (routing.provider !== JEV_CLOUD_PROVIDER || typeof routing.baseUrl !== "string") return {};
+  try {
+    return { credentialOrigin: new URL(routing.baseUrl).origin };
+  } catch {
+    return {};
+  }
+}
+
 function namedEndpoint(raw: Record<string, unknown> | null): string | null {
   if (!raw || typeof raw.provider !== "string" || !(JEV_PROVIDER_KINDS as readonly string[]).includes(raw.provider)) return null;
-  const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "shadow" };
+  const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "shadow", ...displayOnlyCloudOrigin(raw) };
   if (raw.baseUrl !== undefined) routing.baseUrl = raw.baseUrl;
   if (raw.accountId !== undefined) routing.accountId = raw.accountId;
   try {

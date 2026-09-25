@@ -117,6 +117,15 @@ export interface JevConfig {
    * path: `loadJevConfig` returns null for it.
    */
   mode?: JevConfigMode;
+  /**
+   * `failproofai` only: the origin of the Cloud credential this config was
+   * validated against — the one place its key may be sent. Set by
+   * `validateJevConfig` from the credential it was handed, never read from a
+   * file (a `credentialOrigin` in `jev.json` is an unknown key, ignored), and
+   * checked again by `validateLoadedJevConfig` before any route or transport
+   * is built. A Cloud config assembled by hand without it is refused there.
+   */
+  credentialOrigin?: string;
 }
 
 export const DEFAULT_JEV_MODE: "shadow" | "enforce" = "enforce";
@@ -575,6 +584,9 @@ export function validateJevConfig(
           "the key is only ever sent to the origin it was issued for. Point jev.json back at it: failproofai jev setup --provider failproofai",
       };
     }
+    // Carried with the config, so the check can be made again — for real —
+    // wherever the config is used (`validateLoadedJevConfig`).
+    cfg.credentialOrigin = credentialOrigin;
   }
 
   if (kind === "cloudflare") {
@@ -630,18 +642,26 @@ export function validateJevConfig(
  *
  * For every BYOK provider that is `validateJevConfig` as it always was. The
  * FailproofAI Cloud provider is the one whose in-memory `apiKey` is not a file
- * field: the loader filled it from `credentials.json` after checking the base
- * URL against the credential's origin, and `validateJevConfig` would now refuse
- * the very key it put there. So the key is handed back in the credential slot,
- * under the base URL's own origin. That makes the origin check vacuous HERE, on
- * purpose: this runs on a value the loader has already vetted (or on a display
- * stand-in that is never sent), and every file on disk still meets the real
- * check on its way in.
+ * field: the loader filled it from `credentials.json`, and `validateJevConfig`
+ * would refuse the very key it put there as a file's `apiKey`. So the key goes
+ * back in the credential slot — under `credentialOrigin`, the origin of the
+ * credential the loader validated against, which the loader recorded on the
+ * config. The origin check therefore runs again, for real: a config whose
+ * `baseUrl` has since moved to another origin is refused, and so is a Cloud
+ * config assembled by hand with no `credentialOrigin` at all, so a future
+ * caller cannot build one and skip the check. (Display-only callers that build
+ * a stand-in on purpose name the origin they mean explicitly.)
  */
 export function validateLoadedJevConfig(cfg: JevConfig): ValidationResult<JevConfig> {
   if (cfg.provider !== JEV_CLOUD_PROVIDER) return validateJevConfig(cfg);
-  const { apiKey, ...rest } = cfg;
-  return validateJevConfig(rest, null, { url: typeof cfg.baseUrl === "string" ? cfg.baseUrl : "", key: apiKey });
+  const { apiKey, credentialOrigin, ...rest } = cfg;
+  if (typeof credentialOrigin !== "string" || credentialOrigin === "") {
+    return {
+      ok: false,
+      problem: "this FailproofAI Cloud config names no credential origin — it did not come from the loader, so its key is not sent anywhere",
+    };
+  }
+  return validateJevConfig(rest, null, { url: credentialOrigin, key: apiKey });
 }
 
 // ── Loading ──────────────────────────────────────────────────────────────────
@@ -923,6 +943,9 @@ function routingOf(cfg: JevConfig): Omit<JevConfig, "apiKey"> {
   if (cfg.baseUrl !== undefined) routing.baseUrl = cfg.baseUrl;
   if (cfg.accountId !== undefined) routing.accountId = cfg.accountId;
   if (cfg.model !== undefined) routing.model = cfg.model;
+  // Never `credentialOrigin`: every status that reports routing is one with no
+  // usable credential behind it, so there is no origin to report — only the
+  // stand-in it was validated with.
   return routing;
 }
 

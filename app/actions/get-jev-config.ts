@@ -335,12 +335,30 @@ function offTokenPresence(provider: JevProviderKind): JevTokenPresence | null {
   return typeof raw?.apiKey === "string" && raw.apiKey !== "" ? { source: "file" } : null;
 }
 
-/** `jevRoute` for display, swallowing the throw a file that names no usable route produces. */
+/**
+ * `jevRoute` for display, swallowing the throw a file that names no usable
+ * route produces.
+ *
+ * A FailproofAI Cloud config is only routed against the origin of the
+ * credential it was validated with (`validateLoadedJevConfig`). The loaded
+ * config carries it; a display stand-in built here — for a file that is off,
+ * refused, or has no credential behind it — gets the file's own origin, like
+ * the stand-in key beside it. Nothing built here is ever sent.
+ */
 function endpointFor(cfg: JevConfig): string | null {
   try {
-    return displayEndpoint(jevRoute(cfg).endpoint);
+    return displayEndpoint(jevRoute(displayOnlyCloudOrigin(cfg)).endpoint);
   } catch {
     return null;
+  }
+}
+
+function displayOnlyCloudOrigin(cfg: JevConfig): JevConfig {
+  if (cfg.provider !== JEV_CLOUD_PROVIDER || cfg.credentialOrigin || typeof cfg.baseUrl !== "string") return cfg;
+  try {
+    return { ...cfg, credentialOrigin: new URL(cfg.baseUrl).origin };
+  } catch {
+    return cfg;
   }
 }
 

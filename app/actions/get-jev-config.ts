@@ -45,9 +45,11 @@
  * value `jev setup` would also have printed. See `JevModelView`.
  */
 
+import { readJevCloudCredential } from "@/src/hooks/fp-config";
 import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
+  JEV_CLOUD_PROVIDER,
   JEV_PROVIDER_KINDS,
   baseUrlWithoutQuery,
   inspectJevConfig,
@@ -64,8 +66,8 @@ import {
   surveyReviewableCoverage,
 } from "@/src/hooks/policy-reviewability";
 
-/** The loader's four answers, unchanged — see `JevConfigInspection`. */
-export type JevSettingsStatus = "absent" | "ok" | "key-missing" | "refused";
+/** The loader's answers, unchanged — see `JevConfigInspection`. */
+export type JevSettingsStatus = "absent" | "ok" | "key-missing" | "refused" | "off" | "not-connected";
 
 /** What Jev has been doing lately, from `jevStats()`. Not a new pipeline. */
 export interface JevSettingsStats {
@@ -90,7 +92,8 @@ export interface JevSettingsStats {
  * not computed and not sent.
  */
 export interface JevTokenPresence {
-  source: "file" | "env";
+  /** `cloud`: the key is this machine's FailproofAI Cloud key, held in `credentials.json`. */
+  source: "file" | "env" | "cloud";
 }
 
 /**
@@ -284,8 +287,27 @@ function routingFromRaw(raw: Record<string, unknown> | null): {
     baseUrl: asString(raw?.baseUrl),
     accountId: asString(raw?.accountId),
     model: asString(raw?.model),
-    mode: modeRaw === "shadow" || modeRaw === "enforce" ? modeRaw : DEFAULT_JEV_MODE,
+    mode: modeRaw === "off" || modeRaw === "shadow" || modeRaw === "enforce" ? modeRaw : DEFAULT_JEV_MODE,
   };
+}
+
+/**
+ * Whether a switched-off file still has a key to switch back on with — as a
+ * SOURCE, like every other token field here. The routing the loader reports
+ * for an `off` file deliberately carries no key, so this is read for presence
+ * only: the raw file's `apiKey` is tested and dropped, and the Cloud
+ * credential's status is read and its key never touched.
+ */
+function offTokenPresence(provider: JevProviderKind): JevTokenPresence | null {
+  if (provider === JEV_CLOUD_PROVIDER) {
+    try {
+      return readJevCloudCredential().status === "ok" ? { source: "cloud" } : null;
+    } catch {
+      return null;
+    }
+  }
+  const raw = readJevConfigForUpdate();
+  return typeof raw?.apiKey === "string" && raw.apiKey !== "" ? { source: "file" } : null;
 }
 
 /** `jevRoute` for display, swallowing the throw a file that names no usable route produces. */
@@ -415,6 +437,33 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       token: null,
       problem: inspection.problem,
       fix: `set ${JEV_API_KEY_ENV}, or save a token here`,
+      stats: null,
+    };
+  }
+
+  if (inspection.status === "off" || inspection.status === "not-connected") {
+    // Configured, and not running: switched off by its owner, or a FailproofAI
+    // Cloud file on a machine with no Cloud key. Routing only, as for
+    // `key-missing` — the loader's routing object carries no key to leak.
+    const r = inspection.routing;
+    return {
+      ...base,
+      status: inspection.status,
+      on: false,
+      permissions: octal(inspection.mode),
+      provider: r.provider,
+      ...baseUrlView(r.baseUrl),
+      accountId: r.accountId ?? "",
+      model: modelView(r.model ?? ""),
+      endpoint: endpointFor({ ...r, apiKey: KEY_STAND_IN }),
+      mode: r.mode ?? DEFAULT_JEV_MODE,
+      timeoutMs: r.timeoutMs ?? null,
+      token: inspection.status === "off" ? offTokenPresence(r.provider) : null,
+      problem: inspection.status === "not-connected" ? inspection.problem : null,
+      fix:
+        inspection.status === "not-connected"
+          ? "connect this machine with a key that carries jev:evaluate: failproofai config --token <key>"
+          : null,
       stats: null,
     };
   }

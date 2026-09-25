@@ -161,7 +161,7 @@ import {
   isCalibratedJevModel,
   isModelIdShaped,
   jevModelVersion,
-  validateJevConfig,
+  validateLoadedJevConfig,
   type JevConfig,
   type JevProviderKind,
 } from "./jev-config";
@@ -189,6 +189,10 @@ export const JEV_PROVIDER_DEFAULTS = {
   vercel: { baseUrl: "https://ai-gateway.vercel.sh/typesafe/v1", model: VERCEL_JEV_MODEL },
   cloudflare: { baseUrl: "https://api.cloudflare.com/client/v4", model: CLOUDFLARE_JEV_MODEL },
   custom: { baseUrl: null, model: "jev-1.13.0" },
+  // No default base: it is the Cloud origin this machine connected to, written
+  // into jev.json by `config --token` and checked against the credential's own
+  // origin by the loader. The server forces `jev-1.13.0` whatever is sent.
+  failproofai: { baseUrl: null, model: "jev-1.13.0" },
 } as const satisfies Record<JevProviderKind, { baseUrl: string | null; model: string }>;
 
 /**
@@ -673,8 +677,13 @@ function nativeEndpoint(baseUrl: string): string {
   return url.toString();
 }
 
+/**
+ * A config as the loader produced it, validated again. `validateLoadedJevConfig`
+ * rather than `validateJevConfig`, because the FailproofAI Cloud provider's key
+ * is filled in from `credentials.json` and would be refused as a file field.
+ */
 function validated(cfg: JevConfig): JevConfig {
-  const v = validateJevConfig(cfg);
+  const v = validateLoadedJevConfig(cfg);
   if (!v.ok) throw new JevError("config", v.problem);
   return v.value;
 }
@@ -689,7 +698,7 @@ export function jevRoute(input: JevConfig): JevRoute {
     return { via: "cloudflare", endpoint: cloudflareEndpoint(cfg.accountId as string, cfg.baseUrl), model, modelIsDefault };
   }
   const base = cfg.baseUrl ?? defaults.baseUrl;
-  if (!base) throw new JevError("config", "provider custom needs a baseUrl");
+  if (!base) throw new JevError("config", `provider ${cfg.provider} needs a baseUrl`);
   return { via: cfg.provider, endpoint: nativeEndpoint(base), model, modelIsDefault };
 }
 
@@ -762,7 +771,8 @@ const MAX_LISTED_MODELS = 200;
  */
 export function jevModelsUrl(input: JevConfig): string | null {
   const cfg = validated(input);
-  if (cfg.provider === "cloudflare") return null;
+  // FailproofAI Cloud pins the model server-side and serves no list.
+  if (cfg.provider === "cloudflare" || cfg.provider === "failproofai") return null;
   const base = cfg.baseUrl ?? JEV_PROVIDER_DEFAULTS[cfg.provider].baseUrl;
   return base ? modelsUrlForBase(base) : null;
 }
@@ -965,6 +975,22 @@ export function transportForConfig(input: JevConfig): { transport: JevTransport;
           allowUnreported: false,
         }),
         via: "custom",
+        model: route.model,
+      };
+    case "failproofai":
+      return {
+        transport: nativeTransport({
+          url: route.endpoint,
+          apiKey: cfg.apiKey,
+          model: route.model,
+          // FailproofAI Cloud forces `jev-1.13.0` server-side and passes
+          // TypeSafe's answer through untouched, `model` included — so an
+          // answer that names no model, or an alias, is not one this route
+          // produces, and is refused (`model-mismatch`) rather than trusted.
+          // `readAnswers` then holds the reported id to the 1.13 family.
+          allowUnreported: false,
+        }),
+        via: "failproofai",
         model: route.model,
       };
   }

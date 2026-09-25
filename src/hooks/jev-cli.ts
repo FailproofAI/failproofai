@@ -100,6 +100,7 @@ import { writeJsonAtomically } from "../../lib/atomic-write";
 import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
+  JEV_CLOUD_PROVIDER,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
   JEV_PROVIDER_KINDS,
   endpointGivenAsBase,
@@ -137,6 +138,7 @@ import {
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
+import { readJevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
 
@@ -257,9 +259,46 @@ function parseFlags(argv: string[], allowed: Set<string>): Parsed | string {
 // ── Rendering helpers ────────────────────────────────────────────────────────
 
 function modeLine(mode: NonNullable<JevConfig["mode"]>): string {
+  if (mode === "off") return "off — Jev is not asked at all; the regex policies decide alone";
   return mode === "enforce"
     ? "enforce — Jev's verdicts apply: it may clear a reviewable policy's deny and add its own"
     : "shadow — Jev is asked and logged; the regex result is what is enforced";
+}
+
+/**
+ * The name a provider is SHOWN by. Only the Cloud route differs from its kind:
+ * `failproofai` is the value in the file, and "FailproofAI Cloud" is what the
+ * person connected to.
+ */
+export function providerLabel(provider: JevProviderKind): string {
+  return provider === JEV_CLOUD_PROVIDER ? "FailproofAI Cloud" : provider;
+}
+
+/**
+ * Where requests go, as `jev status` shows it. The Cloud route shows its HOST
+ * only: the path under it is the Cloud's own routing, the same on every
+ * deployment, and the host is the one fact that says which Cloud this machine
+ * is talking to.
+ */
+function shownEndpoint(provider: JevProviderKind, endpoint: string): string {
+  if (provider !== JEV_CLOUD_PROVIDER) return displayEndpoint(endpoint);
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return "(invalid URL)";
+  }
+}
+
+/** What `jev status` says about where the key comes from. */
+const CLOUD_KEY_SOURCE = "FailproofAI Cloud connection";
+
+/** Whether this machine holds a usable Jev credential, read owner-only. Never the key. */
+function cloudCredentialPresent(): boolean {
+  try {
+    return readJevCloudCredential().status === "ok";
+  } catch {
+    return false;
+  }
 }
 
 /** `0600`, or null when unknown. */
@@ -1058,6 +1097,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
       Object.assign(base, {
         permissions: octal(inspection.mode),
         provider: inspection.routing.provider,
+        providerLabel: providerLabel(inspection.routing.provider),
         ...(route ? { endpoint: displayEndpoint(route.endpoint), model: route.model, modelIsDefault: route.modelIsDefault } : {}),
         mode: inspection.routing.mode,
         timeoutMs: inspection.routing.timeoutMs,
@@ -1067,18 +1107,41 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         problem: inspection.problem,
       });
     }
+    if (inspection.status === "off" || inspection.status === "not-connected") {
+      // Configured and deliberately (off) or circumstantially (not connected)
+      // not running. The routing is reported exactly as for `ok`, so a
+      // provisioning check can tell either from a file it should rewrite.
+      const r = inspection.routing;
+      const route = routeForRouting(r);
+      const cloud = r.provider === JEV_CLOUD_PROVIDER;
+      Object.assign(base, {
+        permissions: octal(inspection.mode),
+        provider: r.provider,
+        providerLabel: providerLabel(r.provider),
+        ...(route ? { endpoint: shownEndpoint(r.provider, route.endpoint), model: route.model, modelIsDefault: route.modelIsDefault } : {}),
+        mode: r.mode,
+        timeoutMs: r.timeoutMs,
+        ...(cloud ? { keySource: "cloud", keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: inspection.status !== "not-connected" } : {}),
+        ...(inspection.status === "not-connected" ? { reason: "not-connected", problem: inspection.problem } : { reason: "switched-off" }),
+      });
+      // `cloudConnected` for an OFF Cloud file is read from the credential
+      // rather than assumed: off is checked before the key is looked for.
+      if (cloud && inspection.status === "off") base.cloudConnected = cloudCredentialPresent();
+    }
     if (inspection.status === "ok") {
       const { config: cfg } = inspection;
       const route = jevRoute(cfg);
       Object.assign(base, {
         permissions: octal(inspection.mode),
         provider: cfg.provider,
-        endpoint: displayEndpoint(route.endpoint),
+        providerLabel: providerLabel(cfg.provider),
+        endpoint: shownEndpoint(cfg.provider, route.endpoint),
         model: route.model,
         modelIsDefault: route.modelIsDefault,
         mode: cfg.mode,
         timeoutMs: cfg.timeoutMs,
         keySource: inspection.keySource,
+        ...(inspection.keySource === "cloud" ? { keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: true } : {}),
         // How much of this machine's policy set Jev is allowed to clear, and
         // why it is none when it is none. A provisioning check that turns Jev
         // on has no other way to find out that the half it turned on cannot
@@ -1163,6 +1226,69 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     );
   }
 
+  if (inspection.status === "off") {
+    // Switched off, not broken and not absent: the file is kept so switching
+    // back on needs no key and no endpoint re-typed. Said as "off" first,
+    // because that is the whole answer to "is Jev running?".
+    const r = inspection.routing;
+    const route = routeForRouting(r);
+    return ok(
+      stack(
+        title("failproofai jev status", "off (switched off)", opts),
+        note(`Jev is switched off in ${inspection.path}: it is not asked about any tool call, and hooks run the regex policies exactly as before.`, opts),
+        rows(
+          [
+            ["provider", providerLabel(r.provider)],
+            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+            ["mode", modeLine("off")],
+            ["config", inspection.path],
+            ...((r.provider === JEV_CLOUD_PROVIDER
+              ? [["key", cloudCredentialPresent() ? CLOUD_KEY_SOURCE : `${CLOUD_KEY_SOURCE} — this machine is not connected`]]
+              : []) as Array<[string, string]>),
+          ],
+          opts,
+        ),
+        nextStep("failproofai jev setup --mode shadow", "Switch it back on (shadow logs Jev and keeps enforcing regex; enforce lets it clear), here or from the dashboard:", opts),
+        legacyNote,
+        jevStatsLines(stats, opts),
+      ),
+    );
+  }
+
+  if (inspection.status === "not-connected") {
+    // The Cloud route's `key-missing`: nothing is wrong with the file, and the
+    // remedy is the connection, not a rewrite.
+    const r = inspection.routing;
+    const route = routeForRouting(r);
+    return ok(
+      stack(
+        title("failproofai jev status", "off — this machine is not connected to FailproofAI Cloud", opts),
+        note(
+          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine holds no FailproofAI Cloud key that carries jev:evaluate. ` +
+            "Hooks run the regex policies exactly as before.",
+          opts,
+        ),
+        rows(
+          [
+            ["provider", providerLabel(r.provider)],
+            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+            ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
+            ["config", inspection.path],
+            ["key", `${CLOUD_KEY_SOURCE} — not connected`],
+          ],
+          opts,
+        ),
+        nextStep(
+          "failproofai config --token <key>",
+          "Connect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page), or switch Jev off: failproofai jev remove",
+          opts,
+        ),
+        legacyNote,
+        jevStatsLines(stats, opts),
+      ),
+    );
+  }
+
   if (inspection.status === "refused") {
     // A file other users could change may name an endpoint its owner never
     // chose, and `chmod 600` would start trusting it with the key — so say
@@ -1195,14 +1321,21 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
       title("failproofai jev status", legacy ? "on (legacy override in this shell)" : `on · ${mode}`, opts),
       rows(
         [
-          ["provider", cfg.provider],
-          ["endpoint", displayEndpoint(route.endpoint)],
+          ["provider", providerLabel(cfg.provider)],
+          ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
           ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
           ["mode", modeLine(mode)],
           ["timeout", `${cfg.timeoutMs} ms`],
           ["config", inspection.path],
           ["permissions", permissions(inspection.mode)],
-          ["key", inspection.keySource === "file" ? "set in the config file" : `from ${JEV_API_KEY_ENV} (this shell only; the daemon does not see it)`],
+          [
+            "key",
+            inspection.keySource === "cloud"
+              ? CLOUD_KEY_SOURCE
+              : inspection.keySource === "file"
+                ? "set in the config file"
+                : `from ${JEV_API_KEY_ENV} (this shell only; the daemon does not see it)`,
+          ],
         ],
         opts,
       ),
@@ -1243,19 +1376,39 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
         ? `There is no ${inspection.path}; nothing to test.`
         : inspection.status === "key-missing"
           ? `${inspection.path} takes its key from ${JEV_API_KEY_ENV}, which is not set in this shell, so there is no key to test with.`
-          : `${inspection.path} was refused — ${inspection.problem}.`;
-    const code = inspection.status === "absent" ? "not-configured" : inspection.status === "key-missing" ? "no-env-key" : "config";
+          : inspection.status === "off"
+            ? `Jev is switched off in ${inspection.path} (mode off), so nothing is sent.`
+            : inspection.status === "not-connected"
+              ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine is not connected to it with a key that carries jev:evaluate.`
+              : `${inspection.path} was refused — ${inspection.problem}.`;
+    const code =
+      inspection.status === "absent"
+        ? "not-configured"
+        : inspection.status === "key-missing"
+          ? "no-env-key"
+          : inspection.status === "off"
+            ? "switched-off"
+            : inspection.status === "not-connected"
+              ? "not-connected"
+              : "config";
     const fixCmd =
-      inspection.status === "key-missing" ? "failproofai jev setup --key-stdin < key-file" : "failproofai jev setup --provider <kind> --key-stdin";
+      inspection.status === "key-missing"
+        ? "failproofai jev setup --key-stdin < key-file"
+        : inspection.status === "off"
+          ? "failproofai jev setup --mode shadow"
+          : inspection.status === "not-connected"
+            ? "failproofai config --token <key>"
+            : "failproofai jev setup --provider <kind> --key-stdin";
+    const fixLead =
+      inspection.status === "key-missing"
+        ? `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file:`
+        : inspection.status === "off"
+          ? "Switch it back on:"
+          : inspection.status === "not-connected"
+            ? "Connect with a key that carries jev:evaluate:"
+            : undefined;
     const json = asJson ? JSON.stringify({ ok: false, error: { code, message: why } }, null, 2) : undefined;
-    return fail(
-      stack(
-        title("failproofai jev test", "not run", opts),
-        note(why, opts),
-        nextStep(fixCmd, inspection.status === "key-missing" ? `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file:` : undefined, opts),
-      ),
-      json,
-    );
+    return fail(stack(title("failproofai jev test", "not run", opts), note(why, opts), nextStep(fixCmd, fixLead, opts)), json);
   }
 
   const cfg = inspection.config;
@@ -1398,7 +1551,11 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   // here, and a public list answers anyway.
   const inspection = inspectJevConfig();
   const routing: Omit<JevConfig, "apiKey"> | null =
-    inspection.status === "ok" ? inspection.config : inspection.status === "key-missing" ? inspection.routing : null;
+    inspection.status === "ok"
+      ? inspection.config
+      : inspection.status === "key-missing" || inspection.status === "off" || inspection.status === "not-connected"
+        ? inspection.routing
+        : null;
   const storedKey = inspection.status === "ok" ? inspection.config.apiKey : null;
 
   let provider: JevProviderKind;
@@ -1414,6 +1571,11 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   } else if (named !== undefined) {
     provider = named as JevProviderKind;
     base = JEV_PROVIDER_DEFAULTS[provider].baseUrl;
+    if (base === null && provider === JEV_CLOUD_PROVIDER) {
+      return fail([
+        `FailproofAI Cloud serves no model list: it runs ${JEV_PROVIDER_DEFAULTS.failproofai.model}, pinned on the server, and every answer is checked against the Jev 1.13 family.`,
+      ]);
+    }
     if (base === null) {
       return fail(["Provider custom has no API of its own — its URL is the whole address.", "  failproofai jev models --url <base>"]);
     }
@@ -1432,12 +1594,16 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   // Cloudflare is the one route with no `<base>/models`: Workers AI runs models at
   // `/accounts/<id>/ai/run` and keeps its inventory behind a different API, so
   // there is nothing here to read rather than something that failed to read.
-  const modelsUrl = provider === "cloudflare" || base === null ? null : modelsUrlForBase(base);
+  // FailproofAI Cloud serves no list either: it pins the model server-side
+  // (`jev-1.13.0`), so there is nothing to choose and nothing to read.
+  const modelsUrl = provider === "cloudflare" || provider === JEV_CLOUD_PROVIDER || base === null ? null : modelsUrlForBase(base);
   if (modelsUrl === null) {
     return fail([
       provider === "cloudflare"
         ? "Cloudflare Workers AI serves no <base>/models: its models are listed through the Cloudflare API, not through the Jev base URL."
-        : "That base URL names no endpoint a model list could be read from.",
+        : provider === JEV_CLOUD_PROVIDER
+          ? `FailproofAI Cloud serves no model list: it runs ${JEV_PROVIDER_DEFAULTS.failproofai.model}, pinned on the server, and every answer is checked against the Jev 1.13 family.`
+          : "That base URL names no endpoint a model list could be read from.",
     ]);
   }
 

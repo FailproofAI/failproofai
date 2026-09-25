@@ -283,7 +283,10 @@ async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTie
     if (!existsSync(jevConfigFile())) return null;
     const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
     const config = loadJevConfig();
-    return config ? { config, defaultMode: DEFAULT_JEV_MODE } : null;
+    // `loadJevConfig` never returns a switched-off config; this says so again at
+    // the one place it matters, because an `off` that got through would fall to
+    // the default mode below — which is `enforce`.
+    return config && config.mode !== "off" ? { config, defaultMode: DEFAULT_JEV_MODE } : null;
   } catch (err) {
     hookLogInfo(
       `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,

@@ -22,7 +22,19 @@
  * someone opens when something is wrong. That guidance now lives in
  * `failproofai config --status` and the docs, which is a worse place for it.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { version as cliVersion } from "../../package.json";
 import {
@@ -753,6 +765,26 @@ export interface FpCredentials {
   org?: { id?: string; slug?: string; name?: string };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
+  /**
+   * The key Jev's FailproofAI Cloud route sends, and the Cloud ORIGIN it was
+   * verified against. Written by connect only when introspect reports
+   * `jev:evaluate`; cleared by disconnect. See {@link readJevCloudCredential}.
+   *
+   * A slot of its own, not a reuse of `[cloud]` or `[ingest]`, although it holds
+   * the same key today: those two are written under their own permission checks
+   * and can hold DIFFERENT keys (see `cloud-connection.ts`), and "which of the
+   * two backs Jev" is a question nobody reading the file should have to answer.
+   * One slot per capability keeps revoking one from ever silently re-routing
+   * another.
+   */
+  jev?: JevCloudCredential;
+}
+
+/** The `jev` slot of `credentials.json`. */
+export interface JevCloudCredential {
+  /** The Cloud origin the key was verified against, e.g. `https://app.befailproof.ai`. */
+  url: string;
+  key: string;
 }
 
 /**
@@ -775,6 +807,8 @@ const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
   ["org", "name"],
   ["ingest", "url"],
   ["ingest", "key"],
+  ["jev", "url"],
+  ["jev", "key"],
   ["auth", "base_url"],
   ["auth", "session_token"],
   ["auth", "expires_at"],
@@ -843,6 +877,8 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
     }
+    const jev = projectJevSlot(parsed.jev);
+    if (jev) out.jev = jev;
     if (auth) {
       out.auth = {
         baseUrl: typeof auth.base_url === "string" ? auth.base_url : undefined,
@@ -875,6 +911,9 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   }
   if (creds.ingest) {
     out.ingest = { url: creds.ingest.url, key: creds.ingest.key };
+  }
+  if (creds.jev) {
+    out.jev = { url: creds.jev.url, key: creds.jev.key };
   }
   if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
     out.org = {
@@ -918,6 +957,159 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
 export function hasCloudCredentials(): boolean {
   const c = readCredentials();
   return Boolean(c.cloud || c.ingest);
+}
+
+// ── The Jev slot ─────────────────────────────────────────────────────────────
+//
+// The one credential in this file that a HOOK reads. Everything else here is
+// read by the daemon or a CLI command; this is read by `inspectJevConfig` on
+// every gated tool call of a machine whose `jev.json` names the FailproofAI
+// Cloud provider — and the key it yields is what lets Jev's answers clear a
+// deny. So it is read the way `jev.json` itself is (`semantic/jev-config.ts`),
+// not the way `readCredentials` reads: a file or directory other users could
+// have written is REFUSED rather than read, because a routing credential for a
+// tier that can clear denies must not be one somebody else chose.
+//
+// And only from `credentialsFile()`, never from `FAILPROOFAI_CLOUD_CREDENTIALS`.
+// That override relocates the policy credential for the daemon and CI; honoured
+// here it would be an environment variable choosing the key Jev spends, which a
+// repository's `.claude/settings.json` can set for a session. `FAILPROOFAI_HOME`
+// is not an exception to that rule for the reason `jev-config.ts` gives: it
+// moves the whole layout, `jev.json` included.
+
+/** Same bound `jev.json` gets; no legitimate `credentials.json` is near it. */
+const MAX_CREDENTIALS_BYTES = 64 * 1024;
+/** Non-blocking, so a FIFO in the file's place cannot hang a hook in `open()`. */
+const CREDENTIALS_OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
+/** Group- or world-WRITE bits on the directory: whoever has them can replace the file. */
+const DIR_WRITABLE_BY_OTHERS = 0o022;
+
+export type JevCloudCredentialRead =
+  | { status: "ok"; path: string; credential: JevCloudCredential }
+  /** No file, or a file with no usable `jev` slot: this machine is not connected for Jev. */
+  | { status: "absent"; path: string }
+  | {
+      status: "refused";
+      path: string;
+      /** The file's permission bits, when they are the reason. */
+      mode: number | null;
+      reason: "too-open" | "unreadable" | "too-large" | "not-json";
+      problem: string;
+      /** The command that fixes it, when one does. */
+      fix?: string;
+    };
+
+/** A `jev` table with two non-empty strings, or null. Shape only; `jev-config.ts` validates the values. */
+function projectJevSlot(raw: unknown): JevCloudCredential | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { url, key } = raw as Record<string, unknown>;
+  return typeof url === "string" && url && typeof key === "string" && key ? { url, key } : null;
+}
+
+/**
+ * The `jev` slot, read owner-only.
+ *
+ * The file is opened once and every check runs against that descriptor, so the
+ * permissions checked are the permissions of the bytes read — the same shape
+ * as `inspectJevConfig`, for the same reason. Never throws.
+ */
+export function readJevCloudCredential(): JevCloudCredentialRead {
+  const path = credentialsFile();
+  let fd: number;
+  try {
+    fd = openSync(path, CREDENTIALS_OPEN_FLAGS);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path };
+    return { status: "refused", path, mode: null, reason: "unreadable", problem: `cannot open ${path} (${code ?? "error"})` };
+  }
+  let text: string;
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { status: "refused", path, mode: null, reason: "unreadable", problem: `${path} is not a regular file` };
+    // On Windows `mode` is synthesized and would refuse every file while
+    // protecting nothing; Jev setup is refused there anyway.
+    const meaningful = process.platform !== "win32";
+    const mode = st.mode & 0o777;
+    if (meaningful && (mode & 0o077) !== 0) {
+      return {
+        status: "refused",
+        path,
+        mode,
+        reason: "too-open",
+        problem:
+          `${path} is ${mode.toString(8).padStart(4, "0")}; it holds the key Jev sends to FailproofAI Cloud, ` +
+          `so it must be owner-only (chmod 600 ${path})`,
+        fix: `chmod 600 ${path}`,
+      };
+    }
+    if (meaningful) {
+      let dirMode: number | null = null;
+      try {
+        const m = statSync(dirname(path)).mode & 0o777;
+        if ((m & DIR_WRITABLE_BY_OTHERS) !== 0) dirMode = m;
+      } catch {
+        // No permission to stat it: the read below reports what it can.
+      }
+      if (dirMode !== null) {
+        return {
+          status: "refused",
+          path,
+          mode,
+          reason: "too-open",
+          problem:
+            `its directory ${dirname(path)} is ${dirMode.toString(8).padStart(4, "0")} — other users can write there, ` +
+            `so they can put their own credentials in its place; it must be owner-only (chmod 700 ${dirname(path)})`,
+          fix: `chmod 700 ${dirname(path)}`,
+        };
+      }
+    }
+    if (st.size > MAX_CREDENTIALS_BYTES) {
+      return { status: "refused", path, mode, reason: "too-large", problem: `${path} is larger than ${MAX_CREDENTIALS_BYTES} bytes` };
+    }
+    const buf = Buffer.alloc(st.size);
+    let off = 0;
+    while (off < buf.length) {
+      const n = readSync(fd, buf, off, buf.length - off, off);
+      if (n === 0) break;
+      off += n;
+    }
+    text = buf.subarray(0, off).toString("utf8");
+  } catch (err) {
+    return { status: "refused", path, mode: null, reason: "unreadable", problem: `cannot read ${path} (${(err as NodeJS.ErrnoException).code ?? "error"})` };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      // Nothing useful to do.
+    }
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { status: "refused", path, mode: null, reason: "not-json", problem: `${path} is not valid JSON` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { status: "refused", path, mode: null, reason: "not-json", problem: `${path} does not hold a JSON object` };
+  }
+  const credential = projectJevSlot((parsed as Record<string, unknown>).jev);
+  return credential ? { status: "ok", path, credential } : { status: "absent", path };
+}
+
+/** Store the `jev` slot (0600, owner-only home), keeping every other credential. */
+export function writeJevCloudCredential(credential: JevCloudCredential): string {
+  writeCredentials({ ...readCredentials(), jev: { url: credential.url, key: credential.key } });
+  return credentialsFile();
+}
+
+/** Remove the `jev` slot. True if there was one. Every other credential stays. */
+export function clearJevCloudCredential(): boolean {
+  const current = readCredentials();
+  if (!current.jev) return false;
+  const { jev: _dropped, ...rest } = current;
+  writeCredentials(rest);
+  return true;
 }
 
 function writeFileAt(path: string, contents: string): void {

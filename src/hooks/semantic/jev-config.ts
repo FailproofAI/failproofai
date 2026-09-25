@@ -49,17 +49,56 @@
  * microseconds, and it means `failproofai jev setup` / `remove` take effect on
  * the very next tool call — including inside the long-lived daemon worker —
  * with no restart and no stale state to reason about.
+ *
+ * # FailproofAI Cloud (`provider: "failproofai"`)
+ *
+ * The one provider whose key is NOT in this file. `failproofai config --token`
+ * with a key carrying `jev:evaluate` stores that key in the `jev` slot of
+ * `credentials.json` and, when there is no `jev.json` yet, writes one naming
+ * this provider, the Cloud origin + `/enforcement/v1/jev` and `mode: "shadow"`.
+ * So for this provider:
+ *
+ * - the key comes from `credentials.json` (`readJevCloudCredential`), read with
+ *   the same owner-only file, directory and size checks this file gets — a
+ *   loose credentials file is refused, not read, and Jev is off;
+ * - an `apiKey` in `jev.json` makes the file invalid, and
+ *   `FAILPROOFAI_JEV_API_KEY` is ignored: the Cloud key has exactly one home,
+ *   so disconnecting or rotating it can never leave a second copy steering Jev;
+ * - `baseUrl` is required, and its ORIGIN must equal the origin the credential
+ *   was verified against (`jev.url`). The key is only ever sent where it was
+ *   issued, and both halves of that decision live in global files.
+ * - no credential at all is `not-connected`: Jev is off, and `jev status` says
+ *   the machine is not connected to FailproofAI Cloud.
+ *
+ * # `mode: "off"`
+ *
+ * Every provider accepts `off | shadow | enforce`. `off` keeps the file — the
+ * endpoint, and for BYOK the key — while Jev does not run at all:
+ * `loadJevConfig` returns null exactly as for an absent file. It exists so the
+ * dashboard can switch the Cloud route off without deleting the file that
+ * `config --token` will never rewrite. An older build reads `off` as an
+ * invalid mode, which is also off.
  */
 import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { readJevCloudCredential, type JevCloudCredential } from "../fp-config";
 import { jevConfigFile } from "../fp-home";
 
-export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare" | "custom";
+export type { JevCloudCredential } from "../fp-config";
+
+export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare" | "custom" | "failproofai";
+
+/** `off` does not run Jev at all; `shadow` logs Jev and enforces regex; `enforce` applies the combine rules. */
+export type JevConfigMode = "off" | "shadow" | "enforce";
 
 export interface JevConfig {
   provider: JevProviderKind;
+  /**
+   * The bearer key. For `failproofai` it is never in the FILE: the loader fills
+   * it from the `jev` slot of `credentials.json` (see the header).
+   */
   apiKey: string;
-  /** Required for `custom`; an optional override otherwise. */
+  /** Required for `custom` and `failproofai`; an optional override otherwise. */
   baseUrl?: string;
   /** `cloudflare` only. */
   accountId?: string;
@@ -67,13 +106,31 @@ export interface JevConfig {
   model?: string;
   /** Default 3000; the reasoning is on `DEFAULT_JEV_TIMEOUT_MS` in `evaluator.ts`. */
   timeoutMs?: number;
-  /** `shadow` logs Jev and enforces regex; `enforce` applies the combine rules. Default `enforce`. */
-  mode?: "shadow" | "enforce";
+  /**
+   * Default `enforce`. `off` is accepted in a file but never reaches the hook
+   * path: `loadJevConfig` returns null for it.
+   */
+  mode?: JevConfigMode;
 }
 
-export const DEFAULT_JEV_MODE: NonNullable<JevConfig["mode"]> = "enforce";
+export const DEFAULT_JEV_MODE: "shadow" | "enforce" = "enforce";
 
-export const JEV_PROVIDER_KINDS: readonly JevProviderKind[] = ["typesafe", "openrouter", "vercel", "cloudflare", "custom"];
+export const JEV_PROVIDER_KINDS: readonly JevProviderKind[] = ["typesafe", "openrouter", "vercel", "cloudflare", "custom", "failproofai"];
+
+/** The provider whose key comes from this machine's FailproofAI Cloud connection. */
+export const JEV_CLOUD_PROVIDER = "failproofai" as const satisfies JevProviderKind;
+
+/**
+ * Where FailproofAI Cloud serves Jev, under the Cloud origin. The transport
+ * appends `/systemone` (`nativeEndpoint`), so the route is
+ * `POST <origin>/enforcement/v1/jev/systemone`.
+ */
+export const JEV_CLOUD_BASE_PATH = "/enforcement/v1/jev";
+
+/** The `baseUrl` `config --token` writes for a Cloud origin. */
+export function jevCloudBaseUrl(origin: string): string {
+  return `${new URL(origin).origin}${JEV_CLOUD_BASE_PATH}`;
+}
 
 /** The env var that may supply the key (and nothing else) when the file carries none. */
 export const JEV_API_KEY_ENV = "FAILPROOFAI_JEV_API_KEY";
@@ -160,8 +217,11 @@ export type ValidationResult<T> =
    * carries no `apiKey` and `FAILPROOFAI_JEV_API_KEY` is unset here. Callers
    * that can tell those apart (`inspectJevConfig`, and `jev status` through it)
    * use the flag rather than matching on `problem`.
+   *
+   * `notConnected` is its FailproofAI Cloud twin: the file names the Cloud
+   * provider and this machine holds no Jev credential for it.
    */
-  | { ok: false; problem: string; missingKey?: true };
+  | { ok: false; problem: string; missingKey?: true; notConnected?: true };
 
 /** A key is visible ASCII, one line, at most 4 KiB. The message never includes the key. */
 export function validateApiKey(key: unknown): string | null {
@@ -338,6 +398,21 @@ function isPlainHttp(url: string): boolean {
 }
 
 /**
+ * The origin a bearer token would be sent to: https, or http to a loopback host
+ * — the same schemes `validateBaseUrl` admits. Null for anything else, so a
+ * credential naming some other scheme matches no base URL at all.
+ */
+function originOf(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Prefixes real credentials carry: OpenAI / OpenRouter / Anthropic / Stripe
  * (`sk-`, `sk_`, `rk_`), GitHub, GitLab, Slack, AWS, Google, Hugging Face and
  * Vercel AI Gateway (`vck_`). No Jev model id starts with any of them.
@@ -397,8 +472,17 @@ function validateModel(raw: unknown): ValidationResult<string> {
  * `envKey` is the value of `FAILPROOFAI_JEV_API_KEY`, used only when the object
  * has no `apiKey`. Unknown top-level keys are ignored so a newer failproofai's
  * file does not switch Jev off on an older one. Problems never quote the key.
+ *
+ * `cloud` is the `jev` slot of `credentials.json`, and is read ONLY for the
+ * FailproofAI Cloud provider, which takes its key from nowhere else: not the
+ * file (an `apiKey` there is refused) and not `envKey` (ignored). The file's
+ * `baseUrl` must sit on the origin the credential was verified against.
  */
-export function validateJevConfig(raw: unknown, envKey?: string | null): ValidationResult<JevConfig> {
+export function validateJevConfig(
+  raw: unknown,
+  envKey?: string | null,
+  cloud?: JevCloudCredential | null,
+): ValidationResult<JevConfig> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, problem: "the file must hold a JSON object" };
   const o = raw as Record<string, unknown>;
 
@@ -409,7 +493,31 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   const kind = provider as JevProviderKind;
 
   let apiKey: string;
-  if (o.apiKey !== undefined) {
+  if (kind === JEV_CLOUD_PROVIDER) {
+    // One home for the Cloud key, so revoking it at disconnect cannot leave a
+    // copy behind that keeps Jev spending — and so nothing a session can set
+    // (the environment) or a second file can hold decides which key is sent.
+    if (o.apiKey !== undefined) {
+      return {
+        ok: false,
+        problem:
+          "provider failproofai takes its key from this machine's FailproofAI Cloud connection (credentials.json), " +
+          "never from jev.json — remove apiKey from the file (not repeated here)",
+      };
+    }
+    if (!cloud) {
+      return {
+        ok: false,
+        problem:
+          "this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate — " +
+          "connect it with: failproofai config --token <key>",
+        notConnected: true,
+      };
+    }
+    const bad = validateApiKey(cloud.key);
+    if (bad) return { ok: false, problem: `the FailproofAI Cloud key in credentials.json is unusable: ${bad}` };
+    apiKey = cloud.key;
+  } else if (o.apiKey !== undefined) {
     const bad = validateApiKey(o.apiKey);
     if (bad) return { ok: false, problem: bad };
     apiKey = o.apiKey as string;
@@ -431,8 +539,27 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
     const r = validateBaseUrl(o.baseUrl);
     if (!r.ok) return r;
     cfg.baseUrl = r.value;
-  } else if (kind === "custom") {
-    return { ok: false, problem: "provider custom needs a baseUrl" };
+  } else if (kind === "custom" || kind === JEV_CLOUD_PROVIDER) {
+    return { ok: false, problem: `provider ${kind} needs a baseUrl` };
+  }
+
+  if (kind === JEV_CLOUD_PROVIDER && cloud) {
+    // The key goes only to the origin it was issued for. Compared as origins
+    // (scheme + host + port), which is what decides where a bearer token lands;
+    // the path under it is the Cloud's own routing.
+    const credentialOrigin = originOf(cloud.url);
+    const baseOrigin = originOf(cfg.baseUrl as string);
+    if (credentialOrigin === null) {
+      return { ok: false, problem: "the FailproofAI Cloud credential in credentials.json names no usable origin — reconnect: failproofai config --token <key>" };
+    }
+    if (baseOrigin !== credentialOrigin) {
+      return {
+        ok: false,
+        problem:
+          `baseUrl is on ${baseOrigin ?? "an unusable origin"}, but this machine's FailproofAI Cloud key was issued for ${credentialOrigin} — ` +
+          "the key is only ever sent to the origin it was issued for. Point jev.json back at it: failproofai jev setup --provider failproofai",
+      };
+    }
   }
 
   if (kind === "cloudflare") {
@@ -460,7 +587,7 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   }
 
   if (o.mode !== undefined) {
-    if (o.mode !== "shadow" && o.mode !== "enforce") return { ok: false, problem: 'mode must be "shadow" or "enforce"' };
+    if (o.mode !== "off" && o.mode !== "shadow" && o.mode !== "enforce") return { ok: false, problem: 'mode must be "off", "shadow" or "enforce"' };
     cfg.mode = o.mode;
   }
 
@@ -468,9 +595,9 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   // authenticates the server there: while the local proxy is down, any process
   // of this user — the agent being judged included — can bind its port and
   // answer "none" to every question. In enforce mode that answer clears
-  // reviewable denies; in shadow mode it changes nothing, so that is the only
-  // mode it is accepted in.
-  if (cfg.baseUrl !== undefined && isPlainHttp(cfg.baseUrl) && cfg.mode !== "shadow") {
+  // reviewable denies; in shadow mode it changes nothing, and `off` sends
+  // nothing at all, so enforce is the one mode it is refused in.
+  if (cfg.baseUrl !== undefined && isPlainHttp(cfg.baseUrl) && cfg.mode === "enforce") {
     return {
       ok: false,
       problem:
@@ -482,11 +609,67 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   return { ok: true, value: cfg };
 }
 
+/**
+ * Re-validate a config that was already LOADED — by `loadJevConfig` or
+ * `inspectJevConfig` — before a route or a transport is built from it.
+ *
+ * For every BYOK provider that is `validateJevConfig` as it always was. The
+ * FailproofAI Cloud provider is the one whose in-memory `apiKey` is not a file
+ * field: the loader filled it from `credentials.json` after checking the base
+ * URL against the credential's origin, and `validateJevConfig` would now refuse
+ * the very key it put there. So the key is handed back in the credential slot,
+ * under the base URL's own origin. That makes the origin check vacuous HERE, on
+ * purpose: this runs on a value the loader has already vetted (or on a display
+ * stand-in that is never sent), and every file on disk still meets the real
+ * check on its way in.
+ */
+export function validateLoadedJevConfig(cfg: JevConfig): ValidationResult<JevConfig> {
+  if (cfg.provider !== JEV_CLOUD_PROVIDER) return validateJevConfig(cfg);
+  const { apiKey, ...rest } = cfg;
+  return validateJevConfig(rest, null, { url: typeof cfg.baseUrl === "string" ? cfg.baseUrl : "", key: apiKey });
+}
+
 // ── Loading ──────────────────────────────────────────────────────────────────
 
 export type JevConfigInspection =
   | { status: "absent"; path: string }
-  | { status: "ok"; path: string; mode: number | null; keySource: "file" | "env"; config: JevConfig }
+  | {
+      status: "ok";
+      path: string;
+      mode: number | null;
+      /** `cloud`: the `jev` slot of `credentials.json` (the FailproofAI Cloud provider). */
+      keySource: "file" | "env" | "cloud";
+      config: JevConfig;
+    }
+  | {
+      /**
+       * A sound file that says `mode: "off"`. Jev does not run — `loadJevConfig`
+       * returns null — and nothing is wrong: the owner switched it off and kept
+       * the endpoint (and, for BYOK, the key) for later. Reported apart from
+       * `absent` so `jev status` and the dashboard can say "switched off"
+       * rather than "not configured", and apart from `ok` so no reader that
+       * takes `ok` to mean "on" can be wrong about it.
+       */
+      status: "off";
+      path: string;
+      mode: number | null;
+      /** Everything the file says except the key. */
+      routing: Omit<JevConfig, "apiKey">;
+    }
+  | {
+      /**
+       * The file names the FailproofAI Cloud provider and is sound, but this
+       * machine holds no Jev credential (never connected with a `jev:evaluate`
+       * key, or disconnected since). Jev is off. The FailproofAI Cloud twin of
+       * `key-missing`: nothing is wrong with the FILE, so no reader should tell
+       * its owner to rewrite it.
+       */
+      status: "not-connected";
+      path: string;
+      mode: number | null;
+      routing: Omit<JevConfig, "apiKey">;
+      problem: string;
+    }
   | {
       /**
        * The file is sound and names `FAILPROOFAI_JEV_API_KEY` as the key's
@@ -634,6 +817,46 @@ export function inspectJevConfig(): JevConfigInspection {
   } catch {
     return { status: "refused", path, mode, reason: "not-json", problem: "it is not valid JSON" };
   }
+  const isObject = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+  const fields = isObject ? (parsed as Record<string, unknown>) : null;
+
+  // Switched off. Checked before any key is looked for, because nothing will be
+  // sent: a BYOK file whose key lives in the environment, and a Cloud file on a
+  // machine that has since disconnected, are both simply "off". The rest of the
+  // file is still validated — with stand-ins in the key slots, which are never
+  // sent anywhere — so a file that is off AND broken is reported as broken.
+  if (fields?.mode === "off") {
+    const r = validateJevConfig(parsed, KEY_STAND_IN, standInCloudCredential(fields));
+    if (!r.ok) return { status: "refused", path, mode, reason: "invalid", problem: r.problem };
+    return { status: "off", path, mode, routing: routingOf(r.value) };
+  }
+
+  if (fields?.provider === JEV_CLOUD_PROVIDER) {
+    // The key lives in credentials.json, which is read with the same owner-only
+    // checks as this file: a credentials file someone else could have written
+    // is refused, not read, and Jev is off.
+    const credential = readJevCloudCredential();
+    if (credential.status === "refused") {
+      return {
+        status: "refused",
+        path,
+        mode,
+        reason: credential.reason === "too-open" ? "too-open" : "unreadable",
+        problem: `the FailproofAI Cloud credential was refused: ${credential.problem}`,
+        ...(credential.fix ? { fix: credential.fix } : {}),
+      };
+    }
+    // `FAILPROOFAI_JEV_API_KEY` is deliberately not passed: see the header.
+    const r = validateJevConfig(parsed, null, credential.status === "ok" ? credential.credential : null);
+    if (r.ok) return { status: "ok", path, mode, keySource: "cloud", config: r.value };
+    if (r.notConnected === true) {
+      const rest = validateJevConfig(parsed, null, standInCloudCredential(fields));
+      if (!rest.ok) return { status: "refused", path, mode, reason: "invalid", problem: rest.problem };
+      return { status: "not-connected", path, mode, routing: routingOf(rest.value), problem: r.problem };
+    }
+    return { status: "refused", path, mode, reason: "invalid", problem: r.problem };
+  }
+
   const envKey = readEnvKey();
   const r = validateJevConfig(parsed, envKey);
   if (!r.ok) {
@@ -642,15 +865,11 @@ export function inspectJevConfig(): JevConfigInspection {
       // validation never got that far, so ask again with a stand-in key.
       const rest = validateJevConfig(parsed, KEY_STAND_IN);
       if (rest.ok) {
-        const routing: Omit<JevConfig, "apiKey"> = { provider: rest.value.provider, mode: rest.value.mode, timeoutMs: rest.value.timeoutMs };
-        if (rest.value.baseUrl !== undefined) routing.baseUrl = rest.value.baseUrl;
-        if (rest.value.accountId !== undefined) routing.accountId = rest.value.accountId;
-        if (rest.value.model !== undefined) routing.model = rest.value.model;
         return {
           status: "key-missing",
           path,
           mode,
-          routing,
+          routing: routingOf(rest.value),
           problem: `it carries no apiKey, so the key comes from ${JEV_API_KEY_ENV} — which is not set in this environment`,
         };
       }
@@ -662,15 +881,47 @@ export function inspectJevConfig(): JevConfigInspection {
   return { status: "ok", path, mode, keySource, config: r.value };
 }
 
+/** Everything a validated config says except its key — copied field by field, so the key cannot ride along. */
+function routingOf(cfg: JevConfig): Omit<JevConfig, "apiKey"> {
+  const routing: Omit<JevConfig, "apiKey"> = { provider: cfg.provider, mode: cfg.mode, timeoutMs: cfg.timeoutMs };
+  if (cfg.baseUrl !== undefined) routing.baseUrl = cfg.baseUrl;
+  if (cfg.accountId !== undefined) routing.accountId = cfg.accountId;
+  if (cfg.model !== undefined) routing.model = cfg.model;
+  return routing;
+}
+
 /**
- * The validated global config, or null — absent, refused, invalid, or a
- * key-from-the-environment file in an environment that does not set it all
- * mean Jev is off and the regex path runs unchanged. Never throws.
+ * A Cloud credential that stands in for a missing one, on the file's own origin,
+ * so the rest of a Cloud file can be validated when there is no key to check it
+ * with. Like `KEY_STAND_IN` it is never written and never sent; an unparseable
+ * `baseUrl` gets a placeholder origin and is refused by `validateBaseUrl` first.
+ */
+function standInCloudCredential(fields: Record<string, unknown>): JevCloudCredential {
+  let url = "https://stand-in.invalid";
+  if (typeof fields.baseUrl === "string") {
+    try {
+      url = new URL(fields.baseUrl.trim()).origin;
+    } catch {
+      // Keep the placeholder.
+    }
+  }
+  return { url, key: KEY_STAND_IN };
+}
+
+/**
+ * The validated global config, or null — absent, refused, invalid, switched
+ * off, a key-from-the-environment file in an environment that does not set it,
+ * or a FailproofAI Cloud file on a machine with no Cloud credential all mean
+ * Jev is off and the regex path runs unchanged. Never throws.
+ *
+ * `mode: "off"` never comes out of here: `inspectJevConfig` reports it as its
+ * own status, and the check below is the belt to that brace — an off config
+ * reaching the hook path would be read as the default mode, `enforce`.
  */
 export function loadJevConfig(): JevConfig | null {
   try {
     const r = inspectJevConfig();
-    return r.status === "ok" ? r.config : null;
+    return r.status === "ok" && r.config.mode !== "off" ? r.config : null;
   } catch {
     return null;
   }

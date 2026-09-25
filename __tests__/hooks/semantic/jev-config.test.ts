@@ -208,7 +208,9 @@ describe("semantic/jev-config", () => {
       expect(problem({ provider: "typesafe", apiKey: KEY, timeoutMs: 60_000 })).toMatch(/timeoutMs/);
       expect(problem({ provider: "typesafe", apiKey: KEY, timeoutMs: 1500.5 })).toMatch(/timeoutMs/);
       expect(problem({ provider: "typesafe", apiKey: KEY, timeoutMs: "1500" })).toMatch(/timeoutMs/);
-      expect(problem({ provider: "typesafe", apiKey: KEY, mode: "off" })).toMatch(/mode/);
+      expect(problem({ provider: "typesafe", apiKey: KEY, mode: "disabled" })).toMatch(/mode/);
+      // `off` is a mode now: it keeps the file and runs no Jev (see jev-cloud-config.test.ts).
+      expect(problem({ provider: "typesafe", apiKey: KEY, mode: "off" })).toBeNull();
       const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "shadow", timeoutMs: 800 });
       expect(r.ok && [r.value.mode, r.value.timeoutMs]).toEqual(["shadow", 800]);
     });

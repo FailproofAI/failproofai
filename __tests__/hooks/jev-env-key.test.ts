@@ -133,7 +133,7 @@ describe("a config whose key comes from the environment, in a shell without it",
       ["cloudflare with no accountId", { provider: "cloudflare" }],
       ["a model from another Jev family", { provider: "typesafe", model: "jev-1.14.0" }],
       ["a timeout out of bounds", { provider: "typesafe", timeoutMs: 60_000 }],
-      ["a mode that is neither", { provider: "typesafe", mode: "off" }],
+      ["a mode that is none of the three", { provider: "typesafe", mode: "disabled" }],
       ["loopback http in enforce mode", { provider: "custom", baseUrl: "http://localhost:8787/v1" }],
     ])("%s", (_name, obj) => {
       write(obj);

@@ -2,15 +2,25 @@
  * The client for Jev, and the provider layer that turns a customer's own
  * config (BYOK, `jev-config.ts`) into a transport.
  *
- * # Five routes, two wire shapes
+ * # Six routes, two wire shapes
  *
- * | Provider   | Endpoint                                              | Default model        |
- * |------------|-------------------------------------------------------|----------------------|
- * | typesafe   | `https://api.typesafe.ai/v1/systemone`                | `jev-1.13.0`         |
- * | openrouter | `https://openrouter.ai/api/v1/systemone`              | `typesafe/jev-1.13`  |
- * | vercel     | `https://ai-gateway.vercel.sh/typesafe/v1/systemone`  | `typesafe-ai/jev`    |
- * | cloudflare | `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` |
- * | custom     | `<baseUrl>/systemone`                                 | `jev-1.13.0`         |
+ * | Provider    | Endpoint                                              | Default model        |
+ * |-------------|-------------------------------------------------------|----------------------|
+ * | typesafe    | `https://api.typesafe.ai/v1/systemone`                | `jev-1.13.0`         |
+ * | openrouter  | `https://openrouter.ai/api/v1/systemone`              | `typesafe/jev-1.13`  |
+ * | vercel      | `https://ai-gateway.vercel.sh/typesafe/v1/systemone`  | `typesafe-ai/jev`    |
+ * | cloudflare  | `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` |
+ * | custom      | `<baseUrl>/systemone`                                 | `jev-1.13.0`         |
+ * | failproofai | `<Cloud origin>/enforcement/v1/jev/systemone`         | `jev-1.13.0`         |
+ *
+ * `failproofai` is FailproofAI Cloud: the machine's own Cloud key (the `jev`
+ * slot of `credentials.json`, see `jev-config.ts`) as the bearer, the org's
+ * plan allowance as the budget. The server forces `jev-1.13.0` and passes
+ * TypeSafe's answer through with its `model`, so this route accepts only a
+ * reported 1.13 model, never silence. Its documented statuses map like every
+ * other route's: 402 `{"error":"out_of_credits"}` → `out-of-credits` (the body
+ * never says "model execution failed"), 400/401/403/413/429/502/503 →
+ * `http-<status>`, and a redirect is refused.
  *
  * `baseUrl` is a BASE — the provider's version root — and `/systemone` is this
  * file's own suffix (`nativeEndpoint`). Measured 2026-09-25, unauthenticated:
@@ -291,6 +301,12 @@ const MAX_ERROR_DETAIL = 300;
  * `{detail:{message}}` is the one that was missing, and it is TypeSafe's own —
  * so the provider this whole file exists to talk to was the one provider whose
  * explanation never reached a screen.
+ *
+ * `{error:"<code>", message:"…"}` is FailproofAI Cloud's own error body (its
+ * Jev route's contract, `{"error":"forbidden","message":"… jev:evaluate …"}`).
+ * Read as `{error:"…"}` alone it reported the bare word `forbidden` and dropped
+ * the sentence naming the missing permission, so when both are strings both
+ * are kept, code first.
  */
 export function providerErrorDetail(body: unknown, secret: string): string {
   const b = body as {
@@ -303,6 +319,9 @@ export function providerErrorDetail(body: unknown, secret: string): string {
   if (b && typeof b === "object") {
     if (Array.isArray(b.errors)) {
       detail = b.errors.map((e) => (typeof e?.message === "string" ? e.message : "")).filter(Boolean).join("; ");
+    }
+    if (!detail && typeof b.error === "string" && b.error && typeof b.message === "string" && b.message) {
+      detail = `${b.error}: ${b.message}`;
     }
     if (!detail) detail = messageOf(b.error);
     if (!detail && typeof b.message === "string") detail = b.message;

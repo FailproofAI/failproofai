@@ -83,7 +83,7 @@ Every one of these falls back to your policies' result for that call, and is rec
 | --- | --- |
 | `out-of-credits` | Your organization has used its plan allowance. |
 | `http-401`, `http-403` | The key was revoked, or does not carry `jev:evaluate`. Reconnect with a key that does. |
-| `http-429` | FailproofAI Cloud is rate-limiting Jev for your organization. |
+| `http-429` | FailproofAI Cloud is rate-limiting Jev for your organization. Until the wait it asks for is over (its `Retry-After`, at most 60 seconds), the machine sends it nothing and every call falls back straight away. |
 | `http-502`, `http-503` | Jev is unavailable right now. |
 | `http-404` | This FailproofAI Cloud does not serve Jev yet. |
 | `timeout` | No answer within `timeoutMs` (default 3000). |

@@ -359,7 +359,9 @@ function cloudRemedy(code: string): string | null {
   if (code === "out-of-credits") {
     return "Your FailproofAI Cloud org has used its plan allowance (HTTP 402). Until it resets or the plan changes, hooks fall back to regex.";
   }
-  if (code === "http-429") return "FailproofAI Cloud is rate-limiting Jev for this org right now. Hooks fall back to regex whenever that happens.";
+  if (code === "http-429") {
+    return "FailproofAI Cloud is rate-limiting Jev for this org right now. Hooks fall back to regex, and send it nothing more until the wait it asked for (Retry-After, at most 60 s) is over.";
+  }
   if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
   if (code === "http-503") return "Jev is unavailable on FailproofAI Cloud right now. Hooks fall back to regex whenever that happens; try again shortly.";
   if (code === "model-mismatch") return "FailproofAI Cloud answered with a model outside the Jev 1.13 family, so hooks would fall back to regex. This is the server's to fix.";

@@ -20,7 +20,8 @@
  * reported 1.13 model, never silence. Its documented statuses map like every
  * other route's: 402 `{"error":"out_of_credits"}` → `out-of-credits` (the body
  * never says "model execution failed"), 400/401/403/413/429/502/503 →
- * `http-<status>`, and a redirect is refused.
+ * `http-<status>`, and a redirect is refused. After a 429 the route sends
+ * nothing for as long as its `Retry-After` asks (capped; `cloudRetryAfter`).
  *
  * `baseUrl` is a BASE — the provider's version root — and `/systemone` is this
  * file's own suffix (`nativeEndpoint`). Measured 2026-09-25, unauthenticated:
@@ -222,10 +223,17 @@ export class JevError extends Error {
    * cloudflare-error, cloudflare-incomplete, malformed, model-mismatch, config.
    */
   readonly code: string;
-  constructor(code: string, message: string) {
+  /**
+   * An HTTP 429's `Retry-After` header, verbatim (null when it sent none).
+   * Recorded for every route and read by the FailproofAI Cloud one only (see
+   * `cloudRetryAfter`); a BYOK route behaves exactly as it did without it.
+   */
+  readonly retryAfter: string | null;
+  constructor(code: string, message: string, opts: { retryAfter?: string | null } = {}) {
     super(message);
     this.name = "JevError";
     this.code = code;
+    this.retryAfter = opts.retryAfter ?? null;
   }
 }
 
@@ -463,6 +471,8 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     const status = res.status >= 300 && res.status < 400 ? String(res.status) : "3xx";
     throw new JevError(`http-${status}`, `HTTP ${status}: the endpoint answered with a redirect, which is never followed`);
   }
+  // Kept for a 429 only: it is the one status whose header says when to ask again.
+  const retryAfter = res.status === 429 ? res.headers.get("retry-after") : null;
   let parsed: unknown;
   try {
     parsed = await res.json();
@@ -473,7 +483,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     if (res.status === 402) throw new JevError("out-of-credits", "HTTP 402: the account is out of credits");
     // A 404 needs no body to be diagnosed, and the ones seen in the field carry
     // none worth reading: the URL is the diagnosis (see `httpFailureMessage`).
-    if (!res.ok) throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, ""));
+    if (!res.ok) throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, ""), { retryAfter });
     throw new JevError("malformed", "response body is not JSON");
   }
   if (res.status === 402) {
@@ -484,7 +494,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     throw new JevError(paymentRequiredCode(detail), detail || "HTTP 402: the account is out of credits");
   }
   if (!res.ok) {
-    throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, providerErrorDetail(parsed, bearer)));
+    throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, providerErrorDetail(parsed, bearer)), { retryAfter });
   }
   return parsed;
 }
@@ -930,6 +940,84 @@ export function modelListHasModel(list: JevModelListRead, model: string): boolea
   return slash > 0 && list.models.includes(model.slice(slash + 1));
 }
 
+// ── FailproofAI Cloud: Retry-After ───────────────────────────────────────────
+//
+// FailproofAI Cloud rate-limits Jev per org and globally, and its 429 carries
+// `Retry-After: <seconds to the window's end>` (contract §2). Every call that
+// ignores it spends a round trip — up to the hook's whole timeout, on the tool
+// call's critical path — to learn the same 429, and adds to the load that
+// caused it. So after a 429 the Cloud route goes quiet for as long as the
+// server asked: calls fall back at once with the same `http-429`, and send
+// nothing.
+//
+// Module-level, like the throttle's cache and bucket (`jev-throttle.ts`): the
+// daemon's warm worker builds a new transport per hook event and lives for
+// hours, so the process is what has to remember. Keyed by the endpoint, so a
+// reconnect to another Cloud is not held to the old one's window.
+//
+// The Cloud route only. A BYOK provider's 429 keeps doing exactly what it did
+// (the throttle empties its bucket), because nothing here knows what its
+// `Retry-After` means or whether it sends one.
+
+/** The longest cool-down a Retry-After can set: a hook never goes quiet for longer on the server's say-so. */
+export const JEV_CLOUD_RETRY_AFTER_CAP_MS = 60_000;
+/** The cool-down after a 429 whose Retry-After is missing or unreadable. */
+export const JEV_CLOUD_RETRY_AFTER_DEFAULT_MS = 5_000;
+
+const cloudCooldown = { endpoint: "", until: Number.NEGATIVE_INFINITY };
+
+/** Forget any cool-down. For tests, which share this module's state within a file. */
+export function resetJevCloudCooldown(): void {
+  cloudCooldown.endpoint = "";
+  cloudCooldown.until = Number.NEGATIVE_INFINITY;
+}
+
+/** RFC 9110's IMF-fixdate, the one HTTP-date form a sender generates: `Sun, 06 Nov 1994 08:49:37 GMT`. */
+const IMF_FIXDATE_RE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+/**
+ * How long a `Retry-After` asks for, in ms, within [0, cap]. Delay-seconds
+ * (what FailproofAI Cloud sends) or an IMF-fixdate; anything else — absent,
+ * negative, fractional, garbage — is the small default. Matched by shape
+ * before `Date.parse` sees it, because that parser reads `-5` or `1.5` as a
+ * date in the past, which would be no cool-down at all.
+ */
+export function retryAfterMs(header: string | null | undefined, nowEpochMs: number = Date.now()): number {
+  const raw = header?.trim() ?? "";
+  let ms: number;
+  if (/^\d{1,10}$/.test(raw)) {
+    ms = Number(raw) * 1000;
+  } else if (IMF_FIXDATE_RE.test(raw) && Number.isFinite(Date.parse(raw))) {
+    ms = Date.parse(raw) - nowEpochMs;
+  } else {
+    return JEV_CLOUD_RETRY_AFTER_DEFAULT_MS;
+  }
+  return Math.min(JEV_CLOUD_RETRY_AFTER_CAP_MS, Math.max(0, ms));
+}
+
+/** The Cloud transport, quiet for as long as the last 429's Retry-After asked. */
+function cloudRetryAfter(endpoint: string, transport: JevTransport): JevTransport {
+  return async (request, signal) => {
+    const now = performance.now();
+    if (cloudCooldown.endpoint === endpoint && now < cloudCooldown.until) {
+      const seconds = Math.max(1, Math.ceil((cloudCooldown.until - now) / 1000));
+      throw new JevError(
+        "http-429",
+        `FailproofAI Cloud asked for no Jev requests for ${seconds}s more (Retry-After), so this one was not sent`,
+      );
+    }
+    try {
+      return await transport(request, signal);
+    } catch (err) {
+      if (err instanceof JevError && err.code === "http-429") {
+        cloudCooldown.endpoint = endpoint;
+        cloudCooldown.until = performance.now() + retryAfterMs(err.retryAfter);
+      }
+      throw err;
+    }
+  };
+}
+
 /**
  * The transport for a customer's own Jev config, which provider it goes
  * through, and the model id to put in the request (pass it to the evaluator as
@@ -998,17 +1086,20 @@ export function transportForConfig(input: JevConfig): { transport: JevTransport;
       };
     case "failproofai":
       return {
-        transport: nativeTransport({
-          url: route.endpoint,
-          apiKey: cfg.apiKey,
-          model: route.model,
-          // FailproofAI Cloud forces `jev-1.13.0` server-side and passes
-          // TypeSafe's answer through untouched, `model` included — so an
-          // answer that names no model, or an alias, is not one this route
-          // produces, and is refused (`model-mismatch`) rather than trusted.
-          // `readAnswers` then holds the reported id to the 1.13 family.
-          allowUnreported: false,
-        }),
+        transport: cloudRetryAfter(
+          route.endpoint,
+          nativeTransport({
+            url: route.endpoint,
+            apiKey: cfg.apiKey,
+            model: route.model,
+            // FailproofAI Cloud forces `jev-1.13.0` server-side and passes
+            // TypeSafe's answer through untouched, `model` included — so an
+            // answer that names no model, or an alias, is not one this route
+            // produces, and is refused (`model-mismatch`) rather than trusted.
+            // `readAnswers` then holds the reported id to the 1.13 family.
+            allowUnreported: false,
+          }),
+        ),
         via: "failproofai",
         model: route.model,
       };

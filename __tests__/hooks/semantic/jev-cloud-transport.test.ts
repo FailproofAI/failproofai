@@ -19,15 +19,25 @@
  * Every fallback code here must be one the activity store keeps
  * (`normalizeJevFallbackReason`), or it would ship as `other`.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JevConfig } from "../../../src/hooks/semantic/jev-config";
-import { JevError, JEV_PROVIDER_DEFAULTS, readAnswers, transportForConfig } from "../../../src/hooks/semantic/jev-client";
+import {
+  JEV_CLOUD_RETRY_AFTER_CAP_MS,
+  JEV_CLOUD_RETRY_AFTER_DEFAULT_MS,
+  JevError,
+  JEV_PROVIDER_DEFAULTS,
+  readAnswers,
+  resetJevCloudCooldown,
+  retryAfterMs,
+  transportForConfig,
+} from "../../../src/hooks/semantic/jev-client";
 import { startJevReview } from "../../../src/hooks/semantic/jev-review";
+import { resetJevThrottle } from "../../../src/hooks/semantic/jev-throttle";
 import { normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest } from "../../../src/hooks/semantic/types";
 
@@ -94,6 +104,9 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     elsewhere.close();
   });
   beforeEach(() => {
+    // The 429 cool-down is module state: one test's Retry-After must not hold
+    // the next test's first call back.
+    resetJevCloudCooldown();
     hits.length = 0;
     elsewhereHits.length = 0;
     prevHome = process.env.FAILPROOFAI_HOME;
@@ -199,6 +212,126 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     const e = await failure(send());
     expect(e.code).toBe(`http-${status}`);
     expect(normalizeJevFallbackReason(e.code)).toBe(`http-${status}`);
+  });
+
+  describe("a 429's Retry-After", () => {
+    let clock = 1_000_000;
+    let nowSpy: { mockRestore: () => void } | null = null;
+    // The throttle's bucket is stamped with this clock too, so it is reset on
+    // both sides: a bucket stamped in mocked time would starve the real-time
+    // tests after these.
+    beforeEach(() => {
+      clock = 1_000_000;
+      resetJevThrottle();
+      nowSpy = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    });
+    afterEach(() => {
+      nowSpy?.mockRestore();
+      resetJevThrottle();
+    });
+
+    const rateLimited = (retryAfter?: string): Reply => ({
+      status: 429,
+      body: { error: "rate_limited" },
+      headers: retryAfter === undefined ? {} : { "retry-after": retryAfter },
+    });
+    const answering: (hit: Hit) => Reply = (hit) => ({ status: 200, body: { model: "jev-1.13.0", answers: answersFor(hit.body, 0.3) } });
+
+    it("holds the Cloud route back for as long as it asks — http-429, and nothing sent — then asks again", async () => {
+      reply = () => rateLimited("30");
+      expect((await failure(send())).code).toBe("http-429");
+      expect(hits).toHaveLength(1);
+
+      reply = answering;
+      const held = await failure(send());
+      expect(held.code).toBe("http-429");
+      expect(held.message).toContain("Retry-After");
+      expect(normalizeJevFallbackReason(held.code)).toBe("http-429");
+      clock += 29_000;
+      expect((await failure(send())).code).toBe("http-429");
+      expect(hits).toHaveLength(1);
+
+      clock += 1_001;
+      expect(readAnswers(request, await send())).toEqual({ a: 0.3 });
+      expect(hits).toHaveLength(2);
+    });
+
+    it("a missing or unreadable one is a short default; a long one is capped", async () => {
+      for (const header of [undefined, "soon", "-5"]) {
+        resetJevCloudCooldown();
+        hits.length = 0;
+        reply = () => rateLimited(header);
+        await failure(send());
+        reply = answering;
+        clock += JEV_CLOUD_RETRY_AFTER_DEFAULT_MS - 1;
+        expect((await failure(send())).code, String(header)).toBe("http-429");
+        clock += 2;
+        await send();
+        expect(hits, String(header)).toHaveLength(2);
+      }
+
+      resetJevCloudCooldown();
+      hits.length = 0;
+      reply = () => rateLimited("86400");
+      await failure(send());
+      reply = answering;
+      clock += JEV_CLOUD_RETRY_AFTER_CAP_MS + 1;
+      await send();
+      expect(hits).toHaveLength(2);
+    });
+
+    it("reads delay-seconds and an HTTP-date, and nothing else", () => {
+      const now = Date.parse("Fri, 25 Sep 2026 12:00:00 GMT");
+      expect(retryAfterMs("17", now)).toBe(17_000);
+      expect(retryAfterMs(" 0 ", now)).toBe(0);
+      expect(retryAfterMs("Fri, 25 Sep 2026 12:00:10 GMT", now)).toBe(10_000);
+      expect(retryAfterMs("Fri, 25 Sep 2026 11:00:00 GMT", now)).toBe(0);
+      expect(retryAfterMs("3600", now)).toBe(JEV_CLOUD_RETRY_AFTER_CAP_MS);
+      for (const garbage of [null, undefined, "", "1.5", "-5", "later", "2026-09-25T12:00:10Z"]) {
+        expect(retryAfterMs(garbage, now), String(garbage)).toBe(JEV_CLOUD_RETRY_AFTER_DEFAULT_MS);
+      }
+    });
+
+    it("holds back only the endpoint that said it", async () => {
+      reply = () => rateLimited("30");
+      await failure(send());
+      reply = answering;
+      const other: JevConfig = { ...cloud(), baseUrl: `http://127.0.0.1:${port}/other/enforcement/v1/jev` };
+      await transportForConfig(other).transport(request, AbortSignal.timeout(5_000));
+      expect(hits).toHaveLength(2);
+    });
+
+    it("a BYOK route's 429 is exactly what it was: no cool-down", async () => {
+      const byok: JevConfig = { provider: "custom", apiKey: KEY, baseUrl: `http://127.0.0.1:${port}/v1`, mode: "shadow", timeoutMs: 3000 };
+      const sendByok = () => transportForConfig(byok).transport(request, AbortSignal.timeout(5_000));
+      reply = () => rateLimited("30");
+      expect((await failure(sendByok())).code).toBe("http-429");
+      reply = () => ({ status: 200, body: { model: "jev-1.13.0", answers: { a: { type: "noul", noul: 0.4 } } } });
+      await sendByok();
+      expect(hits).toHaveLength(2);
+    });
+
+    it("through the review a hook runs, the held-back call is a fallback with http-429 and sends nothing", async () => {
+      const call = (command: string) => ({
+        eventType: "PreToolUse",
+        toolName: "Bash",
+        toolInput: { command },
+        cwd: home,
+        sessionId: `cloud-retry-after-${command.length}`,
+        cli: "claude",
+      });
+      reply = () => rateLimited("30");
+      const first = await startJevReview(cloud(), call("rm -rf ./build-output-for-the-retry-after-test")).review;
+      expect(first).toMatchObject({ kind: "fallback", reason: "http-429" });
+      const sent = hits.length;
+      expect(sent).toBeGreaterThan(0);
+
+      reply = answering;
+      clock += 1_000; // past the local rate limiter's refill, well inside the 30 s window
+      const second = await startJevReview(cloud(), call("rm -rf ./build-output-for-the-retry-after-test-two")).review;
+      expect(second).toMatchObject({ kind: "fallback", reason: "http-429" });
+      expect(hits).toHaveLength(sent);
+    });
   });
 
   it("a non-JSON error body is still its status", async () => {

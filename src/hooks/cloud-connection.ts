@@ -328,7 +328,7 @@ writeCloudCredentials(creds);
       // This connection replaces the last one, and the last key's Jev slot
       // describes a connection this machine no longer has — possibly another
       // org's budget. Dropped, so Jev never spends on a key it was not just
-      // handed. (A Cloud jev.json then reads `not-connected`: off, and said.)
+      // handed. (A Cloud jev.json then reads `key-lacks-jev`: off, and said.)
       clearJevCloudCredential();
       if (known) outcome.jev = { ok: false, reason: missing(PERMISSION_JEV) };
     }

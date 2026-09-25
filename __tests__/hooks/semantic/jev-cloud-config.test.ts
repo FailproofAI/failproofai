@@ -191,6 +191,14 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(loadJevConfig()).toBeNull();
     });
 
+    it("a connection on ANOTHER origin does not back it: connected, but no Jev key", () => {
+      writeCredentials({ ingest: { url: "https://staging.befailproof.ai/v1/events", key: OTHER_KEY }, jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential()).toMatchObject({ status: "absent", connected: true, orphaned: true });
+      writeJev(cloudFile());
+      expect(inspectJevConfig().status).toBe("key-lacks-jev");
+      expect(loadJevConfig()).toBeNull();
+    });
+
     it("either the policy or the reporting credential backs it, under any path on its origin", () => {
       writeCredentials({ cloud: { url: `${ORIGIN}/fp`, machineId: "m-1", token: KEY }, jev: { url: ORIGIN, key: KEY } });
       expect(readJevCloudCredential().status).toBe("ok");
@@ -198,6 +206,26 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(readJevCloudCredential().status).toBe("ok");
       writeJev(cloudFile());
       expect(loadJevConfig()?.apiKey).toBe(KEY);
+    });
+
+    it("connected with a key that has no Jev: key-lacks-jev — not not-connected — and off", () => {
+      writeCredentials({ cloud: { url: ORIGIN, machineId: "m-1", token: KEY }, ingest: INGEST });
+      expect(readJevCloudCredential()).toMatchObject({ status: "absent", connected: true });
+      writeJev(cloudFile());
+      const r = inspectJevConfig();
+      expect(r.status).toBe("key-lacks-jev");
+      if (r.status !== "key-lacks-jev") return;
+      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "shadow", timeoutMs: 3000 });
+      expect(r.problem).toContain("does not carry jev:evaluate");
+      expect(r.problem).not.toMatch(/not connected/);
+      expect(JSON.stringify(r)).not.toContain(KEY);
+      expect(loadJevConfig()).toBeNull();
+    });
+
+    it("a broken Cloud file on a connected machine is still refused, not key-lacks-jev", () => {
+      writeCredentials({ ingest: INGEST });
+      writeJev(cloudFile({ timeoutMs: 60_000 }));
+      expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
     });
   });
 

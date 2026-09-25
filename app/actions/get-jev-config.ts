@@ -67,7 +67,7 @@ import {
 } from "@/src/hooks/policy-reviewability";
 
 /** The loader's answers, unchanged — see `JevConfigInspection`. */
-export type JevSettingsStatus = "absent" | "ok" | "key-missing" | "refused" | "off" | "not-connected";
+export type JevSettingsStatus = "absent" | "ok" | "key-missing" | "refused" | "off" | "not-connected" | "key-lacks-jev";
 
 /** What Jev has been doing lately, from `jevStats()`. Not a new pipeline. */
 export interface JevSettingsStats {
@@ -503,9 +503,10 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
     };
   }
 
-  if (inspection.status === "off" || inspection.status === "not-connected") {
+  if (inspection.status === "off" || inspection.status === "not-connected" || inspection.status === "key-lacks-jev") {
     // Configured, and not running: switched off by its owner, or a FailproofAI
-    // Cloud file on a machine with no Cloud key. Routing only, as for
+    // Cloud file on a machine with no Cloud key — not connected at all, or
+    // connected with a key that has no Jev. Routing only, as for
     // `key-missing` — the loader's routing object carries no key to leak.
     const r = inspection.routing;
     return {
@@ -521,11 +522,13 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       mode: r.mode ?? DEFAULT_JEV_MODE,
       timeoutMs: r.timeoutMs ?? null,
       token: inspection.status === "off" ? offTokenPresence(r.provider) : null,
-      problem: inspection.status === "not-connected" ? inspection.problem : null,
+      problem: inspection.status === "off" ? null : inspection.problem,
       fix:
         inspection.status === "not-connected"
           ? "connect this machine with a key that carries jev:evaluate: failproofai config --token <key>"
-          : null,
+          : inspection.status === "key-lacks-jev"
+            ? "reconnect this machine with a key that carries jev:evaluate: failproofai config --token <key>"
+            : null,
       stats: null,
     };
   }

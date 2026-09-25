@@ -186,8 +186,9 @@ describe("connecting with a key that does not carry jev:evaluate", () => {
     await connect(withPermissions("events:add", "policies:pull"));
     expect(readCredentials().jev).toBeUndefined();
     expect(JSON.stringify(readCredentials())).not.toContain(OLD_TOKEN);
-    // The Cloud file stays (connect never rewrites jev.json) and reads off.
-    expect(inspectJevConfig().status).toBe("not-connected");
+    // The Cloud file stays (connect never rewrites jev.json) and reads off —
+    // as a connected machine whose key has no Jev, never as "not connected".
+    expect(inspectJevConfig().status).toBe("key-lacks-jev");
     expect(loadJevConfig()).toBeNull();
   });
 

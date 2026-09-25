@@ -362,7 +362,9 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
                   ? "off — switched off. hooks run the regex policies exactly as before."
                   : view.status === "not-connected"
                     ? "off — this machine is not connected to FailproofAI Cloud. hooks run the regex policies."
-                    : "off. hooks run the regex policies exactly as before."}
+                    : view.status === "key-lacks-jev"
+                      ? "off — this machine's FailproofAI Cloud key does not carry jev. hooks run the regex policies."
+                      : "off. hooks run the regex policies exactly as before."}
           </span>
           <span className="set-dim">
             {view?.on
@@ -422,7 +424,9 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
                     ? "from FAILPROOFAI_JEV_API_KEY"
                     : "configured"
                 : cloudRoute
-                  ? "none — this machine is not connected"
+                  ? view.cloud?.connected
+                    ? "none — this machine's key does not carry jev"
+                    : "none — this machine is not connected"
                   : "none stored"}
             </dd>
           </div>

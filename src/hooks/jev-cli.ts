@@ -296,11 +296,34 @@ const CLOUD_KEY_SOURCE = "FailproofAI Cloud connection";
 
 /** Whether this machine holds a usable Jev credential, read owner-only. Never the key. */
 function cloudCredentialPresent(): boolean {
+  return cloudConnection().keyCarriesJev;
+}
+
+/**
+ * The two facts `status --json` reports about the FailproofAI Cloud connection,
+ * read owner-only: whether this machine is connected at all, and whether the
+ * key it connected with carries Jev. Never the key.
+ */
+function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } {
   try {
-    return readJevCloudCredential().status === "ok";
+    const read = readJevCloudCredential();
+    if (read.status === "ok") return { cloudConnected: true, keyCarriesJev: true };
+    return { cloudConnected: read.status === "absent" && read.connected, keyCarriesJev: false };
   } catch {
-    return false;
+    return { cloudConnected: false, keyCarriesJev: false };
   }
+}
+
+/** The one line `status` titles a connected machine whose key has no Jev with. */
+const KEY_LACKS_JEV_TITLE = "off — this machine's FailproofAI Cloud key does not carry Jev";
+
+/** The `key` row for a Cloud file, saying which of the three states the connection is in. */
+function cloudKeyRow(): string {
+  const c = cloudConnection();
+  if (c.keyCarriesJev) return CLOUD_KEY_SOURCE;
+  return c.cloudConnected
+    ? `${CLOUD_KEY_SOURCE} — connected, but its key does not carry jev:evaluate`
+    : `${CLOUD_KEY_SOURCE} — this machine is not connected`;
 }
 
 /** `0600`, or null when unknown. */
@@ -1131,8 +1154,10 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
     }
   } else if (!sameProvider || typeof next.baseUrl !== "string") {
     return fail([
-      "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
-      "Connect it first — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
+      credential.connected
+        ? "Not saved: this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate."
+        : "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
+      "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
       "  failproofai config --token <key>",
       "",
       "Nothing was written.",
@@ -1294,10 +1319,11 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         problem: inspection.problem,
       });
     }
-    if (inspection.status === "off" || inspection.status === "not-connected") {
-      // Configured and deliberately (off) or circumstantially (not connected)
-      // not running. The routing is reported exactly as for `ok`, so a
-      // provisioning check can tell either from a file it should rewrite.
+    if (inspection.status === "off" || inspection.status === "not-connected" || inspection.status === "key-lacks-jev") {
+      // Configured and deliberately (off) or circumstantially (not connected,
+      // or connected with a key that has no Jev) not running. The routing is
+      // reported exactly as for `ok`, so a provisioning check can tell any of
+      // them from a file it should rewrite.
       const r = inspection.routing;
       const route = routeForRouting(r);
       const cloud = r.provider === JEV_CLOUD_PROVIDER;
@@ -1308,12 +1334,12 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         ...(route ? { endpoint: shownEndpoint(r.provider, route.endpoint), model: route.model, modelIsDefault: route.modelIsDefault } : {}),
         mode: r.mode,
         timeoutMs: r.timeoutMs,
-        ...(cloud ? { keySource: "cloud", keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: inspection.status !== "not-connected" } : {}),
-        ...(inspection.status === "not-connected" ? { reason: "not-connected", problem: inspection.problem } : { reason: "switched-off" }),
+        // Read from the credentials file rather than inferred from the status:
+        // `off` is decided before any key is looked for, so it says nothing
+        // about the connection either way.
+        ...(cloud ? { keySource: "cloud", keySourceLabel: CLOUD_KEY_SOURCE, ...cloudConnection() } : {}),
+        ...(inspection.status === "off" ? { reason: "switched-off" } : { reason: inspection.status, problem: inspection.problem }),
       });
-      // `cloudConnected` for an OFF Cloud file is read from the credential
-      // rather than assumed: off is checked before the key is looked for.
-      if (cloud && inspection.status === "off") base.cloudConnected = cloudCredentialPresent();
     }
     if (inspection.status === "ok") {
       const { config: cfg } = inspection;
@@ -1328,7 +1354,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         mode: cfg.mode,
         timeoutMs: cfg.timeoutMs,
         keySource: inspection.keySource,
-        ...(inspection.keySource === "cloud" ? { keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: true } : {}),
+        ...(inspection.keySource === "cloud" ? { keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: true, keyCarriesJev: true } : {}),
         // How much of this machine's policy set Jev is allowed to clear, and
         // why it is none when it is none. A provisioning check that turns Jev
         // on has no other way to find out that the half it turned on cannot
@@ -1435,9 +1461,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
             ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
             ["mode", modeLine("off")],
             ["config", inspection.path],
-            ...((r.provider === JEV_CLOUD_PROVIDER
-              ? [["key", cloudCredentialPresent() ? CLOUD_KEY_SOURCE : `${CLOUD_KEY_SOURCE} — this machine is not connected`]]
-              : []) as Array<[string, string]>),
+            ...((r.provider === JEV_CLOUD_PROVIDER ? [["key", cloudKeyRow()]] : []) as Array<[string, string]>),
           ],
           opts,
         ),
@@ -1474,6 +1498,40 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         nextStep(
           "failproofai config --token <key>",
           "Connect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page), or switch Jev off: failproofai jev remove",
+          opts,
+        ),
+        legacyNote,
+        jevStatsLines(stats, opts),
+      ),
+    );
+  }
+
+  if (inspection.status === "key-lacks-jev") {
+    // Connected, so "not connected" would be false and send its owner to
+    // reconnect with the same key. The remedy is a key WITH Jev.
+    const r = inspection.routing;
+    const route = routeForRouting(r);
+    return ok(
+      stack(
+        title("failproofai jev status", KEY_LACKS_JEV_TITLE, opts),
+        note(
+          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine is connected to FailproofAI Cloud with a key that does not carry jev:evaluate. ` +
+            "Hooks run the regex policies exactly as before.",
+          opts,
+        ),
+        rows(
+          [
+            ["provider", providerLabel(r.provider)],
+            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+            ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
+            ["config", inspection.path],
+            ["key", `${CLOUD_KEY_SOURCE} — connected, but its key does not carry jev:evaluate`],
+          ],
+          opts,
+        ),
+        nextStep(
+          "failproofai config --token <key>",
+          "Reconnect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page), or keep Jev off for good: failproofai jev setup --mode off",
           opts,
         ),
         legacyNote,
@@ -1587,7 +1645,9 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
             ? `Jev is switched off in ${inspection.path} (mode off), so nothing is sent.`
             : inspection.status === "not-connected"
               ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine is not connected to it with a key that carries jev:evaluate.`
-              : `${inspection.path} was refused — ${inspection.problem}.`;
+              : inspection.status === "key-lacks-jev"
+                ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine's FailproofAI Cloud key does not carry jev:evaluate.`
+                : `${inspection.path} was refused — ${inspection.problem}.`;
     const code =
       inspection.status === "absent"
         ? "not-configured"
@@ -1595,15 +1655,15 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ? "no-env-key"
           : inspection.status === "off"
             ? "switched-off"
-            : inspection.status === "not-connected"
-              ? "not-connected"
+            : inspection.status === "not-connected" || inspection.status === "key-lacks-jev"
+              ? inspection.status
               : "config";
     const fixCmd =
       inspection.status === "key-missing"
         ? "failproofai jev setup --key-stdin < key-file"
         : inspection.status === "off"
           ? "failproofai jev setup --mode shadow"
-          : inspection.status === "not-connected"
+          : inspection.status === "not-connected" || inspection.status === "key-lacks-jev"
             ? "failproofai config --token <key>"
             : "failproofai jev setup --provider <kind> --key-stdin";
     const fixLead =
@@ -1613,7 +1673,9 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ? "Switch it back on:"
           : inspection.status === "not-connected"
             ? "Connect with a key that carries jev:evaluate:"
-            : undefined;
+            : inspection.status === "key-lacks-jev"
+              ? "Reconnect with a key that carries jev:evaluate:"
+              : undefined;
     const json = asJson ? JSON.stringify({ ok: false, error: { code, message: why } }, null, 2) : undefined;
     return fail(stack(title("failproofai jev test", "not run", opts), note(why, opts), nextStep(fixCmd, fixLead, opts)), json);
   }
@@ -1760,7 +1822,10 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   const routing: Omit<JevConfig, "apiKey"> | null =
     inspection.status === "ok"
       ? inspection.config
-      : inspection.status === "key-missing" || inspection.status === "off" || inspection.status === "not-connected"
+      : inspection.status === "key-missing" ||
+          inspection.status === "off" ||
+          inspection.status === "not-connected" ||
+          inspection.status === "key-lacks-jev"
         ? inspection.routing
         : null;
   const storedKey = inspection.status === "ok" ? inspection.config.apiKey : null;

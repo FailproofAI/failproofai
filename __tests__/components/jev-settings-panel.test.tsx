@@ -472,6 +472,22 @@ describe("the FailproofAI Cloud route", () => {
     expect(screen.getByText(/config --token/)).toBeInTheDocument();
   });
 
+  it("connected with a key that has no Jev: says THAT, never \"not connected\"", async () => {
+    renderPanel(
+      cloudView({
+        status: "key-lacks-jev",
+        on: false,
+        token: null,
+        cloud: { ...CONNECTED, jev: "no" },
+        problem: "this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate",
+        fix: "reconnect this machine with a key that carries jev:evaluate: failproofai config --token <key>",
+      }),
+    );
+    expect(screen.getByText(/off — this machine's FailproofAI Cloud key does not carry jev\. hooks run/)).toBeInTheDocument();
+    expect(screen.getByText("connected to Acme Inc (acme) · key does not carry jev")).toBeInTheDocument();
+    expect(screen.queryByText(/not connected/)).toBeNull();
+  });
+
   it("shows the connection row on a BYOK machine too, without taking over its form", async () => {
     renderPanel(configured({ cloud: { ...CONNECTED, jev: "no" } }));
     expect(screen.getByText("connected to Acme Inc (acme) · key does not carry jev")).toBeInTheDocument();

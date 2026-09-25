@@ -71,8 +71,10 @@
  *   this machine: a policy or reporting credential on the SAME origin, in the
  *   same file (`readJevCloudCredential`). A slot an older build's disconnect
  *   left behind is not a connection.
- * - no credential at all is `not-connected`: Jev is off, and `jev status` says
- *   the machine is not connected to FailproofAI Cloud.
+ * - no usable credential is `not-connected` when the machine has no FailproofAI
+ *   Cloud connection at all, and `key-lacks-jev` when it has one whose key does
+ *   not carry `jev:evaluate` (connected with such a key, or the slot was
+ *   cleared on a reconnect). Jev is off either way; the two remedies differ.
  *
  * # `mode: "off"`
  *
@@ -685,6 +687,21 @@ export type JevConfigInspection =
     }
   | {
       /**
+       * The file names the FailproofAI Cloud provider and is sound, and this
+       * machine IS connected to FailproofAI Cloud — but with a key that does not
+       * carry `jev:evaluate` (connected with one, or reconnected with one since,
+       * which clears the slot). Jev is off. Apart from `not-connected` because
+       * telling a connected machine it is "not connected" sends its owner to
+       * reconnect with the same key, when the remedy is a key with Jev.
+       */
+      status: "key-lacks-jev";
+      path: string;
+      mode: number | null;
+      routing: Omit<JevConfig, "apiKey">;
+      problem: string;
+    }
+  | {
+      /**
        * The file is sound and names `FAILPROOFAI_JEV_API_KEY` as the key's
        * source (`jev setup --key-from-env` writes exactly this), but the
        * variable is not set in THIS process. Jev is off here — `loadJevConfig`
@@ -865,6 +882,9 @@ export function inspectJevConfig(): JevConfigInspection {
     if (r.notConnected === true) {
       const rest = validateJevConfig(parsed, null, standInCloudCredential(fields));
       if (!rest.ok) return { status: "refused", path, mode, reason: "invalid", problem: rest.problem };
+      if (credential.status === "absent" && credential.connected) {
+        return { status: "key-lacks-jev", path, mode, routing: routingOf(rest.value), problem: KEY_LACKS_JEV_PROBLEM };
+      }
       return { status: "not-connected", path, mode, routing: routingOf(rest.value), problem: r.problem };
     }
     return { status: "refused", path, mode, reason: "invalid", problem: r.problem };
@@ -893,6 +913,9 @@ export function inspectJevConfig(): JevConfigInspection {
   const keySource = (parsed as Record<string, unknown>).apiKey !== undefined ? "file" : "env";
   return { status: "ok", path, mode, keySource, config: r.value };
 }
+
+/** Why a Cloud file on a connected machine is off when the connection's key has no Jev (`key-lacks-jev`). */
+export const KEY_LACKS_JEV_PROBLEM = "this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate";
 
 /** Everything a validated config says except its key — copied field by field, so the key cannot ride along. */
 function routingOf(cfg: JevConfig): Omit<JevConfig, "apiKey"> {

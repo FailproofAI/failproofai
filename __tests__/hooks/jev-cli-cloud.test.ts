@@ -117,6 +117,42 @@ describe("jev CLI: FailproofAI Cloud", () => {
       });
     });
 
+    it("connected with a key that has no Jev: says so, never \"not connected\"", async () => {
+      writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      const human = await runJevCommand(["status"], RENDER);
+      expect(human.exitCode).toBe(0);
+      expect(text(human)).toContain("off — this machine's FailproofAI Cloud key does not carry Jev");
+      expect(text(human)).toContain("config --token <key>");
+      expect(text(human)).not.toMatch(/not connected/);
+      const machine = await runJevCommand(["status", "--json"], RENDER);
+      expect(json(machine)).toMatchObject({
+        status: "key-lacks-jev",
+        provider: "failproofai",
+        endpoint: "app.befailproof.ai",
+        mode: "shadow",
+        keySource: "cloud",
+        cloudConnected: true,
+        keyCarriesJev: false,
+        reason: "key-lacks-jev",
+      });
+      expect(String(json(machine).problem)).not.toMatch(/not connected/);
+      noKey(human);
+      noKey(machine);
+
+      const t = await runJevCommand(["test", "--json"], RENDER);
+      expect(t.exitCode).toBe(1);
+      expect(json(t)).toMatchObject({ ok: false, error: { code: "key-lacks-jev" } });
+
+      // Switched off on the same machine: the key row still does not call it
+      // "not connected".
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });
+      const off = await runJevCommand(["status"], RENDER);
+      expect(text(off)).toContain("connected, but its key does not carry jev:evaluate");
+      expect(text(off)).not.toMatch(/not connected/);
+      expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "off", cloudConnected: true, keyCarriesJev: false });
+    });
+
     it("off: switched off, with the mode, for the Cloud route and for BYOK", async () => {
       connect();
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });

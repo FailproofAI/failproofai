@@ -197,6 +197,18 @@ describe("the FailproofAI Cloud connection row", () => {
     expect(view).toMatchObject({ status: "not-connected", on: false, provider: "failproofai", token: null });
     expect(view.fix).toContain("config --token");
   });
+
+  it("a Cloud file on a machine connected with a key that has no Jev is NOT called not-connected", async () => {
+    connect(false);
+    seed(CLOUD_FILE);
+    const view = await getJevSettingsAction();
+    expect(view).toMatchObject({ status: "key-lacks-jev", on: false, provider: "failproofai", token: null });
+    expect(view.cloud).toMatchObject({ connected: true, jev: "no" });
+    expect(view.problem).toContain("does not carry jev:evaluate");
+    expect(view.problem).not.toMatch(/not connected/);
+    expect(view.fix).toContain("reconnect");
+    secretFree(view);
+  });
 });
 
 describe("the BYOK form and the Cloud provider", () => {

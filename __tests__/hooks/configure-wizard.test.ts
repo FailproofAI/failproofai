@@ -1611,6 +1611,23 @@ describe("config --token with --no-transcripts", () => {
     expect(written).toContain("Session transcripts are NOT being sent (--no-transcripts)");
   });
 
+  it("with a key that carries Jev, says Jev is available and prints nothing that reads as \"on\"", async () => {
+    vi.mocked(connectToCloud).mockResolvedValue({
+      policy: { ok: true, policyCount: 2, deployment: 7 },
+      ingest: { ok: true },
+      jev: { ok: true, optIn: true },
+      anyConfigured: true,
+    });
+    const io = headlessIO();
+    await runConfigureWizard(io, { token: "k".repeat(20), noTranscripts: true });
+    const written = vi.mocked(io.stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    const jevLines = written.split("\n").filter((l) => /\bJev\b/.test(l));
+    expect(jevLines).toHaveLength(1);
+    expect(jevLines[0]).toContain("available on this key");
+    expect(jevLines[0]).toContain("jev setup --provider failproofai");
+    expect(written).not.toMatch(/Jev\s+on\b/);
+  });
+
   it("still defaults to transcripts ON without the flag", async () => {
     const io = headlessIO();
     await runConfigureWizard(io, { token: "k".repeat(20) });

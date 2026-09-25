@@ -163,8 +163,14 @@ export interface JevConnectOutcome {
   /** The key carries `jev:evaluate`, and it was stored for Jev. */
   ok: boolean;
   reason?: string;
-  /** What became of `jev.json`. Present when `ok`. */
+  /** What became of `jev.json`. Present when `ok`, unless `optIn`. */
   config?: CloudJevConfigWrite;
+  /**
+   * `ok`, but Jev was deliberately NOT switched on: the connection opted out
+   * of transcripts (`sessions !== true`), and there is no `jev.json`. The key
+   * is stored; `jev setup --provider failproofai` switches Jev on.
+   */
+  optIn?: true;
 }
 
 /**
@@ -322,8 +328,19 @@ writeCloudCredentials(creds);
       writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
       // Loaded here and nowhere earlier: a connect whose key does not carry Jev
       // pulls in none of the Jev modules.
-      const { writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
-      outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
+      const { existingJevConfig, writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
+      if (input.sessions === true) {
+        outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
+      } else {
+        // `--no-transcripts` never switches Jev on (the user's decision). Jev
+        // sends each checked tool call and the recent prompt to FailproofAI
+        // Cloud, and someone who just asked for decisions only has not asked
+        // for that. The key is stored all the same, so opting in later is one
+        // command with no key to paste; jev.json is not written. One that is
+        // already there is somebody's decision and is reported as ever.
+        const existing = existingJevConfig(input.url);
+        outcome.jev = existing ? { ok: true, config: existing } : { ok: true, optIn: true };
+      }
     } else {
       // This connection replaces the last one, and the last key's Jev slot
       // describes a connection this machine no longer has — possibly another
@@ -347,6 +364,13 @@ function jevLines(outcome: ConnectOutcome): string[] {
   if (!jev) return [];
   if (!jev.ok) {
     return [`  Jev       not through FailproofAI Cloud: ${jev.reason ?? `that key does not carry \`${PERMISSION_JEV}\``}.`];
+  }
+  if (jev.optIn) {
+    // One line, and nothing that reads as "on": this connection asked for
+    // decisions only, and Jev would send more than that.
+    return [
+      "  Jev       available on this key, not switched on (--no-transcripts): it sends each checked tool call and the recent prompt to FailproofAI Cloud for evaluation. To switch it on: `failproofai jev setup --provider failproofai`.",
+    ];
   }
   const config = jev.config;
   if (!config || config.status === "written") {

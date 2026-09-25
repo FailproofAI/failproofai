@@ -5,8 +5,11 @@
  * `jev` slot of `credentials.json` (`cloud-connection.ts`) and then, ONLY when
  * this machine has no `jev.json` at all, writes one that turns Jev on through
  * FailproofAI Cloud in shadow mode — logged, never enforced, until its owner
- * says otherwise. `config --disconnect` clears the slot and deletes `jev.json`
- * only when that file names the Cloud provider.
+ * says otherwise. Never under `--no-transcripts`: that connection asked for
+ * decisions only, so it stores the key and says Jev is available, and
+ * `jev setup --provider failproofai` is the opt-in. `config --disconnect`
+ * clears the slot and deletes `jev.json` only when that file names the Cloud
+ * provider.
  *
  * # Never overwrite
  *
@@ -92,6 +95,17 @@ export function writeCloudJevConfigIfAbsent(cloudBase: string): CloudJevConfigWr
   }
   tightenDir(dir);
   return { status: "written", path, mode: CLOUD_JEV_INITIAL_MODE, baseUrl };
+}
+
+/**
+ * What `writeCloudJevConfigIfAbsent` would report for a `jev.json` that is
+ * already there — without writing anything when there is none. For a connect
+ * that must not switch Jev on (`--no-transcripts`) but still says what an
+ * existing file does. Null when there is no file.
+ */
+export function existingJevConfig(cloudBase: string): CloudJevConfigWrite | null {
+  const path = jevConfigPath();
+  return existsSync(path) ? kept(path, cloudBase) : null;
 }
 
 function kept(path: string, cloudBase: string): CloudJevConfigWrite {

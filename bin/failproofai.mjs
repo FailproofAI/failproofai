@@ -965,8 +965,10 @@ async function runCli() {
               "",
               "FailproofAI Cloud needs no setup here: `failproofai config --token",
               "<key>` with a key that carries jev:evaluate (the \"machine\" preset)",
-              "turns it on in shadow mode when there is no jev.json yet. Its key",
-              "stays in credentials.json; no --url ever selects it.",
+              "turns it on in shadow mode when there is no jev.json yet — except",
+              "with --no-transcripts, which only stores the key; then",
+              "`failproofai jev setup --provider failproofai` switches it on. Its",
+              "key stays in credentials.json; no --url ever selects it.",
             ],
           },
           {

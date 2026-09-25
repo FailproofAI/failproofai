@@ -27,6 +27,12 @@ That is all. Connecting stores the key and, when the machine has **no** Jev conf
   Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (~/.failproofai/jev.json).
 ```
 
+**With `--no-transcripts`, connecting does not turn Jev on.** Jev sends each checked tool call and the recent prompt to FailproofAI Cloud, which is more than a decisions-only connection asked to send. The key is still stored, and the output says Jev is available and how to switch it on:
+
+```bash
+failproofai jev setup --provider failproofai
+```
+
 <Warning>
 Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
 </Warning>

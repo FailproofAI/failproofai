@@ -17,7 +17,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { connectToCloud, configuredPaths, describeOutcome } from "../../src/hooks/cloud-connection";
-import { runDisconnectCommand } from "../../src/hooks/cloud-enrollment-cli";
+import { runConnectCommand, runDisconnectCommand } from "../../src/hooks/cloud-enrollment-cli";
 import { readCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
 import { credentialsFile, jevConfigFile } from "../../src/hooks/fp-home";
 import { inspectJevConfig, loadJevConfig } from "../../src/hooks/semantic/jev-config";
@@ -163,6 +163,83 @@ describe("connecting with a key that carries jev:evaluate", () => {
     // And leaves no temp file behind.
     const leftovers = readdirTmp();
     expect(leftovers).toEqual([]);
+  });
+});
+
+describe("connecting with --no-transcripts (sessions !== true)", () => {
+  const decisionsOnly = (sessions: boolean | undefined = false) =>
+    connectToCloud({
+      url: URL_,
+      token: TOKEN,
+      machineId: "machine-1",
+      sessions,
+      introspect: withPermissions(...MACHINE_PRESET),
+      verifyPolicy: async () => ({ ok: true as const, policyCount: 1, deployment: 2 }),
+      verifyIngest: async () => ({ ok: true as const }),
+    });
+
+  it("stores the Jev key but never switches Jev on, and says how to, in one line", async () => {
+    for (const sessions of [false, undefined]) {
+      rmSync(jevConfigFile(), { force: true });
+      const outcome = await decisionsOnly(sessions);
+      expect(outcome.jev).toEqual({ ok: true, optIn: true });
+      // The key is where `jev setup --provider failproofai` will find it…
+      expect(readCredentials().jev).toEqual({ url: URL_, key: TOKEN });
+      // …and no jev.json, so the hooks run exactly what they ran before.
+      expect(existsSync(jevConfigFile())).toBe(false);
+      expect(inspectJevConfig().status).toBe("absent");
+      expect(loadJevConfig()).toBeNull();
+
+      const lines = describeOutcome(outcome, "machine-1", URL_);
+      const jevLines = lines.filter((l) => l.includes("Jev"));
+      expect(jevLines).toHaveLength(1);
+      expect(jevLines[0]).toContain("available on this key");
+      expect(jevLines[0]).toContain("each checked tool call and the recent prompt to FailproofAI Cloud");
+      expect(jevLines[0]).toContain("`failproofai jev setup --provider failproofai`");
+      const text = lines.join("\n");
+      expect(text).not.toMatch(/Jev\s+on\b/);
+      expect(text).not.toContain("shadow mode");
+      expect(text).not.toContain(TOKEN);
+      // The key file is named in the closing note: a key WAS stored.
+      expect(configuredPaths(outcome)).toContain(credentialsFile());
+    }
+  });
+
+  it("an existing jev.json is still reported as it is, and still never touched", async () => {
+    const before = seedJev({ provider: "typesafe", apiKey: BYOK_KEY, mode: "enforce" });
+    const outcome = await decisionsOnly();
+    expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+    expect(outcome.jev).toMatchObject({ ok: true, config: { status: "kept", provider: "typesafe" } });
+    const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+    expect(text).toContain("left as configured");
+    expect(text).not.toContain("available on this key");
+  });
+
+  it("the --connect path prints no \"Jev on\" either", async () => {
+    const r = await runConnectCommand({
+      url: URL_,
+      token: TOKEN,
+      machineId: "machine-1",
+      sessions: false,
+      introspect: withPermissions(...MACHINE_PRESET),
+      verify: async () => ({ ok: true as const, policyCount: 1, deployment: 2 }),
+      verifyIngest: async () => ({ ok: true as const }),
+      daemonStatus: () => "running",
+    });
+    expect(r.exitCode).toBe(0);
+    const text = r.lines.join("\n");
+    expect(text).toContain("available on this key");
+    expect(text).toContain("Session transcripts are NOT being sent");
+    expect(text).not.toMatch(/Jev\s+on\b/);
+    expect(existsSync(jevConfigFile())).toBe(false);
+  });
+
+  it("opting in afterwards is the one command it names", async () => {
+    await decisionsOnly();
+    const { runJevCommand } = await import("../../src/hooks/jev-cli");
+    const r = await runJevCommand(["setup", "--provider", "failproofai"], { render: { cols: 120, color: false } });
+    expect(r.exitCode).toBe(0);
+    expect(loadJevConfig()).toMatchObject({ provider: "failproofai", apiKey: TOKEN, mode: "shadow" });
   });
 });
 

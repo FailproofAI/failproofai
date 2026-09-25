@@ -170,7 +170,8 @@
                 "group": "Prevent repeat failures",
                 "pages": [
                   "policies/overview",
-                  "policies/jev-byok"
+                  "policies/jev-byok",
+                  "policies/jev-cloud"
                 ]
               },
               {

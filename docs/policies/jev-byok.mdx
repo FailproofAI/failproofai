@@ -19,6 +19,10 @@ With your own Jev endpoint and key configured, Failproof AI asks Jev about each 
 Without a Jev config nothing changes: hooks run the regex policies exactly as they always have. The config is the whole opt-in.
 </Note>
 
+<Tip>
+On FailproofAI Cloud? You do not need a key of your own: a machine connected with a key that carries `jev:evaluate` can use Jev on your organization's plan. See [Jev through FailproofAI Cloud](/policies/jev-cloud).
+</Tip>
+
 ## Choose a provider
 
 Jev is reachable through five routes. Bring a key for any one of them.
@@ -146,7 +150,10 @@ failproofai jev status --json
 ```bash
 failproofai jev setup --mode shadow
 failproofai jev setup --mode enforce
+failproofai jev setup --mode off
 ```
+
+`off` keeps the config — the endpoint and the key — and stops asking Jev: hooks run the regex policies exactly as without a config, and `failproofai jev status` says "off (switched off)". Switch back with `--mode shadow` or `--mode enforce`.
 
 Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key. So does a `--base-url` that moves requests to a different host: a stored key is only sent to the host it was given for, or to its provider's own API.
 
@@ -166,13 +173,13 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 
 | Field | Meaning |
 | --- | --- |
-| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom`. |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom` — or `failproofai`, whose key comes from the FailproofAI Cloud connection instead of this file (see [Jev through FailproofAI Cloud](/policies/jev-cloud)). |
 | `apiKey` | Sent as `Authorization: Bearer <key>`. |
 | `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
 | `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
 | `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 3000. |
-| `mode` | `enforce` (default) or `shadow`. |
+| `mode` | `enforce` (default), `shadow`, or `off` (keep the config, run no Jev). |
 
 Three rules protect it:
 
@@ -229,7 +236,7 @@ It goes only to the endpoint in your config, under your key.
 failproofai jev remove
 ```
 
-This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the regex policies exactly as before.
+This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the regex policies exactly as before. To stop asking Jev but keep the config, use `failproofai jev setup --mode off` instead.
 
 ## Command reference
 
@@ -240,7 +247,7 @@ This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the r
 | `failproofai jev setup --provider <kind> --key-stdin` | Write the config from a key piped on stdin |
 | `failproofai jev setup --provider <kind>` | Same, asking for the key at a masked prompt |
 | `failproofai jev setup --key-from-env` | Store no key; read `FAILPROOFAI_JEV_API_KEY` per session |
-| `failproofai jev setup --mode shadow` | Switch mode, keeping the stored key |
+| `failproofai jev setup --mode shadow` | Switch mode (`enforce`, `shadow` or `off`), keeping the stored key |
 | `failproofai jev setup --model <id>` / `--base-url <url>` | Override the model or API base; `default` clears the override |
 | `failproofai jev setup --timeout-ms <n>` | Change the per-call budget |
 | `failproofai jev status [--json]` | Configuration, permissions and recent activity; never the key |

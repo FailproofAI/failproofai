@@ -1,0 +1,95 @@
+---
+title: "Jev through FailproofAI Cloud"
+description: "Let Jev judge your agents' tool calls through FailproofAI Cloud, on your organization's plan, with no TypeSafe account or key of your own."
+icon: "cloud"
+---
+
+[Jev](/policies/jev-byok), TypeSafe's classifier, reads each tool call against what you actually asked for and answers alongside your policies, never instead of them. Through **FailproofAI Cloud**, a connected machine uses Jev with the same key it already connects with: no TypeSafe account, no second key, no endpoint to configure. Each call is charged to your organization's existing plan allowance.
+
+Everything Jev does is unchanged from the [bring-your-own-key setup](/policies/jev-byok): hard policies stay final, a reviewable policy's deny is cleared only when Jev was asked about exactly that concern, and any failure falls back to the regex result for that call.
+
+<Note>
+Requires **failproofai 1.0.7-beta.3** or later. Without a Jev config nothing changes: hooks run the regex policies exactly as they always have.
+</Note>
+
+## Turn it on
+
+1. **Create a key with Jev.** In the FailproofAI Cloud dashboard, open **Keys → Create key** and pick the **machine** preset. It grants the three permissions a machine needs: `events:add` (send activity), `policies:pull` (receive policies) and `jev:evaluate` (Jev, charged to your organization's plan). A key cannot carry `jev:evaluate` without the other two.
+2. **Connect the machine** with that key:
+
+   ```bash
+   failproofai config --token <key>
+   ```
+
+That is all. Connecting stores the key and, when the machine has **no** Jev config yet, turns Jev on through FailproofAI Cloud in **shadow** mode: Jev is asked about every gated tool call and its verdicts are recorded, but your policies' result is what is enforced. The output says so:
+
+```text
+  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (~/.failproofai/jev.json).
+```
+
+<Warning>
+Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
+</Warning>
+
+## Shadow, enforce or off
+
+Start in shadow, watch what Jev would have done on the policy page, then let it act:
+
+```bash
+failproofai jev setup --mode enforce   # Jev's verdicts apply: it may clear a reviewable deny and add its own
+failproofai jev setup --mode shadow    # Jev is asked and logged; your policies' result is enforced
+failproofai jev setup --mode off       # keep the config, stop asking Jev
+```
+
+The same switch is in the local dashboard: **Settings → Jev** has an on/off switch and shadow/enforce. It rewrites the mode and nothing else. Hooks read the config on every tool call, so a change applies from the next one, with no restart.
+
+## Check what it is doing
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`status` shows the provider as **FailproofAI Cloud**, the Cloud host the machine connected to, the mode, and the key source as **FailproofAI Cloud connection**, never the key. If the machine is not connected (or was disconnected), it says **off — this machine is not connected to FailproofAI Cloud**. `status --json` carries the same facts (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`). `test` sends one live request and reports its latency and the Jev version that answered.
+
+The dashboard's **Settings → Jev** panel also shows the **FailproofAI Cloud connection**: which organization the machine reports into and whether its key carries Jev. It is read from the machine's own files, with no network call.
+
+## What reaches the policy page
+
+The machine already sends its hook activity to FailproofAI Cloud (`events:add`). With Jev on, each gated call's record also says which evaluator ran, what Jev decided, which policies it cleared, why it fell back when it did, its latency and the model that answered — decisions, codes and names, never the command or your prompt. On your organization's **Policies** page:
+
+- a call Jev's own verdict decided (enforce mode) is attributed to **Jev**;
+- in shadow mode, Jev's deny or warning appears as a **would-have**, next to the rollouts you are observing;
+- the policies Jev cleared, or would have cleared in shadow mode, are counted per policy.
+
+## When Jev cannot answer
+
+Every one of these falls back to your policies' result for that call, and is recorded with its reason:
+
+| Reason | Cause |
+| --- | --- |
+| `out-of-credits` | Your organization has used its plan allowance. |
+| `http-401`, `http-403` | The key was revoked, or does not carry `jev:evaluate`. Reconnect with a key that does. |
+| `http-429` | FailproofAI Cloud is rate-limiting Jev for your organization. |
+| `http-502`, `http-503` | Jev is unavailable right now. |
+| `http-404` | This FailproofAI Cloud does not serve Jev yet. |
+| `timeout` | No answer within `timeoutMs` (default 3000). |
+| `model-mismatch` | A Jev version other than 1.13 answered. |
+
+## Where the key lives, and where it goes
+
+- The key is stored once, in `~/.failproofai/credentials.json` (`0600`, in an owner-only directory), beside the other FailproofAI Cloud credentials. `jev.json` holds no key for this route; one written there makes the config invalid.
+- If `credentials.json` or its directory can be read or written by anyone else, it is **refused**, not read, and Jev is off until you `chmod 600` it (or reconnect, which rewrites it).
+- The key is only ever sent to the Cloud origin it was verified against. A `jev.json` pointing anywhere else is refused.
+- Only your global files decide this. A repository cannot turn Cloud Jev on, point it elsewhere or supply its key, and `FAILPROOFAI_JEV_API_KEY` is ignored for this route.
+- For each call Jev evaluates, one request goes to FailproofAI Cloud, carrying what the [bring-your-own-key page](/policies/jev-byok#what-leaves-the-machine) lists (secrets redacted). FailproofAI Cloud forwards it to TypeSafe and does not log or keep it.
+
+## Turn it off
+
+| Command | Outcome |
+| --- | --- |
+| `failproofai jev setup --mode off` | Keep the config; Jev is not asked. Switch back with `--mode shadow`. |
+| `failproofai jev remove` | Delete `~/.failproofai/jev.json`; Jev is off. |
+| `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud. A `jev.json` for your own endpoint stays. |
+
+From the next tool call, hooks run the regex policies exactly as before.

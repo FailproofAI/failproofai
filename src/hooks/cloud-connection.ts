@@ -171,6 +171,18 @@ export interface JevConnectOutcome {
    * is stored; `jev setup --provider failproofai` switches Jev on.
    */
   optIn?: true;
+  /**
+   * Introspect gave no answer about this key's permissions — the server could
+   * not be asked (`unreachable`) or predates the endpoint (`unsupported`) — so
+   * whether it carries `jev:evaluate` is unknown, and the Jev slot was:
+   *
+   *   - `kept`: it already held THIS key for THIS origin, and was left as it
+   *     was — the machine's connection is the same one it belongs to;
+   *   - `cleared`: it held another key or origin — the previous connection's,
+   *     possibly another org's budget — and was removed;
+   *   - `none`: there was no slot, and there still is none.
+   */
+  unconfirmed?: "kept" | "cleared" | "none";
 }
 
 /**
@@ -341,13 +353,43 @@ writeCloudCredentials(creds);
         const existing = existingJevConfig(input.url);
         outcome.jev = existing ? { ok: true, config: existing } : { ok: true, optIn: true };
       }
-    } else {
-      // This connection replaces the last one, and the last key's Jev slot
-      // describes a connection this machine no longer has — possibly another
-      // org's budget. Dropped, so Jev never spends on a key it was not just
-      // handed. (A Cloud jev.json then reads `key-lacks-jev`: off, and said.)
+    } else if (known) {
+      // Introspect ANSWERED, and the key does not carry Jev. This connection
+      // replaces the last one, and the last key's Jev slot describes a
+      // connection this machine no longer has — possibly another org's budget.
+      // Dropped, so Jev never spends on a key it was not just handed. (A Cloud
+      // jev.json then reads `key-lacks-jev`: off, and said.)
       clearJevCloudCredential();
-      if (known) outcome.jev = { ok: false, reason: missing(PERMISSION_JEV) };
+      outcome.jev = { ok: false, reason: missing(PERMISSION_JEV) };
+    } else {
+      // No answer about this key: a 502 or a network blip on introspect
+      // (`unreachable`), or a server with no introspect at all (`unsupported`).
+      // Neither says the key LACKS Jev, so neither is a reason to switch Jev
+      // off — a reconnect during a transient outage used to do exactly that,
+      // silently.
+      //
+      // But neither says it HAS Jev, and the slot is only ever spent against.
+      // So it is kept only when it already holds this very key for this very
+      // origin: then the connection just verified IS the one it belongs to,
+      // and keeping it changes nothing about whose budget Jev spends. A slot
+      // holding any other key or origin is the previous connection's, and the
+      // machine is not connected with that key any more — the rule above,
+      // which wins whenever the answer is not "yes".
+      //
+      // `unsupported` is decided the same way, and conservatively: a server
+      // that predates introspect predates the Jev route too, so a kept slot
+      // there can only fall back with `http-404` — never spend — and clearing
+      // it would turn Jev off on no evidence. It gets no line when there was
+      // no slot, because on such a server there is nothing to say about Jev.
+      const previous = readCredentials().jev;
+      if (!previous) {
+        if (identity.kind === "unreachable") outcome.jev = { ok: false, unconfirmed: "none" };
+      } else if (previous.key === input.token && previous.url === new URL(input.url).origin) {
+        outcome.jev = { ok: false, unconfirmed: "kept" };
+      } else {
+        clearJevCloudCredential();
+        outcome.jev = { ok: false, unconfirmed: "cleared" };
+      }
     }
   }
 
@@ -362,6 +404,12 @@ writeCloudCredentials(creds);
 function jevLines(outcome: ConnectOutcome): string[] {
   const jev = outcome.jev;
   if (!jev) return [];
+  if (jev.unconfirmed === "cleared") {
+    return [
+      "  Jev       could not confirm this key's Jev permission, and the Jev key stored before was a different one, so it was removed: Jev through FailproofAI Cloud is off. Run `failproofai config --token <key>` again to retry.",
+    ];
+  }
+  if (jev.unconfirmed) return ["  Jev       could not confirm the key's Jev permission; left as it was."];
   if (!jev.ok) {
     return [`  Jev       not through FailproofAI Cloud: ${jev.reason ?? `that key does not carry \`${PERMISSION_JEV}\``}.`];
   }

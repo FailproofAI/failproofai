@@ -7,8 +7,11 @@
  *     only when there is NO jev.json — writes one that turns Jev on through
  *     FailproofAI Cloud in shadow mode.
  *   - An existing jev.json is never overwritten, whatever it names.
- *   - A key without `jev:evaluate`, or a server that cannot say, writes no Jev
- *     state at all, and drops the Jev key a previous connection left.
+ *   - A key introspect says lacks `jev:evaluate` writes no Jev state at all,
+ *     and drops the Jev key a previous connection left. An introspect that
+ *     gives no answer (unreachable, or a server without it) turns nothing on,
+ *     keeps a slot that already holds this very key, and drops any other.
+ *   - `--no-transcripts` stores the key and never switches Jev on.
  *   - Disconnect clears the slot and deletes jev.json only when it names the
  *     Cloud provider; a BYOK file stays, byte for byte.
  */
@@ -22,7 +25,8 @@ import { readCredentials, writeJevCloudCredential } from "../../src/hooks/fp-con
 import { credentialsFile, jevConfigFile } from "../../src/hooks/fp-home";
 import { inspectJevConfig, loadJevConfig } from "../../src/hooks/semantic/jev-config";
 import { writeCloudJevConfigIfAbsent } from "../../src/hooks/jev-cloud-connection";
-import type { IntrospectResult } from "../../src/hooks/cloud-introspect";
+import { introspectKey, type IntrospectResult } from "../../src/hooks/cloud-introspect";
+import { runJevCommand } from "../../src/hooks/jev-cli";
 
 const posix = process.platform !== "win32";
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
@@ -58,7 +62,7 @@ const MACHINE_PRESET = ["events:add", "policies:pull", "jev:evaluate"];
 const introspecting = (result: IntrospectResult) => async () => result;
 const withPermissions = (...permissions: string[]) => introspecting({ kind: "ok", identity: { ...ORG, permissions } });
 
-function connect(introspect: () => Promise<IntrospectResult>, url = URL_, token = TOKEN, ok = true) {
+function connect(introspect: (origin: string, token: string) => Promise<IntrospectResult>, url = URL_, token = TOKEN, ok = true) {
   return connectToCloud({
     url,
     token,
@@ -275,6 +279,64 @@ describe("connecting with a key that does not carry jev:evaluate", () => {
     expect(outcome.jev).toBeUndefined();
     expect(readCredentials().jev).toBeUndefined();
     expect(existsSync(jevConfigFile())).toBe(false);
+  });
+
+  it("is not switched off by a reconnect whose introspect failed (HTTP 502)", async () => {
+    await connect(withPermissions(...MACHINE_PRESET));
+    expect(inspectJevConfig().status).toBe("ok");
+    const jevBefore = readFileSync(jevConfigFile(), "utf8");
+
+    // The real introspect client, against a server whose introspect answers 502.
+    const answering502 = (async () => new Response("bad gateway", { status: 502 })) as unknown as typeof fetch;
+    const outcome = await connect((origin: string, token: string) => introspectKey(origin, token, answering502));
+    expect(outcome.anyConfigured).toBe(true);
+    expect(outcome.jev).toEqual({ ok: false, unconfirmed: "kept" });
+
+    // Left exactly as it was: the slot, the file, and what the hooks read.
+    expect(readCredentials().jev).toEqual({ url: URL_, key: TOKEN });
+    expect(readFileSync(jevConfigFile(), "utf8")).toBe(jevBefore);
+    expect(inspectJevConfig().status).toBe("ok");
+    expect(loadJevConfig()).toMatchObject({ provider: "failproofai", apiKey: TOKEN });
+    const status = await runJevCommand(["status", "--json"], { render: { cols: 120, color: false } });
+    expect(JSON.parse(status.json as string)).toMatchObject({ status: "ok", provider: "failproofai" });
+
+    const jevLines = describeOutcome(outcome, "machine-1", URL_).filter((l) => l.includes("Jev"));
+    expect(jevLines).toHaveLength(1);
+    expect(jevLines[0]).toContain("could not confirm the key's Jev permission; left as it was.");
+  });
+
+  it("an unanswered introspect never lends the NEW connection a previous key's Jev slot", async () => {
+    await connect(withPermissions(...MACHINE_PRESET), URL_, OLD_TOKEN);
+    expect(readCredentials().jev?.key).toBe(OLD_TOKEN);
+    const outcome = await connect(introspecting({ kind: "unreachable", reason: "the server answered 502" }));
+    expect(outcome.jev).toEqual({ ok: false, unconfirmed: "cleared" });
+    expect(readCredentials().jev).toBeUndefined();
+    expect(JSON.stringify(readCredentials())).not.toContain(OLD_TOKEN);
+    // Connected with the new key, which is not known to carry Jev: said so.
+    expect(inspectJevConfig().status).toBe("key-lacks-jev");
+    const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+    expect(text).toContain("could not confirm this key's Jev permission");
+    expect(text).toContain("config --token <key>");
+    expect(text).not.toContain(OLD_TOKEN);
+  });
+
+  it("an unanswered introspect with no Jev slot says so and writes nothing for Jev", async () => {
+    const outcome = await connect(introspecting({ kind: "unreachable", reason: "timeout" }));
+    expect(outcome.jev).toEqual({ ok: false, unconfirmed: "none" });
+    expect(readCredentials().jev).toBeUndefined();
+    expect(existsSync(jevConfigFile())).toBe(false);
+    expect(describeOutcome(outcome, "machine-1", URL_).join("\n")).toContain("could not confirm the key's Jev permission; left as it was.");
+  });
+
+  it("a server with no introspect keeps this key's own slot, and drops another key's", async () => {
+    await connect(withPermissions(...MACHINE_PRESET));
+    const kept = await connect(introspecting({ kind: "unsupported" }));
+    expect(kept.jev).toEqual({ ok: false, unconfirmed: "kept" });
+    expect(readCredentials().jev?.key).toBe(TOKEN);
+
+    const other = await connect(introspecting({ kind: "unsupported" }), URL_, OLD_TOKEN);
+    expect(other.jev).toEqual({ ok: false, unconfirmed: "cleared" });
+    expect(readCredentials().jev).toBeUndefined();
   });
 
   it("writes nothing when nothing connected, whatever the key carries", async () => {

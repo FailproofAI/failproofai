@@ -92,7 +92,8 @@ Every one of these falls back to your policies' result for that call, and is rec
 ## Where the key lives, and where it goes
 
 - The key is stored once, in `~/.failproofai/credentials.json` (`0600`, in an owner-only directory), beside the other FailproofAI Cloud credentials. `jev.json` holds no key for this route; one written there makes the config invalid.
-- If `credentials.json` or its directory can be read or written by anyone else, it is **refused**, not read, and Jev is off until you `chmod 600` it (or reconnect, which rewrites it).
+- If `credentials.json` carries **any** permission for anyone but you (group or other, read or write), or its directory can be **written** by anyone but you, it is **refused**, not read, and Jev is off until you fix it: `chmod 600` on the file, `chmod 700` on the directory (or reconnect, which rewrites the file at `0600` and makes the directory owner-only). A directory others can only read is fine; one they can write lets them swap the file.
+- The key counts only while the connection it came with is on the machine: a policy or reporting credential for the same FailproofAI Cloud, in the same file. A Jev key left behind without one (an older failproofai's `config --disconnect` does not know to remove it) is ignored, and Jev stays off.
 - The key is only ever sent to the Cloud origin it was verified against. A `jev.json` pointing anywhere else is refused.
 - Only your global files decide this. A repository cannot turn Cloud Jev on, point it elsewhere or supply its key, and `FAILPROOFAI_JEV_API_KEY` is ignored for this route.
 - For each call Jev evaluates, one request goes to FailproofAI Cloud, carrying what the [bring-your-own-key page](/policies/jev-byok#what-leaves-the-machine) lists (secrets redacted). FailproofAI Cloud forwards it to TypeSafe and does not log or keep it.
@@ -101,8 +102,8 @@ Every one of these falls back to your policies' result for that call, and is rec
 
 | Command | Outcome |
 | --- | --- |
-| `failproofai jev setup --mode off` | Keep the config; Jev is not asked. Switch back with `--mode shadow`. |
-| `failproofai jev remove` | Delete `~/.failproofai/jev.json`; Jev is off. |
+| `failproofai jev setup --mode off` | Keep the config; Jev is not asked. **This is the switch that lasts:** connecting again never rewrites an existing `jev.json`, so Jev stays off until you switch it back with `--mode shadow`. |
+| `failproofai jev remove` | Delete `~/.failproofai/jev.json`; Jev is off — until the next `failproofai config --token` with a key that carries `jev:evaluate`, which finds no `jev.json` and turns Jev on again in shadow mode (unless it runs with `--no-transcripts`). To keep it off, use `--mode off`. |
 | `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud. A `jev.json` for your own endpoint stays. |
 
 From the next tool call, hooks run the regex policies exactly as before.

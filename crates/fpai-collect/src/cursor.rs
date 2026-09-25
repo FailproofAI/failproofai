@@ -65,6 +65,11 @@ pub struct TailState {
     /// deterministic AND drop the oldest first; a map keyed by random ids would
     /// evict in an order unrelated to age.
     pub pending_tools: Vec<(String, String)>,
+    /// The session header said no person drives this session — a Codex
+    /// sub-agent or a `codex exec` run — so none of its user turns becomes a
+    /// `human_input`. Carried here because the header is line 1 and the turns
+    /// come later; persisted, so a resumed read decides the same way.
+    pub automated: bool,
 }
 
 /// Most in-flight tool calls remembered per session. Bounds the cursor file

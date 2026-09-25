@@ -190,21 +190,21 @@ fn the_three_message_roles_each_produce_their_own_event_type() {
     let roles = [
         (
             user_prompt("2026-08-03T08:01:40.102Z", "hi"),
-            "model_request",
+            vec!["model_request", "human_input"],
         ),
         (
             assistant_text("2026-08-03T08:05:42.900Z", "done"),
-            "model_response",
+            vec!["model_response"],
         ),
         (
             tool_result("2026-08-03T08:05:39.882Z", "tooluse_z", "exec", "2", false),
-            "tool_result",
+            vec!["tool_result"],
         ),
     ];
     for (line, want) in roles {
         let (_, ev) = transform::transform_line(&line, &c, 0, &mut st);
-        assert_eq!(ev.len(), 1, "{want}");
-        assert_eq!(ev[0]["type"], want);
+        let got: Vec<&str> = ev.iter().filter_map(|e| e["type"].as_str()).collect();
+        assert_eq!(got, want);
     }
 }
 

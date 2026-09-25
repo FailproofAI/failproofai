@@ -292,6 +292,16 @@ pub fn transform_line(
             }
             Vec::new()
         }
+        // Not emitted either (the engine's `agent_start` covers it), but it is
+        // the one record that says who drives the session: a sub-agent carries
+        // `source: {subagent: …}` and a scripted run `source: "exec"`.
+        // Measured here: 104 `cli`, 12 sub-agent, 11 exec rollouts.
+        "session_meta" => {
+            let source = payload.get("source");
+            state.automated = source.is_some_and(Value::is_object)
+                || source.and_then(|s| s.as_str()) == Some("exec");
+            Vec::new()
+        }
         "response_item" => response_item_events(&payload, ctx, &ts, offset, state),
         "event_msg" => event_msg_events(&payload, ctx, &ts, offset, state),
         // `session_meta` is the engine's `agent_start`; emitting it here too
@@ -439,10 +449,28 @@ fn event_msg_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSta
             insert_model(&mut m, state);
             vec![Value::Object(m)]
         }
-        // `user_message` / `agent_message` restate the `response_item` message
-        // lines Codex writes for the same turn — measured 127 vs 145 user and
-        // 284 vs 292 assistant, i.e. the response-item stream is a superset.
-        // Emitting both would double every prompt and every reply.
+        // What the person typed, and ONLY that: the `response_item` user
+        // messages around it also carry the injected AGENTS.md, environment
+        // context and permission preamble (1,298 user response items vs 343
+        // `user_message` records here). The request itself is already the
+        // response item's `model_request`, so this is the `human_input` alone.
+        Some("user_message") if !state.automated => {
+            let Some(text) = p
+                .get("message")
+                .and_then(|m| m.as_str())
+                .filter(|t| !t.is_empty())
+            else {
+                return Vec::new();
+            };
+            match base(ctx, "human_input", ts, 0, offset) {
+                Some(m) => vec![crate::sources::human_input(m, &offset.to_string(), text)],
+                None => Vec::new(),
+            }
+        }
+        // `agent_message` restates the `response_item` message line Codex
+        // writes for the same turn — measured 284 vs 292, i.e. the
+        // response-item stream is a superset. Emitting both would double every
+        // reply.
         //
         // `patch_apply_end` looks like a tool result but its `call_id` is an
         // internal `exec-<uuid>` that matches NO tool call on disk (checked for

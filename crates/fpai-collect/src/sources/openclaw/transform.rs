@@ -309,8 +309,27 @@ fn message_events(
     }
 }
 
-/// A `user` record is a human prompt. Tool results are their own role in
-/// OpenClaw, so unlike Claude this branch never has to disambiguate.
+/// Openings of the `user` records the OpenClaw runtime writes itself. Measured
+/// on a production gateway over 24h: 594 `[cron:…]` and 170 heartbeat polls
+/// against 36 messages from people. Over 7 days the same gateway also wrote 32
+/// `[Inter-session message]` hand-offs between its own agents and 14 `[System]`
+/// restart notices into the user role.
+///
+/// ⚠ The record names no sender, so this is recognition by shape, and one
+/// shape it cannot see: a bot posting into the same Slack channel reads exactly
+/// like a person.
+const RUNTIME_OPENINGS: &[&str] = &[
+    "[cron:",
+    "[OpenClaw heartbeat poll]",
+    "[Subagent Context]",
+    "[Inter-session message]",
+    "[System]",
+    "Continue the OpenClaw runtime event.",
+];
+
+/// A `user` record is a prompt — a person's, or one the runtime wrote on a
+/// schedule or for a sub-agent. Tool results are their own role in OpenClaw,
+/// so unlike Claude this branch never has to disambiguate those.
 fn user_events(message: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState) -> Vec<Value> {
     let text = joined_text(message.get("content").unwrap_or(&Value::Null));
     if text.is_empty() {
@@ -328,7 +347,18 @@ fn user_events(message: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSt
         "messages".into(),
         json!([{ "role": "user", "content": text }]),
     );
-    vec![Value::Object(m)]
+    let mut out = vec![Value::Object(m)];
+    let opening = text.trim_start();
+    if !RUNTIME_OPENINGS.iter().any(|p| opening.starts_with(p))
+        && let Some(envelope) = base(ctx, "human_input", ts, 1, offset)
+    {
+        out.push(crate::sources::human_input(
+            envelope,
+            &offset.to_string(),
+            &text,
+        ));
+    }
+    out
 }
 
 /// An `assistant` record is text and/or tool calls, plus token usage.

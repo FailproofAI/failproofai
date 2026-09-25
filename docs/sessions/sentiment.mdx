@@ -1,0 +1,44 @@
+---
+title: "Sentiment"
+description: "See how the people using your agents feel — angry, frustrated, happy or confused — message by message."
+icon: "smile"
+---
+
+Sentiment scores every message a person sends your agents for four feelings — **angry**, **frustrated**, **happy** and **confused** — each from 0 to 100%. Use it to find the conversations where people are losing patience, the agents they keep having to correct, and the replies that land well.
+
+<Note>
+  Sentiment is off until an admin turns it on for the organization. Scoring uses your organization's LLM budget — one scoring request per message — and sends each message, with the agent reply before it, to the scoring model.
+</Note>
+
+## Turn it on
+
+1. Go to **Administration → Settings**.
+2. Under **Human input sentiment**, switch it **on** and save.
+
+Messages from the last day are scored first. After that, new messages are scored within a minute or two of arriving.
+
+## Which messages are scored
+
+Only messages a person wrote:
+
+- Messages your custom agents record as human input with the SDK.
+- Prompts typed into Claude Code, Codex, OpenCode, pi, Hermes and OpenClaw, when session transcripts are sent (the default). Scheduled jobs, injected instructions, sub-agent hand-offs and other text the agent's own runtime writes are not scored.
+
+Scoring judges the person's own words. A short, blunt instruction such as "fix it" is not counted as anger, and asking a question is not counted as confusion.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Sentiment**.
+    2. Filter by environment, agent, or session ID.
+    3. The header shows, for each feeling, the share of messages scoring 50% or more.
+    4. **How people feel over time** charts the average of each feeling.
+    5. **By agent** compares agents side by side — select an agent to filter to it.
+    6. **Messages** lists the highest-scoring messages. Switch between most negative, most angry, most frustrated, most happy and most confused, and open the session to read the conversation around a message.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

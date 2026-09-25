@@ -1,10 +1,16 @@
 ---
 title: "Sentiment"
-description: "See how the people using your agents feel — angry, frustrated, happy or confused — message by message."
+description: "See how the people using your agents feel, and whether your agents are getting it right, message by message."
 icon: "smile"
 ---
 
-Sentiment scores every message a person sends your agents for four feelings — **angry**, **frustrated**, **happy** and **confused** — each from 0 to 100%. Use it to find the conversations where people are losing patience, the agents they keep having to correct, and the replies that land well.
+Sentiment scores every message a person sends your agents, each from 0 to 100%, for four feelings — **angry**, **frustrated**, **happy** and **confused** — and three signals about how the agent is doing:
+
+- **Correcting**: the person says the agent got something wrong.
+- **Resolved**: the person confirms the agent solved their problem.
+- **Doubtful**: the person questions whether the agent's answer is true, or whether it really did the work.
+
+Use it to find the conversations where people are losing patience, the agents they keep having to correct, and the replies that land well.
 
 <Note>
   Sentiment is off until an admin turns it on for the organization. Scoring uses your organization's LLM budget — one scoring request per message — and sends each message, with the agent reply before it, to the scoring model.
@@ -24,16 +30,16 @@ Only messages a person wrote:
 - Messages your custom agents record as human input with the SDK.
 - Prompts typed into Claude Code, Codex, OpenCode, pi, Hermes and OpenClaw, when session transcripts are sent (the default). Scheduled jobs, injected instructions, sub-agent hand-offs and other text the agent's own runtime writes are not scored. Nor are non-interactive runs such as `claude -p`, `codex exec` and `hermes -z`: a script wrote those prompts, not a person.
 
-Scoring judges the person's own words. A short, blunt instruction such as "fix it" is not counted as anger, and asking a question is not counted as confusion.
+Scoring judges the person's own words. A short, blunt instruction such as "fix it" is not counted as anger, and asking a question is not counted as confusion. A new request is not a correction, and thanks on their own do not count as resolved.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Go to **Observe → Sentiment**.
     2. Filter by environment, agent, or session ID.
-    3. The header shows, for each feeling, the share of messages scoring 50% or more.
-    4. **How people feel over time** charts the average of each feeling.
+    3. The header shows, for each score, the share of messages scoring 50% or more.
+    4. **How people feel over time** charts the average of each score.
     5. **By agent** compares agents side by side — select an agent to filter to it.
-    6. **Messages** lists the highest-scoring messages. Switch between most negative, most angry, most frustrated, most happy and most confused, and open the session to read the conversation around a message.
+    6. **Messages** lists the highest-scoring messages. Switch between most negative and most of any single score, and open the session to read the conversation around a message.
   </Tab>
   <Tab title="CLI">
     ```bash

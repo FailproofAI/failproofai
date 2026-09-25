@@ -219,6 +219,56 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
     expect(text).not.toContain("available on this key");
   });
 
+  it("a Cloud jev.json already on (shadow or enforce) is left alone — and the output says Jev still sends, and how to stop it", async () => {
+    for (const mode of ["shadow", "enforce"] as const) {
+      const before = seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode });
+      const outcome = await decisionsOnly();
+      // Never overwritten (decision 16, invariant 7)…
+      expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+      expect(outcome.jev).toMatchObject({ ok: true, config: { status: "kept", provider: "failproofai" }, stillOn: mode });
+      // …and still what the hooks run.
+      expect(loadJevConfig()).toMatchObject({ provider: "failproofai", mode });
+
+      const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+      expect(text).toContain("left as configured");
+      expect(text).toContain(`Jev is still on through FailproofAI Cloud (${mode} mode)`);
+      expect(text).toContain("each checked tool call and the recent prompt to FailproofAI Cloud");
+      expect(text).toContain("`failproofai jev setup --mode off`");
+      expect(text).not.toContain(TOKEN);
+    }
+  });
+
+  it("…the same line on the --connect path, above \"Decisions only.\"", async () => {
+    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "shadow" });
+    const r = await runConnectCommand({
+      url: URL_,
+      token: TOKEN,
+      machineId: "machine-1",
+      sessions: false,
+      introspect: withPermissions(...MACHINE_PRESET),
+      verify: async () => ({ ok: true as const, policyCount: 1, deployment: 2 }),
+      verifyIngest: async () => ({ ok: true as const }),
+      daemonStatus: () => "running",
+    });
+    const text = r.lines.join("\n");
+    expect(text).toContain("Jev is still on through FailproofAI Cloud (shadow mode)");
+    expect(text).toContain("Decisions only.");
+    expect(text.indexOf("still on through")).toBeLessThan(text.indexOf("Decisions only."));
+  });
+
+  it("no such line when the Cloud jev.json does not send: switched off, or pointing at another Cloud", async () => {
+    for (const file of [
+      { provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "off" },
+      { provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "shadow" },
+    ]) {
+      seedJev(file);
+      const outcome = await decisionsOnly();
+      expect(outcome.jev?.stillOn).toBeUndefined();
+      expect(loadJevConfig()).toBeNull();
+      expect(describeOutcome(outcome, "machine-1", URL_).join("\n")).not.toContain("still on");
+    }
+  });
+
   it("the --connect path prints no \"Jev on\" either", async () => {
     const r = await runConnectCommand({
       url: URL_,

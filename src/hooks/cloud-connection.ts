@@ -172,6 +172,13 @@ export interface JevConnectOutcome {
    */
   optIn?: true;
   /**
+   * A `--no-transcripts` connection found a `jev.json` already in place that
+   * keeps Jev running through FailproofAI Cloud, in this mode. It is left
+   * alone like any existing file (never overwritten), but a connection that
+   * asked for decisions only is told that Jev still sends more than that.
+   */
+  stillOn?: "shadow" | "enforce";
+  /**
    * Introspect gave no answer about this key's permissions — the server could
    * not be asked (`unreachable`) or predates the endpoint (`unsupported`) — so
    * whether it carries `jev:evaluate` is unknown, and the Jev slot was:
@@ -340,7 +347,7 @@ writeCloudCredentials(creds);
       writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
       // Loaded here and nowhere earlier: a connect whose key does not carry Jev
       // pulls in none of the Jev modules.
-      const { existingJevConfig, writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
+      const { cloudJevRunningMode, existingJevConfig, writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
       if (input.sessions === true) {
         outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
       } else {
@@ -349,9 +356,14 @@ writeCloudCredentials(creds);
         // Cloud, and someone who just asked for decisions only has not asked
         // for that. The key is stored all the same, so opting in later is one
         // command with no key to paste; jev.json is not written. One that is
-        // already there is somebody's decision and is reported as ever.
+        // already there is somebody's decision and is reported as ever — and
+        // when it keeps Jev on through FailproofAI Cloud, that is said too, or
+        // "Decisions only." would be the last word while Jev keeps sending.
         const existing = existingJevConfig(input.url);
-        outcome.jev = existing ? { ok: true, config: existing } : { ok: true, optIn: true };
+        const stillOn = existing ? cloudJevRunningMode() : null;
+        outcome.jev = existing
+          ? { ok: true, config: existing, ...(stillOn ? { stillOn } : {}) }
+          : { ok: true, optIn: true };
       }
     } else if (known) {
       // Introspect ANSWERED, and the key does not carry Jev. This connection
@@ -432,6 +444,11 @@ function jevLines(outcome: ConnectOutcome): string[] {
     if (config.otherOrigin) {
       lines.push(
         `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
+      );
+    }
+    if (jev.stillOn) {
+      lines.push(
+        `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. To switch it off: \`failproofai jev setup --mode off\`.`,
       );
     }
     return lines;

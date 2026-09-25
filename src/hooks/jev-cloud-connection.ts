@@ -54,7 +54,14 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
-import { JEV_CLOUD_PROVIDER, jevCloudBaseUrl, jevConfigPath, readJevConfigFileForUpdate } from "./semantic/jev-config";
+import {
+  DEFAULT_JEV_MODE,
+  JEV_CLOUD_PROVIDER,
+  inspectJevConfig,
+  jevCloudBaseUrl,
+  jevConfigPath,
+  readJevConfigFileForUpdate,
+} from "./semantic/jev-config";
 
 /** The mode a Cloud `jev.json` starts in (the user's decision: log first, enforce later). */
 export const CLOUD_JEV_INITIAL_MODE = "shadow" as const;
@@ -125,6 +132,22 @@ export function writeCloudJevConfigIfAbsent(cloudBase: string): CloudJevConfigWr
 export function existingJevConfig(cloudBase: string): CloudJevConfigWrite | null {
   const path = jevConfigPath();
   return existsSync(path) ? kept(path, cloudBase) : null;
+}
+
+/**
+ * The mode Jev runs in through FailproofAI Cloud right now, or null when it
+ * does not: no `jev.json`, another provider, switched off, or no usable key.
+ * Asked the way a hook asks (`inspectJevConfig`), so "on" here means a tool
+ * call's next Jev request really goes to FailproofAI Cloud.
+ */
+export function cloudJevRunningMode(): "shadow" | "enforce" | null {
+  try {
+    const r = inspectJevConfig();
+    if (r.status !== "ok" || r.config.provider !== JEV_CLOUD_PROVIDER) return null;
+    return r.config.mode === "off" ? null : (r.config.mode ?? DEFAULT_JEV_MODE);
+  } catch {
+    return null;
+  }
 }
 
 function kept(path: string, cloudBase: string): CloudJevConfigWrite {

@@ -48,6 +48,12 @@ ALL_PERMISSIONS: List[str] = [
     "policies:write",
     "policies:pull",
     "usage:read",
+    # Jev through FailproofAI Cloud, charged to the org's plan. The built-in
+    # admin set carries it, so PRESETS["admin"] below does too. The server
+    # refuses a KEY that carries it without both events:add and policies:pull
+    # (422 `jev_requirements_missing`): a Jev key is always a machine's whole
+    # connection, never a Jev-only one.
+    "jev:evaluate",
     "orgs:admin",
 ]
 

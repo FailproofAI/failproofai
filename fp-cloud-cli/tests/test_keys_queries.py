@@ -34,6 +34,35 @@ def test_policy_permissions_are_assignable_and_in_presets():
     assert "policies:read" in PRESETS["standard"]
     assert "policies:pull" in PRESETS["admin"]
 
+
+def test_jev_permission_is_assignable_and_in_the_admin_preset_only():
+    from fp_cli.permissions import (
+        ALL_PERMISSIONS,
+        ASSIGNABLE_PERMISSIONS,
+        KEY_ASSIGNABLE_PERMISSIONS,
+        PRESETS,
+    )
+
+    assert "jev:evaluate" in ALL_PERMISSIONS
+    # In the server's declared order: after usage:read, and orgs:admin stays last.
+    assert ALL_PERMISSIONS.index("jev:evaluate") == ALL_PERMISSIONS.index("usage:read") + 1
+    assert ALL_PERMISSIONS[-1] == "orgs:admin"
+    # A machine key carries it, so it is grantable to a key as well as a member.
+    assert "jev:evaluate" in ASSIGNABLE_PERMISSIONS
+    assert "jev:evaluate" in KEY_ASSIGNABLE_PERMISSIONS
+    # The server's built-in admin set carries it; nothing narrower does.
+    assert "jev:evaluate" in PRESETS["admin"]
+    assert "jev:evaluate" not in PRESETS["read-only"]
+    assert "jev:evaluate" not in PRESETS["standard"]
+    # And the admin preset can be granted to a key: it carries both permissions
+    # the server requires beside jev:evaluate.
+    assert {"events:add", "policies:pull"} <= set(PRESETS["admin"])
+
+
+def test_parse_permissions_accepts_jev_evaluate():
+    assert _parse_permissions(["events:add policies:pull jev:evaluate"]) == [
+        "events:add", "policies:pull", "jev:evaluate"]
+
 BASE = "http://dash.test"
 
 

@@ -12,10 +12,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 
-const { getViewMock, saveMock, removeMock, toastMock } = vi.hoisted(() => ({
+const { getViewMock, saveMock, removeMock, modeMock, toastMock } = vi.hoisted(() => ({
   getViewMock: vi.fn(),
   saveMock: vi.fn(),
   removeMock: vi.fn(),
+  modeMock: vi.fn(),
   toastMock: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ vi.mock("@/app/actions/get-jev-config", () => ({ getJevSettingsAction: getViewMo
 vi.mock("@/app/actions/update-jev-config", () => ({
   saveJevConfigAction: saveMock,
   removeJevConfigAction: removeMock,
+  setJevModeAction: modeMock,
 }));
 vi.mock("@/app/components/toast", () => ({ toast: toastMock }));
 
@@ -36,6 +38,8 @@ function view(over: Partial<JevSettingsView> = {}): JevSettingsView {
   return {
     status: "absent",
     on: false,
+    // This machine's FailproofAI Cloud connection, from credentials.json.
+    cloud: { connected: false, org: null, host: null, jev: "no" },
     path: "/tmp/fpai/jev.json",
     permissions: null,
     provider: null,
@@ -88,6 +92,7 @@ beforeEach(() => {
   getViewMock.mockReset().mockResolvedValue(view());
   saveMock.mockReset();
   removeMock.mockReset();
+  modeMock.mockReset();
   toastMock.mockReset();
 });
 
@@ -382,5 +387,95 @@ describe("the form", () => {
     await waitFor(() => expect(removeMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringMatching(/regex policies/)));
     expect(screen.getByText(/off\. hooks run the regex policies/i)).toBeInTheDocument();
+  });
+});
+
+// ── FailproofAI Cloud ────────────────────────────────────────────────────────
+
+const CONNECTED = { connected: true, org: "Acme Inc (acme)", host: "app.befailproof.ai", jev: "yes" as const };
+
+function cloudView(over: Partial<JevSettingsView> = {}): JevSettingsView {
+  return view({
+    status: "ok",
+    on: true,
+    provider: "failproofai",
+    permissions: "0600",
+    baseUrl: "https://app.befailproof.ai/enforcement/v1/jev",
+    endpoint: "https://app.befailproof.ai/enforcement/v1/jev/systemone",
+    token: { source: "cloud" },
+    mode: "shadow",
+    timeoutMs: 3000,
+    cloud: CONNECTED,
+    ...over,
+  });
+}
+
+describe("the FailproofAI Cloud route", () => {
+  it("names the provider as FailproofAI Cloud, and the connection row says org and Jev", async () => {
+    renderPanel(cloudView());
+    expect(screen.getByText(/also asked of FailproofAI Cloud/)).toBeInTheDocument();
+    expect(screen.getByText("FailproofAI Cloud connection", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText("connected to Acme Inc (acme) · key carries jev")).toBeInTheDocument();
+    expect(screen.getByText("FailproofAI Cloud · app.befailproof.ai")).toBeInTheDocument();
+    // The token row names the key's SOURCE, never the key.
+    expect(screen.getByText("FailproofAI Cloud connection", { selector: "dd" })).toBeInTheDocument();
+  });
+
+  it("offers no endpoint or token field: those come from the connection", async () => {
+    renderPanel(cloudView());
+    expect(screen.queryByLabelText(/endpoint url/i)).toBeNull();
+    expect(screen.queryByLabelText(/^token$/i)).toBeNull();
+    expect(screen.queryByLabelText(/provider/i)).toBeNull();
+  });
+
+  it("switches off through the mode action — never by deleting the file", async () => {
+    modeMock.mockResolvedValue({ ok: true, view: cloudView({ status: "off", on: false, mode: "off" }) });
+    renderPanel(cloudView());
+    fireEvent.click(screen.getByRole("button", { name: /turn jev off/i }));
+    await waitFor(() => expect(modeMock).toHaveBeenCalledWith("off"));
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/switched off/)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /turn jev on/i })).toBeInTheDocument();
+  });
+
+  it("switches back on in shadow mode", async () => {
+    modeMock.mockResolvedValue({ ok: true, view: cloudView() });
+    renderPanel(cloudView({ status: "off", on: false, mode: "off" }));
+    // Nothing to pick while it is off.
+    expect(screen.getByLabelText(/^mode$/i)).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /turn jev on/i }));
+    await waitFor(() => expect(modeMock).toHaveBeenCalledWith("shadow"));
+  });
+
+  it("switches shadow to enforce with the mode control, and says a refusal", async () => {
+    modeMock.mockResolvedValue({ ok: false, problem: "plain http is accepted only with mode shadow" });
+    renderPanel(cloudView());
+    fireEvent.change(screen.getByLabelText(/^mode$/i), { target: { value: "enforce" } });
+    await waitFor(() => expect(modeMock).toHaveBeenCalledWith("enforce"));
+    await waitFor(() => expect(screen.getByText(/plain http is accepted only with mode shadow/)).toBeInTheDocument());
+  });
+
+  it("not connected: says so, and what fixes it", async () => {
+    renderPanel(
+      cloudView({
+        status: "not-connected",
+        on: false,
+        token: null,
+        cloud: { connected: false, org: null, host: null, jev: "no" },
+        problem: "this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate",
+        fix: "connect this machine with a key that carries jev:evaluate: failproofai config --token <key>",
+      }),
+    );
+    expect(screen.getByText(/this machine is not connected to FailproofAI Cloud\. hooks run/)).toBeInTheDocument();
+    expect(screen.getByText("not connected")).toBeInTheDocument();
+    expect(screen.getByText(/config --token/)).toBeInTheDocument();
+  });
+
+  it("shows the connection row on a BYOK machine too, without taking over its form", async () => {
+    renderPanel(configured({ cloud: { ...CONNECTED, jev: "no" } }));
+    expect(screen.getByText("connected to Acme Inc (acme) · key does not carry jev")).toBeInTheDocument();
+    expect(screen.getByLabelText(/endpoint url/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /turn jev off/i })).toBeInTheDocument();
   });
 });

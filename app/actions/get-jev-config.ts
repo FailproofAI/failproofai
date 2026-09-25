@@ -45,7 +45,7 @@
  * value `jev setup` would also have printed. See `JevModelView`.
  */
 
-import { readJevCloudCredential } from "@/src/hooks/fp-config";
+import { readCredentials, readJevCloudCredential } from "@/src/hooks/fp-config";
 import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
@@ -143,10 +143,35 @@ export interface JevReviewabilityView {
   problem: string | null;
 }
 
+/**
+ * This machine's FailproofAI Cloud connection, as far as Jev is concerned —
+ * read from `credentials.json` on every render, with NO network call and
+ * nothing secret in it: the org as the server named it at connect time, the
+ * host, and whether the key carries Jev. Every token in that file is read and
+ * dropped inside `cloudConnectionView`; none of it, nor any piece of it, is in
+ * this object.
+ */
+export interface JevCloudConnectionView {
+  /** A Cloud credential (policy or reporting) is stored on this machine. */
+  connected: boolean;
+  /** "Acme Inc (acme)" — recorded at connect time; null when it was not. */
+  org: string | null;
+  /** The Cloud host, e.g. `app.befailproof.ai`. */
+  host: string | null;
+  /**
+   * Whether the key this machine connected with carries `jev:evaluate` — which
+   * is exactly whether connect stored a `jev` slot. `refused`: a slot may be
+   * there, but `credentials.json` is not owner-only, so Jev will not read it.
+   */
+  jev: "yes" | "no" | "refused";
+}
+
 export interface JevSettingsView {
   status: JevSettingsStatus;
   /** True only when a hook running right now would consult Jev. */
   on: boolean;
+  /** See `JevCloudConnectionView`. Present on every status. */
+  cloud: JevCloudConnectionView;
   /**
    * `~/.failproofai/jev.json`, whether or not it exists, and its permission
    * bits as `0600` when it has some.
@@ -368,6 +393,42 @@ function reviewableOrNull(on: boolean): JevReviewabilityView | null {
 }
 
 /**
+ * The Cloud connection row, from the local files only. `readCredentials`
+ * returns every token on the machine; this function takes the three
+ * non-secret facts out and lets the rest go, so the object it returns — and
+ * therefore the page — never holds a key. Never throws.
+ */
+function cloudConnectionView(): JevCloudConnectionView {
+  let connected = false;
+  let org: string | null = null;
+  let host: string | null = null;
+  try {
+    const creds = readCredentials();
+    const url = creds.cloud?.url ?? creds.ingest?.url ?? null;
+    connected = url !== null;
+    if (url !== null) {
+      try {
+        host = new URL(url).host;
+      } catch {
+        host = null;
+      }
+    }
+    const o = creds.org;
+    org = o ? (o.name && o.slug ? `${o.name} (${o.slug})` : (o.name ?? o.slug ?? o.id ?? null)) : null;
+  } catch {
+    // An unreadable file is "not connected" here, as it is to `config --status`.
+  }
+  let jev: JevCloudConnectionView["jev"] = "no";
+  try {
+    const slot = readJevCloudCredential().status;
+    jev = slot === "ok" ? "yes" : slot === "refused" ? "refused" : "no";
+  } catch {
+    jev = "no";
+  }
+  return { connected, org, host, jev };
+}
+
+/**
  * Everything /settings shows about Jev, and nothing it must not.
  *
  * Never throws: every branch of `inspectJevConfig` is a state the panel can
@@ -377,6 +438,7 @@ function reviewableOrNull(on: boolean): JevReviewabilityView | null {
 export async function getJevSettingsAction(): Promise<JevSettingsView> {
   const inspection = inspectJevConfig();
   const base = {
+    cloud: cloudConnectionView(),
     path: inspection.path,
     permissions: null as string | null,
     provider: null as JevProviderKind | null,

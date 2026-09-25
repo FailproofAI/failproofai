@@ -107,6 +107,7 @@ import {
   resolveDashboardHost,
 } from "@/lib/dashboard-host";
 import {
+  JEV_CLOUD_PROVIDER,
   JEV_PROVIDER_KINDS,
   baseUrlWithoutQuery,
   jevConfigPath,
@@ -130,7 +131,7 @@ export interface JevConfigInput {
   baseUrl: string;
   /** Cloudflare only. */
   accountId: string;
-  /** "shadow" | "enforce". */
+  /** "off" | "shadow" | "enforce". */
   mode: string;
   /** "" keeps the key where it is: the stored one, or the environment's. */
   token: string;
@@ -286,6 +287,16 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
   if (!(JEV_PROVIDER_KINDS as readonly string[]).includes(provider)) {
     return { ok: false, problem: `provider must be one of ${JEV_PROVIDER_KINDS.join(", ")}` };
   }
+  if (provider === JEV_CLOUD_PROVIDER) {
+    // Its endpoint and key come from this machine's FailproofAI Cloud
+    // connection, not from a form: `config --token` writes both, and the only
+    // thing this page may change about it is the mode (`setJevModeAction`).
+    return {
+      ok: false,
+      problem:
+        "FailproofAI Cloud's Jev is turned on by connecting this machine (failproofai config --token <key>), and switched with the mode control — not saved from this form.",
+    };
+  }
 
   const baseUrl = input.baseUrl.trim();
   if (baseUrl) {
@@ -332,7 +343,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     delete next.accountId;
   }
 
-  if (input.mode === "shadow" || input.mode === "enforce") next.mode = input.mode;
+  if (input.mode === "off" || input.mode === "shadow" || input.mode === "enforce") next.mode = input.mode;
 
   // Where the key may travel. Unchanged provider AND unchanged origin, from a
   // file only its owner could have written — anything else asks again.
@@ -421,12 +432,96 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 }
 
 /**
+ * Switch Jev's mode — `off`, `shadow` or `enforce` — and change NOTHING else.
+ *
+ * This is the on/off switch for FailproofAI Cloud's Jev, whose `jev.json` the
+ * page must not delete: its endpoint and key are not this page's to re-enter,
+ * so "off" by deletion would be off until the owner re-ran `config --token`
+ * with the key in hand. `off` keeps the file and runs no Jev at all
+ * (`loadJevConfig` returns null for it), which is the switch this needs.
+ * It works on a BYOK file too, where it keeps the key.
+ *
+ * What "nothing else" means, precisely: the existing object is spread and only
+ * `mode` is set — no field is added, dropped or normalised, and the key, the
+ * endpoint and the provider are exactly what they were. It is written the way
+ * every other write here is (`writeJsonAtomically`, 0600, owner-only
+ * directory), after the loader's own validator has checked the result with
+ * stand-ins in the key slots, so `enforce` is refused where the loader would
+ * refuse it (plain http to localhost) rather than written and then ignored.
+ *
+ * Refused for a file the loader calls too open: someone else may have written
+ * the endpoint it names, and re-saving it at 0600 would start trusting that
+ * endpoint. Jev is already off for such a file; the page shows why and how.
+ */
+export async function setJevModeAction(mode: string): Promise<JevWriteResult> {
+  const refusal = await crossOriginRefusal();
+  if (refusal) return { ok: false, problem: refusal };
+  if (mode !== "off" && mode !== "shadow" && mode !== "enforce") {
+    return { ok: false, problem: 'mode must be "off", "shadow" or "enforce".' };
+  }
+
+  const existingFile = readJevConfigFileForUpdate();
+  if (existingFile === null) {
+    return {
+      ok: false,
+      problem: `there is no readable ${jevConfigPath()} to switch. connect this machine (failproofai config --token <key>) or set up your own endpoint below.`,
+    };
+  }
+  if (existingFile.tooOpen) {
+    return {
+      ok: false,
+      problem: `${jevConfigPath()} is open to other users, so Jev is already off and the endpoint it names is not trusted. fix its permissions first (chmod 600, and chmod 700 on its directory).`,
+    };
+  }
+
+  const next: Record<string, unknown> = { ...existingFile.raw, mode };
+
+  // The file as the loader would judge it, keys aside: a stored key is checked
+  // for real, a missing one (key-from-env, or the Cloud's) gets a stand-in —
+  // whether this machine is connected right now is not what a mode switch is
+  // about, and the page says so separately.
+  const cloud = next.provider === JEV_CLOUD_PROVIDER;
+  const checked = validateJevConfig(
+    next,
+    cloud || typeof next.apiKey === "string" ? null : ENV_KEY_STAND_IN,
+    cloud ? { url: originOrEmpty(next.baseUrl), key: ENV_KEY_STAND_IN } : null,
+  );
+  if (!checked.ok) return { ok: false, problem: checked.problem };
+
+  const path = jevConfigPath();
+  try {
+    writeJsonAtomically(path, next, { mode: 0o600, dirMode: 0o700 });
+  } catch (err) {
+    return {
+      ok: false,
+      problem: `could not write ${path} (${(err as NodeJS.ErrnoException).code ?? "error"}).`,
+    };
+  }
+  tightenConfigDir(path);
+  return { ok: true, view: await getJevSettingsAction() };
+}
+
+/** A stored base URL's origin, for a stand-in credential; "" when it has none. */
+function originOrEmpty(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Delete `~/.failproofai/jev.json`. Hooks go back to the regex engine on the
  * very next tool call — the loader reads the file per event, so there is
  * nothing to restart and nothing to un-cache.
  *
  * Removing a file that is not there succeeds: the user asked for Jev to be off,
  * and it is.
+ *
+ * The BYOK "turn jev off". The FailproofAI Cloud route is switched off with
+ * `setJevModeAction("off")` instead — see there for why deleting its file is
+ * the wrong switch.
  */
 export async function removeJevConfigAction(): Promise<JevWriteResult> {
   const refusal = await crossOriginRefusal();

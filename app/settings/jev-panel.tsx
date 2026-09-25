@@ -47,6 +47,21 @@
  * Client-side validation here is a convenience only. Every rule — the URL
  * scheme, plain http being refused outside shadow mode, cloudflare's account id
  * — is enforced server-side by the same `validateJevConfig` the loader runs.
+ *
+ * ## FailproofAI Cloud
+ *
+ * When `jev.json` names the FailproofAI Cloud provider, the endpoint and the
+ * key are not this page's to edit: both come from the machine's connection
+ * (`config --token`). So the form is replaced by the two controls that are
+ * the owner's — an on/off switch and shadow/enforce — both through
+ * `setJevModeAction`, which rewrites `mode` and nothing else. "Off" there keeps
+ * the file (`mode: "off"`): deleting it would leave nothing on this page to
+ * switch back on — the only way to get the file back would be re-running
+ * `config --token` with the key.
+ *
+ * The connection itself — org, and whether the key carries Jev — is one row,
+ * read from `credentials.json` by the server with no network call; the key is
+ * never part of what this component receives.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -58,6 +73,7 @@ import {
 import {
   removeJevConfigAction,
   saveJevConfigAction,
+  setJevModeAction,
 } from "@/app/actions/update-jev-config";
 import { toast } from "@/app/components/toast";
 
@@ -72,7 +88,31 @@ const PROVIDERS = [
 const MODES = [
   { value: "enforce", label: "enforce — jev's verdict counts" },
   { value: "shadow", label: "shadow — log only, regex decides" },
+  { value: "off", label: "off — keep this config, don't ask jev" },
 ] as const;
+
+/** The provider whose endpoint and key come from the FailproofAI Cloud connection. */
+const CLOUD_PROVIDER = "failproofai";
+
+/** What a provider is called on this page. */
+function providerName(provider: string | null): string {
+  return provider === CLOUD_PROVIDER ? "FailproofAI Cloud" : (provider ?? "");
+}
+
+/** The connection row: org, and whether the key carries Jev. No key, ever. */
+function fmtConnection(cloud: JevSettingsView["cloud"] | undefined): string {
+  if (!cloud || !cloud.connected) {
+    return cloud?.jev === "yes" ? "a jev key is stored, but no connection is" : "not connected";
+  }
+  const where = cloud.org ?? cloud.host ?? "connected";
+  const jev =
+    cloud.jev === "yes"
+      ? "key carries jev"
+      : cloud.jev === "refused"
+        ? "jev key refused — credentials.json is not owner-only"
+        : "key does not carry jev";
+  return `connected to ${where} · ${jev}`;
+}
 
 /** "24h" / "7d" / "30m", for the stats window. */
 function fmtWindow(ms: number): string {
@@ -113,7 +153,8 @@ interface FormState {
 
 function formFrom(view: JevSettingsView): FormState {
   return {
-    provider: view.provider ?? "typesafe",
+    // The form is the BYOK form: the Cloud provider is never one of its values.
+    provider: view.provider && view.provider !== CLOUD_PROVIDER ? view.provider : "typesafe",
     baseUrl: view.baseUrl,
     accountId: view.accountId,
     mode: view.mode,
@@ -237,6 +278,30 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
     }
   }, [form, token]);
 
+  /**
+   * The FailproofAI Cloud switch: `off`, `shadow` or `enforce`, and nothing
+   * else about the file changes (see `setJevModeAction`).
+   */
+  const onMode = useCallback(async (mode: "off" | "shadow" | "enforce") => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const res = await setJevModeAction(mode);
+      if (!res.ok) {
+        setProblem(res.problem);
+        return;
+      }
+      dirty.current = false;
+      setView(res.view);
+      setForm(formFrom(res.view));
+      toast(mode === "off" ? "jev is off. hooks run the regex policies." : `jev is on, in ${mode} mode.`);
+    } catch {
+      setProblem("could not switch that.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const onRemove = useCallback(async () => {
     setBusy(true);
     setProblem(null);
@@ -260,11 +325,14 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
   }, []);
 
   const configured = view !== null && view.status !== "absent";
+  const cloudRoute = view?.provider === CLOUD_PROVIDER;
   const stored = view?.token;
   const tokenHint = needsToken
     ? "needed for this save — type the token for this endpoint"
     : stored
-      ? stored.source === "env"
+      ? stored.source === "cloud"
+        ? "from this machine's FailproofAI Cloud connection"
+        : stored.source === "env"
         ? "configured, read from the environment — leave blank to keep it"
         : // Presence and the keep rule, which is everything this field's reader
           // has to decide. Naming the last four characters of the stored key
@@ -289,15 +357,21 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
             {view === null
               ? "reading…"
               : view.on
-                ? `on. every judged command is also asked of ${view.provider}.`
-                : "off. hooks run the regex policies exactly as before."}
+                ? `on. every judged command is also asked of ${providerName(view.provider)}.`
+                : view.status === "off"
+                  ? "off — switched off. hooks run the regex policies exactly as before."
+                  : view.status === "not-connected"
+                    ? "off — this machine is not connected to FailproofAI Cloud. hooks run the regex policies."
+                    : "off. hooks run the regex policies exactly as before."}
           </span>
           <span className="set-dim">
             {view?.on
               ? view.mode === "shadow"
                 ? "shadow: jev's answers are logged, the regex result is what gets enforced."
                 : "enforce: jev's answers can clear a reviewable deny."
-              : "a second opinion on the commands the regex policies flag. needs your own endpoint and token."}
+              : cloudRoute
+                ? "through FailproofAI Cloud, on your org's plan — no endpoint or token of your own."
+                : "a second opinion on the commands the regex policies flag. needs your own endpoint and token."}
           </span>
         </div>
       </div>
@@ -308,8 +382,28 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
           same per-account address, and the account id inside it, a second time
           on one screen. The path of the config file and its mode were here too;
           nobody acts on either from a browser. */}
+      {/* The FailproofAI Cloud connection, on every state: whether this
+          machine could run Jev through the Cloud is worth knowing before it
+          does. Org and a yes/no, never a key. */}
+      {view && (
+        <dl className="set-how-list set-jev-cloud">
+          <div className="set-how-row">
+            <dt className="set-how-label">FailproofAI Cloud connection</dt>
+            <dd className="set-how-body">{fmtConnection(view.cloud)}</dd>
+          </div>
+        </dl>
+      )}
+
       {view && configured && (
         <dl className="set-how-list">
+          {cloudRoute && (
+            <div className="set-how-row">
+              <dt className="set-how-label">provider</dt>
+              <dd className="set-how-body">
+                {view.cloud?.host ? `FailproofAI Cloud · ${view.cloud.host}` : "FailproofAI Cloud"}
+              </dd>
+            </div>
+          )}
           <div className="set-how-row">
             <dt className="set-how-label">model</dt>
             <dd className="set-how-body">{fmtModel(view.model)}</dd>
@@ -322,10 +416,14 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
             <dt className="set-how-label">token</dt>
             <dd className="set-how-body">
               {stored
-                ? stored.source === "env"
-                  ? "from FAILPROOFAI_JEV_API_KEY"
-                  : "configured"
-                : "none stored"}
+                ? stored.source === "cloud"
+                  ? "FailproofAI Cloud connection"
+                  : stored.source === "env"
+                    ? "from FAILPROOFAI_JEV_API_KEY"
+                    : "configured"
+                : cloudRoute
+                  ? "none — this machine is not connected"
+                  : "none stored"}
             </dd>
           </div>
           {view.reviewable && (
@@ -366,6 +464,45 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
 
       <div className="set-rule" />
 
+      {cloudRoute ? (
+        <>
+          <div className="set-jev-fields">
+            <Field
+              id="jev-cloud-mode"
+              label="mode"
+              hint="the endpoint and key come from this machine's FailproofAI Cloud connection"
+            >
+              <select
+                id="jev-cloud-mode"
+                className="set-select"
+                value={view?.mode === "enforce" ? "enforce" : "shadow"}
+                disabled={busy || view?.mode === "off"}
+                onChange={(e) => void onMode(e.target.value === "enforce" ? "enforce" : "shadow")}
+              >
+                {MODES.filter((m) => m.value !== "off").map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {problem && <p className="set-warn">{problem}</p>}
+
+          <div className="set-actions set-jev-actions">
+            <button
+              type="button"
+              className="btn btn-press"
+              disabled={busy}
+              onClick={() => void onMode(view?.mode === "off" ? "shadow" : "off")}
+            >
+              {busy ? "[ switching… ]" : view?.mode === "off" ? "[ turn jev on ]" : "[ turn jev off ]"}
+            </button>
+          </div>
+        </>
+      ) : (
+      <>
       <div className="set-jev-fields">
         <Field id="jev-provider" label="provider">
           <select
@@ -478,6 +615,8 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
           </button>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

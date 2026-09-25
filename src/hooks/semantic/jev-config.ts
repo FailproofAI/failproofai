@@ -127,9 +127,18 @@ export const JEV_CLOUD_PROVIDER = "failproofai" as const satisfies JevProviderKi
  */
 export const JEV_CLOUD_BASE_PATH = "/enforcement/v1/jev";
 
-/** The `baseUrl` `config --token` writes for a Cloud origin. */
-export function jevCloudBaseUrl(origin: string): string {
-  return `${new URL(origin).origin}${JEV_CLOUD_BASE_PATH}`;
+/**
+ * The `baseUrl` `config --token` writes for the Cloud base it connected to.
+ *
+ * Built the way every other Cloud route is — `<base>/enforcement/v1/…`, as the
+ * desired-state pull does (`cloud-enrollment.ts`) — so a self-hosted Cloud
+ * served under a path prefix gets its Jev route under the same prefix. For the
+ * hosted product the base IS the origin. Query and fragment are dropped: a base
+ * never carries either (`validateCloudUrl`).
+ */
+export function jevCloudBaseUrl(cloudBase: string): string {
+  const url = new URL(cloudBase);
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}${JEV_CLOUD_BASE_PATH}`;
 }
 
 /** The env var that may supply the key (and nothing else) when the file carries none. */

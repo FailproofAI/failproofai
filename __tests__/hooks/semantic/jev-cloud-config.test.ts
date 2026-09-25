@@ -165,7 +165,10 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     it("builds the base URL connect writes", () => {
       expect(JEV_CLOUD_BASE_PATH).toBe("/enforcement/v1/jev");
       expect(jevCloudBaseUrl(ORIGIN)).toBe(BASE);
-      expect(jevCloudBaseUrl(`${ORIGIN}/some/path`)).toBe(BASE);
+      expect(jevCloudBaseUrl(`${ORIGIN}/`)).toBe(BASE);
+      // A self-hosted Cloud under a path prefix: the same prefix, as the
+      // desired-state pull uses it.
+      expect(jevCloudBaseUrl(`${ORIGIN}/fp`)).toBe(`${ORIGIN}/fp/enforcement/v1/jev`);
     });
 
     it("loads with the credential's key, and reports it as the cloud source", () => {

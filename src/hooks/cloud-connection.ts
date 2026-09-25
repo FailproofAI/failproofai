@@ -35,14 +35,23 @@ import {
   writeCloudCredentials,
   type CloudCredentials,
 } from "./cloud-enrollment";
-import { updateConfig, readCredentials, writeCredentials } from "./fp-config";
+import { credentialsFile } from "./fp-home";
+import {
+  clearJevCloudCredential,
+  updateConfig,
+  readCredentials,
+  writeCredentials,
+  writeJevCloudCredential,
+} from "./fp-config";
 import {
   introspectKey,
   hasPermission,
   describeOrg,
   PERMISSION_EVENTS,
+  PERMISSION_JEV,
   PERMISSION_POLICIES,
 } from "./cloud-introspect";
+import type { CloudJevConfigWrite } from "./jev-cloud-connection";
 import {
   ingestPath,
   validateIngestKey,
@@ -139,10 +148,23 @@ export interface CapabilityOutcome {
 export interface ConnectOutcome {
   policy: CapabilityOutcome & { policyCount?: number; deployment?: number };
   ingest: CapabilityOutcome;
+  /**
+   * Jev through FailproofAI Cloud. Absent when nothing connected, and when the
+   * server has no introspect endpoint to say whether the key carries it.
+   */
+  jev?: JevConnectOutcome;
   /** Which organisation the key belongs to. Absent on a pre-introspect server. */
   org?: { id?: string; slug?: string; name?: string };
   /** True when at least one capability was configured. */
   anyConfigured: boolean;
+}
+
+export interface JevConnectOutcome {
+  /** The key carries `jev:evaluate`, and it was stored for Jev. */
+  ok: boolean;
+  reason?: string;
+  /** What became of `jev.json`. Present when `ok`. */
+  config?: CloudJevConfigWrite;
 }
 
 /**
@@ -282,7 +304,67 @@ writeCloudCredentials(creds);
     });
   }
 
+  // ── Jev, last ─────────────────────────────────────────────────────────────
+  //
+  // Only from introspect's answer. `jev:evaluate` spends the org's budget on
+  // every gated tool call, so it is never inferred from a probe succeeding the
+  // way the other two capabilities are on a server without introspect — and a
+  // machine that connected to nothing gets nothing.
+  //
+  // There is no Jev-only path: the server refuses a key that carries
+  // `jev:evaluate` without `events:add` and `policies:pull`, so a key that gets
+  // here with Jev has already configured the other two.
+  if (outcome.anyConfigured) {
+    if (known && hasPermission(known, PERMISSION_JEV)) {
+      // The ORIGIN the key was verified against. `jev-config.ts` sends the key
+      // only to a base URL on this origin, so a jev.json pointing anywhere else
+      // cannot borrow it.
+      writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
+      // Loaded here and nowhere earlier: a connect whose key does not carry Jev
+      // pulls in none of the Jev modules.
+      const { writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
+      outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
+    } else {
+      // This connection replaces the last one, and the last key's Jev slot
+      // describes a connection this machine no longer has — possibly another
+      // org's budget. Dropped, so Jev never spends on a key it was not just
+      // handed. (A Cloud jev.json then reads `not-connected`: off, and said.)
+      clearJevCloudCredential();
+      if (known) outcome.jev = { ok: false, reason: missing(PERMISSION_JEV) };
+    }
+  }
+
   return outcome;
+}
+
+/**
+ * The Jev line(s) for `describeOutcome`: whether FailproofAI Cloud runs Jev for
+ * this machine now, and — the one case worth a second line — why an existing
+ * `jev.json` was not touched.
+ */
+function jevLines(outcome: ConnectOutcome): string[] {
+  const jev = outcome.jev;
+  if (!jev) return [];
+  if (!jev.ok) {
+    return [`  Jev       not through FailproofAI Cloud: ${jev.reason ?? `that key does not carry \`${PERMISSION_JEV}\``}.`];
+  }
+  const config = jev.config;
+  if (!config || config.status === "written") {
+    return [
+      `  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
+      "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
+    ];
+  }
+  if (config.status === "kept") {
+    const lines = [`  Jev       key stored; ${config.path} already exists and was left as configured.`];
+    if (config.otherOrigin) {
+      lines.push(
+        `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
+      );
+    }
+    return lines;
+  }
+  return [`  Jev       key stored, but Jev was not turned on: ${config.problem}.`];
 }
 
 /**
@@ -311,6 +393,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     const n = outcome.policy.policyCount ?? 0;
     lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (deployment ${outcome.policy.deployment ?? 0}).`);
     lines.push(`  Dashboard hook activity will be sent to ${ingestUrlFor(url)}.`);
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -322,6 +405,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     lines.push("");
     lines.push("  Enforcement works. Nothing will appear in the dashboard until this");
     lines.push("  key also carries `events:add`, or you re-run --connect with one that does.");
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -332,6 +416,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
     lines.push("");
     lines.push("  This machine keeps enforcing its LOCAL policies and will report what");
     lines.push("  they decide, but will not receive centrally-managed ones.");
+    lines.push(...jevLines(outcome));
     return lines;
   }
 
@@ -346,6 +431,8 @@ export function configuredPaths(outcome: ConnectOutcome): string[] {
   const paths: string[] = [];
   if (outcome.policy.ok) paths.push(cloudCredentialPath());
   if (outcome.ingest.ok) paths.push(ingestPath());
+  // The Jev slot is always in credentials.json, never behind the JSON override.
+  if (outcome.jev?.ok) paths.push(credentialsFile());
   // Deduplicated because layout 2 consolidated both credentials into
   // `credentials.toml`, so the two capabilities now name the SAME file and the
   // closing note read "stored in <path> and <path>" — the same path, twice.

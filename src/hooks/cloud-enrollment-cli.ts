@@ -22,7 +22,11 @@ import {
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
-import { readVersionFile, readCredentials } from "./fp-config";
+import { clearJevCloudCredential, readVersionFile, readCredentials } from "./fp-config";
+// A CLI command's import, never the hook path's: `jev-cloud-connection` reaches
+// `semantic/jev-config`, which a machine without jev.json must not load while
+// evaluating a tool call. `config --disconnect` is not that.
+import { removeCloudJevConfig } from "./jev-cloud-connection";
 import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
 import {
@@ -324,6 +328,12 @@ export function runDisconnectCommand(): CommandResult {
   // leave the machine still shipping activity to a cloud the user believes
   // they have left — the one outcome nobody expects from this command.
   const removedIngest = clearIngestCredential();
+  // And spending: the Jev key goes with the rest, so no tool call after this
+  // one is charged to an org this machine has left. The Cloud's own jev.json
+  // goes too — it names a route that now has no key — and a BYOK one stays,
+  // because it never depended on the Cloud and is not the Cloud's to delete.
+  const removedJevKey = clearJevCloudCredential();
+  const jevConfig = removeCloudJevConfig();
   // Stop ENFORCING them too, not merely refreshing them. Clearing the
   // credential ends the daemon's polling; every artifact already on disk stayed
   // referenced by `active.json` and kept being loaded on every tool call — so a
@@ -337,7 +347,18 @@ export function runDisconnectCommand(): CommandResult {
   // machine is provably silent instead of silent-by-happenstance.
   updateConfig({ mode: "oss" });
 
-  if (!removed && !existing && !hadIngest && !stoppedManaged) {
+  const jevLines =
+    jevConfig.status === "removed"
+      ? [`  Jev through FailproofAI Cloud is off: removed ${jevConfig.path}. Hooks run the regex policies.`]
+      : jevConfig.status === "error"
+        ? [`  ! The FailproofAI Cloud key for Jev is gone, so Jev is off — but ${jevConfig.problem}.`]
+        : jevConfig.status === "kept" && jevConfig.provider !== null
+          ? [`  ${jevConfig.path} (provider ${jevConfig.provider}) is your own Jev setup and was left in place.`]
+          : removedJevKey
+            ? ["  Jev through FailproofAI Cloud is off: its key was removed."]
+            : [];
+
+  if (!removed && !existing && !hadIngest && !stoppedManaged && !removedJevKey && jevConfig.status !== "removed") {
     return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud."] };
   }
 
@@ -348,6 +369,7 @@ export function runDisconnectCommand(): CommandResult {
       ? "  Cloud-managed policies stop being enforced and stop being refreshed.\n" +
         "  Local builtin, custom and convention policies are unaffected."
       : "  Local builtin, custom and convention policies are unaffected.",
+    ...jevLines,
   ];
   if (removedIngest) {
     // Named honestly. The collector manager starts once for the daemon's

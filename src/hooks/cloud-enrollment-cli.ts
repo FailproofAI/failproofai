@@ -354,7 +354,12 @@ export function runDisconnectCommand(): CommandResult {
         ? [`  ! The FailproofAI Cloud key for Jev is gone, so Jev is off — but ${jevConfig.problem}.`]
         : jevConfig.status === "kept" && jevConfig.provider !== null
           ? [`  ${jevConfig.path} (provider ${jevConfig.provider}) is your own Jev setup and was left in place.`]
-          : removedJevKey
+          : jevConfig.status === "set-aside"
+            ? [
+                `  ! ${jevConfig.path} was being checked when another jev.json was written in its place. Nothing was deleted: the new one is at ${jevConfig.path},`,
+                `    and the one that was there (provider ${jevConfig.provider ?? "unreadable"}, not FailproofAI Cloud's) is kept at ${jevConfig.setAside}.`,
+              ]
+            : removedJevKey
             ? ["  Jev through FailproofAI Cloud is off: its key was removed."]
             : [];
 

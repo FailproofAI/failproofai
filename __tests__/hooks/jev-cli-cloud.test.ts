@@ -21,6 +21,7 @@ import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hoo
 import { JEV_USAGE } from "../../src/hooks/jev-cli";
 import { jevConfigPath, loadJevConfig } from "../../src/hooks/semantic/jev-config";
 import { readCredentials, writeCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
+import { resetJevCloudCooldown } from "../../src/hooks/semantic/jev-client";
 
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const KEY = ["fp", "machine", "c1a0d0123456789ab"].join("-");
@@ -244,6 +245,35 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(onDisk().mode).toBe("off");
     });
 
+    it("a mode switch says which key state the machine is in, and offers `jev test` only when there is a key to test", async () => {
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });
+
+      // Connected, with a key that has no Jev: said so — never "not connected".
+      writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
+      const lacks = await runJevCommand(["setup", "--mode", "shadow"], RENDER);
+      expect(lacks.exitCode, text(lacks)).toBe(0);
+      expect(text(lacks)).toContain("connected, but its key does not carry jev:evaluate");
+      expect(text(lacks)).not.toContain("not connected");
+      expect(text(lacks)).not.toContain("jev test");
+      expect(text(lacks)).toContain("config --token <key>");
+      noKey(lacks);
+
+      // Not connected at all.
+      rmSync(join(fpHome, "credentials.json"), { force: true });
+      const none = await runJevCommand(["setup", "--mode", "enforce"], RENDER);
+      expect(none.exitCode, text(none)).toBe(0);
+      expect(text(none)).toContain("this machine is not connected");
+      expect(text(none)).not.toContain("jev test");
+      expect(text(none)).toContain("config --token <key>");
+
+      // Connected with a Jev key: the live check is the next step.
+      connect();
+      const on = await runJevCommand(["setup", "--mode", "shadow"], RENDER);
+      expect(on.exitCode, text(on)).toBe(0);
+      expect(text(on)).toContain("failproofai jev test");
+      expect(text(on)).not.toContain("config --token <key>");
+    });
+
     it("drops a key someone put in a Cloud file, which is what makes it valid again", async () => {
       connect();
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow", apiKey: BYOK_KEY });
@@ -323,6 +353,8 @@ describe("jev CLI: FailproofAI Cloud", () => {
         port = (server.address() as AddressInfo).port;
       });
       afterAll(() => server.close());
+      // A 429 quiets the Cloud route for its Retry-After, module-wide: no test inherits another's.
+      beforeEach(() => resetJevCloudCooldown());
 
       it("says what to do in FailproofAI Cloud's terms", async () => {
         const origin = `http://127.0.0.1:${port}`;
@@ -342,6 +374,27 @@ describe("jev CLI: FailproofAI Cloud", () => {
         const broke = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
         expect(text(broke)).toContain("out-of-credits");
         expect(text(broke)).toContain("plan allowance");
+      });
+
+      it("a 429 names the daily limit when the body says so, and the per-minute one otherwise", async () => {
+        const origin = `http://127.0.0.1:${port}`;
+        connect(origin);
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        status = 429;
+
+        body = { error: "daily_limit_reached" };
+        const daily = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
+        expect(daily.exitCode).toBe(1);
+        expect(text(daily)).toContain("http-429");
+        expect(text(daily)).toContain("Daily Jev limit for this org reached; resets at 00:00 UTC.");
+        expect(text(daily)).not.toContain("rate-limiting Jev for this org right now");
+        noKey(daily);
+
+        resetJevCloudCooldown();
+        body = { error: "rate_limited" };
+        const perMinute = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
+        expect(text(perMinute)).toContain("rate-limiting Jev for this org right now");
+        expect(text(perMinute)).not.toContain("Daily Jev limit");
       });
 
       it("a redirect is advice about the connection, never a --base-url this route refuses", async () => {

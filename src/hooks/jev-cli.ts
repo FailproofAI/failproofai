@@ -352,7 +352,7 @@ function scrubbed(e: { code: string; message: string }, key: string): { code: st
  * BYOK provider's because the key and the budget are the Cloud connection's and
  * the org's, not anything `jev setup` holds.
  */
-function cloudRemedy(code: string): string | null {
+function cloudRemedy(code: string, message = ""): string | null {
   if (code === "http-401" || code === "http-403") {
     return "FailproofAI Cloud refused this machine's key: it was revoked, or it does not carry jev:evaluate. Reconnect with a key that does (the \"machine\" preset on the Keys page): failproofai config --token <key>";
   }
@@ -360,6 +360,14 @@ function cloudRemedy(code: string): string | null {
     return "Your FailproofAI Cloud org has used its plan allowance (HTTP 402). Until it resets or the plan changes, hooks fall back to regex.";
   }
   if (code === "http-429") {
+    // Two limits answer 429 (contract decision 18): the per-minute ones, and
+    // the org's daily Jev cap, whose body says `daily_limit_reached` and whose
+    // Retry-After runs to the next UTC midnight. Only the words tell them
+    // apart, and "right now … at most 60 s" is wrong for the second: the
+    // machine still asks again after at most 60 s, and keeps being refused.
+    if (/\bdaily_limit_reached\b/.test(message)) {
+      return "Daily Jev limit for this org reached; resets at 00:00 UTC. Until then hooks fall back to regex; the machine asks FailproofAI Cloud again at most once a minute (Retry-After, capped at 60 s).";
+    }
     return "FailproofAI Cloud is rate-limiting Jev for this org right now. Hooks fall back to regex, and send it nothing more until the wait it asked for (Retry-After, at most 60 s) is over.";
   }
   if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
@@ -379,9 +387,9 @@ function cloudRemedy(code: string): string | null {
 }
 
 /** What the person should do about a failed request, by cause. */
-function remedy(code: string, provider?: JevProviderKind): string {
+function remedy(code: string, provider?: JevProviderKind, message?: string): string {
   if (provider === JEV_CLOUD_PROVIDER) {
-    const cloud = cloudRemedy(code);
+    const cloud = cloudRemedy(code, message);
     if (cloud) return cloud;
   }
   if (code === "http-401" || code === "http-403") return "The provider refused the key. Re-run `failproofai jev setup` with the right one.";
@@ -1225,14 +1233,27 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
           ["model", `${route.model} (pinned by FailproofAI Cloud)`],
           ["mode", modeLine(shownMode)],
           ["timeout", `${cfg.timeoutMs} ms`],
-          ["key", keySource ? CLOUD_KEY_SOURCE : `${CLOUD_KEY_SOURCE} — not connected right now, so Jev stays off until it is`],
+          // Which of the three states the connection is in — the same row
+          // `status` shows. "Not connected" on a machine that IS connected, with
+          // a key that lacks Jev, sent its owner to reconnect with that same key.
+          ["key", keySource ? CLOUD_KEY_SOURCE : cloudKeyRow()],
           ["config", path],
           ["permissions", permissions(fileMode)],
         ],
         opts,
       ),
       note("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
-      shownMode === "off" ? null : nextStep("failproofai jev test", "Check it with one live request:", opts),
+      // With no usable key, `jev test` only answers "not run": the step that
+      // helps is the connection. Switched off, there is no step to take.
+      shownMode === "off"
+        ? null
+        : keySource
+          ? nextStep("failproofai jev test", "Check it with one live request:", opts)
+          : nextStep(
+              "failproofai config --token <key>",
+              "Jev stays off until this machine is connected with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page):",
+              opts,
+            ),
     ),
   );
 }
@@ -1799,7 +1820,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ],
           opts,
         ),
-        note(remedy(e.code, cfg.provider), opts),
+        note(remedy(e.code, cfg.provider, e.message), opts),
       ),
     );
   }

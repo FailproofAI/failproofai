@@ -44,6 +44,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readFileSync,
   readSync,
   renameSync,
   rmSync,
@@ -190,7 +191,13 @@ export type CloudJevConfigRemoval =
    * that was there is kept at `setAside`.
    */
   | { status: "set-aside"; path: string; provider: string | null; setAside: string }
-  | { status: "error"; path: string; problem: string };
+  | {
+      status: "error";
+      path: string;
+      problem: string;
+      /** Where a file that is not the Cloud's was left, when it could not be put back at `path`. */
+      setAside?: string;
+    };
 
 /**
  * Delete `jev.json` iff it names the FailproofAI Cloud provider. Never throws,
@@ -205,9 +212,11 @@ export type CloudJevConfigRemoval =
  * knows — atomic, and whatever lands at the path afterwards is untouched by
  * anything below — and it is that file, which nobody else can now replace,
  * whose provider decides. The Cloud's is deleted. Anything else is linked back
- * to the path (same inode, bytes and mode) with a no-clobber link, so a file
- * written at the path meanwhile is never overwritten either; when one was, the
- * original is left beside it under the set-aside name rather than deleted.
+ * to the path (same inode, bytes and mode) with a no-clobber link — or, where
+ * the filesystem has no hard links, put back by the fallbacks in `putBack` —
+ * so a file written at the path meanwhile is never overwritten either; when one
+ * was, the original is left beside it under the set-aside name rather than
+ * deleted, and when nothing can put it back, the result says where it is.
  */
 export function removeCloudJevConfig(): CloudJevConfigRemoval {
   const path = jevConfigPath();
@@ -243,19 +252,87 @@ export function removeCloudJevConfig(): CloudJevConfigRemoval {
   }
 
   // Not the Cloud's: back where it was, and never over a file written since.
+  const back = putBack(aside, path, st.mode & 0o777);
+  if (back === "restored") return { status: "kept", path, provider };
+  if (back === "occupied") return { status: "set-aside", path, provider, setAside: aside };
+  return {
+    status: "error",
+    path,
+    problem: `${path} is not FailproofAI Cloud's and was kept at ${aside}; putting it back failed (${back.code})`,
+    setAside: aside,
+  };
+}
+
+/**
+ * Put a set-aside file back at `path`, never over a file that is there now:
+ * `restored`, `occupied` (another file is at `path`, and `aside` is left as it
+ * is), or the error that stopped every attempt.
+ *
+ * 1. A hard link: atomic, the same inode, bytes and mode, and it fails with
+ *    EEXIST when anything is at the path.
+ * 2. Some filesystems have no hard links (FAT and exFAT, some network and FUSE
+ *    mounts answer EPERM or ENOTSUP), so next a COPY created exclusively (`wx`,
+ *    O_EXCL): just as no-clobber, with the file's own mode (less the umask,
+ *    so never looser). A hook reading the file mid-copy sees a truncated one
+ *    and refuses it — Jev off for that call, the regex verdict stands — never
+ *    another config.
+ * 3. When no copy can be created either (no room for one, say), a rename —
+ *    which replaces what it finds, so only while the path is still empty. The
+ *    moment between that check and the rename is the one place a write landing
+ *    at the path could be lost, and it is reached only when neither no-clobber
+ *    way works.
+ *
+ * Until one works, the file sits at `aside`, and the caller says where.
+ */
+function putBack(aside: string, path: string, mode: number): "restored" | "occupied" | { code: string } {
+  const codeOf = (err: unknown) => (err as NodeJS.ErrnoException).code ?? "error";
   try {
     linkSync(aside, path);
+    discard(aside);
+    return "restored";
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "EEXIST") return { status: "set-aside", path, provider, setAside: aside };
-    return { status: "error", path, problem: `${path} is not FailproofAI Cloud's and was kept at ${aside}; putting it back failed (${code ?? "error"})` };
+    if (codeOf(err) === "EEXIST") return "occupied";
   }
+  let created = false;
+  try {
+    const bytes = readFileSync(aside);
+    const fd = openSync(path, "wx", mode);
+    created = true;
+    try {
+      writeFileSync(fd, bytes);
+    } finally {
+      closeSync(fd);
+    }
+    discard(aside);
+    return "restored";
+  } catch (err) {
+    if (codeOf(err) === "EEXIST") return "occupied";
+    // Created, then the write failed: a truncated file is at the path now, and
+    // the original is still at `aside`. Not renamed over — the path is not
+    // empty, and whose file is there by now is not knowable.
+    if (created) return { code: codeOf(err) };
+  }
+  try {
+    lstatSync(path);
+    return "occupied";
+  } catch (err) {
+    if (codeOf(err) !== "ENOENT") return { code: codeOf(err) };
+  }
+  try {
+    renameSync(aside, path);
+    return "restored";
+  } catch (err) {
+    return { code: codeOf(err) };
+  }
+}
+
+/** Drop the set-aside name once the file is back. A leftover is 0600 in an owner-only directory, and holds nothing the file at the path does not. */
+function discard(aside: string): void {
   try {
     unlinkSync(aside);
   } catch {
-    // A second name for the same file, harmless; it holds nothing the original does not.
+    // Harmless; see above.
   }
-  return { status: "kept", path, provider };
 }
 
 /** The `provider` a config file names, read without following links or blocking on a FIFO; null when unreadable. */

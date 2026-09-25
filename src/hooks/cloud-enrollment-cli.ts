@@ -351,7 +351,12 @@ export function runDisconnectCommand(): CommandResult {
     jevConfig.status === "removed"
       ? [`  Jev through FailproofAI Cloud is off: removed ${jevConfig.path}. Hooks run the regex policies.`]
       : jevConfig.status === "error"
-        ? [`  ! The FailproofAI Cloud key for Jev is gone, so Jev is off — but ${jevConfig.problem}.`]
+        ? [
+            removedJevKey
+              ? `  ! The FailproofAI Cloud key for Jev is gone, so Jev is off — but ${jevConfig.problem}.`
+              : `  ! ${jevConfig.problem}.`,
+            ...(jevConfig.setAside ? [`    To put it back: mv ${jevConfig.setAside} ${jevConfig.path}`] : []),
+          ]
         : jevConfig.status === "kept" && jevConfig.provider !== null
           ? [`  ${jevConfig.path} (provider ${jevConfig.provider}) is your own Jev setup and was left in place.`]
           : jevConfig.status === "set-aside"
@@ -364,7 +369,11 @@ export function runDisconnectCommand(): CommandResult {
             : [];
 
   if (!removed && !existing && !hadIngest && !stoppedManaged && !removedJevKey && jevConfig.status !== "removed") {
-    return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud."] };
+    // Nothing was connected — but the jev.json check ran all the same, and a
+    // file it could not put back where it was (a bring-your-own-key setup,
+    // moved aside) is not nothing: left unsaid, that Jev is simply gone.
+    const unsettled = jevConfig.status === "error" || jevConfig.status === "set-aside";
+    return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud.", ...(unsettled ? jevLines : [])] };
   }
 
   const lines = [

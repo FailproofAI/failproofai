@@ -26,10 +26,27 @@ const hook: { after: string | null; nth: number; run: (() => void) | null; seen:
   seen: {},
 };
 
+/**
+ * Set by a test: makes the named fs call fail with `code` (after running
+ * `before`, once) whenever `when` accepts its arguments. With no `code`, the
+ * call runs for real after `before`. For the filesystems a hard link cannot be
+ * made on, and for what follows when the fallbacks cannot be made either.
+ */
+const inject: Record<string, { code?: string; before?: () => void; when?: (args: unknown[]) => boolean } | undefined> = {};
+
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  const wrap = <K extends "openSync" | "readSync" | "closeSync" | "renameSync" | "fstatSync" | "lstatSync" | "statSync">(name: K) =>
+  const wrap = <
+    K extends "openSync" | "readSync" | "closeSync" | "renameSync" | "fstatSync" | "lstatSync" | "statSync" | "linkSync" | "writeFileSync",
+  >(name: K) =>
     ((...args: unknown[]) => {
+      const i = inject[name];
+      if (i && (!i.when || i.when(args))) {
+        const before = i.before;
+        i.before = undefined;
+        before?.();
+        if (i.code) throw Object.assign(new Error(`${i.code}: injected ${name}`), { code: i.code });
+      }
       const result = (actual[name] as (...a: unknown[]) => unknown)(...args);
       hook.seen[name] = (hook.seen[name] ?? 0) + 1;
       if (hook.run && hook.after === name && hook.seen[name] === hook.nth) {
@@ -48,12 +65,15 @@ vi.mock("node:fs", async (importOriginal) => {
     fstatSync: wrap("fstatSync"),
     lstatSync: wrap("lstatSync"),
     statSync: wrap("statSync"),
+    linkSync: wrap("linkSync"),
+    writeFileSync: wrap("writeFileSync"),
   };
   return { ...wrapped, default: wrapped };
 });
 
 const { removeCloudJevConfig } = await import("../../src/hooks/jev-cloud-connection");
 const { jevConfigPath } = await import("../../src/hooks/semantic/jev-config");
+const { runDisconnectCommand } = await import("../../src/hooks/cloud-enrollment-cli");
 
 const CLOUD = { provider: "failproofai", baseUrl: "https://app.befailproof.ai/enforcement/v1/jev", mode: "shadow" };
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
@@ -73,6 +93,7 @@ beforeEach(() => {
   hook.run = null;
   hook.nth = 1;
   hook.seen = {};
+  for (const k of Object.keys(inject)) delete inject[k];
 });
 afterEach(() => {
   if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
@@ -179,4 +200,92 @@ describe("disconnect never deletes a BYOK jev.json", () => {
       expect(byokCopies().length).toBeGreaterThan(0);
     });
   }
+});
+
+describe("putting a BYOK jev.json back where no hard link can be made", () => {
+  const EPERM = { code: "EPERM" };
+  const isPath = (args: unknown[]) => args[0] === jevConfigPath();
+  const isAside = (args: unknown[]) => typeof args[0] === "string" && args[0].endsWith(".disconnecting");
+  const dirList = () => readdirSync(process.env.FAILPROOFAI_HOME as string).sort();
+  let prevCloudCreds: string | undefined;
+  beforeEach(() => {
+    prevCloudCreds = process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+    delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+  });
+  afterEach(() => {
+    if (prevCloudCreds === undefined) delete process.env.FAILPROOFAI_CLOUD_CREDENTIALS;
+    else process.env.FAILPROOFAI_CLOUD_CREDENTIALS = prevCloudCreds;
+  });
+
+  it("the link fails (EPERM): the file is copied back — same bytes, owner-only, nothing left aside", () => {
+    writeAtomically(BYOK);
+    const bytes = readFileSync(jevConfigPath(), "utf8");
+    inject.linkSync = EPERM;
+    expect(removeCloudJevConfig()).toMatchObject({ status: "kept", provider: "typesafe" });
+    expect(readFileSync(jevConfigPath(), "utf8")).toBe(bytes);
+    expect(statSync(jevConfigPath()).mode & 0o777).toBe(0o600);
+    expect(dirList()).toEqual(["jev.json"]);
+  });
+
+  it("…and the copy never lands over a file written meanwhile: both kept, the original set aside", () => {
+    writeAtomically(BYOK);
+    const original = readFileSync(jevConfigPath(), "utf8");
+    const other = { ...BYOK, mode: "shadow" };
+    inject.linkSync = { ...EPERM, before: () => writeAtomically(other) };
+    const r = removeCloudJevConfig();
+    expect(r.status).toBe("set-aside");
+    if (r.status !== "set-aside") return;
+    expect(readFileSync(r.setAside, "utf8")).toBe(original);
+    expect(JSON.parse(readFileSync(jevConfigPath(), "utf8"))).toEqual(other);
+  });
+
+  it("…and when no copy can be created either, it is renamed back while the path is still empty — same inode", () => {
+    writeAtomically(BYOK);
+    const before = statSync(jevConfigPath());
+    inject.linkSync = EPERM;
+    inject.openSync = { code: "ENOSPC", when: (args) => isPath(args) && args[1] === "wx" };
+    expect(removeCloudJevConfig()).toMatchObject({ status: "kept", provider: "typesafe" });
+    expect(statSync(jevConfigPath()).ino).toBe(before.ino);
+    expect(dirList()).toEqual(["jev.json"]);
+  });
+
+  it("…and when nothing can put it back, the result says where it is, and the file is not lost", () => {
+    writeAtomically(BYOK);
+    const bytes = readFileSync(jevConfigPath(), "utf8");
+    inject.linkSync = EPERM;
+    inject.openSync = { code: "ENOSPC", when: (args) => isPath(args) && args[1] === "wx" };
+    inject.renameSync = { code: "EPERM", when: isAside };
+    const r = removeCloudJevConfig();
+    expect(r.status).toBe("error");
+    if (r.status !== "error") return;
+    expect(r.setAside).toMatch(/\.disconnecting$/);
+    expect(readFileSync(r.setAside as string, "utf8")).toBe(bytes);
+    expect(r.problem).toContain(r.setAside as string);
+    expect(r.problem).not.toContain(BYOK_KEY);
+  });
+
+  it("disconnect on a machine that is not connected still says where a BYOK file it could not put back is", () => {
+    writeAtomically(BYOK);
+    inject.linkSync = EPERM;
+    inject.openSync = { code: "ENOSPC", when: (args) => isPath(args) && args[1] === "wx" };
+    inject.renameSync = { code: "EPERM", when: isAside };
+    const text = runDisconnectCommand().lines.join("\n");
+    expect(text).toContain("This machine is not connected to FailproofAI Cloud.");
+    const aside = dirList().find((n) => n.endsWith(".disconnecting"));
+    expect(aside).toBeDefined();
+    expect(text).toContain(`kept at ${join(process.env.FAILPROOFAI_HOME as string, aside as string)}`);
+    expect(text).toContain(`To put it back: mv ${join(process.env.FAILPROOFAI_HOME as string, aside as string)} ${jevConfigPath()}`);
+    // Not the Cloud's key that went — there was none — so it does not say so.
+    expect(text).not.toContain("The FailproofAI Cloud key for Jev is gone");
+    expect(text).not.toContain(BYOK_KEY);
+  });
+
+  it("…and a set-aside one too", () => {
+    writeAtomically(BYOK);
+    inject.linkSync = { ...EPERM, before: () => writeAtomically({ ...BYOK, mode: "shadow" }) };
+    const text = runDisconnectCommand().lines.join("\n");
+    expect(text).toContain("This machine is not connected to FailproofAI Cloud.");
+    expect(text).toContain("another jev.json was written in its place");
+    expect(text).toMatch(/is kept at .*\.disconnecting/);
+  });
 });

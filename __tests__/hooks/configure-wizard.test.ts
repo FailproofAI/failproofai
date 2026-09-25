@@ -1516,3 +1516,75 @@ describe("wizard back-navigation", () => {
     }
   });
 });
+
+describe("config --token with --url", () => {
+  // `config --token <key> --url <X>` read X into `answers.url` and then used it
+  // only as a CONDITION — never as the URL — so the machine connected to
+  // FAILPROOFAI_CLOUD_URL or the hosted default and reported somewhere its
+  // operator had just said not to. The CLI fills `answers.url` from `--url`,
+  // falling back to the variable.
+  let fpHome: string;
+  let prevFpHome: string | undefined;
+  beforeEach(() => {
+    // An earlier block leaves this mock rejecting; this block needs it to connect.
+    vi.mocked(connectToCloud)
+      .mockReset()
+      .mockResolvedValue({ policy: { ok: true, policyCount: 2, deployment: 7 }, ingest: { ok: true }, anyConfigured: true });
+    vi.mocked(validateIngestKey).mockClear().mockResolvedValue({ ok: true });
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    delete process.env.FAILPROOFAI_CLOUD_URL;
+    prevFpHome = process.env.FAILPROOFAI_HOME;
+    fpHome = mkdtempSync(resolve(tmpdir(), "fpai-wizard-url-"));
+    process.env.FAILPROOFAI_HOME = fpHome;
+  });
+  afterEach(() => {
+    delete process.env.FAILPROOFAI_CLOUD_URL;
+    if (prevFpHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevFpHome;
+    rmSync(fpHome, { recursive: true, force: true });
+  });
+
+  it("connects to the URL it was given", async () => {
+    const stdout = headlessIO().stdout;
+    const result = await runConfigureWizard(
+      { stdin: headlessIO().stdin, stdout },
+      { token: "k".repeat(20), url: "http://localhost:9911" },
+    );
+    expect(result.connected).toBe(true);
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "http://localhost:9911" });
+    // The key probe went there too, not to the hosted default.
+    expect(vi.mocked(validateIngestKey).mock.calls[0][0]).toMatchObject({ url: "http://localhost:9911/v1/events" });
+    const written = vi.mocked(stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("Using http://localhost:9911 (from --url).");
+  });
+
+  it("prefers --url to FAILPROOFAI_CLOUD_URL", async () => {
+    process.env.FAILPROOFAI_CLOUD_URL = "http://localhost:7000";
+    await runConfigureWizard(headlessIO(), { token: "k".repeat(20), url: "http://localhost:9911" });
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "http://localhost:9911" });
+  });
+
+  it("accepts the ingest endpoint as --url, like --connect does", async () => {
+    await runConfigureWizard(headlessIO(), { token: "k".repeat(20), url: "https://cloud.example.com/v1/events" });
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "https://cloud.example.com" });
+  });
+
+  it("refuses an unusable --url rather than connecting somewhere else", async () => {
+    // Plain http to a non-loopback host would put the key on the wire in clear.
+    const result = await runConfigureWizard(headlessIO(), { token: "k".repeat(20), url: "http://cloud.example.com" });
+    expect(result.applied).toBe(false);
+    expect(connectToCloud).not.toHaveBeenCalled();
+  });
+
+  it("an already-enrolled machine given --url enrols THERE, not where it was", async () => {
+    const { writeCloudCredentials } = await import("../../src/hooks/cloud-enrollment");
+    writeCloudCredentials({ url: "https://old.example.com", machineId: "m-1", token: "o".repeat(20) });
+    await runConfigureWizard(headlessIO(), { token: "k".repeat(20), url: "http://localhost:9911" });
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "http://localhost:9911", token: "k".repeat(20) });
+  });
+
+  it("with neither, still uses the hosted default", async () => {
+    await runConfigureWizard(headlessIO(), { token: "k".repeat(20) });
+    expect(vi.mocked(connectToCloud).mock.calls[0][0]).toMatchObject({ url: "https://app.befailproof.ai" });
+  });
+});

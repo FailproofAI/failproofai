@@ -1178,7 +1178,18 @@ export async function runConfigureWizard(
         // did — it is not a trusted back door. http stays loopback-only, so a
         // bearer token still cannot be exported onto the wire in clear by
         // setting a variable.
-        const override = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+        //
+        // `--url` comes first. It was read into `answers.url` and then only
+        // ever used as a CONDITION above, never as the URL, so
+        // `config --token <key> --url <X>` connected to the env value or the
+        // hosted default and ignored X — reporting a machine somewhere its
+        // operator had explicitly said not to. The CLI fills `answers.url` from
+        // `--url`, falling back to FAILPROOFAI_CLOUD_URL, so the source named
+        // on screen is whichever of the two the value actually is.
+        const envOverride = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+        const flagOverride = answers.url?.trim();
+        const override = flagOverride || envOverride;
+        const source = flagOverride && flagOverride !== envOverride ? "--url" : "FAILPROOFAI_CLOUD_URL";
         if (override) {
           const validated = validateCloudUrl(cloudBaseFor(override));
           if (!validated.ok) {
@@ -1186,7 +1197,7 @@ export async function runConfigureWizard(
             // wants THAT endpoint, and quietly reporting a machine to the
             // hosted service instead is the one outcome they did not ask for.
             stdout.write(
-              `\nFAILPROOFAI_CLOUD_URL is set to "${override}", which cannot be used: ` +
+              `\n${source === "--url" ? "--url is" : "FAILPROOFAI_CLOUD_URL is set to"} "${override}", which cannot be used: ` +
                 `${validated.reason}\n`,
             );
             return cancel();
@@ -1196,7 +1207,7 @@ export async function runConfigureWizard(
           // matters and a machine reporting somewhere unexpected is exactly the
           // thing nobody notices until they go looking for data that is not
           // there.
-          stdout.write(`\nUsing ${url} (from FAILPROOFAI_CLOUD_URL).\n`);
+          stdout.write(`\nUsing ${url} (from ${source}).\n`);
         } else {
           url = cloudBaseFor(DEFAULT_INGEST_URL);
         }

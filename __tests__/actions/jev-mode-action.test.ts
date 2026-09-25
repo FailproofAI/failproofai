@@ -53,7 +53,9 @@ const onDisk = () => JSON.parse(readFileSync(jevConfigFile(), "utf8")) as Record
 function connect(withJev = true) {
   writeCredentials({
     cloud: { url: ORIGIN, machineId: "m-1", token: POLICY_KEY },
-    ingest: { url: `${ORIGIN}/v1/events`, key: INGEST_KEY },
+    // A Jev slot counts only beside a same-origin credential holding its key:
+    // connecting a Jev key writes it to the reporting credential too.
+    ingest: { url: `${ORIGIN}/v1/events`, key: withJev ? CLOUD_KEY : INGEST_KEY },
     org: { id: "org_1", slug: "acme", name: "Acme Inc" },
   });
   if (withJev) writeJevCloudCredential({ url: ORIGIN, key: CLOUD_KEY });

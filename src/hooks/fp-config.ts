@@ -991,6 +991,16 @@ export function hasCloudCredentials(): boolean {
 // always carries `events:add` and `policies:pull` too (the server refuses it
 // otherwise), so a live Jev connection always has one of them.
 //
+// And that connection must hold the SAME KEY. The origin alone does not say
+// whose connection it is: on hosted FailproofAI Cloud every organisation shares
+// one origin. An older build's `config --token` with another org's key
+// rewrites `[cloud]` and `[ingest]` to that key and carries the `jev` table
+// over untouched, so the origin still matches while the machine now reports
+// into the other org — and Jev would go on spending the first org's budget.
+// This build's connect writes one key to all three (a partial connect may
+// leave one of `[cloud]`/`[ingest]` holding an earlier key, never both), so a
+// live slot always has a same-origin credential holding its key.
+//
 // Only from this file, for the reason above: under `FAILPROOFAI_CLOUD_CREDENTIALS`
 // the policy credential lives elsewhere, and an environment variable must not
 // be able to re-arm a slot either. The reporting credential is always here,
@@ -1023,7 +1033,7 @@ export type JevCloudCredentialRead =
        * the key does not carry Jev" apart from "not connected at all".
        */
       connected: boolean;
-      /** A `jev` slot is there, but no connection on its origin is: it is ignored. */
+      /** A `jev` slot is there, but no connection on its origin holding its key is: it is ignored. */
       orphaned?: true;
     }
   | {
@@ -1135,14 +1145,17 @@ export function readJevCloudCredential(): JevCloudCredentialRead {
   // The same projection `readCredentials` uses, so "a cloud block without a
   // token is not a cloud block" means the same thing here as everywhere else.
   const others = projectCredentials(fields);
-  const connectionOrigins = new Set(
-    [others.cloud?.url, others.ingest?.url].map(originOrNull).filter((o): o is string => o !== null),
-  );
-  const connected = connectionOrigins.size > 0;
+  const connections = [
+    others.cloud ? { origin: originOrNull(others.cloud.url), key: others.cloud.token } : null,
+    others.ingest ? { origin: originOrNull(others.ingest.url), key: others.ingest.key } : null,
+  ].filter((c): c is { origin: string; key: string } => c !== null && c.origin !== null);
+  const connected = connections.length > 0;
   const credential = projectJevSlot(fields.jev);
   if (!credential) return { status: "absent", path, connected };
   const slotOrigin = originOrNull(credential.url);
-  if (slotOrigin === null || !connectionOrigins.has(slotOrigin)) return { status: "absent", path, connected, orphaned: true };
+  // The same origin AND the same key: see "A slot counts only while…" above.
+  const backed = slotOrigin !== null && connections.some((c) => c.origin === slotOrigin && c.key === credential.key);
+  if (!backed) return { status: "absent", path, connected, orphaned: true };
   return { status: "ok", path, credential };
 }
 

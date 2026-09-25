@@ -200,6 +200,40 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(loadJevConfig()).toBeNull();
     });
 
+    it("an older CLI's reconnect with another key on the SAME origin does not back it: Jev never spends the old key", () => {
+      // Connected by this build with KEY: the slot, the reporting and the policy credential.
+      writeCredentials({ cloud: { url: ORIGIN, machineId: "m-1", token: KEY }, ingest: INGEST, jev: { url: ORIGIN, key: KEY } });
+      writeJev(cloudFile());
+      expect(loadJevConfig()?.apiKey).toBe(KEY);
+      // An older build's `config --token OTHER_KEY` — on hosted Cloud, possibly
+      // another org's key on the same origin: it rewrites the two tables it
+      // knows and carries `jev` over as a key it does not own.
+      const raw = JSON.parse(readFileSync(credentialsFile(), "utf8")) as Record<string, Record<string, unknown>>;
+      raw.cloud.token = OTHER_KEY;
+      raw.ingest.key = OTHER_KEY;
+      writeFileSync(credentialsFile(), JSON.stringify(raw), { mode: 0o600 });
+      expect(readCredentials().jev).toEqual({ url: ORIGIN, key: KEY });
+      // The origin still matches; the key does not. Off, and nothing spends KEY.
+      expect(readJevCloudCredential()).toMatchObject({ status: "absent", connected: true, orphaned: true });
+      expect(inspectJevConfig().status).toBe("key-lacks-jev");
+      expect(loadJevConfig()).toBeNull();
+    });
+
+    it("either credential holding the slot's key backs it — a partial reconnect leaves the other on an earlier key", () => {
+      const EVENTS = `${ORIGIN}/v1/events`;
+      writeCredentials({ cloud: { url: ORIGIN, machineId: "m-1", token: OTHER_KEY }, ingest: { url: EVENTS, key: KEY }, jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential().status).toBe("ok");
+      writeCredentials({ cloud: { url: ORIGIN, machineId: "m-1", token: KEY }, ingest: { url: EVENTS, key: OTHER_KEY }, jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential().status).toBe("ok");
+      // The key on ANOTHER origin, and another key on this one: not the connection the slot came with.
+      writeCredentials({
+        cloud: { url: "https://staging.befailproof.ai", machineId: "m-1", token: KEY },
+        ingest: { url: EVENTS, key: OTHER_KEY },
+        jev: { url: ORIGIN, key: KEY },
+      });
+      expect(readJevCloudCredential()).toMatchObject({ status: "absent", connected: true, orphaned: true });
+    });
+
     it("either the policy or the reporting credential backs it, under any path on its origin", () => {
       writeCredentials({ cloud: { url: `${ORIGIN}/fp`, machineId: "m-1", token: KEY }, jev: { url: ORIGIN, key: KEY } });
       expect(readJevCloudCredential().status).toBe("ok");
@@ -385,7 +419,9 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     });
 
     it("refuses a credential key that could not go in a header", () => {
-      writeCredentials({ jev: { url: ORIGIN, key: `${KEY}\r\nX-Injected: 1` }, ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
+      // The same key in both, as a connect would write it: the slot is live, and the key itself is what is refused.
+      const bad = `${KEY}\r\nX-Injected: 1`;
+      writeCredentials({ jev: { url: ORIGIN, key: bad }, ingest: { url: `${ORIGIN}/v1/events`, key: bad } });
       writeJev(cloudFile());
       const r = inspectJevConfig();
       expect(r).toMatchObject({ status: "refused", reason: "invalid" });

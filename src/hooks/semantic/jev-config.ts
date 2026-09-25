@@ -68,9 +68,11 @@
  *   was verified against (`jev.url`). The key is only ever sent where it was
  *   issued, and both halves of that decision live in global files.
  * - the credential counts only while the connection it came with is still on
- *   this machine: a policy or reporting credential on the SAME origin, in the
- *   same file (`readJevCloudCredential`). A slot an older build's disconnect
- *   left behind is not a connection.
+ *   this machine: a policy or reporting credential on the SAME origin holding
+ *   the SAME key, in the same file (`readJevCloudCredential`). A slot an older
+ *   build's disconnect left behind is not a connection, and neither is one an
+ *   older build's reconnect with another key (on hosted FailproofAI Cloud,
+ *   possibly another org's, on the same origin) left beside it.
  * - no usable credential is `not-connected` when the machine has no FailproofAI
  *   Cloud connection at all, and `key-lacks-jev` when it has one whose key does
  *   not carry `jev:evaluate` (connected with such a key, or the slot was

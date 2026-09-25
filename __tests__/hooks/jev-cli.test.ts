@@ -65,6 +65,18 @@ describe("failproofai jev", () => {
       expect(loadJevConfig()).toMatchObject({ provider: "typesafe", apiKey: KEY, mode: "enforce" });
     });
 
+    it("saved switched off, it does not send you to `jev test`, which would only say \"not run\"", async () => {
+      const off = await runJevCommand(["setup", "--provider", "typesafe", "--mode", "off", "--key-stdin"], withKey(KEY));
+      expect(off.exitCode).toBe(0);
+      expect(readFile()).toEqual({ provider: "typesafe", apiKey: KEY, mode: "off" });
+      expect(text(off)).toContain("off — Jev is not asked at all");
+      expect(text(off)).not.toContain("jev test");
+      // Switched back on, the step is back.
+      const on = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      expect(on.exitCode, text(on)).toBe(0);
+      expect(text(on)).toContain("failproofai jev test");
+    });
+
     it("writes every option it is given", async () => {
       const r = await runJevCommand(
         ["setup", "--provider=cloudflare", "--account-id", ACCOUNT, "--model", "typesafe/jev", "--mode", "shadow", "--timeout-ms", "900", "--key-stdin"],

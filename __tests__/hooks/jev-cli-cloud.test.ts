@@ -311,7 +311,10 @@ describe("jev CLI: FailproofAI Cloud", () => {
       let body: unknown = { error: "forbidden", message: "this key does not carry jev:evaluate" };
       const server: Server = createServer((req, res) => {
         req.resume();
-        res.writeHead(status, { "content-type": "application/json" });
+        res.writeHead(status, {
+          "content-type": "application/json",
+          ...(status >= 300 && status < 400 ? { location: "https://login.example.com/" } : {}),
+        });
         res.end(JSON.stringify(body));
       });
       let port = 0;
@@ -339,6 +342,23 @@ describe("jev CLI: FailproofAI Cloud", () => {
         const broke = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
         expect(text(broke)).toContain("out-of-credits");
         expect(text(broke)).toContain("plan allowance");
+      });
+
+      it("a redirect is advice about the connection, never a --base-url this route refuses", async () => {
+        const origin = `http://127.0.0.1:${port}`;
+        connect(origin);
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        status = 302;
+        body = {};
+        const redirected = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
+        expect(redirected.exitCode).toBe(1);
+        expect(text(redirected)).toContain("http-302");
+        expect(text(redirected)).toContain("config --token <key> --url <url>");
+        expect(text(redirected)).not.toContain("--base-url");
+        noKey(redirected);
+        // And the advice it gave is advice this route takes: --base-url is refused.
+        const refused = await runJevCommand(["setup", "--provider", "failproofai", "--base-url", origin], RENDER);
+        expect(refused.exitCode).toBe(1);
       });
     });
   });

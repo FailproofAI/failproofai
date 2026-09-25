@@ -365,6 +365,16 @@ function cloudRemedy(code: string): string | null {
   if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
   if (code === "http-503") return "Jev is unavailable on FailproofAI Cloud right now. Hooks fall back to regex whenever that happens; try again shortly.";
   if (code === "model-mismatch") return "FailproofAI Cloud answered with a model outside the Jev 1.13 family, so hooks would fall back to regex. This is the server's to fix.";
+  // The generic advice for these names `--base-url`, which this route refuses:
+  // its endpoint is the Cloud this machine connected to, changed only by
+  // reconnecting.
+  if (/^http-3(?:\d\d|xx)$/.test(code)) {
+    return "FailproofAI Cloud answered with a redirect, and Jev requests never follow one. The URL this machine connected to is probably not the one that serves the API (a sign-in page, or an old address). Reconnect with the right one: failproofai config --token <key> --url <url>";
+  }
+  if (code === "network") {
+    return "FailproofAI Cloud could not be reached. Check your network; if the Cloud's address has changed, reconnect: failproofai config --token <key> --url <url>";
+  }
+  if (code === "config") return "The config is not usable. Rebuild it from this machine's FailproofAI Cloud connection: failproofai jev setup --provider failproofai";
   return null;
 }
 
@@ -1073,7 +1083,9 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
           )
         : null,
       note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
-      nextStep("failproofai jev test", "Check it with one live request:", opts),
+      // Switched off, `jev test` only answers "not run — switched off": a next
+      // step that leads nowhere is worse than none.
+      (cfg.mode ?? DEFAULT_JEV_MODE) === "off" ? null : nextStep("failproofai jev test", "Check it with one live request:", opts),
     ),
   );
 }

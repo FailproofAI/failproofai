@@ -328,14 +328,21 @@ const MACHINE_OPENINGS: &[&str] = &[
     "This session is being continued from a previous conversation",
 ];
 
+/// `promptSource` values that mean a person put the prompt there. Claude Code
+/// also writes `sdk` — `claude -p` and the Agent SDK, i.e. a script or an app
+/// driving it — and `system` for its own reports; neither is a person.
+const HUMAN_PROMPT_SOURCES: &[&str] = &["typed", "queued", "suggestion_accepted"];
+
 /// Whether a person typed this `user` line.
 ///
-/// Claude Code 2.1.26x+ says so outright: every typed or queued prompt carries
+/// Claude Code 2.1.26x+ says so outright: every interactive prompt carries
 /// `origin.kind == "human"`, and a background task's report `"task-notification"`
-/// (427 vs 27 on the machine this was measured on). Older transcripts carry no
-/// `origin`, so their machine-written lines — slash-command wrappers, local
-/// command output, compaction summaries — are recognised by `isMeta` /
-/// `isCompactSummary` or by how they open. A sidechain line is the parent
+/// (427 vs 27 on the machine this was measured on). A headless prompt carries
+/// no `origin` but a `promptSource` of `sdk` (measured on 2.1.282), so
+/// `promptSource`, when present, decides next. Older transcripts carry neither,
+/// and their machine-written lines — slash-command wrappers, local command
+/// output, compaction summaries, a bare `/compact` — are recognised by `isMeta`
+/// / `isCompactSummary` or by how they open. A sidechain line is the parent
 /// agent briefing a subagent, never a person.
 fn typed_by_human(v: &Value, text: &str) -> bool {
     let flagged = |key: &str| v.get(key).and_then(Value::as_bool) == Some(true);
@@ -349,9 +356,15 @@ fn typed_by_human(v: &Value, text: &str) -> bool {
     {
         return kind == "human";
     }
+    if let Some(source) = v.get("promptSource").and_then(Value::as_str) {
+        return HUMAN_PROMPT_SOURCES.contains(&source);
+    }
     let opening = text.trim_start();
+    let bare_slash_command =
+        opening.starts_with('/') && !opening.trim_end().contains(char::is_whitespace);
     !flagged("isMeta")
         && !flagged("isCompactSummary")
+        && !bare_slash_command
         && !MACHINE_OPENINGS.iter().any(|p| opening.starts_with(p))
 }
 
@@ -426,10 +439,10 @@ fn user_events(v: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &mut TailStat
 ///
 /// A STRING prompt always yields the `model_request`, human or not — that is
 /// what the model was sent, and those bytes predate `human_input`. An ARRAY
-/// prompt (text beside a pasted image) is emitted only when a person typed it:
-/// the other array shapes are `isMeta` injections (skill text, image
-/// placeholders) and interrupt markers, which were never shipped and are not
-/// requests.
+/// prompt (text beside an image) yields it too, unless it is one of the array
+/// shapes that are not requests at all: `isMeta` injections (skill text, image
+/// placeholders) and interrupt markers, which were never shipped. A headless
+/// `claude -p` prompt with an image is a request, just not a person's.
 fn prompt_events(
     v: &Value,
     content: &Value,
@@ -442,7 +455,11 @@ fn prompt_events(
         return Vec::new();
     };
     let human = typed_by_human(v, &text);
-    if content.is_array() && !human {
+    let injected = v.get("isMeta").and_then(Value::as_bool) == Some(true)
+        || text
+            .trim_start()
+            .starts_with("[Request interrupted by user");
+    if content.is_array() && injected {
         return Vec::new();
     }
     let Some(mut m) = base(ctx, "model_request", ts, 0, offset) else {

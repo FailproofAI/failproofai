@@ -70,6 +70,10 @@ pub struct TailState {
     /// `human_input`. Carried here because the header is line 1 and the turns
     /// come later; persisted, so a resumed read decides the same way.
     pub automated: bool,
+    /// The record kind and text of the last `human_input` a Codex session
+    /// emitted — so a version that writes one prompt as BOTH `user_message` and
+    /// an `item_completed` UserMessage yields it once, not twice.
+    pub last_human_input: Option<(String, String)>,
 }
 
 /// Most in-flight tool calls remembered per session. Bounds the cursor file

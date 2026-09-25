@@ -315,9 +315,10 @@ fn message_events(
 /// `[Inter-session message]` hand-offs between its own agents and 14 `[System]`
 /// restart notices into the user role.
 ///
-/// ⚠ The record names no sender, so this is recognition by shape, and one
-/// shape it cannot see: a bot posting into the same Slack channel reads exactly
-/// like a person.
+/// The fallback for records without `provenance` (see [`MACHINE_PROVENANCE`]).
+/// ⚠ Recognition by shape has one blind spot: a bot posting plain text into the
+/// same Slack channel reads exactly like a person. A sub-agent's result lands
+/// in its parent as `<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>`.
 const RUNTIME_OPENINGS: &[&str] = &[
     "[cron:",
     "[OpenClaw heartbeat poll]",
@@ -325,7 +326,32 @@ const RUNTIME_OPENINGS: &[&str] = &[
     "[Inter-session message]",
     "[System]",
     "Continue the OpenClaw runtime event.",
+    "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
 ];
+
+/// `message.provenance.kind` values OpenClaw 2026.9.x stamps on the `user`
+/// records its runtime writes: `inter_session` (a `sessions_send`, a sub-agent's
+/// announce back to its parent) and `internal_system` (heartbeat, cron). A
+/// message a person sent carries no provenance. This is the harness naming the
+/// sender outright; the openings above remain for versions that do not.
+///
+/// Deliberately a list of MACHINE kinds, not "any provenance": a channel
+/// message from someone other than the owner is still a person, and a kind
+/// this list has not seen falls through to the text check rather than being
+/// dropped.
+const MACHINE_PROVENANCE: &[&str] = &["inter_session", "internal_system"];
+
+fn written_by_runtime(message: &Value, text: &str) -> bool {
+    let provenance = message
+        .get("provenance")
+        .and_then(|p| p.get("kind"))
+        .and_then(Value::as_str);
+    if provenance.is_some_and(|kind| MACHINE_PROVENANCE.contains(&kind)) {
+        return true;
+    }
+    let opening = text.trim_start();
+    RUNTIME_OPENINGS.iter().any(|p| opening.starts_with(p))
+}
 
 /// A `user` record is a prompt — a person's, or one the runtime wrote on a
 /// schedule or for a sub-agent. Tool results are their own role in OpenClaw,
@@ -348,8 +374,7 @@ fn user_events(message: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSt
         json!([{ "role": "user", "content": text }]),
     );
     let mut out = vec![Value::Object(m)];
-    let opening = text.trim_start();
-    if !RUNTIME_OPENINGS.iter().any(|p| opening.starts_with(p))
+    if !written_by_runtime(message, &text)
         && let Some(envelope) = base(ctx, "human_input", ts, 1, offset)
     {
         out.push(crate::sources::human_input(

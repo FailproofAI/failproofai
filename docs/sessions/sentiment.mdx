@@ -22,7 +22,7 @@ Messages from the last day are scored first. After that, new messages are scored
 Only messages a person wrote:
 
 - Messages your custom agents record as human input with the SDK.
-- Prompts typed into Claude Code, Codex, OpenCode, pi, Hermes and OpenClaw, when session transcripts are sent (the default). Scheduled jobs, injected instructions, sub-agent hand-offs and other text the agent's own runtime writes are not scored.
+- Prompts typed into Claude Code, Codex, OpenCode, pi, Hermes and OpenClaw, when session transcripts are sent (the default). Scheduled jobs, injected instructions, sub-agent hand-offs and other text the agent's own runtime writes are not scored. Nor are non-interactive runs such as `claude -p`, `codex exec` and `hermes -z`: a script wrote those prompts, not a person.
 
 Scoring judges the person's own words. A short, blunt instruction such as "fix it" is not counted as anger, and asking a question is not counted as confusion.
 

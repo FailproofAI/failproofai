@@ -66,7 +66,41 @@ struct SessionRow {
 #[derive(Debug)]
 struct TranscriptRow {
     seq: i64,
-    event_json: String,
+    /// `None` for a row that is neither plain nor decodable — skipped, but its
+    /// sequence still advances the cursor.
+    event_json: Option<String>,
+}
+
+/// Largest decompressed event accepted. The spool caps a batch at 8 MiB, so
+/// anything beyond this could never ship anyway.
+const MAX_EVENT_BYTES: u64 = 32 * 1024 * 1024;
+
+/// An event's JSON: the plain column, or the zstd-compressed one.
+///
+/// OpenClaw 2026.9.6 writes large events (tool results, internal records) to
+/// `event_zstd` with `event_json` NULL — 6 of 94 rows in a measured session.
+/// Reading the plain column alone as a `String` failed the WHOLE database on
+/// the first such row ("Invalid column type Null"), so nothing from that agent
+/// shipped at all.
+fn event_text(json: Option<String>, zstd: Option<Vec<u8>>) -> Option<String> {
+    if json.is_some() {
+        return json;
+    }
+    let blob = zstd?;
+    let decoder = ruzstd::decoding::StreamingDecoder::new(blob.as_slice()).ok()?;
+    let mut out = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(decoder, MAX_EVENT_BYTES), &mut out)
+        .ok()?;
+    String::from_utf8(out).ok()
+}
+
+/// Whether this database's `transcript_events` has the compressed column —
+/// older OpenClaw schemas do not, and naming it there is an error.
+fn has_zstd_column(conn: &Connection) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM pragma_table_info('transcript_events') WHERE name = 'event_zstd'",
+    )?;
+    stmt.exists([])
 }
 
 #[derive(Debug)]
@@ -296,9 +330,17 @@ async fn process_database(
         }
 
         for row in transcript.rows {
+            let Some(event_json) = row.event_json else {
+                // Deterministic on a re-read: the same row is skipped the same
+                // way, so every later offset stays where it was.
+                cursor.offset += 1;
+                cursor.size_seen = cursor.offset;
+                cursor.sqlite_seq = Some(row.seq);
+                continue;
+            };
             let offset = cursor.offset;
             let (ts, events) =
-                transform::transform_line(&row.event_json, &ctx, offset, &mut cursor.state);
+                transform::transform_line(&event_json, &ctx, offset, &mut cursor.state);
             if let Some(ts) = ts {
                 cursor.last_ts = Some(ts);
             }
@@ -306,7 +348,7 @@ async fn process_database(
                 writer.push(event).await.map_err(io_err)?;
                 emitted += 1;
             }
-            cursor.offset += row.event_json.len() as u64 + 1;
+            cursor.offset += event_json.len() as u64 + 1;
             cursor.size_seen = cursor.offset;
             cursor.sqlite_seq = Some(row.seq);
         }
@@ -390,23 +432,33 @@ fn read_transcript(
         [session_id],
         |row| row.get(0),
     )?;
-    let mut header_stmt = tx.prepare(
-        "SELECT event_json FROM transcript_events
-          WHERE session_id = ?1 ORDER BY seq ASC LIMIT ?2",
-    )?;
+    let zstd = if has_zstd_column(&tx)? {
+        "event_zstd"
+    } else {
+        "NULL"
+    };
+    let mut header_stmt = tx.prepare(&format!(
+        "SELECT event_json, {zstd} FROM transcript_events
+          WHERE session_id = ?1 ORDER BY seq ASC LIMIT ?2"
+    ))?;
     let header = header_stmt
-        .query_map((session_id, HEADER_ROWS), |row| row.get(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        .query_map((session_id, HEADER_ROWS), |row| {
+            Ok(event_text(row.get(0)?, row.get(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect();
 
-    let mut rows_stmt = tx.prepare(
-        "SELECT seq, event_json FROM transcript_events
-          WHERE session_id = ?1 AND seq > ?2 ORDER BY seq ASC LIMIT ?3",
-    )?;
+    let mut rows_stmt = tx.prepare(&format!(
+        "SELECT seq, event_json, {zstd} FROM transcript_events
+          WHERE session_id = ?1 AND seq > ?2 ORDER BY seq ASC LIMIT ?3"
+    ))?;
     let rows = rows_stmt
         .query_map((session_id, after_seq, limit), |row| {
             Ok(TranscriptRow {
                 seq: row.get(0)?,
-                event_json: row.get(1)?,
+                event_json: event_text(row.get(1)?, row.get(2)?),
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

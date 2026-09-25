@@ -206,7 +206,7 @@ fn hermes_only_gateway_and_cli_sessions_carry_human_input() {
         assert_eq!(ev[1]["input_id"], "42");
         assert_eq!(ev[1]["hermes_source"], human);
     }
-    for automated in ["cron", "subagent", "webhook"] {
+    for automated in ["cron", "subagent", "webhook", "oneshot"] {
         let ev = hermes_user(Some(automated));
         assert_eq!(ev.len(), 1, "{automated}: the request still ships");
         assert!(said(&ev).is_empty(), "{automated}");
@@ -238,4 +238,141 @@ fn opencode_synthetic_parts_and_sub_agent_sessions_are_not_human_input() {
     assert!(said(&opencode_part(typed, Some("ses_parent"))).is_empty());
     let injected = json!({"type":"text","text":"The following tool was executed by the user","synthetic":true});
     assert!(said(&opencode_part(injected, None)).is_empty());
+}
+
+// ── edge cases found by driving the real harnesses in a sandbox ─────────────
+
+#[test]
+fn claude_headless_prompts_are_not_human() {
+    // `claude -p` and the Agent SDK: no `origin`, `promptSource: "sdk"` (2.1.282).
+    let ev = claude_user(json!({"promptSource":"sdk"}), json!("summarise the diff"));
+    assert!(said(&ev).is_empty(), "{ev:?}");
+    assert_eq!(ev.len(), 1, "the request itself still ships");
+    let system = claude_user(
+        json!({"promptSource":"system"}),
+        json!("a background report"),
+    );
+    assert!(said(&system).is_empty());
+    let image = claude_user(
+        json!({"promptSource":"sdk"}),
+        json!([{"type":"text","text":"what colour is this"},
+               {"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]),
+    );
+    assert!(said(&image).is_empty());
+    assert_eq!(image.len(), 1, "a headless image prompt is still a request");
+    let queued = claude_user(
+        json!({"promptSource":"queued"}),
+        json!("then run the tests"),
+    );
+    assert_eq!(said(&queued), ["then run the tests"]);
+}
+
+#[test]
+fn claude_a_bare_slash_command_is_not_a_message() {
+    // `/compact` lands as a plain user line with no origin and no wrapper.
+    assert!(said(&claude_user(json!({}), json!("/compact"))).is_empty());
+    let path = claude_user(json!({}), json!("/etc/hosts looks wrong"));
+    assert_eq!(
+        said(&path),
+        ["/etc/hosts looks wrong"],
+        "only a lone command, not a path"
+    );
+}
+
+fn codex_lines(source: Value, body: &[Value]) -> Vec<Value> {
+    let mut st = TailState::default();
+    let meta = json!({"timestamp":TS,"type":"session_meta","payload":{"id":"x","cwd":"/w","source":source}});
+    std::iter::once(&meta)
+        .chain(body)
+        .enumerate()
+        .flat_map(|(i, l)| {
+            codex::transform::transform_line(&l.to_string(), &ctx(), i as u64, &mut st).1
+        })
+        .collect()
+}
+
+/// Codex 0.157's record of a typed prompt.
+fn codex_item(text: &str, id: &str) -> Value {
+    json!({"timestamp":TS,"type":"event_msg","payload":{"type":"item_completed","item":{
+        "type":"UserMessage","id":id,"content":[{"type":"text","text":text,"text_elements":[]}]}}})
+}
+
+#[test]
+fn codex_0_157_records_typed_prompts_as_user_message_items() {
+    let agents_md = json!({"timestamp":TS,"type":"response_item","payload":{"type":"message","role":"user",
+        "content":[{"type":"input_text","text":"# AGENTS.md instructions for /w"}]}});
+    let reply = json!({"timestamp":TS,"type":"event_msg","payload":{"type":"item_completed","item":{
+        "type":"AgentMessage","id":"a1","content":[{"type":"Text","text":"done"}]}}});
+    let ev = codex_lines(
+        json!("cli"),
+        &[agents_md, codex_item("fix the flaky test", "item-1"), reply],
+    );
+    assert_eq!(said(&ev), ["fix the flaky test"]);
+    let human = ev.iter().find(|e| e["type"] == "human_input").unwrap();
+    assert_eq!(human["input_id"], "item-1");
+    assert!(said(&codex_lines(json!("exec"), &[codex_item("scripted", "i")])).is_empty());
+}
+
+#[test]
+fn codex_a_prompt_in_both_records_is_one_human_input_but_a_repeat_is_two() {
+    let um = |t: &str| json!({"timestamp":TS,"type":"event_msg","payload":{"type":"user_message","message":t}});
+    assert_eq!(
+        said(&codex_lines(
+            json!("cli"),
+            &[um("hi"), codex_item("hi", "i1")]
+        )),
+        ["hi"]
+    );
+    assert_eq!(
+        said(&codex_lines(
+            json!("cli"),
+            &[codex_item("hi", "i1"), um("hi")]
+        )),
+        ["hi"]
+    );
+    let twice = codex_lines(
+        json!("cli"),
+        &[codex_item("continue", "a"), codex_item("continue", "b")],
+    );
+    assert_eq!(
+        said(&twice),
+        ["continue", "continue"],
+        "the same words sent twice are two messages"
+    );
+}
+
+fn openclaw_message(extra: Value, text: &str) -> Vec<Value> {
+    let mut message = json!({"role":"user","content":[{"type":"text","text":text}],"timestamp":1});
+    message
+        .as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    let line = json!({"type":"message","id":"m","parentId":null,"timestamp":TS,"message":message});
+    openclaw::transform::transform_line(&line.to_string(), &ctx(), 0, &mut TailState::default()).1
+}
+
+#[test]
+fn openclaw_provenance_names_runtime_messages_whatever_their_text() {
+    // OpenClaw 2026.9.6 stamps what its runtime wrote into the user role.
+    for kind in ["inter_session", "internal_system"] {
+        let ev = openclaw_message(
+            json!({"provenance":{"kind":kind},"__openclaw":{"senderIsOwner":false}}),
+            "hello there",
+        );
+        assert_eq!(ev.len(), 1, "{kind}: the request still ships");
+        assert!(said(&ev).is_empty(), "{kind}");
+    }
+    let announce = openclaw_user("<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nOpenClaw runtime context");
+    assert!(
+        said(&announce).is_empty(),
+        "a sub-agent's announce back to its parent"
+    );
+    let owner = openclaw_message(json!({"__openclaw":{"senderIsOwner":true}}), "fix it");
+    assert_eq!(said(&owner), ["fix it"]);
+    let unseen = openclaw_message(json!({"provenance":{"kind":"some_new_kind"}}), "fix it");
+    assert_eq!(
+        said(&unseen),
+        ["fix it"],
+        "an unknown kind falls through to the text check"
+    );
 }

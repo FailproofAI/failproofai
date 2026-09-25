@@ -408,8 +408,10 @@ fn user_events(
 /// rather than an allow-list because every chat gateway Hermes adds (slack,
 /// telegram, … — each a person typing) arrives as a new source name. Measured
 /// on a production install over 7 days: cron 824, webhook 230, subagent 20
-/// sessions against telegram 34, cli 28, slack 4.
-const AUTOMATED_SOURCES: &[&str] = &["cron", "subagent", "webhook"];
+/// sessions against telegram 34, cli 28, slack 4. `oneshot` is `hermes -z`, the
+/// print-only scripting mode (v0.21.5) — the counterpart of `claude -p` and
+/// `codex exec`, which are treated the same way.
+const AUTOMATED_SOURCES: &[&str] = &["cron", "subagent", "webhook", "oneshot"];
 
 /// An `assistant` row is text, or tool calls, or (defensively) both.
 ///

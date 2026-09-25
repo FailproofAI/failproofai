@@ -195,8 +195,8 @@ pub fn agent_start(header: &[String], ctx: &Ctx, offset: u64) -> Option<(Value, 
             // permission preamble (145 user response items vs 127 real prompts
             // on this machine), so the response-item stream would make a
             // config file the session's goal.
-            "event_msg" if goal.is_none() && payload_type(&payload) == Some("user_message") => {
-                if let Some(text) = payload.get("message").and_then(|m| m.as_str())
+            "event_msg" if goal.is_none() => {
+                if let Some((_, text)) = typed_prompt(&payload)
                     && !text.is_empty()
                 {
                     goal = Some(text.chars().take(MAX_GOAL_CHARS).collect());
@@ -424,7 +424,80 @@ fn message_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState
 
 /// An `event_msg` is Codex's UI-facing stream, mostly duplicating the
 /// `response_item` records.
-fn event_msg_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState) -> Vec<Value> {
+/// What a person typed, from whichever record this Codex version writes it in,
+/// with the record kind.
+///
+/// Codex up to ~0.15x wrote an `event_msg` `user_message`; 0.157 writes none and
+/// records each typed message as an `item_completed` whose item is a
+/// `UserMessage` (measured: 3 of 3 prompts in an interactive session, and never
+/// for the injected AGENTS.md / environment context, which stay `response_item`s).
+fn typed_prompt(p: &Value) -> Option<(&'static str, String)> {
+    match payload_type(p) {
+        Some("user_message") => {
+            let text = p.get("message")?.as_str()?;
+            Some(("user_message", text.to_string()))
+        }
+        Some("item_completed") => {
+            let item = p.get("item")?;
+            if item.get("type").and_then(Value::as_str) != Some("UserMessage") {
+                return None;
+            }
+            let text = item
+                .get("content")?
+                .as_array()?
+                .iter()
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Some(("item_completed", text))
+        }
+        _ => None,
+    }
+}
+
+/// The `human_input` for a typed prompt, or nothing for an automated session,
+/// an empty prompt, or the same prompt already emitted from the other record.
+fn human_prompt_events(
+    p: &Value,
+    ctx: &Ctx,
+    ts: &str,
+    offset: u64,
+    state: &mut TailState,
+) -> Vec<Value> {
+    let Some((kind, text)) = typed_prompt(p) else {
+        return Vec::new();
+    };
+    if state.automated || text.is_empty() {
+        return Vec::new();
+    }
+    if let Some((last_kind, last_text)) = &state.last_human_input
+        && last_kind != kind
+        && *last_text == text
+    {
+        state.last_human_input = None;
+        return Vec::new();
+    }
+    state.last_human_input = Some((kind.to_string(), text.clone()));
+    let offset_id = offset.to_string();
+    let id = p
+        .get("item")
+        .and_then(|i| i.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or(&offset_id);
+    match base(ctx, "human_input", ts, 0, offset) {
+        Some(m) => vec![crate::sources::human_input(m, id, &text)],
+        None => Vec::new(),
+    }
+}
+
+fn event_msg_events(
+    p: &Value,
+    ctx: &Ctx,
+    ts: &str,
+    offset: u64,
+    state: &mut TailState,
+) -> Vec<Value> {
     match payload_type(p) {
         // The accounting record of one model response, written on its own line
         // in the same millisecond as the item it bills. Attaching it to that
@@ -454,18 +527,8 @@ fn event_msg_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSta
         // context and permission preamble (1,298 user response items vs 343
         // `user_message` records here). The request itself is already the
         // response item's `model_request`, so this is the `human_input` alone.
-        Some("user_message") if !state.automated => {
-            let Some(text) = p
-                .get("message")
-                .and_then(|m| m.as_str())
-                .filter(|t| !t.is_empty())
-            else {
-                return Vec::new();
-            };
-            match base(ctx, "human_input", ts, 0, offset) {
-                Some(m) => vec![crate::sources::human_input(m, &offset.to_string(), text)],
-                None => Vec::new(),
-            }
+        Some("user_message") | Some("item_completed") => {
+            human_prompt_events(p, ctx, ts, offset, state)
         }
         // `agent_message` restates the `response_item` message line Codex
         // writes for the same turn — measured 284 vs 292, i.e. the

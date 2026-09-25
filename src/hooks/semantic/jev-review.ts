@@ -53,6 +53,7 @@ import * as intentStore from "./intent";
 import { JevError, transportForConfig, type JevTransport } from "./jev-client";
 import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
 import * as jevThrottle from "./jev-throttle";
+import { sessionProjectRoot } from "./session-root";
 import type { SemanticInput } from "./types";
 
 /**
@@ -300,11 +301,15 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     intent = { userSaid: [], agentLastMessage: null };
   }
 
+  // Never throws; null only without a cwd, and then there is nothing to pin.
+  const projectRoot = sessionProjectRoot(call.sessionId, call.cwd);
+
   const input: SemanticInput = {
     eventType: call.eventType,
     toolName: call.toolName,
     toolInput: toolInputRecord(call.toolInput),
     ...(call.cwd ? { cwd: call.cwd } : {}),
+    ...(projectRoot ? { projectRoot } : {}),
     ...(call.permissionMode ? { permissionMode: call.permissionMode } : {}),
     userSaid: intent.userSaid,
     agentLastMessage: intent.agentLastMessage,

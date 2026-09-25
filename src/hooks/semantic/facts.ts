@@ -276,9 +276,15 @@ export function computeFacts(
   cwd: string | null,
   permissionMode: string | null,
   scanned: ScannedCommand | null,
+  /**
+   * The session's pinned root (`session-root.ts`). The live `cwd` drifts with
+   * every `cd`; the project the human opened does not. Omitted by replays and
+   * `jev test`, which have no session and keep the old derivation.
+   */
+  pinnedProjectRoot: string | null = null,
 ): Facts {
   const { toolClass, toolIsKnown } = classifyTool(toolName);
-  const projectRoot = findProjectRoot(cwd);
+  const projectRoot = pinnedProjectRoot ?? findProjectRoot(cwd);
   return {
     toolName,
     toolClass,

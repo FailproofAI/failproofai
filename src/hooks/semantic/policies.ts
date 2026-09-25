@@ -53,8 +53,9 @@ const OUTSIDE_PROJECT: ReadonlySet<PathFact["relation"]> = new Set<PathFact["rel
  * question has to be asked. Two tests, because the two tiers measure "the
  * project" from different roots:
  *
- * - `relation` is computed against the enclosing git repository
- *   (`facts.projectRoot`). Anything but `inside_project` / `project_root` is
+ * - `relation` is computed against `facts.projectRoot`: the git root of the
+ *   directory the session started in, pinned by `session-root.ts` so a later
+ *   `cd` cannot move it. Anything but `inside_project` / `project_root` is
  *   outside it.
  * - the partner compares against `$CLAUDE_PROJECT_DIR` or, when that is unset,
  *   the session's LIVE cwd, which drifts below the git root as the agent `cd`s.

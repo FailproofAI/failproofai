@@ -94,6 +94,11 @@ export interface SemanticInput {
   toolName: string;
   toolInput: Record<string, unknown>;
   cwd?: string;
+  /**
+   * The project root pinned for the session (`session-root.ts`), so a `cd`
+   * cannot move what counts as inside the project. Absent: derived from `cwd`.
+   */
+  projectRoot?: string;
   permissionMode?: string;
   /** What the human typed recently, oldest first. Trusted channel only. */
   userSaid: string[];

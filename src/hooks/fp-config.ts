@@ -979,8 +979,13 @@ export function hasCloudCredentials(): boolean {
 
 /** Same bound `jev.json` gets; no legitimate `credentials.json` is near it. */
 const MAX_CREDENTIALS_BYTES = 64 * 1024;
-/** Non-blocking, so a FIFO in the file's place cannot hang a hook in `open()`. */
-const CREDENTIALS_OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
+/**
+ * Non-blocking, so a FIFO in the file's place cannot hang a hook in `open()`.
+ * A function, not a module-level constant: this module is imported everywhere,
+ * and reading `fs.constants` at import time would make every importer depend on
+ * it — including test doubles of `node:fs` that never needed it before.
+ */
+const credentialsOpenFlags = (): number => fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
 /** Group- or world-WRITE bits on the directory: whoever has them can replace the file. */
 const DIR_WRITABLE_BY_OTHERS = 0o022;
 
@@ -1017,7 +1022,7 @@ export function readJevCloudCredential(): JevCloudCredentialRead {
   const path = credentialsFile();
   let fd: number;
   try {
-    fd = openSync(path, CREDENTIALS_OPEN_FLAGS);
+    fd = openSync(path, credentialsOpenFlags());
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path };

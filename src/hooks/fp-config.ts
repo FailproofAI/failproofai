@@ -976,6 +976,25 @@ export function hasCloudCredentials(): boolean {
 // repository's `.claude/settings.json` can set for a session. `FAILPROOFAI_HOME`
 // is not an exception to that rule for the reason `jev-config.ts` gives: it
 // moves the whole layout, `jev.json` included.
+//
+// # A slot counts only while the connection it came with is still there
+//
+// The slot is written by `config --token` and cleared by `config --disconnect`
+// — by THIS build. An older one (1.0.7-beta.2 and before) knows nothing about
+// it: its disconnect clears `[cloud]` and `[ingest]` and carries the `jev`
+// table over as a key it does not own. So downgrade, disconnect, upgrade, and
+// a machine its owner disconnected would find a Cloud key and a Cloud
+// `jev.json` both still in place, and Jev would start spending on an org the
+// machine had left. So the slot is read as usable only when a FailproofAI Cloud
+// connection on the SAME origin — a policy (`[cloud]`) or reporting
+// (`[ingest]`) credential — is in the same file. A key carrying `jev:evaluate`
+// always carries `events:add` and `policies:pull` too (the server refuses it
+// otherwise), so a live Jev connection always has one of them.
+//
+// Only from this file, for the reason above: under `FAILPROOFAI_CLOUD_CREDENTIALS`
+// the policy credential lives elsewhere, and an environment variable must not
+// be able to re-arm a slot either. The reporting credential is always here,
+// and connecting a Jev key writes it.
 
 /** Same bound `jev.json` gets; no legitimate `credentials.json` is near it. */
 const MAX_CREDENTIALS_BYTES = 64 * 1024;
@@ -991,8 +1010,22 @@ const DIR_WRITABLE_BY_OTHERS = 0o022;
 
 export type JevCloudCredentialRead =
   | { status: "ok"; path: string; credential: JevCloudCredential }
-  /** No file, or a file with no usable `jev` slot: this machine is not connected for Jev. */
-  | { status: "absent"; path: string }
+  /**
+   * No usable Jev credential: no file, no `jev` slot, or a slot no live
+   * connection backs (see "A slot counts only while…" above).
+   */
+  | {
+      status: "absent";
+      path: string;
+      /**
+       * This machine IS connected to FailproofAI Cloud — a policy or reporting
+       * credential is stored — just not with a Jev key. Tells "connected, but
+       * the key does not carry Jev" apart from "not connected at all".
+       */
+      connected: boolean;
+      /** A `jev` slot is there, but no connection on its origin is: it is ignored. */
+      orphaned?: true;
+    }
   | {
       status: "refused";
       path: string;
@@ -1025,7 +1058,7 @@ export function readJevCloudCredential(): JevCloudCredentialRead {
     fd = openSync(path, credentialsOpenFlags());
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path };
+    if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path, connected: false };
     return { status: "refused", path, mode: null, reason: "unreadable", problem: `cannot open ${path} (${code ?? "error"})` };
   }
   let text: string;
@@ -1098,8 +1131,30 @@ export function readJevCloudCredential(): JevCloudCredentialRead {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { status: "refused", path, mode: null, reason: "not-json", problem: `${path} does not hold a JSON object` };
   }
-  const credential = projectJevSlot((parsed as Record<string, unknown>).jev);
-  return credential ? { status: "ok", path, credential } : { status: "absent", path };
+  const fields = parsed as Record<string, unknown>;
+  // The same projection `readCredentials` uses, so "a cloud block without a
+  // token is not a cloud block" means the same thing here as everywhere else.
+  const others = projectCredentials(fields);
+  const connectionOrigins = new Set(
+    [others.cloud?.url, others.ingest?.url].map(originOrNull).filter((o): o is string => o !== null),
+  );
+  const connected = connectionOrigins.size > 0;
+  const credential = projectJevSlot(fields.jev);
+  if (!credential) return { status: "absent", path, connected };
+  const slotOrigin = originOrNull(credential.url);
+  if (slotOrigin === null || !connectionOrigins.has(slotOrigin)) return { status: "absent", path, connected, orphaned: true };
+  return { status: "ok", path, credential };
+}
+
+/** A URL's origin, or null for a missing or unparseable one. */
+function originOrNull(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const origin = new URL(url).origin;
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
 }
 
 /** Store the `jev` slot (0600, owner-only home), keeping every other credential. */

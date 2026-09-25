@@ -67,6 +67,10 @@
  * - `baseUrl` is required, and its ORIGIN must equal the origin the credential
  *   was verified against (`jev.url`). The key is only ever sent where it was
  *   issued, and both halves of that decision live in global files.
+ * - the credential counts only while the connection it came with is still on
+ *   this machine: a policy or reporting credential on the SAME origin, in the
+ *   same file (`readJevCloudCredential`). A slot an older build's disconnect
+ *   left behind is not a connection.
  * - no credential at all is `not-connected`: Jev is off, and `jev status` says
  *   the machine is not connected to FailproofAI Cloud.
  *

@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hooks/jev-cli";
 import { JEV_USAGE } from "../../src/hooks/jev-cli";
 import { jevConfigPath, loadJevConfig } from "../../src/hooks/semantic/jev-config";
-import { writeCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
+import { readCredentials, writeCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
 
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const KEY = ["fp", "machine", "c1a0d0123456789ab"].join("-");
@@ -61,7 +61,12 @@ describe("jev CLI: FailproofAI Cloud", () => {
     chmodSync(jevConfigPath(), 0o600);
   };
   const onDisk = () => JSON.parse(readFileSync(jevConfigPath(), "utf8")) as Record<string, unknown>;
-  const connect = (url = ORIGIN) => writeJevCloudCredential({ url, key: KEY });
+  // What `config --token` leaves: the Jev slot AND the reporting credential it
+  // came with. A slot counts only while a connection on its origin is there.
+  const connect = (url = ORIGIN) => {
+    writeCredentials({ ...readCredentials(), ingest: { url: `${url}/v1/events`, key: KEY } });
+    return writeJevCloudCredential({ url, key: KEY });
+  };
   const noKey = (r: JevCliResult) => expect(text(r)).not.toContain(KEY);
 
   describe("status", () => {

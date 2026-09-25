@@ -81,7 +81,13 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     writeFileSync(file, JSON.stringify(obj), { mode });
     chmodSync(file, mode);
   };
-  const connect = (url = ORIGIN, key = KEY) => writeJevCloudCredential({ url, key });
+  // What `config --token` leaves: the Jev slot AND the reporting credential it
+  // came with. A slot counts only while a connection on its origin is there.
+  const connect = (url = ORIGIN, key = KEY) => {
+    const current = readCredentials();
+    if (!current.ingest) writeCredentials({ ...current, ingest: { url: `${url}/v1/events`, key } });
+    return writeJevCloudCredential({ url, key });
+  };
   const cloudFile = (over: Record<string, unknown> = {}) => ({ provider: "failproofai", baseUrl: BASE, mode: "shadow", ...over });
 
   describe("the credentials.json slot", () => {
@@ -154,6 +160,44 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       writeJev(cloudFile());
       expect(inspectJevConfig().status).toBe("not-connected");
       expect(loadJevConfig()).toBeNull();
+    });
+  });
+
+  describe("the slot counts only beside the connection it came with", () => {
+    const INGEST = { url: `${ORIGIN}/v1/events`, key: KEY };
+
+    it("a slot with no connection beside it is ignored: not-connected, and Jev is off", () => {
+      writeCredentials({ jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential()).toMatchObject({ status: "absent", connected: false, orphaned: true });
+      writeJev(cloudFile());
+      expect(inspectJevConfig().status).toBe("not-connected");
+      expect(loadJevConfig()).toBeNull();
+    });
+
+    it("downgrade → disconnect → upgrade does not re-arm Cloud Jev", () => {
+      // Connected by this build: the slot, the reporting and the policy credential.
+      writeCredentials({ cloud: { url: ORIGIN, machineId: "m-1", token: KEY }, ingest: INGEST, jev: { url: ORIGIN, key: KEY } });
+      writeJev(cloudFile());
+      expect(loadJevConfig()?.apiKey).toBe(KEY);
+      // An older build's disconnect: it drops the two tables it knows and
+      // carries `jev` over as a key it does not own. jev.json is not touched.
+      const raw = JSON.parse(readFileSync(credentialsFile(), "utf8")) as Record<string, unknown>;
+      delete raw.cloud;
+      delete raw.ingest;
+      writeFileSync(credentialsFile(), JSON.stringify(raw), { mode: 0o600 });
+      expect(readCredentials().jev).toEqual({ url: ORIGIN, key: KEY });
+      // Back on this build: the key is still on disk, and Jev stays off.
+      expect(inspectJevConfig().status).toBe("not-connected");
+      expect(loadJevConfig()).toBeNull();
+    });
+
+    it("either the policy or the reporting credential backs it, under any path on its origin", () => {
+      writeCredentials({ cloud: { url: `${ORIGIN}/fp`, machineId: "m-1", token: KEY }, jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential().status).toBe("ok");
+      writeCredentials({ ingest: INGEST, jev: { url: ORIGIN, key: KEY } });
+      expect(readJevCloudCredential().status).toBe("ok");
+      writeJev(cloudFile());
+      expect(loadJevConfig()?.apiKey).toBe(KEY);
     });
   });
 
@@ -264,13 +308,13 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     });
 
     it("refuses a credential that names no usable origin", () => {
-      writeCredentials({ jev: { url: "ftp://app.befailproof.ai", key: KEY } });
+      writeCredentials({ jev: { url: "ftp://app.befailproof.ai", key: KEY }, ingest: { url: "ftp://app.befailproof.ai/v1/events", key: KEY } });
       writeJev(cloudFile());
       expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
     });
 
     it("refuses a credential key that could not go in a header", () => {
-      writeCredentials({ jev: { url: ORIGIN, key: `${KEY}\r\nX-Injected: 1` } });
+      writeCredentials({ jev: { url: ORIGIN, key: `${KEY}\r\nX-Injected: 1` }, ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
       writeJev(cloudFile());
       const r = inspectJevConfig();
       expect(r).toMatchObject({ status: "refused", reason: "invalid" });

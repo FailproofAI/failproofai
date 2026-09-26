@@ -305,6 +305,15 @@ function cloudCredentialPresent(): boolean {
 }
 
 /**
+ * Whether a refused or missing jev.json is fixed from the Cloud connection: it
+ * names the Cloud, or it names no provider (absent, not JSON) on a machine whose
+ * key carries Jev — which is what `config --token` suggests for the same file.
+ */
+function cloudRoute(raw: Record<string, unknown> | null | undefined): boolean {
+  return raw?.provider === JEV_CLOUD_PROVIDER || (raw?.provider === undefined && cloudCredentialPresent());
+}
+
+/**
  * The two facts `status --json` reports about the FailproofAI Cloud connection,
  * read owner-only: whether this machine is connected at all, and whether the
  * key it connected with carries Jev. Never the key.
@@ -1401,13 +1410,14 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
       if (inspection.fix) base.fix = inspection.fix;
       // `permissions` is jev.json's; a refusal about credentials.json says its own.
       if (inspection.credentialsMode !== undefined) base.credentialsPermissions = octal(inspection.credentialsMode);
+      // Known whatever the file says, or whether it parses at all.
+      Object.assign(base, cloudConnection());
       if (readJevConfigFileForUpdate()?.raw?.provider === JEV_CLOUD_PROVIDER) {
         Object.assign(base, {
           provider: JEV_CLOUD_PROVIDER,
           providerLabel: providerLabel(JEV_CLOUD_PROVIDER),
           keySource: "cloud",
           keySourceLabel: CLOUD_KEY_SOURCE,
-          ...cloudConnection(),
         });
       }
       if (inspection.reason === "too-open") {
@@ -1662,7 +1672,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     // where it points before suggesting that.
     const raw = readJevConfigFileForUpdate()?.raw ?? null;
     const named = inspection.reason === "too-open" ? namedEndpoint(raw) : null;
-    const next = refusedNextStep(inspection, raw?.provider === JEV_CLOUD_PROVIDER);
+    const next = refusedNextStep(inspection, cloudRoute(raw));
     return fail(
       stack(
         title("failproofai jev status", "off (config refused)", opts),
@@ -1756,7 +1766,11 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
               ? inspection.status
               : "config";
     const refusedNext =
-      inspection.status === "refused" ? refusedNextStep(inspection, readJevConfigFileForUpdate()?.raw?.provider === JEV_CLOUD_PROVIDER) : null;
+      inspection.status === "refused"
+        ? refusedNextStep(inspection, cloudRoute(readJevConfigFileForUpdate()?.raw))
+        : inspection.status === "absent" && cloudCredentialPresent()
+          ? { cmd: "failproofai jev setup --provider failproofai", lead: "This machine's FailproofAI Cloud key already carries jev:evaluate. Turn it on:" }
+          : null;
     const fixCmd = refusedNext
       ? refusedNext.cmd
       : inspection.status === "key-missing"

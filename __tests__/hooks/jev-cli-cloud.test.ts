@@ -238,6 +238,40 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "absent", cloudConnected: true, keyCarriesJev: true });
     });
 
+    // `config --token` says `jev setup --provider failproofai` for these; status
+    // and test offered a bring-your-own-key setup the Cloud user has no key for.
+    it("not-json or absent on a machine whose key carries Jev: rebuild it from the connection", async () => {
+      connect();
+      writeFileSync(jevConfigPath(), "not json{", { mode: 0o600 });
+      chmodSync(jevConfigPath(), 0o600);
+      for (const argv of [["status"], ["test"]]) {
+        const t = text(await runJevCommand(argv, RENDER));
+        expect(t).toContain("jev setup --provider failproofai");
+        expect(t).not.toContain("--key-stdin");
+      }
+      expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({
+        status: "refused",
+        reason: "not-json",
+        cloudConnected: true,
+        keyCarriesJev: true,
+      });
+
+      rmSync(jevConfigPath());
+      expect(text(await runJevCommand(["test"], RENDER))).toContain("jev setup --provider failproofai");
+    });
+
+    it("not-json with a key that lacks Jev, or a refused BYOK file: the BYOK hint stays", async () => {
+      writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
+      writeFileSync(jevConfigPath(), "not json{", { mode: 0o600 });
+      chmodSync(jevConfigPath(), 0o600);
+      expect(text(await runJevCommand(["status"], RENDER))).not.toContain("--provider failproofai");
+      expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ cloudConnected: true, keyCarriesJev: false });
+
+      connect();
+      writeJev({ provider: "typesafe", baseUrl: "not a url", apiKey: BYOK_KEY });
+      expect(text(await runJevCommand(["status"], RENDER))).not.toContain("--provider failproofai");
+    });
+
     it("refused credentials.json --json: the Cloud facts, and which file's permissions are which", async () => {
       connect();
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });

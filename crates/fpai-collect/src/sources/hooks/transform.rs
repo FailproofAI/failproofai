@@ -965,6 +965,10 @@ impl AllowBucket {
                 ),
             );
             m.insert("jev_max_latency_ms".into(), json!(self.jev_max_latency_ms));
+            // The mean's own weight. A throttle-cache hit carries no latency,
+            // so this can be below `failproofai_allow_count`, and the server
+            // weights latency quantiles by it rather than by the call count.
+            m.insert("jev_latency_count".into(), json!(self.jev_latency_count));
         }
         Some(Value::Object(m))
     }

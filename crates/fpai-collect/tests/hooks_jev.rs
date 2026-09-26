@@ -1420,6 +1420,11 @@ async fn a_rollups_latency_is_the_mean_and_max_of_valid_values_only() {
         "the mean over the valid values"
     );
     assert_eq!(agg["jev_max_latency_ms"], 90.0, "the largest, not the last");
+    // How many calls the mean is over — NOT the allow count: a throttle-cache
+    // hit or an invalid value carries no latency, and the server weighted the
+    // mean by every call in the bucket, pulling the fleet's p50 toward the
+    // few fresh answers of a session that repeats itself.
+    assert_eq!(agg["jev_latency_count"], 3, "the mean's sample count");
 
     cleanup(&[&store, &state, &spool]);
 }

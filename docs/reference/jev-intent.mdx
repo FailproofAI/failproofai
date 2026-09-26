@@ -95,6 +95,12 @@ A session file exists only once a prompt has been recorded in it. It holds promp
 
 Nothing is recorded unless a Jev endpoint is configured.
 
+### The project root
+
+"Inside the project" — what `read-outside-workspace` and the other path checks judge against — means inside the project the session was in at its **first reviewed call**. The root is pinned then and a later `cd` never moves it; a `cd` still changes how a relative path resolves. Letting it follow the `cd` would let `cd ~/.ssh` in one call make `~/.ssh` the project for the next.
+
+The pin is `~/.failproofai/state/semantic/roots/<session-id>.json`, holding `{root, at}`: file `0600`, directory `0700`, and the same session-ID rule as above. Files older than 7 days are deleted when a new session pins its root. A `roots` directory other users can write to is ignored, and the live directory's root is used instead. To re-pin a session, delete its file.
+
 ## Known limits
 
 - **A prompt is only as trustworthy as the hook invocation.** Everything here reads the payload the harness wrote on the hook's stdin. An agent that can run commands can run the harness headlessly (`claude -p` and the seven others listed above) or run Failproof AI's hook binary itself with a payload it wrote, and record a prompt nobody typed. This is the accepted trade described at the top of this page: it clears reviewable policies only, never a hard one — but twelve of the fifteen reviewable built-ins are denies, so a forged prompt can turn a real block into an allow on those twelve.

@@ -233,7 +233,7 @@ For each tool call Jev evaluates, one request goes to your provider, carrying:
 - the tool call itself, with secrets such as API keys, bearer tokens and `KEY=` assignments redacted;
 - the recent prompts you typed, with text your agent's harness added removed;
 - the agent's last message before your latest prompt, labelled as agent-written;
-- facts computed locally, such as whether a path is inside the project and the current git branch.
+- facts computed locally, such as whether a path is inside the project — the one the session was in at its first reviewed call, [pinned for the session](/reference/jev-intent#the-project-root) — and the current git branch.
 
 It goes only to the endpoint in your config, under your key.
 
@@ -243,7 +243,7 @@ It goes only to the endpoint in your config, under your key.
 failproofai jev remove
 ```
 
-This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the regex policies exactly as before. To stop asking Jev but keep the config, use `failproofai jev setup --mode off` instead.
+This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the regex policies exactly as before. The per-session stores under `~/.failproofai/state/semantic/` (recorded prompts in `sessions/`, project roots in `roots/`) are left in place and age out. To stop asking Jev but keep the config, use `failproofai jev setup --mode off` instead.
 
 ## Command reference
 

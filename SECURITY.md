@@ -50,6 +50,18 @@ database, we use [Socket](https://socket.dev) via its GitHub App, which comments
 on PRs that introduce risky dependency behavior. Socket is advisory (it
 comments); the deterministic *blocking* gate is OSV-Scanner.
 
+### 3. Dependabot alerts — the wider net
+
+The gate above scans the lockfiles it is *given* (the `--lockfile` list in the
+workflow). GitHub's dependency graph reads **every** lockfile in the repository, so
+Dependabot alerts cover trees the gate does not — in particular the TypeScript SDK's
+integration fixtures, `sdk/typescript/integration/fixtures/*/package-lock.json`.
+Those are not in the scanner's list and are not a Dependabot *update* ecosystem in
+[`.github/dependabot.yml`](.github/dependabot.yml) either, so an alert is the only
+thing that will ever mention them. Treat the alert list as authoritative for those
+paths, and see *Triaging a Dependabot alert in an integration fixture* below for how
+to resolve one.
+
 ## Triaging a failed scan
 
 When the OSV-Scanner gate fails on a PR:
@@ -76,6 +88,47 @@ When the OSV-Scanner gate fails on a PR:
    must say why losing that signal is acceptable for this package specifically.
    Pin `version` to the locked version so a lockfile bump re-opens the gate, and
    never omit `effectiveUntil`.
+
+## Triaging a Dependabot alert in an integration fixture
+
+Each directory under `sdk/typescript/integration/fixtures/` is a real consumer
+project with its own committed lockfile, and several pin a deliberately **old**
+framework major — `ai@4.3.19`, `@langchain/core@0.3.80`, `@mastra/core@0.24.9`. That
+is the point of those fixtures: an adapter has to keep working at the *floor* of
+every range the SDK declares, and the failure they exist to catch is invisible from
+the unit tests (see the harness docstring in `sdk/typescript/integration/harness.ts`).
+The pinned framework is the **subject** of the test, not an incidental dependency.
+
+That splits an alert in one of these lockfiles into two cases:
+
+1. **The advisory is against a transitive dependency.** Fix it. Add a minimal
+   `overrides` entry to *that fixture's* `package.json` naming the patched version,
+   re-resolve with `npm install --package-lock-only --ignore-scripts`, and let the
+   `failproofai-ts-sdk-integrations` CI job validate it — the same mechanism, and the
+   same reasoning, as the root [`package.json`](package.json)'s `overrides`. An in-range
+   `npm update` will almost never help: these frameworks pin their transitive deps
+   **exactly** (`ai@4.3.19` requires `jsondiffpatch@0.6.0`, not `^0.6.0`), which is
+   what makes the lockfiles reproducible and an override the only lever. **Never**
+   resolve one of these by moving the pinned framework — that deletes the fixture's
+   reason to exist and silently drops a supported release from the matrix.
+2. **The advisory is against the pinned framework itself, or against a package whose
+   only fix is a major that framework cannot take.** There is no fix that keeps the
+   fixture, so record it in the table below rather than pretending it away. Unlike a
+   failed gate there is nothing to write in [`osv-scanner.toml`](osv-scanner.toml):
+   the scanner does not read these lockfiles, so an `[[IgnoredVulns]]` entry for one
+   would filter nothing and be reported as an unused ignore.
+
+### Accepted, with no fix available
+
+| Advisory | Package | Fixtures | Why it stays |
+|---|---|---|---|
+| [GHSA-rwvc-j5jr-mgvh](https://github.com/advisories/GHSA-rwvc-j5jr-mgvh) (low, CVSS 3.7) | `ai@4.3.19` | `ai-4`, `mastra-0` | A filetype-whitelist bypass on **file upload**. Fixed in `ai@5.0.52` — the major the `ai-4` fixture exists to stay below, and one `@mastra/core@0.24.9` cannot take either (it requires `ai@^4`). Neither fixture uploads a file or exposes an upload surface; each runs one scripted agent against an in-process model. |
+| [GHSA-866g-f22w-33x8](https://github.com/advisories/GHSA-866g-f22w-33x8) (low, CVSS 4.3) | `@ai-sdk/provider-utils@2.2.8` | `ai-4`, `mastra-0` | Unbounded response-body reads in `createJsonResponseHandler` and its siblings. Fixed in `3.0.28`; `2.2.8` ships *inside* `ai@4.3.19`, which uses the v2 API, so the fix is the same blocked major as the row above. Exploiting it needs a hostile **model-provider HTTP response**; these fixtures never call one. |
+
+Both rows are bounded by the same facts: these are test fixtures — `"private": true`,
+never published, installed with `--ignore-scripts`, and run only in CI against
+scripted in-process models. Re-check them whenever the supported framework floor
+moves; dropping `ai` 4.x from the matrix is what actually retires them.
 
 ## Maintainer setup (one-time)
 

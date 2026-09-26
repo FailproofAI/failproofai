@@ -102,11 +102,13 @@ fn a_user_prompt_becomes_a_model_request_carrying_the_inherited_model() {
         &mut st,
     );
     assert_eq!(ts.as_deref(), Some("2026-07-18T09:42:04.058Z"));
-    assert_eq!(ev.len(), 1);
+    assert_eq!(ev.len(), 2, "the request, then the person's words");
     assert_eq!(ev[0]["type"], "model_request");
     // A user line names no model; without inheritance this row renders blank.
     assert_eq!(ev[0]["model"], "claude-opus-4-8");
     assert_eq!(ev[0]["messages"][0]["content"], "hello");
+    assert_eq!(ev[1]["type"], "human_input");
+    assert_eq!(ev[1]["response"], "hello");
 }
 
 #[test]

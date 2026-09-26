@@ -11,5 +11,14 @@
   },
   "devDependencies": {
     "@types/node": "22.20.4"
+  },
+  "overrides": {
+    "jsondiffpatch": "0.7.6",
+    "uuid": "11.1.1",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/propagator-jaeger": "2.11.0",
+    "@opentelemetry/sdk-node": "0.222.0",
+    "@opentelemetry/exporter-prometheus": "0.222.0",
+    "@opentelemetry/auto-instrumentations-node": "0.80.0"
   }
 }

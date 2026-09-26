@@ -11,5 +11,9 @@
   },
   "devDependencies": {
     "@types/node": "22.20.4"
+  },
+  "overrides": {
+    "langsmith": "0.10.5",
+    "uuid": "11.1.1"
   }
 }

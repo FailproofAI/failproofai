@@ -1025,6 +1025,7 @@ fn rows_come_back_in_time_updated_order_not_insertion_order() {
         origins,
         vec![
             "prt_user_text", // time_updated PROMPT_MS
+            "prt_user_text", // its human_input, from the same row
             SESSION,         // …+10, session before part on a tie
             SESSION,
             "prt_assistant_text", // …+10

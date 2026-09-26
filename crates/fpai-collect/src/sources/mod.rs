@@ -30,3 +30,24 @@ pub mod hooks;
 pub mod openclaw;
 pub mod opencode;
 pub mod pi;
+
+use serde_json::{Map, Value, json};
+
+/// The `human_input` twin of a prompt a person typed.
+///
+/// Every harness writes whatever reached the model as `role: user` — cron
+/// wrappers, injected instructions, sub-agent hand-offs and the human's own
+/// words alike — and each source keeps emitting all of that as `model_request`,
+/// untouched. This event is emitted IN ADDITION, only for a line the harness's
+/// own record says a human wrote, so "what did the person say" is a query on
+/// one event type rather than a per-harness guess made downstream.
+///
+/// `envelope` is the source's own `base(…)` at block index 1: same session,
+/// agent and line/row id as the prompt's `model_request` at index 0, so the two
+/// events differ in type and body and never dedup into one — and the
+/// `model_request` keeps the exact bytes it had before this event existed.
+pub fn human_input(mut envelope: Map<String, Value>, input_id: &str, text: &str) -> Value {
+    envelope.insert("input_id".into(), json!(input_id));
+    envelope.insert("response".into(), json!(text));
+    Value::Object(envelope)
+}

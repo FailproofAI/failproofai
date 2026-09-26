@@ -111,6 +111,7 @@
                   "sessions/hooks",
                   "sessions/policy-decisions",
                   "sessions/tools",
+                  "sessions/sentiment",
                   "sessions/errors",
                   "sessions/metrics",
                   "sessions/dashboards",

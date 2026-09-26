@@ -132,7 +132,7 @@ const SESSION_ORDER: &str = " ORDER BY s.time_updated, s.id";
 /// neither) and to its session (for the directory the agent id derives from).
 const PART_SELECT: &str = "\
 SELECT p.id, p.session_id, p.message_id, p.time_created, p.time_updated, p.data, \
-       m.data, s.directory \
+       m.data, s.directory, s.parent_id \
   FROM part p \
   JOIN message m ON m.id = p.message_id \
   JOIN session s ON s.id = p.session_id";
@@ -304,6 +304,7 @@ fn map_part(r: &rusqlite::Row) -> rusqlite::Result<PartRow> {
         data: parse_json(r.get::<_, Option<String>>(5)?).unwrap_or(Value::Null),
         message: parse_json(r.get::<_, Option<String>>(6)?).unwrap_or(Value::Null),
         directory: r.get::<_, Option<String>>(7)?.unwrap_or_default(),
+        parent_id: r.get(8)?,
     })
 }
 

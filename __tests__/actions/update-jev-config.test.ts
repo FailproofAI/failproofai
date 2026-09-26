@@ -31,7 +31,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 const { headersMock } = vi.hoisted(() => ({ headersMock: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: headersMock }));
 
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { jevConfigFile } from "../../src/hooks/fp-home";
@@ -420,6 +420,33 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(chat.ok).toBe(false);
     if (!chat.ok) expect(chat.problem).toContain("/chat/completions");
     expect(loadJevConfig()).toBeNull();
+  });
+
+  // `jev --url` refuses these, and so does `jev setup --base-url`: the
+  // provider says where the key goes, the host says whose gateway it is.
+  it("refuses a provider its URL's host contradicts, and writes nothing", async () => {
+    const vercel = await saveJevConfigAction(
+      input({ provider: "openrouter", baseUrl: "https://ai-gateway.vercel.sh/v1" }),
+    );
+    expect(vercel.ok).toBe(false);
+    if (!vercel.ok) expect(vercel.problem).toMatch(/vercel's endpoint, not openrouter's/);
+    const cf = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT}/ai/run` }),
+    );
+    expect(cf.ok).toBe(false);
+    expect(existsSync(configPath())).toBe(false);
+
+    expect((await saveJevConfigAction(input({ provider: "typesafe", baseUrl: "https://jev-proxy.internal/v1" }))).ok).toBe(true);
+    expect((await saveJevConfigAction(input({ provider: "custom", baseUrl: "https://api.typesafe.ai/v1" }))).ok).toBe(true);
+  });
+
+  it("still re-saves an older mismatched file untouched, to switch its mode", async () => {
+    seedConfig({ provider: "openrouter", apiKey: TOKEN, baseUrl: "https://ai-gateway.vercel.sh/v1" });
+    const res = await saveJevConfigAction(
+      input({ provider: "openrouter", baseUrl: "https://ai-gateway.vercel.sh/v1", mode: "shadow", token: "" }),
+    );
+    expect(res.ok).toBe(true);
+    expect(onDisk().mode).toBe("shadow");
   });
 
   it("still re-saves an older file whose stored base already ends in /systemone", async () => {

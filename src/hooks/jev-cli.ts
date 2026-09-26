@@ -108,6 +108,8 @@ import {
   inspectJevConfig,
   jevCloudBaseUrl,
   jevConfigPath,
+  providerForUrl,
+  providerHostConflict,
   readJevConfigFileForUpdate,
   validateApiKey,
   validateBaseUrl,
@@ -497,28 +499,6 @@ function movedHost(provider: JevProviderKind, before: unknown, after: unknown): 
 }
 
 /**
- * The provider each known host IS, so `failproofai jev --url <url>` needs no
- * `--provider`. Exact hosts only: a neighbouring name (`eu.api.typesafe.ai`, a
- * corporate proxy) is `custom`, which reaches the same TypeSafe-compatible API
- * at the URL given, and `--provider` is there to say otherwise.
- */
-const PROVIDER_BY_HOST: Readonly<Record<string, JevProviderKind>> = {
-  "api.typesafe.ai": "typesafe",
-  "openrouter.ai": "openrouter",
-  "ai-gateway.vercel.sh": "vercel",
-  "api.cloudflare.com": "cloudflare",
-};
-
-/** The provider a validated URL names, or `custom` for a host that is nobody's. */
-function providerForUrl(url: string): JevProviderKind {
-  try {
-    return PROVIDER_BY_HOST[new URL(url).hostname.toLowerCase()] ?? "custom";
-  } catch {
-    return "custom";
-  }
-}
-
-/**
  * The account id a Cloudflare URL already carries, or null.
  *
  * Cloudflare's run endpoint IS per-account — `…/client/v4/accounts/<id>/ai/run`
@@ -533,7 +513,7 @@ function providerForUrl(url: string): JevProviderKind {
 export function accountIdFromUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
-    if (PROVIDER_BY_HOST[parsed.hostname.toLowerCase()] !== "cloudflare") return null;
+    if (providerForUrl(url) !== "cloudflare") return null;
     const m = /\/accounts\/([0-9a-f]{32})(?:\/|$)/i.exec(parsed.pathname);
     return m ? m[1].toLowerCase() : null;
   } catch {
@@ -737,24 +717,15 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
     // An explicit provider wins — except where it disagrees with the host about
     // which gateway this is, which is a disagreement about where the key goes.
     // `custom` is not a disagreement: it is the "treat this URL as itself" ask.
-    if (explicit !== null && explicit !== "custom" && urlProvider.kind !== "custom" && explicit !== urlProvider.kind) {
+    // The rule is `providerHostConflict`'s, shared with `--base-url` below and
+    // the dashboard's save; only the advice here is about `--url`.
+    const conflict = explicit === null ? null : providerHostConflict(explicit, normalized);
+    if (conflict !== null) {
       return fail([
-        `--provider ${explicit} and --url disagree: ${urlProvider.host} is ${urlProvider.kind}'s endpoint, not ${explicit}'s.`,
-        "Drop --provider to take the provider from the URL, or give the URL that provider's own endpoint.",
-        "",
-        "Nothing was written.",
-      ]);
-    }
-    // The one host where "treat this URL as itself" cannot be honoured. A
-    // `custom` route POSTs the TypeSafe-native body to `<url>/systemone` and
-    // reads a bare answer back; Workers AI answers at `/accounts/<id>/ai/run`
-    // and wraps its answer in `result`, which is why it has a provider of its
-    // own. Saved as `custom` it would ask for the `--account-id` it then had
-    // nowhere to put, and every call would fall back to regex.
-    if (explicit === "custom" && urlProvider.kind === "cloudflare") {
-      return fail([
-        `Not saved: ${urlProvider.host} is Cloudflare Workers AI, which provider custom cannot reach — its endpoint is per-account and its answers are wrapped, and a custom endpoint is asked in TypeSafe's own shape at <url>/systemone.`,
-        "Use the provider that speaks it: --provider cloudflare --account-id <32 hex characters> — or drop --provider, since the URL already says cloudflare.",
+        explicit === "custom" ? `Not saved: ${conflict}.` : `--provider ${explicit} and --url disagree: ${conflict}.`,
+        explicit === "custom"
+          ? "Use the provider that speaks it: --provider cloudflare --account-id <32 hex characters> — or drop --provider, since the URL already says cloudflare."
+          : "Drop --provider to take the provider from the URL, or give the URL that provider's own endpoint.",
         "",
         "Nothing was written.",
       ]);
@@ -827,6 +798,20 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
     return fail(["Unknown provider (not repeated here, in case it is a key).", `Providers: ${JEV_PROVIDER_KINDS.join(", ")}`]);
   }
   const kind = provider as JevProviderKind;
+  // The same rule for a `--base-url` typed as such (a `--url` was checked above,
+  // with advice about `--url`), so the flag and the dashboard cannot save a
+  // pair `--url` refuses.
+  const typedBase = urlArg === undefined ? values.get("--base-url") : undefined;
+  const checkedTyped = typedBase === undefined || typedBase === "default" ? null : validateBaseUrl(typedBase);
+  const hostConflict = checkedTyped?.ok ? providerHostConflict(kind, checkedTyped.value) : null;
+  if (checkedTyped?.ok && hostConflict !== null) {
+    return fail([
+      `Not saved: ${hostConflict}.`,
+      `Give ${kind}'s own endpoint, or the provider this URL belongs to: --provider ${providerForUrl(checkedTyped.value)}.`,
+      "",
+      "Nothing was written.",
+    ]);
+  }
   const sameProvider = existing !== null && existing.provider === provider;
 
   // Same provider: update in place, keeping the key and every field not named

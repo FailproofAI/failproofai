@@ -423,6 +423,49 @@ export function endpointGivenAsBase(url: string): EndpointGivenAsBase | null {
   return { suffix, base: parsed.toString() };
 }
 
+/**
+ * The provider each known host IS, so `failproofai jev --url <url>` needs no
+ * `--provider`. Exact hosts only: a neighbouring name (`eu.api.typesafe.ai`, a
+ * corporate proxy) is `custom`, which reaches the same TypeSafe-compatible API
+ * at the URL given, and `--provider` is there to say otherwise.
+ */
+const PROVIDER_BY_HOST: Readonly<Record<string, JevProviderKind>> = {
+  "api.typesafe.ai": "typesafe",
+  "openrouter.ai": "openrouter",
+  "ai-gateway.vercel.sh": "vercel",
+  "api.cloudflare.com": "cloudflare",
+};
+
+/** The provider a validated URL names, or `custom` for a host that is nobody's. */
+export function providerForUrl(url: string): JevProviderKind {
+  try {
+    return PROVIDER_BY_HOST[new URL(url).hostname.toLowerCase()] ?? "custom";
+  } catch {
+    return "custom";
+  }
+}
+
+/**
+ * Why `provider` cannot be saved with a base on `url`'s host, or null.
+ *
+ * Two pairs: a provider the host says it is not (`openrouter` on Vercel's
+ * gateway — the two disagree about where the key is sent), and `custom` on
+ * Cloudflare, whose per-account, wrapped endpoint a custom route cannot speak.
+ * `custom` on any other known host is "treat this URL as itself", not a
+ * disagreement. Checked where a URL is saved (`jev --url`, `jev setup
+ * --base-url`, the dashboard's save) and, like `endpointGivenAsBase`, not by
+ * the loader: a file already on disk keeps working.
+ */
+export function providerHostConflict(provider: string, url: string): string | null {
+  const known = providerForUrl(url);
+  if (known === "custom" || known === provider) return null;
+  const host = new URL(url).host;
+  if (provider !== "custom") return `${host} is ${known}'s endpoint, not ${provider}'s`;
+  return known === "cloudflare"
+    ? `${host} is Cloudflare Workers AI, which provider custom cannot reach — its endpoint is per-account and its answers are wrapped, and a custom endpoint is asked in TypeSafe's own shape at <url>/systemone`
+    : null;
+}
+
 function isPlainHttp(url: string): boolean {
   try {
     return new URL(url).protocol === "http:";

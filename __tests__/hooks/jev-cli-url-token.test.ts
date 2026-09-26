@@ -226,6 +226,20 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(text(r)).not.toContain(TOKEN);
       expect(existsSync(jevConfigPath())).toBe(false);
     });
+    // `--base-url` is the same field without the inference, and the dashboard's
+    // save a third writer of it: all three refuse the same pairs.
+    it("`jev setup --base-url` refuses the same contradictions, and writes nothing", async () => {
+      for (const argv of [
+        ["setup", "--provider", "openrouter", "--base-url", "https://ai-gateway.vercel.sh/v1", "--token", TOKEN],
+        ["setup", "--provider", "custom", "--base-url", "https://api.cloudflare.com/client/v4", "--token", TOKEN],
+      ]) {
+        const r = await runJevCommand(argv, RENDER);
+        expect(r.exitCode).toBe(1);
+        expect(text(r)).toMatch(/vercel's endpoint, not openrouter's|Cloudflare Workers AI/);
+        expect(text(r)).not.toContain(TOKEN);
+        expect(existsSync(jevConfigPath())).toBe(false);
+      }
+    });
   });
 
   describe("the URL is validated by the loader's own rule", () => {

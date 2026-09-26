@@ -63,7 +63,7 @@ Three things follow from that:
 
 - **A URL that is the provider's own API writes no override.** `--url https://api.typesafe.ai/v1` produces exactly the config `--provider typesafe` would have. Give a different path or host on a known provider and it is stored as the base URL, as `--base-url` would store it.
 - **`--provider` still overrides the inference**, which is how you reach a proxy that speaks a provider's API from a host of your own: `--url https://jev-proxy.internal/v1 --provider typesafe`.
-- **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. (`--provider custom` is not a contradiction — it means "treat this URL as itself".)
+- **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. The same pair is refused from `jev setup --base-url` and from the dashboard's Jev settings. (`--provider custom` is not a contradiction — it means "treat this URL as itself" — except on Cloudflare's host, whose per-account endpoint a custom route cannot reach.)
 
 `--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http://localhost` in shadow mode only.
 

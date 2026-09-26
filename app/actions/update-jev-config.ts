@@ -112,6 +112,7 @@ import {
   baseUrlWithoutQuery,
   endpointGivenAsBase,
   jevConfigPath,
+  providerHostConflict,
   readJevConfigFileForUpdate,
   validateApiKey,
   validateBaseUrl,
@@ -326,6 +327,8 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     const stored = validateBaseUrl(existing?.baseUrl);
     const untouched =
       sameProvider && stored.ok && baseUrlWithoutQuery(stored.value).url === baseUrlWithoutQuery(url.value).url;
+    const conflict = untouched ? null : providerHostConflict(provider, url.value);
+    if (conflict) return { ok: false, problem: `${conflict}.` };
     const asEndpoint = untouched ? null : endpointGivenAsBase(url.value);
     if (asEndpoint) {
       return {

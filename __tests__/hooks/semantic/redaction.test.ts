@@ -1383,6 +1383,43 @@ describe("high-entropy tokens", () => {
   });
 });
 
+describe("standard-base64 secrets, whose `+` and `/` split them into short runs", () => {
+  // 40 characters like an AWS secret access key, a `+` and a `/` guaranteed.
+  const secret = "aZ3" + rnd(rand, 17) + "+" + rnd(rand, 9) + "/" + rnd(rand, 9);
+  const akia = `AKIA${rnd(rand, 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}`;
+
+  it.each([
+    ["positional", `echo ${akia},${secret}`],
+    ["a CSV row", `Access key ID,Secret access key\n${akia},${secret}`],
+    ["a call's arguments", `boto3.client('s3','${akia}','${secret}')`],
+    ["a JSON array", JSON.stringify([akia, secret])],
+    ["words", `aws_creds ${akia} ${secret}`],
+  ])("redacts an unlabeled AWS secret beside its key id (%s)", (_label, input) => {
+    for (const blunt of [false, true]) {
+      const r = redactSecrets(input, { blunt });
+      expect(r.text, input).not.toContain(secret);
+      for (const piece of secret.split(/[+/]/)) expect(r.text, input).not.toContain(piece);
+    }
+  });
+
+  it("redacts an 88-character key whole, tail included", () => {
+    const key = "Eb8" + rnd(rand, 40) + "/" + rnd(rand, 20) + "/" + rnd(rand, 20) + "==";
+    const r = redactSecrets(`echo ${key}`);
+    for (const piece of key.split(/[+/=]/).filter((p) => p.length >= 8)) expect(r.text).not.toContain(piece);
+  });
+
+  it("leaves paths, URLs and digests made of slashes alone", () => {
+    for (const s of [
+      "cat /home/user/projects/myRepo2/src/components/UserProfile3",
+      "ls src/Components/UserProfile2/Settings/AccountPanel/index",
+      "https://github.com/FailproofAI/failproofai/pull/833/files#diff",
+      `integrity sha512-${rnd(rand, 86, ALNUM + "+/")}==`,
+    ]) {
+      expectUntouched(s);
+    }
+  });
+});
+
 describe("this machine's own secret environment variables", () => {
   it("redacts their exact values, naming the variable", () => {
     const v = rnd(rand, 32, HEX); // hex: no pattern would catch it by shape

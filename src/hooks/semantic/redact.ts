@@ -2017,6 +2017,25 @@ function literalValue(
 
 /** Long runs of token characters: candidates for the high-entropy rule. Greedy, so a match is a whole run. */
 const LONG_TOKEN_RE = /[A-Za-z0-9_-]{32,}/g;
+/**
+ * The same, in standard base64: `+` and `/` split an AWS secret access key
+ * (40 characters, ~72% hold one) into runs under 32, so `LONG_TOKEN_RE` never
+ * saw it and the key went out beside its redacted `AKIA` id.
+ */
+const LONG_B64_TOKEN_RE = /[A-Za-z0-9+/_-]{32,}={0,2}/g;
+
+/**
+ * A standard-base64 run that looks generated. A path or URL is a run of `/`
+ * too, so any `+`/`/`-separated segment that is a word rejects it — the
+ * word-built run then falls through to `LONG_TOKEN_RE`, which still takes a
+ * random token sitting inside it.
+ */
+function looksRandomB64(t: string): boolean {
+  if (!/[+/]/.test(t)) return false;
+  const bare = t.replace(/=+$/, "");
+  if (bare.split(/[+/]/).some((seg) => /^[A-Z]?[a-z]{3,}$/.test(seg) || /^[A-Z]{4,}$/.test(seg))) return false;
+  return looksRandomToken(bare.replace(/[+/]/g, ""));
+}
 
 // ── Secret names ─────────────────────────────────────────────────────────────
 
@@ -2801,7 +2820,15 @@ export function redactSecretsDetailed(text: string, opts: RedactOptions = {}): R
 
   out = redactNamedSecrets(out, c);
 
-  // 8. Anything left that looks generated.
+  // 8. Anything left that looks generated: standard base64 first, whole, so
+  // no piece of it is left for the narrower pass to miss.
+  out = replaceCounting(
+    out,
+    LONG_B64_TOKEN_RE,
+    (m, _g, offset, whole) => (looksRandomB64(m) && !insideDigest(whole, offset) ? marker("high-entropy token") : null),
+    c,
+    "skip",
+  );
   out = replaceCounting(
     out,
     LONG_TOKEN_RE,

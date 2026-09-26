@@ -47,6 +47,9 @@ const SHAPES = [
   // it quadratic.
   "sk-a-b-c-d-e-f-g-h-i-j-",
   "sk-aB1-",
+  // The standard-base64 pass: one run of `+` and `/` with nothing to stop it.
+  "a/a/a/",
+  "A1b+A1b+",
 ];
 
 const SMALL = 64 * 1024;

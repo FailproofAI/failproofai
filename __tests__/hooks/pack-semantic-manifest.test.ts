@@ -31,6 +31,7 @@ import {
   forgetEffectiveReviewerNames,
 } from "@/src/hooks/effective-reviewers";
 import { SEMANTIC_REVIEWER_NAMES } from "@/src/hooks/policy-authority";
+import { missingGuards } from "@/src/hooks/pack-failclosed";
 import { PACK_PRECONDITION_NAMES } from "@/src/hooks/semantic/precondition-names";
 import { version as packageVersion } from "../../package.json";
 
@@ -402,6 +403,30 @@ describe("readInstalledPacks with semantic entries", () => {
     expect(packs).toHaveLength(1);
     expect(packs[0].minCliVersion).toBeUndefined();
     expect(warnings?.[0]).toMatch(/not a version this CLI can compare/);
+  });
+
+  // A Jev-checks-only pack guards nothing in the regex tier, so refusing it
+  // must not make `pack-failclosed` deny every tool call on every agent.
+  it.each([
+    ["this CLI is too old for it", () => writeManifest([record({ policies: [], semantic: [entry()], minCliVersion: "99.0.0" })])],
+    ["its artifact digest does not match", () => {
+      writeManifest([record({ policies: [], semantic: [entry()] })]);
+      writeFileSync(join(root, "artifacts", `${DIGEST}.mjs`), "tampered");
+    }],
+  ])("a refused Jev-checks-only pack denies nothing when %s", (_label, setup) => {
+    setup();
+    const { errors } = readInstalledPacks();
+    expect(errors).toHaveLength(1);
+    const guards = missingGuards({ errors, packs: [], registered: new Map(), failed: new Map(), disabled: new Set(), cli: "claude" });
+    expect(guards).toEqual([]);
+  });
+
+  it("a refused pack whose regex policies are all unreadable still denies blanket", () => {
+    writeManifest([record({ policies: [{ bogus: 1 }], semantic: [entry()], minCliVersion: "99.0.0" })]);
+    const { errors } = readInstalledPacks();
+    const guards = missingGuards({ errors, packs: [], registered: new Map(), failed: new Map(), disabled: new Set(), cli: "claude" });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].match).toEqual({});
   });
 
   it("does not report a refused pack's dropped entries", () => {

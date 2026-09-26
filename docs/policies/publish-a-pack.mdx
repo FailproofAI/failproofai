@@ -38,6 +38,8 @@ customPolicies.add({
 
 A policy may also declare `authority: "reviewable"` with a `reviewedBy` list, which lets the Jev semantic evaluator clear its verdict on machines that configure Jev. `failproofai publish` copies both into the manifest, and a machine reads them from there; it refuses to build if a declaration would not be honored, such as a misspelled check name. Leave them out and the policy is hard. See [Policy authority](/policies/authority).
 
+A pack may also be Jev checks alone (`semanticPolicies.add`, no `customPolicies.add`). A CLI too old for Jev checks refuses to install one ("pack manifest declares no policies") and ignores one already installed. If a machine refuses such a pack when loading it (a `minCliVersion` it does not meet, a missing or altered artifact), it reports why and denies nothing, because the pack blocks nothing without Jev.
+
 Write as many files as you like; one per category reads well. Every file in the directory that registers policies is bundled into the single artifact a pack has to be.
 
 <Warning>

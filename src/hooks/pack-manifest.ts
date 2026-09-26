@@ -253,6 +253,13 @@ export interface PackError {
    * deny on their behalf locks an agent out over enforcement it never had.
    */
   clis?: string[] | null;
+  /**
+   * The record's regex `policies` list was readable and empty: a Jev-checks-only
+   * pack. It guards nothing in the regex tier, so its refusal has nothing to
+   * fail closed on. Read from the RAW list, never from `declared`: a list whose
+   * entries are all malformed also filters to nothing, and that must widen.
+   */
+  semanticOnly?: true;
 }
 
 export interface PackReadResult {
@@ -883,6 +890,7 @@ export function readInstalledPacks(): PackReadResult {
         // Best effort: an entry too malformed to list policies yields nothing
         // here, and a deny built from it is unavoidably blanket.
         ...(Array.isArray(rec?.policies) ? { declared: safeDeclared(rec.policies) } : {}),
+        ...(Array.isArray(rec?.policies) && rec.policies.length === 0 ? { semanticOnly: true as const } : {}),
         // A list of names, or nothing. Anything else is unreadable scope, and
         // unreadable scope has to mean "every agent" — the same reasoning that
         // widens an unreadable `match`: a narrowing nobody can parse says

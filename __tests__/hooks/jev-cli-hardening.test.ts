@@ -236,14 +236,45 @@ describe("failproofai jev — review hardening", () => {
         return new Response(JSON.stringify({ model: "jev-1.13.0", answers: { jev_test: { type: "noul", noul: 0.95 } } }), { status: 200 });
       }) as unknown as typeof fetch;
 
+      // Every hook call on this route falls back as `timeout`: not "ok", and not exit 0.
       const json = await runJevCommand(["test", "--json"], RENDER);
-      expect(json.exitCode).toBe(0);
+      expect(json.exitCode).toBe(1);
       const j = JSON.parse(json.json as string);
-      expect(j).toMatchObject({ ok: true, timeoutMs: 100, withinTimeout: false });
+      expect(j).toMatchObject({ ok: false, problem: "over-timeout", timeoutMs: 100, withinTimeout: false });
       expect(j.latencyMs).toBeGreaterThan(100);
 
       const human = await runJevCommand(["test"], RENDER);
+      expect(human.exitCode).toBe(1);
       expect(text(human)).toContain("OVER the 100 ms timeout: hooks would fall back to regex");
+      expect(text(human)).toContain("over timeout");
+      expect(text(human)).not.toContain("ok ·");
+      expect(text(human)).toContain("--timeout-ms");
+    });
+
+    it("a wrong answer to the calibration question is not ok", async () => {
+      await runJevCommand(["setup", "--provider", "typesafe", "--timeout-ms", "5000", "--key-stdin"], withKey(KEY));
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ model: "jev-1.13.0", answers: { jev_test: { type: "noul", noul: 0.01 } } }), { status: 200 })) as typeof fetch;
+      const json = await runJevCommand(["test", "--json"], RENDER);
+      expect(json.exitCode).toBe(1);
+      expect(JSON.parse(json.json as string)).toMatchObject({ ok: false, problem: "unexpected-answer" });
+      const human = await runJevCommand(["test"], RENDER);
+      expect(human.exitCode).toBe(1);
+      expect(text(human)).toContain("wrong answer");
+    });
+
+    // A Cloud route maps its own upstream timeout to 502; after 3x the budget a
+    // hook has long since recorded `timeout`, so "server error" is the wrong lead.
+    it("a failure that arrived after timeoutMs names the hook budget, not a server error", async () => {
+      await runJevCommand(["setup", "--provider", "typesafe", "--timeout-ms", "100", "--key-stdin"], withKey(KEY));
+      globalThis.fetch = (async () => {
+        await new Promise((r) => setTimeout(r, 250));
+        return new Response(JSON.stringify({ error: { message: "upstream_error" } }), { status: 502 });
+      }) as unknown as typeof fetch;
+      const human = await runJevCommand(["test"], RENDER);
+      expect(human.exitCode).toBe(1);
+      expect(text(human)).toContain("OVER the 100 ms timeout: hooks would fall back to regex (timeout)");
+      expect(text(human)).not.toContain("The provider had a server error");
     });
 
     it("an answer inside timeoutMs is reported as within it", async () => {

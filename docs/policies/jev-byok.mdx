@@ -132,6 +132,8 @@ failproofai jev test
   latency       523 ms — within the 3000 ms timeout
 ```
 
+`jev test` exits 1, and says so in its title, when the answer arrives after the timeout (every hook would fall back to regex as `timeout`) or answers its check question wrongly.
+
 Hooks read the config on every tool call, so it applies from the next one. There is nothing to restart, with or without the daemon.
 
 ## Check what it is doing

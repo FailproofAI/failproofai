@@ -103,6 +103,7 @@ import {
   JEV_CLOUD_PROVIDER,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
   JEV_PROVIDER_KINDS,
+  MAX_JEV_TIMEOUT_MS,
   endpointGivenAsBase,
   inspectJevConfig,
   jevCloudBaseUrl,
@@ -1769,12 +1770,16 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     const within = latencyMs <= budget;
     const p = answers[JEV_TEST_QUESTION_ID];
     const inputTokens = typeof response.usage?.input_tokens === "number" ? response.usage.input_tokens : null;
+    // "ok" means a hook would use this answer: in time, and right about "blue".
+    const problem = !within ? "over-timeout" : p < 0.5 ? "unexpected-answer" : null;
+    const done = problem ? fail : ok;
     if (asJson) {
-      return ok(
+      return done(
         [],
         JSON.stringify(
           {
-            ok: true,
+            ok: problem === null,
+            ...(problem ? { problem } : {}),
             provider: cfg.provider,
             endpoint: displayEndpoint(route.endpoint),
             model: built.model,
@@ -1791,9 +1796,11 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
         ),
       );
     }
-    return ok(
+    const status =
+      problem === "over-timeout" ? `over timeout · ${latencyMs} ms` : problem ? `wrong answer · p = ${p.toFixed(3)}` : `ok · ${latencyMs} ms`;
+    return done(
       stack(
-        title("failproofai jev test", `ok · ${latencyMs} ms`, opts),
+        title("failproofai jev test", status, opts),
         rows(
           [
             ["provider", cfg.provider],
@@ -1813,6 +1820,9 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           "One request, sent directly: the hook path's cache and rate limit were not involved, and a fresh process pays DNS and TLS setup that the daemon's warm worker does not.",
           opts,
         ),
+        problem === "over-timeout"
+          ? nextStep("failproofai jev setup --timeout-ms <n>", `Give hooks longer (up to ${MAX_JEV_TIMEOUT_MS} ms), or use a faster route:`, opts)
+          : null,
       ),
     );
   } catch (err) {
@@ -1820,7 +1830,10 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     // jev-client scrubs provider text already; this is the last line of that
     // defence, for any error text that reached here some other way.
     const e = scrubbed(describeError(err), cfg.apiKey);
-    if (asJson) return fail([], JSON.stringify({ ok: false, provider: cfg.provider, latencyMs, error: e }, null, 2));
+    // An answer after the hook budget is a `timeout` to every hook, whatever it
+    // finally said (a Cloud route maps its own upstream timeout to 502).
+    const late = latencyMs > budget;
+    if (asJson) return fail([], JSON.stringify({ ok: false, provider: cfg.provider, latencyMs, timeoutMs: budget, withinTimeout: !late, error: e }, null, 2));
     return fail(
       stack(
         title("failproofai jev test", `failed · ${e.code}`, opts),
@@ -1830,11 +1843,16 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
             ["endpoint", displayEndpoint(route.endpoint)],
             ["model asked", built.model],
             ["error", `${e.code}: ${e.message}`],
-            ["after", `${latencyMs} ms`],
+            ["after", late ? `${latencyMs} ms — OVER the ${budget} ms timeout: hooks would fall back to regex (timeout)` : `${latencyMs} ms`],
           ],
           opts,
         ),
-        note(remedy(e.code, cfg.provider, e.message), opts),
+        note(
+          late
+            ? `Hooks stop waiting after ${budget} ms, so they record this as \`timeout\`, not ${e.code}: the provider or FailproofAI Cloud is slow or failing upstream.`
+            : remedy(e.code, cfg.provider, e.message),
+          opts,
+        ),
       ),
     );
   }

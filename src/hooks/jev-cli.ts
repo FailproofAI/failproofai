@@ -124,6 +124,7 @@ import {
   jevModelsUrl,
   jevRoute,
   listDescribesSystemOne,
+  nativeEndpoint,
   modelListHasModel,
   modelsUrlForBase,
   readAnswers,
@@ -579,9 +580,13 @@ function offProviderBase(cfg: JevConfig, endpoint: string): { endpoint: string; 
  * their own URL, and the point of the line is which segment to drop.
  */
 function endpointAsBaseRefusal(flag: string, given: string, found: EndpointGivenAsBase): string[] {
+  // The transport's own URL, so the message never describes one it does not build.
+  const asked = nativeEndpoint(given);
   return [
     `Not saved: ${flag} names an endpoint, not an API base — its path ends in ${found.suffix}.`,
-    `A Jev request goes to <base>/systemone, and failproofai appends that itself, so ${displayEndpoint(given)} would be asked at ${displayEndpoint(`${given.replace(/\/+$/, "")}/systemone`)}.`,
+    asked === new URL(given).toString()
+      ? `That is already the Jev endpoint itself: this field takes the base it sits under (where <base>/models is read), and failproofai adds /systemone on its own.`
+      : `A Jev request goes to <base>/systemone, and failproofai appends that itself, so ${displayEndpoint(given)} would be asked at ${displayEndpoint(asked)}.`,
     "Give the base it sits under:",
     `  failproofai jev ${flag} ${displayEndpoint(found.base)}`,
     "",

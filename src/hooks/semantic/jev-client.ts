@@ -718,7 +718,7 @@ export interface JevRoute {
   modelIsDefault: boolean;
 }
 
-function nativeEndpoint(baseUrl: string): string {
+export function nativeEndpoint(baseUrl: string): string {
   const url = new URL(baseUrl);
   if (!/\/systemone$/.test(url.pathname)) url.pathname = `${url.pathname.replace(/\/+$/, "")}/systemone`;
   return url.toString();

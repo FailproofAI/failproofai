@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runJevCommand, type JevCliDeps, type JevCliResult, type JevModelListReader } from "../../src/hooks/jev-cli";
 import { JEV_API_KEY_ENV, jevConfigPath } from "../../src/hooks/semantic/jev-config";
-import type { JevModelListResult } from "../../src/hooks/semantic/jev-client";
+import { jevRoute, type JevModelListResult } from "../../src/hooks/semantic/jev-client";
 
 const KEY = ["cli", "contract", "0123456789abcdef"].join("-");
 const PROXY = "https://models.aikin.club/typesafe/v1";
@@ -92,6 +92,21 @@ describe("failproofai jev and each provider's contract", () => {
       // anything: the fix is one segment of the URL the person is looking at.
       expect(existsSync(jevConfigPath())).toBe(false);
       expect(list.calls).toEqual([]);
+    });
+
+    // The transport never doubles `/systemone` (nativeEndpoint), so the refusal
+    // must not describe a doubled URL either.
+    it("does not claim a doubled /systemone the client never builds", async () => {
+      const r = await runJevCommand(["--url", `${PROXY}/systemone`, "--token", KEY], deps(reader(PROXY_LIST)));
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).not.toContain("/systemone/systemone");
+      expect(text(r)).toContain("already the Jev endpoint itself");
+      expect(jevRoute({ provider: "custom", baseUrl: `${PROXY}/systemone`, apiKey: KEY }).endpoint).toBe(`${PROXY}/systemone`);
+    });
+
+    it("names the real request URL when the base carries a query", async () => {
+      const r = await runJevCommand(["--url", `${PROXY}/models?api-version=1`, "--token", KEY], deps(reader(PROXY_LIST)));
+      expect(text(r)).toContain(`${PROXY}/models/systemone?…`);
     });
 
     it("says the same thing for --base-url, naming that flag", async () => {

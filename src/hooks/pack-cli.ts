@@ -453,6 +453,9 @@ async function build(rest: string[]): Promise<PackCliResult> {
         ? "One policy declares an authority this build cannot publish:"
         : `${authorityProblems.length} policies declare an authority this build cannot publish:`,
       ...authorityProblems,
+      ...(reviewers
+        ? ["This pack declares Jev checks of its own, so reviewedBy may name only those."]
+        : []),
       'Fix the declaration, or leave authority out and the policy is "hard". See https://docs.befailproof.ai/policies/authority',
     ]);
   }

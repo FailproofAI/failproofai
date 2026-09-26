@@ -242,6 +242,16 @@ describe("authority against the pack's own semantic policies", () => {
     expect(r.lines.join("\n")).toMatch(/authority "reviewable" was refused/);
   });
 
+  it("says a pack with checks is judged against its own, not that a built-in name is unknown", async () => {
+    const entry = write("policies.mjs", BOTH_ENTRY.replace("pack-destructive-deletion\"]", "destructive-deletion\"]"));
+    const r = await build(entry);
+    expect(r.exitCode).toBe(1);
+    const text = r.lines.join("\n");
+    expect(text).not.toMatch(/in this build/);
+    expect(text).toMatch(/"destructive-deletion", which is not among the Jev checks it is judged against \(pack-destructive-deletion\)/);
+    expect(text).toMatch(/declares Jev checks of its own, so reviewedBy may name only those/);
+  });
+
   it("falls back to this build's names for a pack with no semantic entries", async () => {
     // Those machines keep running the compiled-in set, so a builtin name is the
     // right thing for such a pack to review by.

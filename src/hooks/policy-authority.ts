@@ -124,6 +124,8 @@ const isName = (n: unknown): n is string => typeof n === "string" && n.length > 
 export function resolvePolicyAuthority(
   decl: AuthorityDeclaration | undefined,
   knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+  /** Names left out of `knownReviewers` because packs declare them differently, with those packs. */
+  contested?: ReadonlyMap<string, string[]>,
 ): ResolvedAuthority {
   const declaredReviewable = decl?.authority === "reviewable";
   if (!decl || effectiveAuthority(decl) === "hard") {
@@ -136,14 +138,23 @@ export function resolvePolicyAuthority(
   }
   const unknown = names.filter((n) => !knownReviewers.has(n));
   if (unknown.length > 0) {
-    return {
-      authority: "hard",
-      downgraded:
-        `reviewedBy names ${unknown.map((n) => JSON.stringify(n)).join(", ")}, ` +
-        `which ${unknown.length === 1 ? "is not a semantic policy" : "are not semantic policies"} in this build`,
-    };
+    return { authority: "hard", downgraded: `reviewedBy names ${unknown.map((n) => whyUnknown(n, knownReviewers, contested)).join("; ")}` };
   }
   return { authority: "reviewable", reviewedBy: [...new Set(names)] };
+}
+
+/**
+ * The rule that kept one name out. "Not in this build" is only true of the
+ * compiled-in set: a pack's own checks, or a name two packs disagree on, is a
+ * different reason, and the author reading it has a different fix.
+ */
+function whyUnknown(name: string, known: ReadonlySet<string>, contested?: ReadonlyMap<string, string[]>): string {
+  const claimants = contested?.get(name);
+  if (claimants) return `"${name}", which packs ${claimants.join(" and ")} declare differently, so it is asked for neither`;
+  if (known === SEMANTIC_REVIEWER_NAMES) return `"${name}", which is not a semantic policy in this build`;
+  const sorted = [...known].sort();
+  const listed = sorted.length > 6 ? `${sorted.slice(0, 6).join(", ")} and ${sorted.length - 6} more` : sorted.join(", ");
+  return `"${name}", which is not among the Jev checks it is judged against (${listed})`;
 }
 
 function whyHard(decl: AuthorityDeclaration): string {

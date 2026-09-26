@@ -136,6 +136,22 @@ describe("resolvePolicyAuthority", () => {
     expect(r.downgraded).toMatch(/is not a semantic policy/);
   });
 
+  it("names the set it judged against when that is not this build's", () => {
+    const r = resolvePolicyAuthority({ authority: "reviewable", reviewedBy: ["destructive-deletion"] }, new Set(["own-check"]));
+    expect(r.downgraded).not.toMatch(/in this build/);
+    expect(r.downgraded).toMatch(/"destructive-deletion", which is not among the Jev checks it is judged against \(own-check\)/);
+  });
+
+  it("names the packs that contest a name, rather than calling it unknown", () => {
+    const r = resolvePolicyAuthority(
+      { authority: "reviewable", reviewedBy: ["prod-deploy-check"] },
+      new Set(["x"]),
+      new Map([["prod-deploy-check", ["acme/a", "acme/b"]]]),
+    );
+    expect(r.authority).toBe("hard");
+    expect(r.downgraded).toMatch(/"prod-deploy-check", which packs acme\/a and acme\/b declare differently, so it is asked for neither/);
+  });
+
   it.each([
     ["a malformed entry", ["secret-exposure", 5]],
     ["an empty-string entry", ["", "secret-exposure"]],

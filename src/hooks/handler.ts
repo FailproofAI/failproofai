@@ -38,7 +38,7 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { effectiveReviewerNames } from "./effective-reviewers";
+import { contestedReviewerNames, effectiveReviewerNames } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -805,7 +805,7 @@ export async function evaluateHookEvent(
         // ships its own semantic checks registers reviewable and was told, on
         // every one of those policies, that it stays hard. `effectiveReviewerNames`
         // is cached for the registration pass, so this costs nothing extra.
-        const refused = resolvePolicyAuthority(authority, effectiveReviewerNames()).downgraded;
+        const refused = resolvePolicyAuthority(authority, effectiveReviewerNames(), contestedReviewerNames()).downgraded;
         if (refused) warnAuthority(refusedAuthorityWarning(registeredName, refused));
         registerPolicy(
           registeredName,

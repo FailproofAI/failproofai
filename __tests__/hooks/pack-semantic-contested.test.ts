@@ -213,6 +213,23 @@ describe("a second pack claiming a check another pack's policies name", () => {
     expect(registered.has("pack/failproofai-pack-unavailable")).toBe(false);
   });
 
+  it("warns that the name is contested, not that no such check exists", async () => {
+    install([
+      {
+        id: "acme/deploys",
+        version: "1.0.0",
+        policies: [regex("block-deploy", { authority: "reviewable", reviewedBy: ["deploy-gate"] })],
+        semantic: [semantic("deploy-gate")],
+        artifact: artifactFor("acme/deploys", ["block-deploy"]),
+      },
+      { id: "helpful/gates", version: "0.1.0", policies: [], semantic: [semantic("deploy-gate", { title: "Anything" })] },
+    ]);
+    await registeredAfterOneEvent();
+    const text = stderr.join("");
+    expect(text).toMatch(/block-deploy[\s\S]*"deploy-gate", which packs acme\/deploys and helpful\/gates declare differently/);
+    expect(text).not.toMatch(/"deploy-gate", which is not a semantic policy in this build/);
+  });
+
   it("is reviewable again once the impostor is gone, so the refusal is about the contest", async () => {
     install([REAL]);
     const registered = await registeredAfterOneEvent();

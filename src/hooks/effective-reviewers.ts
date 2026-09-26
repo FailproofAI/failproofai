@@ -42,6 +42,7 @@ import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 
 let cached: ReadonlySet<string> | null = null;
+let cachedContested: ReadonlyMap<string, string[]> = new Map();
 /** The agent the current registration pass is for; see {@link forgetEffectiveReviewerNames}. */
 let reviewerCli: string | undefined;
 
@@ -118,30 +119,22 @@ function canonical(value: unknown): string {
 export function contestedSemanticNames(
   packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
 ): ReadonlyMap<string, string[]> {
-  const claims = new Map<string, { form: string; ids: string[]; firstParty: boolean }>();
+  const claims = new Map<string, { form: string; ids: string[] }>();
   const contested = new Map<string, string[]>();
   for (const pack of packs) {
     for (const entry of pack.semantic ?? []) {
+      // Void, so not a claim either: see `isReservedClaim`.
+      if (isReservedClaim(pack, entry.name)) continue;
       const form = canonical(entry);
       const claim = claims.get(entry.name);
       if (claim === undefined) {
-        claims.set(entry.name, { form, ids: [pack.id], firstParty: isFirstPartyPack(pack) });
+        claims.set(entry.name, { form, ids: [pack.id] });
         continue;
       }
       claim.ids.push(pack.id);
-      claim.firstParty ||= isFirstPartyPack(pack);
       // The array is the live one, so a third claimant is named too.
       if (claim.form !== form) contested.set(entry.name, claim.ids);
     }
-  }
-  // A builtin check name is FailproofAI's: core and user policies name it in
-  // `reviewedBy`. Claimed by no first-party pack, it would make a third party's
-  // question the reviewer that clears them — an `instruct`-mode
-  // `destructive-deletion` beside the core pack turned `block-rm-rf` into a
-  // warning. So it is asked for nobody; copies identical to a first-party
-  // declaration are the same question and stay (the fork case above).
-  for (const [name, claim] of claims) {
-    if (SEMANTIC_REVIEWER_NAMES.has(name) && !claim.firstParty) contested.set(name, claim.ids);
   }
   return contested;
 }
@@ -152,6 +145,20 @@ export function contestedSemanticNames(
  */
 export function isFirstPartyPack(pack: { source?: string }): boolean {
   return /^github:FailproofAI\//i.test(pack.source ?? "");
+}
+
+/**
+ * A builtin check name declared by a pack that is not FailproofAI's. Core and
+ * user policies name those checks in `reviewedBy`, so the third party's
+ * question would become the reviewer that clears them — an `instruct`-mode
+ * `destructive-deletion` beside the core pack turned `block-rm-rf` into a
+ * warning. The claim is void: never asked, never a reviewer, and never a
+ * second declaration that contests FailproofAI's own, which would switch off a
+ * deny the regex tier does not have. The reviewer set, the question set and
+ * the contest all apply it.
+ */
+export function isReservedClaim(pack: { source?: string }, name: string): boolean {
+  return SEMANTIC_REVIEWER_NAMES.has(name) && !isFirstPartyPack(pack);
 }
 
 /**
@@ -175,13 +182,22 @@ export function isFirstPartyPack(pack: { source?: string }): boolean {
 export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
   let names: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES;
+  cachedContested = new Map();
   try {
-    names = reviewerNamesFor(jevPacks(readInstalledPacks().packs, reviewerCli));
+    const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
+    names = reviewerNamesFor(packs);
+    cachedContested = contestedSemanticNames(packs);
   } catch {
     // See above: silence here is the builtin set, not an empty one.
   }
   cached = names;
   return names;
+}
+
+/** The contest behind {@link effectiveReviewerNames}' answer, so a refusal can name it. */
+export function contestedReviewerNames(): ReadonlyMap<string, string[]> {
+  effectiveReviewerNames();
+  return cachedContested;
 }
 
 /**
@@ -199,7 +215,9 @@ export function reviewerNamesFor(
   packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
 ): ReadonlySet<string> {
   const contested = contestedSemanticNames(packs);
-  const declared = packs.flatMap((p) => (p.semantic ?? []).map((s) => s.name)).filter((name) => !contested.has(name));
+  const declared = packs
+    .flatMap((p) => (p.semantic ?? []).filter((s) => !isReservedClaim(p, s.name)).map((s) => s.name))
+    .filter((name) => !contested.has(name));
   // Nothing usable declared: the compiled-in set is the one being asked.
   if (declared.length === 0) return SEMANTIC_REVIEWER_NAMES;
   return new Set(replacesBuiltinChecks(packs) ? declared : [...SEMANTIC_REVIEWER_NAMES, ...declared]);

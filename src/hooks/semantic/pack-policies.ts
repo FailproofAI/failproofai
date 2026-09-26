@@ -12,7 +12,8 @@
  * silently mean the builtin's question set instead of the pack's.
  *
  * Anyone else's checks are ADDED to the compiled-in set instead. Their names
- * cannot collide with it (`contestedSemanticNames` reserves the builtin names),
+ * cannot collide with it (a third party's claim to a builtin name is void:
+ * `isReservedClaim`),
  * and replacing it would drop deny-mode checks like `credential-exfiltration`
  * that add denies the regex tier does not have — weaker, not noisier.
  *
@@ -38,9 +39,8 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames, isFirstPartyPack, jevPacks, replacesBuiltinChecks } from "../effective-reviewers";
+import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks, replacesBuiltinChecks } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
-import { SEMANTIC_REVIEWER_NAMES } from "../policy-authority";
 import {
   packSemantic,
   readInstalledPacks,
@@ -198,14 +198,18 @@ export function semanticPoliciesFromPacks(
   let spent = replace ? 0 : BUILTIN_QUESTION_CHARS;
   for (const pack of ordered) {
     for (const entry of packSemantic(pack)) {
+      if (isReservedClaim(pack, entry.name)) {
+        errors.push(
+          `pack ${pack.id} declares semantic policy ${entry.name}, a name reserved for FailproofAI's own Jev checks, ` +
+            `so that pack's version of it is never asked`,
+        );
+        continue;
+      }
       const claimants = contested.get(entry.name);
       if (claimants) {
         errors.push(
-          declared.some((p) => claimants.includes(p.id) && isFirstPartyPack(p)) || !SEMANTIC_REVIEWER_NAMES.has(entry.name)
-            ? `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
-                `for neither of them and no policy can be cleared by that name`
-            : `pack ${claimants.join(" and ")} declares semantic policy ${entry.name}, a name reserved for FailproofAI's ` +
-                `own Jev checks, so that pack's version of it is never asked`,
+          `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
+            `for neither of them and no policy can be cleared by that name`,
         );
         continue;
       }

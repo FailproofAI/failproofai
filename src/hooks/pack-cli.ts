@@ -26,7 +26,7 @@ import { parseSemver } from "./semver-precedence";
 // budget, which means reaching the semantic side. This is a CLI module — loaded
 // by `failproofai publish`, never by a hook — so the rule that keeps those
 // modules off an unconfigured machine's hook path does not apply here.
-import { MAX_PACK_QUESTION_CHARS, questionChars } from "./semantic/pack-policies";
+import { MAX_PACK_QUESTION_CHARS, questionChars, semanticPoliciesFromPacks } from "./semantic/pack-policies";
 import {
   AmbiguousPackId,
   PACK_CHECKSUMS_ASSET,
@@ -44,7 +44,7 @@ import {
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
 import { getSemanticRegistrations } from "./custom-hooks-registry";
-import { isFirstPartyPack } from "./effective-reviewers";
+import { isFirstPartyPack, jevPacks } from "./effective-reviewers";
 import { authorityFieldsOf, authorityProblem, resolvePolicyAuthority } from "./policy-authority";
 import type { PolicyCatalogEntry, SemanticPolicyDeclaration } from "./policy-types";
 import type { MultiChoice, RenderOpts, TTYIn, TTYOut } from "./tui";
@@ -2742,6 +2742,17 @@ async function add(rest: string[]): Promise<PackCliResult> {
     }
     // Nothing after this screen says it: the record keeps no unreadable minimum.
     if (result.minCliVersionNote) lines.push(`  ${result.minCliVersionNote}`);
+    // Which of its checks the resolver will leave out beside what is already
+    // installed (the shared question budget, a reserved or contested name).
+    // Otherwise said only in the hook log, on the first call that asks Jev.
+    if (result.semantic > 0) {
+      try {
+        const { errors } = semanticPoliciesFromPacks(jevPacks(readInstalledPacks().packs));
+        for (const e of errors) if (e.includes(result.id)) lines.push(`  ▲ ${e}`);
+      } catch {
+        // A diagnostic; the install itself already succeeded.
+      }
+    }
 
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);

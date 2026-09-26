@@ -353,6 +353,24 @@ describe("failproofai policies show <pack>", () => {
     expect(text).not.toContain("for Jev");
   });
 
+  it("says at install which of its checks this machine will never ask, and why", async () => {
+    // Each fits a pack's budget alone; beside the built-in checks (a third
+    // party's join them) only the first fits what is left of one request.
+    const probe = (i: number) => ({
+      id: `p${i}`,
+      instructions: "x".repeat(600),
+      criteria: { true: "t".repeat(300), false: "f".repeat(300) },
+    });
+    const big = (name: string) => check(name, { userCanOverride: false, probes: [0, 1, 2, 3, 4, 5].map(probe) });
+    release({ policies: [], semantic: [big("acme-a"), big("acme-b"), check("destructive-deletion")] });
+    const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/acme\/guards semantic policy acme-b was dropped: its questions need/);
+    expect(text).not.toMatch(/acme-a was dropped/);
+    expect(text).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
+  });
+
   it("sits under the policy rows, since a check is read against what it can clear", async () => {
     const lines = await show();
     const policyRow = lines.findIndex((l) => l.includes("block-rm-rf") && l.includes("default"));

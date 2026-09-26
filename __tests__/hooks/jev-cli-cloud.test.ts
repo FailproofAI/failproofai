@@ -214,6 +214,32 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(text(human)).not.toContain("owner-only");
     });
 
+    // The docs promise `status --json` carries the facts the text shows.
+    it("absent --json carries the Cloud connection facts", async () => {
+      expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "absent", cloudConnected: false, keyCarriesJev: false });
+      connect();
+      expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "absent", cloudConnected: true, keyCarriesJev: true });
+    });
+
+    it("refused credentials.json --json: the Cloud facts, and which file's permissions are which", async () => {
+      connect();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      chmodSync(join(fpHome, "credentials.json"), 0o640);
+      const machine = await runJevCommand(["status", "--json"], RENDER);
+      expect(machine.exitCode).toBe(1);
+      expect(json(machine)).toMatchObject({
+        status: "refused",
+        provider: "failproofai",
+        keySource: "cloud",
+        cloudConnected: true,
+        keyCarriesJev: false,
+        permissions: "0600",
+        credentialsPermissions: "0640",
+        fix: `chmod 600 ${join(fpHome, "credentials.json")}`,
+      });
+      noKey(machine);
+    });
+
     it("absent: names the FailproofAI Cloud path too", async () => {
       const t = text(await runJevCommand(["status"], RENDER));
       expect(t).toContain("FailproofAI Cloud");

@@ -311,7 +311,11 @@ function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } 
   try {
     const read = readJevCloudCredential();
     if (read.status === "ok") return { cloudConnected: true, keyCarriesJev: true };
-    return { cloudConnected: read.status === "absent" && read.connected, keyCarriesJev: false };
+    if (read.status === "absent") return { cloudConnected: read.connected, keyCarriesJev: false };
+    // Refused (a loose or unreadable credentials.json): no key is usable, but a
+    // connection on record is still a connection — as the dashboard reads it.
+    const creds = readCredentials();
+    return { cloudConnected: Boolean(creds.cloud?.url ?? creds.ingest?.url), keyCarriesJev: false };
   } catch {
     return { cloudConnected: false, keyCarriesJev: false };
   }
@@ -1399,8 +1403,22 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
 
   if (asJson) {
     const base: Record<string, unknown> = { path: inspection.path, status: inspection.status, legacyOverride: legacy, stats };
+    // The absent text says whether this machine's key already carries Jev.
+    if (inspection.status === "absent") Object.assign(base, cloudConnection());
     if (inspection.status === "refused") {
       Object.assign(base, { reason: inspection.reason, problem: inspection.problem, permissions: octal(inspection.mode) });
+      if (inspection.fix) base.fix = inspection.fix;
+      // `permissions` is jev.json's; a refusal about credentials.json says its own.
+      if (inspection.credentialsMode !== undefined) base.credentialsPermissions = octal(inspection.credentialsMode);
+      if (readJevConfigFileForUpdate()?.raw?.provider === JEV_CLOUD_PROVIDER) {
+        Object.assign(base, {
+          provider: JEV_CLOUD_PROVIDER,
+          providerLabel: providerLabel(JEV_CLOUD_PROVIDER),
+          keySource: "cloud",
+          keySourceLabel: CLOUD_KEY_SOURCE,
+          ...cloudConnection(),
+        });
+      }
       if (inspection.reason === "too-open") {
         const named = namedEndpoint(readJevConfigFileForUpdate()?.raw ?? null);
         if (named) base.endpoint = named;

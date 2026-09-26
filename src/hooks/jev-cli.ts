@@ -1935,17 +1935,22 @@ function shapeMeans(shape: JevModelListRead["shape"]): string {
  * unkeyed read is often still an answer, and the output says which it was.
  */
 async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
+  // The same test the launcher uses to print `json` instead of the lines, so a
+  // refusal made before the flags parse is JSON as well: every `--json` outcome
+  // is an object, as `jev test --json`'s are.
+  const asJson = argv.includes("--json");
+  const refuse = (code: string, lines: string[]) =>
+    fail(lines, asJson ? JSON.stringify({ ok: false, error: { code, message: lines.join("\n") } }, null, 2) : undefined);
   const parsed = parseFlags(argv, new Set(["--json", "--provider", "--url"]));
-  if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
-  const asJson = parsed.bools.has("--json");
+  if (typeof parsed === "string") return refuse("usage", [parsed, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) return refuse("usage", [STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values } = parsed;
 
   // Checked before anything else uses it, and never echoed — the same rule
   // `setup` follows, for the same reason: the likeliest wrong value is a key.
   const named = values.get("--provider");
   if (named !== undefined && !(JEV_PROVIDER_KINDS as readonly string[]).includes(named)) {
-    return fail([
+    return refuse("unknown-provider", [
       "Unknown provider (not repeated here, in case it is a key).",
       `Providers: ${JEV_PROVIDER_KINDS.join(", ")} — exactly as spelled here, lower-case.`,
     ]);
@@ -1971,27 +1976,27 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   const urlArg = values.get("--url");
   if (urlArg !== undefined) {
     const checked = validateBaseUrl(urlArg);
-    if (!checked.ok) return fail([`Cannot read a model list: ${checked.problem}.`]);
+    if (!checked.ok) return refuse("bad-url", [`Cannot read a model list: ${checked.problem}.`]);
     const asEndpoint = endpointGivenAsBase(checked.value);
-    if (asEndpoint) return fail(endpointAsBaseRefusal("--url", checked.value, asEndpoint));
+    if (asEndpoint) return refuse("endpoint-as-base", endpointAsBaseRefusal("--url", checked.value, asEndpoint));
     base = checked.value;
     provider = (named as JevProviderKind | undefined) ?? providerForUrl(base);
   } else if (named !== undefined) {
     provider = named as JevProviderKind;
     base = JEV_PROVIDER_DEFAULTS[provider].baseUrl;
     if (base === null && provider === JEV_CLOUD_PROVIDER) {
-      return fail([
+      return refuse("no-model-list", [
         `FailproofAI Cloud serves no model list: it runs ${JEV_PROVIDER_DEFAULTS.failproofai.model}, pinned on the server, and every answer is checked against the Jev 1.13 family.`,
       ]);
     }
     if (base === null) {
-      return fail(["Provider custom has no API of its own — its URL is the whole address.", "  failproofai jev models --url <base>"]);
+      return refuse("no-api", ["Provider custom has no API of its own — its URL is the whole address.", "  failproofai jev models --url <base>"]);
     }
   } else if (routing !== null) {
     provider = routing.provider;
     base = routing.baseUrl ?? JEV_PROVIDER_DEFAULTS[routing.provider].baseUrl;
   } else {
-    return fail([
+    return refuse("not-configured", [
       `Jev is not configured here (no ${inspection.path}), so there is no endpoint to ask.`,
       "Name one:",
       "  failproofai jev models --provider vercel",
@@ -2006,7 +2011,7 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   // (`jev-1.13.0`), so there is nothing to choose and nothing to read.
   const modelsUrl = provider === "cloudflare" || provider === JEV_CLOUD_PROVIDER || base === null ? null : modelsUrlForBase(base);
   if (modelsUrl === null) {
-    return fail([
+    return refuse("no-model-list", [
       provider === "cloudflare"
         ? "Cloudflare Workers AI serves no <base>/models: its models are listed through the Cloudflare API, not through the Jev base URL."
         : provider === JEV_CLOUD_PROVIDER

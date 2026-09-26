@@ -349,6 +349,25 @@ describe("failproofai jev and each provider's contract", () => {
       expect(text(r)).toContain("--url");
     });
 
+    // `jev test --json` answers {ok:false, error:{code, message}} in these states;
+    // `models --json` printed prose, which parses as nothing.
+    it.each([
+      [["models", "--json"], "not-configured"],
+      [["models", "--provider", "failproofai", "--json"], "no-model-list"],
+      [["models", "--provider", "cloudflare", "--json"], "no-model-list"],
+      [["models", "--provider", "custom", "--json"], "no-api"],
+      [["models", "--provider", KEY, "--json"], "unknown-provider"],
+      [["models", "--url", "notaurl", "--json"], "bad-url"],
+      [["models", "--url", `${PROXY}/chat/completions`, "--json"], "endpoint-as-base"],
+      [["models", KEY, "--json"], "usage"],
+      [["models", "--json", "--nope"], "usage"],
+    ])("%j answers JSON", async (argv, code) => {
+      const r = await runJevCommand(argv, deps(PROXY_LIST));
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.json ?? "null")).toMatchObject({ ok: false, error: { code, message: expect.any(String) } });
+      expect(r.json).not.toContain(KEY);
+    });
+
     it("says provider custom has no API of its own", async () => {
       const r = await runJevCommand(["models", "--provider", "custom"], deps(PROXY_LIST));
       expect(r.exitCode).toBe(1);

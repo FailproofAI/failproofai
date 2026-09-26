@@ -137,8 +137,8 @@ export interface HookActivityEntry {
   /** Immutable version of that policy — the half of attribution that identifies WHICH version ran. */
   cloudVersion?: number;
   /**
-   * Pack id and version of the decider. Present only when `policySource` is
-   * "pack", and here for the same reason the cloud pair is: the display name
+   * Pack id and version of the decider. Present when `policySource` is "pack",
+   * or "jev" when the deciding check came from a pack; and here for the same reason the cloud pair is: the display name
    * encodes both ("pack/acme/finance@1.2.0/…") but only as a string, so without
    * these the question "which pack, which version decided this" could only be
    * answered by re-parsing our own label.

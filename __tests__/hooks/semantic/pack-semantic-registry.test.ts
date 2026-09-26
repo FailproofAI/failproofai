@@ -156,6 +156,8 @@ describe("semanticPoliciesFromPacks — the replacement rule", () => {
       probes: [{ id: "destroys", instructions: "It permanently deletes existing data." }],
       exempt: { id: "exempt", instructions: "The target is build output." },
       guidance: "Confirm the exact paths with the user first.",
+      // Not read by the compiler: which pack a deciding verdict is filed under.
+      origin: { packId: "acme/guards" },
     });
   });
 });

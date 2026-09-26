@@ -957,6 +957,16 @@ export async function evaluateHookEvent(
       matchedBeforeRelease ??
       getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name);
 
+    // The pack a deciding Jev check came from, recorded as a pack's regex
+    // verdict records its own. The resolved set holds each name once (a name
+    // packs disagree on is asked for nobody), so the name finds its declaration.
+    const jevOrigin =
+      result.policyName && result.twoTier?.decidedByJev
+        ? (await import("./semantic/pack-policies"))
+            .resolveSemanticPolicies(cli)
+            .find((p) => `semantic/${p.name}` === result.policyName)?.origin
+        : undefined;
+
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {
       timestamp: Date.now(),
@@ -983,7 +993,7 @@ export async function evaluateHookEvent(
       // would be false — so it is attributed to Jev itself. Leaving it out
       // instead filed every Jev block under "unattributed" on FailproofAI
       // Cloud's policy page, beside rows written before attribution existed.
-      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const } : {}),
+      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevOrigin } : {}),
       ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);

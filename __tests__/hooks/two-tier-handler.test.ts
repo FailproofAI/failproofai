@@ -23,6 +23,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -697,6 +698,53 @@ describe("Jev's own verdict", () => {
     expect(factory.outcome.stderr).toContain("semantic/destructive-deletion");
     const cursor = await bash("find . -name '*.sqlite' -delete", "cursor");
     expect(JSON.parse(cursor.outcome.stdout).permission).toBe("deny");
+  });
+
+  it("names the pack a deciding check came from, as a regex pack verdict does", async () => {
+    // Without it a pack's `semantic/<name>` is filed exactly like a builtin
+    // check, locally and on the Cloud's policy page.
+    const artifact = "export const hooks = [];\n";
+    const sha256 = createHash("sha256").update(artifact).digest("hex");
+    mkdirSync(join(root, "packs", "artifacts"), { recursive: true });
+    writeFileSync(join(root, "packs", "artifacts", `${sha256}.mjs`), artifact);
+    writeFileSync(
+      join(root, "packs", "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          {
+            id: "acme/deploys",
+            version: "2.0.0",
+            source: "github:acme/deploys@v2.0.0",
+            entry: `artifacts/${sha256}.mjs`,
+            sha256,
+            policies: [],
+            semantic: [
+              {
+                name: "acme-prod-deploy",
+                title: "Deployed to production",
+                appliesTo: ["shell"],
+                mode: "deny",
+                userCanOverride: false,
+                probes: [{ id: "deploys", instructions: "It deploys to production." }],
+                guidance: "Ask first.",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    jevConfig = CFG;
+    respond = answers({ "acme-prod-deploy": 0.97 });
+    const { outcome, row } = await bash("./deploy.sh --env production");
+    expect(outcome.evaluation?.policyName).toBe("semantic/acme-prod-deploy");
+    expect(row).toMatchObject({ policySource: "jev", packId: "acme/deploys", packVersion: "2.0.0" });
+
+    // A compiled-in check stays unattributed to any pack.
+    respond = answers({ "destructive-deletion": 0.97 });
+    const builtin = await bash("find . -name '*.sqlite' -delete");
+    expect(builtin.row.policySource).toBe("jev");
+    expect(builtin.row.packId).toBeUndefined();
   });
 
   it("the most severe wins: a regex instruct and a Jev deny → deny", async () => {

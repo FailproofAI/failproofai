@@ -75,7 +75,7 @@ The dashboard's **Settings → Jev** panel also shows the **FailproofAI Cloud co
 
 The machine already sends its hook activity to FailproofAI Cloud (`events:add`). With Jev on, each gated call's record also says which evaluator ran, what Jev decided, which policies it cleared, why it fell back when it did, its latency and the model that answered — decisions, codes and names, never the command or your prompt. On your organization's **Policies** page:
 
-- a call Jev's own verdict decided (enforce mode) is attributed to **Jev**;
+- a call Jev's own verdict decided (enforce mode) is attributed to **Jev**, and when the deciding check came from a pack, the record also names that pack and its version;
 - in shadow mode, Jev's deny or warning appears as a **would-have**, next to the rollouts you are observing;
 - the policies Jev cleared, or would have cleared in shadow mode, are counted per policy.
 

@@ -135,7 +135,7 @@ export interface ResolvedSemanticPolicies {
 }
 
 /** Turn one validated manifest entry into a policy the compiler can use. */
-function toSemanticPolicy(entry: SemanticManifestEntry): SemanticPolicy {
+function toSemanticPolicy(entry: SemanticManifestEntry, pack: { id: string; version?: string }): SemanticPolicy {
   // An unknown precondition name DROPS the policy (the caller catches this),
   // rather than compiling it with no gate at all. Ungating would be the wider
   // direction, not the weaker one, but it is not what the author asked for: a
@@ -161,6 +161,7 @@ function toSemanticPolicy(entry: SemanticManifestEntry): SemanticPolicy {
     // to the identical policy.
     ...(precondition ? { precondition } : {}),
     guidance: entry.guidance,
+    origin: { packId: pack.id, ...(pack.version ? { packVersion: pack.version } : {}) },
   };
 }
 
@@ -173,7 +174,7 @@ function toSemanticPolicy(entry: SemanticManifestEntry): SemanticPolicy {
  * a filesystem.
  */
 export function semanticPoliciesFromPacks(
-  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
+  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string; version?: string }>,
 ): ResolvedSemanticPolicies {
   const declared = packs.filter((p) => packSemantic(p).length > 0);
   if (declared.length === 0) return { policies: SEMANTIC_POLICIES, fromPack: false, errors: [] };
@@ -229,7 +230,7 @@ export function semanticPoliciesFromPacks(
         continue;
       }
       try {
-        policies.push(toSemanticPolicy(entry));
+        policies.push(toSemanticPolicy(entry, pack));
       } catch (err) {
         errors.push(`pack ${pack.id} semantic policy ${entry.name}: ${err instanceof Error ? err.message : String(err)}`);
         continue;

@@ -218,3 +218,40 @@ describe("the question budget", () => {
     expect(withExempt).toBeGreaterThan(base);
   });
 });
+
+describe("a third-party pack's checks join the built-in ones; FailproofAI's replace them", () => {
+  const thirdParty = (id: string, semantic: SemanticManifestEntry[]) => ({ id, semantic, source: `github:${id}@v1` });
+  /** The compiled-in sixteen, as FailproofAI/jev-policies would declare them. */
+  const firstPartySixteen = SEMANTIC_POLICIES.map((p, i) =>
+    parsePackSemanticPolicy(
+      "FailproofAI/jev-policies",
+      {
+        name: p.name, title: p.title, appliesTo: p.appliesTo, mode: p.mode, userCanOverride: p.userCanOverride,
+        probes: p.probes, ...(p.exempt ? { exempt: p.exempt } : {}), guidance: p.guidance,
+      } as SemanticPolicyDeclaration,
+      i,
+    ),
+  );
+
+  it("a stranger's one check does not switch off the built-in deny checks", () => {
+    const resolved = semanticPoliciesFromPacks([thirdParty("acme/db", [manifestEntry({ name: "acme-db-check" })])]);
+    const names = resolved.policies.map((p) => p.name);
+    expect(names).toEqual([...SEMANTIC_POLICIES.map((p) => p.name), "acme-db-check"]);
+  });
+
+  it("install order cannot spend FailproofAI's budget on a stranger's pack", () => {
+    const big = Array.from({ length: 12 }, (_, i) =>
+      manifestEntry({
+        name: `acme-check-${i}`,
+        probes: [{ id: "p", instructions: "x".repeat(550) }, { id: "q", instructions: "y".repeat(550) }],
+      }),
+    );
+    const resolved = semanticPoliciesFromPacks([
+      thirdParty("acme/big", big),
+      { id: "FailproofAI/jev-policies", semantic: firstPartySixteen, source: "github:FailproofAI/jev-policies@v1" },
+    ]);
+    const names = resolved.policies.map((p) => p.name);
+    for (const p of SEMANTIC_POLICIES) expect(names).toContain(p.name);
+    expect(resolved.errors.join(" ")).toMatch(/acme\/big semantic policy acme-check-\d+ was dropped/);
+  });
+});

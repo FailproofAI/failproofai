@@ -134,11 +134,12 @@ describe("installing a pack that declares semantic policies", () => {
     expect(errors).toEqual([]);
     expect(warnings).toBeUndefined();
     expect(packSemantic(packs[0]).map((s) => s.name)).toEqual(["pack-destructive-deletion"]);
-    // And the whole point: the machine now asks the PACK's question set.
+    // And the whole point: the machine now asks the PACK's question too —
+    // beside the compiled-in set, since acme is not a FailproofAI pack.
     const resolved = semanticPoliciesFromPacks(packs);
     expect(resolved.fromPack).toBe(true);
-    expect(resolved.policies.map((p) => p.name)).toEqual(["pack-destructive-deletion"]);
-    expect(resolved.policies[0].precondition).toBeTypeOf("function");
+    expect(resolved.policies.map((p) => p.name)).toEqual([...SEMANTIC_POLICIES.map((p) => p.name), "pack-destructive-deletion"]);
+    expect(resolved.policies.at(-1)?.precondition).toBeTypeOf("function");
   });
 
   it("makes the pack's own reviewedBy resolve, which is what the mark is for", async () => {

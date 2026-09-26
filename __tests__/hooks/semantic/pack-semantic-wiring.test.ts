@@ -42,9 +42,11 @@ function writeManifest(over: Record<string, unknown> = {}): void {
       schemaVersion: 1,
       packs: [
         {
-          id: "acme/guards",
+          // A FailproofAI pack: its checks REPLACE the compiled-in set, which is
+          // the rule these tests pin. A third party's are added to it.
+          id: "FailproofAI/guards",
           version: "1.0.0",
-          source: "github:acme/guards@v1.0.0",
+          source: "github:FailproofAI/guards@v1.0.0",
           entry: `artifacts/${DIGEST}.mjs`,
           sha256: DIGEST,
           policies: [

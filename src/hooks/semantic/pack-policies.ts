@@ -3,13 +3,18 @@
  *
  * ## The replacement rule
  *
- * A pack that declares at least ONE `semantic` entry replaces
+ * A FailproofAI pack that declares at least ONE `semantic` entry replaces
  * `SEMANTIC_POLICIES` wholesale. It mirrors the rule already in force for the
  * regex builtins — installing a pack stops the compiled builtins registering —
  * and it exists for the same reason: one source of truth, so a name collision
  * between a pack's `destructive-deletion` and the builtin of that name cannot
  * arise, and `reviewedBy: ["destructive-deletion"]` in a pack manifest cannot
  * silently mean the builtin's question set instead of the pack's.
+ *
+ * Anyone else's checks are ADDED to the compiled-in set instead. Their names
+ * cannot collide with it (`contestedSemanticNames` reserves the builtin names),
+ * and replacing it would drop deny-mode checks like `credential-exfiltration`
+ * that add denies the regex tier does not have — weaker, not noisier.
  *
  * Two packs that both declare entries CONCATENATE; a name declared by two packs
  * keeps the first and drops the later one, because the answer map is keyed by
@@ -33,7 +38,7 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames, isFirstPartyPack, jevPacks } from "../effective-reviewers";
+import { contestedSemanticNames, isFirstPartyPack, jevPacks, replacesBuiltinChecks } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import { SEMANTIC_REVIEWER_NAMES } from "../policy-authority";
 import {
@@ -118,9 +123,12 @@ export function questionChars(entry: SemanticManifestEntry): number {
   return JSON.stringify(questions).length;
 }
 
+/** What the compiled-in set spends of that budget when third-party checks join it. */
+const BUILTIN_QUESTION_CHARS = SEMANTIC_POLICIES.reduce((n, p) => n + questionChars(p as SemanticManifestEntry), 0);
+
 export interface ResolvedSemanticPolicies {
   policies: ReadonlyArray<SemanticPolicy>;
-  /** True when a pack supplied the set, so the compiled-in one is not in play. */
+  /** True when a pack supplied any of the set. */
   fromPack: boolean;
   /** One line per dropped policy. Diagnostics; nothing here changes a verdict. */
   errors: string[];
@@ -170,9 +178,14 @@ export function semanticPoliciesFromPacks(
   const declared = packs.filter((p) => packSemantic(p).length > 0);
   if (declared.length === 0) return { policies: SEMANTIC_POLICIES, fromPack: false, errors: [] };
 
-  const policies: SemanticPolicy[] = [];
+  // FailproofAI's own checks replace the compiled-in set; anyone else's join it
+  // (`replacesBuiltinChecks`, which the reviewer set applies too). First-party
+  // packs spend the budget first, so install order cannot starve them.
+  const replace = replacesBuiltinChecks(declared);
+  const ordered = [...declared.filter((p) => isFirstPartyPack(p)), ...declared.filter((p) => !isFirstPartyPack(p))];
+  const policies: SemanticPolicy[] = replace ? [] : [...SEMANTIC_POLICIES];
   const errors: string[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<string>(policies.map((p) => p.name));
   // A name two packs declare DIFFERENTLY is asked for nobody. Keeping the first
   // was the escalation: the question that decides another pack's policies came
   // from whichever pack was listed first, so installing a permissive
@@ -182,8 +195,8 @@ export function semanticPoliciesFromPacks(
   // be the same name — a check in the set with nobody's question, or a question
   // nobody may name, are both worse than neither.
   const contested = contestedSemanticNames(declared);
-  let spent = 0;
-  for (const pack of declared) {
+  let spent = replace ? 0 : BUILTIN_QUESTION_CHARS;
+  for (const pack of ordered) {
     for (const entry of packSemantic(pack)) {
       const claimants = contested.get(entry.name);
       if (claimants) {
@@ -192,7 +205,7 @@ export function semanticPoliciesFromPacks(
             ? `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
                 `for neither of them and no policy can be cleared by that name`
             : `pack ${claimants.join(" and ")} declares semantic policy ${entry.name}, a name reserved for FailproofAI's ` +
-                `own Jev checks, so it is not asked and no policy can be cleared by that name`,
+                `own Jev checks, so that pack's version of it is never asked`,
         );
         continue;
       }
@@ -227,7 +240,7 @@ export function semanticPoliciesFromPacks(
   // the safe one: what a pack's regex half names in `reviewedBy` will not match
   // it, so those policies stay hard rather than being cleared by questions
   // nobody validated.
-  if (policies.length === 0) return { policies: SEMANTIC_POLICIES, fromPack: false, errors };
+  if (policies.length === (replace ? 0 : SEMANTIC_POLICIES.length)) return { policies: SEMANTIC_POLICIES, fromPack: false, errors };
   return { policies, fromPack: true, errors };
 }
 

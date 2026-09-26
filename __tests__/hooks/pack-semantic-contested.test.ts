@@ -294,6 +294,23 @@ describe("a third-party pack claiming a builtin check name", () => {
   });
 });
 
+it("a stranger's own checks leave the core pack's policy reviewable by the built-in check", async () => {
+  install([
+    {
+      id: "FailproofAI/policies",
+      version: "1.0.0",
+      policies: [regex("block-rm-rf", { authority: "reviewable", reviewedBy: ["destructive-deletion"] })],
+      artifact: artifactFor("FailproofAI/policies", ["block-rm-rf"]),
+    },
+    { id: "acme/db", version: "0.1.0", policies: [], semantic: [semantic("acme-db-check")] },
+  ]);
+  const registered = await registeredAfterOneEvent();
+  expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({
+    authority: "reviewable",
+    reviewedBy: ["destructive-deletion"],
+  });
+});
+
 describe("a pack's Jev checks obey its effect and its agents, like its policies", () => {
   /** Enforce, every agent, regex only: reviewable by a check another pack ships. */
   const GUARDED: PackInput = {
@@ -323,13 +340,13 @@ describe("a pack's Jev checks obey its effect and its agents, like its policies"
     // registeredAfterOneEvent evaluates as claude.
     expect(await guardedAuthority()).toEqual({ authority: "hard" });
     expect(await questions("claude")).not.toContain("acme-egress");
-    expect(await questions("codex")).toEqual(["acme-egress"]);
+    expect(await questions("codex")).toContain("acme-egress");
   });
 
   it("an in-scope enforce pack's checks are both", async () => {
     install([GUARDED, { ...CHECKS, clis: ["claude"] }]);
     expect(await guardedAuthority()).toEqual({ authority: "reviewable", reviewedBy: ["acme-egress"] });
-    expect(await questions("claude")).toEqual(["acme-egress"]);
+    expect(await questions("claude")).toContain("acme-egress");
   });
 });
 

@@ -176,20 +176,33 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
   let names: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES;
   try {
-    const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
-    const contested = contestedSemanticNames(packs);
-    const declared = packs
-      .flatMap((p) => (p.semantic ?? []).map((s) => s.name))
-      .filter((name) => !contested.has(name));
-    // Only when a pack actually declared some. A machine whose packs carry only
-    // the regex floor still runs the compiled-in semantic set, so its builtin
-    // reviewer names are the live ones.
-    if (declared.length > 0) names = new Set(declared);
+    names = reviewerNamesFor(jevPacks(readInstalledPacks().packs, reviewerCli));
   } catch {
     // See above: silence here is the builtin set, not an empty one.
   }
   cached = names;
   return names;
+}
+
+/**
+ * A first-party pack declares Jev checks, so they REPLACE the compiled-in set.
+ * Anyone else's checks are ADDED to it: a stranger's one check must not switch
+ * off `credential-exfiltration` and turn every core reviewable policy hard.
+ * `semanticPoliciesFromPacks` applies the same rule to the questions.
+ */
+export function replacesBuiltinChecks(packs: ReadonlyArray<Pick<ResolvedPack, "semantic"> & { source?: string }>): boolean {
+  return packs.some((p) => isFirstPartyPack(p) && (p.semantic ?? []).length > 0);
+}
+
+/** The reviewer set for the packs taking part: see {@link replacesBuiltinChecks}. Pure. */
+export function reviewerNamesFor(
+  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
+): ReadonlySet<string> {
+  const contested = contestedSemanticNames(packs);
+  const declared = packs.flatMap((p) => (p.semantic ?? []).map((s) => s.name)).filter((name) => !contested.has(name));
+  // Nothing usable declared: the compiled-in set is the one being asked.
+  if (declared.length === 0) return SEMANTIC_REVIEWER_NAMES;
+  return new Set(replacesBuiltinChecks(packs) ? declared : [...SEMANTIC_REVIEWER_NAMES, ...declared]);
 }
 
 /**

@@ -55,9 +55,9 @@
  *   about a policy set that is coming back shortly would be noise.
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { contestedSemanticNames, jevPacks } from "./effective-reviewers";
+import { jevPacks, reviewerNamesFor } from "./effective-reviewers";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
-import { hasInstalledPacks, packSemantic, readInstalledPacks } from "./pack-manifest";
+import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
@@ -145,7 +145,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
    * A pack's `enabled` selection is deliberately not applied: it narrows which
    * of its REGEX policies register, and its semantic set is not selectable.
    */
-  const packReviewers = new Set<string>();
+  let reviewers: ReadonlySet<string> | undefined;
   try {
     packsInstalled = hasInstalledPacks();
     const packs = readInstalledPacks().packs;
@@ -157,9 +157,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // not), and minus a name two packs claim differently — the panel and `jev
     // status` would otherwise promise a clear that cannot happen. Same
     // functions, same read, so the two cannot disagree.
-    const live = jevPacks(packs);
-    for (const pack of live) for (const entry of packSemantic(pack)) packReviewers.add(entry.name);
-    for (const name of contestedSemanticNames(live).keys()) packReviewers.delete(name);
+    reviewers = reviewerNamesFor(jevPacks(packs));
   } catch {
     // An unreadable manifest enforces nothing; `readInstalledPacks` already
     // reports that to the hook log on the path that cares.
@@ -193,7 +191,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records, packReviewers.size > 0 ? packReviewers : undefined), customFiles };
+  return { ...countReviewable(records, reviewers), customFiles };
 }
 
 /**

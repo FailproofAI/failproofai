@@ -44,6 +44,7 @@ import {
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
 import { getSemanticRegistrations } from "./custom-hooks-registry";
+import { isFirstPartyPack } from "./effective-reviewers";
 import { authorityFieldsOf, authorityProblem, resolvePolicyAuthority } from "./policy-authority";
 import type { PolicyCatalogEntry, SemanticPolicyDeclaration } from "./policy-types";
 import type { MultiChoice, RenderOpts, TTYIn, TTYOut } from "./tui";
@@ -540,13 +541,13 @@ async function build(rest: string[]): Promise<PackCliResult> {
   const on = policies.filter((p) => (p as { defaultEnabled?: boolean }).defaultEnabled).length;
   return ok([
     `Built ${identity.id}@${identity.version} — ${policies.length} policies, ${on} on by default.`,
-    // Said separately, and said at all, because this half replaces the compiled-in
-    // semantic set on every machine that installs the pack. An author who did not
-    // mean to ship it should find that out here.
+    // Said separately, and said at all, because this half changes what Jev asks
+    // on every machine that installs the pack. An author who did not mean to
+    // ship it should find that out here.
     ...(semantic.length > 0
       ? [
           `  ${semantic.length} semantic ${semantic.length === 1 ? "policy" : "policies"} for Jev ` +
-            `(${questionCost} characters of questions), replacing this build's own set where it installs.`,
+            `(${questionCost} characters of questions), added to the built-in checks where it installs.`,
         ]
       : []),
     ...(minCliVersion ? [`  Requires failproofai ${minCliVersion} or newer.`] : []),
@@ -2719,13 +2720,15 @@ async function add(rest: string[]): Promise<PackCliResult> {
         : `  enabled (${result.enabled.length}/${result.available.length}, ${why}): ${summarise(result.enabled)}`,
     );
     // Counted separately, and without an on/off ratio, because there is none:
-    // a pack's Jev checks arrive whole and REPLACE the ones this build ships.
+    // a pack's Jev checks arrive whole, and a FailproofAI pack's REPLACE the ones
+    // this build ships (anyone else's are added to them).
     // Silence here was the shape of the original bug — the manifest's semantic
     // half was fetched, verified and then never written to `installed.json`, so
     // the half somebody installed did nothing and nothing said so.
     if (result.semantic > 0) {
       lines.push(
-        `  ${semanticPhrase(result.semantic)} for Jev, replacing this build's own set. ` +
+        `  ${semanticPhrase(result.semantic)} for Jev, ` +
+          `${isFirstPartyPack(result) ? "replacing this build's own set" : "added to this build's own checks"}. ` +
           "They apply only where you configured Jev (`failproofai jev status`).",
       );
     }

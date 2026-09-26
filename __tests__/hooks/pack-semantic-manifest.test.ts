@@ -451,8 +451,8 @@ describe("effectiveReviewerNames", () => {
     expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
   });
 
-  it("is the pack's names once a pack declares any", () => {
-    writeManifest([record({ semantic: [entry({ name: "pack-only-check" })] })]);
+  it("is the pack's names once a FailproofAI pack declares any", () => {
+    writeManifest([record({ source: "github:FailproofAI/guards@v1.2.0", semantic: [entry({ name: "pack-only-check" })] })]);
     const names = effectiveReviewerNames();
     expect([...names]).toEqual(["pack-only-check"]);
     // And the builtin names are NOT reviewers there: the pack replaced the set,
@@ -460,11 +460,16 @@ describe("effectiveReviewerNames", () => {
     expect(names.has("destructive-deletion")).toBe(false);
   });
 
+  it("adds a third-party pack's names to this build's set", () => {
+    writeManifest([record({ semantic: [entry({ name: "pack-only-check" })] })]);
+    expect([...effectiveReviewerNames()]).toEqual([...SEMANTIC_REVIEWER_NAMES, "pack-only-check"]);
+  });
+
   it("re-reads when the manifest changes under it", () => {
     writeManifest([record()]);
     expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
     writeManifest([record({ version: "1.3.0", semantic: [entry({ name: "pack-only-check" })] })]);
-    expect([...effectiveReviewerNames()]).toEqual(["pack-only-check"]);
+    expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
 
   /**
@@ -499,7 +504,7 @@ describe("effectiveReviewerNames", () => {
       record({ semantic: [entry({ name: "pack-only-check" })] }),
       record({ id: "acme/guards-fork", version: "1.2.0", source: "github:acme/guards-fork@v1.2.0", semantic: [entry({ name: "pack-only-check" })] }),
     ]);
-    expect([...effectiveReviewerNames()]).toEqual(["pack-only-check"]);
+    expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
 
   it("falls back to this build's set when every declared name is contested", () => {

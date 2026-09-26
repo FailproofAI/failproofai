@@ -151,6 +151,9 @@ export function missingGuards(input: {
     // loaded, would have allowed.
     if (err.effect === "observe") continue;
     if (outOfScope(err.clis, input.cli)) continue;
+    // Jev checks only: nothing in the regex tier is missing. The refusal is
+    // still reported (hook log, `failproofai policies`); it just denies nothing.
+    if (err.semanticOnly) continue;
     const declared = err.declared ?? [];
     out.push({
       packId: err.id ?? "(unnamed pack)",

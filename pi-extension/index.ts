@@ -404,6 +404,17 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),
       hook_event_name: "UserPromptSubmit",
+      // "interactive" | "rpc" | "extension": which channel the input came
+      // through, and the only mark Pi gives about who wrote the prompt. It
+      // names the channel, not the author — `pi -p "<text>"` reports
+      // `interactive` exactly as a person typing does — so the Jev evaluator
+      // uses it only in the direction it is reliable in (`piMachineTurn`,
+      // src/hooks/semantic/intent.ts): `extension`, another extension's
+      // `sendUserMessage()` whose text can be model-written or repo-derived,
+      // is refused, while `interactive`, `rpc` and an absent value are all
+      // recorded as the human's request. Policies read it too, and a later Pi
+      // build may say more here.
+      input_source: e.source,
     });
     if (decision.block) {
       console.error(`[failproofai] prompt blocked: ${decision.reason ?? "blocked by policy"}`);

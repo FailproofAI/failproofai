@@ -6,7 +6,9 @@
  */
 export {
   customPolicies,
+  semanticPolicies,
   getCustomHooks,
+  getSemanticRegistrations,
   clearCustomHooks,
 } from "./hooks/custom-hooks-registry";
 export { allow, deny, instruct } from "./hooks/policy-helpers";
@@ -16,4 +18,8 @@ export type {
   CustomHook,
   PolicyDecision,
   PolicyFunction,
+  PolicyAuthority,
+  SemanticPolicyDeclaration,
+  SemanticProbeDeclaration,
+  SemanticToolClass,
 } from "./hooks/policy-types";

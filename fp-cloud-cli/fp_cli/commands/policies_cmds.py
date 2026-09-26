@@ -116,6 +116,9 @@ def policies_publish(
     does this: the server validates the id and a size ceiling, and a broken
     policy otherwise fails on the machine at enforcement time. `--no-verify`
     skips it; a host without node publishes with a warning rather than a block.
+    Jev fields a cloud policy never reads (`semanticPolicies.add`, `authority:
+    "reviewable"`) are refused regardless — ship those in a pack with
+    `failproofai publish`.
 
     Source can come from a path, `@path`, a pipe, `-`, or an interactive paste
     when you give none and stdin is a terminal.

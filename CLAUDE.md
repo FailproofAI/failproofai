@@ -919,11 +919,11 @@ in-process fallback on that path: a second policy engine reachable by breaking t
 is not a guarantee, and a machine where stopping one service silently disables every
 guardrail is not a guarded machine.
 
-The mismatch case denies with a message naming the version and `failproofai config`,
+The mismatch case denies with a message naming the version and `failproofai update`,
 because the remedy differs from "the daemon is down" and that difference is the whole
 value of telling them apart. The accepted cost: both sides hardcode `PROTOCOL_VERSION`,
 so the first time it is bumped a machine whose CLI updated via npm before its daemon did
-denies until `failproofai config` runs. `publish.yml` ships both from one commit and
+denies until `failproofai update` runs. `publish.yml` ships both from one commit and
 `daemonVersionSkew()` hints on every CLI command, so the window is bounded and announces
 itself.
 

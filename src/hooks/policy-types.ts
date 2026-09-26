@@ -43,6 +43,52 @@ export interface RegisteredPolicy {
    * the user's OWN configured `policyParams` for it, not merely the defaults.
    */
   params?: PolicyParamsSchema;
+  /** Whether Jev may clear this policy's deny/instruct; see {@link effectiveAuthority}. */
+  authority?: PolicyAuthority;
+  /**
+   * The semantic policies (`src/hooks/semantic/policies.ts`) that must all be
+   * asked, and none of which may answer `deny`, before Jev clears this policy.
+   */
+  reviewedBy?: string[];
+}
+
+/**
+ * Who has the last word on a policy's deny or instruct when Jev is configured.
+ *
+ * - `hard`: final. Jev can never clear it.
+ * - `reviewable`: Jev may clear it, but only through the semantic policies
+ *   named in `reviewedBy`, and only when every one of them was actually asked
+ *   and none of them answered `deny` — a `none`, `overridden` or `instruct`
+ *   answer clears it (`combine.ts`, "A warning-level answer clears the deny").
+ *   A named check that was NOT asked always keeps the verdict standing.
+ */
+export type PolicyAuthority = "hard" | "reviewable";
+
+/**
+ * The authority a policy actually has. `reviewable` only when it is declared
+ * `reviewable`, names at least one semantic policy in `reviewedBy`, and is not
+ * `alwaysOn`. Anything else — absent, invalid, an empty `reviewedBy`, the
+ * self-protection guard — is `hard`, so an unknown custom, cloud or third-party
+ * policy can never be weakened by Jev.
+ *
+ * This is the §7 contract every task builds against, and it is deliberately
+ * the looser of two rules: one usable name is enough here. REGISTRATION is
+ * stricter — `resolvePolicyAuthority` in `policy-authority.ts` makes the whole
+ * declaration hard if any entry is malformed or is not a semantic policy this
+ * build has, and that is what `registerPolicy` stores. So a registered policy's
+ * `reviewedBy` is already clean, and the two rules agree on everything that
+ * reaches the registry.
+ */
+export function effectiveAuthority(p: {
+  authority?: unknown;
+  reviewedBy?: unknown;
+  alwaysOn?: boolean;
+}): PolicyAuthority {
+  if (p.alwaysOn === true) return "hard";
+  if (p.authority !== "reviewable") return "hard";
+  if (!Array.isArray(p.reviewedBy)) return "hard";
+  const named = p.reviewedBy.filter((n) => typeof n === "string" && n.length > 0);
+  return named.length > 0 ? "reviewable" : "hard";
 }
 
 export interface PolicyParamsSchema {
@@ -89,6 +135,10 @@ export interface BuiltinPolicyDefinition {
    *  secondary line in the audit report. e.g. "Could leak code from neighboring
    *  repos to the model." */
   impact?: string;
+  /** See {@link PolicyAuthority}. Absent means `hard`. */
+  authority?: PolicyAuthority;
+  /** See {@link RegisteredPolicy.reviewedBy}. */
+  reviewedBy?: string[];
 }
 
 export interface CustomHook {
@@ -98,6 +148,82 @@ export interface CustomHook {
     events?: HookEventType[];
   };
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
+  /**
+   * See {@link PolicyAuthority}. Absent means `hard`.
+   *
+   * Honored for the user's own local policy files (explicit paths and
+   * `.failproofai/policies/`). For a pack policy the pack's MANIFEST decides,
+   * and for a cloud-managed one the cloud ARTIFACT record does — the same split
+   * as `params`, so the declaration a user reviewed in a listing is the one
+   * that takes effect.
+   */
+  authority?: PolicyAuthority;
+  /** See {@link RegisteredPolicy.reviewedBy}. */
+  reviewedBy?: string[];
+}
+
+/**
+ * The tool classes a semantic policy may be asked about.
+ *
+ * A structural copy of `ToolClass` in `src/hooks/semantic/types.ts`, and
+ * deliberately not an import of it. This module is the public API's type
+ * surface — every custom policy file and every pack entry imports it — and the
+ * semantic modules must stay off the import graph of a machine with no
+ * `jev.json` (see `precondition-names.ts` for what that costs when it slips).
+ * A type import would be erased, but the two lists still have to agree, so
+ * `__tests__/hooks/semantic/pack-semantic-registry.test.ts` pins them.
+ */
+export type SemanticToolClass = "shell" | "write" | "read" | "network" | "other";
+
+/** One yes/no question in a semantic policy, as a pack declares it. */
+export interface SemanticProbeDeclaration {
+  /** Lowercase slug, unique within the policy. The answer map is keyed `<policy>.<id>`. */
+  id: string;
+  instructions: string;
+  criteria?: { true: string; false: string };
+}
+
+/**
+ * A semantic (Jev) policy as its author DECLARES it — a question set, not code.
+ *
+ * The compiled-in equivalent is `SemanticPolicy` in `semantic/types.ts`, and
+ * the one difference is the whole reason both exist: there, `precondition` is a
+ * function over the computed facts; here it is the NAME of one, because a
+ * declaration has to survive a trip through a JSON manifest and because a
+ * downloaded artifact must not hand this process an expression to evaluate on
+ * every tool call. `semantic/preconditions.ts` binds the name to its predicate.
+ *
+ * There is no `fn` and no `match`: a semantic policy never executes locally and
+ * is never selected by event or tool name — `appliesTo` and `precondition`
+ * decide what it is asked about, and Jev answers it. That is also why it is
+ * registered through `semanticPolicies`, its own namespace, rather than as a
+ * variant of `customPolicies.add`.
+ */
+export interface SemanticPolicyDeclaration {
+  /** Short slug. Reported as `semantic/<name>`, and what a `reviewedBy` names. */
+  name: string;
+  /** Past-tense phrase for what was caught, e.g. "Deleted something irreplaceable". */
+  title: string;
+  appliesTo: SemanticToolClass[];
+  /** `deny` blocks on strong evidence and warns on moderate; `instruct` only ever warns. */
+  mode: "deny" | "instruct";
+  /**
+   * Whether the human's own explicit request may clear this policy.
+   *
+   * Required, with no default anywhere in the stack. It is the field that
+   * decides whether a prompt injection can talk its way past the policy, and a
+   * default for it would be a security decision made by absence — the author
+   * would never learn which way it went.
+   */
+  userCanOverride: boolean;
+  /** A name from `PACK_PRECONDITION_NAMES`. Absent, or `"always"`, means no precondition. */
+  precondition?: string;
+  /** Every probe must hold for the policy to fire (conjunction). 1–6 of them. */
+  probes: SemanticProbeDeclaration[];
+  /** If this holds, the policy does not fire — the documented exceptions. */
+  exempt?: SemanticProbeDeclaration;
+  /** Shown to the agent when the policy fires. */
+  guidance: string;
 }
 
 export interface LlmConfig {

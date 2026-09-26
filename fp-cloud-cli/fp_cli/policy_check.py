@@ -288,3 +288,172 @@ def run_policy(
                    "at import time"),
         )
     return PolicyRun(ok=True, results=results)
+
+
+# ── Jev fields a cloud policy never reads ────────────────────────────────────
+#
+# A port of agenteye's `cloudPublishProblem` (dashboard/lib/policies/policyMeta.ts),
+# kept to the same rule and the same words so the dashboard and this CLI refuse the
+# same sources. The server never reads the source (its 422 is for body fields such
+# as `authority`, which the CLI does not send), so for `fp` this is the only guard.
+# Static by design: this reads source it must never run. Keep the two in step — a
+# change to one is a change to both.
+
+_MAX_SCAN = 200_000
+_ADD = "customPolicies.add("
+_ADD_CALL = re.compile(re.escape(_ADD))
+#: The whitespace JavaScript allows around `.` and `(`.
+_SEMANTIC_CALL = re.compile(r"semanticPolicies\s*\.\s*add\s*\(")
+#: After one of these, `/` is division, not the start of a regex literal.
+_VALUE_END = re.compile(r"[A-Za-z0-9_$)\]]")
+_KEY = re.compile(r"([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*:")
+
+
+def _skip_trivia(s: str, i: int) -> int:
+    """Index of the next character that is code: past whitespace and comments."""
+    while True:
+        while i < len(s) and s[i].isspace():
+            i += 1
+        if s.startswith("//", i):
+            nl = s.find("\n", i)
+            if nl == -1:
+                return len(s)
+            i = nl + 1
+        elif s.startswith("/*", i):
+            end = s.find("*/", i + 2)
+            if end == -1:
+                return len(s)
+            i = end + 2
+        else:
+            return i
+
+
+def _end_of_regex(s: str, i: int, prev: str) -> int:
+    """Index past the regex literal at `i`, or -1 if none starts (or closes) there."""
+    if s[i] != "/" or _VALUE_END.match(prev):
+        return -1
+    j, in_class = i + 1, False
+    while j < len(s):
+        c = s[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "\n":
+            return -1
+        if c == "[":
+            in_class = True
+        elif c == "]":
+            in_class = False
+        elif c == "/" and not in_class:
+            j += 1
+            while j < len(s) and "a" <= s[j] <= "z":
+                j += 1
+            return j
+        j += 1
+    return -1
+
+
+def _end_of_string(s: str, i: int) -> int:
+    """Index past the string literal at `i`, or -1 if it never closes."""
+    q, j = s[i], i + 1
+    while j < len(s):
+        if s[j] == "\\":
+            j += 2
+            continue
+        if s[j] == q:
+            return j + 1
+        j += 1
+    return -1
+
+
+def _find_call(s: str, call: "re.Pattern[str]", start: int = 0) -> int:
+    """Index of the first `call` that is code — not in a comment, string or regex."""
+    i, prev = start, ("(" if start > 0 else "")
+    for _ in range(_MAX_SCAN):
+        i = _skip_trivia(s, i)
+        if i >= len(s):
+            return -1
+        if call.match(s, i):
+            return i
+        end = _end_of_regex(s, i, prev)
+        if end != -1:
+            i, prev = end, "/"
+            continue
+        if s[i] in "\"'`":
+            end = _end_of_string(s, i)
+            if end == -1:
+                return -1  # unterminated: nothing after it is readable
+            i, prev = end, '"'
+            continue
+        prev = s[i]
+        i += 1
+    return -1
+
+
+def _direct_props(s: str, at: int) -> Dict[str, str]:
+    """The static string properties of the object passed to the `customPolicies.add(`
+    at `at` — direct ones only, never a key in `match`, `params` or the fn body.
+    Fails closed: anything unbalanced or unterminated reads as nothing."""
+    out: Dict[str, str] = {}
+    i = _skip_trivia(s, at + len(_ADD))
+    if i >= len(s) or s[i] != "{":
+        return out
+    i, depth, prev = i + 1, 1, "{"
+    while i < len(s) and depth > 0:
+        i = _skip_trivia(s, i)
+        if i >= len(s):
+            break
+        c = s[i]
+        end = _end_of_regex(s, i, prev)
+        if end != -1:
+            i, prev = end, "/"
+            continue
+        if c in "\"'`":
+            end = _end_of_string(s, i)
+            if end == -1:
+                return {}
+            i, prev = end, '"'
+            continue
+        if c in "{[(" or c in "}])":
+            depth += 1 if c in "{[(" else -1
+            i, prev = i + 1, c
+            continue
+        if depth == 1 and prev in ("{", ","):
+            m = _KEY.match(s, i, i + 64)
+            if m:
+                i = _skip_trivia(s, m.end())
+                q = s[i] if i < len(s) else ""
+                end = _end_of_string(s, i) if q in ("\"", "'", "`") else -1
+                raw = s[i + 1:end - 1] if end != -1 else ""
+                # Escapes and interpolation are not knowable statically: absent.
+                if raw.strip() and "\\" not in raw and not (q == "`" and "${" in raw):
+                    out.setdefault(m.group(1), raw.strip())  # first wins
+                prev = ":"
+                continue
+        prev = c
+        i += 1
+    return out if depth == 0 else {}
+
+
+def cloud_publish_problem(source: str) -> Optional[str]:
+    """Why this source cannot be published as a cloud policy as written, or None.
+
+    Both halves of Jev are inert in a cloud policy and neither says so on the
+    machine: `semanticPolicies.add` is read only from an installed pack, and a
+    cloud policy's authority comes from its deployment, which never sets it. A
+    commented-out example does not count.
+    """
+    if not source or len(source) > _MAX_SCAN:
+        return None
+    if _find_call(source, _SEMANTIC_CALL) != -1:
+        return ("semanticPolicies.add does nothing in a cloud policy: Jev reads semantic checks only "
+                "from a failproofai pack. Remove it to publish the rest, or ship the file with "
+                "`failproofai publish`.")
+    # Every registration: any of them can carry a reviewable declaration.
+    at = _find_call(source, _ADD_CALL)
+    while at != -1:
+        if _direct_props(source, at).get("authority") == "reviewable":
+            return ("a cloud policy is always hard, so Jev never clears it and authority/reviewedBy "
+                    "are ignored. Remove them to publish it as a hard policy.")
+        at = _find_call(source, _ADD_CALL, at + len(_ADD))
+    return None

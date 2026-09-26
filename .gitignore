@@ -142,6 +142,23 @@ COMMIT_MSG.tmp
 **/.failproofai/run/
 **/.failproofai/state/
 
+# The dogfood enable/disable set is now local to each contributor. It was
+# committed, which meant every local change to which policies run on YOUR
+# machine — turning a noisy one off while you work on it, or switching the
+# Stop gates off to get a long-running task finished — showed up as a staged
+# change to everyone else's enforcement. The policies themselves stay tracked
+# in `.failproofai/policies/`; only which of them are enabled here is yours.
+# Untrack it once with: git rm --cached .failproofai/policies-config.json
+/.failproofai/policies-config.json
+
+# The dogfood custom policies, for the same reason: they are the ones that gate
+# a turn (a Stop gate cannot tell "a subagent owns the working tree right now"
+# from "you forgot to commit"), so switching one off while you work should not
+# be a change to anybody else's repo. Same caveat as above — these are tracked,
+# so this rule only takes effect after:
+#   git rm --cached .failproofai/policies/review-policies.mjs .failproofai/policies/workflow-policies.mjs
+/.failproofai/policies/*.mjs
+
 # Python build and test artefacts from fp-cloud-cli/. `/dist` above is the Next.js one at
 # the repo root; fp-cloud-cli builds into its own nested dist/, which that rule does not
 # match, so it needs naming separately.

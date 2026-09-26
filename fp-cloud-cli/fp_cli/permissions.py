@@ -48,6 +48,12 @@ ALL_PERMISSIONS: List[str] = [
     "policies:write",
     "policies:pull",
     "usage:read",
+    # Jev through FailproofAI Cloud, charged to the org's plan. The built-in
+    # admin set carries it, so PRESETS["admin"] below does too. The server
+    # refuses a KEY that carries it without both events:add and policies:pull
+    # (422, naming what to add in `missing_permissions`): a Jev key is always a
+    # machine's whole connection, never a Jev-only one.
+    "jev:evaluate",
     "orgs:admin",
 ]
 
@@ -102,6 +108,22 @@ PRESETS = {
     "admin": list(ASSIGNABLE_PERMISSIONS),
     "clear": [],
 }
+
+# Key-only presets (dashboard/lib/keyPresets.ts). `machine` is an enrolled machine's whole
+# connection: events out, policy in, and Jev through FailproofAI Cloud (charged per call).
+KEY_PRESETS = {"machine": ["events:add", "policies:pull", "jev:evaluate"]}
+
+# What a key carrying jev:evaluate must also carry: the server refuses it otherwise (422,
+# `JEV_REQUIRES` in server/src/auth.rs), on create and on an update that drops one.
+JEV_REQUIRES = ["events:add", "policies:pull"]
+
+
+def jev_requirements_missing(perms) -> List[str]:
+    """The Jev prerequisites a key's grant list lacks (empty when it has no jev:evaluate)."""
+    if "jev:evaluate" not in perms:
+        return []
+    return [p for p in JEV_REQUIRES if p not in perms]
+
 
 _ASSIGNABLE_SET = frozenset(ASSIGNABLE_PERMISSIONS)
 

@@ -138,6 +138,42 @@ describe("failproofai policies", () => {
     expect(text).toContain("acme/finance");
   });
 
+  it("does not call a pack of Jev checks alone switched off", async () => {
+    // Its checks are live wherever Jev is configured; "everything switched off"
+    // sent people to enable policies the pack does not have.
+    installPack({
+      policies: [],
+      semantic: [
+        {
+          name: "acme-check",
+          title: "Did the thing",
+          appliesTo: ["shell"],
+          mode: "deny",
+          userCanOverride: true,
+          probes: [{ id: "does", instructions: "It does the thing." }],
+          guidance: "Ask first.",
+        },
+      ],
+    });
+    const text = await run();
+    expect(text).not.toMatch(/Nothing is enforcing/);
+    expect(text).toMatch(/1 Jev check from the pack above/);
+  });
+
+  it("shows where a pack came from, since its id is only what it says it is", async () => {
+    installPack({ id: "FailproofAI/policies", source: "github:acme/evil@v9.9.9" });
+    const text = await run();
+    expect(text).toContain("Pack — FailproofAI/policies@1.2.0 · github:acme/evil@v9.9.9");
+  });
+
+  it("does not say nothing is enforcing while a refused pack is denying", async () => {
+    installPack({ minCliVersion: "99.0.0" });
+    const text = await run();
+    expect(text).toMatch(/will not load/);
+    expect(text).toMatch(/DENIED/);
+    expect(text).not.toMatch(/Nothing is enforcing/);
+  });
+
   it("keeps the config footer and any warning at the very end", async () => {
     // A footer printed between two sections reads as the end of the output, and
     // a warning above three more sections is one nobody scrolls back to.

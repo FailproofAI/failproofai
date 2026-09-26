@@ -89,6 +89,22 @@ function next(version) {
 }
 
 /**
+ * The lines of a section body that say something.
+ *
+ * Drops blank lines, `###` subheadings, and the `- _Nothing yet._` placeholder
+ * `changelog-open` writes when it opens a section. What is left is what a
+ * reader would call release notes.
+ */
+function substantiveLines(body) {
+  return body
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .filter((line) => !line.startsWith("#"))
+    .filter((line) => !/^[-*]\s*_?\s*nothing\s+yet\.?\s*_?$/i.test(line));
+}
+
+/**
  * The CHANGELOG section for `version`, which becomes the GitHub Release body.
  *
  * A release whose section is missing or empty is refused before anything is
@@ -109,6 +125,20 @@ function changelogSection(version) {
   const end = rest.findIndex((line) => line.startsWith("## "));
   const body = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
   if (body === "") fail(`CHANGELOG.md's "## ${version}" section is empty.`);
+  // A section carrying only its subheadings and the placeholder the bump job
+  // writes is empty in every sense that matters: it becomes the GitHub Release
+  // body, and "Nothing yet" is not release notes. Refused here, at release
+  // time, rather than by asserting that the live CHANGELOG is populated on
+  // every commit — a freshly opened stub is the correct state for main to sit
+  // in between a bump and the next entry, and a check that reddens main for it
+  // reports a problem nobody has.
+  if (substantiveLines(body).length === 0) {
+    fail(
+      `CHANGELOG.md's "## ${version}" section has no entries yet — only headings ` +
+        "and the placeholder the bump job writes. Add what changed; it becomes the " +
+        "GitHub Release body.",
+    );
+  }
   return body;
 }
 

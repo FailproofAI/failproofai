@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
-import { customPolicies, getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
+import { customPolicies, getCustomHooks, getSemanticRegistrations, clearCustomHooks } from "./custom-hooks-registry";
 import {
   findDistIndex,
   rewriteFileTree,
@@ -33,6 +33,8 @@ import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
+import { effectiveReviewerNames } from "./effective-reviewers";
+import { refusedAuthorityWarning, warnAuthority, withMergedAuthority } from "./policy-authority";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -178,6 +180,8 @@ export interface PolicyLoadFailure {
   reason: string;
 }
 
+const warnedSemanticOutsidePack = new Set<string>();
+
 async function loadSingleFile(
   absPath: string,
   opts?: {
@@ -185,6 +189,12 @@ async function loadSingleFile(
     conventionScope?: "project" | "user";
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
     verifyEntrySha?: string;
+    /**
+     * Not a pack artifact, so a `semanticPolicies.add` in it is never asked: a
+     * Jev check reaches a machine only through a pack's manifest. Said once per
+     * file, whether or not Jev is configured — the declaration is dead either way.
+     */
+    outsidePack?: boolean;
   },
 ): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
@@ -220,7 +230,16 @@ async function loadSingleFile(
     const entryTmp = absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
+    const semanticBefore = getSemanticRegistrations().length;
     await importWithDeadline(fileUrl);
+    const ignored = getSemanticRegistrations().slice(semanticBefore).map((d) => d?.name);
+    if (opts?.outsidePack && ignored.length > 0 && !warnedSemanticOutsidePack.has(absPath)) {
+      warnedSemanticOutsidePack.add(absPath);
+      hookLogWarn(
+        `${basename(absPath)}: semanticPolicies.add only takes effect in a pack published with \`failproofai publish\`; ` +
+          `${ignored.join(", ")} ${ignored.length === 1 ? "is" : "are"} never asked here`,
+      );
+    }
     if (policyModuleCache.size >= POLICY_MODULE_CACHE_MAX_ENTRIES) policyModuleCache.clear();
     policyModuleCache.set(absPath, {
       fingerprint,
@@ -448,9 +467,33 @@ export async function loadAllCustomHooks(
       `cloud-managed policies ${existing.id} and ${policy.id} have identical source, so they share ` +
         `one artifact and load as one policy; enforcing it if either asks to enforce`,
     );
-    if (existing.effect !== "enforce" && policy.effect === "enforce") {
-      cloudManagedByPath.set(key, policy);
+    // Authority resolves toward HARD, for the same reason: reviewable only if
+    // every assignment behind these bytes says so. Keeping one record's
+    // declaration let the order of active.json decide, so a team's reviewable
+    // assignment could clear what an org-wide hard one enforces.
+    //
+    // Judged against the checks THIS MACHINE can ask, which is what registration
+    // will judge these same declarations by. Against the builtin set instead, a
+    // `reviewedBy` naming a check an installed pack ships reads as unknown here,
+    // both assignments resolve hard, and the merge has no way to tell the
+    // reviewable one from the hard one. Read inside this branch, so a deployment
+    // with no duplicate artifact does not pay for the manifest read at all.
+    const knownReviewers = effectiveReviewerNames();
+    const winner = existing.effect !== "enforce" && policy.effect === "enforce" ? policy : existing;
+    const { merged, overruled, refused } = withMergedAuthority(winner, [existing, policy], knownReviewers);
+    if (overruled) {
+      warnAuthority(
+        `cloud-managed policies ${existing.id} and ${policy.id} share one artifact and do not all declare it ` +
+          `reviewable, so it stays hard`,
+      );
     }
+    // The merge hardened the record, so registration will not see the refused
+    // declaration and cannot report it. Said here instead, naming both
+    // assignments — which is more than registration could have said.
+    if (refused) {
+      warnAuthority(refusedAuthorityWarning(`cloud-managed policies ${existing.id} and ${policy.id}`, refused));
+    }
+    cloudManagedByPath.set(key, merged);
   }
 
   // Installed packs, keyed by artifact path — the same content-addressing, and
@@ -482,14 +525,46 @@ export async function loadAllCustomHooks(
    *
    * Winner precedence on a name both declare, because the merged record carries
    * the winner's id and version and there is no merging two different defaults.
+   *
+   * Except AUTHORITY, which resolves toward hard like the effect resolves toward
+   * enforce (`withMergedAuthority`): a name is reviewable only if every pack
+   * behind the artifact declares it reviewable. A pack whose manifest does not
+   * list the name at all counts as hard — its copy of the artifact registers
+   * the policy all the same, undeclared, and an undeclared pack policy is hard.
+   * Winner precedence here would let one pack's manifest make another pack's
+   * policy reviewable, which is the one thing a manifest may never do.
+   *
+   * `knownReviewers` is what makes that hold for a pack that ships BOTH tiers.
+   * Judged against the compiled-in set, a `reviewedBy` naming one of the pack's
+   * own checks is a name nothing here has, so the reviewable entry and its hard
+   * peer resolved alike and the merge could not tell them apart — while
+   * registration, which reads the manifest's own checks, honoured it. The set
+   * passed here is that same one.
    */
   const unionCatalog = (
     winner: PolicyCatalogEntry[],
     other: PolicyCatalogEntry[],
-  ): PolicyCatalogEntry[] => [
-    ...winner,
-    ...other.filter((p) => !winner.some((w) => w.name === p.name)),
-  ];
+    knownReviewers: ReadonlySet<string>,
+  ): { policies: PolicyCatalogEntry[]; overruled: string[]; refused: string[] } => {
+    /** Names a pack asked to be reviewable and did not get, for the warning. */
+    const overruled: string[] = [];
+    /** The refusals themselves, which registration will no longer see to report. */
+    const refused: string[] = [];
+    const harden = (entry: PolicyCatalogEntry, peer: PolicyCatalogEntry | undefined) => {
+      const r = withMergedAuthority(entry, [entry, peer ?? {}], knownReviewers);
+      if (r.overruled) overruled.push(entry.name);
+      if (r.refused) refused.push(refusedAuthorityWarning(entry.name, r.refused));
+      return r.merged;
+    };
+    return {
+      policies: [
+        ...winner.map((w) => harden(w, other.find((p) => p.name === w.name))),
+        ...other.filter((p) => !winner.some((w) => w.name === p.name)).map((p) => harden(p, undefined)),
+      ],
+      overruled,
+      refused,
+    };
+  };
 
   const packByPath = new Map<string, ResolvedPack>();
   /**
@@ -535,12 +610,24 @@ export async function loadAllCustomHooks(
     // being intersected away.
     const winner = existing.effect !== "enforce" && pack.effect === "enforce" ? pack : existing;
     const other = winner === existing ? pack : existing;
+    // Read here rather than at the top of the load: only a duplicate artifact
+    // needs it, and this is the branch that has one.
+    const catalog = unionCatalog(winner.policies, other.policies, effectiveReviewerNames());
     packByPath.set(key, {
       ...winner,
-      policies: unionCatalog(winner.policies, other.policies),
+      policies: catalog.policies,
       enabled: unionSelection(winner.enabled, other.enabled),
       clis: unionSelection(winner.clis, other.clis),
     });
+    if (catalog.overruled.length > 0) {
+      warnAuthority(
+        `packs ${existing.id} and ${pack.id} share one artifact and do not all declare ` +
+          `${catalog.overruled.join(", ")} reviewable, so ${catalog.overruled.length === 1 ? "it stays" : "they stay"} hard`,
+      );
+    }
+    // A refused `reviewable` is now hardened here rather than passed on to
+    // registration, so this is the only place left that can name the reason.
+    for (const message of catalog.refused) warnAuthority(message);
   }
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using
@@ -566,6 +653,7 @@ export async function loadAllCustomHooks(
         const failure = await loadSingleFile(absPath, {
           verifyEntrySha:
             cloudManaged?.sha256 ?? pack?.sha256,
+          outsidePack: !pack,
         });
         // Every id behind these bytes. One artifact, one import, one failure —
         // but as many fail-closed guards as there are packs depending on it.
@@ -646,7 +734,7 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: projectScope });
+    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
@@ -686,7 +774,7 @@ export async function loadAllCustomHooks(
   for (const file of userFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "user" });
+    await loadSingleFile(file, { conventionScope: "user", outsidePack: true });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);

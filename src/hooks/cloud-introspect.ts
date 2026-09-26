@@ -135,6 +135,12 @@ export async function introspectKey(
 /** The permission each capability needs. Named so the messages can quote them. */
 export const PERMISSION_EVENTS = "events:add";
 export const PERMISSION_POLICIES = "policies:pull";
+/**
+ * Jev through FailproofAI Cloud, charged to the key's org. The server refuses a
+ * key that carries it without both of the above, so a key with it always
+ * connects for policy and reporting too — there is no Jev-only connection.
+ */
+export const PERMISSION_JEV = "jev:evaluate";
 
 export function hasPermission(identity: KeyIdentity, permission: string): boolean {
   return identity.permissions.includes(permission);

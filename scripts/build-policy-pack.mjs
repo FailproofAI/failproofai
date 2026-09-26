@@ -31,6 +31,24 @@
  * that stops an agent disabling failproofai, it ships compiled in, and
  * `pack-manifest.ts` REFUSES any pack that declares `alwaysOn`. A pack containing
  * it would be rejected by our own loader — correctly.
+ *
+ * **Every policy states its authority** — whether Jev may clear its verdict —
+ * as the registry would resolve it (`manifestAuthority`), not as a copy of
+ * whatever the catalog happened to spell. A machine running this pack reads
+ * authority from the MANIFEST, so a field left off here is a policy that is
+ * silently hard everywhere it is installed. The entry passes the same fields to
+ * `customPolicies.add`, so a manifest rebuilt from the entry (`failproofai
+ * publish`) says the same thing.
+ *
+ * **It emits no `semantic` array, deliberately.** A pack that declares one
+ * REPLACES this build's compiled-in semantic set wholesale
+ * (`semantic/pack-policies.ts`), and this pack is the dress rehearsal for the
+ * regex floor leaving the package — not for Jev's question set leaving it. So
+ * the 39 builtins travel and the 16 semantic policies stay compiled in, which
+ * also keeps `manifestAuthority` below judging `reviewedBy` against the right
+ * list: the builtin reviewer names, which is what a machine installing this pack
+ * will still be running. The separate `FailproofAI/jev-policies` pack is where
+ * the semantic half ships, and it declares its own `minCliVersion`.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -40,6 +58,7 @@ import { fileURLToPath } from "node:url";
 // The one place the pack's id is decided. Imported rather than restated — see
 // PACK_ID below for what restating it cost.
 import { CORE_SOURCE } from "../src/hooks/pack-store.ts";
+import { manifestAuthority } from "../src/hooks/policy-authority.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // `--out <dir>` lets the conformance test generate into a temp directory rather
@@ -95,6 +114,23 @@ for (const policy of BUILTIN_POLICIES) {
     defaultEnabled: policy.defaultEnabled === true,
     match: policy.match,
     fn: policy.fn,
+    // The parameter schema. It has to be registered here as well as written
+    // into the manifest this script builds, because there are TWO manifest
+    // producers for this pack and they have to agree: this script builds one
+    // from POLICY_CATALOG, and the publish command rebuilds one by importing
+    // the entry and reading back what it registered. A field the entry does
+    // not register is a field the second producer cannot know about.
+    //
+    // params is the one that fails silently STRICTER. Registration reads a
+    // pack policy's schema from the manifest, so an absent schema means the
+    // policy sees empty params: block-sudo's allowPatterns, and block-rm-rf's
+    // and block-read-outside-cwd's allowPaths, stop applying -- taking the
+    // user's own configured values with them. No backticks in this comment:
+    // see the note above entrySource.
+    ...(policy.params !== undefined ? { params: policy.params } : {}),
+    // Whether Jev may clear it; see the note on authority at the top.
+    ...(policy.authority !== undefined ? { authority: policy.authority } : {}),
+    ...(policy.reviewedBy !== undefined ? { reviewedBy: policy.reviewedBy } : {}),
   });
 }
 `;
@@ -120,7 +156,20 @@ try {
 // validates these with the loader's own rules, so a shape the loader would
 // refuse fails this build rather than shipping.
 const { POLICY_CATALOG } = await import(join(ROOT, "src/hooks/policy-catalog.ts"));
-const policies = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => ({ ...p }));
+const policies = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => {
+  // Throws on a declaration the registry would quietly downgrade: in the
+  // catalog that is a typo or a renamed semantic policy, and publishing it
+  // would turn a reviewed decision into an unannounced hard one. The fields
+  // come from the same call, so the check cannot be skipped without the
+  // manifest losing its authority too.
+  const resolved = manifestAuthority(p);
+  // Spread first so every field keeps its catalog position; only the two
+  // authority fields are replaced by their resolved values.
+  const entry = { ...p, authority: resolved.authority };
+  if (resolved.reviewedBy) entry.reviewedBy = resolved.reviewedBy;
+  else delete entry.reviewedBy;
+  return entry;
+});
 
 const manifest = JSON.stringify(
   { id: PACK_ID, version, effect: "enforce", policies },
@@ -138,8 +187,10 @@ writeFileSync(
 );
 
 const omitted = POLICY_CATALOG.filter((p) => p.alwaysOn).map((p) => p.name);
+const reviewable = policies.filter((p) => p.authority === "reviewable").length;
 console.log(
-  `[policy-pack] ${PACK_ID}@${version} — ${policies.length} policies, ` +
+  `[policy-pack] ${PACK_ID}@${version} — ${policies.length} policies ` +
+  `(${reviewable} reviewable by Jev, ${policies.length - reviewable} hard), ` +
   `${(entryBytes.length / 1024).toFixed(1)} KB entry` +
   (omitted.length ? `; omitted alwaysOn: ${omitted.join(", ")}` : ""),
 );

@@ -19,6 +19,7 @@ import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConf
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
+import { getSemanticRegistrations } from "./custom-hooks-registry";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
@@ -589,6 +590,13 @@ async function installHooksImpl(
         console.error(`Error: ${msg}`);
         process.exit(1);
       }
+      const semanticCount = getSemanticRegistrations().length;
+      if (semanticCount > 0) {
+        console.error(
+          `Note: ${path} declares ${semanticCount} Jev check(s) with semanticPolicies.add. They take effect only in a ` +
+            "pack published with `failproofai publish`, and are never asked from a policy file.",
+        );
+      }
       if (validatedHooks.length === 0) {
         try {
           await trackHookEvent(getInstanceId(), "custom_policy_validation_failed", {
@@ -1108,17 +1116,29 @@ export async function listHooks(cwd?: string): Promise<void> {
   // `packCount` counts ENABLED policies, so a pack installed with everything
   // switched off reaches zero the same way an empty machine does — and the
   // advice for the two could not be more different. Telling somebody who has
-  // just unticked all 38 to `policies add FailproofAI/policies` sends them to
+  // just unticked all 39 to `policies add FailproofAI/policies` sends them to
   // install what they already have, and doing it would change nothing: the
   // selection is what is empty, not the shelf.
-  const packsInstalled = (() => {
+  //
+  // Nor is it "nothing" while a refused pack fails closed (the warning above
+  // says what is denied), or while a pack's Jev checks are live with no regex
+  // policy on.
+  const { packsInstalled, jevChecks, failClosed } = (() => {
     try {
-      return readInstalledPacks().packs.length;
+      const { packs, errors } = readInstalledPacks();
+      return {
+        packsInstalled: packs.length,
+        jevChecks: packs.reduce((n, p) => n + (p.effect === "observe" ? 0 : (p.semantic?.length ?? 0)), 0),
+        // The refusals `missingGuards` denies over (pack-failclosed.ts).
+        failClosed: errors.some((e) => e.effect !== "observe" && !e.semanticOnly),
+      };
     } catch {
-      return 0;
+      return { packsInstalled: 0, jevChecks: 0, failClosed: false };
     }
   })();
-  if (packCount === 0 && packsInstalled === 0) {
+  if (failClosed) {
+    // Said by the pack section's warning, where the refused pack is named.
+  } else if (packCount === 0 && packsInstalled === 0) {
     footer.unshift(
       nextStep(
         `failproofai policies add ${CORE_SOURCE}`,
@@ -1127,6 +1147,14 @@ export async function listHooks(cwd?: string): Promise<void> {
       ),
       note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
       note("Look first:      failproofai policies show <owner>/<repo>", opts),
+    );
+  } else if (packCount === 0 && jevChecks > 0) {
+    footer.unshift(
+      note(
+        `No regex policy is on; ${jevChecks} Jev check${jevChecks === 1 ? "" : "s"} from ` +
+          `${packsInstalled === 1 ? "the pack" : "the packs"} above apply where Jev is configured (failproofai jev status).`,
+        opts,
+      ),
     );
   } else if (packCount === 0) {
     footer.unshift(
@@ -1292,7 +1320,9 @@ export async function listHooks(cwd?: string): Promise<void> {
     const { packs, errors } = readInstalledPacks();
     for (const pack of packs) {
       const taken = pack.enabled ?? pack.policies.map((p) => p.name);
-      groups.push(rule(`Pack — ${pack.id}@${pack.version}`, opts));
+      // The source too: the id is whatever the manifest claims, the source is
+      // the repository this CLI actually fetched it from.
+      groups.push(rule(`Pack — ${pack.id}@${pack.version} · ${pack.source}`, opts));
       groups.push(
         table(
           {
@@ -1319,7 +1349,15 @@ export async function listHooks(cwd?: string): Promise<void> {
     if (errors.length > 0) {
       groups.push(
         warning(
-          errors.map((err) => `pack ${err.id ?? "(unnamed)"} will not load: ${err.reason}`),
+          errors.flatMap((err) => [
+            `pack ${err.id ?? "(unnamed)"} will not load: ${err.reason}`,
+            ...(err.effect !== "observe" && !err.semanticOnly
+              ? [
+                  "Until it loads, the tool calls its policies cover are DENIED. Fix it, or remove it with: " +
+                    `failproofai policies remove ${err.id ?? "<id>"}`,
+                ]
+              : []),
+          ]),
           opts,
         ),
       );

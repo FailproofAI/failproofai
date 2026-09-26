@@ -405,7 +405,7 @@ mod tests {
     use super::*;
     use crate::worker::WorkerCommand;
     use std::sync::atomic::AtomicBool;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     fn temp_socket_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -465,6 +465,7 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
         let worker_socket_path = temp_socket_path("worker-internal");
+        let ready_path = socket_path.clone();
         let handle = std::thread::spawn(move || {
             let worker = Arc::new(crate::worker::Worker::new(worker_socket_path, worker_cmd));
             let server = Server::bind(&socket_path, worker).expect("bind should succeed");
@@ -472,9 +473,26 @@ mod tests {
                 .run_until(shutdown_clone)
                 .expect("run_until should not error");
         });
-        // Give the background thread a moment to actually bind before the
-        // test tries to connect.
-        std::thread::sleep(Duration::from_millis(50));
+        // Wait for the listener to exist, rather than sleeping a fixed 50ms and
+        // hoping. A fixed sleep is a race: it passes on an idle developer
+        // machine and fails on a loaded CI runner, where all eight threads of
+        // `multiple_concurrent_pings_all_get_answered` panicked on
+        // `UnixStream::connect(...).unwrap()` because the bind had not happened
+        // yet. Connecting is the exact property every caller needs, so that is
+        // what we poll for; the probe's own connection is accepted and dropped,
+        // which the server handles as an EOF like any other closed client.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if UnixStream::connect(&ready_path).is_ok() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "test server did not start listening on {} within 5s",
+                ready_path.display()
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
         TestServerGuard {
             shutdown,
             handle: Some(handle),

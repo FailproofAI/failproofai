@@ -1178,7 +1178,18 @@ export async function runConfigureWizard(
         // did — it is not a trusted back door. http stays loopback-only, so a
         // bearer token still cannot be exported onto the wire in clear by
         // setting a variable.
-        const override = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+        //
+        // `--url` comes first. It was read into `answers.url` and then only
+        // ever used as a CONDITION above, never as the URL, so
+        // `config --token <key> --url <X>` connected to the env value or the
+        // hosted default and ignored X — reporting a machine somewhere its
+        // operator had explicitly said not to. The CLI fills `answers.url` from
+        // `--url`, falling back to FAILPROOFAI_CLOUD_URL, so the source named
+        // on screen is whichever of the two the value actually is.
+        const envOverride = process.env.FAILPROOFAI_CLOUD_URL?.trim();
+        const flagOverride = answers.url?.trim();
+        const override = flagOverride || envOverride;
+        const source = flagOverride && flagOverride !== envOverride ? "--url" : "FAILPROOFAI_CLOUD_URL";
         if (override) {
           const validated = validateCloudUrl(cloudBaseFor(override));
           if (!validated.ok) {
@@ -1186,7 +1197,7 @@ export async function runConfigureWizard(
             // wants THAT endpoint, and quietly reporting a machine to the
             // hosted service instead is the one outcome they did not ask for.
             stdout.write(
-              `\nFAILPROOFAI_CLOUD_URL is set to "${override}", which cannot be used: ` +
+              `\n${source === "--url" ? "--url is" : "FAILPROOFAI_CLOUD_URL is set to"} "${override}", which cannot be used: ` +
                 `${validated.reason}\n`,
             );
             return cancel();
@@ -1196,7 +1207,7 @@ export async function runConfigureWizard(
           // matters and a machine reporting somewhere unexpected is exactly the
           // thing nobody notices until they go looking for data that is not
           // there.
-          stdout.write(`\nUsing ${url} (from FAILPROOFAI_CLOUD_URL).\n`);
+          stdout.write(`\nUsing ${url} (from ${source}).\n`);
         } else {
           url = cloudBaseFor(DEFAULT_INGEST_URL);
         }
@@ -1507,9 +1518,13 @@ export async function runConfigureWizard(
         token: connect.token,
         machineId: connect.machineId,
         machineLabel: connect.machineLabel,
-        // Both streams, as disclosed at the connect question. This is the one
-        // place that decision becomes a written setting.
-        sessions: true,
+        // Both streams, as disclosed at the connect question, unless the run
+        // said `--no-transcripts`. This is the one place that decision becomes
+        // a written setting — and it used to be a literal `true`, so the flag
+        // was parsed, carried here in `answers`, and silently ignored: a fleet
+        // that asked for decisions only shipped every prompt, file and command
+        // output. The separate `--connect` path always honoured it.
+        sessions: answers.noTranscripts !== true,
       });
       connected = outcome.anyConfigured;
       // Show the human label with the id in parentheses when they differ.
@@ -1519,6 +1534,11 @@ export async function runConfigureWizard(
           : `${connect.machineLabel} (${connect.machineId})`;
       for (const line of describeOutcome(outcome, shownAs, connect.url)) {
         stdout.write(`${line}\n`);
+      }
+      // Said when it took effect, as `--connect` says it: the default carries
+      // prompts and file contents, so the opt-out is worth confirming.
+      if (outcome.ingest.ok && answers.noTranscripts === true) {
+        stdout.write("  Session transcripts are NOT being sent (--no-transcripts). Decisions only.\n");
       }
       // Never the key, the URL, or the count — only that it happened and which
       // capabilities the server actually granted.

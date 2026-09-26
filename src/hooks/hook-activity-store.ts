@@ -24,6 +24,7 @@ import {
 import { join } from "node:path";
 import type { IntegrationType } from "./types";
 import { hookActivityDir } from "./fp-home";
+import { sanitizeJevActivity } from "./jev-activity";
 
 export const PAGE_SIZE = 25;
 
@@ -76,6 +77,36 @@ export interface HookActivityEntry {
   matchedPolicies?: string[];
   decision: "allow" | "deny" | "instruct";
   reason: string | null;
+  /**
+   * The Jev (two-tier) fields. Present only when a Jev config (BYOK) exists and
+   * the call was a PreToolUse / PermissionRequest gate. Absent means the regex
+   * engine decided alone, exactly as before these fields existed.
+   *
+   * `evaluator`: `jev` (the two-tier path ran) or `jev-fallback` (Jev was
+   * unavailable, truncated or mismatched, so the regex result stood;
+   * `jevFallbackReason` says why). `jev` alone does NOT mean Jev answered:
+   * when a hard policy denies, Jev is aborted and the row carries
+   * `{ evaluator: "jev", jevMode }` and no other Jev field; when no semantic
+   * policy applies to the call, no request is sent and the row carries
+   * `{ evaluator: "jev", jevDecision: "allow", jevMode }`. Read a row with
+   * `jevOutcome` (`jev-activity.ts`): answered, fallback, not-consulted or
+   * no-request.
+   *
+   * Validated on write by `persistHookActivity` (see `jev-activity.ts`): an
+   * invalid value is dropped field by field, and `jevFallbackReason` is stored
+   * as a known code (`timeout`, `http-429`, `error`, …) or `other`, never free
+   * text. The collector ships these fields to FailproofAI Cloud.
+   */
+  evaluator?: "jev" | "jev-fallback";
+  /** Jev's own verdict, before combining with the regex results. */
+  jevDecision?: "allow" | "instruct" | "deny";
+  /** Reviewable policies whose deny/instruct Jev cleared. */
+  jevCleared?: string[];
+  jevFallbackReason?: string;
+  jevLatencyMs?: number;
+  jevModel?: string;
+  /** `shadow` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
+  jevMode?: "shadow" | "enforce";
   durationMs: number;
   sessionId?: string;
   transcriptPath?: string;
@@ -95,15 +126,19 @@ export interface HookActivityEntry {
    * Where the policy that DECIDED came from. Absent when nothing decided (a
    * plain allow) and on rows written before this existed — so, like
    * `matchedPolicies`, `undefined` means "unknown", not "builtin".
+   *
+   * `jev`: no registered policy decided — Jev's own verdict did (enforce mode;
+   * `policyName` is then `semantic/<check>`). Rows written before this value
+   * existed leave it out on such calls.
    */
-  policySource?: "builtin" | "custom" | "convention" | "cloud" | "pack";
+  policySource?: "builtin" | "custom" | "convention" | "cloud" | "pack" | "jev";
   /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
   cloudPolicyId?: string;
   /** Immutable version of that policy — the half of attribution that identifies WHICH version ran. */
   cloudVersion?: number;
   /**
-   * Pack id and version of the decider. Present only when `policySource` is
-   * "pack", and here for the same reason the cloud pair is: the display name
+   * Pack id and version of the decider. Present when `policySource` is "pack",
+   * or "jev" when the deciding check came from a pack; and here for the same reason the cloud pair is: the display name
    * encodes both ("pack/acme/finance@1.2.0/…") but only as a string, so without
    * these the question "which pack, which version decided this" could only be
    * answered by re-parsing our own label.
@@ -123,10 +158,14 @@ export interface HookActivityEntry {
    * record is the entire point of observe mode: without it the row is
    * indistinguishable from one where the policy never matched, and the rollout
    * being trialled is unmeasurable.
+   *
+   * Jev in shadow mode files its own deny/instruct here too, as
+   * `{policyId: "semantic/<check>", version: <Jev model id or "jev">}`: the
+   * same question — what would this have done — for the same reader.
    */
   observed?: Array<{
     policyId: string;
-    /** A cloud deployment number, or a pack's version string. */
+    /** A cloud deployment number, a pack's version string, or a Jev model id (`jev` when unknown). */
     version: string | number;
     decision: "deny" | "instruct";
     reason: string | null;
@@ -144,7 +183,7 @@ export interface HookActivityFilters {
    * organization's policies decided" is the question cloud rollout reporting
    * is built on, and it is unanswerable without this.
    */
-  source?: "builtin" | "custom" | "convention" | "cloud" | "pack";
+  source?: "builtin" | "custom" | "convention" | "cloud" | "pack" | "jev";
 }
 
 export interface HookActivityStats {
@@ -194,7 +233,13 @@ function releaseLock(): void {
 
 // ── Writing (synchronous — hook handler is short-lived) ──
 
-export function persistHookActivity(entry: HookActivityEntry): void {
+export function persistHookActivity(input: HookActivityEntry): void {
+  // The Jev fields are validated here, at the one door every row passes
+  // through, rather than trusted from the caller: they are shipped off the
+  // machine by the collector, and a fallback reason is the one field that can
+  // carry free text (see jev-activity.ts). A row with no Jev fields is written
+  // exactly as given.
+  const entry = sanitizeJevActivity(input);
   ensureDir();
   acquireLock();
   try {
@@ -397,6 +442,72 @@ export function getAllHookActivityEntries(): HookActivityEntry[] {
   return [...currentEntries, ...archiveEntries];
 }
 
+/** See {@link getHookActivityEntriesSince}. */
+export const ROTATION_CLOCK_SLACK_MS = 10 * 60 * 1000;
+
+/**
+ * Every entry stamped at or after `sinceMs`, newest first — without reading the
+ * whole history.
+ *
+ * Pages are never pruned, so a long-lived machine has hundreds of them, and a
+ * windowed question ("how did Jev do in the last day") should not pay for all
+ * of them. It does not have to: an entry's timestamp is taken before it is
+ * appended, and a page is only renamed to `page-<rotatedAt>-<seq>` after its
+ * last append, so every entry in a page is at or before `rotatedAt`. Archives
+ * are listed newest first, so once one was rotated before the window opened,
+ * it and every older page lie wholly outside it and reading stops there.
+ *
+ * `current.jsonl` and the newest pages can still hold entries just outside the
+ * window (two hook processes race to append), hence the per-entry filter.
+ * The stop is taken with {@link ROTATION_CLOCK_SLACK_MS} to spare, so a clock
+ * stepped back a few minutes between two writes costs one extra page read
+ * rather than silently dropping rows from the window.
+ *
+ * No row is returned twice, although this reads without the writers' lock. A
+ * hook process can rotate `current.jsonl` into a new page between this reading
+ * `current.jsonl` and listing the pages, and that page then holds the rows just
+ * read. So the pages are listed once before `current.jsonl` is read; a page
+ * that appears only in the second listing was rotated during the read, and any
+ * of its rows that were also in `current.jsonl` are skipped. (A page rotated
+ * before the read holds none of them: `current.jsonl` was fresh by then.)
+ */
+export function getHookActivityEntriesSince(sinceMs: number): HookActivityEntry[] {
+  ensureDir();
+  const dir = storeDirValue();
+  const inWindow = (e: HookActivityEntry) => typeof e.timestamp === "number" && e.timestamp >= sinceMs;
+  const listedBefore = new Set(getArchiveFiles());
+  sinceReadProbe?.("before-current");
+  const current = readJsonlFile(join(dir, CURRENT_FILE));
+  sinceReadProbe?.("after-current");
+  const readFromCurrent = new Map<string, number>();
+  for (const e of current) {
+    const key = JSON.stringify(e);
+    readFromCurrent.set(key, (readFromCurrent.get(key) ?? 0) + 1);
+  }
+  const notReadYet = (e: HookActivityEntry): boolean => {
+    const key = JSON.stringify(e);
+    const n = readFromCurrent.get(key) ?? 0;
+    if (n === 0) return true;
+    readFromCurrent.set(key, n - 1);
+    return false;
+  };
+  const out = current.reverse().filter(inWindow);
+  for (const file of getArchiveFiles()) {
+    const rotatedAt = parseInt(file.slice(5, -6).split("-")[0], 10);
+    if (Number.isFinite(rotatedAt) && rotatedAt < sinceMs - ROTATION_CLOCK_SLACK_MS) break;
+    let entries = readJsonlFile(join(dir, file));
+    if (!listedBefore.has(file)) entries = entries.filter(notReadYet);
+    out.push(...entries.reverse().filter(inWindow));
+  }
+  return out;
+}
+
+/** Test-only: runs between the reads of {@link getHookActivityEntriesSince}, to land a rotation exactly there. */
+let sinceReadProbe: ((phase: "before-current" | "after-current") => void) | null = null;
+export function _setSinceReadProbeForTest(probe: ((phase: "before-current" | "after-current") => void) | null): void {
+  sinceReadProbe = probe;
+}
+
 
 export function searchHookActivity(
   filters: HookActivityFilters,
@@ -519,6 +630,7 @@ function getArchiveFiles(): string[] {
 
 export function _resetForTest(testDir?: string): void {
   rotateSeq = 0;
+  sinceReadProbe = null;
   // null, not the default path: clearing the override lets the getter re-read
   // FAILPROOFAI_HOME, which a test may have changed since this module loaded.
   storeDirOverride = testDir ?? null;

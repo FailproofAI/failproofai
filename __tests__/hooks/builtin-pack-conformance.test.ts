@@ -57,6 +57,8 @@ const CORPUS: { tool: string; input: Record<string, unknown> }[] = [
   { tool: "Bash", input: { command: "npm publish" } },
   { tool: "Bash", input: { command: "git commit --amend" } },
   { tool: "Bash", input: { command: "git stash drop" } },
+  { tool: "Bash", input: { command: "git clean -fdx" } },
+  { tool: "Bash", input: { command: "git clean --dry-run -fdx" } },
   { tool: "Bash", input: { command: "git add -A" } },
   { tool: "Bash", input: { command: "psql -c 'DROP TABLE users'" } },
   { tool: "Bash", input: { command: "npm install -g leftpad" } },
@@ -89,7 +91,8 @@ async function loadPack() {
   // `customPoliciesEnabled: false` and a scratch cwd, together, because
   // convention discovery would otherwise pick up THIS repo's own dogfood
   // policies in .failproofai/policies/ — the first run of this test loaded 43
-  // policies instead of 38 and hung for 23s in a policy that shells out to `gh`.
+  // policies instead of 38 (the count at the time) and hung for 23s in a policy
+  // that shells out to `gh`.
   // An explicit path is deliberately not gated by that flag, so the pack itself
   // still loads.
   const result = await loadAllCustomHooks([entry], {
@@ -108,7 +111,7 @@ describe("builtin pack conformance", () => {
   it("packages every builtin except the one packs may not carry", () => {
     const expected = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => p.name);
     expect(manifest.policies.map((p) => p.name)).toEqual(expected);
-    expect(manifest.policies).toHaveLength(38);
+    expect(manifest.policies).toHaveLength(39);
     // The omitted one is the guard against disabling failproofai. pack-manifest
     // REFUSES a pack declaring alwaysOn, so shipping it here would produce a
     // pack our own loader rejects.
@@ -132,7 +135,7 @@ describe("builtin pack conformance", () => {
     }
   });
 
-  it("registers all 38 policies when loaded through the pack lane", async () => {
+  it("registers all 39 policies when loaded through the pack lane", async () => {
     const hooks = await loadPack();
     expect(hooks.map((h) => h.name)).toEqual(manifest.policies.map((p) => p.name));
   });

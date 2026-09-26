@@ -51,6 +51,7 @@
  *   VERSION                  layout / cli / daemon versions
  *   config.json       0644   non-secret: mode, daemon, collector prefs
  *   credentials.json  0600   every token
+ *   jev.json          0600   the customer's own Jev endpoint + key (BYOK opt-in)
  *   policies-config.json     the builtin enable/disable set + params
  *   bin/                     downloaded daemon binaries, one per version
  *   policies/                every policy: the user's *.mjs sit directly here
@@ -147,6 +148,14 @@ export const configFile = (home?: string) => atHome(home, "config.json");
  * why `ingest.json` and `cloud.json` were separate files before this.
  */
 export const credentialsFile = (home?: string) => atHome(home, "credentials.json");
+
+/**
+ * The customer's own Jev endpoint and key (BYOK), owner-only. Its presence is
+ * the whole opt-in to the two-tier evaluator: absent, hooks run the regex
+ * engine exactly as before. GLOBAL only — a repository can never set it. See
+ * `src/hooks/semantic/jev-config.ts`.
+ */
+export const jevConfigFile = (home?: string) => atHome(home, "jev.json");
 
 // ── Daemon binaries ──────────────────────────────────────────────────────────
 
@@ -390,6 +399,12 @@ export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "c
 /** Per-session enforcement pauses, keyed by a hash of the session id. */
 export const sessionPauseDir = () => resolve(stateDir(), "sessions");
 /**
+ * The semantic (Jev) evaluator's local state: `sessions/<id>.json` holds the
+ * human prompts recorded at `UserPromptSubmit`, and `verdicts.jsonl` one row
+ * per semantic evaluation. Written only when a Jev config (BYOK) is present.
+ */
+export const semanticDir = () => resolve(stateDir(), "semantic");
+/**
  * When the scheduled audit last ran, and when the next one is due.
  *
  * The DAEMON is the sole writer (`crates/failproofaid/src/audit_lane.rs`, which
@@ -554,6 +569,9 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // policy silently — it keeps enforcing whatever it last had, reports healthy,
   // and never reconciles again. Nothing re-derives a token.
   { path: credentialsFile, class: "user-typed" },
+  // The Jev BYOK config. A person typed the key; nothing regenerates it, and
+  // losing it silently turns the two-tier evaluator off.
+  { path: jevConfigFile, class: "user-typed" },
   // Holds `daemon.configured` (the flag that makes the machine fail closed),
   // the collector preferences, `[audit] auto`, the telemetry opt-out, and
   // `collector.sources.*.extra_paths` — the entire output of `harness add-path`.
@@ -642,6 +660,11 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   { path: codexSessionPathsFile, class: "derived" },
   { path: shimsDir, class: "derived" },
   { path: sessionPauseDir, class: "derived" },
+  // Recorded prompts (a six-hour window that only ever lets Jev clear a
+  // reviewable policy) and a local diagnostic log of semantic verdicts that is
+  // never shipped. Losing either costs a clear and some history, never
+  // enforcement.
+  { path: semanticDir, class: "derived" },
   { path: logsDir, class: "derived" },
   { path: lastVersionFile, class: "derived" },
   { path: launcherMarker, class: "derived" },

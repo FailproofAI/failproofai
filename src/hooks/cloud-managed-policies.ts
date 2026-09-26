@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
+import { authorityFieldsOf } from "./policy-authority";
+import type { PolicyAuthority } from "./policy-types";
 
 /**
  * Active-manifest schema versions this reader accepts.
@@ -44,6 +46,19 @@ export interface CloudManagedPolicyArtifact {
   sha256: string;
   path: string;
   deployment: number;
+  /**
+   * Whether Jev may clear this policy's verdict once it is configured, as the
+   * ASSIGNMENT declares it — code inside the artifact cannot grant itself this.
+   * Absent means `hard`, which is what keeps Jev from weakening central
+   * enforcement by default: a cloud policy is only ever reviewable because
+   * whoever deployed it said so. Applies to every hook the artifact registers.
+   *
+   * Read and validated here; the daemon has to carry it into `active.json`
+   * (`ActivePolicy` in `cloud_policies.rs`) before a deployment can set it.
+   */
+  authority?: PolicyAuthority;
+  /** The semantic policies that must all be asked and none answer `deny`; see `authority`. */
+  reviewedBy?: string[];
 }
 
 interface ActiveManifest {
@@ -55,6 +70,8 @@ interface ActiveManifest {
     effect?: string;
     sha256: string;
     path: string;
+    authority?: unknown;
+    reviewedBy?: unknown;
   }>;
 }
 
@@ -206,6 +223,11 @@ export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
       sha256: policy.sha256,
       path,
       deployment: manifest.deployment,
+      // Unlike `effect`, a malformed authority is dropped rather than refused:
+      // dropping it makes this policy `hard`, the default that keeps enforcing,
+      // while refusing would take the whole deployment down over an optional
+      // field. Absent stays absent.
+      ...authorityFieldsOf(policy as unknown as Record<string, unknown>),
     };
   });
 }

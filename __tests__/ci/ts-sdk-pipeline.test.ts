@@ -34,6 +34,20 @@ function run(...args: string[]): string {
   });
 }
 
+/**
+ * `release.mjs`'s own rule for "this section says nothing", restated so the
+ * test can exercise it directly: blank lines, `###` subheadings and the
+ * `- _Nothing yet._` placeholder do not count as release notes.
+ */
+function substantive(body: string): string[] {
+  return body
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .filter((line) => !line.startsWith("#"))
+    .filter((line) => !/^[-*]\s*_?\s*nothing\s+yet\.?\s*_?$/i.test(line));
+}
+
 function workflow(path: string): Record<string, any> {
   return parse(readFileSync(path, "utf8")) as Record<string, any>;
 }
@@ -78,11 +92,35 @@ describe("the version scheme", () => {
     expect(distTag).toBe(isPrerelease === "true" ? "beta" : "latest");
   });
 
-  it("refuses a release whose CHANGELOG section is missing", () => {
+  it("refuses a release whose CHANGELOG section is missing or unwritten", () => {
     // A published version nobody can read the changes for is a version that may
-    // as well not have shipped.
+    // as well not have shipped. Both refusals are checked against FIXTURE
+    // versions, not against whatever the live CHANGELOG happens to hold today.
+    //
+    // It used to assert that the CURRENT version's section was longer than 50
+    // characters, and that made main red for days: the bump job opens a section
+    // with `- _Nothing yet._` in it the moment a release publishes, which is the
+    // correct state to sit in between a release and the next entry — and the
+    // assertion reported it as a failure on every unrelated push until somebody
+    // wrote prose. The guarantee worth keeping is that `release.mjs` REFUSES to
+    // build a release body out of that stub, which is now what is tested.
     expect(() => run("changelog", "9.9.9")).toThrow();
-    expect(run("changelog").length).toBeGreaterThan(50);
+
+    // 0.0.1-beta.0 shipped, so its section has real notes and always will.
+    const shipped = run("changelog", "0.0.1-beta.0");
+    expect(shipped.length).toBeGreaterThan(50);
+    expect(shipped).toMatch(/### /);
+  });
+
+  it("refuses a section carrying only headings and the placeholder", () => {
+    // The stub `changelog-open` writes. `release.mjs` reads a section's
+    // SUBSTANTIVE lines — not its length — so a heading plus "Nothing yet" is
+    // refused however long the words are, and a one-line real entry passes
+    // however short.
+    const stub = ["### Fixes", "", "- _Nothing yet._"].join("\n");
+    expect(substantive(stub)).toHaveLength(0);
+    expect(substantive(["### Fixes", "", "- Fixed a thing. (#1)"].join("\n"))).toHaveLength(1);
+    expect(substantive(["- _nothing yet_", "- _Nothing Yet._", "* _Nothing yet._"].join("\n"))).toHaveLength(0);
   });
 });
 

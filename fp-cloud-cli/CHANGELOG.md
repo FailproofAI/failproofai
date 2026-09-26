@@ -2,10 +2,28 @@
 
 ## 0.0.2b0 — 2026-09-22
 
-Open for the next release. `0.0.1` published on 2026-09-22 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.2b0` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Added
+
+- `jev:evaluate` is a known permission — Jev through FailproofAI Cloud, charged to the
+  org's plan — so `fp keys` and `fp users` accept it instead of refusing it as unknown,
+  and the `admin` preset carries it, as the server's built-in admin set now does. The
+  server refuses a KEY carrying it without both `events:add` and `policies:pull` (422,
+  naming what to add in `missing_permissions`); the `admin` preset has both. (#833)
+- `fp keys create/update --permission-set machine`: the dashboard's key-only preset
+  (`events:add` + `policies:pull` + `jev:evaluate`), for an enrolled machine using Jev through
+  FailproofAI Cloud. `fp keys` also refuses `jev:evaluate` without both prerequisites itself
+  (exit 2, naming what is missing) instead of sending the key for the server's 422. (#833)
+
+### Changed
+
+- `fp policies publish` (and `policies compose --publish`) refuses a source carrying Jev
+  fields a cloud policy never reads — a `semanticPolicies.add(...)` call, or a registration
+  declaring `authority: "reviewable"` — before anything is sent (exit 1, `--no-verify` does
+  not skip it). Both were published as versions that read Jev-aware and are not: semantic
+  checks load only from a pack, and a cloud policy's authority comes from its deployment, so
+  it stays hard. Ship Jev checks in a pack with `failproofai publish`. Same rule, and the
+  same comment-aware detection, as the dashboard's publish form; the server does not read
+  the source, so nothing else refuses it for `fp`. (#833)
 
 ## 0.0.1 — 2026-09-22
 

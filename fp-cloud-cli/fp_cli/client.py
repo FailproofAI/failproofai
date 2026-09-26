@@ -34,6 +34,7 @@ from .errors import (
     NetworkError,
     NotFoundError,
 )
+from .policy_check import cloud_publish_problem
 from .models import (
     AgentEvent,
     Alert,
@@ -1601,7 +1602,19 @@ def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
 def publish_policy(
     ctx: ClientContext, policy_id: str, source: str, description: str = ""
 ) -> PolicyVersion:
-    """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place."""
+    """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place.
+
+    Refuses Jev fields a cloud policy never reads before anything is sent, here
+    because `policies publish` and `policies compose --publish` both route through
+    it — and regardless of `--no-verify`, which only skips the syntax check.
+    """
+    problem = cloud_publish_problem(source)
+    if problem:
+        raise ApiError(
+            f"{policy_id} cannot be published as a cloud policy: {problem}",
+            hint=("Jev checks ship in a failproofai pack — `failproofai publish` — where "
+                  "semanticPolicies.add and authority: \"reviewable\" take effect"),
+        )
     body = {"id": policy_id, "source": source, "description": description}
     return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
 

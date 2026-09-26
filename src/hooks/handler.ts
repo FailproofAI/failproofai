@@ -24,18 +24,32 @@ import {
   OPENCLAW_EVENT_MAP,
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
+import { existsSync } from "node:fs";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import { normalizeCliPayload } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
+// Types only: the semantic (Jev) modules are loaded with a dynamic import, and
+// only once a Jev config exists, so an unconfigured machine never loads them.
+import type { TwoTierReview } from "./semantic/combine";
+import type { JevActivityFields } from "./semantic/combine";
+import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
+import { contestedReviewerNames, effectiveReviewerNames } from "./effective-reviewers";
+import {
+  authorityDeclarationFor,
+  refusedAuthorityWarning,
+  resolvePolicyAuthority,
+  warnAuthority,
+} from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
+import * as hookTelemetry from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
@@ -46,6 +60,7 @@ import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from 
 import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
+import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
 
 /**
@@ -153,6 +168,16 @@ export interface EvaluateHookEventOptions {
    * written for.
    */
   fallbackCwd?: string;
+  /**
+   * The warm worker's hook into its request queue. Called at most once, and
+   * only on the two-tier path, at the point this evaluation stops reading the
+   * process-global policy registry and starts waiting on Jev's network answer
+   * — so the next queued hook can run instead of every hook on the machine
+   * queueing behind that round trip. After it is called nothing in this
+   * evaluation reads the registry again. The one-shot path has no queue and
+   * leaves it unset.
+   */
+  releaseRegistry?: () => void;
 }
 
 /**
@@ -183,6 +208,214 @@ async function runObserved(
       is_observe_mode: true,
     });
     return { decision: "allow" };
+  }
+}
+
+// ── Two-tier (Jev) opt-in ────────────────────────────────────────────────────
+//
+// Jev reviews a call only when ALL of these hold, and the regex engine runs
+// alone — exactly as it did before two tiers existed — otherwise:
+//
+// - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
+// - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
+// - this is not the fail-closed `forceDecision` path and no session pause is
+//   active — a pause suspends local policy, and Jev must not become a way to
+//   evaluate what the pause switched off;
+// - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool
+//   that the AGENT requested (see `isHumanAuthoredGate`).
+//
+// There is no cloud-deployment exclusion: cloud policies default to `hard`, so
+// Jev can only make a centrally managed machine stricter, never weaker.
+//
+// Turning Jev off. The switch that works everywhere is the config file itself:
+// it is read on every event, here, in whichever process evaluates — the
+// daemon's warm worker included — so `failproofai jev remove` (or a `mode:
+// "shadow"` config, which keeps enforcing the regex result) applies from the
+// next tool call, with no restart. `FAILPROOFAI_EVALUATOR=legacy` is the dev
+// escape hatch, read from the EVALUATING process's environment: it covers a
+// one-shot hook (no daemon) and a worker whose own environment sets it, but
+// not a variable exported in a shell on a daemon machine — the daemon
+// forwards a hook's event, cli, stdin and cwd to the worker, never the hook
+// process's environment. `failproofai jev status` says so when it sees the
+// variable. A per-session switch for daemon machines would be a new field in
+// the daemon protocol; there is none today.
+
+/** The two gate events Jev reviews. Everything else is regex-only. */
+const JEV_GATE_EVENTS: ReadonlySet<string> = new Set(["PreToolUse", "PermissionRequest"]);
+
+/**
+ * A gate event that carries a command the HUMAN typed, not one the agent
+ * requested: Pi's `user_bash` (`!cmd` at Pi's prompt) canonicalizes to
+ * `PreToolUse` like an agent's `tool_call`. Jev judges an agent's request
+ * against what the human asked for, and says so to the model ("A coding agent
+ * has REQUESTED the tool call"); the human's own command is the human asking,
+ * and never appears in `user_said`, so Jev would judge it as an unrequested
+ * agent action and could block the human's own command. The regex policies
+ * still run on it exactly as they always have.
+ */
+function isHumanAuthoredGate(rawEventType: string | undefined, cli: IntegrationType): boolean {
+  return cli === "pi" && rawEventType === "user_bash";
+}
+
+function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
+  return process.env.FAILPROOFAI_EVALUATOR === "legacy" || !!opts?.forceDecision;
+}
+
+/**
+ * The BYOK config (with the build's default mode, D2), or null (Jev off). A
+ * config that cannot be read is off, never a failure. Logged at info, like
+ * every configured-but-broken Jev path: warn-level lines reach the hook's
+ * stderr, which is the deny text itself on some CLIs (Factory's exit 2).
+ * `failproofai jev status` is where a broken config is made visible.
+ *
+ * The file is checked for BEFORE the import, and that order is the point. With
+ * no `jev.json` the answer is null however the module would have read it — so
+ * the stat decides it, and a machine that never configured Jev never evaluates
+ * a line of the semantic modules to be told what their absence already says.
+ * The same stat-rather-than-load trade `warnAuthority` makes, for the same
+ * reason. It short-circuits nothing but a null `loadJevConfig` would have
+ * returned itself: that function reads this path, and an absent file, an
+ * unreadable directory above it and a path that is not a file are all null
+ * there too.
+ */
+async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
+  try {
+    if (!existsSync(jevConfigFile())) return null;
+    const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
+    const config = loadJevConfig();
+    // `loadJevConfig` never returns a switched-off config; this says so again at
+    // the one place it matters, because an `off` that got through would fall to
+    // the default mode below — which is `enforce`.
+    return config && config.mode !== "off" ? { config, defaultMode: DEFAULT_JEV_MODE } : null;
+  } catch (err) {
+    hookLogInfo(
+      `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Start Jev's review of this call — before the regex policies run, so the two
+ * proceed in parallel — or return null for the regex-only path.
+ */
+async function startTwoTier(
+  canonicalEventType: string,
+  parsed: Record<string, unknown>,
+  session: SessionMetadata,
+  cli: IntegrationType,
+  opts: EvaluateHookEventOptions | undefined,
+  activePause: ActivePause | null,
+): Promise<TwoTierReview | null> {
+  if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
+  if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
+  if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
+  if (jevForcedOff(opts) || activePause) return null;
+  const loaded = await readJevConfig();
+  if (!loaded) return null;
+  const cfg = loaded.config;
+  try {
+    const { startJevReview } = await import("./semantic/jev-review");
+    return startJevReview(cfg, {
+      eventType: canonicalEventType,
+      toolName: parsed.tool_name,
+      toolInput: parsed.tool_input,
+      cwd: session.cwd,
+      permissionMode: session.permissionMode,
+      sessionId: session.sessionId,
+      cli,
+    });
+  } catch (err) {
+    // Configured but unable to start: that is a fallback, and it is recorded
+    // as one — every regex verdict hard, the regex result final. Recorded as
+    // `error`, one of the reason codes the activity store and the collector
+    // know (T8's closed list); an unknown code would ship as `other`. Logged
+    // at info, off the hook's stderr (see `readJevConfig`); the activity row
+    // carries the fallback.
+    hookLogInfo(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
+    return {
+      mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
+      review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null }),
+      abort: () => {},
+      authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
+    };
+  }
+}
+
+/**
+ * The Jev properties for `hook_policy_triggered`, from T8's
+ * `jevTelemetryProperties` (decisions, reason codes, policy and model names,
+ * a latency — never command or prompt text). `{}` when the two-tier path did
+ * not run, so an unconfigured machine's event is unchanged, and `{}` when the
+ * helper is not in this build (it is T8's, not a §7 contract) or throws:
+ * telemetry never costs a hook its answer.
+ *
+ * Only its `jev_`-prefixed keys are kept. These are spread into an event whose
+ * core properties (`decision`, `policy_name`, `event_type`, …) are what the
+ * rollout is read from, and a helper owned by another task must not be able to
+ * overwrite one of them — silently, and only on two-tier machines — by
+ * emitting a key of that name. The helper is treated as untrusted in every
+ * other respect (absent, non-object, throwing); this is the same guard for
+ * what it returns.
+ */
+function jevTelemetry(activity: JevActivityFields | undefined): Record<string, unknown> {
+  if (!activity) return {};
+  try {
+    const build = (hookTelemetry as unknown as { jevTelemetryProperties?: (entry: JevActivityFields) => unknown })
+      .jevTelemetryProperties;
+    const props = typeof build === "function" ? build(activity) : null;
+    if (!props || typeof props !== "object" || Array.isArray(props)) return {};
+    return Object.fromEntries(Object.entries(props as Record<string, unknown>).filter(([key]) => key.startsWith("jev_")));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Record what the human just typed, for Jev to judge later calls against.
+ * Only when Jev is configured. Every canonical `UserPromptSubmit` is passed,
+ * except a prompt a policy denied on a CLI where that deny is known to hold
+ * (`ENFORCEMENT_CAPABILITY` says `block`): the agent never receives that
+ * prompt, so it cannot be what the agent is working on. Where a prompt deny
+ * is only observed — Goose, OpenCode, Antigravity — or not verified, the
+ * agent does get the prompt, and it is passed like any other. Which CLIs'
+ * prompt events count as human is decided inside `captureIntent` (T4).
+ * Never throws; a failure is logged at info (see `readJevConfig`).
+ *
+ * `captureIntent` gets the whole normalized payload (`payload`): the prompt
+ * text is in a different field on some harnesses (Goose: `message`), and the
+ * marks that tell a human's prompt from a subagent's or an extension's are
+ * elsewhere in it. `prompt` is §7's original field, still read by the
+ * contract stub; T4's implementation reads `payload` and ignores it.
+ */
+async function captureJevIntent(
+  canonicalEventType: string,
+  decision: "allow" | "deny" | "instruct",
+  parsed: Record<string, unknown>,
+  session: SessionMetadata,
+  cli: IntegrationType,
+  opts: EvaluateHookEventOptions | undefined,
+): Promise<void> {
+  if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
+  try {
+    if (!(await readJevConfig())) return;
+    if (decision === "deny") {
+      const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");
+      if (ENFORCEMENT_CAPABILITY[cli]?.UserPromptSubmit === "block") return;
+    }
+    const { captureIntent } = await import("./semantic/intent");
+    // Built first, then passed: the one object satisfies §7's shape and T4's.
+    const event = {
+      eventType: canonicalEventType,
+      sessionId: session.sessionId,
+      transcriptPath: session.transcriptPath,
+      cli,
+      payload: parsed,
+      prompt: parsed.prompt,
+    };
+    captureIntent(event);
+  } catch (err) {
+    hookLogInfo(`Jev intent capture failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -310,7 +543,7 @@ export async function evaluateHookEvent(
     } else {
       // Load enabled policies (merge across project/local/global scopes)
       config = readMergedHooksConfig(session.cwd);
-      clearPolicies();
+      clearPolicies(cli);
 
       // A session pause suspends LOCAL policy only, for a bounded time. Cloud
       // assignments are exempt below for the same reason `disabledCustomPolicies`
@@ -561,6 +794,19 @@ export async function evaluateHookEvent(
           ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudVersion: cloudManaged.version } : {}),
           ...(pack ? { packId: pack.id, packVersion: pack.version } : {}),
         });
+        // Whether Jev may clear this policy's verdict. The cloud assignment or
+        // the pack manifest declares it for those routes, the hook itself only
+        // for the user's own files; anything unclear registers as hard. Said
+        // aloud when a `reviewable` claim is refused and Jev is configured, so
+        // an author is not left wondering why Jev never clears it.
+        const authority = authorityDeclarationFor(hook, { cloudManaged, pack });
+        // Against the same set `registerPolicy` judges it by, or this warning
+        // describes a different machine than the registry does: a pack that
+        // ships its own semantic checks registers reviewable and was told, on
+        // every one of those policies, that it stays hard. `effectiveReviewerNames`
+        // is cached for the registration pass, so this costs nothing extra.
+        const refused = resolvePolicyAuthority(authority, effectiveReviewerNames(), contestedReviewerNames()).downgraded;
+        if (refused) warnAuthority(refusedAuthorityWarning(registeredName, refused));
         registerPolicy(
           registeredName,
           hook.description ?? "",
@@ -572,6 +818,7 @@ export async function evaluateHookEvent(
           // configured. Matched by the pack's own name for the policy, which is
           // the name before the `pack/<id>@<version>/` prefix is applied.
           pack?.policies.find((p) => p.name === hook.name)?.params,
+          authority,
         );
       }
 
@@ -660,19 +907,65 @@ export async function evaluateHookEvent(
       );
     }
 
+    // Two-tier: when a Jev config exists and this is a gate, Jev's request
+    // starts HERE, before any regex policy runs, and evaluatePolicies combines
+    // the two (see semantic/combine.ts). Otherwise this is null and the call
+    // below is exactly the regex-only evaluation it always was.
+    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause);
+    // On the two-tier path the registry is read for the activity row BEFORE
+    // evaluating, because evaluatePolicies may hand the registry back to the
+    // warm worker's queue (`releaseRegistry`) while it waits on Jev, and the
+    // next request's clearPolicies() could then run under this one. Same
+    // cached lookup, same answer: nothing between here and there registers.
+    const matchedBeforeRelease = twoTier
+      ? getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name)
+      : null;
+
     // Evaluate policies (use canonical PascalCase event type)
-    const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
+    const result = twoTier
+      ? await evaluatePolicies(canonicalEventType, parsed, session, config, {
+          ...twoTier,
+          releaseRegistry: opts?.releaseRegistry,
+        })
+      : await evaluatePolicies(canonicalEventType, parsed, session, config);
+    // Shadow mode: what Jev WOULD have done, filed where observe-mode policies
+    // file theirs, so the "would have" view counts it with no second channel.
+    // `semantic/<check>` cannot be mistaken for a cloud policy — cloud ids
+    // carry no `/` (`POLICY_ID_RE` in cloud-managed-policies.ts) — and the
+    // version is a Jev model id or `jev`, never a deployment number. Only on
+    // the two-tier path, so an unconfigured row is untouched.
+    const shadowVerdict = result.twoTier?.shadowVerdict;
+    if (shadowVerdict) {
+      observedResults.push({
+        policyId: shadowVerdict.policyName,
+        version: shadowVerdict.version,
+        decision: shadowVerdict.decision,
+        reason: shadowVerdict.reason,
+      });
+    }
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
+
+    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts);
 
     // Which policies actually ran for this event, regardless of how they
     // decided. `result.policyName` names only the decider — null on a plain
     // allow — so without this a row cannot tell "your policy ran and allowed"
     // from "no policy covers this event". The lookup is the same cached call
     // the evaluator already made, so it costs nothing.
-    const matchedPolicies = getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map(
-      (p) => p.name,
-    );
+    const matchedPolicies =
+      matchedBeforeRelease ??
+      getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name);
+
+    // The pack a deciding Jev check came from, recorded as a pack's regex
+    // verdict records its own. The resolved set holds each name once (a name
+    // packs disagree on is asked for nobody), so the name finds its declaration.
+    const jevOrigin =
+      result.policyName && result.twoTier?.decidedByJev
+        ? (await import("./semantic/pack-policies"))
+            .resolveSemanticPolicies(cli)
+            .find((p) => `semantic/${p.name}` === result.policyName)?.origin
+        : undefined;
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {
@@ -686,6 +979,8 @@ export async function evaluateHookEvent(
       decision: result.decision,
       reason: result.reason,
       durationMs,
+      // How Jev took part (§7 fields). Absent unless the two-tier path ran.
+      ...(result.twoTier ? result.twoTier.activity : {}),
       sessionId: session.sessionId,
       transcriptPath: session.transcriptPath,
       cwd: session.cwd,
@@ -693,8 +988,13 @@ export async function evaluateHookEvent(
       hookEventName: session.hookEventName,
       // Attribution. A builtin is anything registered that is not in the map,
       // so its absence is meaningful rather than missing — but only when a
-      // policy actually decided; a plain allow names nobody.
-      ...(result.policyName
+      // policy actually decided; a plain allow names nobody. When Jev's own
+      // verdict decided, no registered policy did, and claiming "builtin" here
+      // would be false — so it is attributed to Jev itself. Leaving it out
+      // instead filed every Jev block under "unattributed" on FailproofAI
+      // Cloud's policy page, beside rows written before attribution existed.
+      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevOrigin } : {}),
+      ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);
             return {
@@ -751,6 +1051,7 @@ export async function evaluateHookEvent(
           convention_scope: conventionScope,
           has_custom_params: hasCustomParams,
           param_keys_overridden: paramKeysOverridden,
+          ...jevTelemetry(result.twoTier?.activity),
         });
         // Deny/instruct is exactly the response the daemon's warm worker
         // needs to return fast — a live network POST to PostHog on this path

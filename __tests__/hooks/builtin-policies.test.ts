@@ -38,8 +38,8 @@ describe("hooks/builtin-policies", () => {
 
   describe("BUILTIN_POLICIES", () => {
     // 40 before `block-self-pause` was merged into `block-failproofai-commands`.
-    it("has 39 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+    it("has 40 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(40);
     });
 
     it("has 11 default-enabled policies", () => {
@@ -1830,6 +1830,115 @@ describe("hooks/builtin-policies", () => {
     it("allows non-Bash tool", async () => {
       const ctx = makeCtx({ toolName: "Write", toolInput: { file_path: "/some/file", content: "x" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+  });
+
+  describe("warn-git-clean", () => {
+    // The gap this policy closes was found by hand-testing the two-tier
+    // evaluator: `git clean -fdx` was caught by NEITHER tier. No regex builtin
+    // matched the string, and `destructive-deletion` cannot fire on it —
+    // `destroys` answered 0.94 but `irreplaceable` answered low, and evidence
+    // is the min over a policy's probes. So the cases below are the contract,
+    // not decoration.
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "warn-git-clean")!;
+    const decide = (command: string, params?: Record<string, unknown>) =>
+      policy.fn(makeCtx({ toolName: "Bash", toolInput: { command }, params }));
+
+    it("warns on git clean -fdx, the spelling that reaches ignored files", async () => {
+      const result = await decide("git clean -fdx");
+      expect(result.decision).toBe("instruct");
+      expect(result.reason).toContain("STOP");
+      // The message has to say WHAT goes, or "confirm the paths" is unanswerable.
+      expect(result.reason).toContain(".gitignore");
+    });
+
+    it.each([
+      ["clustered, any order", "git clean -xdf"],
+      ["separate flags", "git clean -f -d -x"],
+      ["long force", "git clean --force -d"],
+      ["ignored-only", "git clean -fX"],
+      ["directories, not ignored", "git clean -fd"],
+      ["files+ignored, no -d", "git clean -fx"],
+      ["with an exclude operand", "git clean -e keep -fdx"],
+      ["after another command", "npm run build && git clean -fdx"],
+      ["piped", "git clean -fdx | tee clean.log"],
+      ["with an env prefix", "GIT_DIR=x git clean -xfd"],
+      ["under git's own global options", "git -c color.ui=false clean -fdx"],
+      ["with -C, whose operand is not the subcommand", "git -C sub clean -fdx"],
+    ])("warns on the destructive form (%s)", async (_label, command) => {
+      expect((await decide(command)).decision).toBe("instruct");
+    });
+
+    it("warns when clean.requireForce is waived instead of passing -f", async () => {
+      // `git -c clean.requireForce=false clean -xd` deletes exactly as much
+      // with no force flag anywhere, so a force-flag-only scan reads the one
+      // spelling that needs none as harmless.
+      expect((await decide("git -c clean.requireForce=false clean -xd")).decision).toBe("instruct");
+    });
+
+    it.each([
+      ["--dry-run", "git clean --dry-run -xd"],
+      ["-n", "git clean -xdn"],
+      ["-n with -f also present", "git clean -f --dry-run -xd"],
+      ["-fdx as a pathspec after --", "git clean -n -- -fdx"],
+    ])("allows the safe inspection form (%s)", async (_label, command) => {
+      expect((await decide(command)).decision).toBe("allow");
+    });
+
+    it.each([
+      ["no force, so git deletes nothing", "git clean -xd"],
+      ["bare force: narrowest radius, most traffic", "git clean -f"],
+      ["no flags at all", "git clean"],
+      ["interactive", "git clean -i"],
+      ["a different subcommand that merely starts with clean", "git cleanup -fdx"],
+      ["not git at all", "clean -fdx"],
+    ])("allows %s", async (_label, command) => {
+      expect((await decide(command)).decision).toBe("allow");
+    });
+
+    it("narrows through params: destructiveFlags without 'd' allows git clean -fd", async () => {
+      const params = { destructiveFlags: ["x", "X"] };
+      expect((await decide("git clean -fd", params)).decision).toBe("allow");
+      expect((await decide("git clean -fdx", params)).decision).toBe("instruct");
+    });
+
+    it("widens through params: adding 'f' warns on a bare git clean -f", async () => {
+      const params = { destructiveFlags: ["d", "x", "X", "f"] };
+      expect((await decide("git clean -f", params)).decision).toBe("instruct");
+      expect((await decide("git clean --force", params)).decision).toBe("instruct");
+      // Widening must not defeat the dry-run exemption.
+      expect((await decide("git clean -fn", params)).decision).toBe("allow");
+    });
+
+    it("switches off for an empty destructiveFlags, rather than firing on everything", async () => {
+      expect((await decide("git clean -fdx", { destructiveFlags: [] })).decision).toBe("allow");
+    });
+
+    it("declares a params schema whose default is the documented three letters", () => {
+      expect(policy.params?.destructiveFlags?.type).toBe("string[]");
+      expect(policy.params?.destructiveFlags?.default).toEqual(["d", "x", "X"]);
+    });
+
+    it("allows non-Bash tool", async () => {
+      const ctx = makeCtx({ toolName: "Write", toolInput: { file_path: "/some/file", content: "x" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    it("is HARD, because pairing it with destructive-deletion would switch it off", () => {
+      // Measured on `git clean -fdx` through the real hook:
+      // `destructive-deletion.destroys` = 0.94, `irreplaceable` below the probe
+      // line's display floor. Evidence is the MIN over probes, so the check
+      // cannot fire — and `git clean` carries no path operand, so `facts.paths`
+      // is empty and `irreplaceable` has nothing to reason about. A named check
+      // that is asked and does not fire answers "no concern", which CLEARS, so
+      // `reviewedBy: ["destructive-deletion"]` would make this policy inert on
+      // every machine that configured Jev. No other deny-mode semantic check
+      // covers untracked-file deletion, so nothing would be left able to deny.
+      expect(policy.authority).toBe("hard");
+      expect("reviewedBy" in policy).toBe(false);
+      // Off by default and instruct-level on purpose: `git clean -fdx` is a
+      // command developers run intentionally and often.
+      expect(policy.defaultEnabled).toBe(false);
     });
   });
 

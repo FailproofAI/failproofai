@@ -34,6 +34,35 @@ def test_policy_permissions_are_assignable_and_in_presets():
     assert "policies:read" in PRESETS["standard"]
     assert "policies:pull" in PRESETS["admin"]
 
+
+def test_jev_permission_is_assignable_and_in_the_admin_preset_only():
+    from fp_cli.permissions import (
+        ALL_PERMISSIONS,
+        ASSIGNABLE_PERMISSIONS,
+        KEY_ASSIGNABLE_PERMISSIONS,
+        PRESETS,
+    )
+
+    assert "jev:evaluate" in ALL_PERMISSIONS
+    # In the server's declared order: after usage:read, and orgs:admin stays last.
+    assert ALL_PERMISSIONS.index("jev:evaluate") == ALL_PERMISSIONS.index("usage:read") + 1
+    assert ALL_PERMISSIONS[-1] == "orgs:admin"
+    # A machine key carries it, so it is grantable to a key as well as a member.
+    assert "jev:evaluate" in ASSIGNABLE_PERMISSIONS
+    assert "jev:evaluate" in KEY_ASSIGNABLE_PERMISSIONS
+    # The server's built-in admin set carries it; nothing narrower does.
+    assert "jev:evaluate" in PRESETS["admin"]
+    assert "jev:evaluate" not in PRESETS["read-only"]
+    assert "jev:evaluate" not in PRESETS["standard"]
+    # And the admin preset can be granted to a key: it carries both permissions
+    # the server requires beside jev:evaluate.
+    assert {"events:add", "policies:pull"} <= set(PRESETS["admin"])
+
+
+def test_parse_permissions_accepts_jev_evaluate():
+    assert _parse_permissions(["events:add policies:pull jev:evaluate"]) == [
+        "events:add", "policies:pull", "jev:evaluate"]
+
 BASE = "http://dash.test"
 
 
@@ -109,6 +138,42 @@ def test_keys_create_rejects_malformed_token(logged_in, runner):
     # missing colon / empty action → red error box, exit 2, before any mutation
     assert runner.invoke(app, ["keys", "create", "k", "--add", "events"]).exit_code == 2
     assert runner.invoke(app, ["keys", "create", "k", "--add", "events:"]).exit_code == 2
+
+
+@respx.mock
+def test_keys_create_machine_preset(logged_in, runner):
+    # The dashboard's key-only `machine` preset: collect, pull policy, Jev.
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{BASE}/api/permission-sets").mock(return_value=httpx.Response(200, json=[]))
+    route = respx.post(f"{BASE}/api/keys").mock(
+        return_value=httpx.Response(201, json={"id": "k9", "name": "m", "permissions": [], "created_at": "t"})
+    )
+    result = runner.invoke(app, ["--json", "keys", "create", "m", "--permission-set", "machine"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls.last.request.content)["permissions"] == ["events:add", "jev:evaluate", "policies:pull"]
+
+
+@respx.mock
+def test_keys_create_refuses_jev_without_its_prerequisites(logged_in, runner):
+    # The server's 422 (JEV_REQUIRES), said before anything is sent.
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[]))
+    route = respx.post(f"{BASE}/api/keys").mock(return_value=httpx.Response(201, json={}))
+    result = runner.invoke(app, ["--json", "keys", "create", "k", "--add", "jev:evaluate,events:add"])
+    assert result.exit_code == 2, result.output
+    assert "missing: policies:pull" in json.loads(result.stdout)["error"]
+    assert not route.called
+
+
+@respx.mock
+def test_keys_update_refuses_dropping_a_jev_prerequisite(logged_in, runner):
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[
+        {"id": "k1", "name": "m", "permissions": ["events:add", "jev:evaluate", "policies:pull"],
+         "created_at": "t", "revoked_at": None}]))
+    route = respx.patch(f"{BASE}/api/keys/k1").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["--json", "keys", "update", "m", "--remove", "events:add", "--yes"])
+    assert result.exit_code == 2, result.output
+    assert "missing: events:add" in json.loads(result.stdout)["error"]
+    assert not route.called
 
 
 @respx.mock

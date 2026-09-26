@@ -19,7 +19,7 @@
 Wherever your agents run, we see it — and we can say no. Failproof hooks 12 agent
 harnesses — coding CLIs like Claude Code and Codex, chat gateways like Hermes,
 self-hosted assistants like OpenClaw — capturing every run and blocking dangerous
-tool calls before they execute. 39 built-in policies. Zero latency. Runs locally.
+tool calls before they execute. 40 built-in policies. Zero latency. Runs locally.
 
 </div>
 
@@ -177,7 +177,7 @@ three are the developer favourites — coding CLIs are the harness class we cove
 deepest. The `sanitize-*` family is separate: it runs after a tool returns, so
 it reports a secret in tool output rather than keeping it out of the context.
 
-→ [All 39 built-in policies](https://docs.befailproof.ai/policies/packs)
+→ [All 40 built-in policies](https://docs.befailproof.ai/policies/packs)
 
 ---
 

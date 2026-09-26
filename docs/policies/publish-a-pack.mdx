@@ -36,6 +36,19 @@ customPolicies.add({
 
 `defaultEnabled` defaults to **false** when you omit it. A plain `failproofai policies add` switches on only what you marked — installing a stranger's every policy unattended is not a decision the installer should make for its user.
 
+A policy may also declare `authority: "reviewable"` with a `reviewedBy` list, which lets the Jev semantic evaluator clear its verdict on machines that configure Jev. `failproofai publish` copies both into the manifest, and a machine reads them from there; it refuses to build if a declaration would not be honored, such as a misspelled check name or, in a pack that declares Jev checks, a check it does not declare. Leave them out and the policy is hard. See [Policy authority](/policies/authority).
+
+### Jev checks in a pack
+
+A pack can also carry [Jev checks](/reference/policy-sdk#jev-checks) — `semanticPolicies.add()` — beside its policies, or on their own. A pack is the only way a Jev check reaches a machine: in a local policy file it is never asked. `publish` validates each one with the loader's rules and writes them to the manifest's `semantic` array.
+
+- **Limits.** At most 24 checks per pack. Together, their questions must fit what one Jev request has room for; `publish` refuses a pack over that budget and prints both numbers. That room is shared with the checks already on a machine (the built-in ones, and other packs'), so a check that does not fit beside them is not asked there: `policies add` names it.
+- **They are added to the built-in checks.** Jev asks your pack's checks as well as the 16 [built-in checks](/policies/authority#semantic-policy-names), which keep running. Only a pack installed from a FailproofAI repository (`FailproofAI/jev-policies`) replaces the built-in checks with its own. Checks from several packs add up; when their questions overflow what one Jev request can carry, FailproofAI's checks are kept first and the rest are dropped with a warning. A name two packs declare differently is honoured for neither — every policy naming it stays hard — while identical declarations of one name are fine. The 16 built-in names are reserved: declared by a pack not installed from a FailproofAI repository, that pack's version is never asked, so pick names of your own.
+- **`reviewedBy` names the pack's own checks.** When the pack declares any, `publish` judges every `reviewedBy` against those names only, so a built-in check name the pack does not declare itself is refused. A pack with no checks of its own is judged against the built-in names.
+- **Set `--min-cli-version`.** A CLI too old for Jev checks ignores the `semantic` array and installs the rest, so pass `--min-cli-version <version>` for a pack that carries checks. It is written to the manifest as `minCliVersion`: an older CLI refuses to install the pack, and refuses to load it if it is already installed — which, for an `enforce` pack with policies, denies what those policies cover (see [When a pack will not load](/policies/packs#when-a-pack-will-not-load)). The value must be plain semver or `publish` refuses it; a CLI that cannot compare a stored value warns and ignores it.
+
+A pack of Jev checks alone (no `customPolicies.add`) is refused by a CLI too old for Jev checks ("pack manifest declares no policies") and ignored if already installed. If a machine refuses such a pack when loading it (a `minCliVersion` it does not meet, a missing or altered artifact), it reports why and denies nothing, because the pack blocks nothing without Jev. Older builds do not all agree: 1.0.7 loads one as an empty pack but denies every tool call if its artifact is missing or altered, and a Jev-capable prerelease before 1.0.8-beta.0 (such as 1.0.7-beta.2) denies every tool call whenever it refuses one, including for a `minCliVersion` above it. So before rolling a machine back, remove the pack (`failproofai policies remove <id>`); `publish` prints this reminder for a pack of Jev checks alone.
+
 Write as many files as you like; one per category reads well. Every file in the directory that registers policies is bundled into the single artifact a pack has to be.
 
 <Warning>
@@ -60,7 +73,7 @@ failproofai publish
 
 It works out where to publish, what to bundle and what version to call it, and only asks when nothing in the repository tells it. In order, stopping before it creates a release if anything is wrong:
 
-1. Finds the policy files here by **content** — those that import `failproofai` and call `customPolicies.add` — rather than by filename, so it finds `guards.mjs` and ignores an unrelated `policies.mjs`. It does not descend into subdirectories, so a test fixture is never swept up by accident.
+1. Finds the policy files here by **content** — those that import `failproofai` and call `customPolicies.add` or `semanticPolicies.add` — rather than by filename, so it finds `guards.mjs` and ignores an unrelated `policies.mjs`. It does not descend into subdirectories, so a test fixture is never swept up by accident.
 2. Reads the repo from `git remote get-url origin`, in the **file's** directory rather than yours, and decides the version.
 3. Finds your credential: `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth login`. It needs release-write and nothing else, and is never printed.
 4. Creates the repository if it does not exist. This happens before the build, so a pack refused in the next step can leave a new repository behind with no release in it.
@@ -69,7 +82,7 @@ It works out where to publish, what to bundle and what version to call it, and o
 
 | File | What it is |
 | --- | --- |
-| `failproofai-pack.json` | The manifest: id, version, effect, and one entry per policy |
+| `failproofai-pack.json` | The manifest: id, version, effect, one entry per policy, and — when there are any — the Jev checks (`semantic`) and `minCliVersion` |
 | `failproofai-pack.mjs` | Your bundled entry |
 | `SHA256SUMS` | `<sha256>  <filename>` for the other two |
 
@@ -87,7 +100,7 @@ failproofai publish \
   --dry-run
 ```
 
-`--id` sets the pack id when it should differ from the repo, `--tag` sets the release's tag, `--notes` replaces the generated release notes — which is where `policies show --releases` reads each release's counts and commit from — `--out` chooses where the assets are written (default `dist-pack`), and `--dry-run` builds them without publishing and needs no credential.
+`--id` sets the pack id when it should differ from the repo, `--tag` sets the release's tag, `--notes` replaces the generated release notes — which is where `policies show --releases` reads each release's counts and commit from — `--out` chooses where the assets are written (default `dist-pack`), `--min-cli-version` sets the oldest CLI that may install the pack ([above](#jev-checks-in-a-pack)), and `--dry-run` builds them without publishing and needs no credential.
 
 Anyone can now install it with `failproofai policies add acme/support-agent`. See [policy packs](/policies/packs) for pinning a version and taking only part of one.
 
@@ -121,7 +134,7 @@ The repository must also be **public**. Installs are anonymous HTTPS with no cre
 
 ## Observe before you enforce
 
-A manifest may declare `"effect": "observe"` — `failproofai publish --effect observe` is what sets it. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
+A manifest may declare `"effect": "observe"` — `failproofai publish --effect observe` is what sets it. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. An observe pack's Jev checks are not asked at all, and neither are those of a pack installed with `--cli` for other agents. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
 
 ```json
 { "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }

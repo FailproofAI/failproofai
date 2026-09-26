@@ -194,7 +194,7 @@ if (hookIdx >= 0) {
         const reason =
           attempt.failure === "protocol-mismatch"
             ? "failproofaid is running a different protocol version than this CLI, so it " +
-              "cannot evaluate this call. Run `failproofai config` to update the daemon."
+              "cannot evaluate this call. Run `failproofai update` to update the daemon."
             : "failproofaid could not be reached. This machine is configured to run hooks through it " +
               "— check the daemon (see `failproofai config`) rather than retrying blindly.";
         result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {
@@ -373,7 +373,7 @@ async function runCli() {
   // at all, only the paragraph in the top-level dump that this rewrite moved.
   // `help` and `publish` are new. `policy` and `pack` are canonicalized to
   // `policies` above and never reach this list.
-  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "publish", "update", "migrate", "help"];
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "jev", "publish", "update", "migrate", "help"];
   // ── help ─────────────────────────────────────────────────────────────────
   //
   // The index and the reference manual used to be the same document: 152 lines,
@@ -475,6 +475,7 @@ async function runCli() {
             ["policies add", "Turn one on, or install a pack: <owner>/<repo>"],
             ["policies remove", "Turn one off, or uninstall a whole pack"],
             ["publish", "Ship your own policies as a pack anyone can install"],
+            ["jev setup", "Let Jev judge calls with your own key, above regex"],
           ],
         },
         {
@@ -900,6 +901,139 @@ async function runCli() {
       // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
       // promises we send shape, never value.
       sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // jev --url <url> | jev setup | status | test | remove
+  //
+  // The customer's own Jev endpoint and key (BYOK), the only opt-in to the
+  // two-tier hook evaluator. Writes ~/.failproofai/jev.json and nothing else —
+  // no root, no daemon call; hooks re-read the file on every event. The key is
+  // taken on stdin or at a masked prompt and never printed, so it stays out of
+  // `ps`, shell history and scrollback; `--token` is the one spelling that does
+  // put it on the command line, and says so every time it is used.
+  if (args[0] === "jev") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      await printHelp({
+        command: "jev",
+        tagline: "judge tool calls with Jev — FailproofAI Cloud or your own endpoint — above a hard regex floor",
+        sections: [
+          {
+            label: "usage",
+            entries: [
+              ["failproofai jev --url <url> --key-stdin [options]"],
+              ["failproofai jev setup --provider <kind> --key-stdin [options]"],
+              ["failproofai jev setup --provider failproofai [--mode <m>]"],
+              ["failproofai jev status [--json]"],
+              ["failproofai jev test [--json]"],
+              ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
+              ["failproofai jev remove"],
+            ],
+          },
+          {
+            label: "why",
+            lines: [
+              "Regex policies cannot tell `rm -rf build/` asked for from `rm -rf ~`",
+              "slipped in. Jev, TypeSafe's classifier, reads the call against what",
+              "you asked for. With a config it judges each call in parallel with",
+              "the regex policies: a hard policy's deny always stands, a reviewable",
+              "one's may be cleared, and any Jev failure falls back to regex. With",
+              "no config nothing changes — the regex policies run exactly as before.",
+            ],
+          },
+          {
+            label: "providers",
+            entries: [
+              ["typesafe", "api.typesafe.ai, model jev-1.13.0"],
+              ["openrouter", "openrouter.ai, model typesafe/jev-1.13, zero-retention routing"],
+              ["vercel", "Vercel AI Gateway, model typesafe-ai/jev"],
+              ["cloudflare", "Workers AI, model typesafe/jev; needs --account-id"],
+              ["custom", "any TypeSafe-compatible endpoint; needs --base-url"],
+              ["failproofai", "FailproofAI Cloud, on your org's plan; no key or URL of your own"],
+            ],
+            after: [
+              "--url reads the provider off the host, so it needs no --provider;",
+              "any other host is custom, with that URL as its base. It is a BASE:",
+              "/systemone is appended to it, and a URL that already names an",
+              "endpoint (/models, /chat/completions, /systemone, …) is refused",
+              "with the base it implies. `failproofai jev models` says which",
+              "model ids a base serves, and setup refuses one it does not.",
+              "",
+              "FailproofAI Cloud needs no setup here: `failproofai config --token",
+              "<key>` with a key that carries jev:evaluate (the \"machine\" preset)",
+              "turns it on in shadow mode when there is no jev.json yet — except",
+              "with --no-transcripts, which only stores the key; then",
+              "`failproofai jev setup --provider failproofai` switches it on. Its",
+              "key stays in credentials.json; no --url ever selects it.",
+            ],
+          },
+          {
+            label: "setup options",
+            entries: [
+              ["--url <url>", "The endpoint. Picks the provider from its host."],
+              ["--token <token>", "The key, on the command line — history and `ps` see it."],
+              ["--provider <kind>", "Required the first time, or to switch providers."],
+              ["--key-stdin", "Read the key from stdin; on a terminal, a masked prompt."],
+              ["--key-from-env", "Store no key; read FAILPROOFAI_JEV_API_KEY per session."],
+              ["--account-id <id>", "Cloudflare account id (32 hex characters)."],
+              ["--base-url <url>", "Override the API base; `default` clears it."],
+              ["--model <id>", "Override the model id; `default` clears it."],
+              ["--mode <m>", "enforce (default), shadow (log Jev, enforce regex), or off."],
+              ["--timeout-ms <n>", "Per-call budget before falling back. Default 3000."],
+            ],
+          },
+          {
+            label: "notes",
+            lines: [
+              "• Global only: ~/.failproofai/jev.json, written 0600. A copy anyone",
+              "  else can read — or one in a directory anyone else can WRITE, who",
+              "  could replace it — is refused; a repository can never set it.",
+              "• Re-running setup for the same provider keeps the key, so",
+              "  `failproofai jev setup --mode shadow` just switches the mode.",
+              "• The daemon does not see your shell's environment: keep the key in",
+              "  the file on a machine set up with `failproofai config`.",
+              "• --token is the fast path, not the safe one: your shell history keeps",
+              "  it and the process list shows it. Prefer --key-stdin.",
+            ],
+          },
+          {
+            label: "examples",
+            lines: [
+              "failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key",
+              "failproofai jev --url https://openrouter.ai/api/v1 --token <token>",
+              "failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key",
+              "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
+              "failproofai config --token <key>          (FailproofAI Cloud, shadow mode)",
+              "failproofai jev setup --mode enforce      (switch the configured route's mode)",
+              "failproofai jev setup --mode off          (keep the config, stop asking Jev)",
+              "failproofai jev test",
+              "failproofai jev status",
+              "failproofai jev models",
+            ],
+          },
+        ],
+      });
+      process.exit(0);
+    }
+
+    lastSubcommand = "jev";
+    const { runJevCommand } = await import("../src/hooks/jev-cli");
+    const result = await runJevCommand(subArgs);
+    if (subArgs.includes("--json") && result.json !== undefined) {
+      process.stdout.write(`${result.json}\n`);
+    } else {
+      await printLines(result.lines, result.exitCode === 0);
+    }
+    await track("cli_jev", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never the provider, a URL, a model id or the key.
+      // An argv opening with an option is the one-shot form of `setup`, and is
+      // reported as `setup`: the literal, never the option or what follows it.
+      sub: subArgs[0].startsWith("-") ? "setup" : ["setup", "status", "test", "models", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);

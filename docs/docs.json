@@ -170,7 +170,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "policies/overview"
+                  "policies/overview",
+                  "policies/jev-byok",
+                  "policies/jev-cloud"
                 ]
               },
               {
@@ -217,6 +219,7 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
+                  "reference/jev-intent",
                   "reference/custom-agents",
                   "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
@@ -231,6 +234,7 @@
                   "reference/failproof-cli",
                   "reference/local-dashboard",
                   "policies/local-configuration",
+                  "policies/authority",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",

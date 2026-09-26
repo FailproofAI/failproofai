@@ -88,6 +88,8 @@ customPolicies.add({
 | `description` | No | Human-readable purpose shown in policy listings and decisions. |
 | `match.events` | No | Event types that invoke the policy. Omitting `match` invokes it for every available event. |
 | `fn` | Yes | Synchronous or asynchronous function that returns an `allow`, `instruct`, or `deny` result. |
+| `authority` | No | `"hard"` (the default) or `"reviewable"`. Whether the Jev semantic evaluator may clear this policy's verdict. See [Policy authority](/policies/authority). |
+| `reviewedBy` | No | The semantic checks Jev must all be asked, none of which may answer deny, before Jev may clear the verdict. A check that warns still clears it. Required for `"reviewable"`. |
 
 Filter tools inside `fn`. `match.toolNames` is not part of the public custom-policy type.
 
@@ -285,6 +287,64 @@ Attribute the result to your custom policy under **Observe → policy**. A block
 
 Keep policy modules deterministic and quick. Avoid top-level network calls or server startup. Bound work inside `fn`, catch dependency failures, and choose deliberately whether that failure should allow or deny the operation.
 
+## Jev checks
+
+A custom policy decides with code. A **Jev check** is a set of yes/no questions the Jev semantic evaluator answers about a tool call instead. A `reviewable` policy names checks in `reviewedBy`, and Jev may clear its verdict only through them — see [Policy authority](/policies/authority). Declare one with `semanticPolicies.add()`:
+
+```js
+import { semanticPolicies } from "failproofai";
+
+semanticPolicies.add({
+  name: "prod-db-write",
+  title: "Wrote to the production database",
+  appliesTo: ["shell"],
+  mode: "deny",
+  userCanOverride: true,
+  probes: [
+    {
+      id: "writes_data",
+      instructions: "Does this command insert, update or delete rows, or change a schema?",
+      criteria: { true: "It changes data or schema.", false: "It only reads." },
+    },
+    {
+      id: "production_target",
+      instructions: "Is the database it targets a production one, rather than a local or test copy?",
+    },
+  ],
+  guidance: "Writes to the production database need a human. Ask before running this.",
+});
+```
+
+<Warning>
+  A Jev check takes effect **only through a published pack**. `failproofai publish` is the one thing that reads `semanticPolicies.add()`; in a local policy file (`.failproofai/policies/`, `--custom`) it loads without an error, the hook log names it as ignored, and it is never asked, and a local policy whose `reviewedBy` names it stays hard. See [Jev checks in a pack](/policies/publish-a-pack#jev-checks-in-a-pack).
+</Warning>
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | Yes | Letters, digits, `.`, `_` and `-`, up to 128 characters, unique in the pack. What a `reviewedBy` names; reported as `semantic/<name>`. |
+| `title` | Yes | A past-tense phrase for what was caught. Up to 120 characters. |
+| `appliesTo` | Yes | The tool classes Jev is asked about: one or more of `shell`, `write`, `read`, `network`, `other`. |
+| `mode` | Yes | `"deny"` blocks on strong evidence and warns on moderate evidence. `"instruct"` only ever warns, so it can never keep a deny standing — pair a blocking policy with it alone and a clear leaves nothing that can deny. |
+| `userCanOverride` | Yes | Whether the human's own explicit request clears the check. It decides whether words in a prompt can talk their way past it, so it has no default. |
+| `probes` | Yes | 1 to 6 questions. **Every** probe must hold for the check to fire. |
+| `probes[].id` | Yes | Matches `^[a-z][a-z0-9_]{0,31}$`, unique within the check. `exempt` and `user_asked` are reserved. |
+| `probes[].instructions` | Yes | The question. Up to 600 characters. |
+| `probes[].criteria` | No | `{ true, false }`: what a yes and a no mean, up to 300 characters each. Both halves or neither. |
+| `exempt` | No | One more question in the probe shape (its `id` is ignored). When it holds, the check does not fire — the documented exceptions. |
+| `precondition` | No | One name from the table below. Absent means the check is asked on every call its `appliesTo` covers. |
+| `guidance` | Yes | Shown to the agent when the check fires, whether it blocks or warns — a `"deny"` check only warns on moderate evidence, so do not say the call is blocked. Up to 600 characters. |
+
+A precondition is a name, never code: a manifest cannot carry a function, and a downloaded pack must not decide what runs on every tool call.
+
+| Precondition | The check is asked only when |
+| --- | --- |
+| `always` | Always — the same as leaving it out. |
+| `protected_branch` | The current git branch is `main`, `master`, `production`, `prod`, `release` or `trunk`. |
+| `in_git_repo` | The call runs on a git branch. A detached `HEAD` counts as outside a repository. |
+| `has_paths` | The call names at least one path. |
+| `paths_outside_project` | Some path it names is outside the project. |
+| `system_or_root_paths` | Some path it names is a system path or the filesystem root. |
+
 ## API exports
 
 | Export | Purpose |
@@ -293,10 +353,12 @@ Keep policy modules deterministic and quick. Avoid top-level network calls or se
 | `allow(reason?)` | Permit the operation. |
 | `instruct(reason)` | Permit the operation and provide guidance where supported. |
 | `deny(reason)` | Block the operation where supported. |
+| `semanticPolicies.add(check)` | Declare a [Jev check](#jev-checks) for `failproofai publish` to put in a pack. |
 | `getCustomHooks()` | Return the policies currently registered in the module registry. |
-| `clearCustomHooks()` | Clear that registry, primarily for tests and loaders. |
+| `getSemanticRegistrations()` | Return the Jev checks currently declared, primarily for tests and loaders. |
+| `clearCustomHooks()` | Clear both registries, primarily for tests and loaders. |
 
-TypeScript exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, and `PolicyFunction`.
+TypeScript exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, `PolicyAuthority`, `SemanticPolicyDeclaration`, `SemanticProbeDeclaration`, and `SemanticToolClass`.
 
 <Card title="Deploy custom policies" icon="server-cog" href="/policies/deploy">
   Publish a version, deploy it in observe mode, verify decisions, and move to enforcement.

@@ -11,6 +11,7 @@ import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
 import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
+import { JevNote, JevPill } from "@/app/components/jev-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, InstalledPackInfo, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
@@ -411,6 +412,7 @@ function DetailPanel({
                 </span>
               </div>
             )}
+            <JevNote item={item} />
             {item.cloudDeployment !== undefined && (
               <div>
                 {/* Present on every row of a managed machine, not just cloud
@@ -490,9 +492,9 @@ function ActivityTab({
     const v = url.get("cli");
     return isKnownCli(v) ? v : "";
   });
-  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack">(() => {
+  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack" | "jev">(() => {
     const v = url.get("source");
-    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "";
+    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" || v === "jev" ? v : "";
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterTelemetryFirstRunRef = useRef(true);
@@ -663,7 +665,7 @@ function ActivityTab({
               onChange={(e) => {
                 const v = e.target.value;
                 setFilterSource(
-                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "",
+                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" || v === "jev" ? v : "",
                 );
               }}
               className="filter-input"
@@ -674,6 +676,8 @@ function ActivityTab({
               <option value="convention">convention</option>
               <option value="cloud">cloud</option>
               <option value="pack">pack</option>
+              {/* Jev's own verdict, in enforce mode: no registered policy decided. */}
+              <option value="jev">jev</option>
             </select>
           </div>
           <div className="filter-group">
@@ -829,6 +833,7 @@ function ActivityTab({
                         <td className="px-3 py-2">
                           <DecisionBadge decision={item.decision} />
                           {item.pausedBy && <PausedPill />}
+                          <JevPill item={item} />
                         </td>
                         <td className="px-3 py-2">
                           <EventTypeBadge eventType={item.eventType} />
@@ -2003,6 +2008,12 @@ function PackSection({
             <span className="text-[0.7rem] text-muted-foreground">
               {preview.policies?.length ?? 0} policies ·{" "}
               {preview.policies?.filter((p) => p.defaultEnabled).length ?? 0} on by default
+              {/* The half with no rows below it. A pack's Jev checks are not
+                  selectable and they replace the ones this build ships, so the
+                  count belongs beside the policy count rather than in the list. */}
+              {preview.semantic && preview.semantic.length > 0
+                ? ` · ${preview.semantic.length} Jev ${preview.semantic.length === 1 ? "check" : "checks"}`
+                : ""}
             </span>
             {preview.effect === "observe" && (
               <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">

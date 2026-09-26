@@ -1,0 +1,140 @@
+---
+title: "Policy authority"
+description: "Which policy verdicts the Jev semantic evaluator may clear, and which are final."
+icon: "scale"
+---
+
+When you configure the Jev semantic evaluator with your own key (`failproofai jev setup`), every tool call is judged twice: by the policies you run, and by Jev, which asks what the call actually does and whether the person who typed the task asked for it. Each policy's **authority** decides what happens when the two disagree.
+
+Without Jev configured, authority has no effect. Every policy enforces exactly as it always has.
+
+## Hard and reviewable
+
+- **Hard** is the default. A hard policy's deny or instruction is final: Jev cannot clear it, and a hard deny stops the call without waiting for Jev.
+- **Reviewable** means Jev may clear the policy's verdict, but only through the semantic checks the policy names in `reviewedBy`. The verdict is cleared only when **every** named check was asked about this call and **none of them denied** — a check that found nothing, that recorded the user asking for this, or that judged the call worth a warning rather than a block all clear it. A check Jev was not asked, because it does not apply to that tool, never clears anything, whatever the others said. When a warning is what cleared the deny, that warning is what the agent is told, so the concern is not lost — it stops being a block.
+
+A policy is reviewable only when all of these hold:
+
+1. It declares `authority: "reviewable"`.
+2. `reviewedBy` is a non-empty list, and every entry is a semantic check this machine can ask: one of the [built-in checks](#semantic-policy-names), or one an installed pack declares. A pack installed from a FailproofAI repository that declares checks of its own replaces the built-in ones, and then only the packs' checks count.
+3. It is not `alwaysOn`. The guard that stops an agent from disabling Failproof AI is always hard.
+
+Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name that is not a check this machine can ask. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must be asked, and none of them may deny", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
+
+Once Jev is configured, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it. It judges `reviewedBy` against the checks the pack declares when it declares any, and against the built-in checks otherwise.
+
+## Where authority is declared
+
+Each way a policy reaches a machine has one place that decides its authority:
+
+| Source | Declared in | Default |
+| --- | --- | --- |
+| Built-in policies | The table below | Hard unless listed as reviewable |
+| Your own policy files | `authority` and `reviewedBy` on `customPolicies.add` | Hard |
+| Policy packs | Each policy's entry in the pack manifest (`failproofai-pack.json`) | Hard |
+| Cloud-managed policies | The policy's assignment in the active deployment | Hard. Deployments do not set it yet, so every cloud-managed policy is hard today. |
+
+For a pack or a cloud-managed policy, fields set inside the policy code are ignored; the manifest or the assignment decides. A pack can only describe its own policies: its policy names cannot contain `/` and are registered under the pack's own prefix, so no manifest can mark a built-in policy or another pack's policy as reviewable. A policy a pack's code registers without declaring it in the manifest is hard.
+
+Two packs, or two cloud-managed policies, whose code is byte-identical share one artifact and load as one policy. That policy is reviewable only if every one of them declares it reviewable, and Jev must then clear every check any of them names. If any of them declares it hard, or does not declare it at all, it stays hard. The order the packs or policies are listed in never matters.
+
+Most machines get the built-in policies from the `FailproofAI/policies` pack, and read their authority from that pack's manifest. The reviewable entries below take effect once a release of the pack that carries them is installed; an older release carries none, so every policy in it stays hard.
+
+## Declare authority in your own policy
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-prod-config-reads",
+  description: "Keep production credentials out of the agent's context",
+  match: { events: ["PreToolUse"] },
+  authority: "reviewable",
+  reviewedBy: ["secret-exposure"],
+  fn: async (ctx) =>
+    String(ctx.toolInput?.file_path ?? "").includes("/config/prod/")
+      ? deny("Production config is off limits")
+      : allow(),
+});
+```
+
+`failproofai publish` copies both fields into the pack manifest, so a policy published as a pack keeps the authority its author gave it. It refuses to build the pack if a declaration would not be honored: a value other than `"hard"` or `"reviewable"`, a `reviewedBy` that is not a list of names, or a name that is not a check — one of the pack's own [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) when it declares any, a built-in check otherwise.
+
+## Built-in policies
+
+Reviewable only where a semantic policy genuinely covers the same concern. Every other built-in policy is hard.
+
+Covering the concern is necessary but not sufficient, and both ways of getting it wrong are quiet:
+
+- **A check that is never asked** makes the block permanent. `reviewedBy` is a conjunction and a check that was not asked never clears, so a policy paired with a check whose precondition does not fire for the shapes the policy matches can never be cleared at all.
+- **A check that is asked but does not fire** answers "no concern", and no concern clears. So pairing with a check that does not model your policy's shapes does not review the policy — it switches it off for exactly the inputs the check does not understand.
+
+And because an instruct-mode semantic policy can never answer deny, pairing a *blocking* policy with instruct-mode checks alone leaves the conjunction one reachable outcome: whenever those checks are asked, the deny is cleared. Six of the built-in checks are instruct-only — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` and `external-data-egress` — and the [table below](#semantic-policy-names) gives every check's mode. The question to ask is not "can the reviewer keep this block" but **"is there anything left that can deny"** — a policy may still be reviewable when a clear hands the decision to other deny-mode checks that are asked about the same call and merge at the most severe verdict. It must be hard when a clear leaves the concern enforced by nothing. The engine applies the same test per call: when Jev warns — rather than denies — on a check no consent can clear (`credential-exfiltration`, `agent-config-tampering`), a clear would hand the call a warning that does not stop it, so nothing is cleared on that call and the regex deny stands.
+
+| Policy | Authority | Reviewed by | Why |
+| --- | --- | --- | --- |
+| `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | The pattern fires on any variable reference; Jev asks whether secret values would actually be printed. |
+| `block-env-files` | reviewable | `secret-exposure` | The pattern matches any `.env` path, templates included; Jev asks whether real secret values would be read or written. |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | Measured as noisy on real traffic; Jev asks whether file contents outside the project are read. |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | Amending an unpushed commit is ordinary; the harm is rewriting history others may have pulled. |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev also asks whether the target is a real database rather than a disposable test one. |
+| `warn-global-package-install` | reviewable | `system-modification` | The same concern: changing the machine outside the project. |
+| `block-failproofai-commands` | hard | | `alwaysOn` self-protection. Never reviewable. |
+| `block-rm-rf` | reviewable | `destructive-deletion` | The path-depth heuristic gets `rm -rf node_modules` wrong; Jev asks whether what would be destroyed is regenerable. `rm -rf /` keeps both probes true. |
+| `block-sudo` | hard | | Privilege escalation. |
+| `block-curl-pipe-sh` | hard | | Runs code downloaded from the internet. |
+| `block-push-master` | hard | | Pushes directly to a protected branch. |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` covers exactly this concern but is instruct-mode, so it can never answer deny — and no other check covers it. Reviewable here would have meant "off". |
+| `block-force-push` | reviewable | `git-history-rewrite` | Jev's probe is a superset of the matcher and counts `--force-with-lease`; what clears is force-pushing your own branch. |
+| `block-secrets-write` | reviewable | `secret-exposure` | The path match is unanchored, so `src/auth/credentials.ts` is caught; Jev asks whether real key material is being written. |
+| `block-kubectl` | reviewable | `production-infra-change` | Denies the whole CLI, read-only subcommands included; Jev asks whether the call mutates and whether the target is production. |
+| `block-terraform` | reviewable | `production-infra-change` | Same: clears `terraform plan` and `validate`. |
+| `block-aws-cli` | reviewable | `production-infra-change` | Same: clears `aws s3 ls`, `aws sts get-caller-identity`. |
+| `block-gcloud` | reviewable | `production-infra-change` | Same: clears `gcloud auth list`, `gcloud config list`. |
+| `block-az-cli` | reviewable | `production-infra-change` | Same: clears `az account show`. |
+| `block-helm` | reviewable | `production-infra-change` | Same: clears `helm list`, `helm status`. |
+| `block-gh-pipeline` | hard | | Triggers pipelines, merges and secret changes. |
+| `warn-git-stash-drop` | hard | | No semantic check covers discarding stashed work. |
+| `warn-git-clean` | hard | | `destructive-deletion` covers the concern but demonstrably cannot fire on it: `git clean` names no path, so its `irreplaceable` probe has nothing to judge and answers low, and evidence is the minimum over a policy's probes. A check that is asked and does not fire clears the verdict, so pairing here would switch the policy off. |
+| `warn-all-files-staged` | hard | | No semantic check covers what a wide `git add` picks up. |
+| `warn-schema-alteration` | hard | | `database-destruction` covers dropping data, not altering a schema. |
+| `warn-package-publish` | hard | | Publishing is irreversible and no semantic check covers it. |
+| `prefer-package-manager` | hard | | A team convention, not a safety judgment. |
+| `warn-large-file-write` | hard | | A size threshold, not a judgment Jev can make. |
+| `warn-background-process` | hard | | No semantic check covers detached processes. |
+| `warn-repeated-tool-calls` | hard | | Counts calls; Jev cannot count. |
+| `sanitize-jwt` | hard | | Redacts tool output; not a tool-call gate. |
+| `sanitize-api-keys` | hard | | Redacts tool output; not a tool-call gate. |
+| `sanitize-connection-strings` | hard | | Redacts tool output; not a tool-call gate. |
+| `sanitize-private-key-content` | hard | | Redacts tool output; not a tool-call gate. |
+| `sanitize-bearer-tokens` | hard | | Redacts tool output; not a tool-call gate. |
+| `require-commit-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
+| `require-push-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
+| `require-pr-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
+| `require-no-conflicts-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
+| `require-ci-green-before-stop` | hard | | A session-completion gate, not a tool-call gate. |
+
+## Semantic policy names
+
+These are the built-in checks, and the values `reviewedBy` accepts unless a pack installed from a FailproofAI repository declares Jev checks of its own. Each is a check Jev answers about the tool call in front of it. **Mode** is what a check can answer: a `deny` check blocks on strong evidence, while an `instruct` check only ever warns, so it can never keep a deny standing. **User can override** says whether the human's own explicit request clears it.
+
+A pack's [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) are added to this list, and their names join the ones `reviewedBy` accepts. A pack installed from a FailproofAI repository instead replaces this list: its checks are then the only ones Jev asks and the only names `reviewedBy` accepts, so a policy naming a check below that it does not declare stays hard. `FailproofAI/jev-policies` declares these same sixteen, so with it the table still applies. A name two packs declare differently is honoured for neither. One of these sixteen names declared by a pack not installed from a FailproofAI repository is ignored in that pack: its version is never asked and does not contest FailproofAI's own, so a third-party pack can neither become the check that clears the core pack's policies nor switch one of these checks off. A pack whose every check is unusable leaves this list in force.
+
+| Name | Mode | User can override | What Jev checks |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | yes | Permanently deleting data that cannot be regenerated. |
+| `production-infra-change` | deny | yes | Changing live infrastructure. |
+| `git-history-rewrite` | deny | yes | Rewriting or discarding shared git history. |
+| `push-to-protected-branch` | instruct | yes | Pushing directly to a protected branch. |
+| `commit-on-protected-branch` | instruct | yes | Committing directly on a protected branch. |
+| `secret-exposure` | deny | yes | Reading or copying credentials. |
+| `credential-exfiltration` | deny | no | Sending secrets or private files off the machine. |
+| `remote-code-execution` | deny | yes | Running code downloaded from the internet. |
+| `privilege-escalation` | deny | yes | Running with elevated privileges. |
+| `database-destruction` | deny | yes | Destroying or mass-modifying database data. |
+| `read-outside-workspace` | instruct | yes | Reading files outside the project. |
+| `agent-config-tampering` | deny | no | Changing the agent's own safety configuration. |
+| `system-modification` | instruct | yes | Changing the system outside the project. |
+| `env-secrets-dump` | instruct | yes | Printing environment secrets. |
+| `external-destructive-action` | deny | yes | An irreversible action through an external tool. |
+| `external-data-egress` | instruct | yes | Sending private data to an external tool. |

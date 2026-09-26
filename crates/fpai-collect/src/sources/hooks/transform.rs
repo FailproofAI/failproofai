@@ -20,7 +20,7 @@
 //! row's byte offset, which is unique within a file by construction and stable
 //! across a re-read.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 
 /// One row of `~/.failproofai/cache/hook-activity/*.jsonl`.
@@ -63,9 +63,11 @@ pub struct HookRow {
     // is exactly the substring-parsing this data was added to replace: every
     // row arrives unattributed, so "how much is my org's policy actually
     // doing" has no answer.
-    /// `builtin` | `custom` | `convention` | `cloud` | `pack`. Absent on rows
-    /// written before attribution existed, which is meaningful — see the note in
-    /// `hook-activity-store.ts` about not guessing a bucket.
+    /// `builtin` | `custom` | `convention` | `cloud` | `pack` | `jev`. Absent on
+    /// rows written before attribution existed, which is meaningful — see the
+    /// note in `hook-activity-store.ts` about not guessing a bucket. `jev` means
+    /// Jev's own verdict decided (enforce mode), not a registered policy; older
+    /// builds left such rows unattributed.
     ///
     /// Deliberately `Option<String>` and forwarded verbatim rather than a typed
     /// enum: this side has no opinion about the value, so adding a source on the
@@ -112,8 +114,414 @@ pub struct HookRow {
     pub pause_expires_at: Option<i64>,
 
     /// Verdicts from observe-mode policies: evaluated, then discarded. The
-    /// whole measurement a trial exists to produce.
+    /// whole measurement a trial exists to produce. Jev in shadow mode files
+    /// its own deny/instruct here too (`policyId: "semantic/<check>"`, the Jev
+    /// model id as `version`), and ships the same way: whole, un-rolled-up.
     pub observed: Option<Value>,
+
+    // ---- Jev (two-tier evaluator) ----------------------------------------
+    // Present only when the machine has a Jev (BYOK) config and the event was
+    // a gate. Read leniently: a field of the wrong type becomes `None` instead
+    // of failing the row, because a row that fails to deserialize never
+    // reaches the dashboard at all, and these fields are the least important
+    // thing on it. Every value is re-validated in [`JevFacts::of`] before it
+    // is emitted.
+    /// `jev` | `jev-fallback`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub evaluator: Option<String>,
+    /// Jev's own verdict, before combining with the regex results.
+    #[serde(rename = "jevDecision", default, deserialize_with = "lenient")]
+    pub jev_decision: Option<String>,
+    /// Reviewable policies whose deny/instruct Jev cleared.
+    #[serde(rename = "jevCleared", default, deserialize_with = "lenient")]
+    pub jev_cleared: Option<Vec<Value>>,
+    #[serde(rename = "jevFallbackReason", default, deserialize_with = "lenient")]
+    pub jev_fallback_reason: Option<String>,
+    #[serde(rename = "jevLatencyMs", default, deserialize_with = "lenient")]
+    pub jev_latency_ms: Option<f64>,
+    #[serde(rename = "jevModel", default, deserialize_with = "lenient")]
+    pub jev_model: Option<String>,
+    /// `shadow` | `enforce`.
+    #[serde(rename = "jevMode", default, deserialize_with = "lenient")]
+    pub jev_mode: Option<String>,
+}
+
+/// Deserialize `T`, or `None` when the value is absent, null, or the wrong
+/// shape — never an error that would drop the whole row.
+fn lenient<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let v = Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).ok())
+}
+
+// ---- Jev field validation ----------------------------------------------------
+//
+// Mirrors `sanitizeJevActivity` in `src/hooks/jev-activity.ts`. The TypeScript
+// store already applies it on write; this side applies it again because it
+// reads whatever is on disk, including rows from another build. The rule both
+// enforce is the one every shipped hook field follows: decisions, codes and
+// names — never command or prompt text. `jevFallbackReason` is the field that
+// could otherwise carry free text (an error message), so it is reduced to one
+// of a closed list of codes ([`JEV_REASON_CODES`]) and anything else becomes
+// `other`.
+//
+// `jevCleared` and `jevModel` are checked for shape only: a registered policy
+// name (no control characters or line breaks, whitespace only under a
+// registered namespace such as `custom/`) and the model-id alphabet `jev.json`
+// accepts. That keeps a bare sentence, a command line or a prompt out, but a
+// fragment of the right shape — a path, a file name — would pass. Those two
+// fields rely on the writer supplying registered policy names and the
+// provider's model id.
+
+/// Longest fallback reason code kept verbatim.
+pub const JEV_REASON_MAX_CHARS: usize = 40;
+/// Most cleared-policy names carried on one event.
+pub const JEV_CLEARED_MAX: usize = 64;
+
+/// Every fallback reason code a row may carry, besides `http-NNN`. Any other
+/// reason ships as `other` — even a short kebab-case word, which could be the
+/// first word of the judged command. `JEV_REASON_CODE_LIST` in
+/// `src/hooks/jev-activity.ts` is the same list; a test keeps the two
+/// identical.
+///
+/// `request-cut` is the combine rules' "Jev answered, but was shown only part
+/// of the call". `provider-refused` is the client's "the provider would not run
+/// the model on this request" — an HTTP 402 that is not a billing condition, so
+/// it must not be filed as `out-of-credits`. `truncated` and
+/// `request-too-large` are names an older build wrote and no current producer
+/// does; they stay because this list is applied to rows written by other builds
+/// too.
+pub const JEV_REASON_CODES: &[&str] = &[
+    "aborted",
+    "cloudflare-error",
+    "cloudflare-incomplete",
+    "config",
+    "error",
+    "malformed",
+    "model-mismatch",
+    "network",
+    "no-api-key",
+    "no-transport",
+    "other",
+    "out-of-credits",
+    "prepare-error",
+    "provider-refused",
+    "rate-limited",
+    "request-cut",
+    "request-too-large",
+    "timeout",
+    "truncated",
+    "unavailable",
+    "upstream-error",
+];
+
+/// Lowercase kebab-case: `timeout`, `http-429`, `out-of-credits`.
+fn is_reason_code(s: &str) -> bool {
+    !s.is_empty()
+        && s.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
+}
+
+/// Leading words that are renamed on the way in: the evaluator's free-text
+/// prefixes, each mapped to its code. `prepare` is the one that differs: the
+/// evaluator writes `prepare: <message>` and the combine rules cut that down to
+/// a bare `prepare`; both become `prepare-error`.
+const FREE_TEXT_PREFIXES: &[(&str, &str)] = &[
+    ("prepare", "prepare-error"),
+    ("error", "error"),
+    ("timeout", "timeout"),
+    ("network", "network"),
+    ("malformed", "malformed"),
+    ("truncated", "truncated"),
+    ("rate-limited", "rate-limited"),
+    ("out-of-credits", "out-of-credits"),
+    ("model-mismatch", "model-mismatch"),
+    ("request-too-large", "request-too-large"),
+    ("config", "config"),
+];
+
+/// Whitespace exactly as JavaScript's `\s` and `String.prototype.trim` see
+/// it, so the validators below apply the same rule as
+/// `src/hooks/jev-activity.ts` to the same bytes. Rust's
+/// `char::is_whitespace` differs in two code points: it counts U+0085 (NEL, a
+/// C1 control) and not U+FEFF (the byte-order mark); JavaScript does the
+/// opposite.
+fn is_js_whitespace(c: char) -> bool {
+    c == '\u{FEFF}' || (c.is_whitespace() && c != '\u{85}')
+}
+
+/// A fallback reason reduced to a known code, or `None` when there is none.
+///
+/// A known code — alone, or in front of `:` / `(` and free text — is kept
+/// (renamed through [`FREE_TEXT_PREFIXES`]); anything else is `other`.
+pub fn jev_reason_code(raw: &str) -> Option<String> {
+    let s = raw.trim_matches(is_js_whitespace).to_lowercase();
+    if s.is_empty() {
+        return None;
+    }
+    let head_len = s
+        .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+        .unwrap_or(s.len());
+    let (head, rest) = s.split_at(head_len);
+    let rest = rest.trim_start_matches(is_js_whitespace);
+    let code_shaped = head.len() <= JEV_REASON_MAX_CHARS
+        && is_reason_code(head)
+        && (rest.is_empty() || rest.starts_with(':') || rest.starts_with('('));
+    if code_shaped {
+        let is_http = head.len() == 8
+            && head.starts_with("http-")
+            && head[5..].chars().all(|c| c.is_ascii_digit());
+        if is_http {
+            return Some(head.to_string());
+        }
+        let code = FREE_TEXT_PREFIXES
+            .iter()
+            .find(|(p, _)| *p == head)
+            .map_or(head, |(_, code)| *code);
+        if JEV_REASON_CODES.contains(&code) {
+            return Some(code.to_string());
+        }
+    }
+    Some("other".into())
+}
+
+/// Longest model id kept.
+pub const JEV_MODEL_MAX_CHARS: usize = 200;
+/// Longest cleared-policy name kept.
+pub const JEV_POLICY_NAME_MAX_CHARS: usize = 200;
+
+/// `jev-1.13.0`, `typesafe/jev-1.13-20260917`, `~typesafe/jev-latest`,
+/// `@cf/typesafe/jev`: exactly what `jev.json` accepts for `model`, since the
+/// recorded model must match the configured one. `MODEL_RE` in
+/// `src/hooks/jev-activity.ts` is the same rule.
+fn is_model_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().count() <= JEV_MODEL_MAX_CHARS
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._:/@~+-".contains(c))
+}
+
+/// The namespaces the handler registers a loaded hook under
+/// (`${prefix}/${hook.name}`), plus the builtins' `failproofai/`. The hook's
+/// own name after the prefix is whatever its author wrote, spaces included.
+fn has_registered_namespace(s: &str) -> bool {
+    let Some((ns, _)) = s.split_once('/') else {
+        return false;
+    };
+    matches!(ns, "custom" | "pack" | "cloud" | "failproofai")
+        || ns.strip_prefix(".failproofai-").is_some_and(|scope| {
+            (1..=32).contains(&scope.len())
+                && scope
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+/// A registered policy name: 1–200 characters, no control characters or line
+/// breaks, and whitespace only under a registered namespace
+/// (`custom/No secrets in logs`). A bare sentence or command line is not a
+/// policy name. `isJevPolicyName` in `src/hooks/jev-activity.ts` is the same
+/// rule.
+fn is_policy_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().count() <= JEV_POLICY_NAME_MAX_CHARS
+        && s.chars()
+            .all(|c| !c.is_control() && c != '\u{2028}' && c != '\u{2029}')
+        && (!s.chars().any(is_js_whitespace) || has_registered_namespace(s))
+}
+
+/// What happened to Jev on one call. `evaluator: "jev"` alone does not say:
+/// when a hard policy denies, the combine rules abort Jev and record
+/// `{ evaluator: "jev", jevMode }`, and when no semantic policy applies to the
+/// call they send no request and record
+/// `{ evaluator: "jev", jevDecision: "allow", jevMode }`. Mirrors `jevOutcome`
+/// in `src/hooks/jev-activity.ts`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum JevOutcome {
+    /// Jev's answer was read and the combine rules applied it.
+    #[default]
+    Answered,
+    /// Jev was asked and was unavailable, truncated or mismatched; the regex
+    /// result stood.
+    Fallback,
+    /// A hard policy denied first, so Jev was aborted and never consulted.
+    NotConsulted,
+    /// No semantic policy applies to the call (TodoWrite, Task, …): Jev had
+    /// nothing to ask and no request was sent.
+    NoRequest,
+}
+
+impl JevOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Answered => "answered",
+            Self::Fallback => "fallback",
+            Self::NotConsulted => "not-consulted",
+            Self::NoRequest => "no-request",
+        }
+    }
+
+    /// True when Jev actually answered or was asked and fell back — the calls
+    /// that say something about Jev.
+    fn was_asked(self) -> bool {
+        matches!(self, Self::Answered | Self::Fallback)
+    }
+}
+
+/// The part of a row's Jev facts that rows are grouped by in an allow
+/// roll-up: which engine decided, what became of Jev, in which mode, and why
+/// it fell back. All are closed or bounded sets, so they cost the roll-up
+/// little.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct JevKey {
+    /// `jev` | `jev-fallback`.
+    pub evaluator: String,
+    pub outcome: JevOutcome,
+    pub mode: Option<String>,
+    pub fallback_reason: Option<String>,
+}
+
+/// Every validated Jev fact on one row.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct JevFacts {
+    pub key: JevKey,
+    pub decision: Option<String>,
+    pub cleared: Vec<String>,
+    pub latency_ms: Option<f64>,
+    pub model: Option<String>,
+}
+
+impl JevFacts {
+    /// The row's Jev facts, or `None` when the row does not say which
+    /// evaluator ran — Jev was not configured, or the value is not one this
+    /// side knows. Nothing Jev-related is emitted for such a row.
+    pub fn of(row: &HookRow) -> Option<Self> {
+        let evaluator = row
+            .evaluator
+            .as_deref()
+            .filter(|e| matches!(*e, "jev" | "jev-fallback"))?
+            .to_string();
+        let mode = row
+            .jev_mode
+            .as_deref()
+            .filter(|m| matches!(*m, "shadow" | "enforce"))
+            .map(str::to_string);
+        let fallback_reason = row.jev_fallback_reason.as_deref().and_then(jev_reason_code);
+        let decision = row
+            .jev_decision
+            .as_deref()
+            .filter(|d| matches!(*d, "allow" | "instruct" | "deny"))
+            .map(str::to_string);
+        let mut cleared: Vec<String> = Vec::new();
+        for name in row.jev_cleared.iter().flatten().filter_map(Value::as_str) {
+            if cleared.len() >= JEV_CLEARED_MAX {
+                break;
+            }
+            if is_policy_name(name) && !cleared.iter().any(|c| c == name) {
+                cleared.push(name.to_string());
+            }
+        }
+        let latency_ms = row
+            .jev_latency_ms
+            .filter(|l| l.is_finite() && *l >= 0.0)
+            .map(f64::round);
+        let model = row
+            .jev_model
+            .as_deref()
+            .map(|m| m.trim_matches(is_js_whitespace))
+            .filter(|m| is_model_id(m))
+            .map(str::to_string);
+        // Answered when the row carries anything only a request produces: a
+        // cleared list (even an empty one), a latency, a model, or a deny /
+        // instruct verdict (the evaluator reaches those only from answers). An
+        // allow and nothing else is the no-request shape; no readable Jev
+        // field at all is the not-consulted shape.
+        let outcome = if evaluator == "jev-fallback" {
+            JevOutcome::Fallback
+        } else if row.jev_cleared.is_some()
+            || latency_ms.is_some()
+            || model.is_some()
+            || matches!(decision.as_deref(), Some("deny" | "instruct"))
+        {
+            JevOutcome::Answered
+        } else if decision.is_some() {
+            JevOutcome::NoRequest
+        } else {
+            JevOutcome::NotConsulted
+        };
+        Some(Self {
+            key: JevKey {
+                evaluator,
+                outcome,
+                mode,
+                fallback_reason,
+            },
+            decision,
+            cleared,
+            latency_ms,
+            model,
+        })
+    }
+
+    /// True when this row must be shipped on its own rather than rolled into
+    /// an allow aggregate: Jev overruled a regex deny/instruct (a clear), or
+    /// Jev's own verdict was stricter than the outcome (shadow mode, where the
+    /// regex result was enforced). Either is a decision someone will want to
+    /// find, and a count cannot show it.
+    pub fn is_notable(&self, final_decision: &str) -> bool {
+        self.key.outcome.was_asked()
+            && (!self.cleared.is_empty()
+                || (final_decision == "allow"
+                    && matches!(self.decision.as_deref(), Some("deny" | "instruct"))))
+    }
+
+    /// Everything except the key, for an individually shipped event. Nothing
+    /// for a call Jev was not consulted on or had nothing to ask about: it has
+    /// no verdict, clears, latency or model to report, and must not look as if
+    /// it had.
+    fn apply_detail(&self, m: &mut Map<String, Value>) {
+        if !self.key.outcome.was_asked() {
+            return;
+        }
+        if let Some(d) = &self.decision {
+            m.insert("jev_decision".into(), json!(d));
+        }
+        // An answered call carries its (possibly empty) list, so "Jev answered
+        // and cleared nothing" is distinguishable from "not asked".
+        if self.key.outcome == JevOutcome::Answered {
+            m.insert("jev_cleared".into(), json!(self.cleared));
+        }
+        if let Some(l) = self.latency_ms {
+            m.insert("jev_latency_ms".into(), json!(l));
+        }
+        if let Some(model) = &self.model {
+            m.insert("jev_model".into(), json!(model));
+        }
+    }
+}
+
+impl JevKey {
+    fn apply(&self, m: &mut Map<String, Value>) {
+        // Prefixed: "evaluator" alone would read as the server's own
+        // evaluation feature, which is a different thing.
+        m.insert("failproofai_evaluator".into(), json!(self.evaluator));
+        // Always present on a Jev row: `failproofai_evaluator: "jev"` alone
+        // does not say whether Jev answered or a hard deny came first.
+        m.insert("jev_outcome".into(), json!(self.outcome.as_str()));
+        if let Some(mode) = &self.mode {
+            m.insert("jev_mode".into(), json!(mode));
+        }
+        if let Some(r) = &self.fallback_reason {
+            m.insert("jev_fallback_reason".into(), json!(r));
+        }
+    }
 }
 
 /// The attribution facts for one row.
@@ -131,6 +539,10 @@ pub struct Attribution {
     pub cloud_version: Option<i64>,
     pub cloud_deployment: Option<i64>,
     pub paused: bool,
+    /// Which engine decided (regex alone when `None`). Part of the key for the
+    /// same reason the rest is: a bucket mixing Jev-decided and fallback allows
+    /// could say neither honestly.
+    pub jev: Option<JevKey>,
 }
 
 impl Attribution {
@@ -143,6 +555,7 @@ impl Attribution {
             cloud_version: row.cloud_version,
             cloud_deployment: row.cloud_deployment,
             paused: row.paused_by.is_some(),
+            jev: JevFacts::of(row).map(|j| j.key),
         }
     }
 
@@ -173,6 +586,9 @@ impl Attribution {
         // Always emitted, never conditionally: an absent key and `false` must
         // not be distinguishable to a reader counting unenforced calls.
         m.insert("paused".into(), json!(self.paused));
+        if let Some(jev) = &self.jev {
+            jev.apply(m);
+        }
     }
 }
 
@@ -197,6 +613,12 @@ impl HookRow {
     /// True for the 99.1% of rows that are plain no-ops.
     pub fn is_allow(&self) -> bool {
         self.decision_str() == "allow"
+    }
+
+    /// True when the row's Jev facts must not disappear into an allow count.
+    /// See [`JevFacts::is_notable`].
+    pub fn has_jev_signal(&self) -> bool {
+        JevFacts::of(self).is_some_and(|j| j.is_notable(self.decision_str()))
     }
 }
 
@@ -345,6 +767,10 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     // Attribution rides the END leg only: it is a property of the decision,
     // and the start leg is emitted before one exists.
     Attribution::of(row).apply(&mut end);
+    // So do the rest of the Jev facts, for the same reason.
+    if let Some(jev) = JevFacts::of(row) {
+        jev.apply_detail(&mut end);
+    }
     if let Some(by) = &row.paused_by {
         end.insert("paused_by".into(), json!(by));
     }
@@ -398,6 +824,12 @@ pub struct AllowBucket {
     pub max_duration_ms: f64,
     /// Shared by every row in the bucket — see `BucketKey`.
     pub attribution: Attribution,
+    /// Jev latency over the rows that carry one: sum, count and max. Only an
+    /// aggregate can show Jev's cost on the allow path, which is nearly all of
+    /// it.
+    pub jev_latency_total_ms: f64,
+    pub jev_latency_count: u64,
+    pub jev_max_latency_ms: f64,
 }
 
 /// The key rows are grouped under: same session, event, tool, minute — and the
@@ -432,6 +864,13 @@ impl AllowBucket {
         if d > self.max_duration_ms {
             self.max_duration_ms = d;
         }
+        if let Some(l) = JevFacts::of(row).and_then(|j| j.latency_ms) {
+            self.jev_latency_total_ms += l;
+            self.jev_latency_count += 1;
+            if l > self.jev_max_latency_ms {
+                self.jev_max_latency_ms = l;
+            }
+        }
     }
 
     /// A single `hook_completed` standing for every allow in the bucket.
@@ -463,10 +902,26 @@ impl AllowBucket {
         // cloud deployment flips during a rollout, which is the measurement
         // `cloud_deployment` exists to enable.
         let a = &self.attribution;
+        // The Jev part of the key joins the id only when present, so every
+        // bucket without it keeps the exact id earlier builds produced — a
+        // re-read after an upgrade must still dedup against what was shipped.
+        let jev_part = a
+            .jev
+            .as_ref()
+            .map(|j| {
+                format!(
+                    ":{}:{}:{}:{}",
+                    j.evaluator,
+                    j.outcome.as_str(),
+                    j.mode.as_deref().unwrap_or("-"),
+                    j.fallback_reason.as_deref().unwrap_or("-"),
+                )
+            })
+            .unwrap_or_default();
         m.insert(
             "hook_id".into(),
             json!(format!(
-                "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:agg",
+                "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}{}:agg",
                 self.session_id,
                 self.minute_ms,
                 self.event_name,
@@ -482,6 +937,7 @@ impl AllowBucket {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".into()),
                 if a.paused { "paused" } else { "-" },
+                jev_part,
             )),
         );
         m.insert("outcome".into(), json!("allow"));
@@ -500,6 +956,20 @@ impl AllowBucket {
         // Honest by construction: every row in this bucket was grouped BY this
         // attribution, so it describes all of them.
         self.attribution.apply(&mut m);
+        if self.jev_latency_count > 0 {
+            m.insert(
+                "jev_latency_ms".into(),
+                json!(
+                    (self.jev_latency_total_ms / self.jev_latency_count as f64 * 1000.0).round()
+                        / 1000.0
+                ),
+            );
+            m.insert("jev_max_latency_ms".into(), json!(self.jev_max_latency_ms));
+            // The mean's own weight. A throttle-cache hit carries no latency,
+            // so this can be below `failproofai_allow_count`, and the server
+            // weights latency quantiles by it rather than by the call count.
+            m.insert("jev_latency_count".into(), json!(self.jev_latency_count));
+        }
         Some(Value::Object(m))
     }
 }

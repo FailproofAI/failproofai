@@ -9,6 +9,13 @@ in `failproofai_sdk/_version.py` becomes that release's GitHub Release body. A
 release whose section is missing or empty is refused before anything is built —
 see `scripts/changelog-section.py`.
 
+## 0.0.1b6 — 2026-09-26
+
+Open for the next release. `0.0.1b5` published on 2026-09-26 and the `bump` job
+moved the version here automatically; nothing has landed against `0.0.1b6` yet.
+Add entries as changes merge — this section becomes the GitHub Release body when
+it ships.
+
 ## 0.0.1b5 — 2026-09-22
 
 Open for the next release. `0.0.1b4` published on 2026-09-22 and the `bump` job

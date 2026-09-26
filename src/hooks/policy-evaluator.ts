@@ -244,7 +244,7 @@ export async function evaluatePolicies(
     );
   }
   return {
-    ...formatVerdict(eventType, session, toolName, combined.final),
+    ...formatVerdict(eventType, session, toolName, combined.final, combined.decidedByJev),
     twoTier: {
       activity: combined.activity,
       decidedByJev: combined.decidedByJev,
@@ -365,16 +365,17 @@ async function collectVerdicts(
   return { verdicts, hardDenied: false };
 }
 
-/** A verdict → the calling CLI's response. Which engine decided is irrelevant here. */
+/** A verdict → the calling CLI's response. Which engine decided only changes whom a deny credits. */
 function formatVerdict(
   eventType: HookEventType,
   session: SessionMetadata | undefined,
   toolName: string | undefined,
   final: FinalVerdict,
+  byJev = false,
 ): EvaluationResult {
   if (final.decision === "deny") {
     const [decider] = final.entries;
-    return formatDeny(eventType, session, toolName, decider.policyName, decider.reason);
+    return formatDeny(eventType, session, toolName, decider.policyName, decider.reason, byJev);
   }
   if (final.decision === "instruct") return formatInstruct(eventType, session, final.entries);
   if (final.entries.length > 0) return formatAllow(eventType, session, final.entries);
@@ -387,6 +388,7 @@ function formatDeny(
   toolName: string | undefined,
   policyName: string,
   reason: string,
+  byJev = false,
 ): EvaluationResult {
   // Pick a noun for the deny message that fits the event type. Tool events
   // get the tool name; non-tool events (UserPromptSubmit, SessionStart,
@@ -406,7 +408,10 @@ function formatDeny(
   } else {
     displayTool = "operation";
   }
-  const blockedMessage = `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
+  // Jev's reason is its own sentences, ending in "."; no user configured the check.
+  const blockedMessage = byJev
+    ? `Blocked ${displayTool} by failproofai because: ${reason.replace(/[.\s]+$/, "")}, as flagged by Jev semantic review`
+    : `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
 
   // Cursor's hook protocol expects a flat `{permission, user_message,
   // agent_message}` shape for any blocking decision, regardless of which
@@ -737,7 +742,7 @@ function formatDeny(
         hookEventName: eventType,
         decision: {
           behavior: "deny",
-          message: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
+          message: blockedMessage,
         },
       },
     };
@@ -792,7 +797,7 @@ function formatDeny(
     const response = {
       hookSpecificOutput: {
         hookEventName: eventType,
-        additionalContext: `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`,
+        additionalContext: blockedMessage,
       },
     };
     return {

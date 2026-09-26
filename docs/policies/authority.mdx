@@ -69,7 +69,7 @@ Covering the concern is necessary but not sufficient, and both ways of getting i
 - **A check that is never asked** makes the block permanent. `reviewedBy` is a conjunction and a check that was not asked never clears, so a policy paired with a check whose precondition does not fire for the shapes the policy matches can never be cleared at all.
 - **A check that is asked but does not fire** answers "no concern", and no concern clears. So pairing with a check that does not model your policy's shapes does not review the policy — it switches it off for exactly the inputs the check does not understand.
 
-And because an instruct-mode semantic policy can never answer deny, pairing a *blocking* policy with instruct-mode checks alone leaves the conjunction one reachable outcome. The question to ask is not "can the reviewer keep this block" but **"is there anything left that can deny"** — a policy may still be reviewable when a clear hands the decision to other deny-mode checks that are asked about the same call and merge at the most severe verdict. It must be hard when a clear leaves the concern enforced by nothing.
+And because an instruct-mode semantic policy can never answer deny, pairing a *blocking* policy with instruct-mode checks alone leaves the conjunction one reachable outcome: whenever those checks are asked, the deny is cleared. Six of the built-in checks are instruct-only — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` and `external-data-egress` — and the [table below](#semantic-policy-names) gives every check's mode. The question to ask is not "can the reviewer keep this block" but **"is there anything left that can deny"** — a policy may still be reviewable when a clear hands the decision to other deny-mode checks that are asked about the same call and merge at the most severe verdict. It must be hard when a clear leaves the concern enforced by nothing.
 
 | Policy | Authority | Reviewed by | Why |
 | --- | --- | --- | --- |
@@ -116,25 +116,25 @@ And because an instruct-mode semantic policy can never answer deny, pairing a *b
 
 ## Semantic policy names
 
-These are the built-in checks, and the values `reviewedBy` accepts on a machine where no installed pack declares Jev checks. Each is a check Jev answers about the tool call in front of it.
+These are the built-in checks, and the values `reviewedBy` accepts on a machine where no installed pack declares Jev checks. Each is a check Jev answers about the tool call in front of it. **Mode** is what a check can answer: a `deny` check blocks on strong evidence, while an `instruct` check only ever warns, so it can never keep a deny standing. **User can override** says whether the human's own explicit request clears it.
 
 A pack that declares [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) replaces this list on every machine that installs it: the installed packs' checks are then the only ones Jev asks, and the only names `reviewedBy` accepts, so a policy naming a check below that no installed pack declares stays hard. `FailproofAI/jev-policies` declares these same sixteen, so with it the table still applies. A name two packs declare differently is honoured for neither, and a pack whose every check is unusable leaves this list in force.
 
-| Name | What Jev checks |
-| --- | --- |
-| `destructive-deletion` | Permanently deleting data that cannot be regenerated. |
-| `production-infra-change` | Changing live infrastructure. |
-| `git-history-rewrite` | Rewriting or discarding shared git history. |
-| `push-to-protected-branch` | Pushing directly to a protected branch. |
-| `commit-on-protected-branch` | Committing directly on a protected branch. |
-| `secret-exposure` | Reading or copying credentials. |
-| `credential-exfiltration` | Sending secrets or private files off the machine. |
-| `remote-code-execution` | Running code downloaded from the internet. |
-| `privilege-escalation` | Running with elevated privileges. |
-| `database-destruction` | Destroying or mass-modifying database data. |
-| `read-outside-workspace` | Reading files outside the project. |
-| `agent-config-tampering` | Changing the agent's own safety configuration. |
-| `system-modification` | Changing the system outside the project. |
-| `env-secrets-dump` | Printing environment secrets. |
-| `external-destructive-action` | An irreversible action through an external tool. |
-| `external-data-egress` | Sending private data to an external tool. |
+| Name | Mode | User can override | What Jev checks |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | yes | Permanently deleting data that cannot be regenerated. |
+| `production-infra-change` | deny | yes | Changing live infrastructure. |
+| `git-history-rewrite` | deny | yes | Rewriting or discarding shared git history. |
+| `push-to-protected-branch` | instruct | yes | Pushing directly to a protected branch. |
+| `commit-on-protected-branch` | instruct | yes | Committing directly on a protected branch. |
+| `secret-exposure` | deny | yes | Reading or copying credentials. |
+| `credential-exfiltration` | deny | no | Sending secrets or private files off the machine. |
+| `remote-code-execution` | deny | yes | Running code downloaded from the internet. |
+| `privilege-escalation` | deny | yes | Running with elevated privileges. |
+| `database-destruction` | deny | yes | Destroying or mass-modifying database data. |
+| `read-outside-workspace` | instruct | yes | Reading files outside the project. |
+| `agent-config-tampering` | deny | no | Changing the agent's own safety configuration. |
+| `system-modification` | instruct | yes | Changing the system outside the project. |
+| `env-secrets-dump` | instruct | yes | Printing environment secrets. |
+| `external-destructive-action` | deny | yes | An irreversible action through an external tool. |
+| `external-data-egress` | instruct | yes | Sending private data to an external tool. |

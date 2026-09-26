@@ -17,6 +17,7 @@ import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
 import { clearPolicies, getAllPolicies } from "../../src/hooks/policy-registry";
 import { effectiveAuthority } from "../../src/hooks/policy-types";
 import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "../../src/hooks/policy-authority";
+import { SEMANTIC_POLICIES } from "../../src/hooks/semantic/policies";
 
 /** D1: the only builtins Jev may clear, and the checks that must clear them. */
 const REVIEWABLE: Record<string, string[]> = {
@@ -203,5 +204,17 @@ describe("the docs page (docs/policies/authority.mdx) matches the table", () => 
     const section = DOC.slice(DOC.indexOf("## Semantic policy names"));
     const listed = [...section.matchAll(/^\| `([a-z0-9-]+)` \|/gm)].map((m) => m[1]);
     expect([...listed].sort()).toEqual([...SEMANTIC_REVIEWER_NAMES].sort());
+  });
+
+  // The pairing rule turns on a check's mode — an instruct-only check can never
+  // keep a deny standing — so the table an author picks names from must say it.
+  it("gives each semantic check its real mode and override", () => {
+    const section = DOC.slice(DOC.indexOf("## Semantic policy names"));
+    const rows = new Map(
+      [...section.matchAll(/^\| `([a-z0-9-]+)` \| (deny|instruct) \| (yes|no) \|/gm)].map((m) => [m[1], [m[2], m[3]]]),
+    );
+    for (const p of SEMANTIC_POLICIES) {
+      expect(rows.get(p.name), p.name).toEqual([p.mode, p.userCanOverride ? "yes" : "no"]);
+    }
   });
 });

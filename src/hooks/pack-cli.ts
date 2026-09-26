@@ -44,7 +44,7 @@ import {
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
 import { getSemanticRegistrations } from "./custom-hooks-registry";
-import { isFirstPartyPack, jevPacks } from "./effective-reviewers";
+import { isFirstPartyPack, isReservedClaim, jevPacks } from "./effective-reviewers";
 import { authorityFieldsOf, authorityProblem, resolvePolicyAuthority } from "./policy-authority";
 import type { PolicyCatalogEntry, SemanticPolicyDeclaration } from "./policy-types";
 import type { MultiChoice, RenderOpts, TTYIn, TTYOut } from "./tui";
@@ -325,6 +325,10 @@ async function build(rest: string[]): Promise<PackCliResult> {
   const effect = flag("effect") ?? "enforce";
   const minCliVersion = flag("min-cli-version");
   const outDir = resolve(flag("out") ?? "dist-pack");
+  // Where it will be installed from, which is what a machine judges a pack by
+  // (`isFirstPartyPack` reads `source`, never the id). `publish` passes its
+  // repository; `pack build` has only the id to go on.
+  const repo = flag("repo");
 
   if (!entry || !id || !version) {
     return fail([
@@ -421,6 +425,14 @@ async function build(rest: string[]): Promise<PackCliResult> {
       // the first policy's questions in the compiled request.
       if (semantic.some((s) => s.name === parsed.name)) {
         throw new Error(`two semantic policies are called ${JSON.stringify(parsed.name)}`);
+      }
+      // The loader's own rule: a built-in check name from anyone but FailproofAI
+      // is void on every machine, never asked and never a reviewer.
+      if (isReservedClaim({ source: `github:${repo ?? identity.id}` }, parsed.name)) {
+        throw new Error(
+          `${JSON.stringify(parsed.name)} is a name reserved for FailproofAI's own Jev checks, so a pack from ` +
+            `${repo ?? identity.id} would never have it asked. Pick a name of your own.`,
+        );
       }
       semantic.push(parsed);
     } catch (err) {
@@ -2332,6 +2344,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   const built = await build([
     entryToBuild,
     "--id", id,
+    ...(repo ? ["--repo", repo] : []),
     "--version", version,
     // NOT when the tree is dirty, even though `--version` let the publish
     // through. `commit` claims these bytes came from that commit, and on a

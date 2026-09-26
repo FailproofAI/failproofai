@@ -10,7 +10,7 @@
  * still fix anything, every rule the loader applies is applied here too.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -203,6 +203,27 @@ describe("build emits the semantic array", () => {
     expect(r.exitCode).toBe(1);
     // The field whose absence would be a security decision.
     expect(r.lines.join("\n")).toMatch(/missing userCanOverride/);
+  });
+
+  it("refuses a built-in check name from a pack outside FailproofAI, which no machine would ask", async () => {
+    // The loader voids the claim (`isReservedClaim`), so it used to build and
+    // publish cleanly and only a consumer's `policies add` said it was inert.
+    const reserved = `
+      import { semanticPolicies } from "failproofai";
+      semanticPolicies.add({
+        name: "destructive-deletion", title: "t", appliesTo: ["shell"], mode: "instruct",
+        userCanOverride: true, probes: [${PROBE}], guidance: "g",
+      });
+    `;
+    const r = await build(write("policies.mjs", reserved));
+    expect(r.exitCode, r.lines.join("\n")).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/destructive-deletion.*reserved/);
+    expect(existsSync(join(work, "out", "failproofai-pack.json"))).toBe(false);
+
+    const firstParty = await runPackCommand([
+      "build", write("first-party-policies.mjs", reserved), "--id", "FailproofAI/jev-policies", "--version", "1.0.0", "--out", join(work, "out"),
+    ]);
+    expect(firstParty.exitCode, firstParty.lines.join("\n")).toBe(0);
   });
 
   it("refuses two semantic policies with one name", async () => {

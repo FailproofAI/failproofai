@@ -559,6 +559,13 @@ async function build(rest: string[]): Promise<PackCliResult> {
         ]
       : []),
     ...(minCliVersion ? [`  Requires failproofai ${minCliVersion} or newer.`] : []),
+    // A build from before `semanticOnly` refuses such a pack as blanket-deny.
+    ...(policies.length === 0 && semantic.length > 0
+      ? [
+          "  Jev checks alone: tell users to remove it before rolling a machine back to an older failproofai,",
+          "  which can deny every tool call over a pack it will not load (see the publish-a-pack docs).",
+        ]
+      : []),
     `  ${outDir}/${PACK_MANIFEST_ASSET}`,
     `  ${outDir}/${PACK_ENTRY_ASSET}`,
     `  ${outDir}/${PACK_CHECKSUMS_ASSET}`,

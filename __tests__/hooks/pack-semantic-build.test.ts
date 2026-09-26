@@ -179,6 +179,9 @@ describe("build emits the semantic array", () => {
     const manifest = manifestOf(join(work, "out"));
     expect(manifest.policies).toEqual([]);
     expect(manifest.semantic).toHaveLength(1);
+    // An older CLI, rolled back onto a machine with it installed, can deny
+    // every tool call over a pack it refuses; the author should know to say so.
+    expect(r.lines.join("\n")).toMatch(/remove it before rolling a machine back/);
   });
 
   it("still refuses an entry that registers neither, and names both APIs", async () => {

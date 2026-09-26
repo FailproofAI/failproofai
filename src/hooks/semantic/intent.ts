@@ -50,14 +50,14 @@
  * independently.
  *
  * What it CAN do is worth stating exactly, because "it only stops a nudge" is
- * not true: of the seven reviewable builtins (policy-catalog.ts), FOUR are
- * blocking denies — `block-read-outside-cwd`, `protect-env-vars`,
- * `block-env-files` and `block-work-on-main` — and only `warn-git-amend`,
- * `warn-destructive-sql` and `warn-global-package-install` are nudges. So a
- * forged consent can turn a real deny into an allow on reading `.env` files,
- * reading outside the project, printing environment secrets, or committing on
- * a protected branch. That is the size of the trade, and it is the reason the
- * hard floor is where the catastrophic cases live.
+ * not true: of the fifteen reviewable builtins (policy-catalog.ts), TWELVE are
+ * blocking denies — `protect-env-vars`, `block-env-files`,
+ * `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`,
+ * `block-secrets-write` and the six infra-CLI blocks — and only
+ * `warn-git-amend`, `warn-destructive-sql` and `warn-global-package-install`
+ * are nudges. So a forged consent can turn a real deny into an allow on those
+ * twelve. `block-work-on-main` is hard. That is the size of the trade; see
+ * docs/reference/jev-intent.mdx, which keeps the list.
  *
  * WHAT IS STILL REFUSED, because it is cheap and an agent cannot forge it by
  * asking: a turn the harness's own payload marks as machine-submitted (a cron

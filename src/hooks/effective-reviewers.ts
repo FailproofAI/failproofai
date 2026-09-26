@@ -210,7 +210,15 @@ export function replacesBuiltinChecks(packs: ReadonlyArray<Pick<ResolvedPack, "s
   return packs.some((p) => isFirstPartyPack(p) && (p.semantic ?? []).length > 0);
 }
 
-/** The reviewer set for the packs taking part: see {@link replacesBuiltinChecks}. Pure. */
+/**
+ * The reviewer set for the packs taking part: see {@link replacesBuiltinChecks}. Pure.
+ *
+ * Manifest-only: it cannot see a check `semanticPoliciesFromPacks` drops for the
+ * question budget, because measuring questions means loading the semantic
+ * modules this hook-path file must not reach. That overcount is fail-safe — a
+ * dropped check is never answered, so it never clears — and the diagnostic
+ * (`surveyReviewableCoverage`) asks the resolver instead.
+ */
 export function reviewerNamesFor(
   packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
 ): ReadonlySet<string> {

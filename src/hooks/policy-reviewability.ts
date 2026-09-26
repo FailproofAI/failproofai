@@ -55,13 +55,16 @@
  *   about a policy set that is coming back shortly would be noise.
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { jevPacks, reviewerNamesFor } from "./effective-reviewers";
+import { jevPacks } from "./effective-reviewers";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
-import { resolvePolicyAuthority } from "./policy-authority";
+import { resolvePolicyAuthority, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
 import type { HooksConfig } from "./policy-types";
+// A CLI and dashboard module, never on the hook path, so it may ask the
+// resolver itself (`pack-cli.ts` does the same).
+import { semanticPoliciesFromPacks } from "./semantic/pack-policies";
 
 /** Anything that carries an authority declaration: a catalog entry, a pack entry, a cloud record. */
 export interface AuthorityRecord {
@@ -153,11 +156,13 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
       const selected = pack.enabled;
       records.push(...(selected ? pack.policies.filter((p) => selected.includes(p.name)) : pack.policies));
     }
-    // Only the packs whose checks registration honours (an observe pack's are
-    // not), and minus a name two packs claim differently — the panel and `jev
-    // status` would otherwise promise a clear that cannot happen. Same
-    // functions, same read, so the two cannot disagree.
-    reviewers = reviewerNamesFor(jevPacks(packs));
+    // The names of the questions a request will actually carry: only the packs
+    // whose checks take part (an observe pack's do not), minus a reserved or
+    // contested name AND minus a check the question budget drops — which the
+    // hook path's manifest-only `reviewerNamesFor` cannot see. Anything else and
+    // the panel and `jev status` promise a clear that cannot happen.
+    const asked = semanticPoliciesFromPacks(jevPacks(packs));
+    reviewers = asked.fromPack ? new Set(asked.policies.map((p) => p.name)) : SEMANTIC_REVIEWER_NAMES;
   } catch {
     // An unreadable manifest enforces nothing; `readInstalledPacks` already
     // reports that to the hook log on the path that cares.

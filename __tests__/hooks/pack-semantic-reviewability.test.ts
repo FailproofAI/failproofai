@@ -169,3 +169,30 @@ describe("surveyReviewableCoverage on a machine running a two-tier pack", () => 
     expect(coverage).toEqual({ enabled: 2, reviewable: 1, customFiles: 0 });
   });
 });
+
+describe("a check the question budget drops", () => {
+  it("is no reviewer: the policy naming only it counts as hard", () => {
+    // Two third-party packs, each under the budget alone, over it together
+    // beside the compiled-in set they join. The later checks are never asked,
+    // so `jev status` must not call a policy reviewable by one of them.
+    const fat = (name: string) => ({
+      ...SEMANTIC,
+      name,
+      userCanOverride: false,
+      probes: Array.from({ length: 6 }, (_, i) => ({
+        id: `p${i}`, instructions: "x".repeat(600), criteria: { true: "t".repeat(300), false: "f".repeat(300) },
+      })),
+    });
+    installPack([regex({ authority: "reviewable", reviewedBy: ["yb-check-2"] })], [fat("yb-check-1"), fat("yb-check-2")]);
+    const manifestPath = join(packRoot, "installed.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { packs: Array<Record<string, unknown>> };
+    Object.assign(manifest.packs[0], { id: "acme/yb", source: "github:acme/yb@1.0.0" });
+    manifest.packs.unshift({
+      ...manifest.packs[0], id: "acme/xa", source: "github:acme/xa@1.0.0", policies: [], semantic: [fat("xa-check-1"), fat("xa-check-2")],
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    forgetEffectiveReviewerNames();
+
+    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 2, reviewable: 0, customFiles: 0 });
+  });
+});

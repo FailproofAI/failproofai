@@ -372,6 +372,9 @@ function cloudRemedy(code: string, message = ""): string | null {
   }
   if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
   if (code === "http-503") return "Jev is unavailable on FailproofAI Cloud right now. Hooks fall back to regex whenever that happens; try again shortly.";
+  // `request_rejected`: TypeSafe refused this request itself, typically dense
+  // text over Jev's token budget. The same call gets the same answer.
+  if (code === "http-422") return "Jev refused this call's request, usually because it held dense text (base64, hex, minified code) over Jev's token budget. That call falls back to regex every time; this is not an outage.";
   if (code === "model-mismatch") return "FailproofAI Cloud answered with a model outside the Jev 1.13 family, so hooks would fall back to regex. This is the server's to fix.";
   // The generic advice for these names `--base-url`, which this route refuses:
   // its endpoint is the Cloud this machine connected to, changed only by

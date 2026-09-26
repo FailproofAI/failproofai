@@ -397,6 +397,21 @@ describe("jev CLI: FailproofAI Cloud", () => {
         expect(text(perMinute)).not.toContain("Daily Jev limit");
       });
 
+      it("a 422 request_rejected is that call's own, never an outage to wait out", async () => {
+        const origin = `http://127.0.0.1:${port}`;
+        connect(origin);
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        status = 422;
+        body = { error: "request_rejected" };
+        const rejected = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
+        expect(rejected.exitCode).toBe(1);
+        expect(text(rejected)).toContain("http-422");
+        expect(text(rejected)).toContain("not an outage");
+        expect(text(rejected)).not.toContain("server error");
+        expect(text(rejected)).not.toContain("try again shortly");
+        noKey(rejected);
+      });
+
       it("a redirect is advice about the connection, never a --base-url this route refuses", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);

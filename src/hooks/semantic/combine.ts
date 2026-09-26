@@ -527,6 +527,12 @@ export function combineTwoTier(
   const asked = new Set(review.asked);
   const notDenied = new Set(review.notDenied);
   const cleared = wholePicture && !review.unclearableWarned ? verdicts.filter((v) => clears(v, asked, notDenied)).map((v) => v.policyName) : [];
+
+  // Built once, for both modes: enforce applies it, shadow records it, and the
+  // two must never disagree about what the verdict WAS.
+  const jevEntry = { policyName: review.policyName, reason: review.reason ?? `Flagged by semantic review (${review.policyName})` };
+  const enforced = resolveEnforce(verdicts, cleared, review.decision, jevEntry);
+
   const activity: JevActivityFields = {
     // §4 records a call the tier could not read whole as a fallback, and so do
     // we — its clearing half really was off. The decision below is still
@@ -537,15 +543,15 @@ export function combineTwoTier(
     evaluator: review.requestCut ? "jev-fallback" : "jev",
     ...(review.requestCut ? { jevFallbackReason: JEV_REASON_REQUEST_CUT } : {}),
     jevDecision: review.decision,
-    ...(cleared.length > 0 ? { jevCleared: cleared } : {}),
+    // Only a clear that SOFTENED the call (in shadow: would have). One that
+    // Jev's own deny, or another regex deny, still decided over changed
+    // nothing — and `jev status` and the policy page's "Cleared by Jev" both
+    // read `jevCleared` as calls Jev let through.
+    ...(cleared.length > 0 && RANK[enforced.final.decision] < RANK[legacy.decision] ? { jevCleared: cleared } : {}),
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),
     ...(review.model ? { jevModel: review.model } : {}),
     jevMode: mode,
   };
-
-  // Built once, for both modes: enforce applies it, shadow records it, and the
-  // two must never disagree about what the verdict WAS.
-  const jevEntry = { policyName: review.policyName, reason: review.reason ?? `Flagged by semantic review (${review.policyName})` };
 
   if (mode === "shadow") {
     // Jev's own deny or instruct, exactly as enforce mode would have applied it
@@ -565,6 +571,18 @@ export function combineTwoTier(
     return { final: legacy, cleared, decidedByJev: false, activity, ...(shadowVerdict ? { shadowVerdict } : {}) };
   }
 
+  return { ...enforced, cleared, activity };
+}
+
+const RANK: Record<Decision, number> = { allow: 0, instruct: 1, deny: 2 };
+
+/** Enforce mode's verdict once `cleared` are removed: the most severe wins. */
+function resolveEnforce(
+  verdicts: readonly RegexVerdict[],
+  cleared: readonly string[],
+  decision: Decision,
+  jevEntry: { policyName: string; reason: string },
+): Pick<CombineOutcome, "final" | "decidedByJev"> {
   const clearedSet = new Set(cleared);
   const remaining = verdicts.filter((v) => !clearedSet.has(v.policyName));
 
@@ -573,13 +591,11 @@ export function combineTwoTier(
   if (regexDeny) {
     return {
       final: { decision: "deny", entries: [{ policyName: regexDeny.policyName, reason: regexDeny.reason ?? "" }] },
-      cleared,
       decidedByJev: false,
-      activity,
     };
   }
-  if (review.decision === "deny") {
-    return { final: { decision: "deny", entries: [jevEntry] }, cleared, decidedByJev: true, activity };
+  if (decision === "deny") {
+    return { final: { decision: "deny", entries: [jevEntry] }, decidedByJev: true };
   }
   // A call part of which was not shown to Jev stops HERE and no further: it
   // cleared nothing (`wholePicture` above), so every regex verdict still
@@ -590,14 +606,9 @@ export function combineTwoTier(
   const instructs = remaining
     .filter((v) => v.decision === "instruct")
     .map((v) => ({ policyName: v.policyName, reason: v.reason ?? "" }));
-  if (review.decision === "instruct") instructs.push(jevEntry);
+  if (decision === "instruct") instructs.push(jevEntry);
   if (instructs.length > 0) {
-    return {
-      final: { decision: "instruct", entries: instructs },
-      cleared,
-      decidedByJev: instructs[0] === jevEntry,
-      activity,
-    };
+    return { final: { decision: "instruct", entries: instructs }, decidedByJev: instructs[0] === jevEntry };
   }
-  return { final: regexOnly(remaining), cleared, decidedByJev: false, activity };
+  return { final: regexOnly(remaining), decidedByJev: false };
 }

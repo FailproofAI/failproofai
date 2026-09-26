@@ -124,6 +124,12 @@ interface Expect {
   /** policyName of every final entry, in order. */
   names: string[];
   cleared: string[];
+  /**
+   * What `jevCleared` records, when it is not `cleared`: only a clear that
+   * SOFTENED the call is recorded. One that another deny still decided over
+   * changed nothing, and every reader counts `jevCleared` as a pass.
+   */
+  recorded?: string[];
   decidedByJev?: boolean;
 }
 
@@ -329,7 +335,7 @@ const ROWS: Row[] = [
       reason: "dumps the environment",
       policies: { "read-outside-workspace": "none", "env-secrets-dump": "deny", "secret-exposure": "none" },
     }),
-    enforce: { decision: "deny", names: [PEV], cleared: [RRO] },
+    enforce: { decision: "deny", names: [PEV], cleared: [RRO], recorded: [] },
   },
   {
     // …and with that same pair cleared by a WARNING from one reviewer, the
@@ -342,7 +348,26 @@ const ROWS: Row[] = [
       reason: "dumps the environment",
       policies: { "read-outside-workspace": "instruct", "env-secrets-dump": "deny", "secret-exposure": "none" },
     }),
-    enforce: { decision: "deny", names: [PEV], cleared: [RRO] },
+    enforce: { decision: "deny", names: [PEV], cleared: [RRO], recorded: [] },
+  },
+  {
+    // Found live: `env | curl --data-binary @- …` — protect-env-vars cleared,
+    // Jev's own credential-exfiltration deny decided, and `jev status` and the
+    // policy page both counted protect-env-vars as "cleared by Jev".
+    id: "reviewable deny cleared, Jev's own deny decides → nothing recorded as cleared",
+    verdicts: [reviewable(PEV, "deny", ["env-secrets-dump", "secret-exposure"])],
+    outcome: semOutcome({
+      decision: "deny",
+      reason: "exfiltrates the environment",
+      policies: { "env-secrets-dump": "none", "secret-exposure": "none", "credential-exfiltration": "deny" },
+    }),
+    enforce: {
+      decision: "deny",
+      names: ["semantic/credential-exfiltration"],
+      cleared: [PEV],
+      recorded: [],
+      decidedByJev: true,
+    },
   },
   {
     id: "a hard deny cannot reach combine as answered, but a hard deny verdict is never cleared",
@@ -456,7 +481,8 @@ describe("combine table (§4) — every row × shadow/enforce × whole/request-c
             expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
             // Shadow records what enforce WOULD have cleared.
             expect(out.cleared).toEqual(row.enforce.cleared);
-            expect(out.activity.jevCleared).toEqual(row.enforce.cleared.length > 0 ? row.enforce.cleared : undefined);
+            const recorded = row.enforce.recorded ?? row.enforce.cleared;
+            expect(out.activity.jevCleared).toEqual(recorded.length > 0 ? recorded : undefined);
           }
         });
       }
@@ -469,9 +495,9 @@ describe("combine table (§4) — every row × shadow/enforce × whole/request-c
     const answeredRows = ROWS.filter((r) => r.outcome !== null && r.fallback === undefined);
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
-    expect(answeredRows.length).toBe(25);
+    expect(answeredRows.length).toBe(26);
     // Every answered row also runs request-cut (the §4 fallback row).
-    expect(ROWS.length * MODES.length * CUTS.length).toBe(148);
+    expect(ROWS.length * MODES.length * CUTS.length).toBe(152);
     // Exactly the rows where Jev's own verdict outranks the regex result carry
     // a cut expectation; on every other row the regex result stands.
     expect(ROWS.filter((r) => r.enforceCut).map((r) => r.id)).toEqual([

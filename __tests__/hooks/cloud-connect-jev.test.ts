@@ -183,6 +183,23 @@ describe("connecting with a key that carries jev:evaluate", () => {
     expect(loadJevConfig()).toBeNull();
   });
 
+  // `jev setup --provider failproofai` keeps the stored mode, so for a file that
+  // is also switched off the other-origin line's command left Jev off.
+  it("other origin AND switched off: says both, and its one command turns Jev on here", async () => {
+    seedJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "off" });
+    const outcome = await connect(withPermissions(...MACHINE_PRESET));
+    expect(outcome.jev?.config).toMatchObject({ status: "kept", otherOrigin: "https://staging.befailproof.ai", jevOff: { why: "off" } });
+    const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+    expect(text).toContain("https://staging.befailproof.ai");
+    expect(text).toContain("switched off");
+    const cmds = [...text.matchAll(/`failproofai (jev setup[^`]*)`/g)].map((m) => m[1]);
+    expect(cmds).toEqual(["jev setup --provider failproofai --mode shadow"]);
+
+    const r = await runJevCommand(cmds[0].split(" ").slice(1), { render: { cols: 120, color: false } });
+    expect(r.exitCode).toBe(0);
+    expect(inspectJevConfig()).toMatchObject({ status: "ok", config: { mode: "shadow", baseUrl: `${URL_}/enforcement/v1/jev` } });
+  });
+
   it("the no-clobber write loses to a file that appears first", () => {
     const before = seedJev({ provider: "custom", apiKey: BYOK_KEY, baseUrl: "https://proxy.example.com/v1" });
     expect(writeCloudJevConfigIfAbsent(URL_).status).toBe("kept");

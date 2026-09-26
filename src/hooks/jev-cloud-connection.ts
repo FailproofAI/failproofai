@@ -167,7 +167,9 @@ function kept(path: string, cloudBase: string): CloudJevConfigWrite {
       // Unreadable: the loader will say so; nothing to add here.
     }
   }
-  if (otherOrigin) return { status: "kept", path, provider, otherOrigin };
+  // Not inspected (that would add the origin mismatch as a second refusal), but
+  // a stored `off` survives `jev setup --provider failproofai`, so say it.
+  if (otherOrigin) return { status: "kept", path, provider, otherOrigin, ...(raw?.mode === "off" ? { jevOff: { why: "off" as const } } : {}) };
   // Asked the way a hook asks, after the new Jev key was stored, so "off" here
   // is what the next tool call sees.
   let jevOff: Extract<CloudJevConfigWrite, { status: "kept" }>["jevOff"];

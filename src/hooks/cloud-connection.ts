@@ -448,10 +448,11 @@ function jevLines(outcome: ConnectOutcome): string[] {
     const lines = [`  Jev       key stored; ${config.path} already exists and was left as configured.`];
     if (config.otherOrigin) {
       lines.push(
-        `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
+        config.jevOff?.why === "off"
+          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here and turn it on: \`failproofai jev setup --provider failproofai --mode shadow\`.`
+          : `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
       );
-    }
-    if (config.jevOff?.why === "refused") {
+    } else if (config.jevOff?.why === "refused") {
       lines.push(
         `            It was refused (${config.jevOff.problem}), so Jev is off. ${config.jevOff.fix ? `Fix: \`${config.jevOff.fix}\`.` : "Write a valid one: `failproofai jev setup --provider failproofai`."}`,
       );

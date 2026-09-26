@@ -240,6 +240,16 @@ describe("failproofai jev --url <url> --token <token>", () => {
         expect(existsSync(jevConfigPath())).toBe(false);
       }
     });
+    // `custom` has no endpoint of its own, and Cloudflare cannot be reached
+    // without an account id: the advice names the flags that do reach it.
+    it("`jev setup --base-url` on Cloudflare's host with provider custom names cloudflare and its account id", async () => {
+      const r = await runJevCommand(
+        ["setup", "--provider", "custom", "--base-url", "https://api.cloudflare.com/client/v4", "--token", TOKEN],
+        RENDER,
+      );
+      expect(text(r)).toContain("--provider cloudflare --account-id");
+      expect(text(r)).not.toContain("custom's own endpoint");
+    });
   });
 
   describe("the URL is validated by the loader's own rule", () => {

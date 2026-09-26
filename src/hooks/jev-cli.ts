@@ -812,7 +812,9 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
   if (checkedTyped?.ok && hostConflict !== null) {
     return fail([
       `Not saved: ${hostConflict}.`,
-      `Give ${kind}'s own endpoint, or the provider this URL belongs to: --provider ${providerForUrl(checkedTyped.value)}.`,
+      kind === "custom"
+        ? "Use the provider that speaks it: --provider cloudflare --account-id <32 hex characters>."
+        : `Give ${kind}'s own endpoint, or the provider this URL belongs to: --provider ${providerForUrl(checkedTyped.value)}.`,
       "",
       "Nothing was written.",
     ]);

@@ -21,6 +21,8 @@ Requires **failproofai 1.0.8-beta.0** or later. 1.0.7 has no Jev, even though it
    failproofai config --token <key>
    ```
 
+   If your organization runs its own FailproofAI Cloud rather than the hosted one, add its address: `--url https://<your dashboard host>` (or export `FAILPROOFAI_CLOUD_URL`). Without it the key is checked against the hosted service and the connection fails.
+
 That is all. Connecting stores the key and, when the machine has **no** Jev config yet, turns Jev on through FailproofAI Cloud in **shadow** mode: Jev is asked about every gated tool call and its verdicts are recorded, but your policies' result is what is enforced. The output says so:
 
 ```text

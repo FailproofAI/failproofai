@@ -139,6 +139,10 @@ describe("counting what Jev may clear", () => {
     expect(reviewableProblem(empty)).toBeNull();
   });
 
+  it("claims no 'never' while policies from the user's own files went uncounted", () => {
+    expect(reviewableProblem({ enabled: 2, reviewable: 0, customFiles: 1 })).toBeNull();
+  });
+
   it("admits the policies it did not read", () => {
     expect(reviewableSummary({ enabled: 4, reviewable: 0, customFiles: 2 })).toBe(
       "0 of 4 enabled policies are reviewable (policies from your own files are not counted).",
@@ -292,6 +296,30 @@ describe("surveying a real machine", () => {
   it("counts the custom policy files it cannot read without running them", () => {
     writeConfig({ enabledPolicies: [], customPoliciesPaths: ["/nowhere/a.mjs", "/nowhere/b.mjs"] });
     expect(surveyReviewableCoverage(project).customFiles).toBe(2);
+  });
+
+  it("counts the convention files the hook loads too, project and user, each once", () => {
+    // The hook auto-loads <project>/.failproofai/policies/*policies.mjs and the
+    // user's own; counting only configured paths gave customFiles 0 and a
+    // "Jev can never clear one" beside `cleared <convention policy> ×14`.
+    writeConfig({ enabledPolicies: [] });
+    const projectFile = join(project, ".failproofai", "policies", "a-policies.mjs");
+    mkdirSync(join(project, ".failproofai", "policies"), { recursive: true });
+    writeFileSync(projectFile, "export {};\n");
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage.customFiles).toBe(1);
+    expect(reviewableProblem(coverage)).toBeNull();
+
+    mkdirSync(join(home, "policies"), { recursive: true });
+    writeFileSync(join(home, "policies", "u-policies.mjs"), "export {};\n");
+    expect(surveyReviewableCoverage(project).customFiles).toBe(2);
+
+    // Named explicitly as well: still the one file.
+    writeConfig({ enabledPolicies: [], customPoliciesPaths: [projectFile] });
+    expect(surveyReviewableCoverage(project).customFiles).toBe(2);
+
+    writeConfig({ enabledPolicies: [], customPoliciesEnabled: false });
+    expect(surveyReviewableCoverage(project).customFiles).toBe(0);
   });
 
   it("never throws on an unreadable machine, and reports what it could read", () => {

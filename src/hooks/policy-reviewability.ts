@@ -49,14 +49,18 @@
  * - **Policies from the user's own files.** A custom hook declares its
  *   authority inside the module, so counting one means importing and running
  *   somebody's JavaScript — from a settings page, on every read. The count of
- *   configured custom policy PATHS is reported instead, and the summary says
- *   in words that those policies were not counted.
+ *   custom policy FILES the hook loads (configured paths and the project and
+ *   user convention files) is reported instead, the summary says in words that
+ *   those policies were not counted, and no "never" is diagnosed beside them.
  * - **A session pause.** It suspends local policy for minutes, and a warning
  *   about a policy set that is coming back shortly would be noise.
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { jevPacks } from "./effective-reviewers";
-import { configuredCustomPolicyPaths, readMergedHooksConfig } from "./hooks-config";
+import { resolve } from "node:path";
+import { discoverPolicyFiles } from "./custom-hooks-loader";
+import { customPoliciesDir } from "./fp-home";
+import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
@@ -78,7 +82,10 @@ export interface ReviewableCoverage {
   enabled: number;
   /** Of those, the ones Jev may clear a deny or an instruct from. */
   reviewable: number;
-  /** Configured custom policy paths, whose policies are not in the counts above. */
+  /**
+   * Custom policy files the hook loads — configured paths and the project and
+   * user convention files — whose policies are not in the counts above.
+   */
   customFiles: number;
 }
 
@@ -189,9 +196,16 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // Same fail-open as the handler's own read of this file.
   }
 
+  // Every file `loadAllCustomHooks` would load, by resolved path so a file
+  // both named and discovered (or a project root that IS home) counts once.
   let customFiles = 0;
   try {
-    customFiles = configuredCustomPolicyPaths(config).length;
+    const files = new Set(configuredCustomPolicyPaths(config).map((p) => resolve(p)));
+    if (config.customPoliciesEnabled !== false) {
+      const projectDir = resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies");
+      for (const dir of [projectDir, customPoliciesDir()]) for (const f of discoverPolicyFiles(dir)) files.add(f);
+    }
+    customFiles = files.size;
   } catch {
     customFiles = 0;
   }
@@ -230,7 +244,9 @@ export function reviewableSummary(coverage: ReviewableCoverage): string {
  * did not ask.
  */
 export function reviewableProblem(coverage: ReviewableCoverage): string | null {
-  if (coverage.enabled === 0 || coverage.reviewable > 0) return null;
+  // Policies from the user's own files were not counted and may be reviewable,
+  // so "never" cannot be said honestly; the summary already says what was skipped.
+  if (coverage.enabled === 0 || coverage.reviewable > 0 || coverage.customFiles > 0) return null;
   return (
     "Jev can add a deny or an instruction on this machine, but it can never clear one. " +
     "No enabled policy is marked reviewable — a policy pack published before this release carries no such marks — " +

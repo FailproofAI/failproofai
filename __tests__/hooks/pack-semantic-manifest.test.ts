@@ -257,7 +257,11 @@ describe("checkPackMinCliVersion", () => {
   it("refuses a genuinely older CLI, and names the remedy", () => {
     const verdict = checkPackMinCliVersion(PACK, "1.0.7-beta.0", "1.0.6");
     expect(verdict.kind).toBe("too-old");
-    expect(verdict.kind === "too-old" && verdict.reason).toContain("npm i -g failproofai && failproofai update");
+    // The minimum as a range, never the bare name: that resolves to `latest`,
+    // which can sit below a prerelease minimum and predate the field entirely.
+    expect(verdict.kind === "too-old" && verdict.reason).toContain(
+      'npm i -g "failproofai@>=1.0.7-beta.0" && failproofai update',
+    );
     expect(verdict.kind === "too-old" && verdict.reason).toContain("1.0.6");
   });
 

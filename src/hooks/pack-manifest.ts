@@ -539,7 +539,9 @@ export function checkPackMinCliVersion(
       kind: "too-old",
       reason:
         `pack ${packId} needs failproofai ${String(declared)} or newer and this is ${current} — ` +
-        "run `npm i -g failproofai && failproofai update`",
+        // As a range: the bare name installs `latest`, which can sit below a
+        // prerelease minimum. `declared` compared above, so it is plain semver.
+        `run \`npm i -g "failproofai@>=${String(declared)}" && failproofai update\``,
     };
   }
   return { kind: "satisfied", declared: declared as string };

@@ -221,7 +221,7 @@ describe("minCliVersion at add time", () => {
     // a machine that denies every tool call until someone works out why.
     release({ minCliVersion: "99.0.0", semantic: [SEMANTIC] });
     await expect(add()).rejects.toThrow(/needs failproofai 99\.0\.0 or newer/);
-    await expect(add()).rejects.toThrow(/npm i -g failproofai && failproofai update/);
+    await expect(add()).rejects.toThrow('npm i -g "failproofai@>=99.0.0" && failproofai update');
     expect(readInstalledPacks().packs).toEqual([]);
   });
 

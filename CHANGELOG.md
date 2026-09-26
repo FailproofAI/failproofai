@@ -4,7 +4,7 @@
 
 ### Docs
 
-- Point the Trendshift badge at the overall daily ranking instead of the TypeScript-scoped one, in the root README and all 14 translations (#841)
+- Show both Trendshift badges — the overall daily ranking beside the TypeScript-scoped one — in the root README and all 14 translations (#841)
 
 ## 1.0.7 — 2026-09-26
 

@@ -316,7 +316,7 @@ semanticPolicies.add({
 ```
 
 <Warning>
-  A Jev check takes effect **only through a published pack**. `failproofai publish` is the one thing that reads `semanticPolicies.add()`; in a local policy file (`.failproofai/policies/`, `--custom`) it loads without an error and is never asked, and a local policy whose `reviewedBy` names it stays hard. See [Jev checks in a pack](/policies/publish-a-pack#jev-checks-in-a-pack).
+  A Jev check takes effect **only through a published pack**. `failproofai publish` is the one thing that reads `semanticPolicies.add()`; in a local policy file (`.failproofai/policies/`, `--custom`) it loads without an error, the hook log names it as ignored, and it is never asked, and a local policy whose `reviewedBy` names it stays hard. See [Jev checks in a pack](/policies/publish-a-pack#jev-checks-in-a-pack).
 </Warning>
 
 | Field | Required | Description |

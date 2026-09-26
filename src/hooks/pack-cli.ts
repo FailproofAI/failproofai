@@ -465,7 +465,9 @@ async function build(rest: string[]): Promise<PackCliResult> {
     // FALSE: a pack's declared defaults are what `pack add` switches on with no
     // flags, and switching on a stranger's every policy unattended is the
     // installer opinion this lane already refused once.
-    const extra = hook as unknown as { category?: unknown; defaultEnabled?: unknown; params?: unknown };
+    const extra = hook as unknown as {
+      category?: unknown; defaultEnabled?: unknown; params?: unknown; alwaysOn?: unknown;
+    };
     // `params` is read off the registration for the same reason, and leaving it
     // out was not cosmetic: `registerPolicy` takes a pack policy's schema from the
     // MANIFEST by name, so a pack published without it evaluates every one of its
@@ -490,6 +492,9 @@ async function build(rest: string[]): Promise<PackCliResult> {
       defaultEnabled: extra.defaultEnabled === true,
       match: hook.match ?? {},
       ...(extra.params !== undefined ? { params: extra.params } : {}),
+      // Carried so parsePackPolicy refuses it as the loader would; left off, an
+      // alwaysOn registration published as an ordinary (even reviewable) policy.
+      ...("alwaysOn" in extra ? { alwaysOn: extra.alwaysOn } : {}),
       // Whether Jev may clear this policy's verdict. A pack's MANIFEST is what
       // a machine reads it from, so a declaration left on the registration
       // alone would be published as nothing — silently hard. Checked above, so

@@ -135,6 +135,23 @@ describe("pack build", () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it("refuses alwaysOn rather than publishing the policy without it", async () => {
+    // The loader refuses the key on a pack policy. Dropped here, an alwaysOn +
+    // reviewable registration shipped as a plain reviewable one.
+    const entry = write(
+      "aon.mjs",
+      `import { customPolicies } from "failproofai";
+      customPolicies.add({ name: "aon", description: "d", alwaysOn: true, authority: "reviewable",
+        reviewedBy: ["destructive-deletion"], match: { events: ["PreToolUse"] },
+        fn: async () => ({ decision: "allow" }) });\n`,
+    );
+    const out = join(work, "dist-pack");
+    const r = await runPackCommand(["build", entry, "--id", "acme/aon", "--version", "1.0.0", "--out", out]);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/declares alwaysOn, which packs may not set/);
+    expect(existsSync(join(out, "failproofai-pack.json"))).toBe(false);
+  });
+
   it("names the entry and the flags when called with nothing", async () => {
     const r = await runPackCommand(["build"]);
     expect(r.exitCode).toBe(1);

@@ -1,6 +1,17 @@
 # Changelog
 
-## 1.0.7-beta.0 — 2026-09-22
+## 1.0.7 — 2026-09-26
+
+The stable cut of the 1.0.7 line. For the `failproofai` package itself this is a
+collector release: `failproofaid` now records what a person actually typed as its
+own `human_input` event on every harness, and it ingests OpenClaw 2026.9.6's
+compressed transcripts, which it previously failed outright. Enforcement is
+untouched — nothing under `src/` changed since 1.0.6, so upgrading cannot change
+what your agents are allowed to do.
+
+The rest of the line ships on its own version lines, both already published:
+`@failproofai/sdk` 0.0.1-beta.0, the TypeScript telemetry SDK, and
+`fp-cloud-cli` 0.0.1, the first stable release of the Cloud CLI.
 
 ### Added
 
@@ -32,6 +43,7 @@
 
 - **Clear 32 of the 36 Dependabot alerts still open against the TypeScript SDK's integration fixtures, without moving a single framework under test.** (The other four, `nextjs`'s `postcss`, land in #836.) The fixtures pin real, sometimes deliberately old framework releases (`ai@4.3.19`, `@langchain/core@0.3.80`, `@mastra/core@0.24.9`) and those releases pin *their* transitive deps exactly — `ai@4.3.19` requires `jsondiffpatch@0.6.0`, not `^0.6.0` — so an in-range `npm update` reported every one of the five affected fixtures already up to date while the advisories stood against them. Each now carries a minimal `overrides` entry instead, the same lever the root `package.json` already uses: `undici` 5.29.0 → 7.29.0 (`ai-5`, 12 advisories), `langsmith` 0.3.87 → 0.10.5 and `uuid` → 11.1.1 (`langchain-0.3`, `langchain-dup-core`), `jsondiffpatch` → 0.7.6 (`ai-4`, `mastra-0`), and `uuid` plus five OpenTelemetry packages onto the 2.11.0/0.222.0 pairing (`mastra-0`). Every direct pin, and `langchain-dup-core`'s two-copies-of-`@langchain/core` shape, is byte-for-byte unchanged; the `frameworks` and `runtimes` integration shards pass in full. (#837)
 - **Write down the two advisories that cannot be fixed this way, and why the fixture lockfiles had no gate at all.** `ai@4.3.19` (GHSA-rwvc-j5jr-mgvh) and the `@ai-sdk/provider-utils@2.2.8` inside it (GHSA-866g-f22w-33x8) are both fixed only in a major the `ai-4` fixture exists to stay below and Mastra 0.x cannot take; both are low severity and need an attack surface — a file upload, a hostile provider response — that a scripted in-process fixture does not have. They stay open and documented rather than dismissed, so the next person to move the supported framework floor is reminded they retire with it. `SECURITY.md` now covers the whole path: that Dependabot reads every lockfile in the repo while the OSV-Scanner gate reads only the five it is handed, that a transitive advisory in a fixture is fixed with an override and never by moving the pinned framework, and that an `[[IgnoredVulns]]` entry for one of these would filter nothing and be reported as an unused ignore. (#837)
+- 13 routine dependency bumps (#816–#828), and the bundled skills pinned forward twice.
 
 ## 1.0.6 — 2026-09-16
 

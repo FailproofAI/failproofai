@@ -189,3 +189,64 @@ def test_parsing_and_executing_have_separate_budgets():
 
     assert policy_check._TIMEOUT_SECS == 5
     assert policy_check._SYNTAX_TIMEOUT_SECS > policy_check._TIMEOUT_SECS
+
+
+# ── Jev fields a cloud policy never reads ────────────────────────────────────
+#
+# `semanticPolicies.add` is read only from a pack built by `failproofai publish`,
+# and a cloud policy's authority comes from its deployment record, which never
+# sets it — so both publish as a version that reads Jev-aware and is not. The
+# dashboard refuses them (agenteye `dashboard/lib/policies/policyMeta.ts`,
+# `cloudPublishProblem`) and the server is being taught to 422 them; these cases
+# are the dashboard's own, so the three surfaces agree on what counts.
+
+JEV_BASE = '''import { customPolicies, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-wrong-jira-project",
+  description: "Deny Jira writes outside the configured project",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+'''
+_SECOND = JEV_BASE.split("\n", 1)[1].replace("match:", 'authority: "reviewable",\n  match:')
+
+
+@pytest.mark.parametrize("src,needle", [
+    (JEV_BASE, None),
+    (JEV_BASE + '\nsemanticPolicies.add({ name: "db-migration-on-production" });\n', "failproofai pack"),
+    (JEV_BASE.replace("match:", 'authority: "reviewable", reviewedBy: ["destructive-deletion"],\n  match:'),
+     "always hard"),
+    ('// semanticPolicies.add({ name: "later" })\n' + JEV_BASE, None),
+    ('/* customPolicies.add({ authority: "reviewable" }) */\n' + JEV_BASE, None),
+    ('const s = "semanticPolicies.add(";\n' + JEV_BASE, None),
+    (JEV_BASE.replace("allow()", 'allow("authority: reviewable")'), None),
+    (JEV_BASE + '\nsemanticPolicies\n  .add ({ name: "db-migration-on-production" });\n', "failproofai pack"),
+    (JEV_BASE + "\n" + _SECOND, "always hard"),
+], ids=["plain", "semantic", "reviewable", "commented-semantic", "commented-reviewable",
+        "string-literal", "nested-text", "split-spelling", "later-registration"])
+def test_jev_fields_are_refused_the_way_the_dashboard_refuses_them(src, needle):
+    from fp_cli.policy_check import cloud_publish_problem
+
+    problem = cloud_publish_problem(src)
+    if needle is None:
+        assert problem is None
+    else:
+        assert problem and needle in problem
+
+
+def test_publish_refuses_jev_fields_before_anything_is_sent(monkeypatch):
+    """Both `policies publish` and `policies compose --publish` route through
+    `client.publish_policy`, so the refusal lives there — and must fire before
+    the POST, whatever `--no-verify` said about the syntax check."""
+    from fp_cli import client
+    from fp_cli.errors import ApiError
+
+    def _no_post(*a, **kw):
+        raise AssertionError("a refused source reached the server")
+
+    monkeypatch.setattr(client, "_post_json", _no_post)
+    src = JEV_BASE + '\nsemanticPolicies.add({ name: "db-migration-on-production" });\n'
+    with pytest.raises(ApiError) as exc:
+        client.publish_policy(None, "p", src)
+    assert "failproofai publish" in str(exc.value) + (exc.value.hint or "")

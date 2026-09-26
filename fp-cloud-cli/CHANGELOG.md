@@ -14,6 +14,16 @@
   FailproofAI Cloud. `fp keys` also refuses `jev:evaluate` without both prerequisites itself
   (exit 2, naming what is missing) instead of sending the key for the server's 422. (#833)
 
+### Changed
+
+- `fp policies publish` (and `policies compose --publish`) refuses a source carrying Jev
+  fields a cloud policy never reads — a `semanticPolicies.add(...)` call, or a registration
+  declaring `authority: "reviewable"` — before anything is sent (exit 1, `--no-verify` does
+  not skip it). Both were published as versions that read Jev-aware and are not: semantic
+  checks load only from a pack, and a cloud policy's authority comes from its deployment, so
+  it stays hard. Ship Jev checks in a pack with `failproofai publish`. Same rule, and the
+  same comment-aware detection, as the dashboard's publish form and the server's 422. (#833)
+
 ## 0.0.1 — 2026-09-22
 
 **First stable release.** `0.0.1b1` and `0.0.1b2` are the two betas behind it; the

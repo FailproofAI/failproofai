@@ -451,6 +451,13 @@ function jevLines(outcome: ConnectOutcome): string[] {
         `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
       );
     }
+    if (config.jevOff?.why === "refused") {
+      lines.push(
+        `            It was refused (${config.jevOff.problem}), so Jev is off. ${config.jevOff.fix ? `Fix: \`${config.jevOff.fix}\`.` : "Write a valid one: `failproofai jev setup --provider failproofai`."}`,
+      );
+    } else if (config.jevOff?.why === "off") {
+      lines.push("            It has Jev switched off (mode off), so Jev is off. To turn it on: `failproofai jev setup --mode shadow`.");
+    }
     if (jev.stillOn) {
       lines.push(
         `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. To switch it off: \`failproofai jev setup --mode off\`.`,

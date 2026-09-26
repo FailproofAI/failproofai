@@ -83,6 +83,8 @@ export type CloudJevConfigWrite =
        * until pointed at this one, which is worth one line at connect time.
        */
       otherOrigin?: string;
+      /** Set when the kept file leaves Jev off here: refused, or switched off. */
+      jevOff?: { why: "refused"; problem: string; fix?: string } | { why: "off" };
     }
   | { status: "error"; path: string; problem: string };
 
@@ -165,7 +167,18 @@ function kept(path: string, cloudBase: string): CloudJevConfigWrite {
       // Unreadable: the loader will say so; nothing to add here.
     }
   }
-  return { status: "kept", path, provider, ...(otherOrigin ? { otherOrigin } : {}) };
+  if (otherOrigin) return { status: "kept", path, provider, otherOrigin };
+  // Asked the way a hook asks, after the new Jev key was stored, so "off" here
+  // is what the next tool call sees.
+  let jevOff: Extract<CloudJevConfigWrite, { status: "kept" }>["jevOff"];
+  try {
+    const r = inspectJevConfig();
+    if (r.status === "refused") jevOff = { why: "refused", problem: r.problem, ...(r.fix ? { fix: r.fix } : {}) };
+    else if (r.status === "off") jevOff = { why: "off" };
+  } catch {
+    // Nothing to add; the kept line stands on its own.
+  }
+  return { status: "kept", path, provider, ...(jevOff ? { jevOff } : {}) };
 }
 
 /**

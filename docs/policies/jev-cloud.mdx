@@ -38,7 +38,7 @@ failproofai jev setup --provider failproofai
 It does not turn Jev **off** either. If the machine's `jev.json` already runs Jev through FailproofAI Cloud, it is left as it is, and the output says that Jev still sends each checked tool call and the recent prompt, and that `failproofai jev setup --mode off` switches it off.
 
 <Warning>
-Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
+Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured — and, when that file leaves Jev off (refused, or switched off), says so and how to fix it. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
 </Warning>
 
 ## Shadow, enforce or off

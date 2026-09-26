@@ -152,11 +152,24 @@ describe("connecting with a key that carries jev:evaluate", () => {
     }
   });
 
-  it("never overwrites a file it cannot even read", async () => {
+  it("never overwrites a file it cannot even read, and says Jev is off because of it", async () => {
     const before = seedJev("{ this is not json");
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
     expect(outcome.jev?.config?.status).toBe("kept");
+    // Someone who just minted a machine key must not come away thinking Jev is on.
+    const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+    expect(text).toContain("left as configured");
+    expect(text).toMatch(/refused/);
+    expect(text).toContain("Jev is off");
+  });
+
+  it("says a kept Cloud jev.json switched off leaves Jev off, and how to turn it on", async () => {
+    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "off" });
+    const outcome = await connect(withPermissions(...MACHINE_PRESET));
+    const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
+    expect(text).toContain("switched off");
+    expect(text).toContain("jev setup --mode shadow");
   });
 
   it("names the other origin when the Cloud jev.json on disk points somewhere else", async () => {

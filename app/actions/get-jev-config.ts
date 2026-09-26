@@ -398,7 +398,10 @@ async function statsOrNull(on: boolean): Promise<JevSettingsStats | null> {
 function reviewableOrNull(on: boolean): JevReviewabilityView | null {
   if (!on) return null;
   try {
-    const coverage = surveyReviewableCoverage();
+    // The launch directory, as every other dashboard read resolves project
+    // config: the standalone server chdirs into the package, and `jev status`
+    // counts the project it is run in.
+    const coverage = surveyReviewableCoverage(process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd());
     return {
       enabled: coverage.enabled,
       reviewable: coverage.reviewable,

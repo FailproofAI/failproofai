@@ -27,7 +27,13 @@ const TOKEN = "jevtoken-0123456789-3f2a";
 /** A pack may not carry the always-on guard. */
 const PACKABLE = POLICY_CATALOG.filter((p) => !p.alwaysOn);
 
-const ENV_KEYS = ["FAILPROOFAI_HOME", "FAILPROOFAI_PACK_DIR", "FAILPROOFAI_CLOUD_POLICY_DIR", "FAILPROOFAI_JEV_API_KEY"] as const;
+const ENV_KEYS = [
+  "FAILPROOFAI_HOME",
+  "FAILPROOFAI_PACK_DIR",
+  "FAILPROOFAI_CLOUD_POLICY_DIR",
+  "FAILPROOFAI_JEV_API_KEY",
+  "FAILPROOFAI_LAUNCH_CWD",
+] as const;
 
 let home: string;
 let project: string;
@@ -141,6 +147,28 @@ describe("getJevSettingsAction — what Jev may clear", () => {
         "Jev may clear a deny or an instruction from those, and from no others.",
       problem: null,
     });
+  });
+
+  it("counts the launch directory's project config, not the server's own cwd", async () => {
+    // The standalone server chdirs into the package directory, so the project a
+    // person launched the dashboard from arrives only as FAILPROOFAI_LAUNCH_CWD —
+    // the directory `failproofai jev status` would be run in.
+    const launch = mkdtempSync(join(tmpdir(), "fpai-panel-authcount-launch-"));
+    try {
+      mkdirSync(join(launch, ".failproofai"));
+      writeFileSync(
+        join(launch, ".failproofai", "policies-config.json"),
+        JSON.stringify({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) }),
+      );
+      process.env.FAILPROOFAI_LAUNCH_CWD = launch;
+      writeConfig({ enabledPolicies: [] });
+      turnJevOn();
+
+      const view = await getJevSettingsAction();
+      expect(view.reviewable).toMatchObject({ enabled: POLICY_CATALOG.length, reviewable: 15, problem: null });
+    } finally {
+      rmSync(launch, { recursive: true, force: true });
+    }
   });
 
   it("stays silent for a file the loader refused, where nothing can be cleared anyway", async () => {

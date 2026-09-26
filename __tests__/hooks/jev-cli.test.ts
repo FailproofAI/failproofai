@@ -285,6 +285,17 @@ describe("failproofai jev", () => {
       expect(text(r)).not.toContain(KEY);
     });
 
+    // Read bits expose the key; only write bits let others change the endpoint.
+    it.skipIf(!posix)("a config others can only read says they can read its key, not change it", async () => {
+      await runJevCommand(["setup", "--provider", "typesafe", "--key-stdin"], withKey(KEY));
+      chmodSync(jevConfigPath(), 0o644);
+      const t = text(await runJevCommand(["status"], RENDER));
+      expect(t).toMatch(/can read this file/);
+      expect(t).not.toContain("could change this file");
+      chmodSync(jevConfigPath(), 0o620);
+      expect(text(await runJevCommand(["status"], RENDER))).toContain("could change this file");
+    });
+
     it("notices FAILPROOFAI_EVALUATOR=legacy in this shell", async () => {
       await runJevCommand(["setup", "--provider", "typesafe", "--key-stdin"], withKey(KEY));
       process.env.FAILPROOFAI_EVALUATOR = "legacy";

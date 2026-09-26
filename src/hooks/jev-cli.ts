@@ -1152,10 +1152,16 @@ function refusedNextStep(inspection: Extract<JevConfigInspection, { status: "ref
     };
   }
   if (inspection.reason === "too-open") {
+    // Read bits alone expose the key in it; only write bits (or a loose
+    // directory, where the file's own mode is owner-only) let others change it.
+    const m = inspection.mode ?? 0;
+    const readOnly = (m & 0o044) !== 0 && (m & 0o022) === 0;
     return {
       // Either the file or the directory it sits in; `fix` says which.
       cmd: inspection.fix ?? `chmod 600 ${inspection.path}`,
-      lead: "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+      lead: readOnly
+        ? "Other users can read this file, and with it any key it holds. Make it owner-only (and rotate the key if it matters):"
+        : "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
     };
   }
   if (cloudFile) return { cmd: "failproofai jev setup --provider failproofai", lead: "Rewrite it from this machine's FailproofAI Cloud connection:" };

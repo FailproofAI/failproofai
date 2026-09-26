@@ -35,7 +35,8 @@ const declaration = (over: Partial<SemanticPolicyDeclaration> = {}): SemanticPol
 const manifestEntry = (over: Partial<SemanticPolicyDeclaration> = {}): SemanticManifestEntry =>
   parsePackSemanticPolicy("acme/guards", declaration(over), 0);
 
-const pack = (id: string, semantic: SemanticManifestEntry[]) => ({ id, semantic });
+/** First-party, because the builtin check names these use are reserved to FailproofAI's packs. */
+const pack = (id: string, semantic: SemanticManifestEntry[]) => ({ id, semantic, source: `github:FailproofAI/${id.split("/")[1]}@v1` });
 
 describe("semanticPoliciesFromPacks — the replacement rule", () => {
   it("returns the compiled-in set, by identity, when no pack declares any", () => {

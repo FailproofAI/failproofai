@@ -33,8 +33,9 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames } from "../effective-reviewers";
+import { contestedSemanticNames, isFirstPartyPack } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
+import { SEMANTIC_REVIEWER_NAMES } from "../policy-authority";
 import {
   packSemantic,
   readInstalledPacks,
@@ -164,7 +165,7 @@ function toSemanticPolicy(entry: SemanticManifestEntry): SemanticPolicy {
  * a filesystem.
  */
 export function semanticPoliciesFromPacks(
-  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic">>,
+  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
 ): ResolvedSemanticPolicies {
   const declared = packs.filter((p) => packSemantic(p).length > 0);
   if (declared.length === 0) return { policies: SEMANTIC_POLICIES, fromPack: false, errors: [] };
@@ -187,8 +188,11 @@ export function semanticPoliciesFromPacks(
       const claimants = contested.get(entry.name);
       if (claimants) {
         errors.push(
-          `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
-            `for neither of them and no policy can be cleared by that name`,
+          declared.some((p) => claimants.includes(p.id) && isFirstPartyPack(p)) || !SEMANTIC_REVIEWER_NAMES.has(entry.name)
+            ? `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
+                `for neither of them and no policy can be cleared by that name`
+            : `pack ${claimants.join(" and ")} declares semantic policy ${entry.name}, a name reserved for FailproofAI's ` +
+                `own Jev checks, so it is not asked and no policy can be cleared by that name`,
         );
         continue;
       }

@@ -101,24 +101,42 @@ function canonical(value: unknown): string {
  * another pack's is the bug this function exists to remove.
  */
 export function contestedSemanticNames(
-  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic">>,
+  packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>,
 ): ReadonlyMap<string, string[]> {
-  const claims = new Map<string, { form: string; ids: string[] }>();
+  const claims = new Map<string, { form: string; ids: string[]; firstParty: boolean }>();
   const contested = new Map<string, string[]>();
   for (const pack of packs) {
     for (const entry of pack.semantic ?? []) {
       const form = canonical(entry);
       const claim = claims.get(entry.name);
       if (claim === undefined) {
-        claims.set(entry.name, { form, ids: [pack.id] });
+        claims.set(entry.name, { form, ids: [pack.id], firstParty: isFirstPartyPack(pack) });
         continue;
       }
       claim.ids.push(pack.id);
+      claim.firstParty ||= isFirstPartyPack(pack);
       // The array is the live one, so a third claimant is named too.
       if (claim.form !== form) contested.set(entry.name, claim.ids);
     }
   }
+  // A builtin check name is FailproofAI's: core and user policies name it in
+  // `reviewedBy`. Claimed by no first-party pack, it would make a third party's
+  // question the reviewer that clears them — an `instruct`-mode
+  // `destructive-deletion` beside the core pack turned `block-rm-rf` into a
+  // warning. So it is asked for nobody; copies identical to a first-party
+  // declaration are the same question and stay (the fork case above).
+  for (const [name, claim] of claims) {
+    if (SEMANTIC_REVIEWER_NAMES.has(name) && !claim.firstParty) contested.set(name, claim.ids);
+  }
   return contested;
+}
+
+/**
+ * Installed from a FailproofAI repository. Read from `source`, which this CLI
+ * wrote from the repository it fetched, never from the pack's self-declared `id`.
+ */
+export function isFirstPartyPack(pack: { source?: string }): boolean {
+  return /^github:FailproofAI\//i.test(pack.source ?? "");
 }
 
 /**

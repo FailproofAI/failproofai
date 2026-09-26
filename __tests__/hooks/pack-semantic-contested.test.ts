@@ -114,6 +114,7 @@ interface PackInput {
   semantic?: unknown[];
   /** The artifact bytes, when a pack needs particular ones. */
   artifact?: string;
+  source?: string;
 }
 
 function install(packs: PackInput[]): void {
@@ -125,7 +126,7 @@ function install(packs: PackInput[]): void {
     return {
       id: p.id,
       version: p.version,
-      source: `github:${p.id}@v${p.version}`,
+      source: p.source ?? `github:${p.id}@v${p.version}`,
       entry: `artifacts/${digest}.mjs`,
       sha256: digest,
       policies: p.policies,
@@ -251,6 +252,41 @@ describe("a second pack claiming a check another pack's policies name", () => {
       authority: "reviewable",
       reviewedBy: ["production-infra-change"],
     });
+  });
+});
+
+describe("a third-party pack claiming a builtin check name", () => {
+  /** The core pack: regex only, reviewable by the compiled-in check. */
+  const CORE: PackInput = {
+    id: "FailproofAI/policies",
+    version: "1.0.0",
+    policies: [regex("block-rm-rf", { authority: "reviewable", reviewedBy: ["destructive-deletion"] })],
+    artifact: artifactFor("FailproofAI/policies", ["block-rm-rf"]),
+  };
+  const EXTRAS: PackInput = {
+    id: "acme/jev-extras",
+    version: "0.1.0",
+    policies: [],
+    semantic: [semantic("destructive-deletion", { mode: "instruct" })],
+  };
+
+  // The impostor's question is never asked: the compiled-in set stands, so the
+  // core policy is still reviewable — by FailproofAI's own check.
+  it.each([
+    ["its own id", EXTRAS],
+    ["a forged FailproofAI id", { ...EXTRAS, id: "FailproofAI/jev-policies", source: "github:acme/jev-extras@v0.1.0" }],
+  ])("is not the reviewer that clears the core pack's policy (%s)", async (_label, extras) => {
+    install([CORE, extras]);
+    const registered = await registeredAfterOneEvent();
+    expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({
+      authority: "reviewable",
+      reviewedBy: ["destructive-deletion"],
+    });
+    vi.resetModules();
+    const { resolveSemanticPolicies } = await import("@/src/hooks/semantic/pack-policies");
+    const { SEMANTIC_POLICIES } = await import("@/src/hooks/semantic/policies");
+    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+    expect(stderr.join("")).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
   });
 });
 

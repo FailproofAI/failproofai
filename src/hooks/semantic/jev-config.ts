@@ -343,7 +343,8 @@ export interface BaseUrlWithoutQuery {
 }
 
 /**
- * A stored base URL with its query string removed, and whether it had one.
+ * A stored base URL with its query string (and any userinfo) removed, and
+ * whether it had a query.
  *
  * The refusal above is the source fix, and this is what makes the way OUT safe
  * regardless: a file written by an older build can already carry `?token=`, and
@@ -357,14 +358,20 @@ export interface BaseUrlWithoutQuery {
  * one is cut at the first `?`, which is strictly more aggressive than parsing.
  */
 export function baseUrlWithoutQuery(raw: string): BaseUrlWithoutQuery {
+  // Userinfo (`https://svc:<key>@host`) comes off as well: it is the other place
+  // a URL carries a credential, and `validateBaseUrl` refuses it for that reason.
   try {
     const url = new URL(raw);
-    if (!url.search) return { url: raw, hadQuery: false };
+    if (!url.search && !url.username && !url.password) return { url: raw, hadQuery: false };
+    const hadQuery = url.search !== "";
     url.search = "";
-    return { url: url.toString(), hadQuery: true };
+    url.username = "";
+    url.password = "";
+    return { url: url.toString(), hadQuery };
   } catch {
     const cut = raw.indexOf("?");
-    return cut < 0 ? { url: raw, hadQuery: false } : { url: raw.slice(0, cut), hadQuery: true };
+    const head = (cut < 0 ? raw : raw.slice(0, cut)).replace(/^([^:/?#]+:\/\/)[^/?#]*@/, "$1");
+    return { url: head, hadQuery: cut >= 0 };
   }
 }
 

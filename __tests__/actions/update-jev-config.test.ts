@@ -258,6 +258,23 @@ describe("the token never reaches the browser", () => {
     expect(readFileSync(configPath(), "utf8")).not.toContain(secret);
   });
 
+  it("carries no userinfo off a refused base URL, and no pasted key out of accountId", async () => {
+    const secret = ["sk", "live", "0123456789abcdef"].join("-");
+    seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: `https://svc:${secret}@gw.example.com/v1` });
+    const view = await getJevSettingsAction();
+    expect(view.status).toBe("refused");
+    expect(view.baseUrl).toBe("https://gw.example.com/v1");
+    expect(whole(view)).not.toContain(secret);
+
+    // A Cloudflare API token pasted into the account-id slot.
+    const pasted = "cf-token-0123456789abcdefghijklmnopqrstuv";
+    seedConfig({ provider: "cloudflare", apiKey: TOKEN, accountId: pasted });
+    const cf = await getJevSettingsAction();
+    expect(cf.status).toBe("refused");
+    expect(cf.accountId).toBe("");
+    expect(whole(cf)).not.toContain(pasted);
+  });
+
   it("sends no fragment of the key either, whatever its length", async () => {
     // It used to send the last four characters for a key long enough to spare
     // them, so the panel could say "configured, ending 3f2a". That is a

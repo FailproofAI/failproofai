@@ -325,6 +325,15 @@ describe("semantic/jev-config", () => {
       // A refused file is where this matters most, and its value may not parse.
       expect(baseUrlWithoutQuery("htp:/gw?token=s3cr3t-value")).toEqual({ url: "htp:/gw", hadQuery: true });
     });
+
+    it("takes userinfo off too, which the loader refuses as a credential", () => {
+      expect(baseUrlWithoutQuery("https://svc:sk-secret@gw.example.com/v1")).toEqual({
+        url: "https://gw.example.com/v1",
+        hadQuery: false,
+      });
+      expect(baseUrlWithoutQuery("https://svc:sk-secret@gw.example.com/v1?a=1").url).toBe("https://gw.example.com/v1");
+      expect(baseUrlWithoutQuery("https://svc:sk-secret@bad host/v1").url).toBe("https://bad host/v1");
+    });
   });
 
   describe("model versions", () => {

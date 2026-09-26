@@ -47,6 +47,7 @@
 
 import { readCredentials, readJevCloudCredential } from "@/src/hooks/fp-config";
 import {
+  CLOUDFLARE_ACCOUNT_ID_RE,
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
   JEV_CLOUD_PROVIDER,
@@ -310,7 +311,9 @@ function routingFromRaw(raw: Record<string, unknown> | null): {
   return {
     provider,
     baseUrl: asString(raw?.baseUrl),
-    accountId: asString(raw?.accountId),
+    // An account id is 32 hex characters; anything else in that slot of a
+    // refused file may be a pasted key, and is not shown.
+    accountId: CLOUDFLARE_ACCOUNT_ID_RE.test(asString(raw?.accountId)) ? asString(raw?.accountId) : "",
     model: asString(raw?.model),
     mode: modeRaw === "off" || modeRaw === "shadow" || modeRaw === "enforce" ? modeRaw : DEFAULT_JEV_MODE,
   };

@@ -335,6 +335,15 @@ describe("failproofai policies show <pack>", () => {
     expect(text).toContain("Requires failproofai 1.0.7-beta.0 or newer.");
   });
 
+  it("says a minimum it cannot compare was ignored, on show and on add", async () => {
+    // Checks alone, since installing runs the artifact and ENTRY registers nothing.
+    release({ minCliVersion: "v1.0.8", policies: [], semantic: [check("acme-check")] });
+    expect((await show()).join("\n")).toMatch(/"v1\.0\.8", which is not a version[\s\S]*requirement was ignored/);
+    const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/"v1\.0\.8", which is not a version[\s\S]*requirement was ignored/);
+  });
+
   it("sits under the policy rows, since a check is read against what it can clear", async () => {
     const lines = await show();
     const policyRow = lines.findIndex((l) => l.includes("block-rm-rf") && l.includes("default"));

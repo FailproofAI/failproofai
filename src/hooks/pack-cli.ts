@@ -2732,6 +2732,8 @@ async function add(rest: string[]): Promise<PackCliResult> {
           "They apply only where you configured Jev (`failproofai jev status`).",
       );
     }
+    // Nothing after this screen says it: the record keeps no unreadable minimum.
+    if (result.minCliVersionNote) lines.push(`  ${result.minCliVersionNote}`);
 
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
@@ -3174,6 +3176,7 @@ async function listRemote(source: string): Promise<PackCliResult> {
         opts,
       ),
       preview.minCliVersion ? note(`Requires failproofai ${preview.minCliVersion} or newer.`, opts) : null,
+      preview.minCliVersionNote ? note(preview.minCliVersionNote, opts) : null,
       preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
       table({ head: ["", "", ""], rows }, opts),
       // The half the table above cannot hold: its own section, under the

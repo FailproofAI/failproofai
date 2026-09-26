@@ -102,6 +102,8 @@ export interface AddPackResult {
    * reporting "the pack is installed and enforcing nothing".
    */
   semantic: number;
+  /** Why the pack's minCliVersion was ignored, when this build could not compare it. */
+  minCliVersionNote?: string;
   artifact: string;
 }
 
@@ -474,6 +476,8 @@ interface FetchedPack {
   semantic: SemanticManifestEntry[];
   /** The minimum CLI it claims, once this one has been checked against it. */
   minCliVersion?: string;
+  /** Why a minimum this build cannot compare was ignored, to be said out loud. */
+  minCliVersionNote?: string;
   effect?: PolicyEffect;
   /** The git commit the publisher built this from, when they had one. */
   commit?: string;
@@ -530,15 +534,22 @@ function parseManifestSemantic(packId: string, value: unknown): SemanticManifest
  * until somebody works out why. Catching it at install turns the same fact into
  * one line at the moment of choosing.
  *
- * A minimum this build cannot compare is IGNORED, exactly as the loader ignores
+ * A minimum this build cannot compare is ignored, exactly as the loader ignores
  * it: a publisher's typo in a version string must not be able to stop anyone
- * installing a pack. `failproofai publish` refuses to write one, so this is
- * only reachable from a pack built by some other tool.
+ * installing a pack. But the reason comes back as a note for the preview and
+ * the install to print, since the record keeps no unreadable value and the
+ * loader's own warning never reaches a CLI screen. `failproofai publish`
+ * refuses to write one, so this is only reachable from a pack built by some
+ * other tool.
  */
-function assertMinCliVersion(packId: string, declared: unknown): string | undefined {
+function assertMinCliVersion(
+  packId: string,
+  declared: unknown,
+): { minCliVersion?: string; minCliVersionNote?: string } {
   const verdict = checkPackMinCliVersion(packId, declared);
   if (verdict.kind === "too-old") throw new Error(verdict.reason);
-  return verdict.kind === "satisfied" ? verdict.declared : undefined;
+  if (verdict.kind === "unreadable") return { minCliVersionNote: verdict.reason };
+  return verdict.declared ? { minCliVersion: verdict.declared } : {};
 }
 
 /** Fetch and fully validate a pack, without writing anything. */
@@ -636,6 +647,8 @@ export interface PackPreview {
   semantic: SemanticManifestEntry[];
   /** The minimum CLI this pack declares, when it declares one this build can read. */
   minCliVersion?: string;
+  /** Why a declared minimum this build cannot read was ignored. */
+  minCliVersionNote?: string;
   /** The exact source the preview was read from, tag resolved and pinned. */
   source: string;
   /** True when the tag was resolved rather than typed. */
@@ -685,7 +698,7 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
     semantic?: unknown; minCliVersion?: unknown;
   };
   const identity = parsePackIdentity(value);
-  const minCliVersion = assertMinCliVersion(identity.id, value.minCliVersion);
+  const minCli = assertMinCliVersion(identity.id, value.minCliVersion);
   const semantic = parseManifestSemantic(identity.id, value.semantic);
   const policies = parseManifestPolicies(identity.id, value.policies);
   assertDeclaresSomething(policies, semantic);
@@ -696,7 +709,7 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
     ...(identity.commit ? { commit: identity.commit } : {}),
     policies,
     semantic,
-    ...(minCliVersion ? { minCliVersion } : {}),
+    ...minCli,
     source: formatPackSpec(spec),
     resolvedFromLatest,
   };
@@ -783,7 +796,7 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   // Before the shape checks below, because being too old for the pack is not a
   // complaint about the pack: the message to give is "update the CLI", and a
   // manifest field this build cannot read yet must not be reported as malformed.
-  const minCliVersion = assertMinCliVersion(identity.id, raw.minCliVersion);
+  const minCli = assertMinCliVersion(identity.id, raw.minCliVersion);
   // Validated with the SAME rules the loader applies, so a pack that could never
   // load is refused here — while nothing has been written — rather than
   // installing cleanly and failing silently on the next tool call.
@@ -796,7 +809,7 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
     version: identity.version,
     policies,
     semantic,
-    ...(minCliVersion ? { minCliVersion } : {}),
+    ...minCli,
     ...(raw.effect !== undefined ? { effect: identity.effect } : {}),
     ...(identity.commit ? { commit: identity.commit } : {}),
     artifact,
@@ -1131,6 +1144,7 @@ export async function addPack(
     selection: reason,
     categories: [...new Set(fetched.policies.map((p) => slugifyCategory(p.category)))],
     semantic: fetched.semantic.length,
+    ...(fetched.minCliVersionNote ? { minCliVersionNote: fetched.minCliVersionNote } : {}),
     artifact: artifactAbs,
   };
 }

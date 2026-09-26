@@ -231,13 +231,15 @@ describe("minCliVersion at add time", () => {
     expect(readInstalledPacks().packs[0].minCliVersion).toBe(packageVersion);
   });
 
-  it("installs, and ignores, a minimum nobody can compare", async () => {
-    // A publisher's typo in a version string must not stop anyone installing.
-    release({ minCliVersion: "v1" });
-    await add();
+  it.each(["v1.0.8", "banana", 108])("installs a minimum nobody can compare, and says so (%s)", async (bad) => {
+    // A publisher's typo in a version string must not stop anyone installing —
+    // but a requirement that quietly evaporates must not either.
+    release({ minCliVersion: bad, semantic: [SEMANTIC] });
+    const result = await add();
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
     expect(packs[0].minCliVersion).toBeUndefined();
+    expect(result.minCliVersionNote).toMatch(/not a version this CLI can compare.*the requirement was ignored/);
   });
 });
 
@@ -254,6 +256,13 @@ describe("the preview shows both halves", () => {
     const preview = await fetchPackPreview("acme/finance@v1.2.0");
     expect(preview.policies).toEqual([]);
     expect(preview.semantic).toHaveLength(1);
+  });
+
+  it("previews a minimum it cannot compare with the reason it was ignored", async () => {
+    release({ minCliVersion: "v1.0.8" });
+    const preview = await fetchPackPreview("acme/finance@v1.2.0");
+    expect(preview.minCliVersion).toBeUndefined();
+    expect(preview.minCliVersionNote).toMatch(/"v1\.0\.8".*the requirement was ignored/);
   });
 
   it("refuses to preview a pack this CLI is too old for", async () => {

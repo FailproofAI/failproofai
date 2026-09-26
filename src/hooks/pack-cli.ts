@@ -40,6 +40,7 @@ import {
   removePack,
   setPackPolicyEnabled,
   slugifyCategory,
+  type PackPreview,
 } from "./pack-store";
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
@@ -2627,6 +2628,30 @@ function semanticPhrase(count: number): string {
   return `${count} Jev ${count === 1 ? "check" : "checks"}`;
 }
 
+/**
+ * How a pack's Jev checks sit beside this build's, for add, show and the
+ * picker alike: a FailproofAI pack's replace them, anyone else's are added
+ * (`replacesBuiltinChecks`). One phrase, so the three cannot drift apart again.
+ */
+function besideBuiltinChecks(pack: { source?: string }): string {
+  return isFirstPartyPack(pack) ? "replacing this build's own set" : "added to this build's own checks";
+}
+
+/**
+ * Which of a pack's checks the resolver would leave out beside what is
+ * installed (the shared budget, a reserved or contested name). `preview` is a
+ * pack not installed yet, judged as if it were. A diagnostic: never throws.
+ */
+function jevCheckWarnings(id: string, preview?: PackPreview): string[] {
+  try {
+    const installed = readInstalledPacks().packs.filter((p) => p.id !== preview?.id);
+    const packs = preview ? [...installed, { ...preview, clis: null }] : installed;
+    return semanticPoliciesFromPacks(jevPacks(packs)).errors.filter((e) => e.includes(id));
+  } catch {
+    return [];
+  }
+}
+
 async function pickFromSource(
   source: string,
   io: { stdin: TTYIn; stdout: TTYOut },
@@ -2658,12 +2683,12 @@ async function pickFromSource(
   }
   const on = preview.policies.filter((p) => p.defaultEnabled).length;
   // Said BEFORE the list, because the list cannot say it: a pack's Jev checks are
-  // not rows here, they arrive whole, and they replace the ones this build ships.
-  // Somebody ticking boxes should know that is part of what they are agreeing to.
+  // not rows here, and they arrive whole. Somebody ticking boxes should know
+  // that is part of what they are agreeing to.
   if (preview.semantic.length > 0) {
     io.stdout.write(
-      `\n  This pack also brings ${semanticPhrase(preview.semantic.length)}, which are not selectable —\n` +
-        `  they replace the ones this build ships with. See: failproofai policies show ${source}\n\n`,
+      `\n  This pack also brings ${semanticPhrase(preview.semantic.length)} (not selectable), ` +
+        `${besideBuiltinChecks(preview)}.\n  See: failproofai policies show ${source}\n\n`,
     );
   }
   const picked = await multiSelect<string>({
@@ -2798,8 +2823,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
     // the half somebody installed did nothing and nothing said so.
     if (result.semantic > 0) {
       lines.push(
-        `  ${semanticPhrase(result.semantic)}, ` +
-          `${isFirstPartyPack(result) ? "replacing this build's own set" : "added to this build's own checks"}. ` +
+        `  ${semanticPhrase(result.semantic)}, ${besideBuiltinChecks(result)}. ` +
           "They apply only where you configured Jev (`failproofai jev status`).",
       );
     }
@@ -2809,12 +2833,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
     // installed (the shared question budget, a reserved or contested name).
     // Otherwise said only in the hook log, on the first call that asks Jev.
     if (result.semantic > 0) {
-      try {
-        const { errors } = semanticPoliciesFromPacks(jevPacks(readInstalledPacks().packs));
-        for (const e of errors) if (e.includes(result.id)) lines.push(`  ▲ ${e}`);
-      } catch {
-        // A diagnostic; the install itself already succeeded.
-      }
+      for (const e of jevCheckWarnings(result.id)) lines.push(`  ▲ ${e}`);
     }
 
     if (skipped.length > 0) {
@@ -3164,6 +3183,8 @@ export function jevChecksSection(
   pack: {
     policies: ReadonlyArray<PolicyCatalogEntry>;
     semantic: ReadonlyArray<SemanticManifestEntry>;
+    /** Where it is (or would be) installed from, which decides replace or add. */
+    source?: string;
   },
   opts?: RenderOpts,
 ): string[] | null {
@@ -3197,8 +3218,8 @@ export function jevChecksSection(
     ...table({ head: ["", "", ""], rows, protect: [0, 1] }, opts),
     "",
     ...note(
-      "Nothing toggles them: `--policy` cannot name one, `failproofai policies` never lists them, " +
-        "and a pack's checks replace the ones this build ships with.",
+      "Nothing toggles them: `--policy` cannot name one and `failproofai policies` never lists them. " +
+        `They arrive whole, ${besideBuiltinChecks(pack)}.`,
       opts,
     ),
     ...note(
@@ -3265,6 +3286,7 @@ async function listRemote(source: string): Promise<PackCliResult> {
       // policies rather than above them, because a check is read against the
       // policies it can clear and those are the rows just passed.
       jevChecksSection(preview, opts),
+      preview.semantic.length > 0 ? jevCheckWarnings(preview.id, preview).flatMap((e) => warning([e], opts)) : null,
       nextStep(`failproofai policies add ${source}`, "Install the defaults with:", opts),
       note("Or take part of it: --policy <a,b>, --category <x,y>, --all", opts),
     ),

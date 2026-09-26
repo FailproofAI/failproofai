@@ -86,7 +86,17 @@ describe("the section's shape", () => {
     const text = section([policy("block-rm-rf", ["destructive-deletion"])], [check("destructive-deletion")]).join("\n");
     expect(text).toContain("`--policy` cannot name one");
     expect(text).toContain("`failproofai policies` never lists them");
-    expect(text).toContain("replace the ones this build ships with");
+  });
+
+  it("says a third party's checks are added to the built-in ones, and only FailproofAI's replace them", () => {
+    // `policies show` and the picker said "replace" for every pack after the
+    // resolver started ADDING a stranger's checks; `add` already said "added to".
+    const pack = { policies: [policy("block-rm-rf")], semantic: [check("acme-check")] };
+    const third = jevChecksSection({ ...pack, source: "github:acme/x@1.0.0" }, OPTS)!.join("\n");
+    expect(third).toContain("added to this build's own checks");
+    expect(third).not.toMatch(/replac/);
+    const first = jevChecksSection({ ...pack, source: "github:FailproofAI/jev-policies@1.0.0" }, OPTS)!.join("\n");
+    expect(first).toContain("replacing this build's own set");
   });
 
   it("gives every row its mode, because that decides what pairing with it can do", () => {
@@ -369,6 +379,14 @@ describe("failproofai policies show <pack>", () => {
     expect(text).toMatch(/acme\/guards semantic policy acme-b was dropped: its questions need/);
     expect(text).not.toMatch(/acme-a was dropped/);
     expect(text).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
+  });
+
+  it("says, as add does, which of its checks this machine would never ask", async () => {
+    // The default release declares destructive-deletion from acme/guards: a
+    // reserved name, so that pack's version is never asked. Only add said so.
+    const text = (await show()).join("\n");
+    expect(text).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
+    expect(text).toContain("added to this build's own checks");
   });
 
   it("sits under the policy rows, since a check is read against what it can clear", async () => {

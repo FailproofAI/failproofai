@@ -186,6 +186,15 @@ describe("installing a pack that declares semantic policies", () => {
     await expect(add()).rejects.toThrow(/declares semantic policy pack-destructive-deletion twice/);
   });
 
+  it("refuses a regex policy name the pack declares twice, as the loader does", async () => {
+    // Installed, the loader refuses the whole record, and a refused pack fails
+    // every tool call its policies cover closed.
+    release({ policies: [POLICY, POLICY] });
+    await expect(add()).rejects.toThrow(/declares block-big-refund twice/);
+    await expect(fetchPackPreview("acme/finance@v1.2.0")).rejects.toThrow(/declares block-big-refund twice/);
+    expect(readInstalledPacks().packs).toEqual([]);
+  });
+
   it("installs a pack that carries ONLY semantic policies", async () => {
     // A legitimate pack: the regex floor may already be somebody else's, and the
     // two halves version independently.

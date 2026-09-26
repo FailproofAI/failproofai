@@ -710,7 +710,14 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
 function parseManifestPolicies(packId: string, value: unknown): PolicyCatalogEntry[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error(`pack ${packId} policies is not an array`);
-  return value.map((policy, i) => parsePackPolicy(packId, policy, i));
+  const policies = value.map((policy, i) => parsePackPolicy(packId, policy, i));
+  // The loader's rule: it refuses the whole record over a repeated name.
+  const names = new Set<string>();
+  for (const p of policies) {
+    if (names.has(p.name)) throw new Error(`pack ${packId} declares ${p.name} twice`);
+    names.add(p.name);
+  }
+  return policies;
 }
 
 /**

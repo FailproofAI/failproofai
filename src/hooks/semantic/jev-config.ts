@@ -760,6 +760,8 @@ export type JevConfigInspection =
       problem: string;
       /** The command that fixes it, when one does. */
       fix?: string;
+      /** When the refusal is about credentials.json: that file's permission bits (`mode` stays jev.json's). */
+      credentialsMode?: number | null;
     };
 
 function readEnvKey(): string | null {
@@ -907,6 +909,7 @@ export function inspectJevConfig(): JevConfigInspection {
         reason: credential.reason === "too-open" ? "too-open" : "unreadable",
         problem: `the FailproofAI Cloud credential was refused: ${credential.problem}`,
         ...(credential.fix ? { fix: credential.fix } : {}),
+        credentialsMode: credential.mode,
       };
     }
     // `FAILPROOFAI_JEV_API_KEY` is deliberately not passed: see the header.

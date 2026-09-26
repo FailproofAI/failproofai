@@ -185,6 +185,35 @@ describe("jev CLI: FailproofAI Cloud", () => {
       noKey(human);
     });
 
+    // Readable-by-others is key DISCLOSURE (the Cloud key spends the org's
+    // budget), not tampering: the note must name the bits that are set.
+    it.each([["0644", 0o644], ["0640", 0o640], ["0604", 0o604]])("credentials.json at %s: says others can read it, not change it", async (_octal, mode) => {
+      connect();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      chmodSync(join(fpHome, "credentials.json"), mode);
+      const t = text(await runJevCommand(["status"], RENDER));
+      expect(t).toMatch(/can read it/);
+      expect(t).not.toContain("could change it");
+    });
+
+    it("credentials.json group-writable: says others could change it", async () => {
+      connect();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      chmodSync(join(fpHome, "credentials.json"), 0o620);
+      expect(text(await runJevCommand(["status"], RENDER))).toContain("could change it");
+    });
+
+    it("credentials.json that is not JSON: no permissions claim, reconnect instead", async () => {
+      connect();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeFileSync(join(fpHome, "credentials.json"), "{not json", { mode: 0o600 });
+      const human = await runJevCommand(["status"], RENDER);
+      expect(human.exitCode).toBe(1);
+      expect(text(human)).toContain("config --token <key>");
+      expect(text(human)).not.toContain("other users");
+      expect(text(human)).not.toContain("owner-only");
+    });
+
     it("absent: names the FailproofAI Cloud path too", async () => {
       const t = text(await runJevCommand(["status"], RENDER));
       expect(t).toContain("FailproofAI Cloud");
@@ -327,6 +356,25 @@ describe("jev CLI: FailproofAI Cloud", () => {
   });
 
   describe("jev test", () => {
+    // `jev test` gives the next step `jev status` gives, not the BYOK setup.
+    it.each([
+      ["a loose credentials.json", () => chmodSync(join(fpHome, "credentials.json"), 0o644), () => `chmod 600 ${join(fpHome, "credentials.json")}`],
+      ["a group-writable directory", () => chmodSync(fpHome, 0o770), () => `chmod 700 ${fpHome}`],
+      [
+        "a Cloud file on another origin",
+        () => writeJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "shadow" }),
+        () => "failproofai jev setup --provider failproofai",
+      ],
+    ])("refused (%s): the same fix as status", async (_label, breakIt, fix) => {
+      connect();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      breakIt();
+      const t = text(await runJevCommand(["test"], RENDER));
+      chmodSync(fpHome, 0o700);
+      expect(t).toContain(fix());
+      expect(t).not.toContain("--provider <kind>");
+    });
+
     it("not connected / switched off: not run, with a code for each", async () => {
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
       const nc = await runJevCommand(["test", "--json"], RENDER);

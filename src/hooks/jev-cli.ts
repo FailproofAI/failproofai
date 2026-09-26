@@ -114,6 +114,7 @@ import {
   validateJevConfig,
   type EndpointGivenAsBase,
   type JevConfig,
+  type JevConfigInspection,
   type JevProviderKind,
 } from "./semantic/jev-config";
 import {
@@ -1124,6 +1125,40 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
 const CLOUD_CREDENTIAL_REFUSED = "the FailproofAI Cloud credential was refused";
 
 /**
+ * The next step for a refused config: one ladder, so `status` and `test` never
+ * disagree about the same inspection.
+ */
+function refusedNextStep(inspection: Extract<JevConfigInspection, { status: "refused" }>, cloudFile: boolean): { cmd: string; lead: string } {
+  // The Cloud route's key file is credentials.json, and a refusal can be about
+  // THAT file: the key it holds was put there by `config --token`, not by
+  // anything `jev setup` could re-ask for.
+  if (cloudFile && inspection.problem.startsWith(CLOUD_CREDENTIAL_REFUSED)) {
+    if (inspection.reason !== "too-open") {
+      return { cmd: "failproofai config --token <key>", lead: "credentials.json could not be read. Reconnect, which rewrites it at 0600:" };
+    }
+    const m = inspection.credentialsMode ?? 0;
+    const risks = [
+      ...((m & 0o044) !== 0 ? ["other users can read it, and with it spend this machine's FailproofAI Cloud key"] : []),
+      ...((m & 0o022) !== 0 ? ["other users could change it"] : []),
+    ];
+    const risk = risks.length > 0 ? risks.join(", and ") : "other users can write where it lives, so they could put their own in its place";
+    return {
+      cmd: inspection.fix ?? "failproofai config --token <key>",
+      lead: `credentials.json holds the key Jev sends to FailproofAI Cloud, and ${risk}. Make it owner-only (or reconnect, which rewrites it at 0600):`,
+    };
+  }
+  if (inspection.reason === "too-open") {
+    return {
+      // Either the file or the directory it sits in; `fix` says which.
+      cmd: inspection.fix ?? `chmod 600 ${inspection.path}`,
+      lead: "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+    };
+  }
+  if (cloudFile) return { cmd: "failproofai jev setup --provider failproofai", lead: "Rewrite it from this machine's FailproofAI Cloud connection:" };
+  return { cmd: "failproofai jev setup --provider <kind> --key-stdin", lead: "Write a valid one:" };
+}
+
+/**
  * `jev setup --provider failproofai`, and any setup run over a Cloud file.
  *
  * The Cloud route has nothing to choose but its mode and timeout: the endpoint
@@ -1616,32 +1651,13 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     // where it points before suggesting that.
     const raw = readJevConfigFileForUpdate()?.raw ?? null;
     const named = inspection.reason === "too-open" ? namedEndpoint(raw) : null;
-    const cloudFile = raw?.provider === JEV_CLOUD_PROVIDER;
-    // The Cloud route's key file is credentials.json, and a refusal can be
-    // about THAT file: its fix is a chmod on it, and the key it holds was put
-    // there by `config --token`, not by anything `jev setup` could re-ask for.
-    const credentialRefused = cloudFile && inspection.problem.startsWith(CLOUD_CREDENTIAL_REFUSED);
+    const next = refusedNextStep(inspection, raw?.provider === JEV_CLOUD_PROVIDER);
     return fail(
       stack(
         title("failproofai jev status", "off (config refused)", opts),
         warning([`Jev is off: ${inspection.path} was refused — ${inspection.problem}.`, "Hooks run the regex policies exactly as before."], opts),
         named ? rows([["endpoint it names", named]], opts) : null,
-        credentialRefused
-          ? nextStep(
-              inspection.fix ?? "failproofai config --token <key>",
-              "credentials.json holds the key Jev sends to FailproofAI Cloud, and other users could change it. Make it owner-only (or reconnect, which rewrites it at 0600):",
-              opts,
-            )
-          : inspection.reason === "too-open"
-            ? nextStep(
-                // Either the file or the directory it sits in; `fix` says which.
-                inspection.fix ?? `chmod 600 ${inspection.path}`,
-                "Other users could change this file, so check that endpoint is one you chose. Then make it owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
-                opts,
-              )
-            : cloudFile
-              ? nextStep("failproofai jev setup --provider failproofai", "Rewrite it from this machine's FailproofAI Cloud connection:", opts)
-              : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
+        nextStep(next.cmd, next.lead, opts),
         legacyNote,
         jevStatsLines(stats, opts),
       ),
@@ -1728,16 +1744,20 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
             : inspection.status === "not-connected" || inspection.status === "key-lacks-jev"
               ? inspection.status
               : "config";
-    const fixCmd =
-      inspection.status === "key-missing"
+    const refusedNext =
+      inspection.status === "refused" ? refusedNextStep(inspection, readJevConfigFileForUpdate()?.raw?.provider === JEV_CLOUD_PROVIDER) : null;
+    const fixCmd = refusedNext
+      ? refusedNext.cmd
+      : inspection.status === "key-missing"
         ? "failproofai jev setup --key-stdin < key-file"
         : inspection.status === "off"
           ? "failproofai jev setup --mode shadow"
           : inspection.status === "not-connected" || inspection.status === "key-lacks-jev"
             ? "failproofai config --token <key>"
             : "failproofai jev setup --provider <kind> --key-stdin";
-    const fixLead =
-      inspection.status === "key-missing"
+    const fixLead = refusedNext
+      ? refusedNext.lead
+      : inspection.status === "key-missing"
         ? `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file:`
         : inspection.status === "off"
           ? "Switch it back on:"

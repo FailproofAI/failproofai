@@ -40,7 +40,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | Command | Outcome |
 | --- | --- |
 | `failproofai config` | Set the machine up: agents, daemon, and Cloud when a key is present |
-| `failproofai config --token <key>` | Set up and connect in one pass, asking nothing |
+| `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/policies/jev-cloud) in shadow mode, unless a `jev.json` already exists or `--no-transcripts` is given |
 | `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
 | `failproofai policies` | List builtin, custom, convention, pack, and Cloud-managed policies |
@@ -51,13 +51,14 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai policies show <owner>/<repo>` | What a pack carries, read from its manifest, before you take it |
 | `failproofai policies show <owner>/<repo> --releases` | Every version it has published, and which one is here |
 | `failproofai policies add <source>` | Install a policy pack from a GitHub release; no tag takes the newest and pins it |
-| `failproofai publish` | Ship your own policies as a pack; `--init` writes one to start from |
+| `failproofai publish` | Ship your own policies as a pack; `--init` writes one to start from, and `--min-cli-version <version>` sets the oldest CLI that may install it ([Jev checks in a pack](/policies/publish-a-pack#jev-checks-in-a-pack)) |
 | `failproofai policies remove <publisher/name>` | Uninstall a pack |
 | `failproofai audit` | Scan local agent history and open the local audit view |
 | `failproofai audit --schedule [days] --email <address>` | Schedule recurring local scans and email their findings |
 | `failproofai audit --status` | Show the report address, interval, and next scheduled scan |
 | `failproofai audit --no-schedule` | Stop recurring scans without deleting audit history |
 | `failproofai harness list` | List extra capture paths |
+| `failproofai jev --url <url> --key-stdin` | Set Jev up in one step; the provider is taken from the URL's host |
 | `failproofai jev setup --provider <kind> --key-stdin` | Let [Jev](/policies/jev-byok) judge tool calls through your own endpoint and key |
 | `failproofai jev setup --provider failproofai` | Let Jev judge tool calls [through FailproofAI Cloud](/policies/jev-cloud), with this machine's Cloud key |
 | `failproofai jev setup --mode <m>` | Switch Jev's mode: `enforce`, `shadow`, or `off` (keeps the config, stops asking Jev) |
@@ -84,8 +85,8 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
 | `--machine-id <id>` | Set the stable machine ID |
 | `--machine-label <name>` | Rename a machine that is **already connected**. On its own it never runs setup, so give it after `failproofai config`, not during |
-| `--no-transcripts` | Send decisions without transcript content |
-| `--disconnect` | Stop Cloud policy pulls and event delivery |
+| `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt |
+| `--disconnect` | Stop Cloud policy pulls and event delivery. Also removes the Cloud Jev key and a `jev.json` that names FailproofAI Cloud; your own Jev setup is left in place |
 | `--status` | Show current machine state |
 | `--pause [duration]` | Pause the newest session in the current directory; accepts seconds, minutes, or hours and defaults to 30 minutes |
 | `--resume` | End a matching pause early |

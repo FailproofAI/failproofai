@@ -543,7 +543,7 @@ export async function evaluateHookEvent(
     } else {
       // Load enabled policies (merge across project/local/global scopes)
       config = readMergedHooksConfig(session.cwd);
-      clearPolicies();
+      clearPolicies(cli);
 
       // A session pause suspends LOCAL policy only, for a bounded time. Cloud
       // assignments are exempt below for the same reason `disabledCustomPolicies`

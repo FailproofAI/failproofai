@@ -115,6 +115,8 @@ interface PackInput {
   /** The artifact bytes, when a pack needs particular ones. */
   artifact?: string;
   source?: string;
+  effect?: "enforce" | "observe";
+  clis?: string[];
 }
 
 function install(packs: PackInput[]): void {
@@ -131,6 +133,8 @@ function install(packs: PackInput[]): void {
       sha256: digest,
       policies: p.policies,
       ...(p.semantic ? { semantic: p.semantic } : {}),
+      ...(p.effect ? { effect: p.effect } : {}),
+      ...(p.clis ? { clis: p.clis } : {}),
     };
   });
   writeFileSync(join(packRoot, "installed.json"), JSON.stringify({ schemaVersion: 1, packs: records }));
@@ -287,6 +291,45 @@ describe("a third-party pack claiming a builtin check name", () => {
     const { SEMANTIC_POLICIES } = await import("@/src/hooks/semantic/policies");
     expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
     expect(stderr.join("")).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
+  });
+});
+
+describe("a pack's Jev checks obey its effect and its agents, like its policies", () => {
+  /** Enforce, every agent, regex only: reviewable by a check another pack ships. */
+  const GUARDED: PackInput = {
+    id: "acme/guards",
+    version: "1.0.0",
+    policies: [regex("block-egress", { authority: "reviewable", reviewedBy: ["acme-egress"] })],
+    artifact: artifactFor("acme/guards", ["block-egress"]),
+  };
+  const CHECKS: PackInput = { id: "acme/checks", version: "1.0.0", policies: [], semantic: [semantic("acme-egress")] };
+
+  const questions = async (cli?: string) => {
+    vi.resetModules();
+    const { resolveSemanticPolicies } = await import("@/src/hooks/semantic/pack-policies");
+    return resolveSemanticPolicies(cli).map((p) => p.name);
+  };
+  const guardedAuthority = async () =>
+    authorityOf((await registeredAfterOneEvent()).get("pack/acme/guards@1.0.0/block-egress"));
+
+  it("an observe pack's checks are neither asked nor a reviewer", async () => {
+    install([GUARDED, { ...CHECKS, effect: "observe" }]);
+    expect(await guardedAuthority()).toEqual({ authority: "hard" });
+    expect(await questions("claude")).not.toContain("acme-egress");
+  });
+
+  it("a pack scoped to another agent is neither asked nor a reviewer here", async () => {
+    install([GUARDED, { ...CHECKS, clis: ["codex"] }]);
+    // registeredAfterOneEvent evaluates as claude.
+    expect(await guardedAuthority()).toEqual({ authority: "hard" });
+    expect(await questions("claude")).not.toContain("acme-egress");
+    expect(await questions("codex")).toEqual(["acme-egress"]);
+  });
+
+  it("an in-scope enforce pack's checks are both", async () => {
+    install([GUARDED, { ...CHECKS, clis: ["claude"] }]);
+    expect(await guardedAuthority()).toEqual({ authority: "reviewable", reviewedBy: ["acme-egress"] });
+    expect(await questions("claude")).toEqual(["acme-egress"]);
   });
 });
 

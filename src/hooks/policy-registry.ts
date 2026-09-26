@@ -127,14 +127,15 @@ export function getPoliciesForEvent(
   return result;
 }
 
-export function clearPolicies(): void {
+/** `cli`: the agent this pass registers for, which scopes the Jev reviewer set. */
+export function clearPolicies(cli?: string): void {
   const g = globalThis as GlobalWithRegistry;
   g[REGISTRY_KEY] = [];
   setIndexCache(null);
   // The reviewer set describes the policies that are about to be registered, so
   // it is rebuilt with them. Dropping it here is also what keeps one read per
   // evaluation instead of one per policy.
-  forgetEffectiveReviewerNames();
+  forgetEffectiveReviewerNames(cli);
 }
 
 /**

@@ -33,7 +33,7 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames, isFirstPartyPack } from "../effective-reviewers";
+import { contestedSemanticNames, isFirstPartyPack, jevPacks } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import { SEMANTIC_REVIEWER_NAMES } from "../policy-authority";
 import {
@@ -248,7 +248,7 @@ const warned = new Set<string>();
  * fails in the safe direction: the set a pack's `reviewedBy` names is not the
  * builtin set, so nothing gets cleared by a policy nobody could read.
  */
-export function resolveSemanticPolicies(): ReadonlyArray<SemanticPolicy> {
+export function resolveSemanticPolicies(cli?: string): ReadonlyArray<SemanticPolicy> {
   let packs: ReadonlyArray<ResolvedPack> = [];
   let manifestErrors: string[] = [];
   try {
@@ -258,7 +258,7 @@ export function resolveSemanticPolicies(): ReadonlyArray<SemanticPolicy> {
   } catch {
     return SEMANTIC_POLICIES;
   }
-  const resolved = semanticPoliciesFromPacks(packs);
+  const resolved = semanticPoliciesFromPacks(jevPacks(packs, cli));
   // Once per process per message, like `warnAuthority`: this runs on every gate
   // event, and in the warm worker that is every tool call of every session.
   for (const message of [...manifestErrors, ...resolved.errors]) {

@@ -134,7 +134,7 @@ The repository must also be **public**. Installs are anonymous HTTPS with no cre
 
 ## Observe before you enforce
 
-A manifest may declare `"effect": "observe"` — `failproofai publish --effect observe` is what sets it. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
+A manifest may declare `"effect": "observe"` — `failproofai publish --effect observe` is what sets it. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. An observe pack's Jev checks are not asked at all, and neither are those of a pack installed with `--cli` for other agents. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
 
 ```json
 { "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }

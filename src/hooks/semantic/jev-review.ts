@@ -328,6 +328,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   let abandoned = false;
   const answered = evaluateSemantic(input, {
     transport,
+    cli: call.cli,
     via: route.via,
     model: route.model,
     timeoutMs,

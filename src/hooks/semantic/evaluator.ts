@@ -100,6 +100,8 @@ export interface SemanticOptions {
   model?: string;
   /** Overrides the resolved set (an installed pack's, else the compiled-in one). */
   policies?: ReadonlyArray<SemanticPolicy>;
+  /** The agent the call is for: a pack scoped to other agents contributes no checks. */
+  cli?: string;
   thresholds?: Thresholds;
   /** How "did the human ask for this?" is asked; see {@link IntentMode}. Defaults to v0. */
   intent?: IntentMode;
@@ -310,7 +312,7 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
   // is read, and a second resolution site is a second answer to "what does this
   // machine ask Jev". A caller that supplies `policies` (a replay, an ablation,
   // `jev test`) still decides for itself.
-  const selected = selectPolicies(opts.policies ?? resolveSemanticPolicies(), facts);
+  const selected = selectPolicies(opts.policies ?? resolveSemanticPolicies(opts.cli), facts);
   const intent = opts.intent ?? "v0";
   const cleaned = intent === "v1" && opts.cleanHarnessText !== false ? cleanUserSaid(input.userSaid) : input.userSaid;
   const agentLastMessage =

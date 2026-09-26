@@ -42,6 +42,21 @@ import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 
 let cached: ReadonlySet<string> | null = null;
+/** The agent the current registration pass is for; see {@link forgetEffectiveReviewerNames}. */
+let reviewerCli: string | undefined;
+
+/**
+ * The packs whose Jev checks take part for `cli`, filtered the way the regex
+ * half already is: an `observe` pack blocks nothing, and a pack scoped to other
+ * agents guards none here. Its checks would otherwise replace the questions and
+ * supply reviewers that clear enforce packs' denies on every agent. Both the
+ * reviewer set and the question set start from this list, so they agree.
+ */
+export function jevPacks<T extends Pick<ResolvedPack, "effect" | "clis">>(packs: ReadonlyArray<T>, cli?: string): T[] {
+  return packs.filter(
+    (p) => p.effect !== "observe" && !(cli && Array.isArray(p.clis) && p.clis.length > 0 && !p.clis.includes(cli)),
+  );
+}
 
 /**
  * A stable serialization, for comparing two declarations of the same name.
@@ -161,7 +176,7 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
   let names: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES;
   try {
-    const packs = readInstalledPacks().packs;
+    const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
     const contested = contestedSemanticNames(packs);
     const declared = packs
       .flatMap((p) => (p.semantic ?? []).map((s) => s.name))
@@ -178,10 +193,12 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
 }
 
 /**
- * Drop the cached answer. Called by `clearPolicies()`, which every evaluation
+ * Drop the cached answer, and set the agent the next one is for. Called by
+ * `clearPolicies(cli)`, which every evaluation
  * runs before it registers anything — so a pack installed under a long-lived
  * warm worker is picked up on the next event rather than at the next restart.
  */
-export function forgetEffectiveReviewerNames(): void {
+export function forgetEffectiveReviewerNames(cli?: string): void {
   cached = null;
+  reviewerCli = cli;
 }

@@ -805,7 +805,19 @@ export type JevConfigInspection =
       fix?: string;
       /** When the refusal is about credentials.json: that file's permission bits (`mode` stays jev.json's). */
       credentialsMode?: number | null;
+      /** A too-open file with no key in it: refused as firmly, but no key was exposed. */
+      keyless?: true;
     };
+
+/** Whether config text is an object with no `apiKey`; anything else may hold one. */
+function namesNoKey(text: string): boolean {
+  try {
+    const o: unknown = JSON.parse(text);
+    return o !== null && typeof o === "object" && !Array.isArray(o) && (o as Record<string, unknown>).apiKey === undefined;
+  } catch {
+    return false;
+  }
+}
 
 function readEnvKey(): string | null {
   const v = process.env[JEV_API_KEY_ENV];
@@ -876,14 +888,40 @@ export function inspectJevConfig(): JevConfigInspection {
     const st = fstatSync(fd);
     if (!st.isFile()) return { status: "refused", path, mode: null, reason: "unreadable", problem: "it is not a regular file" };
     mode = st.mode & 0o777;
+    const readText = (): string => {
+      const buf = Buffer.alloc(st.size);
+      let off = 0;
+      while (off < buf.length) {
+        const n = readSync(fd, buf, off, buf.length - off, off);
+        if (n === 0) break;
+        off += n;
+      }
+      return buf.subarray(0, off).toString("utf8");
+    };
     if (modesAreMeaningful() && (mode & 0o077) !== 0) {
+      // Read only to word the refusal: a file with no key in it (the Cloud's,
+      // whose key is in credentials.json, or a key-from-env one) is refused as
+      // firmly, but telling its owner a key leaked sends them to rotate one
+      // that never did.
+      let keyless = false;
+      try {
+        keyless = st.size <= MAX_CONFIG_BYTES && namesNoKey(readText());
+      } catch {
+        // Unreadable: it may hold one.
+      }
+      const perms = mode.toString(8).padStart(4, "0");
       return {
         status: "refused",
         path,
         mode,
         reason: "too-open",
-        problem: `its permissions are ${mode.toString(8).padStart(4, "0")}; it holds a key, so it must be owner-only (chmod 600 ${path})`,
+        problem: !keyless
+          ? `its permissions are ${perms}; it holds a key, so it must be owner-only (chmod 600 ${path})`
+          : (mode & 0o022) !== 0
+            ? `its permissions are ${perms}; other users could change it, and with it where Jev sends tool calls and prompts, so it must be owner-only (chmod 600 ${path})`
+            : `its permissions are ${perms}; it must be owner-only (chmod 600 ${path})`,
         fix: `chmod 600 ${path}`,
+        ...(keyless ? { keyless: true as const } : {}),
       };
     }
     const dirMode = looseConfigDirMode(path);
@@ -901,14 +939,7 @@ export function inspectJevConfig(): JevConfigInspection {
       };
     }
     if (st.size > MAX_CONFIG_BYTES) return { status: "refused", path, mode, reason: "too-large", problem: `it is larger than ${MAX_CONFIG_BYTES} bytes` };
-    const buf = Buffer.alloc(st.size);
-    let off = 0;
-    while (off < buf.length) {
-      const n = readSync(fd, buf, off, buf.length - off, off);
-      if (n === 0) break;
-      off += n;
-    }
-    text = buf.subarray(0, off).toString("utf8");
+    text = readText();
   } catch (err) {
     return { status: "refused", path, mode, reason: "unreadable", problem: `cannot read it (${(err as NodeJS.ErrnoException).code ?? "error"})` };
   } finally {

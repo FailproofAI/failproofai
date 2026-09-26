@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hooks/jev-cli";
 import { JEV_USAGE } from "../../src/hooks/jev-cli";
-import { jevConfigPath, loadJevConfig } from "../../src/hooks/semantic/jev-config";
+import { inspectJevConfig, jevConfigPath, loadJevConfig } from "../../src/hooks/semantic/jev-config";
 import { readCredentials, writeCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
 import { resetJevCloudCooldown } from "../../src/hooks/semantic/jev-client";
 
@@ -211,6 +211,25 @@ describe("jev CLI: FailproofAI Cloud", () => {
       const t = text(await runJevCommand(["status"], RENDER));
       expect(t).toMatch(/can read it/);
       expect(t).not.toContain("could change it");
+    });
+
+    // A Cloud jev.json has no key (it is in credentials.json), and neither has a
+    // --key-from-env one: refused as firmly, but not for disclosing a key.
+    it.each([
+      ["Cloud", { provider: "failproofai", baseUrl: BASE, mode: "shadow" }, false],
+      ["BYOK key-from-env", { provider: "typesafe", mode: "shadow" }, false],
+      ["BYOK with a stored key", { provider: "typesafe", apiKey: BYOK_KEY, mode: "shadow" }, true],
+    ])("%s jev.json at 0644: says it holds a key only when it does", async (_kind, file, holdsKey) => {
+      connect();
+      writeJev(file);
+      chmodSync(jevConfigPath(), 0o644);
+      const inspected = inspectJevConfig();
+      expect(inspected).toMatchObject({ status: "refused", reason: "too-open" });
+      for (const out of [text(await runJevCommand(["status"], RENDER)), text(await runJevCommand(["test"], RENDER))]) {
+        expect(out).toContain(`chmod 600 ${jevConfigPath()}`);
+        if (holdsKey) expect(out).toMatch(/holds a key[\s\S]*rotate the key/);
+        else expect(out).not.toMatch(/holds a key|any key it holds|rotate/);
+      }
     });
 
     it("credentials.json group-writable: says others could change it", async () => {

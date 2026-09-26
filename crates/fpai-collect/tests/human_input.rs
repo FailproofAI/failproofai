@@ -206,6 +206,11 @@ fn hermes_only_gateway_and_cli_sessions_carry_human_input() {
         assert_eq!(ev[1]["input_id"], "42");
         assert_eq!(ev[1]["hermes_source"], human);
     }
+    // No recorded source — an orphan row or a NULL column — is no evidence a
+    // person wrote it.
+    let unknown = hermes_user(None);
+    assert_eq!(unknown.len(), 1, "the request still ships");
+    assert!(said(&unknown).is_empty());
     for automated in ["cron", "subagent", "webhook", "oneshot"] {
         let ev = hermes_user(Some(automated));
         assert_eq!(ev.len(), 1, "{automated}: the request still ships");
@@ -375,4 +380,15 @@ fn openclaw_provenance_names_runtime_messages_whatever_their_text() {
         ["fix it"],
         "an unknown kind falls through to the text check"
     );
+}
+
+#[test]
+fn codex_a_cursor_that_never_read_the_header_emits_no_human_input() {
+    // A cursor saved before `automated` existed resumes mid-file, past the
+    // session header it will never re-read: it cannot know a `codex exec` run
+    // from a person, so it emits nothing rather than guess.
+    let mut st = TailState::default();
+    let line = json!({"timestamp":TS,"type":"event_msg","payload":{"type":"user_message","message":"scripted prompt"}});
+    let (_, ev) = codex::transform::transform_line(&line.to_string(), &ctx(), 7, &mut st);
+    assert!(said(&ev).is_empty(), "{ev:?}");
 }

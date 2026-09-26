@@ -249,7 +249,11 @@ fn the_duplicate_event_msg_conversation_records_are_not_emitted_a_second_time() 
     // `user_message` is the one exception, and not as a request: it is the
     // only record of what the person typed without the injected preamble, so
     // it becomes the `human_input` — never a second `model_request`.
-    let mut st = TailState::default();
+    let mut st = TailState {
+        // As if line 1 said a person drives this session (`source: "cli"`).
+        automated: Some(false),
+        ..TailState::default()
+    };
     let (ts, ev) = one(
         &user_message_event("2026-07-30T08:14:54.535Z", "hi codex can you login!"),
         &mut st,

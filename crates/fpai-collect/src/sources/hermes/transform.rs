@@ -390,8 +390,11 @@ fn user_events(
     );
     with_session_context(&mut m, meta);
     let mut out = vec![Value::Object(m)];
+    // A person wrote it only if the session row SAYS where it came from and
+    // that is not an automated source. An orphan row (no session row) or a
+    // NULL source has no such record, so it ships as a request only.
     let source = meta.and_then(|s| s.source.as_deref());
-    if !source.is_some_and(|s| AUTOMATED_SOURCES.contains(&s))
+    if source.is_some_and(|s| !AUTOMATED_SOURCES.contains(&s))
         && let Some(mut envelope) = base("human_input", ms, 1, row, agent_id, environment)
     {
         with_session_context(&mut envelope, meta);

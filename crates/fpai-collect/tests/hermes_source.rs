@@ -627,8 +627,9 @@ fn a_message_whose_session_row_is_gone_falls_back_to_the_configured_agent_id() {
     let ev = poll_all(&db);
     assert_eq!(
         ev.len(),
-        2,
-        "the orphan's own turn still ships, as request and human_input"
+        1,
+        "the orphan's own turn still ships as a request — but with no session \
+         row there is no record of who wrote it, so no human_input"
     );
     assert!(ev.iter().all(|e| e["agent_id"] == hermes::DEFAULT_AGENT_ID));
     assert!(

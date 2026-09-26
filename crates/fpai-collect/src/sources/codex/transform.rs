@@ -298,8 +298,10 @@ pub fn transform_line(
         // Measured here: 104 `cli`, 12 sub-agent, 11 exec rollouts.
         "session_meta" => {
             let source = payload.get("source");
-            state.automated = source.is_some_and(Value::is_object)
-                || source.and_then(|s| s.as_str()) == Some("exec");
+            state.automated = Some(
+                source.is_some_and(Value::is_object)
+                    || source.and_then(|s| s.as_str()) == Some("exec"),
+            );
             Vec::new()
         }
         "response_item" => response_item_events(&payload, ctx, &ts, offset, state),
@@ -457,7 +459,8 @@ fn typed_prompt(p: &Value) -> Option<(&'static str, String)> {
 }
 
 /// The `human_input` for a typed prompt, or nothing for an automated session,
-/// an empty prompt, or the same prompt already emitted from the other record.
+/// a session whose header was never read, an empty prompt, or the same prompt
+/// already emitted from the other record.
 fn human_prompt_events(
     p: &Value,
     ctx: &Ctx,
@@ -468,7 +471,7 @@ fn human_prompt_events(
     let Some((kind, text)) = typed_prompt(p) else {
         return Vec::new();
     };
-    if state.automated || text.is_empty() {
+    if state.automated != Some(false) || text.is_empty() {
         return Vec::new();
     }
     if let Some((last_kind, last_text)) = &state.last_human_input

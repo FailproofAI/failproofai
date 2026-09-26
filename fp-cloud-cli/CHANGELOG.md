@@ -7,8 +7,8 @@
 - `jev:evaluate` is a known permission — Jev through FailproofAI Cloud, charged to the
   org's plan — so `fp keys` and `fp users` accept it instead of refusing it as unknown,
   and the `admin` preset carries it, as the server's built-in admin set now does. The
-  server refuses a KEY carrying it without both `events:add` and `policies:pull` (422
-  `jev_requirements_missing`); the `admin` preset has both. (#833)
+  server refuses a KEY carrying it without both `events:add` and `policies:pull` (422,
+  naming what to add in `missing_permissions`); the `admin` preset has both. (#833)
 
 ## 0.0.1 — 2026-09-22
 

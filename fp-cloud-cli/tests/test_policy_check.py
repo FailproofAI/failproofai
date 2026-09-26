@@ -197,8 +197,8 @@ def test_parsing_and_executing_have_separate_budgets():
 # and a cloud policy's authority comes from its deployment record, which never
 # sets it — so both publish as a version that reads Jev-aware and is not. The
 # dashboard refuses them (agenteye `dashboard/lib/policies/policyMeta.ts`,
-# `cloudPublishProblem`) and the server is being taught to 422 them; these cases
-# are the dashboard's own, so the three surfaces agree on what counts.
+# `cloudPublishProblem`); the server never reads the source. These cases are the
+# dashboard's own, so the two surfaces agree on what counts.
 
 JEV_BASE = '''import { customPolicies, allow } from "failproofai";
 

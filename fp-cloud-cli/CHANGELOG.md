@@ -22,7 +22,8 @@
   not skip it). Both were published as versions that read Jev-aware and are not: semantic
   checks load only from a pack, and a cloud policy's authority comes from its deployment, so
   it stays hard. Ship Jev checks in a pack with `failproofai publish`. Same rule, and the
-  same comment-aware detection, as the dashboard's publish form and the server's 422. (#833)
+  same comment-aware detection, as the dashboard's publish form; the server does not read
+  the source, so nothing else refuses it for `fp`. (#833)
 
 ## 0.0.1 — 2026-09-22
 

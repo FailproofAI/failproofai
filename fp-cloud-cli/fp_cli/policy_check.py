@@ -293,9 +293,11 @@ def run_policy(
 # ── Jev fields a cloud policy never reads ────────────────────────────────────
 #
 # A port of agenteye's `cloudPublishProblem` (dashboard/lib/policies/policyMeta.ts),
-# kept to the same rule and the same words so the dashboard, the server's 422 and
-# this CLI refuse the same sources. Static by design: this reads source it must
-# never run. Keep the two in step — a change to one is a change to both.
+# kept to the same rule and the same words so the dashboard and this CLI refuse the
+# same sources. The server never reads the source (its 422 is for body fields such
+# as `authority`, which the CLI does not send), so for `fp` this is the only guard.
+# Static by design: this reads source it must never run. Keep the two in step — a
+# change to one is a change to both.
 
 _MAX_SCAN = 200_000
 _ADD = "customPolicies.add("

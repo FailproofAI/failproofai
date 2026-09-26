@@ -193,6 +193,19 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     expect(readAnswers(request, await send())).toEqual({ a: 0.2 });
   });
 
+  it.each([
+    ["an empty body", undefined],
+    ["a JSON body", { detail: "Not Found" }],
+  ])("a 404 (%s) does not blame a base URL nobody configured", async (_label, body) => {
+    // Cloud's base URL comes from the connection and `jev setup` refuses to
+    // change it; the likely cause is a server that predates the Jev route.
+    reply = () => ({ status: 404, body });
+    const e = await failure(send());
+    expect(e.code).toBe("http-404");
+    expect(e.message).toContain("/enforcement/v1/jev/systemone");
+    expect(e.message).not.toContain("base URL you configured");
+  });
+
   it("402 out_of_credits is out-of-credits, not provider-refused", async () => {
     reply = () => ({ status: 402, body: { error: "out_of_credits" } });
     const e = await failure(send());

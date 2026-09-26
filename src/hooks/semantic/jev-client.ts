@@ -437,7 +437,10 @@ function isSystemOneUrl(url: string): boolean {
  * typed; it goes through `displayEndpoint`, so a base carrying a token in its
  * query string does not put it in an error message.
  */
-function httpFailureMessage(status: number, url: string, detail: string): string {
+function httpFailureMessage(status: number, url: string, detail: string, derivedBase = false): string {
+  // A base URL the connection supplied is nobody's typo: a Cloud 404 is a
+  // server without the route, which `jev test`'s remedy line says.
+  if (status === 404 && derivedBase) return `nothing is served at ${displayEndpoint(url)}${detail ? ` (${detail})` : ""}`;
   if (status === 404 && isSystemOneUrl(url)) {
     // No `HTTP 404:` prefix: every caller prints the code beside the message.
     return (
@@ -454,7 +457,7 @@ function isRedirect(res: Response): boolean {
   return res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
 }
 
-async function postJson(url: string, bearer: string, body: unknown, signal: AbortSignal): Promise<unknown> {
+async function postJson(url: string, bearer: string, body: unknown, signal: AbortSignal, derivedBase = false): Promise<unknown> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -493,7 +496,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     if (res.status === 402) throw new JevError("out-of-credits", "HTTP 402: the account is out of credits");
     // A 404 needs no body to be diagnosed, and the ones seen in the field carry
     // none worth reading: the URL is the diagnosis (see `httpFailureMessage`).
-    if (!res.ok) throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, ""), { retryAfter });
+    if (!res.ok) throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, "", derivedBase), { retryAfter });
     throw new JevError("malformed", "response body is not JSON");
   }
   if (res.status === 402) {
@@ -504,7 +507,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     throw new JevError(paymentRequiredCode(detail), detail || "HTTP 402: the account is out of credits");
   }
   if (!res.ok) {
-    throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, providerErrorDetail(parsed, bearer)), { retryAfter });
+    throw new JevError(`http-${res.status}`, httpFailureMessage(res.status, url, providerErrorDetail(parsed, bearer), derivedBase), { retryAfter });
   }
   return parsed;
 }
@@ -528,6 +531,8 @@ export interface NativeTransportOptions {
   aliases?: readonly string[];
   /** Whether an answer with no `model` at all is accepted (as unverified) rather than refused. */
   allowUnreported?: boolean;
+  /** The base URL came from a connection, not from the person (FailproofAI Cloud). */
+  derivedBase?: boolean;
 }
 
 /**
@@ -575,7 +580,7 @@ export function nativeTransport(opts: NativeTransportOptions): JevTransport {
   return async (request, signal) => {
     const model = opts.model ?? request.model;
     const body = { ...request, model, ...(opts.extraBody ?? {}) };
-    return normalizeNative(await postJson(opts.url, opts.apiKey, body, signal), model, opts);
+    return normalizeNative(await postJson(opts.url, opts.apiKey, body, signal, opts.derivedBase), model, opts);
   };
 }
 
@@ -1108,6 +1113,7 @@ export function transportForConfig(input: JevConfig): { transport: JevTransport;
             // produces, and is refused (`model-mismatch`) rather than trusted.
             // `readAnswers` then holds the reported id to the 1.13 family.
             allowUnreported: false,
+            derivedBase: true,
           }),
         ),
         via: "failproofai",

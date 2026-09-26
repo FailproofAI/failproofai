@@ -230,7 +230,7 @@ export class JevError extends Error {
    */
   readonly retryAfter: string | null;
   constructor(code: string, message: string, opts: { retryAfter?: string | null } = {}) {
-    super(message);
+    super(printable(message));
     this.name = "JevError";
     this.code = code;
     this.retryAfter = opts.retryAfter ?? null;
@@ -316,6 +316,16 @@ const MAX_ERROR_DETAIL = 300;
  * the sentence naming the missing permission, so when both are strings both
  * are kept, code first.
  */
+/**
+ * Provider text with its control characters (C0, DEL, C1) replaced by spaces.
+ * Error text is printed to a terminal, where OSC 52 writes the clipboard, OSC 8
+ * plants a link and ESC[2J erases the real diagnostic. Every field it is used
+ * for is one line.
+ */
+export function printable(s: string): string {
+  return s.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+}
+
 export function providerErrorDetail(body: unknown, secret: string): string {
   const b = body as {
     errors?: Array<{ message?: unknown }>;
@@ -335,7 +345,7 @@ export function providerErrorDetail(body: unknown, secret: string): string {
     if (!detail && typeof b.message === "string") detail = b.message;
     if (!detail) detail = messageOf(b.detail);
   }
-  return scrubSecret(detail, secret).slice(0, MAX_ERROR_DETAIL);
+  return printable(scrubSecret(detail, secret)).slice(0, MAX_ERROR_DETAIL);
 }
 
 /** An envelope member that is either the sentence itself or an object carrying it. */
@@ -887,7 +897,7 @@ export async function readJevModelList(url: string, apiKey: string | null, signa
     });
   } catch (err) {
     if (signal.aborted) return { ok: false, reason: `it did not answer within ${JEV_MODEL_LIST_TIMEOUT_MS} ms` };
-    return { ok: false, reason: scrubSecret(err instanceof Error ? err.message : String(err), secret).slice(0, MAX_ERROR_DETAIL) };
+    return { ok: false, reason: printable(scrubSecret(err instanceof Error ? err.message : String(err), secret)).slice(0, MAX_ERROR_DETAIL) };
   }
   if (isRedirect(res)) {
     try {

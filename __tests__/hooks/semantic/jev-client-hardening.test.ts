@@ -5,7 +5,7 @@
 // state, a reported model id, a network error), a configured Cloudflare model
 // reaches the wire, a custom endpoint must say which Jev answered, plain-http
 // loopback is shadow-only, and the 64 KiB config cap holds.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +17,14 @@ import {
   validateJevConfig,
   type JevConfig,
 } from "../../../src/hooks/semantic/jev-config";
-import { JevError, readAnswers, scrubSecret, transportForConfig } from "../../../src/hooks/semantic/jev-client";
+import {
+  JevError,
+  providerErrorDetail,
+  readAnswers,
+  readJevModelList,
+  scrubSecret,
+  transportForConfig,
+} from "../../../src/hooks/semantic/jev-client";
 import type { JevRequest, JevResponse } from "../../../src/hooks/semantic/types";
 
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
@@ -256,5 +263,51 @@ describe("config hardening", () => {
       write(text);
       expect(loadJevConfig()).toMatchObject({ provider: "typesafe", apiKey: KEY });
     });
+  });
+});
+
+describe("a provider's text reaches the terminal without its control characters", () => {
+  // OSC 52 writes the clipboard, OSC 8 plants a link, ESC[2J clears the screen.
+  const HOSTILE = "\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009bhi";
+  const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+  it("in a provider's error body", () => {
+    const detail = providerErrorDetail({ error: { message: HOSTILE } }, "k");
+    expect(detail).not.toMatch(CONTROL);
+    expect(detail).toContain("hi");
+  });
+
+  it("in a reported model id", () => {
+    const request = { model: "jev-1.13.0", questions: {}, state: {} } as unknown as JevRequest;
+    expect(() => readAnswers(request, { model: HOSTILE, answers: {} } as JevResponse)).toThrow(JevError);
+    try {
+      readAnswers(request, { model: HOSTILE, answers: {} } as JevResponse);
+    } catch (err) {
+      expect((err as JevError).message).not.toMatch(CONTROL);
+    }
+  });
+
+  it("in a model list's refusal", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: HOSTILE } }), { status: 401 }),
+    );
+    try {
+      const list = await readJevModelList("https://x.example/v1/models", null, new AbortController().signal);
+      expect(list.ok).toBe(false);
+      expect(list.ok ? "" : list.reason).not.toMatch(CONTROL);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it("in a network error", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error(HOSTILE));
+    try {
+      const list = await readJevModelList("https://x.example/v1/models", null, new AbortController().signal);
+      expect(list.ok ? "" : list.reason).not.toMatch(CONTROL);
+      expect(new JevError("network", HOSTILE).message).not.toMatch(CONTROL);
+    } finally {
+      fetch.mockRestore();
+    }
   });
 });

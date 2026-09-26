@@ -299,6 +299,12 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     };
   }
 
+  // Refused, as `setJevModeAction` and `jev setup --mode` refuse it — not
+  // skipped, which kept the old mode or wrote none (and none loads as enforce).
+  if (input.mode !== "off" && input.mode !== "shadow" && input.mode !== "enforce") {
+    return { ok: false, problem: 'mode must be "off", "shadow" or "enforce".' };
+  }
+
   const baseUrl = input.baseUrl.trim();
   // Checked here, before anything is decided about the token, so an
   // unparseable URL is reported as an unparseable URL rather than as "that
@@ -360,7 +366,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     delete next.accountId;
   }
 
-  if (input.mode === "off" || input.mode === "shadow" || input.mode === "enforce") next.mode = input.mode;
+  next.mode = input.mode;
 
   // Where the key may travel. Unchanged provider AND unchanged origin, from a
   // file only its owner could have written — anything else asks again.

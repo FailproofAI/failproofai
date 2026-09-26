@@ -435,6 +435,22 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(onDisk().mode).toBe("shadow");
   });
 
+  // `setJevModeAction` and `jev setup --mode` refuse these; the save skipped
+  // them, keeping the old mode — or, on a fresh machine, writing a file with no
+  // mode, which loads as enforce.
+  it.each(["yolo", "ENFORCE", "", null])("refuses mode %j and writes nothing", async (mode) => {
+    await saveJevConfigAction(input({ mode: "shadow" }));
+    const before = readFileSync(configPath(), "utf8");
+    const res = await saveJevConfigAction(input({ mode: mode as string, token: "" }));
+    expect(res).toEqual({ ok: false, problem: 'mode must be "off", "shadow" or "enforce".' });
+    expect(readFileSync(configPath(), "utf8")).toBe(before);
+  });
+
+  it("writes no file for an unknown mode on a fresh machine", async () => {
+    expect((await saveJevConfigAction(input({ mode: "yolo" }))).ok).toBe(false);
+    expect(loadJevConfig()).toBeNull();
+  });
+
   it("refuses an unknown provider", async () => {
     const res = await saveJevConfigAction(input({ provider: "definitely-not-a-provider" }));
     expect(res.ok).toBe(false);

@@ -154,6 +154,23 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "off", cloudConnected: true, keyCarriesJev: false });
     });
 
+    // Each command on its own line, under the lead that introduces it: the
+    // reconnect used to sit right under "…keep Jev off for good: failproofai
+    // jev setup --mode off", reading as the off switch.
+    it.each([
+      ["key-lacks-jev", () => writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } }), "failproofai jev setup --mode off"],
+      ["not-connected", () => undefined, "failproofai jev remove"],
+    ])("%s: the reconnect and the off switch are separate steps", async (_state, arrange, offCmd) => {
+      arrange();
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      const lines = (await runJevCommand(["status"], RENDER)).lines;
+      const i = lines.findIndex((l) => l.trim() === "failproofai config --token <key>");
+      expect(i).toBeGreaterThan(0);
+      expect(lines[i - 1].trimEnd()).toMatch(/:$/);
+      expect(lines[i - 1]).not.toMatch(/--mode off|jev remove/);
+      expect(lines.slice(i + 1).some((l) => l.trim() === offCmd)).toBe(true);
+    });
+
     it("off: switched off, with the mode, for the Cloud route and for BYOK", async () => {
       connect();
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });

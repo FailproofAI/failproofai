@@ -1611,9 +1611,10 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         ),
         nextStep(
           "failproofai config --token <key>",
-          "Connect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page), or switch Jev off: failproofai jev remove",
+          "Connect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page):",
           opts,
         ),
+        nextStep("failproofai jev remove", "Or switch Jev off:", opts),
         legacyNote,
         jevStatsLines(stats, opts),
       ),
@@ -1645,9 +1646,10 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         ),
         nextStep(
           "failproofai config --token <key>",
-          "Run it again with this machine's key to re-check what it carries; a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page. Or keep Jev off for good: failproofai jev setup --mode off",
+          "Reconnect with this machine's key to re-check what it carries (a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page):",
           opts,
         ),
+        nextStep("failproofai jev setup --mode off", "Or keep Jev off for good:", opts),
         legacyNote,
         jevStatsLines(stats, opts),
       ),
@@ -1773,7 +1775,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           : inspection.status === "not-connected"
             ? "Connect with a key that carries jev:evaluate:"
             : inspection.status === "key-lacks-jev"
-              ? "Reconnect with a key that carries jev:evaluate:"
+              ? "Reconnect with this machine's key to re-check what it carries (a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page):"
               : undefined;
     const json = asJson ? JSON.stringify({ ok: false, error: { code, message: why } }, null, 2) : undefined;
     return fail(stack(title("failproofai jev test", "not run", opts), note(why, opts), nextStep(fixCmd, fixLead, opts)), json);

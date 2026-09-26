@@ -195,8 +195,8 @@ pub fn agent_start(header: &[String], ctx: &Ctx, offset: u64) -> Option<(Value, 
             // permission preamble (145 user response items vs 127 real prompts
             // on this machine), so the response-item stream would make a
             // config file the session's goal.
-            "event_msg" if goal.is_none() && payload_type(&payload) == Some("user_message") => {
-                if let Some(text) = payload.get("message").and_then(|m| m.as_str())
+            "event_msg" if goal.is_none() => {
+                if let Some((_, text)) = typed_prompt(&payload)
                     && !text.is_empty()
                 {
                     goal = Some(text.chars().take(MAX_GOAL_CHARS).collect());
@@ -290,6 +290,18 @@ pub fn transform_line(
             if let Some(model) = payload.get("model").and_then(|m| m.as_str()) {
                 state.last_model = Some(model.to_string());
             }
+            Vec::new()
+        }
+        // Not emitted either (the engine's `agent_start` covers it), but it is
+        // the one record that says who drives the session: a sub-agent carries
+        // `source: {subagent: …}` and a scripted run `source: "exec"`.
+        // Measured here: 104 `cli`, 12 sub-agent, 11 exec rollouts.
+        "session_meta" => {
+            let source = payload.get("source");
+            state.automated = Some(
+                source.is_some_and(Value::is_object)
+                    || source.and_then(|s| s.as_str()) == Some("exec"),
+            );
             Vec::new()
         }
         "response_item" => response_item_events(&payload, ctx, &ts, offset, state),
@@ -414,7 +426,81 @@ fn message_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState
 
 /// An `event_msg` is Codex's UI-facing stream, mostly duplicating the
 /// `response_item` records.
-fn event_msg_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailState) -> Vec<Value> {
+/// What a person typed, from whichever record this Codex version writes it in,
+/// with the record kind.
+///
+/// Codex up to ~0.15x wrote an `event_msg` `user_message`; 0.157 writes none and
+/// records each typed message as an `item_completed` whose item is a
+/// `UserMessage` (measured: 3 of 3 prompts in an interactive session, and never
+/// for the injected AGENTS.md / environment context, which stay `response_item`s).
+fn typed_prompt(p: &Value) -> Option<(&'static str, String)> {
+    match payload_type(p) {
+        Some("user_message") => {
+            let text = p.get("message")?.as_str()?;
+            Some(("user_message", text.to_string()))
+        }
+        Some("item_completed") => {
+            let item = p.get("item")?;
+            if item.get("type").and_then(Value::as_str) != Some("UserMessage") {
+                return None;
+            }
+            let text = item
+                .get("content")?
+                .as_array()?
+                .iter()
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Some(("item_completed", text))
+        }
+        _ => None,
+    }
+}
+
+/// The `human_input` for a typed prompt, or nothing for an automated session,
+/// a session whose header was never read, an empty prompt, or the same prompt
+/// already emitted from the other record.
+fn human_prompt_events(
+    p: &Value,
+    ctx: &Ctx,
+    ts: &str,
+    offset: u64,
+    state: &mut TailState,
+) -> Vec<Value> {
+    let Some((kind, text)) = typed_prompt(p) else {
+        return Vec::new();
+    };
+    if state.automated != Some(false) || text.is_empty() {
+        return Vec::new();
+    }
+    if let Some((last_kind, last_text)) = &state.last_human_input
+        && last_kind != kind
+        && *last_text == text
+    {
+        state.last_human_input = None;
+        return Vec::new();
+    }
+    state.last_human_input = Some((kind.to_string(), text.clone()));
+    let offset_id = offset.to_string();
+    let id = p
+        .get("item")
+        .and_then(|i| i.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or(&offset_id);
+    match base(ctx, "human_input", ts, 0, offset) {
+        Some(m) => vec![crate::sources::human_input(m, id, &text)],
+        None => Vec::new(),
+    }
+}
+
+fn event_msg_events(
+    p: &Value,
+    ctx: &Ctx,
+    ts: &str,
+    offset: u64,
+    state: &mut TailState,
+) -> Vec<Value> {
     match payload_type(p) {
         // The accounting record of one model response, written on its own line
         // in the same millisecond as the item it bills. Attaching it to that
@@ -439,10 +525,18 @@ fn event_msg_events(p: &Value, ctx: &Ctx, ts: &str, offset: u64, state: &TailSta
             insert_model(&mut m, state);
             vec![Value::Object(m)]
         }
-        // `user_message` / `agent_message` restate the `response_item` message
-        // lines Codex writes for the same turn — measured 127 vs 145 user and
-        // 284 vs 292 assistant, i.e. the response-item stream is a superset.
-        // Emitting both would double every prompt and every reply.
+        // What the person typed, and ONLY that: the `response_item` user
+        // messages around it also carry the injected AGENTS.md, environment
+        // context and permission preamble (1,298 user response items vs 343
+        // `user_message` records here). The request itself is already the
+        // response item's `model_request`, so this is the `human_input` alone.
+        Some("user_message") | Some("item_completed") => {
+            human_prompt_events(p, ctx, ts, offset, state)
+        }
+        // `agent_message` restates the `response_item` message line Codex
+        // writes for the same turn — measured 284 vs 292, i.e. the
+        // response-item stream is a superset. Emitting both would double every
+        // reply.
         //
         // `patch_apply_end` looks like a tool result but its `call_id` is an
         // internal `exec-<uuid>` that matches NO tool call on disk (checked for

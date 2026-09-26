@@ -190,21 +190,21 @@ fn the_three_message_roles_each_produce_their_own_event_type() {
     let roles = [
         (
             user_prompt("2026-08-03T08:01:40.102Z", "hi"),
-            "model_request",
+            vec!["model_request", "human_input"],
         ),
         (
             assistant_text("2026-08-03T08:05:42.900Z", "done"),
-            "model_response",
+            vec!["model_response"],
         ),
         (
             tool_result("2026-08-03T08:05:39.882Z", "tooluse_z", "exec", "2", false),
-            "tool_result",
+            vec!["tool_result"],
         ),
     ];
     for (line, want) in roles {
         let (_, ev) = transform::transform_line(&line, &c, 0, &mut st);
-        assert_eq!(ev.len(), 1, "{want}");
-        assert_eq!(ev[0]["type"], want);
+        let got: Vec<&str> = ev.iter().filter_map(|e| e["type"].as_str()).collect();
+        assert_eq!(got, want);
     }
 }
 
@@ -1193,4 +1193,87 @@ async fn a_rewrite_generation_change_resets_sequence_offset_and_transform_state(
     fs::remove_dir_all(&root).ok();
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&state).ok();
+}
+
+/// OpenClaw 2026.9.6 schema: `event_json` is nullable and a large event is
+/// stored zstd-compressed in `event_zstd`. Reading `event_json` as a plain
+/// `String` failed the WHOLE database on the first such row, so nothing from
+/// that agent shipped. A compressed row must be decoded; a row that is neither
+/// must be skipped without stopping the rows after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn sqlite_2026_9_6_schema_decodes_compressed_rows_and_skips_empty_ones() {
+    let root = tmpdir("sqlite-zstd-root");
+    let spool = tmpdir("sqlite-zstd-spool");
+    let state = tmpdir("sqlite-zstd-state");
+    let conn = Connection::open(openclaw_db(&root)).unwrap();
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         CREATE TABLE session_windows (session_id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL,
+           transcript_updated_at INTEGER, ended_at INTEGER);
+         CREATE TABLE transcript_events (session_id TEXT NOT NULL, seq INTEGER NOT NULL,
+           event_json TEXT, created_at INTEGER NOT NULL, event_zstd BLOB, event_utf8_bytes INTEGER,
+           PRIMARY KEY (session_id, seq));
+         CREATE TABLE transcript_rewrite_watermarks (session_id TEXT PRIMARY KEY,
+           generation TEXT NOT NULL, updated_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    let at = 1_788_251_542_907i64;
+    conn.execute(
+        "INSERT INTO session_windows VALUES (?1, ?2, ?2, NULL)",
+        params![UUID, at],
+    )
+    .unwrap();
+    let big = tool_result(
+        "2026-08-03T08:05:39.882Z",
+        "tooluse_z",
+        "exec",
+        "compressed output",
+        false,
+    );
+    let packed = ruzstd::encoding::compress_to_vec(
+        big.as_bytes(),
+        ruzstd::encoding::CompressionLevel::Fastest,
+    );
+    let rows: [(Option<String>, Option<Vec<u8>>); 4] = [
+        (
+            Some(user_prompt("2026-08-03T08:01:40.102Z", "list the files")),
+            None,
+        ),
+        (None, Some(packed)),
+        (None, None),
+        (
+            Some(assistant_text("2026-08-03T08:05:42.900Z", "done")),
+            None,
+        ),
+    ];
+    for (seq, (json, zstd)) in rows.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO transcript_events (session_id, seq, event_json, created_at, event_zstd)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![UUID, seq as i64, json, at + seq as i64, zstd],
+        )
+        .unwrap();
+    }
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 900).await;
+    let events = spooled(&spool);
+    let types: Vec<&str> = events.iter().filter_map(|e| e["type"].as_str()).collect();
+    for want in [
+        "model_request",
+        "human_input",
+        "tool_result",
+        "model_response",
+    ] {
+        assert!(types.contains(&want), "missing {want}: {types:?}");
+    }
+    let result = events.iter().find(|e| e["type"] == "tool_result").unwrap();
+    assert_eq!(
+        result["output"], "compressed output",
+        "the compressed row was decoded"
+    );
+
+    drop(conn);
+    for d in [&root, &spool, &state] {
+        fs::remove_dir_all(d).ok();
+    }
 }

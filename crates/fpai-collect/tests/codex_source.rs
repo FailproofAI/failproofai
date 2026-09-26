@@ -243,14 +243,24 @@ fn the_duplicate_event_msg_conversation_records_are_not_emitted_a_second_time() 
     // Codex writes every prompt and reply TWICE: once as a `response_item` and
     // once as the UI-facing `event_msg`. Measured 127 `user_message` events
     // against 145 user response items and 284 `agent_message` against 292
-    // assistant ones — the response-item stream is the superset, so this side
-    // is the one to drop. Emitting both doubles the whole conversation.
-    let mut st = TailState::default();
+    // assistant ones — the response-item stream is the superset, so it is the
+    // one that becomes the conversation. Emitting both doubles it.
+    //
+    // `user_message` is the one exception, and not as a request: it is the
+    // only record of what the person typed without the injected preamble, so
+    // it becomes the `human_input` — never a second `model_request`.
+    let mut st = TailState {
+        // As if line 1 said a person drives this session (`source: "cli"`).
+        automated: Some(false),
+        ..TailState::default()
+    };
     let (ts, ev) = one(
         &user_message_event("2026-07-30T08:14:54.535Z", "hi codex can you login!"),
         &mut st,
     );
-    assert!(ev.is_empty(), "got {ev:?}");
+    assert_eq!(ev.len(), 1, "got {ev:?}");
+    assert_eq!(ev[0]["type"], "human_input");
+    assert_eq!(ev[0]["response"], "hi codex can you login!");
     assert!(ts.is_some(), "the line is still real activity");
 
     let agent_msg = json!({"timestamp":"2026-07-30T08:14:58.715Z","type":"event_msg",

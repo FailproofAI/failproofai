@@ -625,8 +625,13 @@ fn a_message_whose_session_row_is_gone_falls_back_to_the_configured_agent_id() {
     );
 
     let ev = poll_all(&db);
-    assert_eq!(ev.len(), 1, "the orphan's own turn still ships");
-    assert_eq!(ev[0]["agent_id"], hermes::DEFAULT_AGENT_ID);
+    assert_eq!(
+        ev.len(),
+        1,
+        "the orphan's own turn still ships as a request — but with no session \
+         row there is no record of who wrote it, so no human_input"
+    );
+    assert!(ev.iter().all(|e| e["agent_id"] == hermes::DEFAULT_AGENT_ID));
     assert!(
         of_type(&ev, "agent_start").is_empty(),
         "no session row means nothing to start from"
@@ -707,6 +712,7 @@ fn a_finished_session_is_bracketed_by_a_start_and_an_end() {
         vec![
             "agent_start",
             "model_request",
+            "human_input",
             "tool_use",
             "tool_result",
             "model_response",
@@ -1177,8 +1183,12 @@ async fn new_turns_appended_after_a_pass_are_picked_up_without_re_shipping() {
     run_briefly(spec(db.clone(), spool.clone(), state.clone()), 900).await;
 
     let ev = spooled(&spool);
-    assert_eq!(ev.len(), 1, "only the appended turn must ship, got {ev:#?}");
-    assert_eq!(ev[0]["messages"][0]["content"], "second");
+    assert_eq!(ev.len(), 2, "only the appended turn must ship, got {ev:#?}");
+    assert_eq!(
+        of_type(&ev, "model_request")[0]["messages"][0]["content"],
+        "second"
+    );
+    assert_eq!(of_type(&ev, "human_input")[0]["response"], "second");
 
     drop(conn);
     fs::remove_dir_all(&dir).ok();

@@ -211,8 +211,9 @@ fn a_model_change_record_primes_the_model_for_the_first_prompt() {
         300,
         &mut st,
     );
-    assert_eq!(ev.len(), 1);
+    assert_eq!(ev.len(), 2, "the request, then the person's words");
     assert_eq!(ev[0]["type"], "model_request");
+    assert_eq!(ev[1]["type"], "human_input");
     assert_eq!(ev[0]["model"], "claude-sonnet-4-6");
     assert_eq!(ev[0]["messages"][0]["content"], "hello");
     assert_eq!(ev[0]["messages"][0]["role"], "user");
@@ -229,8 +230,13 @@ fn a_user_prompt_spread_over_several_text_blocks_is_one_request() {
             {"type":"text","text":"first"},{"type":"text","text":"second"}]}})
     .to_string();
     let (_, ev) = transform::transform_line(&line, &ctx(), 0, &mut st);
-    assert_eq!(ev.len(), 1);
+    assert_eq!(
+        ev.len(),
+        2,
+        "one request (and its human_input), not one per block"
+    );
     assert_eq!(ev[0]["messages"][0]["content"], "first\nsecond");
+    assert_eq!(ev[1]["response"], "first\nsecond");
 }
 
 #[test]

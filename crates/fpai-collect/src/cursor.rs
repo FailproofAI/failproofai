@@ -65,6 +65,19 @@ pub struct TailState {
     /// deterministic AND drop the oldest first; a map keyed by random ids would
     /// evict in an order unrelated to age.
     pub pending_tools: Vec<(String, String)>,
+    /// What a Codex session header said about who drives the session:
+    /// `Some(true)` for a sub-agent or a `codex exec` run, `Some(false)` for a
+    /// person, `None` when this cursor never read the header. Only `Some(false)`
+    /// lets a user turn become a `human_input`. Carried here because the header
+    /// is line 1 and the turns come later; persisted, so a resumed read decides
+    /// the same way. `None` is what a cursor saved before this field existed
+    /// resumes with — mid-file, past a header it will never re-read — and such a
+    /// session emits no `human_input` rather than guess.
+    pub automated: Option<bool>,
+    /// The record kind and text of the last `human_input` a Codex session
+    /// emitted — so a version that writes one prompt as BOTH `user_message` and
+    /// an `item_completed` UserMessage yields it once, not twice.
+    pub last_human_input: Option<(String, String)>,
 }
 
 /// Most in-flight tool calls remembered per session. Bounds the cursor file

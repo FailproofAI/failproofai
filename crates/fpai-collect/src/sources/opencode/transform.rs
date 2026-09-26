@@ -152,6 +152,9 @@ pub struct PartRow {
     pub time_updated: i64,
     pub data: Value,
     pub message: Value,
+    /// The session's parent: set on a sub-agent session, whose `user`
+    /// messages are the parent agent's hand-off rather than a person's.
+    pub parent_id: Option<String>,
 }
 
 /// The envelope every emitted event carries.
@@ -356,7 +359,21 @@ fn text_events(row: &PartRow, ctx: &Ctx) -> Vec<Value> {
         }
     }
     m.insert("opencode_message_id".into(), json!(row.message_id));
-    vec![Value::Object(m)]
+    let mut out = vec![Value::Object(m)];
+    // opencode marks the text it injects into a user message (`"The following
+    // tool was executed by the user"`, file reads) `synthetic`, and a
+    // sub-agent session's user messages are its parent's hand-off — so only
+    // what is left is what the person typed.
+    let synthetic = row.data.get("synthetic").and_then(Value::as_bool) == Some(true);
+    if role == "user"
+        && !synthetic
+        && row.parent_id.is_none()
+        && let Some(mut envelope) = base(ctx, "human_input", row.time_created, 1, &row.id)
+    {
+        envelope.insert("opencode_message_id".into(), json!(row.message_id));
+        out.push(crate::sources::human_input(envelope, &row.id, text));
+    }
+    out
 }
 
 /// A `tool` part is BOTH the call and its result — opencode never writes a

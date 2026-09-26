@@ -52,6 +52,11 @@ const BOTH_ENTRY = `
   ${SEMANTIC_ENTRY}
 `;
 
+const REGEX_ONLY_ENTRY = `
+  import { customPolicies, deny } from "failproofai";
+  customPolicies.add({ name: "block-x", description: "d", match: { events: ["PreToolUse"] }, fn: async () => deny("no") });
+`;
+
 let work: string;
 let saved: Record<string, string | undefined>;
 
@@ -326,10 +331,34 @@ describe("--min-cli-version", () => {
     expect(r.lines.join("\n")).toMatch(new RegExp(`Requires failproofai ${packageVersion.replace(/[.-]/g, "\\$&")}`));
   });
 
-  it("omits the field when not given one", async () => {
-    const r = await build(write("policies.mjs", BOTH_ENTRY));
+  it("omits the field when not given one, for a pack with no Jev checks", async () => {
+    const r = await build(write("policies.mjs", REGEX_ONLY_ENTRY));
     expect(r.exitCode).toBe(0);
     expect("minCliVersion" in manifestOf(join(work, "out"))).toBe(false);
+  });
+
+  it("writes the first Jev-pack release for a pack with checks when not given one", async () => {
+    // 1.0.7 ignores `semantic` (and minCliVersion) and 1.0.7-beta.x replaces the
+    // built-in checks with a pack's, so a pack of checks with no minimum, or one
+    // below this, reaches exactly the builds that get it wrong.
+    const r = await build(write("policies.mjs", BOTH_ENTRY));
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(manifestOf(join(work, "out")).minCliVersion).toBe("1.0.8-beta.0");
+    expect(r.lines.join("\n")).toMatch(/Requires failproofai 1\.0\.8-beta\.0 or newer/);
+  });
+
+  it("refuses a minimum below the first Jev-pack release for a pack with checks", async () => {
+    for (const low of ["1.0.7", "1.0.7-beta.2", "1.0.0"]) {
+      const r = await build(write(`policies-${low}.mjs`, BOTH_ENTRY), ["--min-cli-version", low]);
+      expect(r.exitCode, low).toBe(1);
+      expect(r.lines.join("\n")).toMatch(/1\.0\.8-beta\.0/);
+    }
+  });
+
+  it("still takes any minimum for a pack with no Jev checks", async () => {
+    const r = await build(write("policies.mjs", REGEX_ONLY_ENTRY), ["--min-cli-version", "1.0.0"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(manifestOf(join(work, "out")).minCliVersion).toBe("1.0.0");
   });
 
   it("refuses a version nobody can compare, before writing anything", async () => {

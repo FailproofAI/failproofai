@@ -21,7 +21,7 @@ import {
   readInstalledPacks,
   type SemanticManifestEntry,
 } from "./pack-manifest";
-import { parseSemver } from "./semver-precedence";
+import { compareVersions, parseSemver } from "./semver-precedence";
 // The build step measures a pack's question set against the envelope's own
 // budget, which means reaching the semantic side. This is a CLI module — loaded
 // by `failproofai publish`, never by a hook — so the rule that keeps those
@@ -101,6 +101,13 @@ const ok = (lines: string[], meta?: PackBuildMeta): PackCliResult => ({
   ...(meta ? { meta } : {}),
 });
 const fail = (lines: string[]): PackCliResult => ({ lines, exitCode: 1 });
+
+/**
+ * The first failproofai that runs a pack's Jev checks as published: 1.0.7
+ * ignores `semantic` (and `minCliVersion`), and 1.0.7-beta.x replaces the
+ * built-in checks with a pack's. A pack with checks is held to at least this.
+ */
+const JEV_PACK_MIN_CLI = "1.0.8-beta.0";
 
 function parseList(rest: string[], flag: string): string[] | undefined {
   const idx = rest.findIndex((a) => a === flag || a.startsWith(`${flag}=`));
@@ -441,6 +448,17 @@ async function build(rest: string[]): Promise<PackCliResult> {
     }
   }
 
+  // A pack with Jev checks needs a build that runs them, so its minimum is at
+  // least the first one — written when the author gave none, refused when lower.
+  if (semantic.length > 0 && minCliVersion !== undefined && (compareVersions(minCliVersion, JEV_PACK_MIN_CLI) ?? 0) < 0) {
+    return fail([
+      `--min-cli-version ${minCliVersion} is older than the first failproofai that runs a pack's Jev checks (${JEV_PACK_MIN_CLI}):`,
+      "1.0.7 ignores them, and 1.0.7-beta.x replaces the built-in checks with them.",
+      `Pass --min-cli-version ${JEV_PACK_MIN_CLI} or newer, or leave it out and ${JEV_PACK_MIN_CLI} is written.`,
+    ]);
+  }
+  const requiredCli = semantic.length > 0 ? (minCliVersion ?? JEV_PACK_MIN_CLI) : minCliVersion;
+
   // The question budget, checked against what one Jev request can carry. A pack
   // over it installs and then has its overflow policies dropped one by one on
   // the user's machine, in manifest order — a pack that enforces less than it
@@ -559,7 +577,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
       {
         id: identity.id,
         version: identity.version,
-        ...(minCliVersion ? { minCliVersion } : {}),
+        ...(requiredCli ? { minCliVersion: requiredCli } : {}),
         effect: identity.effect,
         ...(identity.commit ? { commit: identity.commit } : {}),
         policies,
@@ -593,7 +611,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
             `(${questionCost} characters of questions), added to the built-in checks where it installs.`,
         ]
       : []),
-    ...(minCliVersion ? [`  Requires failproofai ${minCliVersion} or newer.`] : []),
+    ...(requiredCli ? [`  Requires failproofai ${requiredCli} or newer.`] : []),
     ...(semanticOnly ? JEV_ONLY_ROLLBACK_REMINDER : []),
     `  ${outDir}/${PACK_MANIFEST_ASSET}`,
     `  ${outDir}/${PACK_ENTRY_ASSET}`,

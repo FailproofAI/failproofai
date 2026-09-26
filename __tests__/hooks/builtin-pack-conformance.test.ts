@@ -108,7 +108,7 @@ describe("builtin pack conformance", () => {
   it("packages every builtin except the one packs may not carry", () => {
     const expected = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => p.name);
     expect(manifest.policies.map((p) => p.name)).toEqual(expected);
-    expect(manifest.policies).toHaveLength(38);
+    expect(manifest.policies).toHaveLength(39);
     // The omitted one is the guard against disabling failproofai. pack-manifest
     // REFUSES a pack declaring alwaysOn, so shipping it here would produce a
     // pack our own loader rejects.

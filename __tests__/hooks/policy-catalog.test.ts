@@ -38,13 +38,14 @@ const EXPECTED_ORDER = [
   "warn-background-process", "warn-repeated-tool-calls", "require-commit-before-stop",
   "require-push-before-stop", "require-pr-before-stop",
   "require-no-conflicts-before-stop", "require-ci-green-before-stop",
+  "require-battery-green-before-stop",
 ];
 
 describe("policy catalog / implementation split", () => {
   describe("the join", () => {
     it("keeps catalog and joined view the same length and order", () => {
-      expect(POLICY_CATALOG).toHaveLength(39);
-      expect(BUILTIN_POLICIES).toHaveLength(39);
+      expect(POLICY_CATALOG).toHaveLength(40);
+      expect(BUILTIN_POLICIES).toHaveLength(40);
       expect(BUILTIN_POLICIES.map((p) => p.name)).toEqual(POLICY_CATALOG.map((e) => e.name));
     });
 
@@ -59,20 +60,20 @@ describe("policy catalog / implementation split", () => {
       expect(holes).toEqual([]);
     });
 
-    it("assigns 39 DISTINCT implementations, never a shared wrapper", () => {
-      // The wrapper-collapse guard. `fn: (ctx) => IMPLS[name](ctx)` yields 39
+    it("assigns 40 DISTINCT implementations, never a shared wrapper", () => {
+      // The wrapper-collapse guard. `fn: (ctx) => IMPLS[name](ctx)` yields 40
       // distinct function OBJECTS with near-identical source text, which freezes
       // audit/cache.ts's engineVersion — it then stops changing when policy logic
       // changes and stale audit results are served for the full 30-day TTL with
       // no symptom anywhere.
-      expect(new Set(BUILTIN_POLICIES.map((p) => p.fn.toString())).size).toBe(39);
+      expect(new Set(BUILTIN_POLICIES.map((p) => p.fn.toString())).size).toBe(40);
     });
 
     it("has unique names", () => {
       // findBuiltin takes the FIRST match and registerPolicy takes the LAST — a
       // duplicate silently registers one policy fewer while the audit title comes
       // from the other copy.
-      expect(new Set(BUILTIN_POLICIES.map((p) => p.name)).size).toBe(39);
+      expect(new Set(BUILTIN_POLICIES.map((p) => p.name)).size).toBe(40);
     });
 
     it("adds no fields the catalog did not have", () => {

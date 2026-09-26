@@ -3070,6 +3070,38 @@ function requireCiGreenBeforeStop(ctx: PolicyContext): PolicyResult {
   }
 }
 
+function findBatteryUp(startDir: string, maxDepth = 5): string | null {
+  let dir = resolve(startDir);
+  for (let i = 0; i <= maxDepth; i++) {
+    const candidate = join(dir, "scripts", "verify", "battery.sh");
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // not here — keep climbing
+    }
+    const parent = resolve(join(dir, ".."));
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+function requireBatteryGreenBeforeStop(ctx: PolicyContext): PolicyResult {
+  if (isPlanMode(ctx)) return allow("Plan mode — no changes made, skipping battery check.");
+  const cwd = ctx.session?.cwd;
+  if (!cwd) return allow("No working directory available, skipping battery check.");
+  const battery = findBatteryUp(cwd);
+  if (!battery) return allow("No scripts/verify/battery.sh found, skipping battery check.");
+  try {
+    execFileSync("sh", [battery, "--l0"], {
+      cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 120000,
+    });
+  } catch {
+    return deny("Battery L0 red. Run sh scripts/verify/battery.sh --full, fix, then stop.");
+  }
+  return allow("Battery L0 green.");
+}
+
 // -- Registry --
 
 /**
@@ -3123,6 +3155,7 @@ const POLICY_IMPLEMENTATIONS: Record<string, PolicyFunction> = {
   "require-pr-before-stop": requirePrBeforeStop,
   "require-no-conflicts-before-stop": requireNoConflictsBeforeStop,
   "require-ci-green-before-stop": requireCiGreenBeforeStop,
+  "require-battery-green-before-stop": requireBatteryGreenBeforeStop,
 };
 
 /**

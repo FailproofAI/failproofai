@@ -1,0 +1,91 @@
+---
+title: "LLM-Richter"
+description: "Bewerte Sessions nach Kriterien, die Code nicht messen kann – Korrektheit, Ton, ob der Agent eine Richtlinie eingehalten hat – indem du beschreibst, wie gutes Verhalten aussieht, und ein Modell die Konversation liest."
+icon: "scale"
+---
+
+Eine gehostete Python-Auswertung kann zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lange eine Session gedauert hat. Sie kann dir nicht sagen, ob eine Antwort *korrekt* war, ob eine Antwort unhöflich war oder ob der Agent vor einer Aktion eine Richtlinie geprüft hat.
+
+Ein **LLM-Richter** kann das. Du beschreibst in natürlicher Sprache, wie gutes Verhalten aussieht, und ein Modell liest die Session und gibt einen Score von 0 bis 1 mit seiner Begründung zurück.
+
+<Note>
+Ein Richter kostet einen Modell-Aufruf für jede Session, auf der er läuft, während eine Code-Auswertung nichts kostet. Verwende einen Richter nur für Fragen, die erfordern, dass die Konversation *verstanden* wird – und gib ihm eine Bedingung, damit er nur auf den Sessions läuft, bei denen die Frage tatsächlich relevant ist.
+</Note>
+
+## Welche Option brauche ich?
+
+| Frage | Verwende |
+| --- | --- |
+| Hat es dasselbe Tool zweimal aufgerufen? | Code |
+| Wie viele Fehler gab es? | Code |
+| War die Session unter 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit ausgedrückt? | [Klassifikator](/de/evaluations/jev) |
+| Wie frustriert war der Kunde? | [Klassifikator](/de/evaluations/jev) |
+| War die Antwort tatsächlich korrekt? | **Richter** |
+| War die Antwort unhöflich oder abweisend? | **Richter** |
+| Hat es die Rückgaberichtlinie geprüft, bevor es eine Rückerstattung versprochen hat? | **Richter** |
+
+Die Faustregel: **Zählbares → Code, Antworten, die du im Voraus auflisten kannst → [Klassifikator](/de/evaluations/jev), erfordert eine Erklärung → Richter.** Ein Richter ist derjenige, der Prosa über das Beobachtete schreibt; greife darauf zurück, wenn die Zahl jemanden zum Fragen bringt: „warum?".
+
+Du musst dich nicht im Voraus entscheiden. Beschreibe, was gemessen werden soll, und der Assistent wählt aus und erklärt dir, was er gewählt hat und warum. Du kannst es ändern.
+
+## Einen erstellen
+
+1. Gehe zu **Analyze → eval authoring** und wähle **new eval**.
+2. Beschreibe, was beurteilt werden soll, und wähle **draft**.
+3. Überprüfe die **criteria**, den **threshold** und die **condition**, dann deploye.
+
+### Criteria
+
+Ein bis zwei Sätze, formuliert als Anforderung statt als Frage:
+
+> The assistant must not promise or approve a refund without first checking the refund policy.
+
+Sei konkret darüber, was zum *Scheitern* führen würde. „War die Antwort gut?" liefert dir eine bedeutungslose Zahl; der obige Satz liefert dir eine, auf die du reagieren kannst.
+
+### Threshold
+
+Der Score, bei dem oder darüber die Session als bestanden gilt. `0.7` ist ein sinnvoller Ausgangspunkt. Der vollständige Score von 0 bis 1 wird immer gespeichert, sodass der Threshold nur Bestanden/Nicht bestanden entscheidet – du kannst die Verteilung einsehen und anpassen.
+
+### Condition
+
+Dieselbe Python-Bedingung wie bei jeder anderen Auswertung, und sie ist hier noch viel wichtiger. Ohne eine solche läuft der Richter auf **jeder** Session in deiner Organisation, bei einem Modell-Aufruf pro Session:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Das Dashboard warnt dich, wenn du einen Richter ohne Bedingung deployst. Das kann manchmal richtig sein – ein Agent mit geringem Volumen, den du vollständig beurteilt haben möchtest – aber es sollte eine bewusste Entscheidung sein, kein Versehen.
+
+## Was der Richter sieht
+
+Die Konversation als Turns, bei langen Sessions von neuesten zuerst:
+
+- was der Nutzer gesagt hat
+- was der Assistent geantwortet hat
+- **jedes Tool, das der Agent aufgerufen hat, und was der Aufruf zurückgegeben hat, in der richtigen Reihenfolge**
+
+Dieser letzte Punkt macht „hat er X *vor* Y getan" zu einer fairen Frage. Ein fehlgeschlagener Tool-Aufruf wird als Fehler angezeigt, sodass „hat er sich elegant von einem Fehler erholt" ebenfalls funktioniert.
+
+Sehr lange Sessions werden gekürzt, um in den Kontext des Modells zu passen. Wenn das passiert, erwähnt die Begründung es explizit – du wirst nie ein Urteil über einen Teil einer Session sehen, das als Urteil über die gesamte Session dargestellt wird.
+
+## Ergebnisse lesen
+
+Ein Richter produziert einen **Score** wie jede andere bewertete Auswertung, sodass er auf dieselbe Weise in Charts dargestellt wird, gefiltert werden kann und Benachrichtigungen auslöst. Neben der Zahl speichert er die **Begründung** des Richters – den Absatz, der erklärt, was er gesehen hat. Lies das zuerst, wenn dich ein Score überrascht; es handelt sich meist entweder um eine wirklich interessante Session oder um ein Zeichen, dass die Criteria präzisiert werden muss.
+
+Scores sind bei eindeutigen Fällen stabil, aber nicht bitgenau deterministisch. Behandle einen einzelnen Grenzwert-Score als Anlass, die Session zu lesen, nicht als Urteil.
+
+## Einschränkungen
+
+- **Testen ist noch nicht verfügbar.** Ein Testlauf hat keine Session-Zuweisung dahinter, und diese Zuweisung ist es, die das Ausgeben deines Modellbudgets autorisiert – es gibt also nichts, was ein Test-Aufruf belasten könnte. Deploye mit einer engen Bedingung und lies die ersten paar Ergebnisse.
+- **Backfill ist nicht verfügbar.** Eine Code-Auswertung über Monate von Verlaufsdaten zu backfillen ist kostenlos; mit einem Richter würde das dein gesamtes Budget in Minuten aufbrauchen.
+- **Das Bearbeiten der Criteria veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar, daher werden sie getrennt gehalten und nicht in einer einzigen Trendlinie vermischt.
+- **Ein Richter produziert immer einen Score**, niemals eine Metrik oder eine Assertion.
+
+## Wenn dein Budget aufgebraucht ist
+
+Richter verbrauchen das Modellbudget deiner Organisation. Wenn es erschöpft ist, werden Richter-Auswertungen mit einem klaren Grund eingestellt statt stillschweigend zu scheitern, und **Code-Auswertungen laufen normal weiter**. Erhöhe das Budget und sie werden ab der nächsten Session fortgesetzt.

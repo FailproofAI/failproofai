@@ -1,0 +1,88 @@
+---
+title: "Avaliações por classificador"
+description: "Pontue sessões com respostas que você pode definir com antecedência — isso é verdadeiro ou em que medida — usando um pequeno classificador calibrado em vez de um modelo de uso geral."
+icon: "list-checks"
+---
+
+Algumas perguntas precisam que um modelo *leia* a conversa, mas não que *escreva* sobre ela. "O cliente demonstrou urgência?" tem duas respostas. "Quão frustrado ele estava?" tem algumas, em ordem. Você já conhece todas as respostas antes de perguntar.
+
+Uma **avaliação por classificador** é exatamente para isso. Você escreve a pergunta e as respostas possíveis, e um pequeno modelo especializado em classificação retorna um número calibrado — nunca texto livre.
+
+<Note>
+Assim como um juiz, uma avaliação por classificador consome uma chamada de modelo por sessão. Ao contrário do juiz, é um modelo pequeno e de propósito único, não um de uso geral — por isso é mais rápido e barato — mas nunca vai se explicar. Se você precisar do raciocínio, use um [juiz](/pt-br/evaluations/judge).
+</Note>
+
+## Qual devo usar?
+
+| Pergunta | Use |
+| --- | --- |
+| Quantas chamadas de ferramentas houve? | código |
+| A sessão durou menos de 30 segundos? | código |
+| O cliente demonstrou urgência? | **classificador** |
+| Qual equipe deve lidar com isso: cobrança, técnica ou vendas? | **classificador** |
+| Quão frustrado estava o cliente? | **classificador** |
+| A resposta estava realmente correta? | **juiz** |
+| Seguiu nossa política de escalonamento e por quê? | **juiz** |
+
+A regra geral: **contável → código, respostas que você pode listar → classificador, precisa de explicação → juiz.**
+
+Você não precisa decidir com antecedência. Descreva o que quer medir e o assistente escolhe, informa qual foi a escolha e o motivo, e você pode mudar.
+
+## Os dois tipos de pergunta
+
+### `noul` — isso é verdadeiro?
+
+Duas respostas, e você descreve as duas. O resultado é a probabilidade de a descrição "verdadeira" se aplicar:
+
+```json
+{
+  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
+  "criteria": {
+    "true":  "A refund was promised or issued with no prior policy check or approval",
+    "false": "No refund was promised, or every refund followed a policy check"
+  }
+}
+```
+
+Descreva os dois lados. "Nenhuma urgência demonstrada" é uma resposta válida, e deixá-la explícita torna a outra mais precisa.
+
+### `score` — quanto disso?
+
+Um rubrica ordenada, **do pior para o melhor**. O resultado é onde a sessão se encaixa, reescalonado de 0 a 1:
+
+```json
+{
+  "instructions": "How frustrated is the customer?",
+  "criteria": ["Calm", "Frustrated", "Very angry"]
+}
+```
+
+**Uma rubrica tem de três a cinco níveis, e todos devem ser distintos.** Ambos os limites são medidos, não estilísticos:
+
+- **Dois níveis** colapsa para o que `noul` já faz melhor, e **mais de cinco** faz o modelo tender para o meio em vez de se comprometer. A mesma pergunta sobre a mesma sessão pontuou 0,00 com dois níveis, 0,01 com três e 0,55 com dez.
+- **Níveis repetidos** dividem a resposta arbitrariamente entre eles. Uma sessão claramente irritada pontuou 1,00 com `["Calm", "Frustrated", "Very angry"]` e 0,66 com `["Angry", "Angry", "Angry"]` — um número matematicamente válido que não significa nada.
+
+Categorias sem ordem — "cobrança, técnica ou vendas" — não são uma rubrica. Pergunte-as como um `noul` por categoria, ou use um juiz.
+
+## Interpretando os resultados
+
+Um classificador produz uma **pontuação** de 0 a 1, exatamente como um juiz — portanto, aparece em gráficos, filtros e alertas da mesma forma. Duas diferenças merecem atenção:
+
+- **Não há raciocínio.** O campo está vazio, intencionalmente. Esse modelo não se explica, e inventar uma explicação seria uma fabricação, não um recurso.
+- **A incerteza é sinalizada.** Uma pergunta `score` reporta sua própria confiança, e um resultado sobre o qual o modelo estava inseguro é marcado como `low_confidence` — assim, "quais destes um humano deve revisar" é um filtro, não um palpite. Uma pergunta `noul` não reporta confiança, portanto nunca é marcada.
+
+Sessões muito longas são lidas em trechos e combinadas. Quando uma sessão é longa demais para ser lida integralmente, o resultado indica quantas interações foram omitidas — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre ela toda.
+
+## Limites
+
+- **De três a cinco níveis de rubrica, todos distintos.** Conforme descrito acima; ambos os limites são aplicados no momento da criação.
+- **Uma pergunta por avaliação.** Faça duas perguntas e você terá duas avaliações — o que também é o que você quer em um gráfico.
+- **Editar a pergunta publica uma nova versão.** Pontuações antigas e novas não são comparáveis, por isso são mantidas separadas em vez de misturadas em uma linha de tendência.
+- **Um classificador sempre produz uma pontuação**, nunca uma métrica ou uma asserção.
+- **Sem raciocínio**, conforme acima. Se um número vai levar alguém a perguntar "por quê?", escreva um juiz.
+
+## Testes e reprocessamento
+
+Ao contrário de um juiz, uma avaliação por classificador **pode** ser testada antes do deploy — [teste-a](/pt-br/evaluations/test) em sessões reais da mesma forma que faria com uma avaliação de código, e leia as pontuações antes de qualquer coisa entrar em produção.
+
+Ela também pode ser [reprocessada](/pt-br/evaluations/deploy#score-sessions-you-already-have) em sessões que você já tem. Consome uma chamada de modelo por sessão, portanto delimite a janela de tempo deliberadamente em vez de reprocessar tudo.

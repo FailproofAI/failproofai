@@ -1,0 +1,50 @@
+---
+title: "Sentimiento"
+description: "Descubre cómo se sienten las personas que usan tus agentes y si estos están respondiendo bien, mensaje a mensaje."
+icon: "smile"
+---
+
+Sentimiento puntúa cada mensaje que una persona envía a tus agentes, del 0 al 100%, en cuatro emociones — **enojado**, **frustrado**, **feliz** y **confundido** — y tres señales sobre el rendimiento del agente:
+
+- **Corrigiendo**: la persona indica que el agente se equivocó en algo.
+- **Resuelto**: la persona confirma que el agente solucionó su problema.
+- **Dudoso**: la persona cuestiona si la respuesta del agente es correcta o si realmente realizó el trabajo.
+
+Úsalo para identificar las conversaciones donde las personas están perdiendo la paciencia, los agentes que constantemente necesitan ser corregidos y las respuestas que funcionan bien.
+
+<Note>
+  Sentimiento está desactivado hasta que un administrador lo habilite para la organización. La puntuación utiliza el presupuesto de LLM de tu organización — una solicitud de puntuación por mensaje — y envía cada mensaje, junto con la respuesta del agente anterior, al modelo de puntuación.
+</Note>
+
+## Cómo activarlo
+
+1. Ve a **Administración → Configuración**.
+2. En **Sentimiento de entrada humana**, actívalo y guarda los cambios.
+
+Los mensajes del último día se puntúan primero. A partir de entonces, los mensajes nuevos se puntúan en uno o dos minutos tras llegar.
+
+## Qué mensajes se puntúan
+
+Solo los mensajes escritos por personas:
+
+- Mensajes que tus agentes personalizados registran como entrada humana con el SDK.
+- Prompts escritos en Claude Code, Codex, OpenCode, pi, Hermes y OpenClaw, cuando se envían las transcripciones de sesión (opción predeterminada). Los trabajos programados, las instrucciones inyectadas, los traspasos entre subagentes y otros textos escritos por el propio entorno de ejecución del agente no se puntúan. Tampoco se puntúan las ejecuciones no interactivas como `claude -p`, `codex exec` y `hermes -z`: esos prompts los generó un script, no una persona.
+
+La puntuación evalúa las palabras propias de la persona. Una instrucción breve y directa como "corrígelo" no se contabiliza como enojo, y hacer una pregunta no se contabiliza como confusión. Una nueva solicitud no es una corrección, y un simple agradecimiento por sí solo no cuenta como resuelto.
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Observar → Sentimiento**.
+    2. Filtra por entorno, agente o ID de sesión.
+    3. El encabezado contabiliza los mensajes **marcados** — cualquier puntuación negativa (enojado, frustrado, corrigiendo, confundido o dudoso) igual o superior a 35 sobre 100 — e identifica la señal principal.
+    4. **Puntuación a lo largo del tiempo** muestra un gráfico con el promedio de cada puntuación. Selecciona qué puntuaciones mostrar y haz clic en un punto para leer los mensajes correspondientes.
+    5. **Por agente** compara agentes uno junto al otro.
+    6. **Mensajes** lista los mensajes marcados, ordenados de mayor a menor intensidad. Cambia a todos los mensajes, ordena por más recientes o por cualquier puntuación individual, y abre la sesión de un mensaje para leer la conversación en contexto.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

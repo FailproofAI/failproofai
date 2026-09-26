@@ -1,0 +1,88 @@
+---
+title: "Đánh giá bằng bộ phân loại"
+description: "Cho điểm các phiên làm việc dựa trên những câu trả lời mà bạn có thể viết trước — đúng hay sai, hay mức độ như thế nào — bằng một bộ phân loại nhỏ được hiệu chỉnh thay vì sử dụng mô hình đa năng."
+icon: "list-checks"
+---
+
+Một số câu hỏi yêu cầu mô hình *đọc* cuộc trò chuyện, nhưng không phải *viết* về nó. "Khách hàng có thể hiện sự khẩn cấp?" có hai câu trả lời. "Họ bực bội đến mức nào?" có một vài câu, theo thứ tự. Bạn biết tất cả các câu trả lời trước khi hỏi.
+
+**Đánh giá bằng bộ phân loại** được sử dụng cho chính xác những trường hợp đó. Bạn viết câu hỏi và các câu trả lời mà nó có thể đưa ra, và một mô hình nhỏ được xây dựng để phân loại sẽ trả về một con số được hiệu chỉnh — không bao giờ là văn bản tự do.
+
+<Note>
+Giống như một thẩm phán, đánh giá bằng bộ phân loại tốn một lần gọi mô hình cho mỗi phiên. Không giống như thẩm phán, nó là một mô hình nhỏ, chuyên dụng cho một mục đích duy nhất thay vì mô hình đa năng, do đó nó nhanh hơn và rẻ hơn — nhưng nó sẽ không bao giờ giải thích chính nó. Nếu bạn cần lý do, hãy sử dụng [thẩm phán](/vi/evaluations/judge).
+</Note>
+
+## Tôi nên chọn cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Có bao nhiêu lệnh gọi công cụ? | code |
+| Phiên làm việc có dưới 30 giây không? | code |
+| Khách hàng có thể hiện sự khẩn cấp? | **bộ phân loại** |
+| Đội nào nên xử lý: thanh toán, kỹ thuật hay bán hàng? | **bộ phân loại** |
+| Khách hàng bực bội đến mức nào? | **bộ phân loại** |
+| Câu trả lời thực sự có chính xác không? | **thẩm phán** |
+| Nó có tuân theo chính sách leo thang của chúng ta không, và tại sao bạn lại nghĩ vậy? | **thẩm phán** |
+
+Quy tắc chung: **đếm được → code, câu trả lời mà bạn có thể liệt kê → bộ phân loại, cần giải thích → thẩm phán.**
+
+Bạn không phải quyết định từ trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, cho bạn biết nó đã chọn cái nào và tại sao, và bạn có thể chuyển đổi.
+
+## Hai loại câu hỏi
+
+### `noul` — cái này có đúng không?
+
+Hai câu trả lời, và bạn mô tả cả hai. Kết quả là xác suất mà mô tả "đúng" phù hợp:
+
+```json
+{
+  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
+  "criteria": {
+    "true":  "A refund was promised or issued with no prior policy check or approval",
+    "false": "No refund was promised, or every refund followed a policy check"
+  }
+}
+```
+
+Mô tả cả hai phía. "Không thể hiện sự khẩn cấp" là một câu trả lời thực sự và nói rõ điều này làm cho câu kia sắc nét hơn.
+
+### `score` — mức độ bao nhiêu?
+
+Một thang đo theo thứ tự, **tệ nhất trước tiên**. Kết quả là nơi phiên làm việc nằm trên nó, được chia tỷ lệ lại thành 0–1:
+
+```json
+{
+  "instructions": "How frustrated is the customer?",
+  "criteria": ["Calm", "Frustrated", "Very angry"]
+}
+```
+
+**Một thang đo có từ ba đến năm mức, và chúng đều phải khác nhau.** Cả hai giới hạn đều được đo lường, không phải theo kiểu:
+
+- **Hai mức** suy thoái thành những gì `noul` làm tốt hơn, và **nhiều hơn năm** khiến mô hình miễn cưỡng hướng về giữa thay vì cam kết. Cùng một câu hỏi trên cùng một phiên được cho điểm 0,00 với hai mức, 0,01 với ba mức, và 0,55 với mười mức.
+- **Các mức lặp lại** chia câu trả lời một cách tùy ý giữa chúng. Một phiên làm việc rõ ràng là tức giận được cho điểm 1,00 so với `["Calm", "Frustrated", "Very angry"]` và 0,66 so với `["Angry", "Angry", "Angry"]` — một con số được hình thành tốt nhưng không có ý nghĩa.
+
+Các danh mục không có thứ tự — "thanh toán, kỹ thuật hay bán hàng" — không phải là một thang đo. Hãy hỏi chúng dưới dạng `noul` cho mỗi danh mục, hoặc sử dụng thẩm phán.
+
+## Đọc kết quả
+
+Bộ phân loại sẽ tạo ra một **điểm** từ 0 đến 1, giống hệt như thẩm phán, nên nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Hai điểm khác biệt đáng để biết:
+
+- **Không có lý do.** Trường này được để trống, có ý định. Mô hình này không giải thích chính nó, và bịa ra một lời giải thích sẽ là một sự bịa đặt chứ không phải một tính năng.
+- **Tính không chắc chắn được gắn nhãn.** Một câu hỏi `score` báo cáo sự tự tin của chính nó, và một kết quả mà mô hình không chắc chắn được gắn thẻ `low_confidence` — vì vậy "câu hỏi nào trong số những câu hỏi này một con người nên xem xét" là một bộ lọc chứ không phải một dự đoán. Một câu hỏi `noul` không báo cáo sự tự tin, vì vậy nó không bao giờ được gắn thẻ.
+
+Các phiên làm việc rất dài được đọc theo đoạn và kết hợp. Khi một phiên quá dài để đọc toàn bộ, kết quả sẽ cho biết bao nhiêu lượt được bỏ qua — bạn sẽ không bao giờ thấy một phán quyết được đưa ra trên một phần của phiên được trình bày dưới dạng một phán quyết trên toàn bộ nó.
+
+## Giới hạn
+
+- **Ba đến năm mức thang đo, tất cả đều khác biệt.** Xem ở trên; cả hai giới hạn được thực thi tại thời điểm tạo.
+- **Một câu hỏi cho mỗi đánh giá.** Hỏi hai điều và bạn sẽ nhận được hai đánh giá, đó cũng là những gì bạn muốn trên một biểu đồ.
+- **Chỉnh sửa câu hỏi sẽ công bố một phiên bản mới.** Điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng biệt thay vì trộn thành một đường xu hướng.
+- **Bộ phân loại luôn tạo ra một điểm**, không bao giờ là một chỉ số hoặc một khẳng định.
+- **Không có lý do**, như ở trên. Nếu một con số sẽ khiến ai đó hỏi "tại sao?", hãy viết thẩm phán thay vào đó.
+
+## Kiểm tra và lấp đầy
+
+Không giống như thẩm phán, đánh giá bằng bộ phân loại **có thể** được kiểm tra trước khi bạn triển khai nó — [kiểm tra nó](/vi/evaluations/test) với các phiên thực tế theo cách tương tự như bạn sẽ làm với đánh giá code, và đọc điểm trước khi bất cứ điều gì được triển khai trực tiếp.
+
+Nó cũng có thể được [lấp đầy](/vi/evaluations/deploy#score-sessions-you-already-have) qua các phiên mà bạn đã có. Nó tốn một lần gọi mô hình cho mỗi phiên, vì vậy hãy xác định phạm vi cửa sổ có ý định chứ không phải phát lại mọi thứ.

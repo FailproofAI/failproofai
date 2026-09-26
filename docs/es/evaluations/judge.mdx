@@ -1,0 +1,91 @@
+---
+title: "Jueces LLM"
+description: "Puntúa sesiones en aspectos que el código no puede medir — corrección, tono, si el agente siguió una política — describiendo qué aspecto tiene un buen resultado y dejando que un modelo lea la conversación."
+icon: "scale"
+---
+
+Una evaluación Python alojada puede contar y comparar: cuántas llamadas a herramientas, cuántos errores, cuánto duró una sesión. No puede decirte si una respuesta fue *correcta*, si una réplica fue grosera, o si el agente verificó una política antes de actuar.
+
+Un **juez LLM** sí puede. Describes en lenguaje natural cómo se ve un buen resultado, y un modelo lee la sesión y devuelve una puntuación de 0 a 1 junto con su razonamiento.
+
+<Note>
+Un juez cuesta una llamada al modelo por cada sesión en la que se ejecuta, y una evaluación de código no cuesta nada. Usa un juez solo para preguntas que requieren que la conversación sea *comprendida* — y dale una condición, para que se ejecute únicamente en las sesiones sobre las que la pregunta es realmente pertinente.
+</Note>
+
+## ¿Cuál necesito?
+
+| Pregunta | Usar |
+| --- | --- |
+| ¿Llamó a la misma herramienta dos veces? | código |
+| ¿Cuántos errores hubo? | código |
+| ¿La sesión duró menos de 30 segundos? | código |
+| ¿Expresó urgencia el cliente? | [clasificador](/es/evaluations/jev) |
+| ¿Qué tan frustrado estaba el cliente? | [clasificador](/es/evaluations/jev) |
+| ¿Era realmente correcta la respuesta? | **juez** |
+| ¿Fue la réplica grosera o despectiva? | **juez** |
+| ¿Verificó la política de reembolsos antes de prometer uno? | **juez** |
+
+La regla general: **contable → código, respuestas que puedes listar de antemano → [clasificador](/es/evaluations/jev), necesita una explicación → juez.** Un juez es el que escribe en prosa sobre lo que vio; recurre a él cuando el número hará que alguien pregunte "¿por qué?".
+
+No tienes que decidir de antemano. Describe qué quieres medir y el asistente elige, luego te dice cuál eligió y por qué. Puedes cambiarlo.
+
+## Cómo crear uno
+
+1. Ve a **Analyze → eval authoring** y selecciona **new eval**.
+2. Describe qué quieres juzgar y selecciona **draft**.
+3. Revisa los **criterios**, el **umbral** y la **condición**, luego despliega.
+
+### Criterios
+
+Una o dos oraciones, redactadas como un requisito y no como una pregunta:
+
+> El asistente no debe prometer ni aprobar un reembolso sin antes verificar la política de reembolsos.
+
+Sé específico sobre qué haría que *falle*. "¿Fue buena la respuesta?" te da un número que no significa nada; la oración anterior te da uno sobre el que puedes actuar.
+
+### Umbral
+
+La puntuación a partir de la cual la sesión pasa. `0.7` es un punto de partida razonable. La puntuación completa de 0 a 1 siempre se almacena, por lo que el umbral solo decide aprobado/reprobado — puedes ver la distribución y ajustarla.
+
+### Condición
+
+La misma condición Python que cualquier otra evaluación, y aquí importa mucho más. Sin una, el juez se ejecuta en **todas** las sesiones de tu organización, a una llamada al modelo cada vez:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+El panel te advierte si despliegas un juez sin condición. A veces eso es correcto — un agente de bajo volumen que quieres juzgar completamente — pero debe ser una decisión, no un accidente.
+
+## Qué ve el juez
+
+La conversación, en turnos, con los más recientes primero si la sesión es larga:
+
+- lo que dijo el usuario
+- lo que respondió el asistente
+- **cada herramienta que llamó el agente, y lo que esa llamada devolvió, en orden**
+
+Esta última parte es lo que hace que "¿hizo X *antes* que Y?" sea una pregunta legítima. Una llamada a herramienta fallida se muestra como un fallo, por lo que "¿se recuperó correctamente de un error?" también funciona.
+
+Las sesiones muy largas se truncan para ajustarse al contexto del modelo. Cuando eso ocurre, el razonamiento lo indica explícitamente — nunca verás un juicio hecho sobre parte de una sesión presentado como uno hecho sobre toda ella.
+
+## Interpretación de los resultados
+
+Un juez produce una **puntuación** como cualquier otra evaluación con puntuación, por lo que genera gráficos, filtros y alertas de la misma manera. Junto al número, almacena el **razonamiento** del juez — el párrafo que explica qué vio. Lee eso primero cuando una puntuación te sorprenda; generalmente es una sesión genuinamente interesante o una señal de que los criterios necesitan refinarse.
+
+Las puntuaciones son estables para casos claros, pero no son deterministas bit a bit. Trata una puntuación límite individual como una invitación a ir a leer la sesión, no como un veredicto definitivo.
+
+## Limitaciones
+
+- **Las pruebas aún no están disponibles.** Una ejecución de prueba no tiene asignación de sesión detrás, y esa asignación es lo que autoriza gastar el presupuesto del modelo — por lo que no hay nada que una llamada de prueba pueda cobrar. Despliega con una condición restrictiva y lee los primeros resultados.
+- **El relleno retroactivo no está disponible.** Rellenar retroactivamente una evaluación de código sobre meses de historial es gratuito; hacerlo con un juez agotaría todo tu presupuesto en minutos.
+- **Editar los criterios publica una nueva versión.** Las puntuaciones antiguas y nuevas no son comparables, por lo que se mantienen separadas en lugar de mezclarse en una única línea de tendencia.
+- **Un juez siempre produce una puntuación**, nunca una métrica ni una aserción.
+
+## Cuando se agota tu presupuesto
+
+Los jueces consumen el presupuesto del modelo de tu organización. Cuando se agota, las evaluaciones de juez se detienen con un motivo claro en lugar de fallar silenciosamente, y **las evaluaciones de código siguen ejecutándose con normalidad**. Aumenta el presupuesto y reanudarán en la siguiente sesión.

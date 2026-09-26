@@ -294,6 +294,7 @@
                   "zh/sessions/hooks",
                   "zh/sessions/policy-decisions",
                   "zh/sessions/tools",
+                  "zh/sessions/sentiment",
                   "zh/sessions/errors",
                   "zh/sessions/metrics",
                   "zh/sessions/dashboards",
@@ -322,6 +323,8 @@
                 "pages": [
                   "zh/evaluations/overview",
                   "zh/evaluations/write",
+                  "zh/evaluations/judge",
+                  "zh/evaluations/jev",
                   "zh/evaluations/test",
                   "zh/evaluations/deploy",
                   "zh/sessions/evaluations"
@@ -398,6 +401,7 @@
                   "zh/reference/overview",
                   "zh/reference/harnesses",
                   "zh/reference/custom-agents",
+                  "zh/reference/custom-agents-typescript",
                   "zh/reference/evaluator-sdk",
                   "zh/reference/policy-sdk",
                   "zh/reference/self-hosting"
@@ -467,6 +471,7 @@
                   "ja/sessions/hooks",
                   "ja/sessions/policy-decisions",
                   "ja/sessions/tools",
+                  "ja/sessions/sentiment",
                   "ja/sessions/errors",
                   "ja/sessions/metrics",
                   "ja/sessions/dashboards",
@@ -495,6 +500,8 @@
                 "pages": [
                   "ja/evaluations/overview",
                   "ja/evaluations/write",
+                  "ja/evaluations/judge",
+                  "ja/evaluations/jev",
                   "ja/evaluations/test",
                   "ja/evaluations/deploy",
                   "ja/sessions/evaluations"
@@ -571,6 +578,7 @@
                   "ja/reference/overview",
                   "ja/reference/harnesses",
                   "ja/reference/custom-agents",
+                  "ja/reference/custom-agents-typescript",
                   "ja/reference/evaluator-sdk",
                   "ja/reference/policy-sdk",
                   "ja/reference/self-hosting"
@@ -640,6 +648,7 @@
                   "ko/sessions/hooks",
                   "ko/sessions/policy-decisions",
                   "ko/sessions/tools",
+                  "ko/sessions/sentiment",
                   "ko/sessions/errors",
                   "ko/sessions/metrics",
                   "ko/sessions/dashboards",
@@ -668,6 +677,8 @@
                 "pages": [
                   "ko/evaluations/overview",
                   "ko/evaluations/write",
+                  "ko/evaluations/judge",
+                  "ko/evaluations/jev",
                   "ko/evaluations/test",
                   "ko/evaluations/deploy",
                   "ko/sessions/evaluations"
@@ -744,6 +755,7 @@
                   "ko/reference/overview",
                   "ko/reference/harnesses",
                   "ko/reference/custom-agents",
+                  "ko/reference/custom-agents-typescript",
                   "ko/reference/evaluator-sdk",
                   "ko/reference/policy-sdk",
                   "ko/reference/self-hosting"
@@ -813,6 +825,7 @@
                   "es/sessions/hooks",
                   "es/sessions/policy-decisions",
                   "es/sessions/tools",
+                  "es/sessions/sentiment",
                   "es/sessions/errors",
                   "es/sessions/metrics",
                   "es/sessions/dashboards",
@@ -841,6 +854,8 @@
                 "pages": [
                   "es/evaluations/overview",
                   "es/evaluations/write",
+                  "es/evaluations/judge",
+                  "es/evaluations/jev",
                   "es/evaluations/test",
                   "es/evaluations/deploy",
                   "es/sessions/evaluations"
@@ -917,6 +932,7 @@
                   "es/reference/overview",
                   "es/reference/harnesses",
                   "es/reference/custom-agents",
+                  "es/reference/custom-agents-typescript",
                   "es/reference/evaluator-sdk",
                   "es/reference/policy-sdk",
                   "es/reference/self-hosting"
@@ -986,6 +1002,7 @@
                   "pt-br/sessions/hooks",
                   "pt-br/sessions/policy-decisions",
                   "pt-br/sessions/tools",
+                  "pt-br/sessions/sentiment",
                   "pt-br/sessions/errors",
                   "pt-br/sessions/metrics",
                   "pt-br/sessions/dashboards",
@@ -1014,6 +1031,8 @@
                 "pages": [
                   "pt-br/evaluations/overview",
                   "pt-br/evaluations/write",
+                  "pt-br/evaluations/judge",
+                  "pt-br/evaluations/jev",
                   "pt-br/evaluations/test",
                   "pt-br/evaluations/deploy",
                   "pt-br/sessions/evaluations"
@@ -1090,6 +1109,7 @@
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
+                  "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
@@ -1159,6 +1179,7 @@
                   "de/sessions/hooks",
                   "de/sessions/policy-decisions",
                   "de/sessions/tools",
+                  "de/sessions/sentiment",
                   "de/sessions/errors",
                   "de/sessions/metrics",
                   "de/sessions/dashboards",
@@ -1187,6 +1208,8 @@
                 "pages": [
                   "de/evaluations/overview",
                   "de/evaluations/write",
+                  "de/evaluations/judge",
+                  "de/evaluations/jev",
                   "de/evaluations/test",
                   "de/evaluations/deploy",
                   "de/sessions/evaluations"
@@ -1263,6 +1286,7 @@
                   "de/reference/overview",
                   "de/reference/harnesses",
                   "de/reference/custom-agents",
+                  "de/reference/custom-agents-typescript",
                   "de/reference/evaluator-sdk",
                   "de/reference/policy-sdk",
                   "de/reference/self-hosting"
@@ -1332,6 +1356,7 @@
                   "fr/sessions/hooks",
                   "fr/sessions/policy-decisions",
                   "fr/sessions/tools",
+                  "fr/sessions/sentiment",
                   "fr/sessions/errors",
                   "fr/sessions/metrics",
                   "fr/sessions/dashboards",
@@ -1360,6 +1385,8 @@
                 "pages": [
                   "fr/evaluations/overview",
                   "fr/evaluations/write",
+                  "fr/evaluations/judge",
+                  "fr/evaluations/jev",
                   "fr/evaluations/test",
                   "fr/evaluations/deploy",
                   "fr/sessions/evaluations"
@@ -1436,6 +1463,7 @@
                   "fr/reference/overview",
                   "fr/reference/harnesses",
                   "fr/reference/custom-agents",
+                  "fr/reference/custom-agents-typescript",
                   "fr/reference/evaluator-sdk",
                   "fr/reference/policy-sdk",
                   "fr/reference/self-hosting"
@@ -1505,6 +1533,7 @@
                   "ru/sessions/hooks",
                   "ru/sessions/policy-decisions",
                   "ru/sessions/tools",
+                  "ru/sessions/sentiment",
                   "ru/sessions/errors",
                   "ru/sessions/metrics",
                   "ru/sessions/dashboards",
@@ -1533,6 +1562,8 @@
                 "pages": [
                   "ru/evaluations/overview",
                   "ru/evaluations/write",
+                  "ru/evaluations/judge",
+                  "ru/evaluations/jev",
                   "ru/evaluations/test",
                   "ru/evaluations/deploy",
                   "ru/sessions/evaluations"
@@ -1609,6 +1640,7 @@
                   "ru/reference/overview",
                   "ru/reference/harnesses",
                   "ru/reference/custom-agents",
+                  "ru/reference/custom-agents-typescript",
                   "ru/reference/evaluator-sdk",
                   "ru/reference/policy-sdk",
                   "ru/reference/self-hosting"
@@ -1678,6 +1710,7 @@
                   "hi/sessions/hooks",
                   "hi/sessions/policy-decisions",
                   "hi/sessions/tools",
+                  "hi/sessions/sentiment",
                   "hi/sessions/errors",
                   "hi/sessions/metrics",
                   "hi/sessions/dashboards",
@@ -1706,6 +1739,8 @@
                 "pages": [
                   "hi/evaluations/overview",
                   "hi/evaluations/write",
+                  "hi/evaluations/judge",
+                  "hi/evaluations/jev",
                   "hi/evaluations/test",
                   "hi/evaluations/deploy",
                   "hi/sessions/evaluations"
@@ -1782,6 +1817,7 @@
                   "hi/reference/overview",
                   "hi/reference/harnesses",
                   "hi/reference/custom-agents",
+                  "hi/reference/custom-agents-typescript",
                   "hi/reference/evaluator-sdk",
                   "hi/reference/policy-sdk",
                   "hi/reference/self-hosting"
@@ -1851,6 +1887,7 @@
                   "tr/sessions/hooks",
                   "tr/sessions/policy-decisions",
                   "tr/sessions/tools",
+                  "tr/sessions/sentiment",
                   "tr/sessions/errors",
                   "tr/sessions/metrics",
                   "tr/sessions/dashboards",
@@ -1879,6 +1916,8 @@
                 "pages": [
                   "tr/evaluations/overview",
                   "tr/evaluations/write",
+                  "tr/evaluations/judge",
+                  "tr/evaluations/jev",
                   "tr/evaluations/test",
                   "tr/evaluations/deploy",
                   "tr/sessions/evaluations"
@@ -1955,6 +1994,7 @@
                   "tr/reference/overview",
                   "tr/reference/harnesses",
                   "tr/reference/custom-agents",
+                  "tr/reference/custom-agents-typescript",
                   "tr/reference/evaluator-sdk",
                   "tr/reference/policy-sdk",
                   "tr/reference/self-hosting"
@@ -2024,6 +2064,7 @@
                   "vi/sessions/hooks",
                   "vi/sessions/policy-decisions",
                   "vi/sessions/tools",
+                  "vi/sessions/sentiment",
                   "vi/sessions/errors",
                   "vi/sessions/metrics",
                   "vi/sessions/dashboards",
@@ -2052,6 +2093,8 @@
                 "pages": [
                   "vi/evaluations/overview",
                   "vi/evaluations/write",
+                  "vi/evaluations/judge",
+                  "vi/evaluations/jev",
                   "vi/evaluations/test",
                   "vi/evaluations/deploy",
                   "vi/sessions/evaluations"
@@ -2128,6 +2171,7 @@
                   "vi/reference/overview",
                   "vi/reference/harnesses",
                   "vi/reference/custom-agents",
+                  "vi/reference/custom-agents-typescript",
                   "vi/reference/evaluator-sdk",
                   "vi/reference/policy-sdk",
                   "vi/reference/self-hosting"
@@ -2197,6 +2241,7 @@
                   "it/sessions/hooks",
                   "it/sessions/policy-decisions",
                   "it/sessions/tools",
+                  "it/sessions/sentiment",
                   "it/sessions/errors",
                   "it/sessions/metrics",
                   "it/sessions/dashboards",
@@ -2225,6 +2270,8 @@
                 "pages": [
                   "it/evaluations/overview",
                   "it/evaluations/write",
+                  "it/evaluations/judge",
+                  "it/evaluations/jev",
                   "it/evaluations/test",
                   "it/evaluations/deploy",
                   "it/sessions/evaluations"
@@ -2301,6 +2348,7 @@
                   "it/reference/overview",
                   "it/reference/harnesses",
                   "it/reference/custom-agents",
+                  "it/reference/custom-agents-typescript",
                   "it/reference/evaluator-sdk",
                   "it/reference/policy-sdk",
                   "it/reference/self-hosting"
@@ -2370,6 +2418,7 @@
                   "ar/sessions/hooks",
                   "ar/sessions/policy-decisions",
                   "ar/sessions/tools",
+                  "ar/sessions/sentiment",
                   "ar/sessions/errors",
                   "ar/sessions/metrics",
                   "ar/sessions/dashboards",
@@ -2398,6 +2447,8 @@
                 "pages": [
                   "ar/evaluations/overview",
                   "ar/evaluations/write",
+                  "ar/evaluations/judge",
+                  "ar/evaluations/jev",
                   "ar/evaluations/test",
                   "ar/evaluations/deploy",
                   "ar/sessions/evaluations"
@@ -2474,6 +2525,7 @@
                   "ar/reference/overview",
                   "ar/reference/harnesses",
                   "ar/reference/custom-agents",
+                  "ar/reference/custom-agents-typescript",
                   "ar/reference/evaluator-sdk",
                   "ar/reference/policy-sdk",
                   "ar/reference/self-hosting"
@@ -2543,6 +2595,7 @@
                   "he/sessions/hooks",
                   "he/sessions/policy-decisions",
                   "he/sessions/tools",
+                  "he/sessions/sentiment",
                   "he/sessions/errors",
                   "he/sessions/metrics",
                   "he/sessions/dashboards",
@@ -2571,6 +2624,8 @@
                 "pages": [
                   "he/evaluations/overview",
                   "he/evaluations/write",
+                  "he/evaluations/judge",
+                  "he/evaluations/jev",
                   "he/evaluations/test",
                   "he/evaluations/deploy",
                   "he/sessions/evaluations"
@@ -2647,6 +2702,7 @@
                   "he/reference/overview",
                   "he/reference/harnesses",
                   "he/reference/custom-agents",
+                  "he/reference/custom-agents-typescript",
                   "he/reference/evaluator-sdk",
                   "he/reference/policy-sdk",
                   "he/reference/self-hosting"

@@ -1,0 +1,50 @@
+---
+title: "Sentiment"
+description: "देखें कि आपके agents का उपयोग करने वाले लोग कैसा महसूस कर रहे हैं, और क्या आपके agents सही काम कर रहे हैं, प्रत्येक संदेश के लिए।"
+icon: "smile"
+---
+
+Sentiment प्रत्येक संदेश को स्कोर करता है जो कोई व्यक्ति आपके agents को भेजता है, प्रत्येक को 0 से 100% तक, चार भावनाओं के लिए — **angry**, **frustrated**, **happy** और **confused** — और agent के प्रदर्शन के बारे में तीन संकेत:
+
+- **Correcting**: व्यक्ति कहता है कि agent ने कुछ गलत किया।
+- **Resolved**: व्यक्ति की पुष्टि करता है कि agent ने उनकी समस्या का समाधान किया।
+- **Doubtful**: व्यक्ति सवाल करता है कि agent का उत्तर सही है या नहीं, या क्या इसने वास्तव में काम किया।
+
+इसका उपयोग उन बातचीतों को ढूंढने के लिए करें जहां लोगों का धैर्य समाप्त हो रहा है, agents जिन्हें बार-बार ठीक करना पड़ता है, और वे जवाब जो अच्छे से काम करते हैं।
+
+<Note>
+  Sentiment तब तक बंद रहता है जब तक कोई admin इसे संगठन के लिए चालू न करे। स्कोरिंग आपके संगठन के LLM budget का उपयोग करता है — प्रति संदेश एक स्कोरिंग request — और प्रत्येक संदेश को, इससे पहले के agent reply के साथ, स्कोरिंग मॉडल को भेजता है।
+</Note>
+
+## इसे चालू करें
+
+1. **Administration → Settings** पर जाएं।
+2. **Human input sentiment** के अंतर्गत, इसे **on** करें और save करें।
+
+पिछले दिन के संदेशों को पहले स्कोर किया जाता है। उसके बाद, नए संदेशों को आने के एक या दो मिनट के भीतर स्कोर किया जाता है।
+
+## कौन से संदेश स्कोर किए जाते हैं
+
+केवल वे संदेश जो किसी व्यक्ति ने लिखे हैं:
+
+- संदेश जो आपके custom agents SDK के साथ human input के रूप में रिकॉर्ड करते हैं।
+- Claude Code, Codex, OpenCode, pi, Hermes और OpenClaw में टाइप किए गए prompts, जब session transcripts भेजे जाते हैं (डिफ़ॉल्ट)। Scheduled jobs, injected instructions, sub-agent hand-offs और अन्य text जो agent का अपना runtime लिखता है, स्कोर नहीं किए जाते। Non-interactive runs जैसे `claude -p`, `codex exec` और `hermes -z` भी नहीं: एक script ने उन prompts को लिखा था, किसी व्यक्ति ने नहीं।
+
+स्कोरिंग व्यक्ति के अपने शब्दों का आकलन करता है। "fix it" जैसा एक छोटा, तीक्ष्ण निर्देश क्रोध के रूप में नहीं गिना जाता है, और सवाल पूछना भ्रम के रूप में नहीं गिना जाता है। एक नई request सुधार नहीं है, और अकेले धन्यवाद को resolved के रूप में नहीं गिना जाता है।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Sentiment** पर जाएं।
+    2. Environment, agent, या session ID द्वारा फ़िल्टर करें।
+    3. Header **flagged** संदेशों की गिनती करता है — कोई भी नकारात्मक स्कोर (angry, frustrated, correcting, confused या doubtful) 35 या अधिक out of 100 — और शीर्ष संकेत का नाम देता है।
+    4. **Score over time** प्रत्येक स्कोर का average chart करता है। चुनें कि कौन से स्कोर दिखाने हैं, और इसके पीछे के संदेशों को पढ़ने के लिए एक point पर क्लिक करें।
+    5. **By agent** agents की side by side तुलना करता है।
+    6. **Messages** flagged संदेशों को सूचीबद्ध करता है, सबसे मजबूत पहले। सभी संदेशों पर स्विच करें, या newest द्वारा या किसी एकल स्कोर द्वारा sort करें, और इसके चारों ओर की बातचीत को पढ़ने के लिए एक संदेश के session को खोलें।
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

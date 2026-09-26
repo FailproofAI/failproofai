@@ -1,0 +1,399 @@
+---
+title: "وكلاء مخصصون (TypeScript)"
+description: "التكوين وفهرس الأحداث والنطاقات وموصلات الإطار العمل لـ @failproofai/sdk."
+icon: "square-js"
+---
+
+شرح شامل لكل إعدادات وطرق وحقول في SDK من TypeScript. إذا كنت تقوم بالتطبيق للمرة الأولى، ابدأ بالدليل — هذه الصفحة للبحث عن المعلومات.
+
+<Columns cols={2}>
+  <Card title="دليل الوكلاء المخصصين" icon="code" href="/ar/start/integrations/custom-agents">
+    التثبيت والتطبيق وطرق الأحداث ومثال عملي والمشاكل الشائعة.
+  </Card>
+  <Card title="هل تستخدم Python؟" icon="python" href="/ar/reference/custom-agents">
+    نفس الأحداث وصيغة السلك ونفس الملف — من Python.
+  </Card>
+</Columns>
+
+Node 20.9 أو أحدث. ESM و CommonJS. بدون اعتماديات وقت التشغيل.
+
+<Note>
+  هذا SDK وآخر من Python يكتبان **نفس الأحداث في نفس الملف**. أسطول به وكلاء Node و Python ينتج مجموعة واحدة من الجلسات وليس اثنتين، ولا يميز لوحة التحكم بينهما. اختر لكل خدمة وليس لكل شركة.
+</Note>
+
+## التثبيت
+
+```bash
+npm install @failproofai/sdk
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+
+await failproofai.agent("planner", { goal: question }, async () => {
+  const hits = await failproofai.toolCall("web_search", { input: { q } }, () => search(q));
+});
+```
+
+موصلات الإطار العمل تأتي في الحزمة نفسها. الإطارات العمل هي **اعتماديات نظير اختيارية** — معلنة بحيث تكون النطاقات المدعومة مرئية ولم تثبت بالنيابة عنك ومستوردة فقط عند استدعاء `instrument()`.
+
+## توصيل مراقب Failproof
+
+مطابق لـ SDK من Python: أنشئ مفتاح `events:add` تحت **Admin → Keys**، ثم [وصل المراقب](/ar/start/setup#connect-a-machine-to-cloud) على جهاز الوكيل. يكتب SDK إلى القرص؛ يشحن المراقب.
+
+## التكوين
+
+```ts
+failproofai.configure({
+  environment: "production",
+  flushInterval: 0.5,
+  baseDir: undefined,
+});
+```
+
+| الخيار | ما يفعله |
+| --- | --- |
+| `environment` | التسمية على كل حدث — `production` أو `staging` أو `prod-eu`. الافتراضي `dev`. |
+| `flushInterval` | كم مرة يكتب المؤقت إلى القرص بالثواني. الافتراضي `0.5`. |
+| `baseDir` | أين تكتب. الافتراضي ملف المراقب وهو ما تريده إلا إذا كنت تعرف غير ذلك. |
+
+لا يتم تطبيق شيء إلا إذا تم التحقق من صحة كله، لذا يترك استدعاء مرفوض SDK تماماً كما كان بدلاً من `baseDir` جديد والفترة الزمنية القديمة.
+
+اضبط بمتغير البيئة بدلاً من ذلك:
+
+| المتغير | ما يفعله |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | ضبط `environment` بدون تغيير الكود. خيار `configure()` يفوز عليه. |
+| `FAILPROOFAI_HOME` | نقل جذر Failproof AI الذي يحتفظ بالملف. |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug` أو `info` أو `warn` (الافتراضي) أو `error` أو `silent`. |
+| `FAILPROOFAI_SDK_STRICT` | `1` يجعل أخطاء التطبيق ترمي بدلاً من تسجيلها. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` يجعل مشكلة توافق الإطار ترمي بدلاً من التحذير والمتابعة. |
+
+<Warning>
+  **بدون فواصل في `environment`.** يقسم الاستقبال هذا الحقل على الفواصل لبناء المرشحات ويخطي أي حدث تسميته تحتوي على واحدة — لذا يختفي السجل كله بصمت. اكتب `prod-eu` وليس `prod,eu`.
+
+  `configure({ environment: "prod,eu" })` يرمي حتى تكتشف على الفور. `AGENTEYE_ENVIRONMENT` لا يمكن أن يرمي — لا أحد يستدعيك — لذا يحذر مرة واحدة ويعود إلى `dev`.
+</Warning>
+
+وجه أسطر السجل الخاص بـ SDK إلى مسجلك مع `failproofai.setLogger({ debug, info, warn, error })`.
+
+## الإيقاف
+
+يتم تفريغ الأحداث المخزنة مؤقتاً عند `process.on("exit")`.
+
+لا تصل عملية يقتلها إشارة إلى ذلك أبداً والافتراضي في Node لـ `SIGTERM` هو الإنهاء دون تشغيل معالجات الخروج — لذا يفقد وكيل في حاوية ما أخره الفاصل الزمني لم يكتب.
+
+<Warning>
+  **لن يثبت هذا SDK معالج إشارة من أجلك.** يؤثر تسجيل واحد على سلوك عمليتك: يقمع المستمع الافتراضي في Node لذا ستوقف مكتبة أضافتها بصمت Ctrl-C من العمل. أضف الخاص بك:
+
+  ```ts
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      failproofai.flushSync();
+      process.exit(0);
+    });
+  }
+  ```
+</Warning>
+
+يجب أن يستدعي برنامج قصير العمر أو معالج بدون خادم `await failproofai.flush()` قبل العودة — الفاصل الزمني وحده لا يضمن التسليم.
+
+## الهوية
+
+ينتمي كل حدث إلى جلسة ووكيل. **تملأ النطاقات كليهما**، لذا نادراً ما تمررهما:
+
+```ts
+await failproofai.session(async () => {
+  await failproofai.agent("planner", async () => {
+    failproofai.event.toolUse({ toolName: "search", toolCallId: "c1" });
+  });
+});
+```
+
+تمرير `sessionId` أو `agentId` بشكل صريح يعمل بعد وينتصر. بدون قيد أو تمرير يرمي الاستدعاء بدلاً من إصدار حدث سيتجاهله Cloud بصمت.
+
+<Note>
+  تركب الهوية على `AsyncLocalStorage`. تتابع `await` و `.then()` والمؤقتات وأي رد نداء تم إنشاؤه داخل النطاق. **لا** تتابع رد نداء مخزن مؤقتاً أثناء سجل واحد واستدعاؤه أثناء آخر أو العمل الممرر عبر حد `worker_threads` — لفها في `failproofai.propagate()` أو تهبط أحداثهم غير مرفقة.
+</Note>
+
+### النطاقات
+
+| النطاق | الإصدار | الإرجاع |
+| --- | --- | --- |
+| `session(body)` | لا شيء — الهوية فقط | ما يرجعه `body` |
+| `agent(id, options?, body)` | `agent_start` ثم `agent_end` | ما يرجعه `body` |
+| `toolCall(name, options?, body)` | `tool_use` ثم `tool_result` | ما يرجعه `body` |
+
+يبقى الجسم المتزامن متزامناً: `agent("x", () => 1)` يرجع `1` وليس وعداً.
+
+يسجل `toolCall` القيمة المحلولة للجسم كـ `output` الأداة ما لم تعين `call.output` بنفسك.
+
+<Accordion title="دلالات الخروج" icon="arrow-right-from-bracket">
+
+| ما حدث | الأحداث | `outcome` |
+| --- | --- | --- |
+| أرجع البلوك | `agent_end` | `"success"` أو `outcome` الخاص بك |
+| رمى البلوك | `error` ثم `agent_end` | `"failed"` |
+| `AbortError` | `agent_end` فقط | `"cancelled"` |
+
+يتم إعادة رمي الخطأ دائماً.
+
+يتم تسجيل فشل الأداة على الطرف — `tool_result` مع سلسلة `error` — ولا يصدر حدث `error` على مستوى التشغيل **. واحد يمسكه حلقة الوكيل ليس فشل تشغيل وواحد ينتشر يتم الإبلاغ عنه مرة واحدة فقط بواسطة `agent()` المحيط.
+
+</Accordion>
+
+<Accordion title="شكل `using`" icon="brackets-curly">
+
+عندما لا تكون العملية دالة واحدة — نطاق يفتح في منشئ ويغلق في هدم أو واحد يمتد عبر تدفق تحكم موجود:
+
+```ts
+{
+  using span = failproofai.agent.open("planner", { goal });
+  using call = failproofai.toolCall.open("search", { input: { q } });
+  call.call.output = await search(q);
+}  // tool_result ثم agent_end
+```
+
+كلا الشكلين يصدران أحداثاً متطابقة بالبايت. فضل شكل رد النداء: يعمل داخل `AsyncLocalStorage.run()` لذا لا يوجد شيء لفك تعبئته والفئة الكاملة من أخطاء "فتح هنا أغلق هناك" غير قابل للوصول.
+
+كتلة `using` تمسك فشلها الخاص تبلغ عنه مع `span.fail(error)` — الموزع لا يوجد قناة استثناء خاصة به.
+
+</Accordion>
+
+## فهرس الأحداث
+
+نفس خمسة عشر طريقة مثل SDK من Python في camelCase. معظمها يأتي في **أزواج** — تستدعي المفتاح ثم المغلق و SDK يحسب الفجوة.
+
+| | فتح | إغلاق |
+| --- | --- | --- |
+| **الوكلاء** | `agentStart` | `agentEnd` |
+| | `agentPause` | `agentResume` |
+| **النماذج** | `modelRequest` | `modelResponse` |
+| **الأدوات** | `toolUse` | `toolResult` |
+| **الخطافات** | `hookTriggered` | `hookCompleted` |
+| **البشر** | `humanWait` | `humanInput` |
+
+ثلاثة وقفة مستقلة: `error` و `humanPause` و `humanInterrupt`.
+
+<Accordion title="كل حقل لكل طريقة" icon="table">
+
+تقبل كل طريقة أيضاً `sessionId` و `agentId` والتي تملأها النطاقات من أجلك. يتم حذف أي شيء محذوف بدلاً من الإرسال كـ JSON `null`.
+
+| الطريقة | مطلوب | اختياري |
+| --- | --- | --- |
+| `agentStart` | — | `goal` أو `parentId` |
+| `agentEnd` | — | `outcome` أو `summary` |
+| `agentPause` | `pauseId` | `reason` أو `userId` |
+| `agentResume` | `pauseId` | `reason` أو `userId` |
+| `modelRequest` | — | `model` أو `messages` أو `system` أو `tools` أو `requestId` |
+| `modelResponse` | — | `model` أو `stopReason` أو `inputTokens` أو `outputTokens` أو `content` أو `role` أو `requestId` |
+| `toolUse` | `toolName` أو `toolCallId` | `input` |
+| `toolResult` | `toolName` أو `toolCallId` | `output` أو `error` |
+| `hookTriggered` | `hookName` أو `hookId` | `triggerEvent` أو `input` |
+| `hookCompleted` | `hookName` أو `hookId` | `outcome` أو `output` أو `error` |
+| `error` | `errorType` أو `message` | `traceback` |
+| `humanWait` | `inputId` | `prompt` أو `options` أو `reason` |
+| `humanInput` | `inputId` | `response` |
+| `humanPause` | — | `reason` أو `userId` |
+| `humanInterrupt` | — | `reason` أو `userId` أو `atStep` |
+
+أي مفتاح آخر تضيفه يصبح حقل حمولة مخصص. مساحة أي شيء خاص بالإطار `fw_*`؛ الاسم الذي يتضارب مع حقل معلن يتم رفضه بدلاً من الكتابة الصامتة فوق عمود مرفوع.
+
+</Accordion>
+
+<Warning>
+  **`duration_ms` محسوب وليس مقبول.** تحسب الطرق الأربع الإغلاق الفجوة من فاتحتها وترفض `duration_ms` المُزود من المتصل — مدة مبلغ عنها غير قابلة للتزييف.
+
+  يتم مطابقة الأزواج على **الجلسة** والمعرّف وليس أبداً على الوكيل. أداة فتحت تحت `planner` وأغلقت تحت `worker` تزال تطابق وهو ما تفعله الأشغال متعددة الوكلاء المتداخلة فعلاً.
+</Warning>
+
+## موصلات الإطار العمل
+
+```ts
+await failproofai.instrument();              // ما يمكنها العثور عليه
+await failproofai.instrument("langchain");   // بالضبط واحد
+failproofai.uninstrument();                  // استعد كل شيء
+```
+
+| الإطار | المدعومة | كيف تعلق |
+| --- | --- | --- |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x و LangGraph.js 0.4 – 1.x | `CallbackManager.configure` لذا كل `invoke`/`stream`/`batch` مغطى بدون تمرير `callbacks:` في أي مكان — أو مرر `langchainHandler()` بنفسك ولا تصحح شيء. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` في موقع الاستدعاء أو `instrument("ai")` للعملية بأكملها على `ai` 7 (على 4–6 هذا اختياري — انظر أدناه). |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream` وحل نموذج الوكيل والأداة وحل محرك سير العمل/الخطوة. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (مشترك) بالإضافة إلى `AgentWorkflow.runStream` لسير العمل والخطوات. |
+
+يتم اختبار كل نطاق ضد إصدارات الإطار الحقيقي في كلا الطرفين كوحدة ES وكـ CommonJS في كل تشغيل CI.
+
+التخطيط هو SDK من Python لذا نفس البرنامج يرسم نفس الشجرة بأي لغة. البناء هو **وكيل** فقط إذا كان يمتلك حلقة قرار LLM — سجل أو سلسلة تشغيل أو استدعاء `generateText`/`streamText` لـ AI SDK أو وكيل Mastra أو سجل وكيل LlamaIndex. عقدة LangGraph أو خطوة سير عمل هي **خطاف** (`hook_triggered`/`hook_completed`) لا أبداً وكيل متداخل. استدعاءات النموذج هي أزواج `model_request`/`model_response` مع أعداد الرموز؛ استدعاءات الأداة تحمل معرف استدعاء الأداة الخاص بالنموذج. يتم تسجيل الفشل مرة واحدة على الحدث الذي حدث فيه.
+
+موصل يفشل في التثبيت يتم تسجيله وتخطيه؛ آخرون لا يزالون يثبتون لأن LlamaIndex المعطوب لا ينبغي أن يكلفك LangGraph.
+
+<Note>
+  `instrument()` بدون حجة يكتشف إطار ما بواسطة ما إذا **حل** وليس ما إذا تم استيراده بالفعل — Node لا يعرض ما يعادل Python `sys.modules` لوحدات ES. سيتم استيراد وتصحيح إطار لديك مثبت ولا تستخدم. سم الذي تريد إذا كان ذلك مهماً.
+</Note>
+
+<Note>
+  معظم هذه الإطارات تشحن بناء وحدة ES وبناء CommonJS والتي يحمل Node كنسختين غير ذات صلة. تصحح الموصلات النسخة التي تحملها تطبيقك (ونسخة CommonJS أيضاً إذا كان هناك بالفعل `require`د شيء) لذا يعمل كلا نظامي الوحدات. إطار **مجمع في الإخراج الخاص بك** بواسطة esbuild أو webpack خارج النطاق — استخدم مساعدات موقع الاستدعاء هناك: `langchainHandler()` أو `telemetry()` أو `wrapTool()`.
+</Note>
+
+### LangChain بدون تصحيح
+
+```ts
+import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+يعمل المعالج مع أو بدون `instrument()` ولا يسجل مرتين. `instrument("langchain")` يأخذ `sessionId` و `captureContent` و `includeChains` و `graphCallbacks` و `captureLimit` كما يفعل موصل Python؛ `metadata: { failproofai_sdk_session_id }` على استدعاء يختار الجلسة لهذا الاستدعاء.
+
+### Vercel AI SDK
+
+يصدّر AI SDK دوال عادية من وحدة ES وفضاء اسم وحدة ES ثابت حسب المواصفات — لا مكان للتصحيح. يستخدم نقاط الامتداد التي توثقها SDK نفسها:
+
+```ts
+import { telemetry } from "@failproofai/sdk/ai";
+
+const { text } = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // على ai 7 `telemetry: telemetry({ … })` — نفس الكائن الاسم الجديد
+});
+```
+
+هذا هو التكامل الكامل: امتداد وكيل وطلب نموذج/زوج استجابة لكل خطوة مع أعداد الرموز وكل استدعاء أداة. موقع استدعاء واحد يعمل على كل أساسي — يقرأ `ai` 4–6 المتتبع الذي يحمله `ai` 7 تكامل القياس.
+
+**على `ai` 4–6 `instrument("ai")` لا يسجل أي شيء بنفسه ويسجل تحذير واحد يقول ذلك.** الخطاف الوحيد على مستوى العملية الذي تملكه تلك الأساسيات هو موفر متتبع OpenTelemetry العام — فتحة واحدة ترفض OpenTelemetry تسليمها بمجرد أخذها. تسجيل ملك سيرفض صامتاً `NodeSDK.start()` الخاص بك لاحقاً في بدء التشغيل وإرسال http/database الأشواط إلى متتبع لا يصدّر شيء. استخدم `telemetry()` في موقع الاستدعاء أو `wrapModel` هناك. إذا كانت العملية لا تعمل OpenTelemetry الخاصة بها اختر مع `instrument("ai", { registerGlobalTracer: true })`: يسجل بعد ذلك كل استدعاء يمرر `experimental_telemetry: { isEnabled: true }` ويأخذ الفتحة فقط إذا كانت لا تزال فارغة. `registerGlobalTracer: false` يحافظ على الافتراضي ويصمت التحذير.
+
+إذا كنت ستفضل لف النموذج مرة واحدة `wrapModel` يرى استدعاءات نموذج فقط لأن استدعاءات الأداة تحدث فوق طبقة النموذج. نموذج ملفوف يدعى مع لا شيء حوله يتم تسجيله كسجل خاص به. استدعاء مجرى ينغلق مهما توقف البث — `stop_reason: "cancelled"` عندما يلغي المستهلك ذلك `"error"` مع الخطأ عندما يفشل في منتصف الطريق:
+
+```ts
+import { wrapModel } from "@failproofai/sdk/ai";
+const model = await wrapModel(openai("gpt-4o"));
+```
+
+استخدام كليهما بخير: يلاحظ البرنامج الوسيط أن الاستدعاء يتم تسجيله بالفعل ويؤجل لذا يتم تسجيل كل استدعاء مرة واحدة.
+
+`functionId` يسمي امتداد الوكيل. أبق بقلة كميات — يهبط في `agent_id` واجهة لوحة التحكم الأساسية.
+
+### Next.js
+
+`next build` يجمع اعتماديات الخادم افتراضياً وإطار مجمع في البناء نسخة `instrument()` لا يمكن الوصول. غطاء التكوين مرة واحدة واستدعاء `instrument()` من خطاف بدء تشغيل Next:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` يضيف LangChain و Mastra و LlamaIndex و SDK نفسه إلى `serverExternalPackages` والاحتفاظ بقائمتك. بدونها `instrument()` يحذر مرة واحدة لكل إطار لا يمكنه الوصول بدلاً من الفشل بصمت؛ إذا أدرجت الحزم بنفسك عيّن `FAILPROOFAI_NEXT_EXTERNALS=1`. Vercel AI SDK ومساعدات موقع الاستدعاء تعمل بأي طريقة. يحصل مسار Edge على بناء بدون عملية: استيراد SDK آمن ولا يسجل شيء.
+
+### عدادات الرموز على الاستدعاءات المجرى
+
+واجهات برمجة تطبيقات متوافقة مع OpenAI فقط الاستخدام التقرير على بث عندما يطلب العميل. LangChain و Vercel AI SDK تطلب؛ لـ LlamaIndex مرر `additionalChatOptions: { stream_options: { include_usage: true } }` إلى OpenAI LLM الخاص بها ولـ Mastra بناء النموذج مع تمكين الاستخدام (على سبيل المثال `createOpenAICompatible({ includeUsage: true })`). وإلا تحمل استدعاءات نموذج مجرى لا أعداد رموز.
+
+### الأوقات
+
+Node ≥ 20.9 و Bun و Deno — كل إطار كوحدة ES و CommonJS يتم اختباره على كل ضد تتبع Node. يعمل SDK بجانب مراقب `failproofaid` والذي يشحن ما يكتبه.
+
+## وكيلك الخاص — لا إطار عمل
+
+لحلقة وكيل كتبتها بنفسك أو إطار عمل بدون موصل. تصدر الأحداث بنفس API التي تستخدمها الموصلات تحتها لذا يحمل الأثر نفس الشكل والجودة.
+
+لا تحتاج إلى معرفة كيفية تنظيم الوكيل. كل وكيل مبني يدوياً بالفعل لديه ثلاثة أماكن مهما أطلق على وظائفه وتلك الثلاث هي التكامل الكامل:
+
+| أين | ما تضيفه | الإصدار |
+| --- | --- | --- |
+| حيث **سجل واحد** يبدأ وينتهي | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **الدالة الواحدة التي تستدعي النموذج** | `event.modelRequest` قبل `event.modelResponse` بعد — كلا النصفين حتى في الفشل | زوج واحد لكل منعطف نموذج |
+| **الدالة الواحدة التي تشغل الأدوات** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+الهوية محيطة: كل شيء داخل `agent()` يهبط على سجل تلك الجلسة بدون أخذ معرّف ولا شيء آخر في البرنامج يتغير — بما في ذلك ما يكتبه الوكيل بالفعل إلى قاعدة البيانات الخاصة به.
+
+- **خدمة أو عامل:** مرر معرّف الطلب أو الوظيفة الخاص بك كـ `sessionId` لذا جلسة على لوحة التحكم والسجل في السجلات أو قاعدة البيانات الخاصة بك نفس السلسلة.
+- **وكلاء فرعيون:** أعش استدعاءات `agent()`. الداخلي ينضم إلى الجلسة مع الخارجي كـ `parent_id` الخاص به.
+- **أصدر الأزواج.** `modelRequest` بدون `modelResponse` امتداد لوحة التحكم تظهر كعمل إلى الأبد — ومن هنا `catch`.
+
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) في المستودع النسخة الكاملة القابلة للتشغيل: حلقة أداة OpenAI حقيقية تم تطبيقها تماماً بهذه الطريقة وتشغيلها في CI في كل تغيير كوحدة ES و CommonJS.
+
+## التقييمات
+
+```ts
+import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
+
+export const app = new Evaluator({ name: "my-evals", version: "1" });
+
+app.eval("tool_success_rate", { version: "1" }, (session) => {
+  const results = session.eventsOfType("tool_result");
+  const failures = results.filter((event) => event.payload.error != null).length;
+  return new EvalResult({
+    score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
+    reasoning: `${failures} of ${results.length} tool calls failed`,
+  });
+});
+```
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
+  npx failproofai-evaluator ./my-evals.js
+```
+
+انظر [مرجع Evaluator SDK](/ar/reference/evaluator-sdk) للبروتوكول وإعدادات العامل ونتائج الأنواع.
+
+<Warning>
+  **يجب أن يسفر التقييم عن شيء.** دالة متزامنة لم تعد أبداً تحجب الخيط الواحد الذي يملكه Node ولا يمكن لأي انتظار أن يطلق النار أثناء القيام به. اكتب تقييمات `async`.
+</Warning>
+
+## ما لن يفعله لعمليتك
+
+| | |
+| --- | --- |
+| **حجب حلقة الوكيل الخاص بك** | الأحداث تدخل قائمة انتظار في الذاكرة؛ يكتب مؤقت. المؤقت `unref`'d لذا استيراد هذه الحزمة لا توقف أبداً برنامج يخرج. |
+| **النمو بدون قيد** | يتم تحديد القائمة من خلال العد **و** من خلال البايتات المقاسة. ماض إما يتم التخلص من الأحداث الأقدم وتحذير يقول ذلك — يجب أن تصبح انقطاع القياس الحيوي أبداً قتل OOM. |
+| **خذ العملية أسفل** | حدث واحد غير قابل للتشفير تم حذفه وحده وليس دفعة حوله. مصنع ألقى مرجع دائري `BigInt` وكيل واحد محيط: كل واحد يتم التعامل معه بدلاً من نشره. |
+| **اترك دفعة مكتوبة جزئياً** | المحتوى `fsync`ed قبل إعادة تسمية ذرية والدليل `fsync`ed بعد وفشل الكتابة ينظف الملف المؤقت الخاص به. |
+| **اترك النصوص قابلة للقراءة** | الدفعات هي `0600` داخل دليل `0700`. تحمل الأهداف والمطالبات ومحاجج الأداة وإخراج الأداة. |
+| **شحن بيانات الاعتماد** | مفاتيح API والرموز والعناوين الحاملة المعرّفات السرية والتنازلات ذات الشكل السري يتم تحويرها قبل وصول البايتات إلى القرص. يحول المراقب مرة أخرى قبل التحميل. |

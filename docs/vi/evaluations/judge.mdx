@@ -1,0 +1,91 @@
+---
+title: "LLM judges"
+description: "Chấm điểm các phiên làm việc dựa trên những thứ mã không thể đo lường — tính chính xác, tone giọng, liệu agent có tuân theo chính sách hay không — bằng cách mô tả thế nào là tốt và để một mô hình đọc cuộc trò chuyện."
+icon: "scale"
+---
+
+Một đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lần gọi tool, bao nhiêu lỗi, phiên làm việc mất bao lâu. Tuy nhiên nó không thể cho bạn biết liệu câu trả lời có *chính xác*, liệu phản hồi có thô lỗ, hay liệu agent có kiểm tra chính sách trước khi hành động.
+
+Một **LLM judge** có thể. Bạn mô tả thế nào là tốt bằng ngôn ngữ tự nhiên, và một mô hình đọc phiên làm việc và trả về điểm từ 0 đến 1 cùng với lý do của nó.
+
+<Note>
+Một judge tốn một lần gọi mô hình cho mỗi phiên mà nó chạy trên, còn đánh giá mã không tốn gì. Chỉ sử dụng judge cho những câu hỏi cần cuộc trò chuyện được *hiểu* — và đặt một điều kiện cho nó, để nó chạy trên các phiên mà câu hỏi thực sự liên quan.
+</Note>
+
+## Tôi nên sử dụng cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Nó có gọi cùng một tool hai lần không? | code |
+| Có bao nhiêu lỗi? | code |
+| Phiên làm việc có dưới 30 giây không? | code |
+| Khách hàng có bày tỏ sự cấp tính không? | [classifier](/vi/evaluations/jev) |
+| Khách hàng tức giận đến mức nào? | [classifier](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Phản hồi có thô lỗ hoặc coi thường không? | **judge** |
+| Nó có kiểm tra chính sách hoàn lại trước khi hứa hoàn lại không? | **judge** |
+
+Quy tắc chung: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần lời giải thích → judge.** Judge là cái viết đoạn văn về những gì nó thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+
+Bạn không phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó đã chọn cái nào và tại sao. Bạn có thể thay đổi nó.
+
+## Viết một judge
+
+1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
+2. Mô tả những gì bạn muốn đánh giá, và chọn **draft**.
+3. Xem xét **criteria**, **threshold**, và **condition**, sau đó triển khai.
+
+### Criteria
+
+Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
+
+> The assistant must not promise or approve a refund without first checking the refund policy.
+
+Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" sẽ cho bạn một con số không có ý nghĩa; câu phía trên cho bạn một con số bạn có thể hành động được.
+
+### Threshold
+
+Điểm mà ở đó hoặc trên đó phiên làm việc vượt qua. `0.7` là một điểm bắt đầu hợp lý. Điểm đầy đủ từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định pass/fail — bạn có thể thấy phân phối và điều chỉnh.
+
+### Condition
+
+Cùng điều kiện Python như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Không có nó, judge chạy trên **mỗi** phiên làm việc trong tổ chức của bạn, mỗi lần tốn một lần gọi mô hình:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Bảng điều khiển cảnh báo bạn nếu bạn triển khai một judge mà không có điều kiện. Đôi khi điều này là đúng — một agent lưu lượng thấp mà bạn muốn đánh giá đầy đủ — nhưng nó phải là một quyết định, không phải một tai nạn.
+
+## Judge thấy gì
+
+Cuộc trò chuyện, theo lượt, mới nhất trước nếu phiên làm việc dài:
+
+- người dùng nói gì
+- assistant trả lời gì
+- **mỗi tool mà agent gọi, và lệnh gọi đó trả về cái gì, theo thứ tự**
+
+Phần cuối cùng là điều làm cho "nó có làm X *trước* Y không" trở thành một câu hỏi công bằng. Một lệnh gọi tool thất bại được hiển thị dưới dạng một thất bại, vì vậy "nó có khôi phục một cách thanh lịch từ một lỗi không" cũng hoạt động.
+
+Các phiên làm việc rất dài được cắt ngắn để phù hợp với ngữ cảnh của mô hình. Khi điều này xảy ra, lý do cho biết rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra dựa trên một phần của phiên được trình bày như một phán xét dựa trên toàn bộ nó.
+
+## Đọc kết quả
+
+Một judge tạo ra một **score** giống như bất kỳ đánh giá có điểm nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của judge — đoạn văn giải thích những gì nó thấy. Hãy đọc điều đó trước khi một điểm làm bạn ngạc nhiên; nó thường là một phiên làm việc thực sự thú vị hoặc một dấu hiệu rằng tiêu chí cần được cắt bớt.
+
+Các điểm được ổn định cho các trường hợp rõ ràng nhưng không hoàn toàn xác định bit-for-bit. Hãy coi một điểm biên duy nhất như một nhắc nhở để đi đọc phiên làm việc, không phải như một phán xét.
+
+## Hạn chế
+
+- **Kiểm tra chưa có sẵn.** Một chạy thử không có gán phiên làm việc đằng sau nó, và gán đó là điều cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai dựa trên một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không có sẵn.** Backfilling một đánh giá mã trong hàng tháng lịch sử là miễn phí; làm điều đó với một judge sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
+- **Chỉnh sửa tiêu chí sẽ xuất bản một phiên bản mới.** Điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng biệt thay vì trộn vào một đường xu hướng.
+- **Một judge luôn tạo ra một điểm**, không bao giờ một số liệu hoặc một khẳng định.
+
+## Khi ngân sách của bạn hết
+
+Judge chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, đánh giá judge dừng lại với một lý do rõ ràng chứ không thất bại âm thầm, và **đánh giá mã tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục từ phiên tiếp theo.

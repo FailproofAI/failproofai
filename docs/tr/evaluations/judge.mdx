@@ -1,0 +1,91 @@
+---
+title: "LLM yargıçları"
+description: "Oturumları kodun ölçemeyeceği şeylere göre puanlayın — doğruluk, ton, ajanın bir politikayı takip edip etmediği — ne gibi göründüğünü açıklayarak ve bir modelin konuşmayı okumasına izin vererek."
+icon: "scale"
+---
+
+Barındırılan bir Python değerlendirmesi şunları sayabilir ve karşılaştırabilir: kaç araç çağrısı, kaç hata, bir oturum ne kadar sürdü. Bir yanıtın *doğru* olup olmadığını, bir yanıtın kaba olup olmadığını veya ajanın harekete geçmeden önce bir politikayı kontrol edip etmediğini size söyleyemez.
+
+Bir **LLM yargıcı** bunu yapabilir. Siz sade dilde neyin iyi göründüğünü açıklarsınız, bir model oturumu okur ve 0'dan 1'e bir puan ve gerekçesiyle döner.
+
+<Note>
+Bir yargıç, üzerinde çalıştığı her oturum için bir model çağrısına mal olur ve kod değerlendirmesi hiçbir şeye mal olmaz. Yargıcı yalnızca konuşmanın *anlaşılması* gereken sorular için kullanın — ve ona bir koşul verin, böylece yargıç sorunun gerçekten ilgili olduğu oturumlar üzerinde çalışsın.
+</Note>
+
+## Hangisini istiyorum?
+
+| Soru | Kullanın |
+| --- | --- |
+| Aynı aracı iki kez çağırdı mı? | kod |
+| Kaç hata oldu? | kod |
+| Oturum 30 saniyenin altında mıydı? | kod |
+| Müşteri aciliyet mi ifade etti? | [sınıflandırıcı](/tr/evaluations/jev) |
+| Müşteri ne kadar hayal kırıklığına uğradı? | [sınıflandırıcı](/tr/evaluations/jev) |
+| Cevap gerçekten doğru muydu? | **yargıç** |
+| Yanıt kaba veya kaçamak mıydı? | **yargıç** |
+| İade politikasını kontrol ettikten sonra iade sözü verdi mi? | **yargıç** |
+
+Temel kural: **sayılabilir → kod, önceden listeleyebileceğiniz cevaplar → [sınıflandırıcı](/tr/evaluations/jev), açıklama gerektiren → yargıç.** Yargıç, gördüğü hakkında düzyazı yazan olandır; sayı birinin "neden?" demesine neden olacak olduğunda buna başvurun.
+
+Önceden karar vermeniz gerekmez. Ölçülmesini istediğiniz şeyi açıklayın ve asistan seçimi yapıp hangi seçimi yaptığını ve neden söyler. Değiştirebilirsiniz.
+
+## Bir tane yazın
+
+1. **Analyze → eval authoring** bölümüne gidip **new eval** seçeneğini seçin.
+2. Ne yargılanmasını istediğinizi açıklayın ve **draft** seçeneğini seçin.
+3. **criteria**, **threshold** ve **condition** bölümünü gözden geçirin, sonra dağıtın.
+
+### Criteria
+
+Bir veya iki cümle, soru yerine gereklilik olarak yazılmış:
+
+> Asistan, ilk önce iade politikasını kontrol etmeden iade sözü vermemelidir veya onaylamamalıdır.
+
+Hangi durumlarda *başarısız* olacağını belirtin. "Yanıt iyi miydi?" size hiçbir anlam ifade etmeyen bir sayı verir; yukarıdaki cümle size üzerinde çalışabileceğiniz bir sayı verir.
+
+### Threshold
+
+Oturumun geçtiği skor değeri. `0.7` iyi bir başlangıç noktasıdır. Tam 0'dan 1'e kadar olan skor her zaman depolanır, bu nedenle eşik yalnızca başarı/başarısızlığa karar verir — dağılımı görebilir ve ayarlayabilirsiniz.
+
+### Condition
+
+Diğer herhangi bir değerlendirme ile aynı Python koşulu ve burada çok daha önemlidir. Biri olmadan yargıç **her** oturumda çalışır, her birinde bir model çağrısına mal olur:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Pano, koşulsuz bir yargıcı dağıtırsanız sizi uyarır. Bu bazen doğru olur — tam yargılanmasını istediğiniz düşük hacimli bir ajan — ama bu bir kazara değil, bilinçli bir karar olmalıdır.
+
+## Yargıç ne görür
+
+Konuşma, turlar halinde, oturum uzunsa en yenisi önce:
+
+- kullanıcının söylediği
+- asistanın yanıt verdiği
+- **ajanın çağırdığı her araç ve bu çağrı ne döndürdü, sırasıyla**
+
+Bu son kısım, "bunu Y'den *önce* X yaptı mı?" sorusunun adil bir soru olmasını sağlayan şeydir. Başarısız araç çağrısı bir başarısızlık olarak gösterilir, bu nedenle "bir hatadan zarif bir şekilde kurtuldu mu?" da çalışır.
+
+Çok uzun oturumlar modelin bağlamına sığması için kesintiye uğrar. Bunun olduğu zaman gerekçe açıkça söyler — hiçbir zaman kısmi bir oturum üzerine yapılan yargı bir bütün oturum üzerine yapılmış gibi sunulmaz.
+
+## Sonuçları okuma
+
+Bir yargıç, diğer herhangi bir puanlı değerlendirme gibi bir **puan** üretir, bu nedenle grafikleri, filtreleri ve uyarıları aynı şekilde tetikler. Sayı yanında yargıcın **gerekçesi** deposu — gördüğünü açıklayan paragraf. Bir puan sizi şaşırttığında bunu önce okuyun; genellikle gerçekten ilginç bir oturum veya kriterler keskinleştirilmesi gerektiğinin bir işaretidir.
+
+Puanlar net durumlar için kararlıdır ancak bit-for-bit belirleyici değildir. Tek bir sınır puanı oturumu gitmen ve okumanız için bir ipucu olarak kabul et, bir karar olarak değil.
+
+## Limitler
+
+- **Test henüz kullanılamaz.** Kuru çalıştırmanın arkasında hiçbir oturum ataması yoktur ve bu atama model bütçeni harcama yetkisi verilen şeydir — bu nedenle test çağrısının ücretlendirilecek bir şeyi yoktur. Dar bir koşula karşı dağıtın ve ilk birkaç sonucu okuyun.
+- **Geriye dönük yükleme mevcut değildir.** Aylar süren geçmiş üzerinde bir kod değerlendirmesini geriye dönük yükleme ücretsizdir; bunu bir yargıç ile yapmak dakikalar içinde tüm bütçenizi harcardı.
+- **Kriterleri düzenlemek yeni bir sürümü yayınlar.** Eski ve yeni puanlar karşılaştırılamaz, bu nedenle tek bir eğilim çizgisine karıştırılmak yerine ayrı tutulurlar.
+- **Bir yargıç her zaman puan üretir**, hiçbir zaman metrik veya iddia değil.
+
+## Bütçeniz tükendiğinde
+
+Yargıçlar kuruluşunuzun model bütçesini harcar. Bittiğinde, yargıç değerlendirmeleri açık bir nedenle durur, sessizce başarısız olmaz ve **kod değerlendirmeleri normal çalışmaya devam eder**. Bütçeyi artırın ve sonraki oturmda devam ederler.

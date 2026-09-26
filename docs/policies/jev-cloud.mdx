@@ -88,7 +88,8 @@ Every one of these falls back to your policies' result for that call, and is rec
 | `http-429` | FailproofAI Cloud is rate-limiting Jev for your organization. Until the wait it asks for is over (its `Retry-After`, at most 60 seconds), the machine sends it nothing and every call falls back straight away. Calls held back that way are recorded as `http-429`, or as `rate-limited` when the machine's own rate limit holds them first. |
 | `http-429` (daily limit) | Your organization has used its daily Jev calls: **10,000 per UTC day**, unless whoever operates your FailproofAI Cloud has set another limit. Every call falls back until the count resets at 00:00 UTC; the machine still asks again at most once a minute, so it picks the reset up within a minute. `failproofai jev test` says "Daily Jev limit for this org reached; resets at 00:00 UTC." |
 | `http-422` | Jev refused this call's request, usually because the tool call held dense text (base64, hex, minified code) over Jev's token budget. That call falls back every time; it is not an outage. |
-| `http-502`, `http-503` | Jev is unavailable right now. |
+| `http-502` | Jev is unavailable right now. |
+| `http-503` | This Cloud cannot serve Jev for your org: no model gateway, an org not provisioned yet, or the gateway is down. Ask your admin; hooks ask again at most once a minute. |
 | `http-404` | This FailproofAI Cloud does not serve Jev yet. |
 | `timeout` | No answer within `timeoutMs` (default 3000). |
 | `model-mismatch` | A Jev version other than 1.13 answered. |

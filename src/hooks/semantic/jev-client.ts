@@ -484,8 +484,8 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     const status = res.status >= 300 && res.status < 400 ? String(res.status) : "3xx";
     throw new JevError(`http-${status}`, `HTTP ${status}: the endpoint answered with a redirect, which is never followed`);
   }
-  // Kept for a 429 only: it is the one status whose header says when to ask again.
-  const retryAfter = res.status === 429 ? res.headers.get("retry-after") : null;
+  // Kept for a 429 and a 503: the statuses whose header says when to ask again.
+  const retryAfter = res.status === 429 || res.status === 503 ? res.headers.get("retry-after") : null;
   let parsed: unknown;
   try {
     parsed = await res.json();
@@ -979,12 +979,13 @@ export const JEV_CLOUD_RETRY_AFTER_CAP_MS = 60_000;
 /** The cool-down after a 429 whose Retry-After is missing or unreadable. */
 export const JEV_CLOUD_RETRY_AFTER_DEFAULT_MS = 5_000;
 
-const cloudCooldown = { endpoint: "", until: Number.NEGATIVE_INFINITY };
+const cloudCooldown = { endpoint: "", until: Number.NEGATIVE_INFINITY, code: "http-429" };
 
 /** Forget any cool-down. For tests, which share this module's state within a file. */
 export function resetJevCloudCooldown(): void {
   cloudCooldown.endpoint = "";
   cloudCooldown.until = Number.NEGATIVE_INFINITY;
+  cloudCooldown.code = "http-429";
 }
 
 /** RFC 9110's IMF-fixdate, the one HTTP-date form a sender generates: `Sun, 06 Nov 1994 08:49:37 GMT`. */
@@ -1010,23 +1011,34 @@ export function retryAfterMs(header: string | null | undefined, nowEpochMs: numb
   return Math.min(JEV_CLOUD_RETRY_AFTER_CAP_MS, Math.max(0, ms));
 }
 
-/** The Cloud transport, quiet for as long as the last 429's Retry-After asked. */
+/**
+ * The Cloud transport, quiet for as long as the last 429's Retry-After asked —
+ * and after a 503 too. The server's 503 is an operator state (no model
+ * gateway, an org not provisioned yet, the gateway down) that waiting does not
+ * fix, so without a Retry-After it holds the longest this ever does, and a held
+ * call keeps the code that started it rather than reading as a rate limit.
+ */
 function cloudRetryAfter(endpoint: string, transport: JevTransport): JevTransport {
   return async (request, signal) => {
     const now = performance.now();
     if (cloudCooldown.endpoint === endpoint && now < cloudCooldown.until) {
       const seconds = Math.max(1, Math.ceil((cloudCooldown.until - now) / 1000));
       throw new JevError(
-        "http-429",
-        `FailproofAI Cloud asked for no Jev requests for ${seconds}s more (Retry-After), so this one was not sent`,
+        cloudCooldown.code,
+        cloudCooldown.code === "http-503"
+          ? `FailproofAI Cloud could not serve Jev; asking again in ${seconds}s, so this one was not sent`
+          : `FailproofAI Cloud asked for no Jev requests for ${seconds}s more (Retry-After), so this one was not sent`,
       );
     }
     try {
       return await transport(request, signal);
     } catch (err) {
-      if (err instanceof JevError && err.code === "http-429") {
+      if (err instanceof JevError && (err.code === "http-429" || err.code === "http-503")) {
         cloudCooldown.endpoint = endpoint;
-        cloudCooldown.until = performance.now() + retryAfterMs(err.retryAfter);
+        cloudCooldown.code = err.code;
+        cloudCooldown.until =
+          performance.now() +
+          (err.code === "http-503" && err.retryAfter === null ? JEV_CLOUD_RETRY_AFTER_CAP_MS : retryAfterMs(err.retryAfter));
       }
       throw err;
     }

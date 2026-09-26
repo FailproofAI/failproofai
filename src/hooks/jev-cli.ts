@@ -371,7 +371,13 @@ function cloudRemedy(code: string, message = ""): string | null {
     return "FailproofAI Cloud is rate-limiting Jev for this org right now. Hooks fall back to regex, and send it nothing more until the wait it asked for (Retry-After, at most 60 s) is over.";
   }
   if (code === "http-404") return "This FailproofAI Cloud does not serve Jev (its server predates the Jev route). Hooks fall back to regex until it does.";
-  if (code === "http-503") return "Jev is unavailable on FailproofAI Cloud right now. Hooks fall back to regex whenever that happens; try again shortly.";
+  if (code === "http-503") {
+    return (
+      "This FailproofAI Cloud cannot serve Jev for your org: its deployment has no model gateway, the org is not " +
+      "provisioned yet, or the gateway is down. Ask your FailproofAI Cloud admin. Hooks fall back to regex and ask " +
+      "again at most once a minute."
+    );
+  }
   // `request_rejected`: TypeSafe refused this request itself, typically dense
   // text over Jev's token budget. The same call gets the same answer.
   if (code === "http-422") return "Jev refused this call's request, usually because it held dense text (base64, hex, minified code) over Jev's token budget. That call falls back to regex every time; this is not an outage.";

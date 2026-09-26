@@ -397,6 +397,19 @@ describe("jev CLI: FailproofAI Cloud", () => {
         expect(text(perMinute)).not.toContain("Daily Jev limit");
       });
 
+      it("a 503 names who fixes it, not a wait", async () => {
+        const origin = `http://127.0.0.1:${port}`;
+        connect(origin);
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        status = 503;
+        body = { error: "jev_unavailable" };
+        const r = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
+        expect(text(r)).toContain("http-503");
+        expect(text(r)).toContain("admin");
+        expect(text(r)).not.toContain("try again shortly");
+        noKey(r);
+      });
+
       it("a 422 request_rejected is that call's own, never an outage to wait out", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);

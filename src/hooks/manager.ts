@@ -19,6 +19,7 @@ import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConf
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
 import { loadCustomHooks, discoverPolicyFiles } from "./custom-hooks-loader";
+import { getSemanticRegistrations } from "./custom-hooks-registry";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
@@ -588,6 +589,13 @@ async function installHooksImpl(
         } catch {}
         console.error(`Error: ${msg}`);
         process.exit(1);
+      }
+      const semanticCount = getSemanticRegistrations().length;
+      if (semanticCount > 0) {
+        console.error(
+          `Note: ${path} declares ${semanticCount} Jev check(s) with semanticPolicies.add. They take effect only in a ` +
+            "pack published with `failproofai publish`, and are never asked from a policy file.",
+        );
       }
       if (validatedHooks.length === 0) {
         try {

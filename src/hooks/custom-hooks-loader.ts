@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { hookLogWarn, hookLogError, hookLogInfo } from "./hook-logger";
-import { customPolicies, getCustomHooks, clearCustomHooks } from "./custom-hooks-registry";
+import { customPolicies, getCustomHooks, getSemanticRegistrations, clearCustomHooks } from "./custom-hooks-registry";
 import {
   findDistIndex,
   rewriteFileTree,
@@ -180,6 +180,8 @@ export interface PolicyLoadFailure {
   reason: string;
 }
 
+const warnedSemanticOutsidePack = new Set<string>();
+
 async function loadSingleFile(
   absPath: string,
   opts?: {
@@ -187,6 +189,12 @@ async function loadSingleFile(
     conventionScope?: "project" | "user";
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
     verifyEntrySha?: string;
+    /**
+     * Not a pack artifact, so a `semanticPolicies.add` in it is never asked: a
+     * Jev check reaches a machine only through a pack's manifest. Said once per
+     * file, whether or not Jev is configured — the declaration is dead either way.
+     */
+    outsidePack?: boolean;
   },
 ): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
@@ -222,7 +230,16 @@ async function loadSingleFile(
     const entryTmp = absPath + tmpSuffix;
     const fileUrl = pathToFileURL(entryTmp).href;
     const hooksBefore = getCustomHooks().length;
+    const semanticBefore = getSemanticRegistrations().length;
     await importWithDeadline(fileUrl);
+    const ignored = getSemanticRegistrations().slice(semanticBefore).map((d) => d?.name);
+    if (opts?.outsidePack && ignored.length > 0 && !warnedSemanticOutsidePack.has(absPath)) {
+      warnedSemanticOutsidePack.add(absPath);
+      hookLogWarn(
+        `${basename(absPath)}: semanticPolicies.add only takes effect in a pack published with \`failproofai publish\`; ` +
+          `${ignored.join(", ")} ${ignored.length === 1 ? "is" : "are"} never asked here`,
+      );
+    }
     if (policyModuleCache.size >= POLICY_MODULE_CACHE_MAX_ENTRIES) policyModuleCache.clear();
     policyModuleCache.set(absPath, {
       fingerprint,
@@ -636,6 +653,7 @@ export async function loadAllCustomHooks(
         const failure = await loadSingleFile(absPath, {
           verifyEntrySha:
             cloudManaged?.sha256 ?? pack?.sha256,
+          outsidePack: !pack,
         });
         // Every id behind these bytes. One artifact, one import, one failure —
         // but as many fail-closed guards as there are packs depending on it.
@@ -716,7 +734,7 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: projectScope });
+    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
@@ -756,7 +774,7 @@ export async function loadAllCustomHooks(
   for (const file of userFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "user" });
+    await loadSingleFile(file, { conventionScope: "user", outsidePack: true });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);

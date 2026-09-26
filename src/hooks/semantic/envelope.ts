@@ -411,8 +411,7 @@ const SHELL_METACHARACTERS = /[`;|&<>\n\r]|\$\(/;
  * or the `new_string` of an edit, none of those can start anything: the call
  * WRITES that text, it does not run it. So the answer here is only asked of
  * text the call hands to a shell — `Accumulator.shellText` — which is the
- * judged `command`, the comments taken out of it, and every string of a tool
- * we do not know the shape of.
+ * judged `command` and every string of a tool we do not know the shape of.
  *
  * What that still charges, deliberately: the same placeholder typed inside a
  * Bash command (`echo "…<user>:<password>@…" >> README.md`). There, `>` really
@@ -611,8 +610,8 @@ interface Accumulator {
   section: Section;
   /**
    * What is being written is text THIS CALL HANDS TO A SHELL — the judged
-   * command, the comments taken out of it, and (for a tool we do not know the
-   * shape of) the rest of its input. See {@link couldNotBeSecret}.
+   * command and (for a tool we do not know the shape of) the rest of its
+   * input. See {@link couldNotBeSecret}.
    */
   shellText: boolean;
   /** Serialized characters of the CURRENT budget pool still unspent. */

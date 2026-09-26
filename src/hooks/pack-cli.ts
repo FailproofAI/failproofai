@@ -2735,7 +2735,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
     // the half somebody installed did nothing and nothing said so.
     if (result.semantic > 0) {
       lines.push(
-        `  ${semanticPhrase(result.semantic)} for Jev, ` +
+        `  ${semanticPhrase(result.semantic)}, ` +
           `${isFirstPartyPack(result) ? "replacing this build's own set" : "added to this build's own checks"}. ` +
           "They apply only where you configured Jev (`failproofai jev status`).",
       );

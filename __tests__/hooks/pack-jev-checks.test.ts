@@ -344,6 +344,15 @@ describe("failproofai policies show <pack>", () => {
     expect(r.lines.join("\n")).toMatch(/"v1\.0\.8", which is not a version[\s\S]*requirement was ignored/);
   });
 
+  it("counts the checks it installs once, without saying Jev twice", async () => {
+    release({ policies: [], semantic: [check("acme-check")] });
+    const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    const text = r.lines.join("\n");
+    expect(text).toContain("1 Jev check, added to this build's own checks.");
+    expect(text).not.toContain("for Jev");
+  });
+
   it("sits under the policy rows, since a check is read against what it can clear", async () => {
     const lines = await show();
     const policyRow = lines.findIndex((l) => l.includes("block-rm-rf") && l.includes("default"));

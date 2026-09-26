@@ -23,7 +23,7 @@ import { connectToCloud, configuredPaths, describeOutcome } from "../../src/hook
 import { runConnectCommand, runDisconnectCommand } from "../../src/hooks/cloud-enrollment-cli";
 import { readCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
 import { credentialsFile, jevConfigFile } from "../../src/hooks/fp-home";
-import { inspectJevConfig, loadJevConfig } from "../../src/hooks/semantic/jev-config";
+import { inspectJevConfig, loadJevConfig, validateJevConfig } from "../../src/hooks/semantic/jev-config";
 import { writeCloudJevConfigIfAbsent } from "../../src/hooks/jev-cloud-connection";
 import { introspectKey, type IntrospectResult } from "../../src/hooks/cloud-introspect";
 import { runJevCommand } from "../../src/hooks/jev-cli";
@@ -112,11 +112,21 @@ describe("connecting with a key that carries jev:evaluate", () => {
   });
 
   it("puts the Jev route under a self-hosted Cloud's path prefix, and the credential on its origin", async () => {
-    await connect(withPermissions(...MACHINE_PRESET), "http://localhost:8080/fp");
+    const outcome = await connect(withPermissions(...MACHINE_PRESET), "http://localhost:8080/fp");
     expect(readCredentials().jev?.url).toBe("http://localhost:8080");
     expect(JSON.parse(readFileSync(jevConfigFile(), "utf8")).baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
     // Plain http to loopback is fine in the shadow mode connect writes.
     expect(loadJevConfig()?.baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
+    // …and only there: `jev setup --mode enforce` (and the dashboard switch)
+    // refuses plain http, so the output must not name it as the next step.
+    const text = describeOutcome(outcome, "machine-1", "http://localhost:8080/fp").join("\n");
+    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in shadow mode/);
+    expect(text).not.toContain("--mode enforce");
+    expect(text).toContain("Enforce needs an https FailproofAI Cloud URL");
+    // The command it would have named really is refused, and the refusal names the step that works.
+    const enforce = validateJevConfig({ ...JSON.parse(readFileSync(jevConfigFile(), "utf8")), mode: "enforce" }, null, { url: "http://localhost:8080", key: TOKEN });
+    expect(enforce.ok).toBe(false);
+    expect(!enforce.ok && enforce.problem).toContain("Reconnect to an https FailproofAI Cloud URL");
   });
 
   it("never overwrites a BYOK jev.json, and says so in one line", async () => {

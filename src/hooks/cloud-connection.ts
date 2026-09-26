@@ -434,9 +434,14 @@ function jevLines(outcome: ConnectOutcome): string[] {
   }
   const config = jev.config;
   if (!config || config.status === "written") {
+    // Plain http (loopback only) is accepted in shadow mode and nowhere else, so
+    // the enforce command would be refused there, by the CLI and the dashboard.
+    const plainHttp = config?.status === "written" && new URL(config.baseUrl).protocol === "http:";
     return [
       `  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
-      "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
+      plainHttp
+        ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in shadow mode."
+        : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
     ];
   }
   if (config.status === "kept") {

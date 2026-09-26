@@ -639,7 +639,10 @@ export function validateJevConfig(
       ok: false,
       problem:
         "plain http (to localhost) is accepted only with mode shadow: in enforce mode Jev's answers can clear a deny, " +
-        "and while the local proxy is down any process on this machine could take its port and answer. Use https, or mode shadow",
+        "and while the local proxy is down any process on this machine could take its port and answer. " +
+        (cfg.provider === JEV_CLOUD_PROVIDER
+          ? "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or keep mode shadow"
+          : "Use https, or mode shadow"),
     };
   }
 

@@ -96,6 +96,10 @@ export interface MultiSelectOptions<T> {
 
 const ESC = "\x1B";
 
+/** How every "the key was on argv" warning opens, whichever command took it (`jev setup --token`, `config --token`). */
+export const TOKEN_ON_ARGV =
+  "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.";
+
 // ── glyphs ────────────────────────────────────────────────────────────────
 // Exported so the other branded prompts (install-prompt.ts) share the exact
 // same set instead of hand-syncing copies.

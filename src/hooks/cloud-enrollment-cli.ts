@@ -20,7 +20,7 @@ import {
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { optsFor, rows as kitRows, stack, warning } from "./tui";
+import { TOKEN_ON_ARGV, optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { clearJevCloudCredential, readVersionFile, readCredentials } from "./fp-config";
 // A CLI command's import, never the hook path's: `jev-cloud-connection` reaches
@@ -177,6 +177,16 @@ function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[]
     "  Check it with: failproofai config --status",
   ];
 }
+
+/**
+ * What `config --token` (and `config --connect … --token`) ends with, connected
+ * or not: every Jev remedy sends people to that spelling, and the key is in
+ * history either way. `jev setup --token` says the same first line.
+ */
+export const CONFIG_TOKEN_HISTORY_WARNING = [
+  TOKEN_ON_ARGV,
+  "Next time, run `failproofai config` with the key in FAILPROOFAI_CLOUD_TOKEN (from a secret store, or `read -rs`) instead of --token — and rotate this one if it matters.",
+];
 
 export async function runConnectCommand(opts: ConnectOptions): Promise<CommandResult> {
   if (!opts.url) return { exitCode: 1, lines: ["--connect needs a URL, e.g. --connect https://be.failproof.ai"] };

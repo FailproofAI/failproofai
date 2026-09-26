@@ -146,7 +146,7 @@ import {
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
-import { emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
+import { TOKEN_ON_ARGV, emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
 
 export interface JevCliResult {
   lines: string[];
@@ -641,7 +641,7 @@ async function maskedPrompt(): Promise<string | null> {
 
 /** What a run that put the key in argv ends with, saved or refused: the key is in history either way. */
 const TOKEN_HISTORY_WARNING = [
-  "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.",
+  TOKEN_ON_ARGV,
   "Prefer piping the key in — `failproofai jev --url <url> --key-stdin < key-file` — and rotate this one if it matters.",
 ];
 

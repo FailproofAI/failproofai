@@ -2312,6 +2312,12 @@ async function runCli() {
     // re-running enrolment with the url and token again just to fix a display name.
     const wantsRename =
       connectIdx < 0 && !wantsDisconnect && args.includes("--machine-label");
+    // A key given as --token is in shell history whatever became of the run.
+    const warnTokenOnArgv = async () => {
+      if (!args.includes("--token")) return;
+      const { CONFIG_TOKEN_HISTORY_WARNING } = await import("../src/hooks/cloud-enrollment-cli");
+      process.stderr.write(`\n${CONFIG_TOKEN_HISTORY_WARNING.join("\n")}\n`);
+    };
     if (connectIdx >= 0 || wantsDisconnect || wantsRename) {
       if (connectIdx >= 0 && wantsDisconnect) {
         throw new CliError("--connect and --disconnect cannot be combined.");
@@ -2349,6 +2355,7 @@ async function runCli() {
         });
       }
       await printLines(result.lines, result.exitCode === 0);
+      await warnTokenOnArgv();
       await track("cli_cloud_enrollment", {
         action: wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect",
         ok: result.exitCode === 0,
@@ -2459,6 +2466,7 @@ async function runCli() {
         noTranscripts: args.includes("--no-transcripts"),
       },
     );
+    await warnTokenOnArgv();
     await track("cli_configure_invoked", {
       applied: result.applied,
       // `target` and `scopes`, not `scope`: the wizard rework replaced that

@@ -105,3 +105,15 @@ describe("failproofai jev (real binary)", () => {
     expect(r.stdout + r.stderr).toContain("--key-stdin");
   });
 });
+
+// Every Jev remedy says `failproofai config --token <key>`; that command put the
+// key in argv without a word, while `jev setup --token` warns.
+describe("failproofai config --token (real binary)", () => {
+  it("--connect with --token warns about shell history even when the connect fails, and never prints the key", () => {
+    const r = cli(["config", "--connect", "http://127.0.0.1:9", "--token", KEY]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("shell history");
+    expect(r.stderr).toContain("FAILPROOFAI_CLOUD_TOKEN");
+    expect(r.stdout + r.stderr).not.toContain(KEY);
+  });
+});

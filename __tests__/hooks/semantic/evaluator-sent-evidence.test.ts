@@ -143,10 +143,10 @@ describe("a turn Jev never saw cannot clear a reviewable deny", () => {
     // it a warning …
     expect(r.verdict).not.toBe("overridden");
     expect(r.verdict).toBe("instruct");
-    // … and under the clear rule this branch ships (combine.ts, "A
-    // warning-level answer clears the deny") that warning clears the regex
-    // deny and becomes the verdict, in Jev's words. This assertion said
-    // `[]` / `deny` while a flagged reviewer left the block standing.
+    // … because the human's task softened its deny (`downgraded-task-step`),
+    // and a task-softened warning clears the regex deny and becomes the
+    // verdict, in Jev's words (combine.ts, "A check that fired without consent
+    // keeps the floor").
     expect(r.combined.cleared).toEqual([reviewable.policyName]);
     expect(r.combined.final.decision).toBe("instruct");
     expect(r.combined.final.entries[0].policyName).toBe(`semantic/${POLICY.name}`);
@@ -325,9 +325,8 @@ describe("a long prompt does not lose the consent it contains", () => {
     const r = await run(call([buried(BURY), ...FILLER]), v1);
     expect(r.named).toBe(false);
     expect(r.verdict).not.toBe("overridden");
-    // Not the allow the kept-turn cases above get: the reviewer's warning is,
-    // and the regex deny it clears is the rule this branch ships. Pinned `[]`
-    // / `deny` before that.
+    // Not the allow the kept-turn cases above get: the task-softened warning
+    // is, and it clears the regex deny.
     expect(r.combined.cleared).toEqual([reviewable.policyName]);
     expect(r.combined.final.decision).toBe("instruct");
   });

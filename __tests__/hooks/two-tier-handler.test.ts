@@ -559,30 +559,28 @@ describe("a reviewable deny", () => {
     expect(row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
   });
 
-  // CORRECTED with the clear rule this branch ships (combine.ts, "A
-  // warning-level answer clears the deny, and leaves the warning"): these two
-  // asserted `deny` + `jevCleared` undefined, i.e. that a reviewer coming back
-  // FLAGGED left the regex block standing. `read-outside-workspace` is a
-  // warn-mode semantic policy, so "flagged" here is an instruct — the check
-  // looked at this exact concern and called it a warning — and a warning now
-  // clears the block and replaces it with itself.
-  it("…and there too, a flagged reviewer turns the block into that reviewer's warning", async () => {
+  // A reviewer that came back FLAGGED, with nobody consenting, keeps the
+  // block (combine.ts, "A check that fired without consent keeps the floor").
+  // `read-outside-workspace` is instruct-only, so its "flagged" is a warning —
+  // and a warning that clears the deny would leave the concern enforced by
+  // nothing. Found live: unrequested `cat ~/.bash_history` ran with a warning.
+  it("…and there too, a flagged reviewer nobody consented to keeps the block", async () => {
     jevConfig = CFG;
     respond = answers({ "read-outside-workspace": 0.95 });
     const { outcome, row } = await readFile("/etc/hosts");
-    expect(outcome.evaluation?.decision).toBe("instruct");
-    expect(outcome.evaluation?.policyName).toBe("semantic/read-outside-workspace");
-    expect(row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
+    expect(row.jevCleared).toBeUndefined();
   });
 
-  it("becomes that reviewer's warning when it came back flagged", async () => {
+  it("stands when its reviewer came back flagged and nobody consented", async () => {
     jevConfig = CFG;
     respond = answers({ "read-outside-workspace": 0.95 });
     const { outcome, row } = await outsideRead();
-    expect(outcome.evaluation?.decision).toBe("instruct");
-    expect(outcome.evaluation?.policyName).toBe("semantic/read-outside-workspace");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
     expect(row.jevDecision).toBe("instruct");
-    expect(row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
+    expect(row.jevCleared).toBeUndefined();
   });
 
   /**
@@ -614,23 +612,17 @@ describe("a reviewable deny", () => {
 
   it("with two reviewers, a DENY from either keeps the block", async () => {
     jevConfig = CFG;
-    // CORRECTED: this drove `env-secrets-dump` (warn-mode, so 0.95 is an
-    // instruct) and asserted the regex deny stood. Under this branch's clear
-    // rule a warning clears, so the case that keeps the block is a reviewer
-    // that answered DENY — `secret-exposure`, the deny-mode half of this
-    // policy's `reviewedBy`. The "both clear" half below is unchanged.
     respond = answers({ "secret-exposure": 0.95 });
     const flagged = await bash("printenv");
     expect(flagged.outcome.evaluation?.policyName).toBe("failproofai/protect-env-vars");
     expect(flagged.outcome.evaluation?.decision).toBe("deny");
     expect(flagged.row.jevCleared).toBeUndefined();
 
-    // And with the warn-mode reviewer flagged instead, the block becomes that
-    // warning: one `notDenied` answer per name is all the rule asks.
+    // So does the warn-mode reviewer flagged with nobody consenting.
     respond = answers({ "env-secrets-dump": 0.95 });
     const warned = await bash("printenv");
-    expect(warned.outcome.evaluation?.decision).toBe("instruct");
-    expect(warned.row.jevCleared).toEqual(["failproofai/protect-env-vars"]);
+    expect(warned.outcome.evaluation?.decision).toBe("deny");
+    expect(warned.row.jevCleared).toBeUndefined();
 
     respond = answers();
     const clear = await bash("printenv");
@@ -1208,23 +1200,15 @@ describe("no captured human message: the injection probe is asked anyway", () =>
     expect(row.jevCleared).toBeUndefined();
   });
 
-  // CORRECTED for this branch's clear rule: it asserted `deny` + nothing
-  // cleared. With no human words there is still nothing to OVERRIDE the fired
-  // reviewer with — an override is an `overridden` outcome and an allow, and
-  // that is what cannot happen here. What the fired warn-mode reviewer does
-  // produce is a warning, and a warning clears the regex block and becomes the
-  // verdict (combine.ts). The claim that moved is "stands as a deny"; the
-  // claim under test — no words, no override — is asserted below.
   it("a policy that FIRES is never overridden here: there are no human words to override it with", async () => {
     jevConfig = CFG;
     intent = { userSaid: [], agentLastMessage: null };
     respond = answers({ "read-outside-workspace": 0.95 });
     const { outcome, row } = await outsideRead();
-    expect(outcome.evaluation?.decision).not.toBe("allow");
-    expect(outcome.evaluation?.decision).toBe("instruct");
-    expect(outcome.evaluation?.policyName).toBe("semantic/read-outside-workspace");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
     expect(row.jevDecision).toBe("instruct");
-    expect(row.jevCleared).toEqual(["failproofai/block-read-outside-cwd"]);
+    expect(row.jevCleared).toBeUndefined();
   });
 
   it("the same call with a human message on record is cleared too", async () => {
@@ -1735,13 +1719,10 @@ describe("what the handler hands Jev: this call's session id and cwd", () => {
     // The task probes are what carry consent, and they are not asked.
     expect(asked()).not.toContain("op_requested");
     expect(asked()).not.toContain("task_step");
-    // So the other session's request buys no override and no allow. CORRECTED
-    // from `deny` + nothing cleared: the fired warn-mode reviewer's own
-    // warning clears the regex block and is what the agent is told, which is
-    // this branch's clear rule and not consent borrowed from elsewhere.
-    expect(outcome.evaluation?.decision).not.toBe("allow");
-    expect(outcome.evaluation?.decision).toBe("instruct");
+    // So the other session's request buys no override and no allow.
+    expect(outcome.evaluation?.decision).toBe("deny");
     expect(row.jevDecision).toBe("instruct");
+    expect(row.jevCleared).toBeUndefined();
   });
 });
 

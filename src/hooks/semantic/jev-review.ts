@@ -216,6 +216,10 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // only that no request was made: v1 asks it on every call it sends, with or
   // without a recorded human message (see `compile.ts`).
   const injection = sent ? outcome.verdict.injectionSuspected : null;
+  // Fired, and no consent softened it: an `instruct` the human's own task did
+  // not downgrade from a deny (see "A check that fired without consent keeps
+  // the floor" in `combine.ts`).
+  const warned = (o: (typeof outcomes)[number]) => o.verdict === "instruct" && o.intent !== "downgraded-task-step";
   return {
     kind: "answered",
     decision: outcome.verdict.decision,
@@ -225,18 +229,16 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     // refuses a response missing any of them — so selected == asked, and only
     // when a request was actually made.
     asked: sent ? outcomes.map((o) => o.policy) : [],
-    // Every answer but `deny`: `none` and `overridden` found nothing to stop,
-    // and `instruct` looked at the same concern the regex policy names and
-    // judged it a warning. `combine.ts` clears a reviewable verdict on all
-    // three, and Jev's own instruct then carries the warning through the
-    // most-severe merge — see "A warning-level answer clears the deny, and
-    // leaves the warning" there. A `deny` is what keeps the block.
-    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny").map((o) => o.policy) : [],
+    // `none` found nothing, `overridden` is what the human asked for, and a
+    // deny the human's task softened to a warning is that task's consent — all
+    // three clear. A `deny`, or a warning nobody consented to, keeps the block.
+    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny" && !warned(o)).map((o) => o.policy) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
-    // A check no consent can clear warned: nothing may be cleared on this call
-    // (see "A check no consent can clear keeps the floor" in `combine.ts`).
-    unclearableWarned: outcomes.some((o) => o.mode === "deny" && o.userCanOverride === false && o.verdict === "instruct"),
+    // A check that CAN deny warned without consent: nothing may be cleared on
+    // this call (see "A check that fired without consent keeps the floor" in
+    // `combine.ts`).
+    unclearableWarned: outcomes.some((o) => o.mode === "deny" && warned(o)),
     // Something did not fit — a human turn, the agent's message, or what T4's
     // store had already capped before the envelope saw it (it caps to fit the
     // envelope, so the envelope cannot see that cut; only the evaluator's

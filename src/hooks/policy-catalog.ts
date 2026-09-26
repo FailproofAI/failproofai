@@ -457,13 +457,14 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // policy off on every machine that configured Jev, while the mark said
     // otherwise.
     //
-    // The test that matters is not "can the reviewer keep this block" but "is
-    // there anything left that can deny". `block-read-outside-cwd` also has only
-    // an instruct reviewer and stays reviewable, because when it clears,
-    // `secret-exposure` and `credential-exfiltration` are still asked about the
-    // same read and still deny on their own through the most-severe merge. Here
-    // nothing else covers committing on a protected branch, so a clear leaves
-    // the concern unenforced by anything.
+    // The engine has since changed under that argument: a reviewer that FIRES
+    // with nobody consenting now keeps the block (`combine.ts`, "A check that
+    // fired without consent keeps the floor"), so an instruct-only reviewer is
+    // no longer "off". `block-read-outside-cwd`, which also has only an
+    // instruct reviewer, stays reviewable on exactly that rule: it clears when
+    // the read is requested or the check finds nothing, and keeps the deny on
+    // an unrequested read it flags. Making this one reviewable again is a
+    // product call nobody has made.
     authority: "hard",
     defaultEnabled: false,
     category: "Git",
@@ -526,7 +527,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // question as written.
     //
     // A named check that is asked and does not fire answers "no concern", and
-    // that CLEARS (`combine.ts`, "A warning-level answer clears the deny"). So
+    // that CLEARS (`combine.ts`, "A check that fired without consent keeps the
+    // floor"). So
     // pairing this policy with `destructive-deletion` would not hand the
     // decision to Jev — it would switch the policy off on every machine that
     // configured Jev, which is exactly the `block-work-on-main` mistake. The

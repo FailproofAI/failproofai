@@ -109,6 +109,22 @@ PRESETS = {
     "clear": [],
 }
 
+# Key-only presets (dashboard/lib/keyPresets.ts). `machine` is an enrolled machine's whole
+# connection: events out, policy in, and Jev through FailproofAI Cloud (charged per call).
+KEY_PRESETS = {"machine": ["events:add", "policies:pull", "jev:evaluate"]}
+
+# What a key carrying jev:evaluate must also carry: the server refuses it otherwise (422,
+# `JEV_REQUIRES` in server/src/auth.rs), on create and on an update that drops one.
+JEV_REQUIRES = ["events:add", "policies:pull"]
+
+
+def jev_requirements_missing(perms) -> List[str]:
+    """The Jev prerequisites a key's grant list lacks (empty when it has no jev:evaluate)."""
+    if "jev:evaluate" not in perms:
+        return []
+    return [p for p in JEV_REQUIRES if p not in perms]
+
+
 _ASSIGNABLE_SET = frozenset(ASSIGNABLE_PERMISSIONS)
 
 # Permissions that parse + are user-assignable but must NEVER sit on an API key — the server's

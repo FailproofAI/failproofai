@@ -141,6 +141,42 @@ def test_keys_create_rejects_malformed_token(logged_in, runner):
 
 
 @respx.mock
+def test_keys_create_machine_preset(logged_in, runner):
+    # The dashboard's key-only `machine` preset: collect, pull policy, Jev.
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{BASE}/api/permission-sets").mock(return_value=httpx.Response(200, json=[]))
+    route = respx.post(f"{BASE}/api/keys").mock(
+        return_value=httpx.Response(201, json={"id": "k9", "name": "m", "permissions": [], "created_at": "t"})
+    )
+    result = runner.invoke(app, ["--json", "keys", "create", "m", "--permission-set", "machine"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls.last.request.content)["permissions"] == ["events:add", "jev:evaluate", "policies:pull"]
+
+
+@respx.mock
+def test_keys_create_refuses_jev_without_its_prerequisites(logged_in, runner):
+    # The server's 422 (JEV_REQUIRES), said before anything is sent.
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[]))
+    route = respx.post(f"{BASE}/api/keys").mock(return_value=httpx.Response(201, json={}))
+    result = runner.invoke(app, ["--json", "keys", "create", "k", "--add", "jev:evaluate,events:add"])
+    assert result.exit_code == 2, result.output
+    assert "missing: policies:pull" in json.loads(result.stdout)["error"]
+    assert not route.called
+
+
+@respx.mock
+def test_keys_update_refuses_dropping_a_jev_prerequisite(logged_in, runner):
+    respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[
+        {"id": "k1", "name": "m", "permissions": ["events:add", "jev:evaluate", "policies:pull"],
+         "created_at": "t", "revoked_at": None}]))
+    route = respx.patch(f"{BASE}/api/keys/k1").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["--json", "keys", "update", "m", "--remove", "events:add", "--yes"])
+    assert result.exit_code == 2, result.output
+    assert "missing: events:add" in json.loads(result.stdout)["error"]
+    assert not route.called
+
+
+@respx.mock
 def test_keys_create_name_collision(logged_in, runner):
     respx.get(f"{BASE}/api/keys").mock(return_value=httpx.Response(200, json=[
         {"id": "k1", "name": "ci-bot", "permissions": [], "created_at": "t", "revoked_at": None}]))

@@ -77,10 +77,22 @@ def _expand_key_set_or_exit(state: AppState, cctx, set_name: str) -> List[str]:
         return permissions.key_assignable_only(sets[set_name])
     if set_name in permissions.PRESETS:
         return permissions.key_assignable_only(permissions.PRESETS[set_name])
-    available = sorted(set(sets) | (set(permissions.PRESETS) - {"clear"}))
+    if set_name in permissions.KEY_PRESETS:
+        return list(permissions.KEY_PRESETS[set_name])
+    available = sorted(set(sets) | (set(permissions.PRESETS) - {"clear"}) | set(permissions.KEY_PRESETS))
     raise click.UsageError(
         f'unknown permission set "{set_name}". available: {", ".join(available)}'
     )
+
+
+def _check_jev_or_exit(perms) -> None:
+    """The server's 422 for jev:evaluate without its prerequisites, as a usage error (exit 2)
+    before anything is sent."""
+    missing = permissions.jev_requirements_missing(perms)
+    if missing:
+        raise click.UsageError(
+            f"jev:evaluate also requires events:add and policies:pull; missing: {', '.join(missing)}"
+        )
 
 
 def keys_list(
@@ -142,7 +154,7 @@ def keys_show(
 def keys_create(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Human-readable key name (unique within the org)."),
-    permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Role to seed the key from — a permission set: `read-only`, `standard`, `admin`, or a custom set your org defines in the dashboard. The set is expanded into the key's grants (human-only perms are dropped). Omit for no base role."),
+    permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Role to seed the key from — a permission set: `read-only`, `standard`, `admin`, `machine` (events:add + policies:pull + jev:evaluate), or a custom set your org defines in the dashboard. The set is expanded into the key's grants (human-only perms are dropped). Omit for no base role."),
     add: Optional[List[str]] = typer.Option(None, "--add", help="Grant extra permissions on top of the set, as `slug:action.action` tokens (dotted actions expand: `events:read.add` → `events:read`, `events:add`). Several via comma, repeated flag, or a quoted group: `--add events:read,keys:read` · `--add a --add b` · `--add \"a b\"`."),
     remove: Optional[List[str]] = typer.Option(None, "--remove", help="Drop permissions from the set, same `slug:action.action` token format as --add (comma / repeated / quoted)."),
 ) -> None:
@@ -179,6 +191,7 @@ def keys_create(
         raise click.UsageError(f'a key named "{name}" already exists')
     base = _expand_key_set_or_exit(state, cctx, permission_set) if permission_set else []
     flat = sorted((set(base) | set(parsed_add)) - set(parsed_remove))
+    _check_jev_or_exit(flat)
     secret = secrets.token_hex(32)  # 64 hex chars, mirrors the dashboard's generateToken()
     result = api.create_key(cctx, name=name, key=secret, permissions=flat)
     _write.record_action("api_key_created", resource="key", success=True, permission_count=len(flat))
@@ -198,7 +211,7 @@ def keys_create(
 def keys_update(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Key name to update (unique within the org)."),
-    permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Reseed the key from a permission set: `read-only`, `standard`, `admin`, or a custom org set. REPLACES the key's grants with the set (then applies any --add/--remove). Human-only perms are dropped."),
+    permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Reseed the key from a permission set: `read-only`, `standard`, `admin`, `machine`, or a custom org set. REPLACES the key's grants with the set (then applies any --add/--remove). Human-only perms are dropped."),
     add: Optional[List[str]] = typer.Option(None, "--add", help="Grant permissions, same `slug:action.action` token format as `keys create` (dotted actions expand; comma / repeated flag / quoted compose). Incremental — merged into the key's CURRENT grants, unless --permission-set is also given."),
     remove: Optional[List[str]] = typer.Option(None, "--remove", help="Revoke permissions, same `slug:action.action` token format as --add. Incremental — applied to the key's CURRENT grants, unless --permission-set is also given."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
@@ -267,6 +280,7 @@ def keys_update(
         else:
             output.key_no_change()
         return
+    _check_jev_or_exit(after_set)
 
     proceed = (not _write.should_prompt(state, yes)) or output.confirm_key_update(
         key.name, len(added), len(removed))

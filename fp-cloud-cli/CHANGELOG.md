@@ -9,6 +9,10 @@
   and the `admin` preset carries it, as the server's built-in admin set now does. The
   server refuses a KEY carrying it without both `events:add` and `policies:pull` (422,
   naming what to add in `missing_permissions`); the `admin` preset has both. (#833)
+- `fp keys create/update --permission-set machine`: the dashboard's key-only preset
+  (`events:add` + `policies:pull` + `jev:evaluate`), for an enrolled machine using Jev through
+  FailproofAI Cloud. `fp keys` also refuses `jev:evaluate` without both prerequisites itself
+  (exit 2, naming what is missing) instead of sending the key for the server's 422. (#833)
 
 ## 0.0.1 — 2026-09-22
 

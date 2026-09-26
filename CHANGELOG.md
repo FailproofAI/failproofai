@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.8-beta.0 — 2026-09-26
+
+### Docs
+
+- Point the Trendshift badge at the overall daily ranking instead of the TypeScript-scoped one, in the root README and all 14 translations (#841)
+
 ## 1.0.7 — 2026-09-26
 
 The stable cut of the 1.0.7 line. For the `failproofai` package itself this is a

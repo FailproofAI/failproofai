@@ -91,7 +91,7 @@ export const SEMANTIC_POLICY_NAMES = [
  * A pack that declares its own `semantic` entries replaces
  * `SEMANTIC_POLICIES` wholesale on the machine that installed it, so the names
  * a `reviewedBy` may use there are the pack's. Callers that know which set is
- * live pass it (`effectiveReviewerNames()` in `pack-manifest.ts`, which reads
+ * live pass it (`effectiveReviewerNames()` in `effective-reviewers.ts`, which reads
  * the manifest and imports nothing from `semantic/`); everyone else gets this
  * one, which is what a machine with no pack runs.
  */

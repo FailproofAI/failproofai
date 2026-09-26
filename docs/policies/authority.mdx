@@ -16,12 +16,12 @@ Without Jev configured, authority has no effect. Every policy enforces exactly a
 A policy is reviewable only when all of these hold:
 
 1. It declares `authority: "reviewable"`.
-2. `reviewedBy` is a non-empty list, and every entry is one of the [semantic policy names](#semantic-policy-names) this version of Failproof AI knows.
+2. `reviewedBy` is a non-empty list, and every entry is a semantic check this machine can ask: one of the [built-in checks](#semantic-policy-names), or — once an installed pack declares Jev checks of its own — one of those packs' checks.
 3. It is not `alwaysOn`. The guard that stops an agent from disabling Failproof AI is always hard.
 
-Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name this version does not recognise. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must be asked, and none of them may deny", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
+Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name that is not a check this machine can ask. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must be asked, and none of them may deny", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
 
-Once Jev is configured, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it.
+Once Jev is configured, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it. It judges `reviewedBy` against the checks the pack declares when it declares any, and against the built-in checks otherwise.
 
 ## Where authority is declared
 
@@ -58,7 +58,7 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish` copies both fields into the pack manifest, so a policy published as a pack keeps the authority its author gave it. It refuses to build the pack if a declaration would not be honored: a value other than `"hard"` or `"reviewable"`, a `reviewedBy` that is not a list of names, or a name this version does not know.
+`failproofai publish` copies both fields into the pack manifest, so a policy published as a pack keeps the authority its author gave it. It refuses to build the pack if a declaration would not be honored: a value other than `"hard"` or `"reviewable"`, a `reviewedBy` that is not a list of names, or a name that is not a check — one of the pack's own [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) when it declares any, a built-in check otherwise.
 
 ## Built-in policies
 
@@ -116,7 +116,9 @@ And because an instruct-mode semantic policy can never answer deny, pairing a *b
 
 ## Semantic policy names
 
-These are the values `reviewedBy` accepts. Each is a check Jev answers about the tool call in front of it.
+These are the built-in checks, and the values `reviewedBy` accepts on a machine where no installed pack declares Jev checks. Each is a check Jev answers about the tool call in front of it.
+
+A pack that declares [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) replaces this list on every machine that installs it: the installed packs' checks are then the only ones Jev asks, and the only names `reviewedBy` accepts, so a policy naming a check below that no installed pack declares stays hard. `FailproofAI/jev-policies` declares these same sixteen, so with it the table still applies. A name two packs declare differently is honoured for neither, and a pack whose every check is unusable leaves this list in force.
 
 | Name | What Jev checks |
 | --- | --- |

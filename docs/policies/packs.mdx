@@ -109,6 +109,8 @@ At install time the pack is also **imported once** and checked against its own m
 
 A pack this machine was told to enforce and cannot run **denies** the events its missing policies covered, rather than allowing them silently — as `pack/failproofai-pack-unavailable`, which outranks the policies that did load so the deny is attributed to the missing pack rather than to whichever guard happened to fire first. The exception is `UserPromptSubmit`, which instructs instead: denying there would lock you out of the agent you need in order to fix it. See [Failure behavior](/policies/failure-behavior).
 
+A pack can name the oldest failproofai it works with (`minCliVersion`, set by its publisher). An older CLI refuses to add it and prints the upgrade command, `npm i -g failproofai && failproofai update`; one already installed that the running CLI is too old for does not load, with the result above. A `minCliVersion` the CLI cannot read is ignored with a warning rather than refusing the pack.
+
 ## Offline and mirrors
 
 | Variable | Effect |

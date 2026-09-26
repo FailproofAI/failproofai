@@ -88,6 +88,22 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(text(r)).not.toContain(TOKEN);
     });
 
+    it.each([
+      ["an endpoint given as the base", ["--url", "https://proxy.example/typesafe/v1/models", "--token", TOKEN]],
+      ["two key sources", ["--url", "https://api.typesafe.ai/v1", "--token", TOKEN, "--key-stdin"]],
+      ["the Cloud provider", ["setup", "--provider", "failproofai", "--token", TOKEN]],
+    ])("says so on a refusal too, since the key is in history either way (%s)", async (_label, argv) => {
+      const r = await runJevCommand(argv, RENDER);
+      expect(r.exitCode).not.toBe(0);
+      expect(text(r)).toContain("shell history");
+      expect(text(r)).not.toContain(TOKEN);
+    });
+
+    it("says it once on success", async () => {
+      const r = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--token", TOKEN], RENDER);
+      expect(text(r).split("shell history").length - 1).toBe(1);
+    });
+
     it("takes the key on stdin with the same --url, which is the documented spelling", async () => {
       const r = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--key-stdin"], withStdin(TOKEN));
       expect(r.exitCode).toBe(0);

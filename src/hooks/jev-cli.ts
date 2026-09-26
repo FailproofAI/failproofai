@@ -634,7 +634,20 @@ async function maskedPrompt(): Promise<string | null> {
   return promptText({ message: "Jev API key", mask: true, validate: (v) => validateApiKey(v) });
 }
 
+/** What a run that put the key in argv ends with, saved or refused: the key is in history either way. */
+const TOKEN_HISTORY_WARNING = [
+  "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.",
+  "Prefer piping the key in — `failproofai jev --url <url> --key-stdin < key-file` — and rotate this one if it matters.",
+];
+
 async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
+  const r = await setupRun(argv, deps, opts);
+  // A save says it in its own place; every refusal says it here.
+  const tokenGiven = argv.some((a, i) => a.startsWith("--token=") || (a === "--token" && i + 1 < argv.length));
+  return r.exitCode === 0 || !tokenGiven ? r : { ...r, lines: [...r.lines, "", ...TOKEN_HISTORY_WARNING] };
+}
+
+async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set([...VALUE_FLAGS, "--key-stdin", "--key-from-env"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
@@ -1081,15 +1094,7 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
       // command line it came on is not — it is in this shell's history file and
       // was readable from /proc by anything running as this user while the
       // process lived.
-      tokenOnCommandLine
-        ? warning(
-            [
-              "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.",
-              "Prefer piping the key in — `failproofai jev --url <url> --key-stdin < key-file` — and rotate this one if it matters.",
-            ],
-            opts,
-          )
-        : null,
+      tokenOnCommandLine ? warning(TOKEN_HISTORY_WARNING, opts) : null,
       note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
       // Switched off, `jev test` only answers "not run — switched off": a next
       // step that leads nowhere is worse than none.

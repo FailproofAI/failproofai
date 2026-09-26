@@ -133,6 +133,7 @@ export function decide(
     const base: PolicyOutcome = {
       policy: p.name,
       mode: p.mode,
+      userCanOverride: p.userCanOverride,
       evidence,
       exempt,
       userAsked,
@@ -321,6 +322,7 @@ export function decideV1(
     const base: PolicyOutcome = {
       policy: p.name,
       mode: p.mode,
+      userCanOverride: p.userCanOverride,
       evidence,
       exempt,
       userAsked: op,

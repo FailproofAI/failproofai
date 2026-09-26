@@ -234,6 +234,9 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny").map((o) => o.policy) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
+    // A check no consent can clear warned: nothing may be cleared on this call
+    // (see "A check no consent can clear keeps the floor" in `combine.ts`).
+    unclearableWarned: outcomes.some((o) => o.mode === "deny" && o.userCanOverride === false && o.verdict === "instruct"),
     // Something did not fit — a human turn, the agent's message, or what T4's
     // store had already capped before the envelope saw it (it caps to fit the
     // envelope, so the envelope cannot see that cut; only the evaluator's

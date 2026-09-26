@@ -126,6 +126,8 @@ export type IntentMode = "v0" | "v1";
 export interface PolicyOutcome {
   policy: string;
   mode: "deny" | "instruct";
+  /** The policy's own `userCanOverride`: false is a check no consent can clear. */
+  userCanOverride?: boolean;
   /** min over probe probabilities — one weak probe spoils the evidence. */
   evidence: number;
   exempt: number | null;

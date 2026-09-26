@@ -1,0 +1,50 @@
+---
+title: "Sentiment"
+description: "Sehen Sie, wie sich die Nutzer Ihrer Agenten fühlen und ob Ihre Agenten es richtig machen – Nachricht für Nachricht."
+icon: "smile"
+---
+
+Sentiment bewertet jede Nachricht, die eine Person an Ihre Agenten sendet, jeweils von 0 bis 100 %, für vier Gefühle — **wütend**, **frustriert**, **glücklich** und **verwirrt** — sowie drei Signale darüber, wie der Agent abschneidet:
+
+- **Korrigierend**: Die Person sagt, dass der Agent etwas falsch gemacht hat.
+- **Gelöst**: Die Person bestätigt, dass der Agent ihr Problem gelöst hat.
+- **Zweifelnd**: Die Person hinterfragt, ob die Antwort des Agenten stimmt oder ob er die Arbeit wirklich erledigt hat.
+
+Nutzen Sie es, um Gespräche zu finden, in denen Personen die Geduld verlieren, Agenten, die ständig korrigiert werden müssen, und Antworten, die gut ankommen.
+
+<Note>
+  Sentiment ist deaktiviert, bis ein Administrator es für die Organisation einschaltet. Die Bewertung verwendet das LLM-Budget Ihrer Organisation — eine Bewertungsanfrage pro Nachricht — und sendet jede Nachricht zusammen mit der vorangehenden Agentenantwort an das Bewertungsmodell.
+</Note>
+
+## Aktivierung
+
+1. Gehen Sie zu **Administration → Einstellungen**.
+2. Schalten Sie unter **Sentiment bei menschlicher Eingabe** die Option **ein** und speichern Sie.
+
+Nachrichten des letzten Tages werden zuerst bewertet. Danach werden neue Nachrichten innerhalb von ein bis zwei Minuten nach dem Eintreffen bewertet.
+
+## Welche Nachrichten bewertet werden
+
+Nur Nachrichten, die eine Person verfasst hat:
+
+- Nachrichten, die Ihre eigenen Agenten mit dem SDK als menschliche Eingabe aufzeichnen.
+- Prompts, die in Claude Code, Codex, OpenCode, pi, Hermes und OpenClaw eingegeben werden, wenn Sitzungsprotokolle gesendet werden (Standardeinstellung). Geplante Aufgaben, injizierte Anweisungen, Übergaben an Unteragenten und anderer Text, den die Laufzeitumgebung des Agenten selbst schreibt, werden nicht bewertet. Ebenso wenig nicht-interaktive Ausführungen wie `claude -p`, `codex exec` und `hermes -z`: Diese Prompts wurden von einem Skript geschrieben, nicht von einer Person.
+
+Die Bewertung beurteilt die eigenen Worte der Person. Eine kurze, knappe Anweisung wie „reparier das" wird nicht als Wut gewertet, und eine Frage zu stellen gilt nicht als Verwirrung. Eine neue Anfrage ist keine Korrektur, und bloßes Danken zählt nicht als gelöst.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Observe → Sentiment**.
+    2. Filtern Sie nach Umgebung, Agent oder Sitzungs-ID.
+    3. Die Kopfzeile zeigt die Anzahl **markierter** Nachrichten — jeder negative Wert (wütend, frustriert, korrigierend, verwirrt oder zweifelnd) von 35 oder mehr von 100 — und nennt das stärkste Signal.
+    4. **Verlauf der Bewertungen** zeigt den Durchschnitt jedes Wertes als Diagramm. Wählen Sie aus, welche Werte angezeigt werden sollen, und klicken Sie auf einen Punkt, um die zugehörigen Nachrichten zu lesen.
+    5. **Nach Agent** vergleicht Agenten nebeneinander.
+    6. **Nachrichten** listet die markierten Nachrichten auf, beginnend mit den stärksten. Wechseln Sie zur Ansicht aller Nachrichten oder sortieren Sie nach neuesten oder nach einem einzelnen Wert, und öffnen Sie die Sitzung einer Nachricht, um das Gespräch im Kontext zu lesen.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

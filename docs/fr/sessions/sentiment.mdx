@@ -1,0 +1,50 @@
+---
+title: "Sentiment"
+description: "Découvrez ce que ressentent les utilisateurs de vos agents et si ces derniers répondent bien à leurs attentes, message par message."
+icon: "smile"
+---
+
+Le sentiment attribue à chaque message envoyé par une personne à vos agents un score de 0 à 100 % pour quatre émotions — **en colère**, **frustré**, **heureux** et **perdu** — ainsi que trois signaux sur le comportement de l'agent :
+
+- **Correction** : la personne signale que l'agent s'est trompé.
+- **Résolu** : la personne confirme que l'agent a résolu son problème.
+- **Doute** : la personne remet en question la véracité de la réponse de l'agent, ou le fait qu'il ait vraiment effectué le travail.
+
+Utilisez cette fonctionnalité pour repérer les conversations où les utilisateurs s'impatientent, les agents qu'ils doivent sans cesse corriger, et les réponses qui font mouche.
+
+<Note>
+  Le sentiment est désactivé jusqu'à ce qu'un administrateur l'active pour l'organisation. Le scoring utilise le budget LLM de votre organisation — une requête de scoring par message — et envoie chaque message, accompagné de la réponse de l'agent qui le précède, au modèle de scoring.
+</Note>
+
+## Activer la fonctionnalité
+
+1. Accédez à **Administration → Paramètres**.
+2. Sous **Sentiment des entrées humaines**, activez l'option et enregistrez.
+
+Les messages du dernier jour sont scorés en premier. Ensuite, les nouveaux messages sont scorés dans la minute ou les deux minutes suivant leur arrivée.
+
+## Messages pris en compte
+
+Seuls les messages rédigés par une personne sont pris en compte :
+
+- Les messages enregistrés par vos agents personnalisés comme entrées humaines via le SDK.
+- Les prompts saisis dans Claude Code, Codex, OpenCode, pi, Hermes et OpenClaw, lorsque les transcriptions de session sont envoyées (comportement par défaut). Les tâches planifiées, les instructions injectées, les transferts entre sous-agents et tout autre texte écrit par le runtime de l'agent lui-même ne sont pas scorés. Les exécutions non interactives telles que `claude -p`, `codex exec` et `hermes -z` ne le sont pas non plus : ces prompts ont été écrits par un script, non par une personne.
+
+Le scoring évalue les mots propres à la personne. Une instruction courte et directe comme « corrige ça » n'est pas comptabilisée comme de la colère, et poser une question n'est pas comptabilisé comme de la confusion. Une nouvelle demande n'est pas une correction, et de simples remerciements ne sont pas comptabilisés comme une résolution.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observer → Sentiment**.
+    2. Filtrez par environnement, agent ou identifiant de session.
+    3. L'en-tête indique le nombre de messages **signalés** — tout score négatif (en colère, frustré, correction, perdu ou doute) égal ou supérieur à 35 sur 100 — et précise le signal dominant.
+    4. **Score dans le temps** représente la moyenne de chaque score sous forme de graphique. Choisissez les scores à afficher et cliquez sur un point pour lire les messages correspondants.
+    5. **Par agent** compare les agents côte à côte.
+    6. **Messages** liste les messages signalés, du plus fort au plus faible. Basculez vers tous les messages, ou triez par plus récent ou par score individuel, et ouvrez la session d'un message pour lire la conversation autour de lui.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

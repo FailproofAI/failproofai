@@ -1,0 +1,50 @@
+---
+title: "Sentiment"
+description: "Scopri come si sentono le persone che utilizzano i tuoi agenti e se gli agenti stanno facendo bene il loro lavoro, messaggio dopo messaggio."
+icon: "smile"
+---
+
+Sentiment assegna un punteggio a ogni messaggio che una persona invia ai tuoi agenti, ciascuno da 0 a 100%, per quattro sentimenti — **arrabbiato**, **frustrato**, **felice** e **confuso** — e tre segnali su come sta andando l'agente:
+
+- **Correcting**: la persona dice che l'agente ha sbagliato qualcosa.
+- **Resolved**: la persona conferma che l'agente ha risolto il suo problema.
+- **Doubtful**: la persona mette in dubbio se la risposta dell'agente è vera, o se ha davvero fatto il lavoro.
+
+Usalo per trovare le conversazioni dove le persone stanno perdendo la pazienza, gli agenti che devono continuamente correggere, e le risposte che vanno a buon fine.
+
+<Note>
+  Sentiment è disattivato finché un amministratore non lo attiva per l'organizzazione. La valutazione utilizza il budget LLM della tua organizzazione — una richiesta di valutazione per messaggio — e invia ogni messaggio, con la risposta dell'agente prima di esso, al modello di valutazione.
+</Note>
+
+## Attivalo
+
+1. Vai a **Administration → Settings**.
+2. Sotto **Human input sentiment**, attivalo e salva.
+
+I messaggi dell'ultimo giorno vengono valutati per primi. Dopo, i nuovi messaggi vengono valutati entro un minuto o due dall'arrivo.
+
+## Quali messaggi vengono valutati
+
+Solo i messaggi scritti da una persona:
+
+- Messaggi che i tuoi agenti personalizzati registrano come input umano con l'SDK.
+- Prompt digitati in Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando i trascritti di sessione vengono inviati (predefinito). I lavori programmati, le istruzioni iniettate, i passaggi tra sub-agenti e altri testi che scrive il runtime dell'agente stesso non vengono valutati. Neanche le esecuzioni non interattive come `claude -p`, `codex exec` e `hermes -z`: uno script ha scritto quei prompt, non una persona.
+
+La valutazione giudica le parole stesse della persona. Un'istruzione breve e diretta come "fix it" non viene contata come rabbia, e fare una domanda non viene contata come confusione. Una nuova richiesta non è una correzione, e i ringraziamenti da soli non contano come risolto.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Sentiment**.
+    2. Filtra per ambiente, agente o ID sessione.
+    3. L'intestazione conta i messaggi **flagged** — qualsiasi punteggio negativo (arrabbiato, frustrato, correcting, confuso o doubtful) di 35 o più su 100 — e nomina il segnale principale.
+    4. **Score over time** mostra il grafico della media di ogni punteggio. Scegli quali punteggi visualizzare e fai clic su un punto per leggere i messaggi dietro di esso.
+    5. **By agent** confronta gli agenti affiancati.
+    6. **Messages** elenca i messaggi flagged, i più forti per primi. Passa a tutti i messaggi, o ordina per più recenti o per qualsiasi punteggio singolo, e apri la sessione di un messaggio per leggere la conversazione intorno ad esso.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type human_input --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

@@ -149,12 +149,15 @@ export function resolvePolicyAuthority(
  * different reason, and the author reading it has a different fix.
  */
 function whyUnknown(name: string, known: ReadonlySet<string>, contested?: ReadonlyMap<string, string[]>): string {
+  // Quoted with JSON.stringify: a pack's name reaches the hook's stderr, so a
+  // control character in it must not reach the terminal raw.
+  const quoted = JSON.stringify(name);
   const claimants = contested?.get(name);
-  if (claimants) return `"${name}", which packs ${claimants.join(" and ")} declare differently, so it is asked for neither`;
-  if (known === SEMANTIC_REVIEWER_NAMES) return `"${name}", which is not a semantic policy in this build`;
+  if (claimants) return `${quoted}, which packs ${claimants.join(" and ")} declare differently, so it is asked for neither`;
+  if (known === SEMANTIC_REVIEWER_NAMES) return `${quoted}, which is not a semantic policy in this build`;
   const sorted = [...known].sort();
   const listed = sorted.length > 6 ? `${sorted.slice(0, 6).join(", ")} and ${sorted.length - 6} more` : sorted.join(", ");
-  return `"${name}", which is not among the Jev checks it is judged against (${listed})`;
+  return `${quoted}, which is not among the Jev checks it is judged against (${listed})`;
 }
 
 function whyHard(decl: AuthorityDeclaration): string {

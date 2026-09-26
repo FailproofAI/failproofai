@@ -152,6 +152,15 @@ describe("resolvePolicyAuthority", () => {
     expect(r.downgraded).toMatch(/"prod-deploy-check", which packs acme\/a and acme\/b declare differently, so it is asked for neither/);
   });
 
+  it("escapes the name it quotes: a pack's reviewedBy reaches the hook's stderr", () => {
+    const name = "x\u001b[2J\nWARN forged";
+    for (const known of [undefined, new Set(["own-check"])]) {
+      const r = resolvePolicyAuthority({ authority: "reviewable", reviewedBy: [name] }, known);
+      expect(r.downgraded).toContain(JSON.stringify(name));
+      expect(r.downgraded).not.toMatch(/[\u0000-\u001f]/);
+    }
+  });
+
   it.each([
     ["a malformed entry", ["secret-exposure", 5]],
     ["an empty-string entry", ["", "secret-exposure"]],

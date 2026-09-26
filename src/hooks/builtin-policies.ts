@@ -92,11 +92,53 @@ const isClaudeInternalPath = isAgentInternalPath;
 const isClaudeSettingsFile = isAgentSettingsFile;
 
 function getCommand(ctx: PolicyContext): string {
-  return (ctx.toolInput?.command as string) ?? "";
+  const command = ctx.toolInput?.command;
+  return typeof command === "string" ? command : "";
 }
 
 function getFilePath(ctx: PolicyContext): string {
   return (ctx.toolInput?.file_path as string) ?? "";
+}
+
+/**
+ * Paths named by an OpenAI/Codex `apply_patch` freeform body.
+ *
+ * Codex PreToolUse for apply_patch delivers `tool_input: { command: <patch> }`
+ * (not `file_path`). Headers that name a target are `*** Add File:`,
+ * `*** Update File:`, `*** Delete File:`, and `*** Move to:`. A single patch
+ * may list many files — callers must check every path, not only the first.
+ *
+ * There is no shared apply_patch parser elsewhere in this repo; this stays
+ * local to the secrets-write policy rather than inventing a general layer.
+ */
+const APPLY_PATCH_PATH_RE =
+  /^\*\*\* (?:Add File|Update File|Delete File|Move to):\s*(.+?)\s*$/gm;
+
+function extractApplyPatchPaths(command: string): string[] {
+  if (!command.includes("*** ")) return [];
+  const paths: string[] = [];
+  APPLY_PATCH_PATH_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = APPLY_PATCH_PATH_RE.exec(command)) !== null) {
+    const p = m[1].trim();
+    if (p) paths.push(p);
+  }
+  return paths;
+}
+
+/**
+ * Every file path a Write/Edit-shaped tool call may create or modify.
+ * Prefer `file_path` (Claude Write/Edit and harnesses that remap to it); also
+ * pull every path out of a Codex-style apply_patch `command` body.
+ */
+function getSecretWriteTargetPaths(ctx: PolicyContext): string[] {
+  const paths: string[] = [];
+  const filePath = getFilePath(ctx);
+  if (filePath) paths.push(filePath);
+  for (const p of extractApplyPatchPaths(getCommand(ctx))) {
+    if (!paths.includes(p)) paths.push(p);
+  }
+  return paths;
 }
 
 /**
@@ -2185,15 +2227,20 @@ function isForcePushFlag(token: string): boolean {
 }
 
 function blockSecretsWrite(ctx: PolicyContext): PolicyResult {
-  if (ctx.toolName !== "Write") return allow();
-  const filePath = getFilePath(ctx);
-  if (SECRET_FILE_RE.test(filePath) || SECRET_FILE_ID_RSA_RE.test(filePath) || SECRET_FILE_CREDENTIALS_RE.test(filePath)) {
-    return deny("Writing secret key files is blocked");
-  }
+  // Write: Claude-shaped file create. Edit: includes Codex/OpenCode apply_patch
+  // after canonicalizeToolName maps apply_patch → Edit.
+  if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
   const additionalPatterns = ((ctx.params?.additionalPatterns ?? []) as string[]);
-  for (const pattern of additionalPatterns) {
-    if (filePath.includes(pattern)) {
-      return deny(`Writing blocked file pattern: ${pattern}`);
+  // Multi-file apply_patch: deny if ANY affected path is protected — a safe
+  // path earlier in the patch must not hide a later secret-file path.
+  for (const filePath of getSecretWriteTargetPaths(ctx)) {
+    if (SECRET_FILE_RE.test(filePath) || SECRET_FILE_ID_RSA_RE.test(filePath) || SECRET_FILE_CREDENTIALS_RE.test(filePath)) {
+      return deny("Writing secret key files is blocked");
+    }
+    for (const pattern of additionalPatterns) {
+      if (filePath.includes(pattern)) {
+        return deny(`Writing blocked file pattern: ${pattern}`);
+      }
     }
   }
   return allow();

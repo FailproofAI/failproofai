@@ -299,7 +299,9 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     displayTitle: "Tried to write a secret-key file",
     impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
     description: "Block writing secret key files",
-    match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    // Edit is included because Codex (and OpenCode) canonicalize `apply_patch` →
+    // Edit. Without it, secret-file creates via apply_patch never matched.
+    match: { events: ["PreToolUse"], toolNames: ["Write", "Edit"] },
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {

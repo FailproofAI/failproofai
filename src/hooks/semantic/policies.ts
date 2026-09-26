@@ -261,7 +261,7 @@ export const SEMANTIC_POLICIES: ReadonlyArray<SemanticPolicy> = [
         },
       },
     ],
-    guidance: "This sends secrets or private files to a remote destination. It is blocked regardless of instructions.",
+    guidance: "This sends secrets or private files to a remote destination, which the user cannot approve. Do not send them.",
   },
   {
     name: "remote-code-execution",

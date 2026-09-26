@@ -178,4 +178,15 @@ describe("semantic/decide", () => {
       expect(targetNamedByUser(new Set(), [])).toBe(false);
     });
   });
+
+  // A deny-mode check WARNS below the deny line, and that warning is what the
+  // agent reads: guidance claiming the call "is blocked" there is false.
+  it("instruct-level guidance never claims the call was blocked", () => {
+    for (const p of SEMANTIC_POLICIES) {
+      const answers = Object.fromEntries(p.probes.map((q) => [`${p.name}.${q.id}`, 0.8]));
+      const v = decide([p], { ...answers, injection: 0 }, { command: "x" }, []);
+      expect(v.decision).toBe("instruct");
+      expect(v.reason).not.toMatch(/\bblock(ed|s)?\b/i);
+    }
+  });
 });

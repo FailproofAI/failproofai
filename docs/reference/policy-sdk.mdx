@@ -332,7 +332,7 @@ semanticPolicies.add({
 | `probes[].criteria` | No | `{ true, false }`: what a yes and a no mean, up to 300 characters each. Both halves or neither. |
 | `exempt` | No | One more question in the probe shape (its `id` is ignored). When it holds, the check does not fire — the documented exceptions. |
 | `precondition` | No | One name from the table below. Absent means the check is asked on every call its `appliesTo` covers. |
-| `guidance` | Yes | Shown to the agent when the check fires. Up to 600 characters. |
+| `guidance` | Yes | Shown to the agent when the check fires, whether it blocks or warns — a `"deny"` check only warns on moderate evidence, so do not say the call is blocked. Up to 600 characters. |
 
 A precondition is a name, never code: a manifest cannot carry a function, and a downloaded pack must not decide what runs on every tool call.
 

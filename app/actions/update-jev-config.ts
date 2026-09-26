@@ -110,6 +110,7 @@ import {
   JEV_CLOUD_PROVIDER,
   JEV_PROVIDER_KINDS,
   baseUrlWithoutQuery,
+  endpointGivenAsBase,
   jevConfigPath,
   readJevConfigFileForUpdate,
   validateApiKey,
@@ -299,18 +300,34 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
   }
 
   const baseUrl = input.baseUrl.trim();
-  if (baseUrl) {
-    // Checked here, before anything is decided about the token, so an
-    // unparseable URL is reported as an unparseable URL rather than as "that
-    // endpoint is not the one the token was given for" — which is what a URL
-    // that resolves to no origin would otherwise look like below.
-    const url = validateBaseUrl(baseUrl);
-    if (!url.ok) return { ok: false, problem: url.problem };
-  }
+  // Checked here, before anything is decided about the token, so an
+  // unparseable URL is reported as an unparseable URL rather than as "that
+  // endpoint is not the one the token was given for" — which is what a URL
+  // that resolves to no origin would otherwise look like below.
+  const url = baseUrl ? validateBaseUrl(baseUrl) : null;
+  if (url && !url.ok) return { ok: false, problem: url.problem };
 
   const existingFile = readJevConfigFileForUpdate();
   const existing = existingFile?.raw ?? null;
   const sameProvider = existing !== null && existing.provider === provider;
+
+  // `jev setup`'s refusal of an endpoint where a base belongs (`…/v1/models`):
+  // every call would go to `<that>/systemone` and 404 back to regex. Only for a
+  // URL typed here, as the CLI checks only a `--base-url` it was given — an
+  // older file whose base already ends in `/systemone` routes correctly and the
+  // loader takes it, so re-saving it untouched (a mode switch) must still work.
+  if (url?.ok) {
+    const stored = validateBaseUrl(existing?.baseUrl);
+    const untouched =
+      sameProvider && stored.ok && baseUrlWithoutQuery(stored.value).url === baseUrlWithoutQuery(url.value).url;
+    const asEndpoint = untouched ? null : endpointGivenAsBase(url.value);
+    if (asEndpoint) {
+      return {
+        ok: false,
+        problem: `that url is an endpoint, not an api base — its path ends in ${asEndpoint.suffix}, and failproofai adds /systemone to the base itself. use ${baseUrlWithoutQuery(asEndpoint.base).url} instead.`,
+      };
+    }
+  }
 
   // Same provider: update in place, keeping every field not named here —
   // `model`, a `timeoutMs` set from the CLI, and ones a newer failproofai wrote,

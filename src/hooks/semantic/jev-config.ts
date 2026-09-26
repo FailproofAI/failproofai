@@ -389,8 +389,9 @@ export interface EndpointGivenAsBase {
  * Whether a URL is obviously an endpoint rather than an API base, and the base it
  * implies.
  *
- * This is checked at `jev setup` only, and deliberately not in `validateBaseUrl`:
- * a config already on disk that names an endpoint as its base keeps working
+ * This is checked where a URL is being saved (`jev setup`, the dashboard's save),
+ * and deliberately not in `validateBaseUrl`: a config already on disk that names
+ * an endpoint as its base keeps working
  * (`nativeEndpoint` does not append a second `/systemone`), and turning Jev off on
  * an upgrade for a file that was routing correctly would be a worse failure than
  * the one this prevents.

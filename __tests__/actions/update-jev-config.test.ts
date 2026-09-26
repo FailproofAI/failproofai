@@ -385,6 +385,39 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(loadJevConfig()?.accountId).toBe("0123456789abcdef0123456789abcdef");
   });
 
+  // `jev setup` refuses these before writing; the panel saved them, and every
+  // call then went to `<url>/systemone` and 404'd back to regex.
+  it("refuses an endpoint where a base belongs, naming the base, and writes nothing", async () => {
+    const res = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: "https://jev.internal.example/v1/models" }),
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.problem).toContain("/models");
+    expect(res.problem).toContain("https://jev.internal.example/v1");
+    expect(loadJevConfig()).toBeNull();
+
+    const chat = await saveJevConfigAction(
+      input({ provider: "openrouter", baseUrl: "https://openrouter.ai/api/v1/chat/completions" }),
+    );
+    expect(chat.ok).toBe(false);
+    if (!chat.ok) expect(chat.problem).toContain("/chat/completions");
+    expect(loadJevConfig()).toBeNull();
+  });
+
+  it("still re-saves an older file whose stored base already ends in /systemone", async () => {
+    // It routes correctly (no second /systemone is appended) and the loader takes
+    // it, so the check is for a URL typed here, not for the one on disk — the
+    // CLI likewise checks only a --base-url it was given.
+    seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: "https://proxy.example/v1/systemone" });
+    const res = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: "https://proxy.example/v1/systemone", mode: "shadow", token: "" }),
+    );
+    expect(res.ok).toBe(true);
+    expect(onDisk().baseUrl).toBe("https://proxy.example/v1/systemone");
+    expect(onDisk().mode).toBe("shadow");
+  });
+
   it("refuses an unknown provider", async () => {
     const res = await saveJevConfigAction(input({ provider: "definitely-not-a-provider" }));
     expect(res.ok).toBe(false);

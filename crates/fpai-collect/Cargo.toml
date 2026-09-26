@@ -19,7 +19,15 @@ tracing = "0.1"
 # four targets and pulling OpenSSL onto each of them is the kind of build
 # dependency that only breaks on the leg nobody tests. `failproofaid` already
 # depends on reqwest with the same TLS backend, so this adds no new C code.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+#
+# `rustls-tls-native-roots` as well as the bundled roots: a self-hosted Cloud
+# behind a private CA, or a TLS-inspecting proxy, is trusted by the OS store
+# (and by the node CLI) but not by the Mozilla bundle. With the bundle alone
+# every upload failed `UnknownIssuer` and every batch was parked. Both sets
+# load, so a host with no CA store still has the bundle. On Linux this reads
+# SSL_CERT_FILE / SSL_CERT_DIR or the distro bundle (pure Rust); on macOS, the
+# Keychain.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "json"] }
 # inotify on Linux, FSEvents on macOS. Only ever a latency optimisation — the
 # sweeper is what guarantees delivery, so a watcher that fails to register
 # degrades to interval-only rather than losing anything.
@@ -43,5 +51,8 @@ ruzstd = "0.8"
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "test-util", "net"] }
 wiremock = "0.6"
+# The HTTPS server behind the private-CA upload test. Already in the lockfile
+# under reqwest; `ring` rather than the default aws-lc-rs, which is not.
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }

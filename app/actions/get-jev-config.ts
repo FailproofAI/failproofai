@@ -367,8 +367,9 @@ function displayOnlyCloudOrigin(cfg: JevConfig): JevConfig {
 
 /**
  * The fallback rate and the counts behind it, for the one line on the panel
- * that says whether Jev is working. Read only when Jev is actually on: on a
- * machine with no config the numbers are all zero and the line would be noise.
+ * that says whether Jev is working. Read only when Jev is on, or may be for
+ * hooks whose environment has the key: on a machine with no config the numbers
+ * are all zero and the line would be noise.
  *
  * `jevStats()` never throws and derives from the activity store the activity
  * tab already reads, so this adds no pipeline and no persisted state.
@@ -523,7 +524,9 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       token: null,
       problem: inspection.problem,
       fix: `set ${JEV_API_KEY_ENV}, or save a token here`,
-      stats: null,
+      // Off in THIS process's environment only; hooks that have the variable
+      // still consult Jev, and the activity store records what they did.
+      stats: await statsOrNull(true),
     };
   }
 

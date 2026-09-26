@@ -334,6 +334,22 @@ describe("the form", () => {
     expect((screen.getByLabelText("endpoint url") as HTMLInputElement).value).toBe("https://mine.example");
   });
 
+  it("scopes a key-from-env 'off' to this dashboard's environment, and still shows what hooks did", async () => {
+    // The variable is read by whatever runs the hook; the dashboard's own process
+    // not having it says nothing about a session that exports it.
+    renderPanel(
+      view({
+        status: "key-missing",
+        provider: "custom",
+        baseUrl: "https://mine.example",
+        stats: { windowMs: 86_400_000, total: 40, answered: 38, fallbacks: 2, fallbackRate: 0.05 },
+      }),
+    );
+    expect(screen.queryByText(/exactly as before/i)).toBeNull();
+    expect(screen.getByText(/off for this dashboard/i)).toBeInTheDocument();
+    expect(screen.getByText(/5% of 40 calls in the last 1d/)).toBeInTheDocument();
+  });
+
   it("asks for an account id only for cloudflare, because only cloudflare needs one", async () => {
     renderPanel(view());
     expect(screen.queryByLabelText("account id")).toBeNull();

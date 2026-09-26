@@ -657,6 +657,15 @@ describe("a config whose key lives in the environment", () => {
     expect(readFileSync(configPath(), "utf8")).not.toContain(TOKEN);
   });
 
+  it("still reports what hooks did when this process lacks the variable", async () => {
+    // The activity store records the hooks, whose environment may carry the key
+    // this dashboard's does not — `jev status` prints the same numbers here.
+    seedConfig({ provider: "typesafe" });
+    const view = await getJevSettingsAction();
+    expect(view.status).toBe("key-missing");
+    expect(view.stats).not.toBeNull();
+  });
+
   it("is repaired to 0600 by a save, because there is no token to re-type", async () => {
     // The stored-key case refuses this and asks for the token again. With no
     // stored key there is nothing to withhold, and re-saving is the only remedy

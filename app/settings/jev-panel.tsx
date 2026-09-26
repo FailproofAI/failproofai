@@ -364,7 +364,11 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
                     ? "off — this machine is not connected to FailproofAI Cloud. hooks run the regex policies."
                     : view.status === "key-lacks-jev"
                       ? "off — this machine's FailproofAI Cloud key does not carry jev. hooks run the regex policies."
-                      : "off. hooks run the regex policies exactly as before."}
+                      : view.status === "key-missing"
+                        ? // The CLI's "off in this shell": the key is read by whatever
+                          // runs the hook, and this server's environment is not that.
+                          "off for this dashboard — FAILPROOFAI_JEV_API_KEY is not set in its environment. hooks run the regex policies wherever it is unset, including under the daemon; a session that sets it still consults jev."
+                        : "off. hooks run the regex policies exactly as before."}
           </span>
           <span className="set-dim">
             {view?.on

@@ -589,6 +589,16 @@ describe("block-read-outside-cwd policy", () => {
     expect(result.decision).toBe("allow");
   });
 
+  it.each(["cd // && cat etc/shadow", "cd /// && ls etc", "ls //"])(
+    "still denies `%s` — a slash-run outside comment position is the root",
+    async (command) => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command }, session: { cwd: "/home/user/project" } });
+      const result = await policy.fn(ctx);
+      expect(result.decision).toBe("deny");
+      expect(result.reason).toContain("blocked: /");
+    },
+  );
+
   it("still denies `//etc/passwd` — a leading `//` is a real spelling of a real path", async () => {
     const ctx = makeCtx({
       toolName: "Bash",

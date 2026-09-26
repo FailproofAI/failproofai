@@ -2277,11 +2277,11 @@ const READ_LIKE_CMDS =
  * a real, working spelling of /etc/passwd — is still extracted and still
  * resolves to /etc/passwd.
  *
- * Runs of slashes with nothing else ('//', '///') are dropped: those are a
- * line-comment marker, not a directory. They used to resolve to the filesystem
- * root, which denied any read-like command carrying a '// …' comment — a
- * heredoc writing a TypeScript file into the project, say. A lone '/' is the
- * root and is kept.
+ * A run of slashes with nothing else ('//', '///') that opens a line after
+ * the first is dropped: that is a line-comment marker in a heredoc body, not a
+ * directory. It used to resolve to the filesystem root, which denied a heredoc
+ * writing a TypeScript file into the project. Anywhere else a slash-run is
+ * the root, as a lone '/' is: `cd // && cat etc/shadow` reads /etc/shadow.
  */
 function extractAbsolutePaths(command: string): string[] {
   const paths: string[] = [];
@@ -2292,7 +2292,12 @@ function extractAbsolutePaths(command: string): string[] {
     let m: RegExpExecArray | null;
     while ((m = pathRe.exec(s)) !== null) {
       let p = m[0];
-      if (/^\/{2,}$/.test(p)) continue; // a `//` comment marker, not the root
+      // A `//` that opens a line after the first (a heredoc body) is a comment
+      // marker. Anywhere else a slash-run is the root: `cd // && cat etc/shadow`.
+      if (/^\/{2,}$/.test(p)) {
+        const nl = s.lastIndexOf("\n", m.index - 1);
+        if (nl !== -1 && /^[ \t]*$/.test(s.slice(nl + 1, m.index))) continue;
+      }
       if (p === "~") p = homedir();
       else if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
       paths.push(p);

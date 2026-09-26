@@ -252,6 +252,15 @@ describe("a second pack claiming a check another pack's policies name", () => {
     );
   });
 
+  it("says the contest once, not once per claimant", async () => {
+    // Every claimant's entry pushed the same message naming both packs, so
+    // `policies add` printed the ▲ line twice.
+    const { semanticPoliciesFromPacks } = await import("@/src/hooks/semantic/pack-policies");
+    const { errors } = semanticPoliciesFromPacks([REAL, IMPOSTOR] as unknown as Parameters<typeof semanticPoliciesFromPacks>[0]);
+    expect(errors.filter((e) => e.includes("named infra-change"))).toHaveLength(1);
+    expect(new Set(errors).size).toBe(errors.length);
+  });
+
   it("counts it as unclearable in the diagnostic too, so the panel promises nothing it cannot do", async () => {
     // `jev status` and the settings panel read this. Counting the contested name
     // as a reviewer would report a clear that registration will never allow.

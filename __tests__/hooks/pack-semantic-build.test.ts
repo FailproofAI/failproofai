@@ -189,6 +189,13 @@ describe("build emits the semantic array", () => {
     expect(r.lines.join("\n")).toMatch(/remove it before rolling a machine back/);
   });
 
+  it("says an observe pack's checks are never asked, rather than added", async () => {
+    const r = await build(write("jev-policies.mjs", SEMANTIC_ENTRY), ["--effect", "observe"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/not asked where it installs/);
+    expect(r.lines.join("\n")).not.toMatch(/added to the built-in checks/);
+  });
+
   it("still refuses an entry that registers neither, and names both APIs", async () => {
     const r = await build(write("empty.mjs", "export const nothing = 1;\n"));
     expect(r.exitCode).toBe(1);

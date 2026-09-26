@@ -609,7 +609,10 @@ async function build(rest: string[]): Promise<PackCliResult> {
     ...(semantic.length > 0
       ? [
           `  ${semantic.length} semantic ${semantic.length === 1 ? "policy" : "policies"} for Jev ` +
-            `(${questionCost} characters of questions), added to the built-in checks where it installs.`,
+            `(${questionCost} characters of questions), ` +
+            (identity.effect === "observe"
+              ? "not asked where it installs: Jev asks only the checks of packs that enforce."
+              : `${firstParty ? "replacing" : "added to"} the built-in checks where it installs.`),
         ]
       : []),
     ...(requiredCli ? [`  Requires failproofai ${requiredCli} or newer.`] : []),
@@ -2631,10 +2634,16 @@ function semanticPhrase(count: number): string {
 /**
  * How a pack's Jev checks sit beside this build's, for add, show and the
  * picker alike: a FailproofAI pack's replace them, anyone else's are added
- * (`replacesBuiltinChecks`). One phrase, so the three cannot drift apart again.
+ * (`replacesBuiltinChecks`), and only where `jevPacks` lets the pack take part —
+ * never for an observe pack, only for its agents when scoped. One phrase, so
+ * the three cannot drift apart again.
  */
-function besideBuiltinChecks(pack: { source?: string }): string {
-  return isFirstPartyPack(pack) ? "replacing this build's own set" : "added to this build's own checks";
+function besideBuiltinChecks(pack: { source?: string; effect?: PolicyEffect; clis?: string[] | null }): string {
+  if (jevPacks([{ effect: pack.effect ?? "enforce", clis: null }]).length === 0) {
+    return "not asked: this pack only observes, and Jev asks only the checks of packs that enforce";
+  }
+  const how = isFirstPartyPack(pack) ? "replacing this build's own set" : "added to this build's own checks";
+  return pack.clis && pack.clis.length > 0 ? `${how}, for ${pack.clis.join(", ")} only` : how;
 }
 
 /**

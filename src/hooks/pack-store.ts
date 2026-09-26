@@ -104,6 +104,9 @@ export interface AddPackResult {
   semantic: number;
   /** Why the pack's minCliVersion was ignored, when this build could not compare it. */
   minCliVersionNote?: string;
+  /** As recorded, so the CLI can say where its Jev checks are asked (`jevPacks`). */
+  effect?: PolicyEffect;
+  clis?: string[];
   artifact: string;
 }
 
@@ -1145,6 +1148,8 @@ export async function addPack(
     categories: [...new Set(fetched.policies.map((p) => slugifyCategory(p.category)))],
     semantic: fetched.semantic.length,
     ...(fetched.minCliVersionNote ? { minCliVersionNote: fetched.minCliVersionNote } : {}),
+    ...(fetched.effect ? { effect: fetched.effect } : {}),
+    ...(record.clis ? { clis: record.clis } : {}),
     artifact: artifactAbs,
   };
 }

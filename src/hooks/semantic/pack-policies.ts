@@ -208,10 +208,11 @@ export function semanticPoliciesFromPacks(
       }
       const claimants = contested.get(entry.name);
       if (claimants) {
-        errors.push(
+        // Once per name: every claimant reaches here with the same message.
+        const message =
           `packs ${claimants.join(" and ")} declare different semantic policies named ${entry.name}, so it is asked ` +
-            `for neither of them and no policy can be cleared by that name`,
-        );
+          `for neither of them and no policy can be cleared by that name`;
+        if (!errors.includes(message)) errors.push(message);
         continue;
       }
       if (seen.has(entry.name)) {

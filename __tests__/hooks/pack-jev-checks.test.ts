@@ -363,6 +363,21 @@ describe("failproofai policies show <pack>", () => {
     expect(text).not.toContain("for Jev");
   });
 
+  it("says an observe pack's checks are not asked, rather than added", async () => {
+    // jevPacks drops an observe pack, so its checks never reach Jev.
+    release({ effect: "observe", policies: [], semantic: [check("obs-zebra")] });
+    const text = (await runPackCommand(["add", "acme/guards@v1.2.0", "--all"])).lines.join("\n");
+    expect(text).toMatch(/1 Jev check, not asked/);
+    expect(text).not.toContain("added to this build's own checks");
+  });
+
+  it("says a --cli pack's checks apply to those agents only", async () => {
+    release({ policies: [], semantic: [check("codex-walrus")] });
+    const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all", "--cli", "codex"]);
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/added to this build's own checks, for codex only/);
+  });
+
   it("says at install which of its checks this machine will never ask, and why", async () => {
     // Each fits a pack's budget alone; beside the built-in checks (a third
     // party's join them) only the first fits what is left of one request.

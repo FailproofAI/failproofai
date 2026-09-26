@@ -81,7 +81,19 @@ export interface PackBuildMeta {
   policies: number;
   defaultOn: number;
   commit?: string;
+  /** Jev checks and no regex half: `publish` repeats {@link JEV_ONLY_ROLLBACK_REMINDER}. */
+  semanticOnly?: boolean;
 }
+
+/**
+ * A build from before `semanticOnly` refuses such a pack as blanket-deny, so its
+ * author has to tell users. Shared by build's lines and publish's success
+ * message, which is the only one an author actually reads.
+ */
+const JEV_ONLY_ROLLBACK_REMINDER = [
+  "  Jev checks alone: tell users to remove it before rolling a machine back to an older failproofai,",
+  "  which can deny every tool call over a pack it will not load (see the publish-a-pack docs).",
+];
 
 const ok = (lines: string[], meta?: PackBuildMeta): PackCliResult => ({
   lines,
@@ -547,6 +559,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
   );
 
   const on = policies.filter((p) => (p as { defaultEnabled?: boolean }).defaultEnabled).length;
+  const semanticOnly = policies.length === 0 && semantic.length > 0;
   return ok([
     `Built ${identity.id}@${identity.version} — ${policies.length} policies, ${on} on by default.`,
     // Said separately, and said at all, because this half changes what Jev asks
@@ -559,20 +572,19 @@ async function build(rest: string[]): Promise<PackCliResult> {
         ]
       : []),
     ...(minCliVersion ? [`  Requires failproofai ${minCliVersion} or newer.`] : []),
-    // A build from before `semanticOnly` refuses such a pack as blanket-deny.
-    ...(policies.length === 0 && semantic.length > 0
-      ? [
-          "  Jev checks alone: tell users to remove it before rolling a machine back to an older failproofai,",
-          "  which can deny every tool call over a pack it will not load (see the publish-a-pack docs).",
-        ]
-      : []),
+    ...(semanticOnly ? JEV_ONLY_ROLLBACK_REMINDER : []),
     `  ${outDir}/${PACK_MANIFEST_ASSET}`,
     `  ${outDir}/${PACK_ENTRY_ASSET}`,
     `  ${outDir}/${PACK_CHECKSUMS_ASSET}`,
     "",
     `Publish: attach all three to a GitHub release tagged ${identity.version}, then anyone runs:`,
     `  failproofai policies add <owner>/<repo>`,
-  ], { policies: policies.length, defaultOn: on, ...(identity.commit ? { commit: identity.commit } : {}) });
+  ], {
+    policies: policies.length,
+    defaultOn: on,
+    ...(identity.commit ? { commit: identity.commit } : {}),
+    ...(semanticOnly ? { semanticOnly } : {}),
+  });
 }
 
 /**
@@ -2344,7 +2356,9 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       ...gitLines,
       ...(gitLines.length ? [""] : []),
       ...bundleNote,
-      ...built.lines.slice(0, 4),
+      // Everything above build's blank line: a fixed count cut the rollback
+      // reminder mid-sentence and dropped the asset paths.
+      ...built.lines.slice(0, built.lines.indexOf("")),
       "",
       ...(repo
         ? ["Dry run — nothing was published.", `Drop --dry-run to release it on ${repo}.`]
@@ -2460,6 +2474,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     `Published ${id}@${version} to ${repo} at tag ${tag}.` +
       (versionFromSha ? " That names the commit it was built from." : ""),
     `  ${assets.length} assets attached`,
+    ...(built.meta?.semanticOnly ? JEV_ONLY_ROLLBACK_REMINDER : []),
     "",
     // The install lines are the whole point of the success message, and on a
     // private repository they are a lie — `policies add` 404s there. Print the

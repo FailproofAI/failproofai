@@ -48,6 +48,16 @@ const ENTRY = `
   });
 `;
 
+/** A pack of Jev checks alone: no regex half. */
+const JEV_ONLY_ENTRY = `
+  import { semanticPolicies } from "failproofai";
+  semanticPolicies.add({
+    name: "acme-check", title: "Did an acme thing", appliesTo: ["shell"], mode: "instruct",
+    userCanOverride: true, probes: [{ id: "p1", instructions: "Does this command touch acme?" }],
+    guidance: "Be careful.",
+  });
+`;
+
 interface Recorded {
   method: string;
   path: string;
@@ -276,6 +286,26 @@ describe("publish without a release", () => {
       .toBe("1.0.7-beta.0");
   });
 
+  it("prints the whole rollback reminder, and the asset paths, for a pack of Jev checks alone", async () => {
+    // It used to print `built.lines.slice(0, 4)`, so with --min-cli-version the
+    // window ended on the reminder's first line — cut at a comma — and the
+    // asset paths were never shown.
+    const entry = writeEntry(JEV_ONLY_ENTRY);
+    const out = join(work, "dist-pack");
+    const r = await publish([
+      entry, "--repo", "acme/checks", "--version", "1.0.0",
+      "--min-cli-version", "1.0.8-beta.0", "--out", out, "--dry-run",
+    ]);
+
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/remove it before rolling a machine back/);
+    expect(text).toMatch(/which can deny every tool call/);
+    for (const asset of [PACK_MANIFEST_ASSET, PACK_ENTRY_ASSET, PACK_CHECKSUMS_ASSET]) {
+      expect(text).toContain(join(out, asset));
+    }
+  });
+
   it("stops at the assets, and says which repository it is missing, when no --repo is named", async () => {
     const entry = writeEntry();
     const out = join(work, "dist-pack");
@@ -328,6 +358,22 @@ describe("publish to a release", () => {
     expect(r.lines).toContain("  failproofai policies add acme/support");
     // A public repository is not warned about.
     expect(text).not.toMatch(/PRIVATE/);
+  });
+
+  it("tells the author to pass on the rollback reminder for a pack of Jev checks alone", async () => {
+    // The reminder lived only in build()'s lines, which a real publish never
+    // printed, so the one path an author actually ships through never said it.
+    const jevOnly = await publish([
+      writeEntry(JEV_ONLY_ENTRY), "--repo", "acme/checks", "--version", "1.0.0",
+      "--min-cli-version", "1.0.8-beta.0", "--out", join(work, "dist-pack"),
+    ]);
+    expect(jevOnly.exitCode, jevOnly.lines.join("\n")).toBe(0);
+    expect(jevOnly.lines.join("\n")).toMatch(/remove it before rolling a machine back/);
+    expect(jevOnly.lines.join("\n")).toMatch(/which can deny every tool call/);
+
+    const regex = await publish([writeEntry(), "--repo", "acme/support", "--version", "1.0.0", "--out", join(work, "dist-2")]);
+    expect(regex.exitCode).toBe(0);
+    expect(regex.lines.join("\n")).not.toMatch(/rolling a machine back/);
   });
 
   it("keeps the credential out of everything it prints", async () => {

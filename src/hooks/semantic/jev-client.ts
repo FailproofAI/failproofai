@@ -61,9 +61,12 @@
  * The two shapes do not mean the same thing, and only one of them may be used to
  * REFUSE a model (`jev setup`, see `listDescribesSystemOne`):
  *
- * - The TypeSafe shape IS the System One inventory of the base it was read from.
- *   Vercel's typesafe-scoped passthrough and a LiteLLM passthrough both return
- *   it, naming exactly what `<base>/systemone` will accept.
+ * - The TypeSafe shape is the System One inventory of the base it was read from,
+ *   as ALIASES. Vercel's typesafe-scoped passthrough and a LiteLLM passthrough
+ *   both return it. It is not exhaustive: the models.aikin.club upstream lists
+ *   only `jev-latest` and `jev-preview`, yet its `/systemone` answers
+ *   `jev-1.13.0` (and "Unknown model" for `jev-1.13` or `jev-1.13.5`; measured
+ *   2026-09-27). So it may refuse an unlisted alias, never a versioned id.
  * - The OpenAI shape is a gateway's chat-completions catalog, and demonstrably
  *   does not enumerate `/systemone`: OpenRouter's 458-model catalog contains no
  *   Jev entry of any spelling, while `POST https://openrouter.ai/api/v1/systemone`
@@ -948,8 +951,12 @@ export function listDescribesSystemOne(list: JevModelListRead): boolean {
  * measured, not a convenience: Vercel names one model `typesafe-ai/jev` in its
  * gateway catalog and `jev` in the typesafe-scoped list at the base we POST to,
  * differing by exactly that prefix (see the header).
+ *
+ * A versioned id (`jev-1.13.0`) always counts: a list names aliases, and cannot
+ * prove one absent (see the header).
  */
 export function modelListHasModel(list: JevModelListRead, model: string): boolean {
+  if (jevModelVersion(model) !== null) return true;
   if (list.models.includes(model)) return true;
   const slash = model.lastIndexOf("/");
   return slash > 0 && list.models.includes(model.slice(slash + 1));

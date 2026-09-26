@@ -135,7 +135,7 @@ describe("what a list may be used FOR", () => {
     // refusing on an OpenAI-shaped list would refuse a route that works.
     expect(listDescribesSystemOne(read(TYPESAFE_LIST))).toBe(true);
     expect(listDescribesSystemOne(read(OPENROUTER_LIST))).toBe(false);
-    expect(modelListHasModel(read(OPENROUTER_LIST), JEV_PROVIDER_DEFAULTS.openrouter.model)).toBe(false);
+    expect(read(OPENROUTER_LIST).models).not.toContain(JEV_PROVIDER_DEFAULTS.openrouter.model);
   });
 
   it("a listed `jev` covers a configured `typesafe-ai/jev`, which is the same model at Vercel's other base", () => {
@@ -143,7 +143,10 @@ describe("what a list may be used FOR", () => {
     expect(modelListHasModel(read(VERCEL_LIST), "jev")).toBe(true);
     // Only the owner prefix is forgiven; a different model is still a different model.
     expect(modelListHasModel(read(VERCEL_LIST), "typesafe-ai/jev-preview")).toBe(false);
-    expect(modelListHasModel(read(TYPESAFE_LIST), "jev-1.13.0")).toBe(false);
+    // An alias-only list cannot prove a versioned id absent (the real upstream
+    // lists jev-latest/jev-preview and answers jev-1.13.0); an unlisted alias is.
+    expect(modelListHasModel(read(TYPESAFE_LIST), "jev-1.13.0")).toBe(true);
+    expect(modelListHasModel(read(TYPESAFE_LIST), "jev-stable")).toBe(false);
   });
 });
 

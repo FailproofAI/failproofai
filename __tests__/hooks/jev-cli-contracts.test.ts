@@ -7,9 +7,9 @@
 // The case throughout is the one that happened. Someone hosting Jev behind a
 // LiteLLM proxy ran `--url https://models.aikin.club/typesafe/v1/models`; it
 // saved, and `jev test` said `failed · http-404 … Not Found`. With the URL
-// fixed, the model was still wrong: `custom`'s default is `jev-1.13.0` and that
-// proxy serves `jev-latest` and `jev-preview`. Both facts were readable before
-// anything was written.
+// fixed, that proxy lists `jev-latest` and `jev-preview` — aliases only: its
+// `/systemone` also answers `custom`'s default `jev-1.13.0`. Both facts were
+// readable before anything was written.
 //
 // No test here reaches the network: the list reader is injected.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -135,9 +135,8 @@ describe("failproofai jev and each provider's contract", () => {
 
     it("saves the base it named, which is the whole point of naming it", async () => {
       const r = await runJevCommand(["--url", PROXY, "--token", KEY], deps(PROXY_LIST, {}));
-      // The list refuses jev-1.13.0 (the next block); with a model it serves, the
-      // same URL saves.
-      expect(r.exitCode).toBe(1);
+      expect(r.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "custom", baseUrl: PROXY });
       const ok = await runJevCommand(["--url", PROXY, "--model", "jev-latest", "--token", KEY], deps(PROXY_LIST));
       expect(ok.exitCode).toBe(0);
       expect(readFile()).toMatchObject({ provider: "custom", baseUrl: PROXY, model: "jev-latest" });
@@ -149,26 +148,38 @@ describe("failproofai jev and each provider's contract", () => {
   describe("the model, against what the endpoint says it serves", () => {
     it("refuses a model a readable list does not carry, and names the ones it does", async () => {
       const list = reader(PROXY_LIST);
-      const r = await runJevCommand(["--url", PROXY, "--token", KEY], deps(list));
+      const r = await runJevCommand(["--url", PROXY, "--model", "jev-stable", "--token", KEY], deps(list));
       expect(r.exitCode).toBe(1);
       const out = text(r);
-      expect(out).toContain("does not list jev-1.13.0");
+      expect(out).toContain("does not list jev-stable");
       expect(out).toContain("it serves: jev-latest, jev-preview");
       expect(out).toContain("--model jev-latest");
-      // And says why the default is not a get-out: this endpoint names Jev
-      // differently, so --model is required here.
-      expect(out).toContain("--model is not optional here");
+      expect(out).toContain("Pick one of the names above");
+      expect(out).not.toContain("not optional here");
       expect(out).toContain("Nothing was written.");
       expect(existsSync(jevConfigPath())).toBe(false);
       // Asked the base's own /models, with the key being configured.
       expect(list.calls).toEqual([{ url: `${PROXY}/models`, apiKey: KEY }]);
     });
 
-    it("refuses an explicitly named model just as readily, and does not blame the default", async () => {
-      const r = await runJevCommand(["--url", PROXY, "--model", "jev-1.13.0", "--token", KEY], deps(PROXY_LIST));
+    // The real upstream lists only its aliases, yet `/systemone` answers the
+    // calibrated `jev-1.13.0` (measured 2026-09-27): a list of aliases cannot
+    // prove a versioned id absent, so it is not refused on one.
+    it("accepts the calibrated versioned id an alias-only list does not name", async () => {
+      const r = await runJevCommand(["--url", PROXY, "--token", KEY], deps(PROXY_LIST));
+      expect(r.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "custom", baseUrl: PROXY });
+      expect(readFile().model).toBeUndefined();
+      rmSync(jevConfigPath(), { force: true });
+      const named = await runJevCommand(["--url", PROXY, "--model", "jev-1.13.0", "--token", KEY], deps(PROXY_LIST));
+      expect(named.exitCode).toBe(0);
+    });
+
+    it("a default ALIAS the list does not carry: --model is not optional here", async () => {
+      const r = await runJevCommand(["--url", "https://ai-gateway.vercel.sh/typesafe/v1", "--token", KEY], deps(PROXY_LIST));
       expect(r.exitCode).toBe(1);
-      expect(text(r)).toContain("Pick one of the names above");
-      expect(text(r)).not.toContain("not optional here");
+      expect(text(r)).toContain("--model is not optional here");
+      expect(existsSync(jevConfigPath())).toBe(false);
     });
 
     it("accepts a model the list carries", async () => {
@@ -253,6 +264,14 @@ describe("failproofai jev and each provider's contract", () => {
       expect(out).toContain("TypeSafe's own inventory");
       expect(out).not.toContain(KEY);
       expect(list.calls).toEqual([{ url: `${PROXY}/models`, apiKey: KEY }]);
+    });
+
+    it("does not claim every evaluation fails for the calibrated id an alias-only list leaves out", async () => {
+      await configure("jev-1.13.0");
+      const r = await runJevCommand(["models"], deps(PROXY_LIST));
+      expect(r.exitCode).toBe(0);
+      expect(text(r)).not.toContain("every evaluation would fail");
+      expect(text(r)).not.toContain("names <base>/systemone answers to");
     });
 
     it("--json carries the shape, the names and the configured one", async () => {

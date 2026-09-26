@@ -1845,7 +1845,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
 /** What a shape means, which decides what the names in it can be used for. */
 function shapeMeans(shape: JevModelListRead["shape"]): string {
   return shape === "typesafe"
-    ? "TypeSafe's own inventory — these are the names <base>/systemone answers to"
+    ? "TypeSafe's own inventory — the aliases <base>/systemone answers to; versioned ids such as jev-1.13.0 are accepted without being listed"
     : "an OpenAI-shaped gateway catalog — it lists what the gateway serves, not what <base>/systemone answers to, so it is shown and never used to refuse a model";
 }
 

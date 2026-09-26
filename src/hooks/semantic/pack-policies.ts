@@ -95,9 +95,9 @@ const GLOBAL_QUESTION_CHARS = Math.max(
  * "somebody installed a big pack", and the flag that was supposed to be
  * unreachable from ordinary work becomes routine.
  *
- * The real sixteen use 19,787 characters at their worst, so this is not a
- * constraint on the set we ship. It is the ceiling on what a stranger's pack may
- * ask for.
+ * The real sixteen use `BUILTIN_QUESTION_CHARS` of it, so this is not a
+ * constraint on the set we ship. A stranger's pack is added to them, so what it
+ * may ask for is what they leave.
  */
 export const MAX_PACK_QUESTION_CHARS = MAX_REQUEST_CHARS - MAX_STATE_CHARS - GLOBAL_QUESTION_CHARS;
 
@@ -124,7 +124,7 @@ export function questionChars(entry: SemanticManifestEntry): number {
 }
 
 /** What the compiled-in set spends of that budget when third-party checks join it. */
-const BUILTIN_QUESTION_CHARS = SEMANTIC_POLICIES.reduce((n, p) => n + questionChars(p as SemanticManifestEntry), 0);
+export const BUILTIN_QUESTION_CHARS = SEMANTIC_POLICIES.reduce((n, p) => n + questionChars(p as SemanticManifestEntry), 0);
 
 export interface ResolvedSemanticPolicies {
   policies: ReadonlyArray<SemanticPolicy>;

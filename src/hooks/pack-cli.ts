@@ -26,7 +26,7 @@ import { parseSemver } from "./semver-precedence";
 // budget, which means reaching the semantic side. This is a CLI module — loaded
 // by `failproofai publish`, never by a hook — so the rule that keeps those
 // modules off an unconfigured machine's hook path does not apply here.
-import { MAX_PACK_QUESTION_CHARS, questionChars, semanticPoliciesFromPacks } from "./semantic/pack-policies";
+import { BUILTIN_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS, questionChars, semanticPoliciesFromPacks } from "./semantic/pack-policies";
 import {
   AmbiguousPackId,
   PACK_CHECKSUMS_ASSET,
@@ -417,6 +417,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // same deal `parsePackPolicy` gets above, so a semantic policy that could
   // never load fails here, where the author can fix it.
   const semantic: SemanticManifestEntry[] = [];
+  const packSource = { source: `github:${repo ?? identity.id}` };
   for (const [index, declaration] of semanticDeclarations.entries()) {
     try {
       const parsed = parsePackSemanticPolicy(identity.id, declaration, index);
@@ -428,7 +429,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
       }
       // The loader's own rule: a built-in check name from anyone but FailproofAI
       // is void on every machine, never asked and never a reviewer.
-      if (isReservedClaim({ source: `github:${repo ?? identity.id}` }, parsed.name)) {
+      if (isReservedClaim(packSource, parsed.name)) {
         throw new Error(
           `${JSON.stringify(parsed.name)} is a name reserved for FailproofAI's own Jev checks, so a pack from ` +
             `${repo ?? identity.id} would never have it asked. Pick a name of your own.`,
@@ -444,11 +445,20 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // over it installs and then has its overflow policies dropped one by one on
   // the user's machine, in manifest order — a pack that enforces less than it
   // says, which is the failure this whole lane is built to avoid.
+  //
+  // A pack from outside FailproofAI is ADDED to the built-in checks, which every
+  // machine spends the budget on first (`semanticPoliciesFromPacks`), so it gets
+  // only what they leave.
   const questionCost = semantic.reduce((total, entry) => total + questionChars(entry), 0);
-  if (questionCost > MAX_PACK_QUESTION_CHARS) {
+  const firstParty = isFirstPartyPack(packSource);
+  const questionBudget = MAX_PACK_QUESTION_CHARS - (firstParty ? 0 : BUILTIN_QUESTION_CHARS);
+  if (questionCost > questionBudget) {
     return fail([
       `This pack's ${semantic.length} semantic policies compile to ${questionCost} characters of questions, ` +
-        `over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for.`,
+        (firstParty
+          ? `over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for.`
+          : `over the ${questionBudget} a machine leaves a pack from outside FailproofAI: one Jev request has room ` +
+            `for ${MAX_PACK_QUESTION_CHARS}, and the 16 built-in checks every machine asks take ${BUILTIN_QUESTION_CHARS} of it first.`),
       "Shorten the probe instructions and criteria, or ship fewer policies per pack.",
     ]);
   }

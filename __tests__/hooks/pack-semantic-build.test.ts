@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findEntry, runPackCommand } from "@/src/hooks/pack-cli";
 import { parsePackSemanticPolicy, readInstalledPacks } from "@/src/hooks/pack-manifest";
-import { MAX_PACK_QUESTION_CHARS } from "@/src/hooks/semantic/pack-policies";
+import { BUILTIN_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS } from "@/src/hooks/semantic/pack-policies";
 import { version as packageVersion } from "../../package.json";
 
 /** A probe declaration, as an entry file writes it. */
@@ -240,9 +240,34 @@ describe("build emits the semantic array", () => {
         probes: [${Array.from({ length: 6 }, (_, j) => `{ id: "p${j}", instructions: "${"x".repeat(600)}" }`).join(",")}],
         guidance: "g",
       });`).join("\n");
-    const r = await build(write("policies.mjs", `import { semanticPolicies } from "failproofai";\n${fat}`));
+    const r = await build(write("policies.mjs", `import { semanticPolicies } from "failproofai";\n${fat}`), [
+      "--repo", "FailproofAI/jev-policies",
+    ]);
     expect(r.exitCode).toBe(1);
     expect(r.lines.join("\n")).toMatch(new RegExp(`over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for`));
+  });
+
+  it("judges a pack from outside FailproofAI against what the built-in checks leave, not the whole request", async () => {
+    // Every machine spends BUILTIN_QUESTION_CHARS on the built-in checks before a
+    // third party's, so two ~7.7k checks published cleanly and the second was
+    // dropped on every install.
+    const check = (name: string) => `
+      semanticPolicies.add({
+        name: "${name}", title: "t", appliesTo: ["shell"], mode: "deny", userCanOverride: false,
+        probes: [${Array.from({ length: 6 }, (_, j) =>
+          `{ id: "p${j}", instructions: "${"x".repeat(600)}", criteria: { true: "${"t".repeat(300)}", false: "${"f".repeat(300)}" } }`).join(",")}],
+        guidance: "g",
+      });`;
+    const body = `import { semanticPolicies } from "failproofai";\n${check("xa-check-1")}\n${check("xa-check-2")}`;
+    const left = MAX_PACK_QUESTION_CHARS - BUILTIN_QUESTION_CHARS;
+
+    const r = await build(write("policies.mjs", body));
+    expect(r.exitCode, r.lines.join("\n")).toBe(1);
+    expect(r.lines.join("\n")).toMatch(new RegExp(`over the ${left} `));
+    expect(r.lines.join("\n")).toMatch(/built-in checks/);
+
+    const firstParty = await build(write("first-party-policies.mjs", body), ["--repo", "FailproofAI/jev-policies"]);
+    expect(firstParty.exitCode, firstParty.lines.join("\n")).toBe(0);
   });
 });
 

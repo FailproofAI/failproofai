@@ -251,7 +251,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(r.status).toBe("key-lacks-jev");
       if (r.status !== "key-lacks-jev") return;
       expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "shadow", timeoutMs: 3000 });
-      expect(r.problem).toContain("does not carry jev:evaluate");
+      expect(r.problem).toContain("no Jev key is stored");
       expect(r.problem).not.toMatch(/not connected/);
       expect(JSON.stringify(r)).not.toContain(KEY);
       expect(loadJevConfig()).toBeNull();

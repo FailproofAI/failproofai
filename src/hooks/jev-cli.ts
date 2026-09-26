@@ -315,14 +315,14 @@ function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } 
 }
 
 /** The one line `status` titles a connected machine whose key has no Jev with. */
-const KEY_LACKS_JEV_TITLE = "off — this machine's FailproofAI Cloud key does not carry Jev";
+const KEY_LACKS_JEV_TITLE = "off — no Jev key is stored for this machine's FailproofAI Cloud connection";
 
 /** The `key` row for a Cloud file, saying which of the three states the connection is in. */
 function cloudKeyRow(): string {
   const c = cloudConnection();
   if (c.keyCarriesJev) return CLOUD_KEY_SOURCE;
   return c.cloudConnected
-    ? `${CLOUD_KEY_SOURCE} — connected, but its key does not carry jev:evaluate`
+    ? `${CLOUD_KEY_SOURCE} — connected, no Jev key stored for it`
     : `${CLOUD_KEY_SOURCE} — this machine is not connected`;
 }
 
@@ -1191,7 +1191,7 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
   } else if (!sameProvider || typeof next.baseUrl !== "string") {
     return fail([
       credential.connected
-        ? "Not saved: this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate."
+        ? "Not saved: this machine is connected to FailproofAI Cloud, but no Jev key is stored for that connection."
         : "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
       "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
       "  failproofai config --token <key>",
@@ -1579,7 +1579,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
       stack(
         title("failproofai jev status", KEY_LACKS_JEV_TITLE, opts),
         note(
-          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine is connected to FailproofAI Cloud with a key that does not carry jev:evaluate. ` +
+          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and no Jev key is stored for this machine's connection: its key lacks jev:evaluate, or the last connect could not confirm that. ` +
             "Hooks run the regex policies exactly as before.",
           opts,
         ),
@@ -1589,13 +1589,13 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
             ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
             ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
             ["config", inspection.path],
-            ["key", `${CLOUD_KEY_SOURCE} — connected, but its key does not carry jev:evaluate`],
+            ["key", `${CLOUD_KEY_SOURCE} — connected, no Jev key stored for it`],
           ],
           opts,
         ),
         nextStep(
           "failproofai config --token <key>",
-          "Reconnect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page), or keep Jev off for good: failproofai jev setup --mode off",
+          "Run it again with this machine's key to re-check what it carries; a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page. Or keep Jev off for good: failproofai jev setup --mode off",
           opts,
         ),
         legacyNote,
@@ -1710,7 +1710,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
             : inspection.status === "not-connected"
               ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine is not connected to it with a key that carries jev:evaluate.`
               : inspection.status === "key-lacks-jev"
-                ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine's FailproofAI Cloud key does not carry jev:evaluate.`
+                ? `${inspection.path} sends Jev requests through FailproofAI Cloud, and no Jev key is stored for this machine's connection.`
                 : `${inspection.path} was refused — ${inspection.problem}.`;
     const code =
       inspection.status === "absent"

@@ -206,7 +206,7 @@ describe("the FailproofAI Cloud connection row", () => {
     const view = await getJevSettingsAction();
     expect(view).toMatchObject({ status: "key-lacks-jev", on: false, provider: "failproofai", token: null });
     expect(view.cloud).toMatchObject({ connected: true, jev: "no" });
-    expect(view.problem).toContain("does not carry jev:evaluate");
+    expect(view.problem).toContain("no Jev key is stored");
     expect(view.problem).not.toMatch(/not connected/);
     expect(view.fix).toContain("reconnect");
     secretFree(view);

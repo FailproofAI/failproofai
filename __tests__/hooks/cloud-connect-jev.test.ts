@@ -368,6 +368,11 @@ describe("connecting with a key that does not carry jev:evaluate", () => {
     expect(text).toContain("could not confirm this key's Jev permission");
     expect(text).toContain("config --token <key>");
     expect(text).not.toContain(OLD_TOKEN);
+    // Nothing on disk says whether this key carries Jev, so status must not
+    // claim it does not: re-running the same connect is the fix.
+    const status = (await runJevCommand(["status"], { render: { cols: 120, color: false } })).lines.join("\n");
+    expect(status).not.toContain("does not carry");
+    expect(status).toContain("config --token <key>");
   });
 
   it("an unanswered introspect with no Jev slot says so and writes nothing for Jev", async () => {

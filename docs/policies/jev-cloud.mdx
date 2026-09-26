@@ -62,7 +62,7 @@ failproofai jev test
 
 | `status` says | `status --json` | Meaning |
 | --- | --- | --- |
-| **off — this machine's FailproofAI Cloud key does not carry Jev** | `key-lacks-jev` | The machine is connected, but with a key without `jev:evaluate`. Reconnect with a **machine** key. |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | The machine is connected, but no Jev key is stored for it: the key lacks `jev:evaluate`, or the connect could not confirm it. Run `failproofai config --token <key>` again with the same key; if it lacks the permission, use a **machine** key. |
 | **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | There is no FailproofAI Cloud connection on this machine for the Jev key to belong to. |
 
 After `failproofai config --disconnect` there is no FailproofAI Cloud `jev.json` any more, so `status` simply reports Jev as off, with nothing configured. `status --json` carries the same facts (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`). `test` sends one live request and reports its latency and the Jev version that answered.

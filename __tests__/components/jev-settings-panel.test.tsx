@@ -495,18 +495,18 @@ describe("the FailproofAI Cloud route", () => {
         on: false,
         token: null,
         cloud: { ...CONNECTED, jev: "no" },
-        problem: "this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate",
+        problem: "this machine is connected to FailproofAI Cloud, but no Jev key is stored for that connection (its key lacks jev:evaluate, or the connect could not confirm it)",
         fix: "reconnect this machine with a key that carries jev:evaluate: failproofai config --token <key>",
       }),
     );
-    expect(screen.getByText(/off — this machine's FailproofAI Cloud key does not carry jev\. hooks run/)).toBeInTheDocument();
-    expect(screen.getByText("connected to Acme Inc (acme) · key does not carry jev")).toBeInTheDocument();
+    expect(screen.getByText(/off — no jev key is stored for this machine's FailproofAI Cloud connection\. hooks run/)).toBeInTheDocument();
+    expect(screen.getByText("connected to Acme Inc (acme) · no jev key stored")).toBeInTheDocument();
     expect(screen.queryByText(/not connected/)).toBeNull();
   });
 
   it("shows the connection row on a BYOK machine too, without taking over its form", async () => {
     renderPanel(configured({ cloud: { ...CONNECTED, jev: "no" } }));
-    expect(screen.getByText("connected to Acme Inc (acme) · key does not carry jev")).toBeInTheDocument();
+    expect(screen.getByText("connected to Acme Inc (acme) · no jev key stored")).toBeInTheDocument();
     expect(screen.getByLabelText(/endpoint url/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /turn jev off/i })).toBeInTheDocument();
   });

@@ -123,7 +123,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
       const human = await runJevCommand(["status"], RENDER);
       expect(human.exitCode).toBe(0);
-      expect(text(human)).toContain("off — this machine's FailproofAI Cloud key does not carry Jev");
+      expect(text(human)).toContain("off — no Jev key is stored for this machine's FailproofAI Cloud connection");
       expect(text(human)).toContain("config --token <key>");
       expect(text(human)).not.toMatch(/not connected/);
       const machine = await runJevCommand(["status", "--json"], RENDER);
@@ -149,7 +149,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       // "not connected".
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });
       const off = await runJevCommand(["status"], RENDER);
-      expect(text(off)).toContain("connected, but its key does not carry jev:evaluate");
+      expect(text(off)).toContain("connected, no Jev key stored for it");
       expect(text(off)).not.toMatch(/not connected/);
       expect(json(await runJevCommand(["status", "--json"], RENDER))).toMatchObject({ status: "off", cloudConnected: true, keyCarriesJev: false });
     });
@@ -252,7 +252,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
       const lacks = await runJevCommand(["setup", "--mode", "shadow"], RENDER);
       expect(lacks.exitCode, text(lacks)).toBe(0);
-      expect(text(lacks)).toContain("connected, but its key does not carry jev:evaluate");
+      expect(text(lacks)).toContain("connected, no Jev key stored for it");
       expect(text(lacks)).not.toContain("not connected");
       expect(text(lacks)).not.toContain("jev test");
       expect(text(lacks)).toContain("config --token <key>");

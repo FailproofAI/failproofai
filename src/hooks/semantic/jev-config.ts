@@ -944,8 +944,13 @@ export function inspectJevConfig(): JevConfigInspection {
   return { status: "ok", path, mode, keySource, config: r.value };
 }
 
-/** Why a Cloud file on a connected machine is off when the connection's key has no Jev (`key-lacks-jev`). */
-export const KEY_LACKS_JEV_PROBLEM = "this machine is connected to FailproofAI Cloud, but its key does not carry jev:evaluate";
+/**
+ * Why a Cloud file on a connected machine is off when no Jev key is stored for
+ * the connection (`key-lacks-jev`). Hedged: a connect whose introspect went
+ * unanswered clears the slot too, so nothing on disk says what the key carries.
+ */
+export const KEY_LACKS_JEV_PROBLEM =
+  "this machine is connected to FailproofAI Cloud, but no Jev key is stored for that connection (its key lacks jev:evaluate, or the connect could not confirm it)";
 
 /** Everything a validated config says except its key — copied field by field, so the key cannot ride along. */
 function routingOf(cfg: JevConfig): Omit<JevConfig, "apiKey"> {

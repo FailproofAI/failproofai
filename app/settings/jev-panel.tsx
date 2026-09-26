@@ -110,7 +110,7 @@ function fmtConnection(cloud: JevSettingsView["cloud"] | undefined): string {
       ? "key carries jev"
       : cloud.jev === "refused"
         ? "jev key refused — credentials.json is not owner-only"
-        : "key does not carry jev";
+        : "no jev key stored";
   return `connected to ${where} · ${jev}`;
 }
 
@@ -363,7 +363,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
                   : view.status === "not-connected"
                     ? "off — this machine is not connected to FailproofAI Cloud. hooks run the regex policies."
                     : view.status === "key-lacks-jev"
-                      ? "off — this machine's FailproofAI Cloud key does not carry jev. hooks run the regex policies."
+                      ? "off — no jev key is stored for this machine's FailproofAI Cloud connection. hooks run the regex policies."
                       : view.status === "key-missing"
                         ? // The CLI's "off in this shell": the key is read by whatever
                           // runs the hook, and this server's environment is not that.
@@ -429,7 +429,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
                     : "configured"
                 : cloudRoute
                   ? view.cloud?.connected
-                    ? "none — this machine's key does not carry jev"
+                    ? "none stored for this connection"
                     : "none — this machine is not connected"
                   : "none stored"}
             </dd>

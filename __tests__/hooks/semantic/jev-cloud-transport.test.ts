@@ -218,6 +218,7 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     [401, { error: "unauthorized" }],
     [403, { error: "forbidden", message: "this key does not carry jev:evaluate" }],
     [413, { error: "payload_too_large" }],
+    [422, { error: "request_rejected" }],
     [429, { error: "rate_limited" }],
     [502, { error: "upstream_error" }],
     [503, { error: "jev_unavailable" }],
@@ -305,6 +306,29 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
       for (const garbage of [null, undefined, "", "1.5", "-5", "later", "2026-09-25T12:00:10Z"]) {
         expect(retryAfterMs(garbage, now), String(garbage)).toBe(JEV_CLOUD_RETRY_AFTER_DEFAULT_MS);
       }
+    });
+
+    it("a 503 is an operator state: held back as http-503, a minute without a Retry-After", async () => {
+      reply = () => ({ status: 503, body: { error: "jev_unavailable" } });
+      expect((await failure(send())).code).toBe("http-503");
+      reply = answering;
+      clock += JEV_CLOUD_RETRY_AFTER_CAP_MS - 1;
+      const held = await failure(send());
+      // The stored cause, never a rate limit it was not.
+      expect(held.code).toBe("http-503");
+      expect(hits).toHaveLength(1);
+      clock += 2;
+      await send();
+      expect(hits).toHaveLength(2);
+
+      resetJevCloudCooldown();
+      hits.length = 0;
+      reply = () => ({ status: 503, body: { error: "jev_unavailable" }, headers: { "retry-after": "10" } });
+      await failure(send());
+      reply = answering;
+      clock += 10_001;
+      await send();
+      expect(hits).toHaveLength(2);
     });
 
     it("holds back only the endpoint that said it", async () => {

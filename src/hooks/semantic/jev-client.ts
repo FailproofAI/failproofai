@@ -19,7 +19,7 @@
  * TypeSafe's answer through with its `model`, so this route accepts only a
  * reported 1.13 model, never silence. Its documented statuses map like every
  * other route's: 402 `{"error":"out_of_credits"}` → `out-of-credits` (the body
- * never says "model execution failed"), 400/401/403/413/429/502/503 →
+ * never says "model execution failed"), 400/401/403/413/422/429/502/503 →
  * `http-<status>`, and a redirect is refused. After a 429 the route sends
  * nothing for as long as its `Retry-After` asks (capped; `cloudRetryAfter`).
  *

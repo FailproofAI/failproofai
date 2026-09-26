@@ -275,6 +275,12 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
   rg: "Grep",
   ls: "LS",
   web_fetch: "WebFetch",
+  // Copilot CLI documents `task` and `web_search`. Unmapped names pass
+  // through raw, so a policy matching toolName === "Task" silently never
+  // fires. `ask_user` is left unmapped: it has no filesystem or shell
+  // reach, so treating it as a no-op canonicalization is the safer call.
+  task: "Task",
+  web_search: "WebSearch",
 };
 
 /**

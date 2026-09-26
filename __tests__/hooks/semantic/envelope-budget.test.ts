@@ -1165,8 +1165,7 @@ describe("nothing can be hidden from Jev without the cut being reported", () => 
     const toolInput = typeof raw === "function" ? (raw as () => Record<string, unknown>)() : raw;
     const env = built(toolInput);
     const body = JSON.stringify(env.state);
-    // A shell comment is quarantined into its own field rather than hidden, so
-    // it is visible either way; everything else is either carried or reported.
+    // Everything is either carried or reported.
     if (!body.includes(MARK)) {
       expect({ label, requestCut: env.requestCut }).toEqual({ label, requestCut: true });
     }

@@ -295,20 +295,16 @@ describe("failures are fallbacks, never throws", () => {
     expect(out.final.decision).toBe("allow");
   });
 
-  it("removed shell comments are part of the call, and are carried whole", async () => {
-    // The comment text comes out of `command`, so it is charged to the CALL's
-    // budget and a cut of it would be a cut of the call. It has no cap of its
-    // own: `scanCommand` only reads the first MAX_SCAN_CHARS characters, so
-    // what it can report is already bounded, and a second cap here would only
-    // ever fire on an ordinary commented script. An earlier revision capped it
-    // at 600 characters against the CONTEXT budget, so a heredoc whose body
-    // lines start with `#` lost most of its text with `requestCut` false.
+  it("shell comments are part of the call, and are carried whole", async () => {
+    // Inside `command`, charged to the CALL's budget: a cut of them would be a
+    // cut of the call. An earlier revision capped them at 600 characters
+    // against the CONTEXT budget, so a heredoc whose body lines start with `#`
+    // lost most of its text with `requestCut` false.
     const comments = "approved ".repeat(600);
     const review = await startJevReview(CFG, bash(`rm -rf build # ${comments}`)).review;
     expect(review).toMatchObject({ kind: "answered", truncated: false, requestCut: false });
-    const sent = JSON.stringify(transportCalls[0].request.state);
-    expect(sent).toContain("approved approved approved");
-    expect(sent).toContain("shell_comments_removed");
+    const state = transportCalls[0].request.state as { agent_request: { input: { command: string } } };
+    expect(state.agent_request.input.command).toContain("approved approved approved");
   });
 
   it("a long human prompt truncates the envelope too (§4)", async () => {

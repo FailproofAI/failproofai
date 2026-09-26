@@ -760,6 +760,19 @@ export function displayEndpoint(endpoint: string): string {
   }
 }
 
+/**
+ * Why a URL given where a base belongs is refused, in one sentence shared by
+ * `jev setup` and the dashboard's save, built from the transport's own URL so
+ * neither describes a request it does not make: a `/systemone` URL is used as
+ * it is (never doubled); any other would be asked at `<url>/systemone`.
+ */
+export function endpointAsBaseReason(given: string): string {
+  const asked = nativeEndpoint(given);
+  return asked === new URL(given).toString()
+    ? "That is already the Jev endpoint itself: this field takes the base it sits under (where <base>/models is read), and failproofai adds /systemone on its own."
+    : `A Jev request goes to <base>/systemone, and failproofai appends that itself, so ${displayEndpoint(given)} would be asked at ${displayEndpoint(asked)}.`;
+}
+
 // ── The model list ───────────────────────────────────────────────────────────
 
 /**

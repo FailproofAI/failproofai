@@ -449,6 +449,23 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(onDisk().mode).toBe("shadow");
   });
 
+  // The client never appends a second /systemone, so "adds /systemone to the
+  // base itself" implied a doubling that does not happen — the CLI's wording.
+  it("says a /systemone URL is already the endpoint, not that it would be doubled", async () => {
+    const res = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: "https://jev.internal.example/v1/systemone" }),
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.problem).toContain("already the Jev endpoint itself");
+    expect(res.problem).not.toMatch(/adds \/systemone to the base itself|systemone\/systemone/);
+    expect(res.problem).toContain("https://jev.internal.example/v1 instead");
+    expect(existsSync(configPath())).toBe(false);
+
+    const models = await saveJevConfigAction(input({ provider: "custom", baseUrl: "https://jev.internal.example/v1/models" }));
+    if (!models.ok) expect(models.problem).toContain("would be asked at https://jev.internal.example/v1/models/systemone");
+  });
+
   it("still re-saves an older file whose stored base already ends in /systemone", async () => {
     // It routes correctly (no second /systemone is appended) and the loader takes
     // it, so the check is for a URL typed here, not for the one on disk — the

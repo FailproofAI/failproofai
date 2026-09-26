@@ -118,6 +118,7 @@ import {
   validateBaseUrl,
   validateJevConfig,
 } from "@/src/hooks/semantic/jev-config";
+import { endpointAsBaseReason } from "@/src/hooks/semantic/jev-client";
 import { getJevSettingsAction, type JevSettingsView } from "./get-jev-config";
 
 /**
@@ -333,7 +334,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     if (asEndpoint) {
       return {
         ok: false,
-        problem: `that url is an endpoint, not an api base — its path ends in ${asEndpoint.suffix}, and failproofai adds /systemone to the base itself. use ${baseUrlWithoutQuery(asEndpoint.base).url} instead.`,
+        problem: `that url is an endpoint, not an api base — its path ends in ${asEndpoint.suffix}. ${endpointAsBaseReason(url.value)} Use ${baseUrlWithoutQuery(asEndpoint.base).url} instead.`,
       };
     }
   }

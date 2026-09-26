@@ -435,6 +435,19 @@ describe("disconnecting", () => {
     expect(text).not.toContain(BYOK_KEY);
   });
 
+  // `--mode off` is "the switch that lasts" (jev-cloud.mdx): deleting it here
+  // made the next connect write a fresh shadow file, and Jev came back on.
+  it("keeps a Cloud jev.json switched off, so reconnecting leaves Jev off", async () => {
+    await connect(withPermissions(...MACHINE_PRESET));
+    const before = seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "off" });
+    const r = runDisconnectCommand();
+    expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+    expect(readCredentials().jev).toBeUndefined();
+    expect(r.lines.join("\n")).toContain("stays switched off");
+    await connect(withPermissions(...MACHINE_PRESET));
+    expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
+  });
+
   it("keeps a jev.json it cannot read", async () => {
     const before = seedJev("not json at all");
     runDisconnectCommand();

@@ -9,7 +9,7 @@
  * decisions only, so it stores the key and says Jev is available, and
  * `jev setup --provider failproofai` is the opt-in. `config --disconnect`
  * clears the slot and deletes `jev.json` only when that file names the Cloud
- * provider.
+ * provider and is not switched off.
  *
  * # Never overwrite
  *
@@ -27,7 +27,9 @@
  * Disconnect removes the Cloud key, so a Cloud `jev.json` would be left naming a
  * route with no key — harmless (`not-connected`, Jev off) but a lie on every
  * status screen. A BYOK file keeps working without the Cloud and is not the
- * Cloud's to delete, so it stays; so does a file this build cannot read. The
+ * Cloud's to delete, so it stays; so does a file this build cannot read, and a
+ * Cloud file switched off — `--mode off` is the owner's opt-out, and deleting
+ * it would let the next connect write a fresh shadow file. The
  * file is moved aside before it is judged, so the file judged is the file
  * deleted — see `removeCloudJevConfig`.
  *
@@ -183,6 +185,8 @@ function tightenDir(dir: string): void {
 export type CloudJevConfigRemoval =
   | { status: "removed"; path: string }
   | { status: "absent"; path: string }
+  /** The Cloud's `jev.json`, switched off: left in place so the opt-out outlives a reconnect. */
+  | { status: "kept-off"; path: string }
   /** A `jev.json` that is not the Cloud's — BYOK, or unreadable — left in place. */
   | { status: "kept"; path: string; provider: string | null }
   /**
@@ -200,7 +204,8 @@ export type CloudJevConfigRemoval =
     };
 
 /**
- * Delete `jev.json` iff it names the FailproofAI Cloud provider. Never throws,
+ * Delete `jev.json` iff it names the FailproofAI Cloud provider and is not
+ * switched off (`mode: "off"`). Never throws,
  * and never deletes a file it has not judged.
  *
  * # Moved aside, then judged
@@ -241,8 +246,8 @@ export function removeCloudJevConfig(): CloudJevConfigRemoval {
     return { status: "error", path, problem: `could not remove ${path} (${code ?? "error"})` };
   }
 
-  const provider = providerOf(aside);
-  if (provider === JEV_CLOUD_PROVIDER) {
+  const { provider, off } = fieldsOf(aside);
+  if (provider === JEV_CLOUD_PROVIDER && !off) {
     try {
       unlinkSync(aside);
       return { status: "removed", path };
@@ -253,7 +258,7 @@ export function removeCloudJevConfig(): CloudJevConfigRemoval {
 
   // Not the Cloud's: back where it was, and never over a file written since.
   const back = putBack(aside, path, st.mode & 0o777);
-  if (back === "restored") return { status: "kept", path, provider };
+  if (back === "restored") return provider === JEV_CLOUD_PROVIDER ? { status: "kept-off", path } : { status: "kept", path, provider };
   if (back === "occupied") return { status: "set-aside", path, provider, setAside: aside };
   return {
     status: "error",
@@ -335,17 +340,18 @@ function discard(aside: string): void {
   }
 }
 
-/** The `provider` a config file names, read without following links or blocking on a FIFO; null when unreadable. */
-function providerOf(file: string): string | null {
+/** The `provider` a config file names, and whether it is switched off, read without following links or blocking on a FIFO. */
+function fieldsOf(file: string): { provider: string | null; off: boolean } {
+  const none = { provider: null, off: false };
   let fd: number;
   try {
     fd = openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0));
   } catch {
-    return null;
+    return none;
   }
   try {
     const st = fstatSync(fd);
-    if (!st.isFile() || st.size > MAX_JEV_CONFIG_BYTES) return null;
+    if (!st.isFile() || st.size > MAX_JEV_CONFIG_BYTES) return none;
     const buf = Buffer.alloc(st.size);
     let off = 0;
     while (off < buf.length) {
@@ -354,10 +360,10 @@ function providerOf(file: string): string | null {
       off += n;
     }
     const parsed: unknown = JSON.parse(buf.subarray(0, off).toString("utf8"));
-    const provider = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>).provider : undefined;
-    return typeof provider === "string" ? provider : null;
+    const obj = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    return { provider: typeof obj.provider === "string" ? obj.provider : null, off: obj.mode === "off" };
   } catch {
-    return null;
+    return none;
   } finally {
     try {
       closeSync(fd);

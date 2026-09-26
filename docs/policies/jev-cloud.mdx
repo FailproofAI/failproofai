@@ -67,7 +67,7 @@ failproofai jev test
 | **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | The machine is connected, but no Jev key is stored for it: the key lacks `jev:evaluate`, or the connect could not confirm it. Run `failproofai config --token <key>` again with the same key; if it lacks the permission, use a **machine** key. |
 | **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | There is no FailproofAI Cloud connection on this machine for the Jev key to belong to. |
 
-After `failproofai config --disconnect` there is no FailproofAI Cloud `jev.json` any more, so `status` simply reports Jev as off, with nothing configured. `status --json` carries the same facts (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`). `test` sends one live request and reports its latency and the Jev version that answered.
+After `failproofai config --disconnect` there is no FailproofAI Cloud `jev.json` any more (unless it was switched off, which is kept), so `status` simply reports Jev as off. `status --json` carries the same facts (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`). `test` sends one live request and reports its latency and the Jev version that answered.
 
 The dashboard's **Settings → Jev** panel also shows the **FailproofAI Cloud connection**: which organization the machine reports into and whether its key carries Jev. It is read from the machine's own files, with no network call.
 
@@ -111,6 +111,6 @@ Every one of these falls back to your policies' result for that call, and is rec
 | --- | --- |
 | `failproofai jev setup --mode off` | Keep the config; Jev is not asked. **This is the switch that lasts:** connecting again never rewrites an existing `jev.json`, so Jev stays off until you switch it back with `--mode shadow`. |
 | `failproofai jev remove` | Delete `~/.failproofai/jev.json`; Jev is off — until the next `failproofai config --token` with a key that carries `jev:evaluate`, which finds no `jev.json` and turns Jev on again in shadow mode (unless it runs with `--no-transcripts`). To keep it off, use `--mode off`. |
-| `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud. A `jev.json` for your own endpoint stays. |
+| `failproofai config --disconnect` | Disconnect the machine: the key is removed, and so is `jev.json` when it names FailproofAI Cloud and is not switched off. A `jev.json` for your own endpoint stays, and so does one switched off, so Jev stays off when you connect again. |
 
 From the next tool call, hooks run the regex policies exactly as before.

@@ -330,7 +330,8 @@ export function runDisconnectCommand(): CommandResult {
   const removedIngest = clearIngestCredential();
   // And spending: the Jev key goes with the rest, so no tool call after this
   // one is charged to an org this machine has left. The Cloud's own jev.json
-  // goes too — it names a route that now has no key — and a BYOK one stays,
+  // goes too — it names a route that now has no key — unless it is switched
+  // off, the owner's opt-out that must outlive a reconnect; a BYOK one stays,
   // because it never depended on the Cloud and is not the Cloud's to delete.
   const removedJevKey = clearJevCloudCredential();
   const jevConfig = removeCloudJevConfig();
@@ -357,6 +358,8 @@ export function runDisconnectCommand(): CommandResult {
               : `  ! ${jevConfig.problem}.`,
             ...(jevConfig.setAside ? [`    To put it back: mv ${jevConfig.setAside} ${jevConfig.path}`] : []),
           ]
+        : jevConfig.status === "kept-off"
+          ? [`  Jev stays switched off: ${jevConfig.path} (mode off) was kept, so connecting again leaves it off.`]
         : jevConfig.status === "kept" && jevConfig.provider !== null
           ? [`  ${jevConfig.path} (provider ${jevConfig.provider}) is your own Jev setup and was left in place.`]
           : jevConfig.status === "set-aside"

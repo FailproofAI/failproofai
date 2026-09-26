@@ -589,7 +589,8 @@ describe("block-read-outside-cwd policy", () => {
     expect(result.decision).toBe("allow");
   });
 
-  it.each(["cd // && cat etc/shadow", "cd /// && ls etc", "ls //"])(
+  // The last one is `cd //` split by a line continuation: bash joins the lines.
+  it.each(["cd // && cat etc/shadow", "cd /// && ls etc", "ls //", "cd \\\n// && cat etc/shadow"])(
     "still denies `%s` — a slash-run outside comment position is the root",
     async (command) => {
       const ctx = makeCtx({ toolName: "Bash", toolInput: { command }, session: { cwd: "/home/user/project" } });

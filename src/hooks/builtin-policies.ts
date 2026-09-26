@@ -2293,10 +2293,11 @@ function extractAbsolutePaths(command: string): string[] {
     while ((m = pathRe.exec(s)) !== null) {
       let p = m[0];
       // A `//` that opens a line after the first (a heredoc body) is a comment
-      // marker. Anywhere else a slash-run is the root: `cd // && cat etc/shadow`.
+      // marker. Anywhere else a slash-run is the root: `cd // && cat etc/shadow`,
+      // and `cd \<newline>//`, which bash joins into one line.
       if (/^\/{2,}$/.test(p)) {
         const nl = s.lastIndexOf("\n", m.index - 1);
-        if (nl !== -1 && /^[ \t]*$/.test(s.slice(nl + 1, m.index))) continue;
+        if (nl !== -1 && s[nl - 1] !== "\\" && /^[ \t]*$/.test(s.slice(nl + 1, m.index))) continue;
       }
       if (p === "~") p = homedir();
       else if (p.startsWith("~/")) p = join(homedir(), p.slice(2));

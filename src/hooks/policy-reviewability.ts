@@ -36,7 +36,8 @@
  *   the honest answer to "what could Jev clear on this machine" spans all of
  *   them.
  * - **Builtins** — this build's catalog, under the same migration shim the
- *   handler applies: they enforce only while no pack is installed. The
+ *   handler applies: they enforce only while no pack that carries regex
+ *   policies is installed (a pack of Jev checks alone leaves them on). The
  *   `alwaysOn` guard is counted always, because it registers always (and is
  *   hard always, so it can only ever lower the ratio).
  * - **Cloud assignments** — the active deployment's records, whose authority is
@@ -61,7 +62,7 @@ import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { hasRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
@@ -177,7 +178,8 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
    */
   let reviewers: ReadonlySet<string> = new Set();
   try {
-    packsInstalled = hasInstalledPacks();
+    // The shim's own test: a pack of Jev checks alone leaves the builtins on.
+    packsInstalled = hasRegexPacks();
     const packs = readInstalledPacks().packs;
     for (const pack of packs) {
       const selected = pack.enabled;
@@ -201,7 +203,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     config = { enabledPolicies: [] };
   }
   // The migration shim, exactly as `handler.ts` applies it: this build's
-  // builtins enforce only until a pack is installed.
+  // builtins enforce until a pack that carries regex policies is installed.
   const legacyEnabled = new Set(packsInstalled ? [] : config.enabledPolicies.map(normalizePolicyName));
   for (const policy of POLICY_CATALOG) {
     if (policy.alwaysOn || legacyEnabled.has(normalizePolicyName(policy.name))) records.push(policy);

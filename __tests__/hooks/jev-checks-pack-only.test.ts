@@ -12,7 +12,8 @@
  * `config` connect, `jev setup` and `jev status`, human and `--json`.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hooks/jev-cli";
@@ -23,7 +24,10 @@ import {
   isReservedClaim,
   reviewerNamesFor,
 } from "../../src/hooks/effective-reviewers";
-import { parsePackSemanticPolicy, type SemanticManifestEntry } from "../../src/hooks/pack-manifest";
+import { hasInstalledPacks, hasRegexPacks, parsePackSemanticPolicy, type SemanticManifestEntry } from "../../src/hooks/pack-manifest";
+import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
+import { effectiveAuthority } from "../../src/hooks/policy-types";
+import { reviewableProblem, surveyReviewableCoverage } from "../../src/hooks/policy-reviewability";
 import { SEMANTIC_REVIEWER_NAMES } from "../../src/hooks/policy-authority";
 import { SEMANTIC_POLICIES } from "../../src/hooks/semantic/policies";
 import { NO_POLICIES, semanticPoliciesFromPacks } from "../../src/hooks/semantic/pack-policies";
@@ -223,5 +227,87 @@ describe("config connect names the pack when it turns Jev on idle", () => {
     const outcome = await connect();
     expect(outcome.jev?.noChecks).toBeUndefined();
     expect(describeOutcome(outcome, "machine-1", URL_).join("\n")).not.toContain(JEV_CHECKS_PACK_COMMAND);
+  });
+});
+
+describe("a pack of Jev checks alone does not replace this build's regex policies", () => {
+  const PROJECT = () => join(root, "project");
+  const writeConfig = (config: Record<string, unknown>) =>
+    writeFileSync(join(process.env.FAILPROOFAI_HOME!, "policies-config.json"), JSON.stringify(config));
+
+  async function oneEvent(command: string) {
+    const { evaluateHookEvent } = await import("../../src/hooks/handler");
+    const store = await import("../../src/hooks/hook-activity-store");
+    store._resetForTest(join(root, "activity", String(Math.random())));
+    try {
+      const outcome = await evaluateHookEvent(
+        "PreToolUse",
+        "claude",
+        JSON.stringify({ session_id: "s", cwd: PROJECT(), hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } }),
+        { awaitTelemetryFlush: false },
+      );
+      const { getAllPolicies } = await import("../../src/hooks/policy-registry");
+      return { outcome, registered: new Map(getAllPolicies().map((p) => [p.name, p])) };
+    } finally {
+      store._resetForTest();
+    }
+  }
+
+  it("with jev-policies alone installed, enabledPolicies still enforces: rm -rf ~ is denied by block-rm-rf", async () => {
+    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+    installJevPoliciesPack(packRoot);
+    expect(hasInstalledPacks()).toBe(true);
+    expect(hasRegexPacks()).toBe(false);
+
+    const { outcome, registered } = await oneEvent("rm -rf ~");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-rm-rf");
+    // And the fifteen marked reviewable are reviewable: the pack supplies the checks they name.
+    const reviewable = POLICY_CATALOG.filter((p) => effectiveAuthority(p) === "reviewable");
+    expect(reviewable).toHaveLength(15);
+    for (const p of reviewable) {
+      const r = registered.get(`failproofai/${p.name}`);
+      expect(r?.authority, p.name).toBe("reviewable");
+      expect(r?.reviewedBy, p.name).toEqual(p.reviewedBy);
+    }
+  });
+
+  it("counts the fifteen as reviewable in jev status, with jev-policies alone installed", async () => {
+    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+    installJevPoliciesPack(packRoot);
+    const coverage = surveyReviewableCoverage(PROJECT());
+    expect(coverage).toMatchObject({ enabled: POLICY_CATALOG.length, reviewable: 15, jevChecks: 16 });
+    expect(reviewableProblem(coverage)).toBeNull();
+
+    await runJevCommand(["setup", "--provider", "typesafe", "--key-stdin"], withKey(KEY));
+    const out = text(await runJevCommand(["status"], RENDER));
+    expect(out).toContain(`15 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+    expect(out).not.toContain(JEV_CHECKS_PACK_COMMAND);
+  });
+
+  it("a pack that carries regex policies still replaces them", async () => {
+    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+    // A pack whose manifest declares one regex policy. Its artifact registers
+    // nothing, so the machine fails closed on it — beside the point here,
+    // which is only that this build's own policies stopped registering.
+    const artifact = "export {};\n// regex pack\n";
+    const digest = createHash("sha256").update(artifact).digest("hex");
+    mkdirSync(join(packRoot, "artifacts"), { recursive: true });
+    writeFileSync(join(packRoot, "artifacts", `${digest}.mjs`), artifact);
+    installJevPoliciesPack(packRoot, [
+      {
+        id: "acme/guards",
+        version: "1.0.0",
+        source: "github:acme/guards@v1.0.0",
+        entry: `artifacts/${digest}.mjs`,
+        sha256: digest,
+        policies: [{ name: "block-refunds", description: "d", category: "C", defaultEnabled: true, match: { events: ["PreToolUse"] } }],
+      },
+    ]);
+    expect(hasRegexPacks()).toBe(true);
+
+    const { registered } = await oneEvent("rm -rf ~");
+    expect(registered.has("failproofai/block-rm-rf")).toBe(false);
+    expect(surveyReviewableCoverage(PROJECT()).enabled).toBeLessThan(POLICY_CATALOG.length);
   });
 });

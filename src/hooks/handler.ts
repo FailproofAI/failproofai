@@ -56,7 +56,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
-import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
+import { hasRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
@@ -569,9 +569,11 @@ export async function evaluateHookEvent(
       // The second argument is the migration shim, not a feature. A machine that
       // upgraded into this build has `enabledPolicies` and no pack installed
       // yet, and it must not lose enforcement in the gap before `failproofai
-      // update` runs. It disappears for that machine the moment a pack is
-      // installed, and never fires for a machine set up by this version.
-      const packsInstalledHere = hasInstalledPacks();
+      // update` runs. It disappears for that machine the moment a pack that
+      // carries REGEX policies is installed, and never fires for a machine set
+      // up by this version. A pack of Jev checks alone (jev-policies) leaves it
+      // in place: it replaces no regex policy (`hasRegexPacks`).
+      const packsInstalledHere = hasRegexPacks();
       const legacyNames =
         activePause || packsInstalledHere ? [] : config.enabledPolicies;
       // `alwaysOn` policies bypass the enabled set inside `registerBuiltinPolicies`,

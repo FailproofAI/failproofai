@@ -54,6 +54,8 @@ vi.mock("../../src/hooks/pack-store", () => ({
 
 vi.mock("../../src/hooks/pack-manifest", () => ({
   hasInstalledPacks: vi.fn(() => false),
+  // The shim's own test: only a pack carrying regex policies replaces the builtins.
+  hasRegexPacks: vi.fn(() => false),
   readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
 }));
 

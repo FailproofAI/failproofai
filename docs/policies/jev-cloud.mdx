@@ -19,7 +19,7 @@ Jev asks only the checks your **installed packs** supply. FailproofAI's own sixt
 failproofai policies add FailproofAI/jev-policies
 ```
 
-With Jev configured and no pack that supplies a check, Jev is idle: it asks nothing and hooks behave exactly as without a Jev config. `jev setup`, `config` and `jev status` print that command when this is the case, and `jev status --json` reports `"jevChecks": { "idle": true, … }`. Nothing is installed for you.
+With Jev configured and no pack that supplies a check, Jev is idle: it asks nothing and hooks behave exactly as without a Jev config. `jev setup`, `config` and `jev status` print that command when this is the case, and `jev status --json` reports `"jevChecks": { "idle": true, … }`. Nothing is installed for you. The pack carries Jev checks only, no regex policies, so installing it leaves the policies you already enforce exactly as they are — including this build's built-in ones, which a pack replaces only when it carries regex policies of its own.
 </Note>
 
 ## Turn it on

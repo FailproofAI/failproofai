@@ -103,7 +103,7 @@ Scopes, parameters, and the files these commands write are covered in [local con
 
 `SHA256SUMS` ships in the same release as the artifact, so it is **not** a signature and proves nothing about who published it. What it does prove is that the bytes are the ones that release published — and because the digest is recorded when you add the pack and re-verified before every import, a pack cannot change under your machine afterwards. A repository that retags or replaces an asset stops loading instead of quietly running something else.
 
-At install time the pack is also **imported once** and checked against its own manifest. A pack whose artifact does not parse, or that registers something other than what it declares, is refused before anything is activated — rather than installing cleanly and failing on your next tool call.
+At install time the pack is also **imported once** and checked against its own manifest. A pack whose artifact does not parse, or that registers something other than what it declares, is refused before anything is activated — rather than installing cleanly and failing on your next tool call. So is a pack whose id claims the `FailproofAI/` namespace but whose release is not in a FailproofAI repository.
 
 ## When a pack will not load
 

@@ -45,6 +45,7 @@ import {
   parsePackSemanticPolicy,
   readInstalledPacks,
 } from "./pack-manifest";
+import { isFirstPartyPack } from "./effective-reviewers";
 import type { ResolvedPack, SemanticManifestEntry } from "./pack-manifest";
 import type { InstalledPackRecord } from "./pack-manifest";
 import type { PolicyCatalogEntry } from "./policy-types";
@@ -1016,6 +1017,16 @@ export async function addPack(
           ? `That is the newest release of ${spec.owner}/${spec.repo}, so the release and the pack ` +
             `disagree at the source — ask the publisher to ${fix}.`
           : `Name the tag whose manifest says ${fetched.version}, or fix the pack: ${fix}.`),
+    );
+  }
+  // The id is self-declared, so without this any release could install as a
+  // FailproofAI pack: labelled FailproofAI's own wherever verdicts are shown,
+  // and squatting the id the real pack then cannot take. Owner only — an id may
+  // otherwise differ from its repository (`publish --id`).
+  if (/^failproofai\//i.test(fetched.id) && !isFirstPartyPack({ source: formatPackSpec(spec) })) {
+    throw new Error(
+      `${fetched.id} was not installed: the FailproofAI/ namespace is reserved for releases from ` +
+        `github.com/FailproofAI, and this one came from ${spec.owner}/${spec.repo}.`,
     );
   }
   const available = fetched.policies.map((p) => p.name);

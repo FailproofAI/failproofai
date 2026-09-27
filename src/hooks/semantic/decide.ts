@@ -160,6 +160,26 @@ export function everyTargetNamed(scan: TargetScan, userSaid: ReadonlyArray<strin
 }
 
 /**
+ * True when the user's words name SOME of the call's targets but not all:
+ * they drew a line and the call reaches past it. Naming none is not this — a
+ * goal ("fix the failing tests") names no path at all.
+ */
+export function partlyNamed(scan: TargetScan, userSaid: ReadonlyArray<string>): boolean {
+  if (userSaid.length === 0 || scan.groups.length < 2) return false;
+  const said = userSaid.join("\n").toLowerCase();
+  let named = 0;
+  for (const g of scan.groups) {
+    for (const t of g) {
+      if (said.includes(t)) {
+        named++;
+        break;
+      }
+    }
+  }
+  return named > 0 && named < scan.groups.length;
+}
+
+/**
  * True when the user's own words name at least one of `targets`. The deciders
  * do not use this any-one check — see {@link everyTargetNamed}.
  */
@@ -362,7 +382,9 @@ export interface DecideV1Options {
  *   softened by neither route: see `ScannedCommand.complete` in `facts.ts`.
  * - Otherwise, the call is a step toward the human's task (`task_step`) and
  *   reaches no further: a warn-level outcome is cleared and a block is
- *   softened to a warning. A goal never licenses a block on its own.
+ *   softened to a warning. A goal never licenses a block on its own. On a
+ *   shell command whose targets the human named only in part, this route
+ *   does not apply either.
  * - Policies with `userCanOverride: false` are never cleared or softened.
  * - Nothing fired, but the call reaches beyond the task, is not a step toward
  *   it, and some "does it do X" probe is at least half-raised: warn.
@@ -387,10 +409,11 @@ export function decideV1(
   const beyond = num("beyond_task");
   let scan: TargetScan | null = null;
   const targetScan = (): TargetScan => (scan ??= scanTargets(toolInput));
+  const evidenceSaid = agentLastMessage ? [...userSaid, agentLastMessage] : userSaid;
   const targetOk = (): { ok: boolean; named: boolean } => {
     const s = targetScan();
     if (s.groups.length === 0) return { ok: true, named: false };
-    const named = everyTargetNamed(s, agentLastMessage ? [...userSaid, agentLastMessage] : userSaid);
+    const named = everyTargetNamed(s, evidenceSaid);
     return { ok: named || userSaidCut, named };
   };
 
@@ -423,7 +446,20 @@ export function decideV1(
       const target = targetOk();
       if (target.ok) return { ...base, targetNamedByUser: target.named, verdict: "overridden", intent: "op-requested" };
     }
-    if (taskClears && task !== null && task >= t.taskStep && beyond !== null && beyond < t.taskBeyondMax) {
+    // The task-step route reaches `combine.ts` as a clear too — a warning it
+    // leaves behind clears a reviewable regex deny. It is consent by GOAL, so
+    // a shell command whose targets the human never named still rides on it
+    // ("fix the failing tests" → `rm -rf node_modules`). But once the human
+    // HAS named targets, they drew the line: a call reaching past it is not
+    // softened. After "clean the build", `rm -rf build/ ~/important` is not.
+    if (
+      taskClears &&
+      task !== null &&
+      task >= t.taskStep &&
+      beyond !== null &&
+      beyond < t.taskBeyondMax &&
+      !(typeof toolInput.command === "string" && !userSaidCut && partlyNamed(targetScan(), evidenceSaid))
+    ) {
       if (fired === "instruct") return { ...base, verdict: "overridden", intent: "task-step" };
       return { ...base, verdict: "instruct", intent: "downgraded-task-step" };
     }

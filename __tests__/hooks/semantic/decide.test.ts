@@ -282,6 +282,27 @@ describe("semantic/decide", () => {
       expect(everyTargetNamed(scanTargets({ command }), ["clean the build and ~/important"])).toBe(true);
     });
 
+    // A task-step softening is a clear too: the warning it leaves clears a
+    // reviewable regex deny in combine.ts. On a shell command whose targets
+    // the human named only in part, it does not apply.
+    it("the task-step route does not soften a deny past the targets the human named", () => {
+      const taskOnly = { ...v1Answers, op_requested: 0.2, task_step: 0.9 };
+      const v = decideV1([deletion], taskOnly, { command: "rm -rf build/ ~/important" }, ["clean the build"], null);
+      expect(v.decision).toBe("deny");
+      expect(v.outcomes[0].intent).toBeUndefined();
+      // The legitimate softening still happens when every target is named.
+      const ok = decideV1([deletion], taskOnly, { command: "rm -rf build/" }, ["clean the build"], null);
+      expect(ok.decision).toBe("instruct");
+      expect(ok.outcomes[0]).toMatchObject({ verdict: "instruct", intent: "downgraded-task-step" });
+    });
+
+    it("a goal that names no target still softens by task step", () => {
+      const taskOnly = { ...v1Answers, op_requested: 0.2, task_step: 0.9 };
+      const v = decideV1([deletion], taskOnly, { command: "rm -rf node_modules" }, ["fix the failing tests"], null);
+      expect(v.decision).toBe("instruct");
+      expect(v.outcomes[0]).toMatchObject({ verdict: "instruct", intent: "downgraded-task-step" });
+    });
+
     it("the legitimate clear still works", () => {
       const command = "rm -rf build/";
       const v1 = decideV1([deletion], v1Answers, { command }, ["clean the build"], null);

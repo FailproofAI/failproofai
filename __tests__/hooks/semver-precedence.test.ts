@@ -72,8 +72,11 @@ describe("compareSemver precedence", () => {
 
   it("makes a prerelease LOWER than its own release, which is the case that matters", () => {
     expect(compareVersions("1.0.7-beta.0", "1.0.7")).toBe(-1);
-    // And therefore: this branch's own version does NOT satisfy a 1.0.7 minimum.
-    expect(compareVersions(packageVersion, "1.0.7")).toBe(-1);
+    // And therefore: a prerelease build does NOT satisfy a minimum of its own
+    // release. Derived from the version rather than pinned to a line, which the
+    // 1.0.7 -> 1.0.8-beta.0 move broke.
+    const [release, prerelease] = packageVersion.split("-", 2);
+    if (prerelease) expect(compareVersions(packageVersion, release)).toBe(-1);
     // While it DOES satisfy the minimum FailproofAI/jev-policies declares, which
     // is the comparison with something riding on it: that pack's manifest says
     // `minCliVersion: 1.0.7-beta.0`, and a build that failed this check would

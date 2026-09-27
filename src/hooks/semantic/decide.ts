@@ -83,6 +83,18 @@ export function targetTokens(toolInput: Record<string, unknown>): Set<string> {
         for (const t of tokensOf(tok)) out.add(t);
       }
     }
+    // Empty reads as "names no target", and lets consent rest on Jev's answers
+    // alone. But the scanner is not bash — a `#` inside `$'…'`, `${x:- # }` or
+    // backticks ends its view early, and it reads only MAX_SCAN_CHARS — so an
+    // empty scan may just have stopped before the target. Then judge the words
+    // as written. Only ever stricter: an empty set already passed.
+    if (out.size === 0) {
+      for (const piece of command.split(/[;&|\n]+/)) {
+        for (const tok of piece.trim().split(/\s+/).slice(1)) {
+          if (!tok.startsWith("-")) for (const t of tokensOf(tok)) out.add(t);
+        }
+      }
+    }
     return out;
   }
   for (const [key, value] of Object.entries(toolInput)) {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { decide, targetNamedByUser, targetTokens, DEFAULT_THRESHOLDS } from "../../../src/hooks/semantic/decide";
+import { decide, decideV1, targetNamedByUser, targetTokens, DEFAULT_THRESHOLDS } from "../../../src/hooks/semantic/decide";
 import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
 import type { SemanticPolicy } from "../../../src/hooks/semantic/types";
 
@@ -176,6 +176,42 @@ describe("semantic/decide", () => {
 
     it("never passes with no recorded human message", () => {
       expect(targetNamedByUser(new Set(), [])).toBe(false);
+    });
+
+    // The scanner is not bash: each of these puts a `#` it reads as a comment
+    // where bash does not, so the scan ended before the `rm` — and an empty
+    // target set reads as "names no target", which let consent rest on Jev's
+    // answers alone. Same answers, same prompt: all three must decide alike.
+    const fakeComment = [
+      "rm -rf ~/work/other-repo",
+      "echo $'\\' # '; rm -rf ~/work/other-repo",
+      "echo ${x:- # }; rm -rf ~/work/other-repo",
+      "echo `echo # `; rm -rf ~/work/other-repo",
+    ];
+    it.each(fakeComment)("a fake-comment prefix cannot empty the targets: %s", (command) => {
+      expect([...targetTokens({ command })]).toContain("other-repo");
+      const said = ["Please clean the build directory"];
+      const v1 = decideV1(
+        [deletion],
+        { "destructive-deletion.destroys": 0.95, "destructive-deletion.irreplaceable": 0.9, injection: 0.05, task_step: 0.7, op_requested: 0.85, beyond_task: 0.4 },
+        { command },
+        said,
+        null,
+      );
+      expect(v1.decision).toBe("deny");
+      const v0 = decide(
+        [deletion],
+        { "destructive-deletion.destroys": 0.95, "destructive-deletion.irreplaceable": 0.9, "destructive-deletion.user_asked": 0.9, scope: 0.9, injection: 0.05 },
+        { command },
+        said,
+      );
+      expect(v0.decision).toBe("deny");
+    });
+
+    it("a command that really names no target still rides on the scope answer", () => {
+      expect(targetTokens({ command: "git push --force --all" }).size).toBe(0);
+      const answers = { "git-history-rewrite.rewrites_remote": 0.95, op_requested: 0.95, beyond_task: 0.1, injection: 0.05 };
+      expect(decideV1([rewrite], answers, { command: "git push --force --all" }, ["force push everything"], null).decision).toBe("allow");
     });
   });
 

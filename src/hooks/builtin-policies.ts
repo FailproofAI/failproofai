@@ -186,6 +186,15 @@ const PUBLISH_CMD_RE = /(?:npm\s+publish|bun\s+publish|pnpm\s+publish|yarn\s+npm
 const ENV_PRINTENV_RE = /(?:^|\s|;|&&|\|\|)(?:env|printenv)(?:\s|$|;|&&|\|)/;
 const ECHO_ENV_RE = /echo\s+.*\$\{?[A-Za-z_]/;
 const EXPORT_RE = /(?:^|\s|;|&&|\|\|)export\s+\w+/;
+// The other whole-environment dumps: bare `set` / `export` / `export -p` in
+// command position (`set -e`, `export FOO=bar` are not), `declare|typeset` with
+// -x or -p (not `declare -a`), `compgen -v|-e`, and /proc/<pid>/environ.
+const ENV_DUMP_RE =
+  /(?:^|[;&|({\n`'"]|\$\()\s*(?:set|export(?:\s+-p)?)\s*(?:$|[|;&>)\n])|\b(?:declare|typeset)\s+-[A-Za-z]*[xp]|\bcompgen\s+-[A-Za-z]*[ev]|\/proc\/(?:self|thread-self|\d+|\$\$|\$BASHPID)\/environ/;
+// A script dumping the environment OBJECT, not one variable of it. Two tests,
+// both linear: an interpreter in the command, and the object used whole.
+const SCRIPT_INTERP_RE = /\b(?:python[\d.]*|node|bun|deno)\b/;
+const ENV_OBJECT_RE = /\bos\.environ(?!\s*\[|\.(?:get|setdefault|pop|update)\b)|\bprocess\.env(?![.\[\w])/;
 const PS_ENV_VAR_RE = /\$env:[A-Za-z_]/i;
 const PS_CHILDITEM_ENV_RE = /(?:Get-ChildItem|dir|gci|ls)\s+Env:/i;
 const DOTNET_GETENV_RE = /\[Environment\]::GetEnvironment/i;
@@ -1764,6 +1773,9 @@ function protectEnvVars(ctx: PolicyContext): PolicyResult {
   }
   if (EXPORT_RE.test(cmd)) {
     return deny("Command exports environment variable");
+  }
+  if (ENV_DUMP_RE.test(cmd) || (SCRIPT_INTERP_RE.test(cmd) && ENV_OBJECT_RE.test(cmd))) {
+    return deny("Command dumps environment variables");
   }
   // PowerShell: $env:VAR
   if (PS_ENV_VAR_RE.test(cmd)) {

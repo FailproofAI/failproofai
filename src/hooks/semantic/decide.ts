@@ -13,9 +13,13 @@
  * - A `deny` policy blocks only on strong evidence; moderate evidence warns.
  * - The user may clear a policy only if (a) they explicitly asked for this
  *   action, (b) everything the call affects stays inside what they asked for
- *   (the `scope` probe), (c) when the call names identifiable targets, one of
- *   them appears in what they typed — checked here, in code, not by the model
- *   — and (d) the request does not look like it is talking to the reviewer.
+ *   (the `scope` probe), (c) when the call names identifiable targets, EVERY
+ *   one of them appears in what they typed — checked here, in code, not by the
+ *   model — and (d) the request does not look like it is talking to the
+ *   reviewer. When the local shell scan may have missed part of the command
+ *   (`$'…'`, a heredoc, `$(…)`, …), (c) cannot be checked and nothing is
+ *   cleared: the scan can see an innocent first target and stop before the
+ *   destructive one.
  *   A call that names no target is never cleared by default: the scope answer
  *   has to carry it.
  * - The injection probe withdraws any override, and turns a policy that has
@@ -69,43 +73,96 @@ function tokensOf(text: string): string[] {
 }
 
 /**
+ * What a tool call acts on, as the local target check sees it.
+ *
+ * `groups` holds one entry per identifiable target — a non-flag argument of a
+ * shell command (path components and all), or, for any other tool, the whole
+ * of its argument values taken together — and each entry is the set of words
+ * that name it. `targets` is every word of every group.
+ *
+ * `complete` is false when the shell scan may have missed a word bash would
+ * run (`ScannedCommand.complete`). The groups are then a lower bound, and no
+ * clear may rest on them: see {@link everyTargetNamed}'s callers.
+ */
+export interface TargetScan {
+  targets: Set<string>;
+  groups: Set<string>[];
+  complete: boolean;
+}
+
+/**
  * The words that identify WHAT a tool call acts on: its non-flag arguments
  * (path components included), file paths, URL hosts, MCP argument values.
  * The verb is left to Jev's `user_asked` question; this only checks the noun.
  */
-export function targetTokens(toolInput: Record<string, unknown>): Set<string> {
-  const out = new Set<string>();
+export function scanTargets(toolInput: Record<string, unknown>): TargetScan {
+  const groups: Set<string>[] = [];
+  const addGroup = (tok: string) => {
+    const words = tokensOf(tok);
+    if (words.length > 0) groups.push(new Set(words));
+  };
   const command = typeof toolInput.command === "string" ? toolInput.command : null;
   if (command) {
-    for (const seg of scanCommand(command).segments) {
+    const scanned = scanCommand(command);
+    for (const seg of scanned.segments) {
       for (const tok of seg.slice(1)) {
-        if (tok.startsWith("-")) continue;
-        for (const t of tokensOf(tok)) out.add(t);
+        if (!tok.startsWith("-")) addGroup(tok);
       }
     }
     // Empty reads as "names no target", and lets consent rest on Jev's answers
     // alone. But the scanner is not bash — a `#` inside `$'…'`, `${x:- # }` or
     // backticks ends its view early, and it reads only MAX_SCAN_CHARS — so an
     // empty scan may just have stopped before the target. Then judge the words
-    // as written. Only ever stricter: an empty set already passed.
-    if (out.size === 0) {
+    // as written. Only ever stricter: an empty set already passed. (Such a scan
+    // is also reported incomplete, which withholds the clear on its own; this
+    // keeps the recorded targets honest.)
+    if (groups.length === 0) {
       for (const piece of command.split(/[;&|\n]+/)) {
         for (const tok of piece.trim().split(/\s+/).slice(1)) {
-          if (!tok.startsWith("-")) for (const t of tokensOf(tok)) out.add(t);
+          if (!tok.startsWith("-")) addGroup(tok);
         }
       }
     }
-    return out;
+    return { targets: new Set(groups.flatMap((g) => [...g])), groups, complete: scanned.complete };
   }
+  const all = new Set<string>();
   for (const [key, value] of Object.entries(toolInput)) {
     if (typeof value !== "string" || value.length > 300) continue;
     if (/content|old_string|new_string|body|text|prompt/i.test(key)) continue;
-    for (const t of tokensOf(value)) out.add(t);
+    for (const t of tokensOf(value)) all.add(t);
   }
-  return out;
+  // A non-shell tool's fields qualify one another (`owner`, `repo`, `branch`)
+  // rather than naming separate targets, so they are ONE target: naming any of
+  // them names it.
+  return { targets: all, groups: all.size > 0 ? [all] : [], complete: true };
 }
 
-/** True when the user's own words name at least one thing the call acts on. */
+/** Every word of {@link scanTargets}, flattened. */
+export function targetTokens(toolInput: Record<string, unknown>): Set<string> {
+  return scanTargets(toolInput).targets;
+}
+
+/**
+ * True when the user's own words name EVERY target the call acts on — each
+ * group through at least one of its words.
+ *
+ * Not "any one": `rm -rf build/ ~/important` after "clean the build" names
+ * `build` and not `important`, and a clear on the first would carry the
+ * second, which nobody asked for.
+ */
+export function everyTargetNamed(scan: TargetScan, userSaid: ReadonlyArray<string>): boolean {
+  if (userSaid.length === 0 || scan.groups.length === 0) return false;
+  const said = userSaid.join("\n").toLowerCase();
+  return scan.groups.every((g) => {
+    for (const t of g) if (said.includes(t)) return true;
+    return false;
+  });
+}
+
+/**
+ * True when the user's own words name at least one of `targets`. The deciders
+ * do not use this any-one check — see {@link everyTargetNamed}.
+ */
 export function targetNamedByUser(targets: Set<string>, userSaid: ReadonlyArray<string>): boolean {
   if (userSaid.length === 0) return false;
   // Nothing identifiable to check is not a match. This used to return true,
@@ -136,7 +193,7 @@ export function decide(
   const injected = injection !== null && injection >= thresholds.injection;
   const scope = typeof answers.scope === "number" ? answers.scope : null;
   const withinScope = scope !== null && scope >= thresholds.scope;
-  let targets: Set<string> | null = null;
+  let scan: TargetScan | null = null;
 
   const outcomes: PolicyOutcome[] = selected.map((p) => {
     const evidence = Math.min(...p.probes.map((probe) => answers[`${p.name}.${probe.id}`] ?? 0));
@@ -161,13 +218,18 @@ export function decide(
 
     const fired: PolicyOutcome["verdict"] = p.mode === "deny" && evidence >= thresholds.deny ? "deny" : "instruct";
     if (p.userCanOverride && userAsked !== null && userAsked >= thresholds.userAsked && withinScope) {
-      targets ??= targetTokens(toolInput);
+      scan ??= scanTargets(toolInput);
+      // A shell scan that may have missed a word cannot say what the call
+      // touches, so it cannot say the user named it: no clear. Not rescued by
+      // `userSaidCut` — that gap is in what the human typed, this one is in
+      // the call.
+      if (!scan.complete) return { ...base, verdict: fired, targetScanIncomplete: true };
       // No identifiable target: the scope answer (already required) carries it.
-      // Otherwise one of the targets must also appear in the user's own words —
+      // Otherwise EVERY target must also appear in the user's own words —
       // unless the words we hold were cut, when "absent" is not something this
       // check knows (see {@link DecideV1Options.userSaidCut}).
-      const named = targets.size > 0 && targetNamedByUser(targets, userSaid);
-      if (targets.size === 0 || named || userSaidCut) return { ...base, targetNamedByUser: named, verdict: "overridden" };
+      const named = scan.groups.length > 0 && everyTargetNamed(scan, userSaid);
+      if (scan.groups.length === 0 || named || userSaidCut) return { ...base, targetNamedByUser: named, verdict: "overridden" };
     }
     return { ...base, verdict: fired };
   });
@@ -293,9 +355,11 @@ export interface DecideV1Options {
  * - A policy fires exactly as in v0 (every probe holds, no exemption).
  * - Injection withdraws every clear and turns a fired policy into a block.
  * - The human asked for THIS operation on THIS target (`op_requested`), the
- *   call reaches no further (`beyond_task`), and — when the call names a
- *   target — that target appears in what the human typed or in the agent
- *   proposal they replied to: the policy is cleared.
+ *   call reaches no further (`beyond_task`), and — when the call names
+ *   targets — every one of them appears in what the human typed or in the
+ *   agent proposal they replied to: the policy is cleared.
+ * - A shell command the local scan could not read whole is cleared and
+ *   softened by neither route: see `ScannedCommand.complete` in `facts.ts`.
  * - Otherwise, the call is a step toward the human's task (`task_step`) and
  *   reaches no further: a warn-level outcome is cleared and a block is
  *   softened to a warning. A goal never licenses a block on its own.
@@ -321,11 +385,12 @@ export function decideV1(
   const task = num("task_step");
   const op = num("op_requested");
   const beyond = num("beyond_task");
-  let targets: Set<string> | null = null;
+  let scan: TargetScan | null = null;
+  const targetScan = (): TargetScan => (scan ??= scanTargets(toolInput));
   const targetOk = (): { ok: boolean; named: boolean } => {
-    targets ??= targetTokens(toolInput);
-    if (targets.size === 0) return { ok: true, named: false };
-    const named = targetNamedByUser(targets, agentLastMessage ? [...userSaid, agentLastMessage] : userSaid);
+    const s = targetScan();
+    if (s.groups.length === 0) return { ok: true, named: false };
+    const named = everyTargetNamed(s, agentLastMessage ? [...userSaid, agentLastMessage] : userSaid);
     return { ok: named || userSaidCut, named };
   };
 
@@ -349,6 +414,10 @@ export function decideV1(
 
     const fired: PolicyOutcome["verdict"] = p.mode === "deny" && evidence >= t.deny ? "deny" : "instruct";
     if (!p.userCanOverride) return { ...base, verdict: fired };
+    // The shell scan may have missed a word bash would run (`$'…'`, a heredoc,
+    // `$(…)`, …): what the call touches is not known here, so neither intent
+    // route may clear or soften it. Jev's own deny or instruct stands.
+    if (!targetScan().complete) return { ...base, verdict: fired, targetScanIncomplete: true };
 
     if (op !== null && op >= t.opRequested && beyond !== null && beyond < t.opBeyondMax) {
       const target = targetOk();

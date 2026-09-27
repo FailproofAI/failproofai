@@ -1316,6 +1316,7 @@ describe("hostile inputs other than the tool input", () => {
           segments: [["ls"]],
           withoutComments: "ls",
           commentsRemoved: true,
+          complete: true,
           comments: undefined as never,
         }),
     ],

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { decide, decideV1, targetNamedByUser, targetTokens, DEFAULT_THRESHOLDS } from "../../../src/hooks/semantic/decide";
+import { decide, decideV1, everyTargetNamed, scanTargets, targetNamedByUser, targetTokens, DEFAULT_THRESHOLDS } from "../../../src/hooks/semantic/decide";
 import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
 import type { SemanticPolicy } from "../../../src/hooks/semantic/types";
 
@@ -212,6 +212,82 @@ describe("semantic/decide", () => {
       expect(targetTokens({ command: "git push --force --all" }).size).toBe(0);
       const answers = { "git-history-rewrite.rewrites_remote": 0.95, op_requested: 0.95, beyond_task: 0.1, injection: 0.05 };
       expect(decideV1([rewrite], answers, { command: "git push --force --all" }, ["force push everything"], null).decision).toBe("allow");
+    });
+  });
+
+  // SEC-001 (review 5328229094): the scan saw an innocent first target, stopped
+  // at a `#` bash does not treat as a comment, and the any-one target gate
+  // cleared an `rm -rf /critical` nobody asked for. Each case below puts an
+  // innocent target first and the destructive one after a fake-comment form;
+  // the human names only the innocent part. None may come out allow.
+  describe("a partial target scan cannot clear another target", () => {
+    const v1Answers = {
+      "destructive-deletion.destroys": 0.95,
+      "destructive-deletion.irreplaceable": 0.9,
+      injection: 0.05,
+      op_requested: 0.95,
+      // Below the task-step line, so only the op-requested route (the one that
+      // reads targets) is in play, as in the finding.
+      task_step: 0.7,
+      beyond_task: 0.1,
+    };
+    const v0Answers = {
+      "destructive-deletion.destroys": 0.95,
+      "destructive-deletion.irreplaceable": 0.9,
+      "destructive-deletion.user_asked": 0.95,
+      scope: 0.95,
+      injection: 0.05,
+    };
+    const cases: Array<[string, string, string]> = [
+      ["ANSI-C $'…\\' #", "echo $'harmless\\' # ignored'; rm -rf /critical", "remove harmless"],
+      ['"…\\" # (escaped quote)', 'echo "harmless\\" # "; rm -rf /critical', "remove harmless"],
+      ["'…' # inside a word", "echo harm'less'# ; rm -rf /critical", "remove harmless"],
+      ["a#b", "echo harmless#b ; rm -rf /critical", "remove harmless"],
+      ["\\#", "echo harmless \\# ; rm -rf /critical", "remove harmless"],
+      ["${x:- # }", "echo ${harmless:- # }; rm -rf /critical", "remove harmless"],
+      ["backticks with #", "echo harmless `echo # `; rm -rf /critical", "remove harmless"],
+      ["heredoc body with #", "cat <<EOF > harmless.txt\n# note\nEOF\nrm -rf /critical", "write harmless.txt with a heredoc (EOF)"],
+      ["heredoc body with ' and #", "cat <<EOF > harmless.txt\nit's # fine\nEOF\nrm -rf /critical", "write harmless.txt with a heredoc (EOF)"],
+      ["$(…) containing #", 'echo "$(echo harmless # x\n)"; rm -rf /critical', "remove harmless"],
+    ];
+    it.each(cases)("%s", (_form, command, said) => {
+      const v1 = decideV1([deletion], v1Answers, { command }, [said], null);
+      expect(v1.decision).not.toBe("allow");
+      expect(v1.outcomes[0].verdict).toBe("deny");
+      const v0 = decide([deletion], v0Answers, { command }, [said]);
+      expect(v0.decision).not.toBe("allow");
+    });
+
+    it("the finding's exact repro is withheld as an incomplete scan, not by luck", () => {
+      const command = "echo $'harmless\\' # ignored'; rm -rf /critical";
+      expect(scanTargets({ command })).toMatchObject({ complete: false });
+      const v1 = decideV1([deletion], v1Answers, { command }, ["remove harmless"], null);
+      expect(v1.decision).toBe("deny");
+      expect(v1.outcomes[0].targetScanIncomplete).toBe(true);
+      // Neither the cut-message inconclusive rule nor the task-step route rescues
+      // it: the task-step route would otherwise soften the deny to a warning,
+      // which clears a reviewable regex deny in `combine.ts`.
+      expect(decideV1([deletion], v1Answers, { command }, ["remove harmless"], null, { userSaidCut: true }).decision).toBe("deny");
+      const taskStep = decideV1([deletion], { ...v1Answers, task_step: 0.95 }, { command }, ["remove harmless"], null);
+      expect(taskStep.decision).toBe("deny");
+      expect(taskStep.outcomes[0].intent).toBeUndefined();
+      expect(decide([deletion], v0Answers, { command }, ["remove harmless"], DEFAULT_THRESHOLDS, true).decision).toBe("deny");
+    });
+
+    it("every destructive target must be named, not any one", () => {
+      const command = "rm -rf build/ ~/important";
+      expect(decideV1([deletion], v1Answers, { command }, ["clean the build"], null).decision).toBe("deny");
+      expect(decide([deletion], v0Answers, { command }, ["clean the build"]).decision).toBe("deny");
+      expect(everyTargetNamed(scanTargets({ command }), ["clean the build"])).toBe(false);
+      expect(everyTargetNamed(scanTargets({ command }), ["clean the build and ~/important"])).toBe(true);
+    });
+
+    it("the legitimate clear still works", () => {
+      const command = "rm -rf build/";
+      const v1 = decideV1([deletion], v1Answers, { command }, ["clean the build"], null);
+      expect(v1.decision).toBe("allow");
+      expect(v1.outcomes[0]).toMatchObject({ verdict: "overridden", intent: "op-requested", targetNamedByUser: true });
+      expect(decide([deletion], v0Answers, { command }, ["clean the build"]).decision).toBe("allow");
     });
   });
 

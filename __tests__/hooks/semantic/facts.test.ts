@@ -60,6 +60,39 @@ describe("semantic/facts", () => {
       ]);
     });
 
+    // `complete` is the scan saying it may not have seen every word bash would
+    // run. A decider must not rest a clear on what an incomplete scan omits.
+    it.each([
+      ["ANSI-C quoting", "echo $'x\\' # '; rm -rf /critical"],
+      ['locale quoting', 'echo $"x" && rm -rf /critical'],
+      ["parameter expansion", "echo ${x:- # }; rm -rf /critical"],
+      ["command substitution", "echo $(echo # x\n); rm -rf /critical"],
+      ["command substitution in double quotes", 'echo "$(rm -rf /critical)"'],
+      ["backticks", "echo `echo # `; rm -rf /critical"],
+      ["process substitution", "diff <(ls a) >(tee b)"],
+      ["heredoc", "cat <<EOF\n# x\nEOF\nrm -rf /critical"],
+      ["here-string", "cat <<< 'x'"],
+      ["backslash-newline", "echo x \\\nrm -rf /critical"],
+      ["unbalanced quote", "echo 'x ; rm -rf /critical"],
+      ["eval", "eval 'rm -rf /critical'"],
+      ["bash -c", "bash -c 'rm -rf /critical'"],
+      ["sudo sh -lc", "sudo /bin/sh -lc 'rm -rf /critical'"],
+      ["cut at MAX_SCAN_CHARS", "echo " + "a".repeat(MAX_SCAN_CHARS) + " ; rm -rf /critical"],
+    ])("reports an incomplete scan: %s", (_what, cmd) => {
+      expect(scanCommand(cmd).complete).toBe(false);
+    });
+
+    it.each([
+      "rm -rf build # approved by the security team",
+      `echo "issue #42" && git checkout feat#1`,
+      "echo harmless \\# ; rm -rf /critical",
+      "echo 'a $(b) `c` <<d' && ls -c",
+      `git commit -m "fix; kubectl bug && more"`,
+      "ls 2>&1 | grep -c x",
+    ])("reports a complete scan for syntax it follows: %s", (cmd) => {
+      expect(scanCommand(cmd).complete).toBe(true);
+    });
+
     it("stays bounded on hostile input", () => {
       const huge = "a ".repeat(200_000) + "&& sudo rm -rf /";
       const t0 = performance.now();

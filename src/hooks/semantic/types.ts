@@ -142,6 +142,12 @@ export interface PolicyOutcome {
   verdict: "deny" | "instruct" | "overridden" | "none";
   /** v1 only: why an override applied, or that a deny was softened to instruct. */
   intent?: "op-requested" | "task-step" | "downgraded-task-step";
+  /**
+   * Set when a clear was withheld because the shell scan may have missed part
+   * of the command (`ScannedCommand.complete` false): what the call touches is
+   * not known locally, so no intent answer may clear or soften it.
+   */
+  targetScanIncomplete?: true;
 }
 
 export interface SemanticVerdict {

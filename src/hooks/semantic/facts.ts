@@ -49,6 +49,30 @@ export interface ScannedCommand {
   commentsRemoved: boolean;
   /** The removed comment text, so the injection probe can still see it. */
   comments: string[];
+  /**
+   * False when the scan may not have seen every word bash would run: the
+   * command was longer than `MAX_SCAN_CHARS`, or it uses syntax this scanner
+   * does not model (see {@link scanCommand}). Then `segments` is a GUESS — a
+   * `#` it read as a comment may not be one, and a word it never reached may be
+   * a target — and a caller must not rest a clear on what the segments omit.
+   */
+  complete: boolean;
+}
+
+/** Shells whose `-c` argument is a second command line this scan does not parse. */
+const NESTED_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
+
+/** A segment that hands a string to a shell to parse again: `eval …`, `bash -c …`, `sudo sh -lc …`. */
+function runsNestedShell(tokens: string[]): boolean {
+  // One pass, so a segment of ten thousand `sh` words stays linear.
+  let shellSeen = false;
+  for (const tok of tokens) {
+    if (shellSeen && /^-[a-z]*c[a-z]*$/i.test(tok)) return true;
+    const base = tok.slice(tok.lastIndexOf("/") + 1);
+    if (base === "eval") return true;
+    if (NESTED_SHELLS.has(base)) shellSeen = true;
+  }
+  return false;
 }
 
 /**
@@ -56,6 +80,15 @@ export interface ScannedCommand {
  * operator splitting and comment removal. It is deliberately not a full shell
  * parser — it only needs to find words, segment boundaries and comments, and
  * it must stay linear no matter what the agent sends.
+ *
+ * Because it is not bash, it says when it may be wrong: `complete` is false on
+ * any construct whose quoting or word boundaries it does not follow — `$'…'`
+ * and `$"…"`, `${…}`, `$(…)` and backticks, `<(…)` / `>(…)`, heredocs and
+ * here-strings (`<<`), a backslash-newline, a quote left open at the end,
+ * `eval` or a shell's `-c` string, and a command cut at `MAX_SCAN_CHARS`.
+ * Each of those can put a `#` where the scan sees a comment and bash does not
+ * (`echo $'x\' # '; rm -rf /critical` scans as `echo x`), or put a command
+ * where the scan sees one word. The flag costs one comparison per character.
  */
 export function scanCommand(command: string): ScannedCommand {
   const text = command.length > MAX_SCAN_CHARS ? command.slice(0, MAX_SCAN_CHARS) : command;
@@ -67,6 +100,7 @@ export function scanCommand(command: string): ScannedCommand {
   let out = "";
   let commentsRemoved = false;
   const comments: string[] = [];
+  let complete = command.length <= MAX_SCAN_CHARS;
 
   const endWord = () => {
     if (inWord) tokens.push(word);
@@ -75,7 +109,10 @@ export function scanCommand(command: string): ScannedCommand {
   };
   const endSegment = () => {
     endWord();
-    if (tokens.length > 0) segments.push(tokens);
+    if (tokens.length > 0) {
+      if (complete && runsNestedShell(tokens)) complete = false;
+      segments.push(tokens);
+    }
     tokens = [];
   };
 
@@ -83,6 +120,11 @@ export function scanCommand(command: string): ScannedCommand {
     const c = text[i];
     if (quote) {
       out += c;
+      // Inside "…", bash still expands `$(…)`, `${…}` and backticks, and a
+      // backslash-newline is a continuation: none of that is followed here.
+      if (quote === '"' && (c === "`" || (c === "$" && (text[i + 1] === "(" || text[i + 1] === "{")) || (c === "\\" && text[i + 1] === "\n"))) {
+        complete = false;
+      }
       if (c === quote) {
         quote = null;
       } else if (c === "\\" && quote === '"' && i + 1 < text.length) {
@@ -92,6 +134,16 @@ export function scanCommand(command: string): ScannedCommand {
         word += c;
       }
       continue;
+    }
+    // Unquoted constructs whose contents the scan does not parse as bash does.
+    if (
+      c === "`" ||
+      (c === "$" && (text[i + 1] === "'" || text[i + 1] === '"' || text[i + 1] === "(" || text[i + 1] === "{")) ||
+      ((c === "<" || c === ">") && text[i + 1] === "(") ||
+      (c === "<" && text[i + 1] === "<") ||
+      (c === "\\" && text[i + 1] === "\n")
+    ) {
+      complete = false;
     }
     if (c === "'" || c === '"') {
       quote = c;
@@ -136,7 +188,8 @@ export function scanCommand(command: string): ScannedCommand {
     out += c;
   }
   endSegment();
-  return { segments, withoutComments: out.trimEnd(), commentsRemoved, comments };
+  if (quote) complete = false;
+  return { segments, withoutComments: out.trimEnd(), commentsRemoved, comments, complete };
 }
 
 const PATH_LIKE = /^(?:\/|~|\.\.?(?:\/|$)|[^:]*\/)/;

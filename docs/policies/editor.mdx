@@ -61,6 +61,13 @@ fp policies publish checkout-guard ./checkout.policy.mjs --description "Block fo
 
 `publish` parse-checks the source before sending it, so a syntax error surfaces here instead of on a machine at enforcement time.
 
+### What changes when a policy is cloud-managed
+
+A published policy runs on every machine that pulls it, and two rules there differ from a local policy file (`.failproofai/policies/`):
+
+- **A cloud-managed policy is always hard.** `authority: "reviewable"`, `reviewedBy`, `userCanOverride` and `semanticPolicies.add()` are ignored. Publishing refuses a source that mentions these Jev-only names at all, and the check is a whole-word scan of the whole file - comments and strings included - so even a comment documenting this rule stops the publish. Keep the words out of a source you mean to publish.
+- **Only the policy context is available.** The helpers a local setup may provide are not there; a cloud policy sees the [policy context](/reference/policy-sdk) (`eventType`, `toolName`, `toolInput`, `payload`, `session`, `cli`, `params`) and nothing else.
+
 ## Write it yourself
 
 A policy is JavaScript or TypeScript against the `failproofai` API:

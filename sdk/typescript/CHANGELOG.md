@@ -26,7 +26,24 @@ section is missing or empty is refused before anything is built.
   (GHSA-rwvc-j5jr-mgvh) and one against the `@ai-sdk/provider-utils@2.2.8` that
   ships inside it (GHSA-866g-f22w-33x8). Both are fixed only in the major these
   fixtures exist to stay below, so `SECURITY.md` records them and the rule for
-  the next one. (`nextjs`'s `postcss` is handled in #836.) (#837)
+  the next one. (`nextjs`'s `postcss` is handled in #838.) (#837)
+
+- **The last four fixture advisories clear, and no fixture leaves its pinned
+  major to do it.** `nextjs` carried `postcss@8.4.31` (GHSA-qx2v-qp2m-jg93,
+  GHSA-6g55-p6wh-862q, GHSA-r28c-9q8g-f849, GHSA-fxqj-rqcc-2cmp) under a *second*
+  `next@15.5.26` that npm installed only to satisfy `@llamaindex/workflow-core@1.3.3`'s
+  `next@^15.2.2` peer against the fixture's root `next@16.3.6`. Nothing imports it,
+  so regenerating the lockfile drops that peer tree and nothing else — 274 lines,
+  deletions only, `npm audit` 5 findings → 0. Dependabot had reached the same
+  advisories by moving the pins instead: `ai-4` to `ai@5.0.52` and `mastra-0` to
+  `@mastra/core@1.70.0`, the two releases those fixtures exist to hold, and the one
+  move `SECURITY.md` names as never the answer. `mastra-0` then stopped installing
+  altogether — `@mastra/mcp@0.14.5` peers on `@mastra/core@">=0.20.1-0 <0.25.0-0"`,
+  so `npm ci` failed `ERESOLVE` — and because the global setup installs every fixture
+  before any test runs, that one fixture took down all three non-`nextjs` shards,
+  `runtimes` included, which has no Mastra test in it. Both pins are restored, and
+  `ai` stays at `7.0.111` in `nextjs` so the fixture still matches the `ai-7` twin
+  whose trace `nextjs.test.ts` compares each route against. (#838)
 
 ## 0.0.1-beta.0 — 2026-09-23
 

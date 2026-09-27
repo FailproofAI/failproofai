@@ -24,6 +24,7 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
+import { paint } from "./tui";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
@@ -795,7 +796,10 @@ async function installHooksImpl(
   if (duplicates.length > 0) {
     const scopeList = duplicates.map((s) => `${s} (${scopeLabel(s)})`).join(", ");
     console.log();
-    console.log(`\x1B[33mWarning: Failproof AI hooks are also installed at ${scopeList}.\x1B[0m`);
+    // Brand painter, NO_COLOR-gated like every other screen - the one place
+    // this warning used to hardcode the escape instead.
+    const { warn } = paint(!process.env.NO_COLOR);
+    console.log(warn(`Warning: Failproof AI hooks are also installed at ${scopeList}.`));
     console.log(`Having hooks in multiple scopes may cause duplicate policy evaluation.`);
     console.log(`Use \`failproofai policies --uninstall --scope ${duplicates[0]}\` to remove the other installation,`);
     console.log(`or \`failproofai policies\` to see all scopes.`);

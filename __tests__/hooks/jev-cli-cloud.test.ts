@@ -345,6 +345,17 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(existsSync(jevConfigPath())).toBe(false);
     });
 
+    it("connected with no Jev key stored: says reconnect with this key, not that its preset is wrong", async () => {
+      // A machine connected by 1.0.7 never stored the Jev slot, though its key
+      // may carry jev:evaluate; reconnecting with the same key fixes it.
+      writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
+      const r = await runJevCommand(["setup", "--provider", "failproofai"], RENDER);
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).toMatch(/Reconnect with this machine's key/);
+      expect(text(r)).toContain("config --token <key>");
+      expect(existsSync(jevConfigPath())).toBe(false);
+    });
+
     it.each([
       [["--token", KEY]],
       [["--key-stdin"]],

@@ -194,10 +194,10 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
     return {
       exitCode: 1,
       lines: [
-        "--connect needs a machine token: --token <key>",
+        "--connect needs this machine's key: set FAILPROOFAI_CLOUD_TOKEN (preferred), or pass --token <key>.",
         "",
-        "Create an API key carrying only the `policies:pull` permission for this",
-        "machine. Do not use an admin key.",
+        "Create it with the \"machine\" preset on the dashboard's Keys page",
+        "(events:add, policies:pull, jev:evaluate). Do not use an admin key.",
       ],
     };
   }

@@ -2341,7 +2341,9 @@ async function runCli() {
         const { runConnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
         result = await runConnectCommand({
           url: valueAfter("--connect"),
-          token: valueAfter("--token"),
+          // The same fallback the headless `config` path has, and the one
+          // `config --help` documents: it keeps the key out of shell history.
+          token: valueAfter("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN,
           machineId: valueAfter("--machine-id"),
           machineLabel: valueAfter("--machine-label"),
           defaultMachineId: hostname(),

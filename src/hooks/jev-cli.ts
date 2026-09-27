@@ -1237,10 +1237,18 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
     }
   } else if (!sameProvider || typeof next.baseUrl !== "string") {
     return fail([
-      credential.connected
-        ? "Not saved: this machine is connected to FailproofAI Cloud, but no Jev key is stored for that connection."
-        : "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
-      "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
+      ...(credential.connected
+        ? [
+            // Its key may well carry jev:evaluate: an older failproofai connected
+            // without storing a Jev key, and the same key fixes that.
+            "Not saved: this machine is connected to FailproofAI Cloud, but no Jev key is stored for that connection.",
+            "Reconnect with this machine's key to re-check what it carries (an older failproofai connected without storing its Jev key; " +
+              "a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page):",
+          ]
+        : [
+            "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
+            "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
+          ]),
       "  failproofai config --token <key>",
       "",
       "Nothing was written.",

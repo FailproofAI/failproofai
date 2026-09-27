@@ -114,7 +114,11 @@ describe("--connect", () => {
   it("refuses without a token, and says which key to make", async () => {
     const r = await runConnectCommand({ url: base.url, machineId: "m", verify: ok });
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/policies:pull/);
+    // The machine preset (it carries jev:evaluate too) and the env var, not the
+    // pre-Jev "only policies:pull" key that the rest of the CLI contradicts.
+    expect(r.lines.join("\n")).toMatch(/"machine" preset/);
+    expect(r.lines.join("\n")).toMatch(/FAILPROOFAI_CLOUD_TOKEN/);
+    expect(r.lines.join("\n")).not.toMatch(/only the `policies:pull`/);
     expect(ok).not.toHaveBeenCalled();
   });
 

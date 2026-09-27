@@ -117,3 +117,20 @@ describe("failproofai config --token (real binary)", () => {
     expect(r.stdout + r.stderr).not.toContain(KEY);
   });
 });
+
+describe("failproofai config --connect (real binary)", () => {
+  it("takes the key from FAILPROOFAI_CLOUD_TOKEN, as `config --help` says it can", () => {
+    // It read only --token, so the documented env var — the one that keeps a key
+    // out of shell history — was refused as "needs a machine token".
+    const env: NodeJS.ProcessEnv = {
+      ...process.env, HOME, USERPROFILE: HOME, FAILPROOFAI_HOME: FP_HOME,
+      FAILPROOFAI_TELEMETRY_DISABLED: "1", FAILPROOFAI_CLOUD_TOKEN: KEY,
+    };
+    const r = spawnSync("bun", [BINARY, "config", "--connect", "http://127.0.0.1:1"], {
+      env, input: "", encoding: "utf8", timeout: 20_000,
+    });
+    const out = (r.stdout ?? "") + (r.stderr ?? "");
+    expect(out).not.toContain("needs a machine token");
+    expect(out).not.toContain(KEY);
+  });
+});

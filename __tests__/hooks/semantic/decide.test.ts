@@ -268,8 +268,14 @@ describe("semantic/decide", () => {
       ['rm -rf "$TARGET"', "remove the target"],
       ["rm -rf $1", "remove it"],
       ["rm -rf $((1))x", "remove it"],
+      // Brace expansion and globs: one word the scan reads, several paths bash
+      // deletes. `{build,/critical}` reads as the words build + critical in ONE
+      // target, so naming build named it; `/crit*` is whatever matches.
+      ["rm -rf {build,/critical}", "clean the build"],
+      ["rm -rf build{,/../../critical}", "clean the build"],
+      ["rm -rf /crit*", "remove the crit files"],
     ];
-    it.each(expansions)("a parameter expansion cannot be cleared: %s", (command, said) => {
+    it.each(expansions)("an expansion cannot be cleared: %s", (command, said) => {
       expect(scanTargets({ command }).complete).toBe(false);
       const v1 = decideV1([deletion], v1Answers, { command }, [said], null);
       expect(v1.decision).not.toBe("allow");

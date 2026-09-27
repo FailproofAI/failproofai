@@ -93,7 +93,8 @@ function runsNestedShell(tokens: string[]): boolean {
  * Because it is not bash, it says when it may be wrong: `complete` is false on
  * any construct whose quoting or word boundaries it does not follow — `$'…'`
  * and `$"…"`, any parameter expansion (`$NAME`, `$1`, `$@`, `${…}`, `$((…))`),
- * `$(…)` and backticks, `<(…)` / `>(…)`, heredocs and
+ * `$(…)` and backticks, unquoted brace expansion (`{a,b}`, `{1..3}`) and
+ * globs (`*`, `?`, `[…]`), `<(…)` / `>(…)`, heredocs and
  * here-strings (`<<`), a backslash-newline, a quote left open at the end,
  * `eval` or a shell's `-c` string, and a command cut at `MAX_SCAN_CHARS`.
  * Each of those can put a `#` where the scan sees a comment and bash does not
@@ -111,11 +112,19 @@ export function scanCommand(command: string): ScannedCommand {
   let commentsRemoved = false;
   const comments: string[] = [];
   let complete = command.length <= MAX_SCAN_CHARS;
+  // Per-word, unquoted: an open `{` not yet closed, whether a `,` or `..`
+  // followed it, and an open `[`. Enough to spot brace expansion and globs.
+  let braceDepth = 0;
+  let braceSep = false;
+  let bracketOpen = false;
 
   const endWord = () => {
     if (inWord) tokens.push(word);
     word = "";
     inWord = false;
+    braceDepth = 0;
+    braceSep = false;
+    bracketOpen = false;
   };
   const endSegment = () => {
     endWord();
@@ -192,6 +201,23 @@ export function scanCommand(command: string): ScannedCommand {
       endWord();
       out += c;
       continue;
+    }
+    // Brace expansion and globs, unquoted: bash turns `{build,/critical}` and
+    // `/crit*` into words this scan never sees. A `{` or `}` word on its own
+    // (`{ ls; }`, `-exec rm {} \;`) and `{}` are not expansions.
+    if (c === "{") {
+      braceDepth++;
+    } else if (braceDepth > 0 && (c === "," || (c === "." && text[i + 1] === "."))) {
+      braceSep = true;
+    } else if (c === "}" && braceDepth > 0) {
+      braceDepth--;
+      if (braceSep) complete = false;
+    } else if (c === "*" || c === "?") {
+      complete = false;
+    } else if (c === "[") {
+      bracketOpen = true;
+    } else if (c === "]" && bracketOpen) {
+      complete = false;
     }
     word += c;
     inWord = true;

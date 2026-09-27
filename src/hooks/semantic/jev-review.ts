@@ -178,12 +178,15 @@ export function resolveTimeout(cfg: JevConfig): number {
 }
 
 /** The semantic policy an attributable Jev verdict is filed under. */
+function jevDecider(outcome: Extract<SemanticOutcome, { status: "ok" }>) {
+  const wanted = outcome.verdict.decision === "deny" ? "deny" : "instruct";
+  return outcome.verdict.outcomes.find((o) => o.verdict === wanted);
+}
+
 function jevPolicyName(outcome: Extract<SemanticOutcome, { status: "ok" }>): string {
-  const { verdict } = outcome;
-  const wanted = verdict.decision === "deny" ? "deny" : "instruct";
-  const first = verdict.outcomes.find((o) => o.verdict === wanted);
+  const first = jevDecider(outcome);
   if (first) return `semantic/${first.policy}`;
-  return verdict.beyondTask ? "semantic/beyond-task" : "semantic/jev";
+  return outcome.verdict.beyondTask ? "semantic/beyond-task" : "semantic/jev";
 }
 
 /**
@@ -225,6 +228,7 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     decision: outcome.verdict.decision,
     reason: outcome.verdict.reason,
     policyName: jevPolicyName(outcome),
+    ...(jevDecider(outcome)?.origin ? { origin: jevDecider(outcome)?.origin } : {}),
     // Every selected policy's questions were in the request, and `readAnswers`
     // refuses a response missing any of them — so selected == asked, and only
     // when a request was actually made.

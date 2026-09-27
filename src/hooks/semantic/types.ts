@@ -130,6 +130,8 @@ export interface PolicyOutcome {
   mode: "deny" | "instruct";
   /** The policy's own `userCanOverride`: false is a check no consent can clear. */
   userCanOverride?: boolean;
+  /** The pack that declared the check, when one did (`SemanticPolicy.origin`). */
+  origin?: { packId: string; packVersion?: string };
   /** min over probe probabilities — one weak probe spoils the evidence. */
   evidence: number;
   exempt: number | null;

@@ -958,14 +958,9 @@ export async function evaluateHookEvent(
       getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name);
 
     // The pack a deciding Jev check came from, recorded as a pack's regex
-    // verdict records its own. The resolved set holds each name once (a name
-    // packs disagree on is asked for nobody), so the name finds its declaration.
-    const jevOrigin =
-      result.policyName && result.twoTier?.decidedByJev
-        ? (await import("./semantic/pack-policies"))
-            .resolveSemanticPolicies(cli)
-            .find((p) => `semantic/${p.name}` === result.policyName)?.origin
-        : undefined;
+    // verdict records its own. The evaluator already resolved it, so the hook
+    // path never loads the Jev resolver (pack-semantic-import-boundary).
+    const jevOrigin = result.policyName && result.twoTier?.decidedByJev ? result.twoTier.jevOrigin : undefined;
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {

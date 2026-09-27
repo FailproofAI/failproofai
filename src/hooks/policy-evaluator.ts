@@ -60,6 +60,8 @@ export interface EvaluationResult {
     activity: JevActivityFields;
     /** True when Jev's own verdict is what `policyName` names. */
     decidedByJev: boolean;
+    /** The pack a deciding Jev check came from; only with `decidedByJev`. */
+    jevOrigin?: { packId: string; packVersion?: string };
     /** Shadow mode: Jev's own deny/instruct, recorded as a "would have" (see `ShadowVerdict`). */
     shadowVerdict?: ShadowVerdict;
   };
@@ -248,6 +250,7 @@ export async function evaluatePolicies(
     twoTier: {
       activity: combined.activity,
       decidedByJev: combined.decidedByJev,
+      ...(combined.decidedByJev && review.kind === "answered" && review.origin ? { jevOrigin: review.origin } : {}),
       ...(combined.shadowVerdict ? { shadowVerdict: combined.shadowVerdict } : {}),
     },
   };

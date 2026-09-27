@@ -283,6 +283,8 @@ export type JevReview =
       reason: string | null;
       /** Attribution for Jev's own deny/instruct, e.g. `semantic/destructive-deletion`. */
       policyName: string;
+      /** The pack that declared `policyName`'s check, when a pack did. */
+      origin?: { packId: string; packVersion?: string };
       /** Semantic policies whose questions were in the request that was answered. */
       asked: readonly string[];
       /**

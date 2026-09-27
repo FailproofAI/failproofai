@@ -845,3 +845,26 @@ describe("jev-throttle: what the default bucket admits, as documented", () => {
     expect(admittedAt.length).toBeGreaterThanOrEqual(60 * DEFAULT_THROTTLE.ratePerSec);
   });
 });
+
+describe("jev-throttle: requests in flight together", () => {
+  it("does not merge identical requests in flight together: each goes upstream, then the cache serves the next", async () => {
+    // The worker releases its queue while a two-tier call waits on Jev, so two
+    // gated calls can be in flight at once. Pinned so the module comment, which
+    // once said only one ever was, cannot drift from the code again.
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const { transport, calls } = fakeTransport(async (r) => {
+      await gate;
+      return answerFor(r);
+    });
+    const t = throttleTransport(transport, { scope: "s" });
+    const a = t(request("rm -rf build"), live());
+    const b = t(request("rm -rf build"), live());
+    open();
+    await Promise.all([a, b]);
+    expect(calls).toHaveLength(2);
+    expect(jevThrottleStats()).toMatchObject({ misses: 2, hits: 0 });
+    expect(isCachedJevResponse(await t(request("rm -rf build"), live()))).toBe(true);
+    expect(calls).toHaveLength(2);
+  });
+});

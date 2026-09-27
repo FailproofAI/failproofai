@@ -37,8 +37,14 @@
  * the only evaluator on a configured machine and lives for hours, so the
  * process is the cache and the bucket is the process's upstream budget: a
  * caller may build a new wrapper per hook event and every wrapper shares both.
- * The worker also serializes `evaluateHookEvent`, so there is never more than
- * one Jev call in flight and no in-flight de-duplication is needed.
+ * The worker serializes the registry part of `evaluateHookEvent` but hands the
+ * queue back while a two-tier review waits on Jev (`worker-server.ts`
+ * `release`), so several Jev calls can be in flight at once. The cache fills
+ * only when an answer arrives: identical requests in flight together each
+ * miss, each take a token and each go upstream (and are billed).
+ * ponytail: no in-flight de-duplication; add a single-flight map keyed by the
+ * digest if duplicate spend shows up (the joiner's abort must not cancel the
+ * leader, and a leader's own abort must not fail the joiner).
  *
  * **No on-disk cache**, deliberately. It would only help the one-shot
  * in-process path, which on a configured machine does not exist (CLAUDE.md,

@@ -77,7 +77,8 @@ const TASK_DEADLINE_MS = 60_000;
 
 /**
  * Serializes every request across every connection through one chain, so
- * `evaluateHookEvent` calls never overlap. `.catch()` on each link keeps the
+ * `evaluateHookEvent` calls never overlap while reading the registry (see
+ * `release` below). `.catch()` on each link keeps the
  * chain alive even if a handler throws unexpectedly — one bad request must
  * never wedge every request queued behind it.
  *

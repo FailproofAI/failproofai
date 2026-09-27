@@ -317,6 +317,10 @@ describe("surveying a real machine", () => {
     // Named explicitly as well: still the one file.
     writeConfig({ enabledPolicies: [], customPoliciesPaths: [projectFile] });
     expect(surveyReviewableCoverage(project).customFiles).toBe(2);
+    // And named relatively, which the loader resolves against the project root,
+    // not wherever this process happens to be running.
+    writeConfig({ enabledPolicies: [], customPoliciesPaths: [".failproofai/policies/a-policies.mjs"] });
+    expect(surveyReviewableCoverage(project).customFiles).toBe(2);
 
     writeConfig({ enabledPolicies: [], customPoliciesEnabled: false });
     expect(surveyReviewableCoverage(project).customFiles).toBe(0);

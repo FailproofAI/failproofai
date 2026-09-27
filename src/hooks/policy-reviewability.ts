@@ -200,9 +200,11 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   // both named and discovered (or a project root that IS home) counts once.
   let customFiles = 0;
   try {
-    const files = new Set(configuredCustomPolicyPaths(config).map((p) => resolve(p)));
+    // Relative paths against the project root, as the loader resolves them.
+    const projectRoot = findProjectConfigDir(cwd ?? process.cwd());
+    const files = new Set(configuredCustomPolicyPaths(config).map((p) => resolve(projectRoot, p)));
     if (config.customPoliciesEnabled !== false) {
-      const projectDir = resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies");
+      const projectDir = resolve(projectRoot, ".failproofai", "policies");
       for (const dir of [projectDir, customPoliciesDir()]) for (const f of discoverPolicyFiles(dir)) files.add(f);
     }
     customFiles = files.size;

@@ -72,6 +72,10 @@ describe("Copilot tool-name canonicalization", () => {
     expect(canonicalizeToolName("task", "copilot")).toBe("Task");
   });
 
+  it("maps `Agent` to Task - the PascalCase PreToolUse payload reports the Claude name", () => {
+    expect(canonicalizeToolName("Agent", "copilot")).toBe("Task");
+  });
+
   it("maps `web_search` to WebSearch", () => {
     expect(canonicalizeToolName("web_search", "copilot")).toBe("WebSearch");
   });

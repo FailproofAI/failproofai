@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -38,6 +38,12 @@ describe("lib/codex-sessions: findCodexTranscript cache writes", () => {
   afterEach(() => {
     delete process.env.__TEST_HOME;
     delete process.env.FAILPROOFAI_HOME;
+    chmodSync(fpHome, 0o700);
+    try {
+      chmodSync(join(fpHome, "state"), 0o700);
+    } catch {
+      // state dir never created
+    }
     rmSync(home, { recursive: true, force: true });
     rmSync(fpHome, { recursive: true, force: true });
   });
@@ -48,6 +54,25 @@ describe("lib/codex-sessions: findCodexTranscript cache writes", () => {
     const cachePath = join(fpHome, "state", "codex-session-paths.json");
     const cache = JSON.parse(readFileSync(cachePath, "utf-8")) as Record<string, string>;
     expect(cache[sessionId]).toBe(sessionFile);
+  });
+
+  it("removes the temp file when the write itself fails", async () => {
+    const stateDir = join(fpHome, "state");
+    mkdirSync(stateDir, { recursive: true });
+    chmodSync(stateDir, 0o500);
+    const { findCodexTranscript } = await import("@/lib/codex-sessions");
+    expect(() => findCodexTranscript(sessionId)).not.toThrow();
+    expect(readdirSync(stateDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("removes the temp file when the rename fails", async () => {
+    // A non-empty directory where the cache file belongs makes rename(2) fail
+    // after the temp write succeeded - the path that used to leak .tmp files.
+    const stateDir = join(fpHome, "state");
+    mkdirSync(join(stateDir, "codex-session-paths.json", "blocking"), { recursive: true });
+    const { findCodexTranscript } = await import("@/lib/codex-sessions");
+    expect(() => findCodexTranscript(sessionId)).not.toThrow();
+    expect(readdirSync(stateDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
   });
 
   it("leaves no .tmp files behind after the write", async () => {

@@ -81,8 +81,8 @@ Very long sessions are read in excerpts and combined. When a session is too long
 - **A classifier always produces a score**, never a metric or an assertion.
 - **No reasoning**, as above. If a number will make someone ask "why?", write a judge instead.
 
-## Testing and backfill
+## Backfill
 
-Unlike a judge, a classifier evaluation **can** be tested before you deploy it — [test it](/evaluations/test) against real sessions the same way you would a code evaluation, and read the scores before anything goes live.
+Like a judge, a classifier evaluation **cannot** be tested before you deploy it. Both spend your organization's model budget, and that spend is only authorized once the evaluation is deployed. Deploy it to a narrow scope first and read the early scores instead.
 
 It can also be [backfilled](/evaluations/deploy#score-sessions-you-already-have) over sessions you already have. It costs a model call per session, so scope the window deliberately rather than replaying everything.

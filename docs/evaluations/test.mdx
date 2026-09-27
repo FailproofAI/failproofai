@@ -1,10 +1,12 @@
 ---
 title: "Test an evaluation"
-description: "Run an evaluation against your real sessions before deploying it. Nothing is stored."
+description: "Test a code evaluation against real sessions before deployment. Nothing is stored."
 icon: "flask-conical"
 ---
 
 **test this evaluation**, on the authoring page, runs the code against real sessions of yours on the evaluator fleet without deploying it. Nothing is stored: a failure here is a preview, and deploying is always allowed.
+
+**Code evaluations only.** Judge and classifier evaluations cannot be tested here — both spend your organization's model budget, which is only authorized once the evaluation is deployed. The panel tells you so if you try.
 
 <Steps>
   <Step title="Check that it compiles">

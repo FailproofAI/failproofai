@@ -16,12 +16,12 @@ Without Jev configured, authority has no effect. Every policy enforces exactly a
 A policy is reviewable only when all of these hold:
 
 1. It declares `authority: "reviewable"`.
-2. `reviewedBy` is a non-empty list, and every entry is a semantic check this machine can ask: one of the [built-in checks](#semantic-policy-names), or one an installed pack declares. A pack installed from a FailproofAI repository that declares checks of its own replaces the built-in ones, and then only the packs' checks count.
+2. `reviewedBy` is a non-empty list, and every entry is a semantic check this machine can ask: one an installed pack declares. Jev's checks come **only** from installed packs; FailproofAI's own sixteen ([listed below](#semantic-policy-names)) arrive with `FailproofAI/jev-policies`. With no pack supplying a named check, the policy is hard, as a reviewer that cannot be asked always is.
 3. It is not `alwaysOn`. The guard that stops an agent from disabling Failproof AI is always hard.
 
 Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name that is not a check this machine can ask. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must be asked, and none of them may deny", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
 
-Once Jev is configured, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it. It judges `reviewedBy` against the checks the pack declares when it declares any, and against the built-in checks otherwise.
+Once Jev is configured and an installed pack supplies at least one check, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing — and the same holds with Jev configured and no pack supplying a check: Jev is idle, and `failproofai jev status` says so once instead. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it. It judges `reviewedBy` against the checks the pack declares when it declares any, and against FailproofAI's sixteen check names otherwise.
 
 ## Where authority is declared
 
@@ -58,11 +58,11 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish` copies both fields into the pack manifest, so a policy published as a pack keeps the authority its author gave it. It refuses to build the pack if a declaration would not be honored: a value other than `"hard"` or `"reviewable"`, a `reviewedBy` that is not a list of names, or a name that is not a check — one of the pack's own [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) when it declares any, a built-in check otherwise.
+`failproofai publish` copies both fields into the pack manifest, so a policy published as a pack keeps the authority its author gave it. It refuses to build the pack if a declaration would not be honored: a value other than `"hard"` or `"reviewable"`, a `reviewedBy` that is not a list of names, or a name that is not a check — one of the pack's own [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) when it declares any, one of FailproofAI's sixteen otherwise.
 
 ## Built-in policies
 
-Reviewable only where a semantic policy genuinely covers the same concern. Every other built-in policy is hard.
+Reviewable only where a semantic policy genuinely covers the same concern. Every other built-in policy is hard. The checks a reviewable one names come from `FailproofAI/jev-policies`; without that pack every policy in this table is hard.
 
 Covering the concern is necessary but not sufficient, and both ways of getting it wrong are quiet:
 
@@ -120,9 +120,9 @@ An instruct-mode semantic policy can never answer deny, but it can still keep a 
 
 ## Semantic policy names
 
-These are the built-in checks, and the values `reviewedBy` accepts unless a pack installed from a FailproofAI repository declares Jev checks of its own. Each is a check Jev answers about the tool call in front of it. **Mode** is what a check can answer: a `deny` check blocks on strong evidence, while an `instruct` check only ever warns. Either keeps a policy's deny standing when it fires and the user did not ask for the call. **User can override** says whether the human's own explicit request clears it.
+These are FailproofAI's own Jev checks. Failproof AI does not ask them on its own: they ship in the `FailproofAI/jev-policies` pack (`failproofai policies add FailproofAI/jev-policies`), and are asked, and accepted in `reviewedBy`, only where that pack is installed. With Jev configured and no pack supplying a check, Jev is idle — it asks nothing, hooks behave exactly as without a Jev config, and every built-in policy marked reviewable below stays hard. Each is a check Jev answers about the tool call in front of it. **Mode** is what a check can answer: a `deny` check blocks on strong evidence, while an `instruct` check only ever warns. Either keeps a policy's deny standing when it fires and the user did not ask for the call. **User can override** says whether the human's own explicit request clears it.
 
-A pack's [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) are added to this list, and their names join the ones `reviewedBy` accepts. A pack installed from a FailproofAI repository instead replaces this list: its checks are then the only ones Jev asks and the only names `reviewedBy` accepts, so a policy naming a check below that it does not declare stays hard. `FailproofAI/jev-policies` declares these same sixteen, so with it the table still applies. A name two packs declare differently is honoured for neither. One of these sixteen names declared by a pack not installed from a FailproofAI repository is ignored in that pack: its version is never asked and does not contest FailproofAI's own, so a third-party pack can neither become the check that clears the core pack's policies nor switch one of these checks off. A pack whose every check is unusable leaves this list in force.
+Every installed pack's [Jev checks](/policies/publish-a-pack#jev-checks-in-a-pack) are asked side by side, and their names are the ones `reviewedBy` accepts on that machine. A name two packs declare differently is honoured for neither. These sixteen names are reserved to packs installed from a FailproofAI repository: declared by any other pack, that pack's version is never asked and does not contest FailproofAI's own, so a third-party pack can neither become the check that clears the core pack's policies nor switch one of these checks off. A pack whose every check is unusable supplies nothing.
 
 | Name | Mode | User can override | What Jev checks |
 | --- | --- | --- | --- |

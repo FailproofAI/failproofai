@@ -39,6 +39,16 @@ Jev is reachable through five routes. Bring a key for any one of them.
 With Vercel's own bring-your-own-key feature, a failed request is silently retried with Vercel's credentials. If you need every call billed to, and seen by, your own TypeSafe account only, use TypeSafe directly.
 </Warning>
 
+<Note>
+Jev asks only the checks your **installed packs** supply. FailproofAI's own sixteen come in the `FailproofAI/jev-policies` pack:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+With Jev configured and no pack that supplies a check, Jev is idle: it asks nothing and hooks behave exactly as without a Jev config. `jev setup`, `config` and `jev status` print that command when this is the case, and `jev status --json` reports `"jevChecks": { "idle": true, … }`. Nothing is installed for you.
+</Note>
+
 ## Set it up
 
 One command, the endpoint and the key:
@@ -143,7 +153,7 @@ failproofai jev status
 failproofai jev status --json
 ```
 
-`status` shows the provider, endpoint, model, mode, the config file and its permissions, and never the key. Below that it summarizes recent activity: how many calls Jev evaluated, how often it fell back to regex and why, its latency, and which reviewable policies it cleared.
+`status` shows the provider, endpoint, model, mode, the config file and its permissions, and never the key. When no installed pack supplies a Jev check it says Jev is idle and names `failproofai policies add FailproofAI/jev-policies`; `--json` carries the same as `jevChecks` (`installed`, `names`, `idle`, `fix`). Below that it summarizes recent activity: how many calls Jev evaluated, how often it fell back to regex and why, its latency, and which reviewable policies it cleared.
 
 ## Shadow mode
 

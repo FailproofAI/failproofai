@@ -111,6 +111,30 @@ describe("every agent named, in either spelling", () => {
   });
 });
 
+describe("a selection flag given more than once", () => {
+  // Only the first occurrence was read, so `--policy a --policy b` turned on a
+  // alone and said nothing about b; `--only` beside `--policy` was ignored.
+  it("takes every --policy, and --only beside it", () => {
+    expect(selectionFromForTest(["acme/x", "--policy", "a", "--policy", "b,c"]).only).toEqual(["a", "b", "c"]);
+    expect(selectionFromForTest(["acme/x", "--policy", "a", "--only", "b"]).only).toEqual(["a", "b"]);
+    expect(selectionFromForTest(["acme/x", "--policy=a", "--policy", "a"]).only).toEqual(["a"]);
+  });
+
+  it("takes every --category and every --cli", () => {
+    expect(selectionFromForTest(["acme/x", "--category", "git", "--category", "sanitize"]).categories)
+      .toEqual(["git", "sanitize"]);
+    expect(selectionFromForTest(["acme/x", "--cli", "claude", "--cli", "codex"]).clis).toEqual(["claude", "codex"]);
+  });
+
+  it("still refuses a repeat with no value", () => {
+    expect(selectionFromForTest(["acme/x", "--policy", "a", "--policy"]).only).toEqual([]);
+  });
+
+  it("never reads a repeated flag's value as the pack", () => {
+    expect(packAddSource(["--policy", "a", "--policy", "b", "acme/x"])).toBe("acme/x");
+  });
+});
+
 describe("which agents a pack is scoped to", () => {
   // Driven through the real command so the parse, the validation and what
   // lands in the manifest are all one path — the bug was that they were not.

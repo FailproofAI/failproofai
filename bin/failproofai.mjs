@@ -1672,7 +1672,7 @@ async function runCli() {
           {
             label: "choosing part of a pack",
             entries: [
-              ["--policy a,b", "exactly these"],
+              ["--policy a,b", "exactly these (comma-separated or repeated)"],
               ["--category x,y", "whole categories (failproofai policies show <source>)"],
               ["--all", "everything it contains"],
             ],

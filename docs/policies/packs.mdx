@@ -77,7 +77,7 @@ failproofai policies add FailproofAI/policies --category dangerous-commands # a 
 failproofai policies add FailproofAI/policies --all                         # everything in it
 ```
 
-`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`). When the pack is already installed, the flags add to what you had, and re-adding it with no flag and no terminal — to upgrade, say — keeps your selection as it is. At a terminal with no flag, `add` opens the picker instead, pre-ticked with the author's defaults, and what you tick replaces your selection.
+`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`), and each may be repeated: `--policy a --policy b` takes both. When the pack is already installed, the flags add to what you had, and re-adding it with no flag and no terminal — to upgrade, say — keeps your selection as it is. At a terminal with no flag, `add` opens the picker instead, pre-ticked with the author's defaults, and what you tick replaces your selection.
 
 ## Manage what is on
 

@@ -110,12 +110,23 @@ const fail = (lines: string[]): PackCliResult => ({ lines, exitCode: 1 });
  */
 const JEV_PACK_MIN_CLI = "1.0.8-beta.0";
 
-function parseList(rest: string[], flag: string): string[] | undefined {
-  const idx = rest.findIndex((a) => a === flag || a.startsWith(`${flag}=`));
-  if (idx === -1) return undefined;
-  const raw = rest[idx].includes("=") ? rest[idx].split("=").slice(1).join("=") : rest[idx + 1];
-  if (!raw || raw.startsWith("--")) return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+/**
+ * Every occurrence of any of `flags`, comma-split and de-duplicated: a repeated
+ * flag adds to the list rather than being silently dropped. `[]` when any
+ * occurrence has no value (callers refuse that), undefined when none appears.
+ */
+function parseList(rest: string[], ...flags: string[]): string[] | undefined {
+  let found = false;
+  const out: string[] = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const flag = flags.find((f) => rest[i] === f || rest[i].startsWith(`${f}=`));
+    if (!flag) continue;
+    found = true;
+    const raw = rest[i] === flag ? rest[i + 1] : rest[i].slice(flag.length + 1);
+    if (!raw || raw.startsWith("--")) return [];
+    out.push(...raw.split(",").map((s) => s.trim()).filter(Boolean));
+  }
+  return found ? [...new Set(out)] : undefined;
 }
 
 /**
@@ -205,17 +216,25 @@ export function packAddSource(rest: string[]): string | undefined {
  * a third would be the one that drifts.
  */
 function parseCliList(rest: string[]): { clis?: string[] } | { error: string[] } {
-  const idx = rest.findIndex((a) => a === "--cli" || a.startsWith("--cli="));
-  if (idx === -1) return {};
+  // Every `--cli`, not just the first: a repeat adds agents. One that names
+  // none still refuses the whole selection, below.
   const values: string[] = [];
-  if (rest[idx].startsWith("--cli=")) {
-    values.push(...rest[idx].slice("--cli=".length).split(","));
-  } else {
-    for (let j = idx + 1; j < rest.length && looksLikeCliName(rest[j]); j += 1) {
-      values.push(...rest[j].split(","));
-    }
+  let found = false;
+  let emptyOccurrence = false;
+  for (let i = 0; i < rest.length; i += 1) {
+    const before = values.length;
+    if (rest[i].startsWith("--cli=")) {
+      values.push(...rest[i].slice("--cli=".length).split(",").filter((v) => v.trim()));
+    } else if (rest[i] === "--cli") {
+      for (let j = i + 1; j < rest.length && looksLikeCliName(rest[j]); j += 1) {
+        values.push(...rest[j].split(",").filter((v) => v.trim()));
+      }
+    } else continue;
+    found = true;
+    if (values.length === before) emptyOccurrence = true;
   }
-  const names = values.map((v) => v.trim()).filter(Boolean);
+  if (!found) return {};
+  const names = emptyOccurrence ? [] : [...new Set(values.map((v) => v.trim()))];
   // `--cli` with nothing after it is a typo, not a scope.
   //
   // It used to become `clis: []`, which `installed.json` stores verbatim and
@@ -275,7 +294,7 @@ function selectionFrom(rest: string[]): {
 } {
   // `--policy` reads right for one ("give me this policy"), `--only` for a set.
   // They are the same switch; taking both means neither is the wrong guess.
-  const only = parseList(rest, "--policy") ?? parseList(rest, "--only");
+  const only = parseList(rest, "--policy", "--only");
   const categories = parseList(rest, "--category");
   const parsedClis = parseCliList(rest);
   if ("error" in parsedClis) return { error: parsedClis.error };

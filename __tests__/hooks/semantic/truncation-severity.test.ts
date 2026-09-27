@@ -29,7 +29,7 @@
  * large and are derived from the constant rather than written down: an
  * ordinary call is never cut, and a cut one is genuinely outsized.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import { MAX_REQUEST_CHARS } from "../../../src/hooks/semantic/compile";
@@ -46,6 +46,26 @@ import { evaluateSemantic, prepareSemantic, type SemanticOptions, type SemanticO
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import type { JevReview } from "../../../src/hooks/semantic/combine";
 import type { JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 /** Every "does it do X" probe held; the human asked for none of it. Jev denies. */
 const alarmed = async (request: JevRequest): Promise<JevResponse> => ({

@@ -68,7 +68,7 @@ export interface SemanticPolicy {
   precondition?: (facts: Facts) => boolean;
   /** Shown to the agent when the policy fires. */
   guidance: string;
-  /** The pack that declared it; absent for the compiled-in set. Attribution only. */
+  /** The pack that declared it; absent for a definition passed in directly (a replay, a test). Attribution only. */
   origin?: { packId: string; packVersion?: string };
 }
 

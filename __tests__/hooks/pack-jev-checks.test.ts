@@ -29,6 +29,7 @@ import type { AddressInfo } from "node:net";
 import { jevChecksSection, runPackCommand } from "@/src/hooks/pack-cli";
 import type { SemanticManifestEntry } from "@/src/hooks/pack-manifest";
 import type { PolicyCatalogEntry } from "@/src/hooks/policy-types";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 
 /** Wide enough that nothing in these fixtures is truncated by the flex column. */
 const OPTS = { cols: 100, color: false };
@@ -88,15 +89,16 @@ describe("the section's shape", () => {
     expect(text).toContain("`failproofai policies` never lists them");
   });
 
-  it("says a third party's checks are added to the built-in ones, and only FailproofAI's replace them", () => {
-    // `policies show` and the picker said "replace" for every pack after the
-    // resolver started ADDING a stranger's checks; `add` already said "added to".
+  it("says a third party's checks sit beside other packs', and FailproofAI's are its own", () => {
+    // This build asks no Jev check of its own, so nothing is "replaced" or
+    // "added to" any more: every pack's checks are asked beside the others'.
     const pack = { policies: [policy("block-rm-rf")], semantic: [check("acme-check")] };
     const third = jevChecksSection({ ...pack, source: "github:acme/x@1.0.0" }, OPTS)!.join("\n");
-    expect(third).toContain("added to this build's own checks");
-    expect(third).not.toMatch(/replac/);
+    expect(third).toContain("asked beside any other installed pack's");
+    expect(third).not.toMatch(/replac|this build's own/);
     const first = jevChecksSection({ ...pack, source: "github:FailproofAI/jev-policies@1.0.0" }, OPTS)!.join("\n");
-    expect(first).toContain("replacing this build's own set");
+    expect(first).toContain("asked as FailproofAI's own checks");
+    expect(first).not.toMatch(/replac|this build's own/);
   });
 
   it("gives every row its mode, because that decides what pairing with it can do", () => {
@@ -359,7 +361,7 @@ describe("failproofai policies show <pack>", () => {
     const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all"]);
     expect(r.exitCode, r.lines.join("\n")).toBe(0);
     const text = r.lines.join("\n");
-    expect(text).toContain("1 Jev check, added to this build's own checks.");
+    expect(text).toContain("1 Jev check, asked beside any other installed pack's.");
     expect(text).not.toContain("for Jev");
   });
 
@@ -368,19 +370,20 @@ describe("failproofai policies show <pack>", () => {
     release({ effect: "observe", policies: [], semantic: [check("obs-zebra")] });
     const text = (await runPackCommand(["add", "acme/guards@v1.2.0", "--all"])).lines.join("\n");
     expect(text).toMatch(/1 Jev check, not asked/);
-    expect(text).not.toContain("added to this build's own checks");
+    expect(text).not.toContain("asked beside any other installed pack's");
   });
 
   it("says a --cli pack's checks apply to those agents only", async () => {
     release({ policies: [], semantic: [check("codex-walrus")] });
     const r = await runPackCommand(["add", "acme/guards@v1.2.0", "--all", "--cli", "codex"]);
     expect(r.exitCode, r.lines.join("\n")).toBe(0);
-    expect(r.lines.join("\n")).toMatch(/added to this build's own checks, for codex only/);
+    expect(r.lines.join("\n")).toMatch(/asked beside any other installed pack's, for codex only/);
   });
 
   it("says at install which of its checks this machine will never ask, and why", async () => {
-    // Each fits a pack's budget alone; beside the built-in checks (a third
-    // party's join them) only the first fits what is left of one request.
+    // Each fits a pack's budget alone; beside FailproofAI's sixteen (installed
+    // first, and spending the budget first) only the first fits what is left.
+    installJevPoliciesPack(root);
     const probe = (i: number) => ({
       id: `p${i}`,
       instructions: "x".repeat(600),
@@ -401,7 +404,7 @@ describe("failproofai policies show <pack>", () => {
     // reserved name, so that pack's version is never asked. Only add said so.
     const text = (await show()).join("\n");
     expect(text).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
-    expect(text).toContain("added to this build's own checks");
+    expect(text).toContain("asked beside any other installed pack's");
   });
 
   it("sits under the policy rows, since a check is read against what it can clear", async () => {

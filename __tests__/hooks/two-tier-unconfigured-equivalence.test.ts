@@ -26,9 +26,9 @@
  * and `__tests__/hooks/block-read-outside-cwd.test.ts` is where that change is
  * pinned — not here. Do not read this file's silence as coverage of it.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { CORPUS_BUILTINS, type Golden } from "./two-tier/corpus";
 import { BUILTIN_POLICIES } from "../../src/hooks/builtin-policies";
 import { enterSandbox, runEvaluatorMatrix, runHandlerCorpus, type CorpusSandbox } from "./two-tier/runner";
@@ -103,5 +103,59 @@ describe("unconfigured equivalence (no jev.json)", () => {
     }, sandbox);
     expect(seen).toBe(Object.keys(golden.handler).length);
     expect(mismatches.slice(0, 5)).toEqual([]);
+  }, CORPUS_TIMEOUT_MS);
+});
+
+/**
+ * Jev CONFIGURED — a valid BYOK `jev.json`, in enforce mode — and no installed
+ * pack that supplies a Jev check. This build asks no Jev check of its own, so
+ * Jev is idle, and idle has to be the unconfigured machine to the byte: same
+ * outputs, same activity rows (no Jev field, no fallback recorded), and not
+ * one request to the provider.
+ */
+describe("configured-without-pack equivalence (jev.json, no Jev checks)", () => {
+  it("evaluateHookEvent: byte-identical to the unconfigured golden, and the provider is never called", async () => {
+    const fpHome = process.env.FAILPROOFAI_HOME!;
+    const jevFile = join(fpHome, "jev.json");
+    chmodSync(fpHome, 0o700);
+    writeFileSync(jevFile, JSON.stringify({ provider: "typesafe", apiKey: "sk-golden-not-a-real-key-0000", mode: "enforce" }), { mode: 0o600 });
+    const { inspectJevConfig } = await import("../../src/hooks/semantic/jev-config");
+    // The premise: this is a config the real loader accepts, so Jev is ON.
+    expect(inspectJevConfig().status).toBe("ok");
+
+    // The transport stub: every provider request goes through `fetch`.
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("an idle Jev must not reach the provider");
+    });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const mismatches: string[] = [];
+    let seen = 0;
+    // The corpus numbers its per-case activity stores from zero on every run,
+    // so the unconfigured run's rows are cleared first.
+    rmSync(join(sandbox.root, "activity"), { recursive: true, force: true });
+    try {
+      await runHandlerCorpus((id, value) => {
+        seen++;
+        const want = golden.handler[id];
+        const gotOut = JSON.stringify(value.out);
+        if (!want) {
+          mismatches.push(`${id}: not in the golden`);
+          return;
+        }
+        if (gotOut !== golden.outputs[want.out]) {
+          mismatches.push(`${id}\n  want ${golden.outputs[want.out]}\n  got  ${gotOut}`);
+        }
+        if (value.activity !== want.activity) {
+          mismatches.push(`${id}: activity row differs (want digest ${want.activity}); got ${JSON.stringify(value.activityRow)}`);
+        }
+      }, sandbox);
+    } finally {
+      globalThis.fetch = realFetch;
+      rmSync(jevFile, { force: true });
+    }
+    expect(seen).toBe(Object.keys(golden.handler).length);
+    expect(mismatches.slice(0, 5)).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
   }, CORPUS_TIMEOUT_MS);
 });

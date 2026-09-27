@@ -18,7 +18,7 @@
  * reasons a degraded evaluation produces. Whatever the handler ends up
  * writing, it cannot write more than this.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -29,6 +29,26 @@ import { _resetForTest, persistHookActivity, type HookActivityEntry } from "../.
 import { jevTelemetryProperties, trackHookEvent } from "../../src/hooks/hook-telemetry";
 import { describeJevActivity } from "../../src/hooks/jev-activity";
 import { computeJevStats, formatJevStats } from "../../src/hooks/semantic/jev-stats";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 // Marker words that appear in the command, the prompt and the agent message,
 // and in nothing a policy or the evaluator writes on its own.

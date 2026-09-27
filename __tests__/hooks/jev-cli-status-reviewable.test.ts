@@ -22,6 +22,8 @@ import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hoo
 import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
 import { RETAKE_PACK_COMMAND } from "../../src/hooks/policy-reviewability";
 import { JEV_API_KEY_ENV } from "../../src/hooks/semantic/jev-config";
+import { JEV_CHECKS_PACK_COMMAND } from "../../src/hooks/effective-reviewers";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 
 const KEY = ["cli", "reviewable", "0123456789abcdef"].join("-");
 // `setup` reads `<base>/models` before it writes, and a unit test must not reach a
@@ -73,28 +75,26 @@ function writeConfig(config: Record<string, unknown>): void {
   writeFileSync(join(process.env.FAILPROOFAI_HOME as string, "policies-config.json"), JSON.stringify(config));
 }
 
-/** An installed pack, written the way the loader verifies it. */
+/**
+ * An installed pack, written the way the loader verifies it, with
+ * `FailproofAI/jev-policies` beside it — the only source of the checks its
+ * policies name.
+ */
 function installPack(policies: Array<Record<string, unknown>>): void {
   const artifact = "// a pack artifact this test never executes\n";
   const digest = createHash("sha256").update(artifact).digest("hex");
   mkdirSync(join(packRoot, "artifacts"), { recursive: true });
   writeFileSync(join(packRoot, "artifacts", `${digest}.mjs`), artifact);
-  writeFileSync(
-    join(packRoot, "installed.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      packs: [
-        {
-          id: "FailproofAI/policies",
-          version: "0.9.0",
-          source: "github:FailproofAI/policies@v0.9.0",
-          entry: `artifacts/${digest}.mjs`,
-          sha256: digest,
-          policies,
-        },
-      ],
-    }),
-  );
+  installJevPoliciesPack(packRoot, [
+    {
+      id: "FailproofAI/policies",
+      version: "0.9.0",
+      source: "github:FailproofAI/policies@v0.9.0",
+      entry: `artifacts/${digest}.mjs`,
+      sha256: digest,
+      policies,
+    },
+  ]);
 }
 
 /** The same policies a pre-release pack shipped: no `authority`, no `reviewedBy`. */
@@ -158,23 +158,42 @@ describe("failproofai jev status — what Jev may clear", () => {
     expect(j.reviewablePolicies.problem).toContain(RETAKE_PACK_COMMAND);
   });
 
-  it("reports the seven Jev may clear, and complains about nothing, on this build's builtins", async () => {
-    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+  it("reports the fifteen Jev may clear, and complains about nothing, on a pack built by this release", async () => {
+    writeConfig({ enabledPolicies: [] });
+    installPack(PACKABLE as unknown as Array<Record<string, unknown>>);
     await turnJevOn();
 
     const r = await runJevCommand(["status"], RENDER);
     const out = text(r);
-    expect(out).toContain(`15 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+    expect(out).toContain(`15 of ${PACKABLE.length + 1} enabled policies are reviewable`);
     expect(out).toContain("Jev may clear a deny or an instruction from those, and from no others.");
     expect(out).not.toContain(RETAKE_PACK_COMMAND);
+    expect(out).not.toContain(JEV_CHECKS_PACK_COMMAND);
 
     const j = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
     expect(j.reviewablePolicies).toEqual({
-      enabled: POLICY_CATALOG.length,
+      enabled: PACKABLE.length + 1,
       reviewable: 15,
       customPolicyFiles: 0,
       problem: null,
     });
+    expect(j.jevChecks).toMatchObject({ installed: 16, idle: false, fix: null });
+  });
+
+  it("counts this build's builtins hard, and names jev-policies, while no pack supplies a check", async () => {
+    // The migration shim still enforces them; nothing supplies the checks their
+    // `reviewedBy` names, so each one resolves hard — as a reviewer that cannot
+    // be asked always has.
+    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+    await turnJevOn();
+
+    const out = text(await runJevCommand(["status"], RENDER));
+    expect(out).toContain(`0 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+    expect(out).toContain(JEV_CHECKS_PACK_COMMAND);
+
+    const j = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
+    expect(j.reviewablePolicies).toMatchObject({ enabled: POLICY_CATALOG.length, reviewable: 0 });
+    expect(j.jevChecks).toEqual({ installed: 0, names: [], idle: true, fix: JEV_CHECKS_PACK_COMMAND });
   });
 
   it("says nothing about authority for a config the loader refused", async () => {

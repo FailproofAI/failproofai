@@ -37,7 +37,7 @@
  * every entry here padded with long strings, and the undercharge was on the
  * cheapest value there is.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { MAX_REQUEST_CHARS, compileRequest, selectPolicies } from "../../../src/hooks/semantic/compile";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
@@ -58,6 +58,26 @@ import type { Facts, JevRequest, JevResponse, SemanticInput } from "../../../src
 // The PEM armour, joined at runtime — see `redaction-fixtures.ts` and this
 // file's "Fixtures are assembled at runtime and never written as literals".
 import { pemBegin, pemEnd } from "./redaction-fixtures";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 const DANGEROUS = "rm -rf / --no-preserve-root";
 

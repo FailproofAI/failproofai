@@ -23,6 +23,26 @@ import type { JevRequest, JevResponse } from "../../src/hooks/semantic/types";
 import type { JevConfig } from "../../src/hooks/semantic/jev-config";
 
 let jevConfig: JevConfig | null = null;
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
+
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-config")>();
   return { ...actual, loadJevConfig: vi.fn(() => jevConfig) };

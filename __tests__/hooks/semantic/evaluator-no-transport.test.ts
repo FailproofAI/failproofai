@@ -17,6 +17,26 @@ import { randomBytes } from "node:crypto";
 import { evaluateSemantic } from "../../../src/hooks/semantic/evaluator";
 import type { SemanticInput } from "../../../src/hooks/semantic/types";
 
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
+
 const ENV = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_JEV_CONFIG_DIR", "TYPESAFE_API_KEY"];
 const saved: Record<string, string | undefined> = {};
 let root: string;

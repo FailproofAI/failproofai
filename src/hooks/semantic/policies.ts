@@ -71,6 +71,21 @@ export function outsideProject(facts: Facts, p: PathFact): boolean {
   return p.resolved !== cwd && !p.resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/");
 }
 
+/**
+ * FailproofAI's sixteen Jev checks, as DATA. The runtime never asks them from
+ * here: Jev's checks come only from installed packs, and these ship in the
+ * `FailproofAI/jev-policies` pack. What this definition is still for:
+ *
+ * - the source the jev-policies pack is written from, and the reference its
+ *   tests hold it to (the pack fixture in `__tests__` is built from it);
+ * - the reserved-name list (`SEMANTIC_POLICY_NAMES` in `policy-authority.ts`
+ *   is pinned to these names), which only a FailproofAI pack may claim;
+ * - the size `FIRST_PARTY_QUESTION_CHARS` reserves for that pack when a third
+ *   party publishes (`pack-policies.ts`).
+ *
+ * Nothing on the hook path may use it as a fallback set: with no pack
+ * supplying a check, Jev is idle.
+ */
 export const SEMANTIC_POLICIES: ReadonlyArray<SemanticPolicy> = [
   {
     name: "destructive-deletion",

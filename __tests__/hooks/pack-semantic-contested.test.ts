@@ -222,7 +222,14 @@ describe("a second pack claiming a check another pack's policies name", () => {
         semantic: [semantic("deploy-gate")],
         artifact: artifactFor("acme/deploys", ["block-deploy"]),
       },
-      { id: "helpful/gates", version: "0.1.0", policies: [], semantic: [semantic("deploy-gate", { title: "Anything" })] },
+      // An uncontested check beside it keeps Jev active: with nothing left to
+      // ask, Jev is idle and says nothing per policy, as if unconfigured.
+      {
+        id: "helpful/gates",
+        version: "0.1.0",
+        policies: [],
+        semantic: [semantic("deploy-gate", { title: "Anything" }), semantic("helpful-check")],
+      },
     ]);
     await registeredAfterOneEvent();
     const text = stderr.join("");
@@ -304,22 +311,19 @@ describe("a third-party pack claiming a builtin check name", () => {
     semantic: [semantic("destructive-deletion", { mode: "instruct" })],
   };
 
-  // The impostor's question is never asked: the compiled-in set stands, so the
-  // core policy is still reviewable — by FailproofAI's own check.
+  // The impostor's question is never asked, and with no FailproofAI pack
+  // supplying the name the core policy stays HARD: the reserved name is
+  // FailproofAI's to fill, and nobody else's claim fills it.
   it.each([
     ["its own id", EXTRAS],
     ["a forged FailproofAI id", { ...EXTRAS, id: "FailproofAI/jev-policies", source: "github:acme/jev-extras@v0.1.0" }],
   ])("is not the reviewer that clears the core pack's policy (%s)", async (_label, extras) => {
     install([CORE, extras]);
     const registered = await registeredAfterOneEvent();
-    expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({
-      authority: "reviewable",
-      reviewedBy: ["destructive-deletion"],
-    });
+    expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({ authority: "hard" });
     vi.resetModules();
     const { resolveSemanticPolicies } = await import("@/src/hooks/semantic/pack-policies");
-    const { SEMANTIC_POLICIES } = await import("@/src/hooks/semantic/policies");
-    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+    expect(resolveSemanticPolicies()).toEqual([]);
     expect(stderr.join("")).toMatch(/declares semantic policy destructive-deletion, a name reserved/);
   });
 
@@ -346,20 +350,29 @@ describe("a third-party pack claiming a builtin check name", () => {
   });
 });
 
-it("a stranger's own checks leave the core pack's policy reviewable by the built-in check", async () => {
-  install([
-    {
-      id: "FailproofAI/policies",
-      version: "1.0.0",
-      policies: [regex("block-rm-rf", { authority: "reviewable", reviewedBy: ["destructive-deletion"] })],
-      artifact: artifactFor("FailproofAI/policies", ["block-rm-rf"]),
-    },
-    { id: "acme/db", version: "0.1.0", policies: [], semantic: [semantic("acme-db-check")] },
-  ]);
-  const registered = await registeredAfterOneEvent();
-  expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({
-    authority: "reviewable",
-    reviewedBy: ["destructive-deletion"],
+describe("a stranger's own checks beside the core pack", () => {
+  const CORE_PACK: PackInput = {
+    id: "FailproofAI/policies",
+    version: "1.0.0",
+    policies: [regex("block-rm-rf", { authority: "reviewable", reviewedBy: ["destructive-deletion"] })],
+    artifact: artifactFor("FailproofAI/policies", ["block-rm-rf"]),
+  };
+  const ACME_DB: PackInput = { id: "acme/db", version: "0.1.0", policies: [], semantic: [semantic("acme-db-check")] };
+
+  it("do not make the core pack's policy reviewable: no pack supplies the check it names", async () => {
+    install([CORE_PACK, ACME_DB]);
+    const registered = await registeredAfterOneEvent();
+    expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({ authority: "hard" });
+  });
+
+  it("leave it reviewable by FailproofAI's check once jev-policies supplies it", async () => {
+    const JEV: PackInput = { id: "FailproofAI/jev-policies", version: "1.0.0", policies: [], semantic: [semantic("destructive-deletion")] };
+    install([CORE_PACK, ACME_DB, JEV]);
+    const registered = await registeredAfterOneEvent();
+    expect(authorityOf(registered.get("pack/FailproofAI/policies@1.0.0/block-rm-rf"))).toEqual({
+      authority: "reviewable",
+      reviewedBy: ["destructive-deletion"],
+    });
   });
 });
 

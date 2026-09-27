@@ -21,6 +21,8 @@ import { join } from "node:path";
 import { getJevSettingsAction } from "../../app/actions/get-jev-config";
 import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
 import { RETAKE_PACK_COMMAND } from "../../src/hooks/policy-reviewability";
+import { NO_JEV_CHECKS_HINT } from "../../src/hooks/effective-reviewers";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 
 /** A token no provider issued. Nothing here should ever send it anywhere. */
 const TOKEN = "jevtoken-0123456789-3f2a";
@@ -77,27 +79,22 @@ function turnJevOn(): void {
   chmodSync(path, 0o600);
 }
 
+/** The core pack, with `FailproofAI/jev-policies` beside it — the only source of the checks it names. */
 function installPack(policies: Array<Record<string, unknown>>): void {
   const artifact = "// a pack artifact this test never executes\n";
   const digest = createHash("sha256").update(artifact).digest("hex");
   mkdirSync(join(packRoot, "artifacts"), { recursive: true });
   writeFileSync(join(packRoot, "artifacts", `${digest}.mjs`), artifact);
-  writeFileSync(
-    join(packRoot, "installed.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      packs: [
-        {
-          id: "FailproofAI/policies",
-          version: "0.9.0",
-          source: "github:FailproofAI/policies@v0.9.0",
-          entry: `artifacts/${digest}.mjs`,
-          sha256: digest,
-          policies,
-        },
-      ],
-    }),
-  );
+  installJevPoliciesPack(packRoot, [
+    {
+      id: "FailproofAI/policies",
+      version: "0.9.0",
+      source: "github:FailproofAI/policies@v0.9.0",
+      entry: `artifacts/${digest}.mjs`,
+      sha256: digest,
+      policies,
+    },
+  ]);
 }
 
 /** A pre-release pack's entries: the policies, without the two authority fields. */
@@ -134,18 +131,32 @@ describe("getJevSettingsAction — what Jev may clear", () => {
     expect(JSON.stringify(view)).not.toContain(TOKEN);
   });
 
-  it("reports the seven reviewable builtins and no problem", async () => {
+  it("reports the fifteen reviewable policies and no problem, from a pack built by this release", async () => {
+    writeConfig({ enabledPolicies: [] });
+    installPack(PACKABLE as unknown as Array<Record<string, unknown>>);
+    turnJevOn();
+
+    const view = await getJevSettingsAction();
+    expect(view.reviewable).toEqual({
+      enabled: PACKABLE.length + 1,
+      reviewable: 15,
+      summary:
+        `15 of ${PACKABLE.length + 1} enabled policies are reviewable: ` +
+        "Jev may clear a deny or an instruction from those, and from no others.",
+      problem: null,
+    });
+  });
+
+  it("counts this build's builtins hard, and names jev-policies, while no pack supplies a check", async () => {
     writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
     turnJevOn();
 
     const view = await getJevSettingsAction();
     expect(view.reviewable).toEqual({
       enabled: POLICY_CATALOG.length,
-      reviewable: 15,
-      summary:
-        `15 of ${POLICY_CATALOG.length} enabled policies are reviewable: ` +
-        "Jev may clear a deny or an instruction from those, and from no others.",
-      problem: null,
+      reviewable: 0,
+      summary: `0 of ${POLICY_CATALOG.length} enabled policies are reviewable.`,
+      problem: NO_JEV_CHECKS_HINT,
     });
   });
 
@@ -165,7 +176,9 @@ describe("getJevSettingsAction — what Jev may clear", () => {
       turnJevOn();
 
       const view = await getJevSettingsAction();
-      expect(view.reviewable).toMatchObject({ enabled: POLICY_CATALOG.length, reviewable: 15, problem: null });
+      // Every builtin the launch directory enables, and none reviewable: no
+      // pack supplies the checks they name.
+      expect(view.reviewable).toMatchObject({ enabled: POLICY_CATALOG.length, reviewable: 0, problem: NO_JEV_CHECKS_HINT });
     } finally {
       rmSync(launch, { recursive: true, force: true });
     }

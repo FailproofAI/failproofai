@@ -152,8 +152,8 @@ export interface InstalledPackRecord {
    *
    * `unknown` like `policies`, and optional like it is not: a pack published
    * before this field existed carries none, and every one of them must keep
-   * parsing. A pack that declares at least one REPLACES the compiled-in
-   * semantic set wholesale — see `semantic/pack-policies.ts`.
+   * parsing. Installed packs are the ONLY source of Jev checks — see
+   * `semantic/pack-policies.ts`.
    */
   semantic?: unknown;
   /**

@@ -38,12 +38,11 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames } from "./effective-reviewers";
+import { contestedReviewerNames, effectiveReviewerNames, jevChecksAvailable, warnAuthorityWhileJevActive } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
   resolvePolicyAuthority,
-  warnAuthority,
 } from "./policy-authority";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
@@ -217,6 +216,9 @@ async function runObserved(
 // alone — exactly as it did before two tiers existed — otherwise:
 //
 // - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
+// - an installed pack supplies at least one Jev check for this agent
+//   (`jevChecksAvailable`). This build asks none of its own: FailproofAI's
+//   ship in `FailproofAI/jev-policies`, and without a pack Jev is idle;
 // - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
 // - this is not the fail-closed `forceDecision` path and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
@@ -311,6 +313,11 @@ async function startTwoTier(
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
   if (jevForcedOff(opts) || activePause) return null;
+  // Idle: no installed pack supplies a Jev check, so there is nothing to ask.
+  // Decided BEFORE the config is read, from the manifest registration already
+  // read, so a configured-but-idle Jev is the unconfigured path to the byte —
+  // no semantic module loaded, no request, no latency, no deny, no clear.
+  if (!jevChecksAvailable()) return null;
   const loaded = await readJevConfig();
   if (!loaded) return null;
   const cfg = loaded.config;
@@ -397,6 +404,9 @@ async function captureJevIntent(
   opts: EvaluateHookEventOptions | undefined,
 ): Promise<void> {
   if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
+  // Idle Jev behaves as unconfigured Jev here too: nothing is captured for
+  // checks that no installed pack supplies.
+  if (!jevChecksAvailable()) return;
   try {
     if (!(await readJevConfig())) return;
     if (decision === "deny") {
@@ -806,7 +816,7 @@ export async function evaluateHookEvent(
         // every one of those policies, that it stays hard. `effectiveReviewerNames`
         // is cached for the registration pass, so this costs nothing extra.
         const refused = resolvePolicyAuthority(authority, effectiveReviewerNames(), contestedReviewerNames()).downgraded;
-        if (refused) warnAuthority(refusedAuthorityWarning(registeredName, refused));
+        if (refused) warnAuthorityWhileJevActive(refusedAuthorityWarning(registeredName, refused));
         registerPolicy(
           registeredName,
           hook.description ?? "",

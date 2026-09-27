@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
- * The one wiring point: `prepareSemantic` asks about the set an installed pack
- * declared, and about the compiled-in set when no pack declares one.
+ * The one wiring point: `prepareSemantic` asks about the set the installed
+ * packs declare, and about nothing when no pack declares one — this build asks
+ * no Jev check of its own.
  *
  * Driven through the real reader with a real manifest and a real digest, because
  * the thing worth proving is not that the resolver returns the right array — the
@@ -15,7 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareSemantic } from "@/src/hooks/semantic/evaluator";
 import { SEMANTIC_POLICIES } from "@/src/hooks/semantic/policies";
-import { resolveSemanticPolicies, _resetSemanticWarningsForTest } from "@/src/hooks/semantic/pack-policies";
+import { NO_POLICIES, resolveSemanticPolicies, _resetSemanticWarningsForTest } from "@/src/hooks/semantic/pack-policies";
+import { installJevPoliciesPack } from "../../fixtures/jev-policies-pack";
 import type { SemanticInput } from "@/src/hooks/semantic/types";
 
 const ARTIFACT = "export const hooks = [];\n";
@@ -83,16 +85,21 @@ afterEach(() => {
 });
 
 describe("resolveSemanticPolicies", () => {
-  it("is the compiled-in set with no manifest at all", () => {
-    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+  it("is empty with no manifest at all", () => {
+    expect(resolveSemanticPolicies()).toBe(NO_POLICIES);
   });
 
-  it("is the compiled-in set when the manifest is unreadable", () => {
+  it("is empty when the manifest is unreadable", () => {
     // The same fail-open posture every other reader of this file takes — and here
-    // it also fails safe: a pack's `reviewedBy` will not match the builtin names,
-    // so nothing is cleared by a question nobody could read.
+    // it also fails safe: nothing is asked, and nothing is cleared by a question
+    // nobody could read.
     writeFileSync(join(root, "installed.json"), "{ not json");
-    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+    expect(resolveSemanticPolicies()).toBe(NO_POLICIES);
+  });
+
+  it("is FailproofAI's sixteen once the jev-policies pack is installed", () => {
+    installJevPoliciesPack(root);
+    expect(resolveSemanticPolicies().map((p) => p.name)).toEqual(SEMANTIC_POLICIES.map((p) => p.name));
   });
 
   it("is the pack's set once it declares one", () => {
@@ -118,8 +125,15 @@ describe("resolveSemanticPolicies", () => {
 });
 
 describe("prepareSemantic consults the resolved set", () => {
-  it("asks the compiled-in questions when no pack declares any", () => {
+  it("asks nothing when no pack declares any", () => {
     writeManifest();
+    const prepared = prepareSemantic(input);
+    expect(prepared.selected).toEqual([]);
+    expect(Object.keys(prepared.compiled.request.questions)).toEqual([]);
+  });
+
+  it("asks FailproofAI's questions from the jev-policies pack", () => {
+    installJevPoliciesPack(root);
     const prepared = prepareSemantic(input);
     const names = prepared.selected.map((p) => p.name);
     expect(names).toContain("destructive-deletion");

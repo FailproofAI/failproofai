@@ -3,7 +3,7 @@
 // The BYOK provider layer, one provider at a time, against a mocked fetch:
 // request shape, auth header, answer parsing, version handling, and the
 // 429 / 402 / 5xx mapping that decides when a hook falls back to regex.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,26 @@ import {
 import { evaluateSemantic } from "../../../src/hooks/semantic/evaluator";
 import { JEV_REASON_PROVIDER_REFUSED, normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest, JevResponse } from "../../../src/hooks/semantic/types";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 const KEY = ["prov", "test", "abcdef0123456789"].join("-");
 const ACCOUNT = "0123456789abcdef0123456789abcdef";

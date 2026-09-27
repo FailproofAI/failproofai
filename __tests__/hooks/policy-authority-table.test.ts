@@ -9,7 +9,7 @@
  * and the published docs page is held to it too — a hand-maintained table with
  * nothing checking it is the #337 drift class.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { BUILTIN_POLICIES, registerBuiltinPolicies } from "../../src/hooks/builtin-policies";
@@ -18,6 +18,26 @@ import { clearPolicies, getAllPolicies } from "../../src/hooks/policy-registry";
 import { effectiveAuthority } from "../../src/hooks/policy-types";
 import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "../../src/hooks/policy-authority";
 import { SEMANTIC_POLICIES } from "../../src/hooks/semantic/policies";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 /** D1: the only builtins Jev may clear, and the checks that must clear them. */
 const REVIEWABLE: Record<string, string[]> = {
@@ -154,6 +174,25 @@ describe("builtin registration carries the table into the registry", () => {
         }
       }
     } finally {
+      clearPolicies();
+    }
+  });
+
+  it("registers every one of them HARD while no installed pack supplies the checks they name", () => {
+    // The declarations are unchanged — the fifteen still say reviewable — but a
+    // reviewer that cannot be asked is resolved the safe way.
+    jevPackInstalled = false;
+    clearPolicies();
+    try {
+      registerBuiltinPolicies(BUILTIN_POLICIES.map((p) => p.name));
+      for (const p of POLICY_CATALOG) {
+        const r = getAllPolicies().find((x) => x.name === `failproofai/${p.name}`)!;
+        expect(r.authority, p.name).toBe("hard");
+        expect("reviewedBy" in r, p.name).toBe(false);
+      }
+      expect(Object.keys(REVIEWABLE)).toHaveLength(15);
+    } finally {
+      jevPackInstalled = true;
       clearPolicies();
     }
   });

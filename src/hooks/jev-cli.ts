@@ -138,12 +138,14 @@ import {
   type JevModelListResult,
 } from "./semantic/jev-client";
 import {
+  installedJevCheckNames,
   reviewableProblem,
   reviewableSummary,
   surveyReviewableCoverage,
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
+import { JEV_CHECKS_PACK_COMMAND, NO_JEV_CHECKS_HINT } from "./effective-reviewers";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
@@ -1108,11 +1110,23 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
       // process lived.
       tokenOnCommandLine ? warning(TOKEN_HISTORY_WARNING, opts) : null,
       note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
+      noChecksWarning(cfg.mode ?? DEFAULT_JEV_MODE, opts),
       // Switched off, `jev test` only answers "not run — switched off": a next
       // step that leads nowhere is worse than none.
       (cfg.mode ?? DEFAULT_JEV_MODE) === "off" ? null : nextStep("failproofai jev test", "Check it with one live request:", opts),
     ),
   );
+}
+
+/**
+ * The one line `setup` adds when Jev was saved on and no installed pack
+ * supplies a check: saved, and idle until the pack is added. Nothing is
+ * installed for the user and nothing is asked. Switched off, it says nothing —
+ * there is no Jev running to be idle.
+ */
+function noChecksWarning(mode: NonNullable<JevConfig["mode"]>, opts: RenderOpts): string[] | null {
+  if (mode === "off" || installedJevCheckNames().length > 0) return null;
+  return warning([NO_JEV_CHECKS_HINT], opts);
 }
 
 // ── setup: FailproofAI Cloud ─────────────────────────────────────────────────
@@ -1312,6 +1326,7 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
         opts,
       ),
       note("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
+      noChecksWarning(shownMode, opts),
       // With no usable key, `jev test` only answers "not run": the step that
       // helps is the connection. Switched off, there is no step to take.
       shownMode === "off"
@@ -1409,7 +1424,11 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   // says, and an authority count there would answer a question nobody is in a
   // position to ask yet.
   const coverage = inspection.status === "ok" ? safeCoverage() : null;
-  const coverageProblem = coverage ? reviewableProblem(coverage) : null;
+  // The Jev checks installed packs supply. This build asks none of its own,
+  // so none installed means Jev is idle however it is configured.
+  const checks = inspection.status === "ok" ? installedJevCheckNames() : null;
+  const idle = checks !== null && checks.length === 0;
+  const coverageProblem = coverage ? reviewableProblem(coverage) : idle ? NO_JEV_CHECKS_HINT : null;
 
   if (asJson) {
     const base: Record<string, unknown> = { path: inspection.path, status: inspection.status, legacyOverride: legacy, stats };
@@ -1489,6 +1508,15 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         timeoutMs: cfg.timeoutMs,
         keySource: inspection.keySource,
         ...(inspection.keySource === "cloud" ? { keySourceLabel: CLOUD_KEY_SOURCE, cloudConnected: true, keyCarriesJev: true } : {}),
+        // Which Jev checks the installed packs supply. `idle: true` means none:
+        // Jev asks nothing and hooks behave as if it were not configured, and
+        // `fix` is the one command that changes that.
+        jevChecks: {
+          installed: checks?.length ?? 0,
+          names: checks ?? [],
+          idle,
+          fix: idle ? JEV_CHECKS_PACK_COMMAND : null,
+        },
         // How much of this machine's policy set Jev is allowed to clear, and
         // why it is none when it is none. A provisioning check that turns Jev
         // on has no other way to find out that the half it turned on cannot
@@ -1700,7 +1728,11 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const mode = cfg.mode ?? DEFAULT_JEV_MODE;
   return ok(
     stack(
-      title("failproofai jev status", legacy ? "on (legacy override in this shell)" : `on · ${mode}`, opts),
+      title(
+        "failproofai jev status",
+        legacy ? "on (legacy override in this shell)" : idle ? `on · ${mode} · idle (no Jev checks installed)` : `on · ${mode}`,
+        opts,
+      ),
       rows(
         [
           ["provider", providerLabel(cfg.provider)],

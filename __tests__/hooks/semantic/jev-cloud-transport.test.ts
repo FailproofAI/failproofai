@@ -41,6 +41,26 @@ import { resetJevThrottle } from "../../../src/hooks/semantic/jev-throttle";
 import { normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest } from "../../../src/hooks/semantic/types";
 
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
+
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const KEY = ["fp", "machine", "c10ud0123456789ab"].join("-");
 

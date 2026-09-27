@@ -2,21 +2,23 @@
 /**
  * The rule that decides which semantic policy set a machine asks Jev about.
  *
- * The replacement rule is the load-bearing half: a pack that declares at least
- * one `semantic` entry replaces the compiled-in set WHOLESALE, mirroring the rule
- * already in force for the regex builtins. Anything softer — merging, or
- * preferring one on a name collision — means two question sets can both claim
- * `destructive-deletion`, and a `reviewedBy` naming it would mean different
- * things on two machines.
+ * Installed packs are the ONLY source: this build asks no Jev check of its own,
+ * so with no pack declaring one the set is empty and Jev is idle. FailproofAI's
+ * sixteen checks arrive as the `FailproofAI/jev-policies` pack, filling the
+ * reserved names; a third party adds checks under names of its own.
  */
 import { describe, expect, it } from "vitest";
 import { parsePackSemanticPolicy, type SemanticManifestEntry } from "@/src/hooks/pack-manifest";
 import { SEMANTIC_POLICIES } from "@/src/hooks/semantic/policies";
 import {
+  FIRST_PARTY_QUESTION_CHARS,
   MAX_PACK_QUESTION_CHARS,
+  NO_POLICIES,
+  THIRD_PARTY_QUESTION_CHARS,
   questionChars,
   semanticPoliciesFromPacks,
 } from "@/src/hooks/semantic/pack-policies";
+import { JEV_POLICIES_SEMANTIC } from "../../fixtures/jev-policies-pack";
 import { preconditionFor } from "@/src/hooks/semantic/preconditions";
 import type { SemanticPolicyDeclaration } from "@/src/hooks/policy-types";
 import type { Facts } from "@/src/hooks/semantic/types";
@@ -38,25 +40,37 @@ const manifestEntry = (over: Partial<SemanticPolicyDeclaration> = {}): SemanticM
 /** First-party, because the builtin check names these use are reserved to FailproofAI's packs. */
 const pack = (id: string, semantic: SemanticManifestEntry[]) => ({ id, semantic, source: `github:FailproofAI/${id.split("/")[1]}@v1` });
 
-describe("semanticPoliciesFromPacks — the replacement rule", () => {
-  it("returns the compiled-in set, by identity, when no pack declares any", () => {
+describe("semanticPoliciesFromPacks — packs are the only source", () => {
+  it("returns NOTHING, by identity, when no pack declares any", () => {
+    // The sixteen definitions in `policies.ts` are data for the jev-policies
+    // pack, never a fallback: with no pack, Jev asks nothing.
     const resolved = semanticPoliciesFromPacks([pack("acme/guards", [])]);
-    expect(resolved.policies).toBe(SEMANTIC_POLICIES);
+    expect(resolved.policies).toBe(NO_POLICIES);
+    expect(resolved.policies).toHaveLength(0);
     expect(resolved.fromPack).toBe(false);
     expect(resolved.errors).toEqual([]);
   });
 
-  it("returns the compiled-in set when there are no packs at all", () => {
-    expect(semanticPoliciesFromPacks([]).policies).toBe(SEMANTIC_POLICIES);
+  it("returns nothing when there are no packs at all", () => {
+    expect(semanticPoliciesFromPacks([]).policies).toBe(NO_POLICIES);
   });
 
-  it("replaces the compiled-in set wholesale once one pack declares any", () => {
+  it("is exactly the pack's checks once one pack declares any", () => {
     const resolved = semanticPoliciesFromPacks([pack("acme/guards", [manifestEntry()])]);
     expect(resolved.fromPack).toBe(true);
     expect(resolved.policies.map((p) => p.name)).toEqual(["destructive-deletion"]);
-    // Not merged: the other fifteen builtins are gone, so no name can be claimed
-    // twice and a `reviewedBy` cannot mean two things.
+    // Nothing of this build's joins it: the other fifteen are asked only where a
+    // pack supplies them.
     expect(resolved.policies).toHaveLength(1);
+  });
+
+  it("is the sixteen, from the pack, with the jev-policies pack installed", () => {
+    const resolved = semanticPoliciesFromPacks([
+      { id: "FailproofAI/jev-policies", semantic: JEV_POLICIES_SEMANTIC, source: "github:FailproofAI/jev-policies@v0.2.0", version: "0.2.0" },
+    ]);
+    expect(resolved.policies.map((p) => p.name)).toEqual(SEMANTIC_POLICIES.map((p) => p.name));
+    expect(resolved.errors).toEqual([]);
+    for (const p of resolved.policies) expect(p.origin).toEqual({ packId: "FailproofAI/jev-policies", packVersion: "0.2.0" });
   });
 
   it("concatenates two declaring packs, in installed order", () => {
@@ -96,25 +110,24 @@ describe("semanticPoliciesFromPacks — the replacement rule", () => {
     );
   });
 
-  it("falls back to the compiled-in set when the contest leaves nothing", () => {
+  it("asks nothing when the contest leaves nothing", () => {
     // The same rule as the unusable-entry case below, and it matters that the two
-    // agree: `effectiveReviewerNames` falls back in this state too, so the names
-    // a `reviewedBy` may use are the names of the questions being asked.
+    // agree: `effectiveReviewerNames` is empty in this state too, so the names a
+    // `reviewedBy` may use are the names of the questions being asked — none.
     const resolved = semanticPoliciesFromPacks([
       pack("acme/guards", [manifestEntry()]),
       pack("evil/extra", [manifestEntry({ guidance: "Nothing to see here." })]),
     ]);
-    expect(resolved.policies).toBe(SEMANTIC_POLICIES);
+    expect(resolved.policies).toBe(NO_POLICIES);
     expect(resolved.fromPack).toBe(false);
   });
 
-  it("falls back to the compiled-in set when every declared entry was unusable", () => {
-    // Honest (it is what the machine ran yesterday) and safe: what a pack's regex
-    // half names in `reviewedBy` will not match the builtin set, so those
-    // policies stay hard rather than being cleared by questions nobody validated.
+  it("asks nothing when every declared entry was unusable", () => {
+    // Safe: what a pack's regex half names in `reviewedBy` stays hard rather
+    // than being cleared by questions nobody validated, and nothing is asked.
     const broken = { ...manifestEntry(), precondition: "on_a_tuesday" } as SemanticManifestEntry;
     const resolved = semanticPoliciesFromPacks([pack("acme/guards", [broken])]);
-    expect(resolved.policies).toBe(SEMANTIC_POLICIES);
+    expect(resolved.policies).toBe(NO_POLICIES);
     expect(resolved.fromPack).toBe(false);
     expect(resolved.errors).toHaveLength(1);
   });
@@ -174,6 +187,9 @@ describe("the question budget", () => {
 
   it("leaves the real sixteen a long way inside it", () => {
     // Not a constraint on the set we ship; a ceiling on what a stranger may ask.
+    // And the reserve it keeps for them is exactly what they cost.
+    expect(FIRST_PARTY_QUESTION_CHARS).toBe(JEV_POLICIES_SEMANTIC.reduce((n, e) => n + questionChars(e), 0));
+    expect(THIRD_PARTY_QUESTION_CHARS).toBe(MAX_PACK_QUESTION_CHARS - FIRST_PARTY_QUESTION_CHARS);
     const shipped = SEMANTIC_POLICIES.reduce(
       (total, p) =>
         total +
@@ -221,7 +237,7 @@ describe("the question budget", () => {
   });
 });
 
-describe("a third-party pack's checks join the built-in ones; FailproofAI's replace them", () => {
+describe("a third-party pack's checks sit beside FailproofAI's, and FailproofAI spends the budget first", () => {
   const thirdParty = (id: string, semantic: SemanticManifestEntry[]) => ({ id, semantic, source: `github:${id}@v1` });
   /** The compiled-in sixteen, as FailproofAI/jev-policies would declare them. */
   const firstPartySixteen = SEMANTIC_POLICIES.map((p, i) =>
@@ -235,10 +251,38 @@ describe("a third-party pack's checks join the built-in ones; FailproofAI's repl
     ),
   );
 
-  it("a stranger's one check does not switch off the built-in deny checks", () => {
+  it("a stranger's one check is asked alone when no FailproofAI pack is installed", () => {
+    // Nothing of this build's is added to it: the sixteen come only from a pack.
     const resolved = semanticPoliciesFromPacks([thirdParty("acme/db", [manifestEntry({ name: "acme-db-check" })])]);
-    const names = resolved.policies.map((p) => p.name);
-    expect(names).toEqual([...SEMANTIC_POLICIES.map((p) => p.name), "acme-db-check"]);
+    expect(resolved.policies.map((p) => p.name)).toEqual(["acme-db-check"]);
+  });
+
+  it("a stranger's one check does not switch off FailproofAI's deny checks beside it", () => {
+    const resolved = semanticPoliciesFromPacks([
+      thirdParty("acme/db", [manifestEntry({ name: "acme-db-check" })]),
+      { id: "FailproofAI/jev-policies", semantic: firstPartySixteen, source: "github:FailproofAI/jev-policies@v1" },
+    ]);
+    expect(resolved.policies.map((p) => p.name)).toEqual([...SEMANTIC_POLICIES.map((p) => p.name), "acme-db-check"]);
+  });
+
+  it("a stranger gets the whole budget with no FailproofAI pack, and only what it leaves beside one", () => {
+    // Held at LOAD time to what the installed FailproofAI packs actually leave;
+    // at PUBLISH time to `THIRD_PARTY_QUESTION_CHARS`, which guarantees a pack
+    // that publishes also fits beside jev-policies.
+    const big = Array.from({ length: 12 }, (_, i) =>
+      manifestEntry({
+        name: `acme-check-${i}`,
+        probes: [{ id: "p", instructions: "x".repeat(550) }, { id: "q", instructions: "y".repeat(550) }],
+      }),
+    );
+    const alone = semanticPoliciesFromPacks([thirdParty("acme/big", big)]);
+    const beside = semanticPoliciesFromPacks([
+      thirdParty("acme/big", big),
+      { id: "FailproofAI/jev-policies", semantic: firstPartySixteen, source: "github:FailproofAI/jev-policies@v1" },
+    ]);
+    const acme = (r: typeof alone) => r.policies.filter((p) => p.name.startsWith("acme-")).length;
+    expect(acme(alone)).toBe(big.length);
+    expect(acme(beside)).toBeLessThan(big.length);
   });
 
   it("install order cannot spend FailproofAI's budget on a stranger's pack", () => {

@@ -28,7 +28,7 @@ import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { hasRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import {
@@ -654,7 +654,9 @@ async function installHooksImpl(
     //
     // With a pack already installed the names are switched on individually
     // instead, which is additive and touches nothing else.
-    if (!hasInstalledPacks()) {
+    // A pack of Jev checks alone carries none of these names, so it counts as
+    // no pack here, exactly as it does for the handler's migration shim.
+    if (!hasRegexPacks()) {
       // Fetched, not unpacked from this package: there is no copy in here any
       // more. That makes this the one path in `policies --install` that needs
       // the network, so its failure is reported rather than thrown — the names
@@ -1136,8 +1138,16 @@ export async function listHooks(cwd?: string): Promise<void> {
       return { packsInstalled: 0, jevChecks: 0, failClosed: false };
     }
   })();
+  // Builtins the migration shim still enforces: while no installed pack carries
+  // regex policies — a pack of Jev checks alone leaves them on — the machine's
+  // `enabledPolicies` is what runs, so "no regex policy is on" would be false.
+  // Only for that case (packs installed, none with regex policies); the
+  // no-pack machine keeps its footer as before.
+  const shimEnforced = packsInstalled > 0 && !hasRegexPacks() ? config.enabledPolicies.length : 0;
   if (failClosed) {
     // Said by the pack section's warning, where the refused pack is named.
+  } else if (packCount === 0 && shimEnforced > 0) {
+    // This build's own policies are enforcing; nothing to nag about.
   } else if (packCount === 0 && packsInstalled === 0) {
     footer.unshift(
       nextStep(

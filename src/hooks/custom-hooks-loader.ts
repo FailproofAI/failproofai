@@ -33,8 +33,8 @@ import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
-import { effectiveReviewerNames } from "./effective-reviewers";
-import { refusedAuthorityWarning, warnAuthority, withMergedAuthority } from "./policy-authority";
+import { effectiveReviewerNames, warnAuthorityWhileJevActive as warnAuthority } from "./effective-reviewers";
+import { refusedAuthorityWarning, withMergedAuthority } from "./policy-authority";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
 
@@ -473,7 +473,7 @@ export async function loadAllCustomHooks(
     // assignment could clear what an org-wide hard one enforces.
     //
     // Judged against the checks THIS MACHINE can ask, which is what registration
-    // will judge these same declarations by. Against the builtin set instead, a
+    // will judge these same declarations by. Against a fixed name list instead, a
     // `reviewedBy` naming a check an installed pack ships reads as unknown here,
     // both assignments resolve hard, and the merge has no way to tell the
     // reviewable one from the hard one. Read inside this branch, so a deployment
@@ -535,7 +535,7 @@ export async function loadAllCustomHooks(
    * policy reviewable, which is the one thing a manifest may never do.
    *
    * `knownReviewers` is what makes that hold for a pack that ships BOTH tiers.
-   * Judged against the compiled-in set, a `reviewedBy` naming one of the pack's
+   * Judged against a fixed name list, a `reviewedBy` naming one of the pack's
    * own checks is a name nothing here has, so the reviewable entry and its hard
    * peer resolved alike and the merge could not tell them apart — while
    * registration, which reads the manifest's own checks, honoured it. The set

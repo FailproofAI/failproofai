@@ -52,6 +52,7 @@ import {
   PERMISSION_POLICIES,
 } from "./cloud-introspect";
 import type { CloudJevConfigWrite } from "./jev-cloud-connection";
+import { NO_JEV_CHECKS_HINT } from "./effective-reviewers";
 import {
   ingestPath,
   validateIngestKey,
@@ -190,6 +191,12 @@ export interface JevConnectOutcome {
    *   - `none`: there was no slot, and there still is none.
    */
   unconfirmed?: "kept" | "cleared" | "none";
+  /**
+   * `ok`, and no installed pack supplies a Jev check: Jev is configured but
+   * idle until `failproofai policies add FailproofAI/jev-policies`. This build
+   * asks no check of its own, so the connect output names that command.
+   */
+  noChecks?: true;
 }
 
 /**
@@ -365,6 +372,14 @@ writeCloudCredentials(creds);
           ? { ok: true, config: existing, ...(stillOn ? { stillOn } : {}) }
           : { ok: true, optIn: true };
       }
+      // Jev on (or kept on) with no installed pack supplying a check is idle;
+      // the connect output names the pack. Not said for an opt-in connection,
+      // which switched nothing on. A CLI module, never the hook path's, so it
+      // may ask the resolver.
+      if (!outcome.jev.optIn) {
+        const { installedJevCheckNames } = await import("./policy-reviewability");
+        if (installedJevCheckNames().length === 0) outcome.jev.noChecks = true;
+      }
     } else if (known) {
       // Introspect ANSWERED, and the key does not carry Jev. This connection
       // replaces the last one, and the last key's Jev slot describes a
@@ -408,6 +423,11 @@ writeCloudCredentials(creds);
   return outcome;
 }
 
+/** The idle line: Jev is on, and no installed pack supplies a check for it to ask. */
+function noChecksLine(jev: JevConnectOutcome): string[] {
+  return jev.noChecks ? [`            ${NO_JEV_CHECKS_HINT}`] : [];
+}
+
 /**
  * The Jev line(s) for `describeOutcome`: whether FailproofAI Cloud runs Jev for
  * this machine now, and — the one case worth a second line — why an existing
@@ -442,6 +462,7 @@ function jevLines(outcome: ConnectOutcome): string[] {
       plainHttp
         ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in shadow mode."
         : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
+      ...noChecksLine(jev),
     ];
   }
   if (config.status === "kept") {
@@ -464,6 +485,9 @@ function jevLines(outcome: ConnectOutcome): string[] {
         `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. To switch it off: \`failproofai jev setup --mode off\`.`,
       );
     }
+    // Only where the kept file leaves Jev running: switched off or refused,
+    // there is nothing to be idle.
+    if (!config.jevOff) lines.push(...noChecksLine(jev));
     return lines;
   }
   return [`  Jev       key stored, but Jev was not turned on: ${config.problem}.`];

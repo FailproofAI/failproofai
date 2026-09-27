@@ -98,7 +98,7 @@ export interface SemanticOptions {
    */
   signal?: AbortSignal;
   model?: string;
-  /** Overrides the resolved set (an installed pack's, else the compiled-in one). */
+  /** Overrides the resolved set (the installed packs' checks; empty with none). */
   policies?: ReadonlyArray<SemanticPolicy>;
   /** The agent the call is for: a pack scoped to other agents contributes no checks. */
   cli?: string;
@@ -306,8 +306,8 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
     scanned,
     input.projectRoot ?? null,
   );
-  // The set an installed pack declared, or the compiled-in one when no pack
-  // declares any — see `pack-policies.ts` for the replacement rule. Resolved
+  // The set the installed packs declare — empty when none does, so nothing is
+  // asked (see `pack-policies.ts`; the handler never gets here then). Resolved
   // here rather than by the caller because this is the one place the policy set
   // is read, and a second resolution site is a second answer to "what does this
   // machine ask Jev". A caller that supplies `policies` (a replay, an ablation,

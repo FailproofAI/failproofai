@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.9-beta.0 — 2026-09-27
+
+### Changed
+
+- **Jev's checks now come only from installed packs.** This build no longer asks the 16 built-in semantic checks (`destructive-deletion`, `credential-exfiltration`, …) on its own: they ship in `FailproofAI/jev-policies`, which carries all 16, and are asked only where that pack is installed (`failproofai policies add FailproofAI/jev-policies`). With Jev configured and no pack that supplies a check, Jev is idle — hooks behave exactly as with no Jev config: no request to the provider, no added latency, no Jev deny and no clear, no intent capture, and no per-policy authority warnings. The built-in policies marked reviewable keep their `authority`/`reviewedBy`, and resolve hard until a pack supplies the checks they name. `config` (connect / `--token`), `jev setup` and `jev status` print one line naming the pack when Jev is on and idle, `jev status` titles it `idle (no Jev checks installed)`, `jev status --json` carries `jevChecks: {installed, names, idle, fix}`, and the dashboard's Jev panel shows the same line; nothing is installed for you. `jev test` is unchanged (it asks its own probe). The 16 names stay reserved to FailproofAI's packs, and a FailproofAI Jev verdict is now filed under the pack that supplied it (`packId: FailproofAI/jev-policies`).
+- **A pack of Jev checks alone no longer switches off the built-in regex policies.** Installing any pack used to stop `enabledPolicies` from registering, so following the hint above (`policies add FailproofAI/jev-policies`, which carries no regex policies) would have taken `block-rm-rf`, `block-sudo` and the rest away. Only a pack that carries regex policies now replaces them; with jev-policies alone the built-ins keep enforcing, the 15 marked reviewable resolve reviewable, and `jev status`, `policies`, `policies --install` and the audit's closing hint all apply the same rule.
+- **The Jev question budget no longer reserves room for built-in checks at load time.** A FailproofAI pack is held to the whole request (27,591 characters) and spends it first; any other pack gets what the installed FailproofAI packs actually leave, and the whole request when none is installed. `failproofai publish` still holds a pack from outside FailproofAI to what `FailproofAI/jev-policies` leaves (now measured as that pack's manifest compiles, 18,478 characters, so 9,113 are left), so a pack that publishes always fits beside it.
+
 ## 1.0.8-beta.0 — 2026-09-26
 
 ### Added

@@ -73,13 +73,11 @@ export function registerPolicy(
   const canonical = normalizePolicyName(name);
   const registry = getRegistry();
   const idx = registry.findIndex((p) => p.name === canonical);
-  // Judged against the reviewers this MACHINE can ask, not against the ones this
-  // build compiled in. A pack that ships its own `semantic` set replaces the
-  // compiled one, so its policies name checks that exist here and nowhere in
-  // `SEMANTIC_POLICY_NAMES` — and judging them by the builtin list would
-  // downgrade the whole rewritten set to `hard` while reporting nothing but a
-  // warning. `effectiveReviewerNames` reads the manifest — already where a
-  // pack's `reviewedBy` itself comes from — once per registration pass.
+  // Judged against the reviewers this MACHINE can ask: the Jev checks installed
+  // packs supply, and nothing else — this build asks none of its own. With no
+  // such pack the set is empty and every reviewable declaration resolves hard.
+  // `effectiveReviewerNames` reads the manifest — already where a pack's
+  // `reviewedBy` itself comes from — once per registration pass.
   const authority = meta ? resolvePolicyAuthority(meta, effectiveReviewerNames()) : undefined;
   const entry: RegisteredPolicy = {
     name: canonical, description, fn, match, priority,

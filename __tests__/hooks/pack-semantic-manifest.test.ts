@@ -29,7 +29,9 @@ import {
   contestedSemanticNames,
   effectiveReviewerNames,
   forgetEffectiveReviewerNames,
+  jevChecksAvailable,
 } from "@/src/hooks/effective-reviewers";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 import { SEMANTIC_REVIEWER_NAMES } from "@/src/hooks/policy-authority";
 import { missingGuards } from "@/src/hooks/pack-failclosed";
 import { PACK_PRECONDITION_NAMES } from "@/src/hooks/semantic/precondition-names";
@@ -444,34 +446,43 @@ describe("readInstalledPacks with semantic entries", () => {
 });
 
 describe("effectiveReviewerNames", () => {
-  it("is this build's set when no pack is installed", () => {
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+  it("is EMPTY when no pack is installed: this build asks no Jev check of its own", () => {
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksAvailable()).toBe(false);
   });
 
-  it("is this build's set when the installed packs declare no semantic entries", () => {
-    // A pack that carries only the regex floor leaves the compiled-in semantic
-    // set running, so its reviewer names are the live ones.
+  it("is empty when the installed packs declare no semantic entries", () => {
+    // A pack that carries only the regex floor supplies no check, so a policy
+    // naming FailproofAI's checks resolves hard until jev-policies joins it.
     writeManifest([record()]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksAvailable()).toBe(false);
   });
 
   it("is the pack's names once a FailproofAI pack declares any", () => {
     writeManifest([record({ source: "github:FailproofAI/guards@v1.2.0", semantic: [entry({ name: "pack-only-check" })] })]);
     const names = effectiveReviewerNames();
     expect([...names]).toEqual(["pack-only-check"]);
-    // And the builtin names are NOT reviewers there: the pack replaced the set,
-    // so a policy naming one would be naming a question nobody will ask.
+    // And the reserved names are NOT reviewers there: no pack supplies them, so
+    // a policy naming one would be naming a question nobody will ask.
     expect(names.has("destructive-deletion")).toBe(false);
+    expect(jevChecksAvailable()).toBe(true);
   });
 
-  it("adds a third-party pack's names to this build's set", () => {
+  it("is a third-party pack's names alone, with nothing of this build's added", () => {
     writeManifest([record({ semantic: [entry({ name: "pack-only-check" })] })]);
-    expect([...effectiveReviewerNames()]).toEqual([...SEMANTIC_REVIEWER_NAMES, "pack-only-check"]);
+    expect([...effectiveReviewerNames()]).toEqual(["pack-only-check"]);
+  });
+
+  it("is FailproofAI's sixteen once the jev-policies pack is installed", () => {
+    installJevPoliciesPack(root);
+    forgetEffectiveReviewerNames();
+    expect([...effectiveReviewerNames()].sort()).toEqual([...SEMANTIC_REVIEWER_NAMES].sort());
   });
 
   it("re-reads when the manifest changes under it", () => {
     writeManifest([record()]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
     writeManifest([record({ version: "1.3.0", semantic: [entry({ name: "pack-only-check" })] })]);
     expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
@@ -511,10 +522,10 @@ describe("effectiveReviewerNames", () => {
     expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
 
-  it("falls back to this build's set when every declared name is contested", () => {
+  it("is empty when every declared name is contested", () => {
     // Which is what `semanticPoliciesFromPacks` does with the QUESTIONS in the
-    // same state — every entry dropped leaves the compiled-in set live — so the
-    // names honoured here stay the names of the questions that get asked.
+    // same state — every entry dropped leaves nothing asked — so the names
+    // honoured here stay the names of the questions that get asked.
     writeManifest([
       record({ semantic: [entry({ name: "pack-only-check" })] }),
       record({
@@ -524,7 +535,8 @@ describe("effectiveReviewerNames", () => {
         semantic: [entry({ name: "pack-only-check", guidance: "Nothing to see here." })],
       }),
     ]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksAvailable()).toBe(false);
   });
 
   it("names both claimants, so the log says which packs disagree", () => {

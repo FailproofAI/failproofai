@@ -36,6 +36,26 @@ import type { JevConfig } from "../../src/hooks/semantic/jev-config";
 let jevConfig: JevConfig | null = null;
 /** Overrides the build's DEFAULT_JEV_MODE (D2) for one test; undefined → the real one. */
 let defaultModeOverride: "shadow" | "enforce" | undefined;
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" for every test here: added to what the manifest reader returns,
+ * leaving `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR!) : read;
+    }),
+  };
+});
+
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-config")>();
   return {
@@ -251,6 +271,7 @@ beforeEach(() => {
   intent = HUMAN;
   defaultModeOverride = undefined;
   extraReviewable = {};
+  jevPackInstalled = true;
   fakeCache.on = false;
   fakeCache.entries.clear();
   telemetryEvents.length = 0;
@@ -732,11 +753,12 @@ describe("Jev's own verdict", () => {
     expect(outcome.evaluation?.policyName).toBe("semantic/acme-prod-deploy");
     expect(row).toMatchObject({ policySource: "jev", packId: "acme/deploys", packVersion: "2.0.0" });
 
-    // A compiled-in check stays unattributed to any pack.
+    // FailproofAI's own checks come from a pack too now — this build asks none
+    // of its own — so they are filed under the pack that supplied them.
     respond = answers({ "destructive-deletion": 0.97 });
     const builtin = await bash("find . -name '*.sqlite' -delete");
     expect(builtin.row.policySource).toBe("jev");
-    expect(builtin.row.packId).toBeUndefined();
+    expect(builtin.row).toMatchObject({ packId: "FailproofAI/jev-policies", packVersion: "0.2.0" });
   });
 
   it("the most severe wins: a regex instruct and a Jev deny → deny", async () => {
@@ -1092,6 +1114,7 @@ describe("a cloud-managed machine", () => {
         ),
       ],
       conventionSources: [],
+      packFailures: new Map(),
     } as never);
   }
 
@@ -1371,6 +1394,7 @@ describe("captureIntent and a prompt a policy acted on", () => {
         },
       ],
       conventionSources: [],
+      packFailures: new Map(),
     } as never);
   }
 
@@ -1491,6 +1515,7 @@ describe("a policy that breaks the evaluator mid-collection", () => {
         },
       ],
       conventionSources: [],
+      packFailures: new Map(),
     } as never);
     await expect(
       evaluateHookEvent(
@@ -1784,6 +1809,7 @@ describe("a hard deny stops evaluation on a configured machine: no later policy 
         },
       ],
       conventionSources: [],
+      packFailures: new Map(),
     } as never);
   }
 
@@ -1870,6 +1896,7 @@ describe("captureIntent and a prompt deny the CLI does not enforce", () => {
         },
       ],
       conventionSources: [],
+      packFailures: new Map(),
     } as never);
     const { outcome } = await run("UserPromptSubmit", { message: "tidy the build folder", working_dir: project }, "goose");
     expect(outcome.evaluation?.decision).toBe("deny");
@@ -2001,5 +2028,78 @@ describe("what the policy page reads", () => {
     const { row } = await bash(DELETE_ALL);
     expect(row.policySource).toBeUndefined();
     expect(row.observed).toBeUndefined();
+  });
+});
+
+// ── Checks come only from packs ──────────────────────────────────────────────
+
+describe("Jev configured with no pack that supplies a check: idle, exactly as unconfigured", () => {
+  const strip = (o: Awaited<ReturnType<typeof bash>>) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
+  const stripRow = (row: Record<string, unknown>) => {
+    const { timestamp: _t, durationMs: _d, ...rest } = row;
+    return rest;
+  };
+  // Were Jev asked, every one of these would come out differently.
+  const WOULD_CHANGE = answers({ "read-outside-workspace": 0.01, "destructive-deletion": 0.97, "env-secrets-dump": 0.01 });
+  const CALLS: Array<() => ReturnType<typeof bash>> = [
+    () => readFile(join(home, "other", "notes.txt")),
+    () => bash("find . -name '*.sqlite' -delete"),
+    () => bash("rm -rf ~"),
+    () => bash("printenv"),
+    () => bash("ls -la"),
+  ];
+
+  it("makes no provider request, starts no review, and answers byte-for-byte as unconfigured", async () => {
+    respond = WOULD_CHANGE;
+    jevPackInstalled = false;
+    const unconfigured = [];
+    for (const [i, call] of CALLS.entries()) {
+      store._resetForTest(join(root, `activity-plain-${i}`));
+      unconfigured.push(await call());
+    }
+
+    jevConfig = { ...CFG, mode: "enforce" };
+    vi.mocked(loadJevConfig).mockClear();
+    for (const [i, call] of CALLS.entries()) {
+      store._resetForTest(join(root, `activity-idle-${i}`));
+      const idle = await call();
+      const plain = unconfigured[i];
+      expect(idle.outcome.stdout).toBe(plain.outcome.stdout);
+      expect(idle.outcome.stderr).toBe(plain.outcome.stderr);
+      expect(idle.outcome.exitCode).toBe(plain.outcome.exitCode);
+      expect(strip(idle)).toEqual(strip(plain));
+      expect(stripRow(idle.row)).toEqual(stripRow(plain.row));
+      expect(jevKeysOf(idle.row)).toEqual([]);
+    }
+    // Not asked, not started, not even loaded: the transport stub never ran.
+    expect(jevCalls).toHaveLength(0);
+    expect(transportForConfig).not.toHaveBeenCalled();
+    expect(startJevReview).not.toHaveBeenCalled();
+    expect(loadJevConfig).not.toHaveBeenCalled();
+  });
+
+  it("records no human intent either", async () => {
+    jevPackInstalled = false;
+    jevConfig = CFG;
+    await run("UserPromptSubmit", { prompt: "delete the old sqlite files" });
+    expect(captureIntent).not.toHaveBeenCalled();
+  });
+
+  it("with the jev-policies pack installed, the same config asks, and a known deny still denies in enforce", async () => {
+    jevConfig = { ...CFG, mode: "enforce" };
+    respond = answers({ "destructive-deletion": 0.97 });
+
+    // `rm -rf ~` — denied, as it always is.
+    const home_ = await bash("rm -rf ~");
+    expect(home_.outcome.evaluation?.decision).toBe("deny");
+
+    // And a deletion only the destructive-deletion check sees: the pack's check decides.
+    jevCalls.length = 0;
+    const { outcome, row } = await bash("find . -name '*.sqlite' -delete");
+    expect(jevCalls.length).toBeGreaterThan(0);
+    expect(Object.keys(jevCalls[0].request.questions)).toContain("destructive-deletion.destroys");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ evaluator: "jev", jevDecision: "deny", packId: "FailproofAI/jev-policies" });
   });
 });

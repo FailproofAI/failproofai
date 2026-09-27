@@ -13,6 +13,8 @@ import { execSync } from "node:child_process";
 vi.mock("../../src/hooks/pack-manifest", () => ({
   readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
   hasInstalledPacks: vi.fn(() => false),
+  // The shim's own test: only a pack carrying regex policies replaces the builtins.
+  hasRegexPacks: vi.fn(() => false),
 }));
 
 vi.mock("node:fs", () => ({

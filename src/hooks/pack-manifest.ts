@@ -152,8 +152,8 @@ export interface InstalledPackRecord {
    *
    * `unknown` like `policies`, and optional like it is not: a pack published
    * before this field existed carries none, and every one of them must keep
-   * parsing. A pack that declares at least one REPLACES the compiled-in
-   * semantic set wholesale — see `semantic/pack-policies.ts`.
+   * parsing. Installed packs are the ONLY source of Jev checks — see
+   * `semantic/pack-policies.ts`.
    */
   semantic?: unknown;
   /**
@@ -334,6 +334,30 @@ export function hasInstalledPacks(): boolean {
   try {
     const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
     return Array.isArray(raw.packs) && raw.packs.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether an installed pack carries REGEX policies — the question the
+ * migration shim actually asks. Only such a pack replaces this build's
+ * `enabledPolicies` builtins with pack policies.
+ *
+ * A pack of Jev checks alone (`FailproofAI/jev-policies`) enforces no regex
+ * policy of its own, so it must not switch the builtins off: the hint every Jev
+ * surface prints is to install it, and following that hint must not take
+ * `block-rm-rf` and `block-sudo` away. Read raw and cheap like
+ * {@link hasInstalledPacks}, for the same reason.
+ */
+export function hasRegexPacks(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
+    if (!Array.isArray(raw.packs)) return false;
+    return raw.packs.some((p) => {
+      const policies = p && typeof p === "object" ? (p as { policies?: unknown }).policies : undefined;
+      return Array.isArray(policies) && policies.length > 0;
+    });
   } catch {
     return false;
   }

@@ -641,12 +641,11 @@ export interface PackPreview {
   /**
    * The pack's Jev question sets. Shown, not selectable: a pack's `enabled`
    * narrowing picks which of its REGEX policies register, and its semantic set
-   * replaces this build's wholesale or not at all.
+   * is asked whole or not at all.
    *
    * Carried on the preview because the preview is what somebody consents to. A
-   * pack that quietly brings sixteen new questions to the classifier — and
-   * replaces the sixteen this build shipped — is not something to discover after
-   * installing it.
+   * pack that quietly brings sixteen new questions to the classifier is not
+   * something to discover after installing it.
    */
   semantic: SemanticManifestEntry[];
   /** The minimum CLI this pack declares, when it declares one this build can read. */
@@ -1103,8 +1102,8 @@ export async function addPack(
     // installed did nothing.
     //
     // Omitted when empty for the same reason the manifest omits it: an empty
-    // array reads as "this pack declares semantic entries", and the replacement
-    // rule would then have it replace the compiled-in set with nothing.
+    // array reads as "this pack declares semantic entries" to a careless
+    // reader, which it does not.
     ...(fetched.semantic.length > 0 ? { semantic: fetched.semantic } : {}),
     // Recorded so the READER re-checks it. This CLI has already satisfied it or
     // refused the install, but the record outlives this CLI: a downgrade, or a

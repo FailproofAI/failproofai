@@ -12,6 +12,16 @@ Everything Jev does is unchanged from the [bring-your-own-key setup](/policies/j
 Requires **failproofai 1.0.8-beta.0** or later. 1.0.7 has no Jev, even though it sorts above the 1.0.7 betas. Without a Jev config nothing changes: hooks run the regex policies exactly as they always have.
 </Note>
 
+<Note>
+Jev asks only the checks your **installed packs** supply. FailproofAI's own sixteen come in the `FailproofAI/jev-policies` pack:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+With Jev configured and no pack that supplies a check, Jev is idle: it asks nothing and hooks behave exactly as without a Jev config. `jev setup`, `config` and `jev status` print that command when this is the case, and `jev status --json` reports `"jevChecks": { "idle": true, … }`. Nothing is installed for you. The pack carries Jev checks only, no regex policies, so installing it leaves the policies you already enforce exactly as they are — including this build's built-in ones, which a pack replaces only when it carries regex policies of its own.
+</Note>
+
 ## Turn it on
 
 1. **Create a key with Jev.** In the FailproofAI Cloud dashboard, open **Keys → Create key** and pick the **machine** preset. It grants the three permissions a machine needs: `events:add` (send activity), `policies:pull` (receive policies) and `jev:evaluate` (Jev, charged to your organization's plan). A key cannot carry `jev:evaluate` without the other two.

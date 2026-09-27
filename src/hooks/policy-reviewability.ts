@@ -36,7 +36,8 @@
  *   the honest answer to "what could Jev clear on this machine" spans all of
  *   them.
  * - **Builtins** — this build's catalog, under the same migration shim the
- *   handler applies: they enforce only while no pack is installed. The
+ *   handler applies: they enforce only while no pack that carries regex
+ *   policies is installed (a pack of Jev checks alone leaves them on). The
  *   `alwaysOn` guard is counted always, because it registers always (and is
  *   hard always, so it can only ever lower the ratio).
  * - **Cloud assignments** — the active deployment's records, whose authority is
@@ -56,13 +57,13 @@
  *   about a policy set that is coming back shortly would be noise.
  */
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { jevPacks } from "./effective-reviewers";
+import { jevPacks, NO_JEV_CHECKS_HINT } from "./effective-reviewers";
 import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
-import { resolvePolicyAuthority, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { hasRegexPacks, readInstalledPacks } from "./pack-manifest";
+import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
 import type { HooksConfig } from "./policy-types";
@@ -87,6 +88,27 @@ export interface ReviewableCoverage {
    * user convention files — whose policies are not in the counts above.
    */
   customFiles: number;
+  /**
+   * The Jev checks installed packs supply, as the resolver would ask them
+   * (reserved, contested and over-budget names left out). Zero means Jev is
+   * idle here: it asks nothing, and every reviewable policy resolves hard.
+   * Absent when not measured.
+   */
+  jevChecks?: number;
+}
+
+/**
+ * The Jev checks this machine's installed packs supply, as the resolver asks
+ * them. This build ships none of its own, so an empty list means Jev is idle.
+ * For CLI and dashboard surfaces; never throws (an unreadable manifest supplies
+ * nothing).
+ */
+export function installedJevCheckNames(): string[] {
+  try {
+    return semanticPoliciesFromPacks(jevPacks(readInstalledPacks().packs)).policies.map((p) => p.name);
+  } catch {
+    return [];
+  }
 }
 
 /** The command that replaces a pack with one built by this release. */
@@ -112,13 +134,12 @@ export const RETAKE_PACK_COMMAND = "failproofai policies add FailproofAI/policie
 export function countReviewable(
   policies: Iterable<AuthorityRecord>,
   /**
-   * The semantic checks that can be asked on this machine. Defaults to the
-   * compiled-in set; `surveyReviewableCoverage` passes the pack's when one
-   * declares its own, because otherwise this diagnostic reports "0 of 11
-   * reviewable" on exactly the machines the feature was built for — the ones
-   * running a pack that carries both tiers.
+   * The semantic checks that can be asked on this machine: the installed
+   * packs' (`surveyReviewableCoverage` passes them). Empty when no pack
+   * supplies any, and then nothing counts as reviewable — this build asks no
+   * Jev check of its own.
    */
-  knownReviewers?: ReadonlySet<string>,
+  knownReviewers: ReadonlySet<string> = new Set(),
 ): {
   enabled: number;
   reviewable: number;
@@ -155,9 +176,10 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
    * A pack's `enabled` selection is deliberately not applied: it narrows which
    * of its REGEX policies register, and its semantic set is not selectable.
    */
-  let reviewers: ReadonlySet<string> | undefined;
+  let reviewers: ReadonlySet<string> = new Set();
   try {
-    packsInstalled = hasInstalledPacks();
+    // The shim's own test: a pack of Jev checks alone leaves the builtins on.
+    packsInstalled = hasRegexPacks();
     const packs = readInstalledPacks().packs;
     for (const pack of packs) {
       const selected = pack.enabled;
@@ -168,8 +190,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // contested name AND minus a check the question budget drops — which the
     // hook path's manifest-only `reviewerNamesFor` cannot see. Anything else and
     // the panel and `jev status` promise a clear that cannot happen.
-    const asked = semanticPoliciesFromPacks(jevPacks(packs));
-    reviewers = asked.fromPack ? new Set(asked.policies.map((p) => p.name)) : SEMANTIC_REVIEWER_NAMES;
+    reviewers = new Set(semanticPoliciesFromPacks(jevPacks(packs)).policies.map((p) => p.name));
   } catch {
     // An unreadable manifest enforces nothing; `readInstalledPacks` already
     // reports that to the hook log on the path that cares.
@@ -182,7 +203,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     config = { enabledPolicies: [] };
   }
   // The migration shim, exactly as `handler.ts` applies it: this build's
-  // builtins enforce only until a pack is installed.
+  // builtins enforce until a pack that carries regex policies is installed.
   const legacyEnabled = new Set(packsInstalled ? [] : config.enabledPolicies.map(normalizePolicyName));
   for (const policy of POLICY_CATALOG) {
     if (policy.alwaysOn || legacyEnabled.has(normalizePolicyName(policy.name))) records.push(policy);
@@ -212,7 +233,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records, reviewers), customFiles };
+  return { ...countReviewable(records, reviewers), customFiles, jevChecks: reviewers.size };
 }
 
 /**
@@ -246,6 +267,9 @@ export function reviewableSummary(coverage: ReviewableCoverage): string {
  * did not ask.
  */
 export function reviewableProblem(coverage: ReviewableCoverage): string | null {
+  // Before anything else: with no Jev check installed there is nothing to
+  // clear OR add, whatever the policies say, and the fix is one other command.
+  if (coverage.jevChecks === 0) return NO_JEV_CHECKS_HINT;
   // Policies from the user's own files were not counted and may be reviewable,
   // so "never" cannot be said honestly; the summary already says what was skipped.
   if (coverage.enabled === 0 || coverage.reviewable > 0 || coverage.customFiles > 0) return null;

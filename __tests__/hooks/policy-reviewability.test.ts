@@ -12,8 +12,10 @@
  * thing. Before this module nothing on any surface said so.
  *
  * So: a pack-shaped policy set with no authority fields must report zero-of-N
- * with the remedy, this build's builtins must report the fifteen Jev may clear,
- * and neither may change what any policy is allowed to do.
+ * with the remedy, this build's builtins must report the fifteen Jev may clear
+ * once `FailproofAI/jev-policies` supplies the checks they name — and zero, with
+ * that pack's command, while nothing does — and none of it may change what any
+ * policy is allowed to do.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createHash } from "node:crypto";
@@ -23,6 +25,8 @@ import { join } from "node:path";
 import { parsePackPolicy } from "@/src/hooks/pack-manifest";
 import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "@/src/hooks/policy-authority";
 import { POLICY_CATALOG } from "@/src/hooks/policy-catalog";
+import { JEV_CHECKS_PACK_COMMAND, NO_JEV_CHECKS_HINT } from "@/src/hooks/effective-reviewers";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 import {
   RETAKE_PACK_COMMAND,
   countReviewable,
@@ -35,6 +39,8 @@ import { effectiveAuthority } from "@/src/hooks/policy-types";
 /** Every builtin a pack may carry: `alwaysOn` is refused in a pack manifest. */
 const PACKABLE = POLICY_CATALOG.filter((p) => !p.alwaysOn);
 /** The fifteen in this build; pinned by `policy-authority-table.test.ts` too. */
+/** The checks `FailproofAI/jev-policies` supplies: what a machine with that pack installed judges by. */
+const JEV = SEMANTIC_REVIEWER_NAMES;
 const REVIEWABLE_BUILTINS = POLICY_CATALOG.filter((p) => effectiveAuthority(p) === "reviewable");
 
 /**
@@ -54,8 +60,8 @@ describe("counting what Jev may clear", () => {
     // The premise: the parser kept no authority field, from any of them.
     expect(entries.every((e) => !("authority" in e) && !("reviewedBy" in e))).toBe(true);
 
-    const coverage = { ...countReviewable(entries), customFiles: 0 };
-    expect(coverage).toEqual({ enabled: PACKABLE.length, reviewable: 0, customFiles: 0 });
+    const coverage = { ...countReviewable(entries, JEV), customFiles: 0, jevChecks: JEV.size };
+    expect(coverage).toEqual({ enabled: PACKABLE.length, reviewable: 0, customFiles: 0, jevChecks: 16 });
     expect(reviewableSummary(coverage)).toBe(`0 of ${PACKABLE.length} enabled policies are reviewable.`);
 
     const problem = reviewableProblem(coverage);
@@ -64,8 +70,8 @@ describe("counting what Jev may clear", () => {
     expect(problem).toContain(RETAKE_PACK_COMMAND);
   });
 
-  it("reports the fifteen reviewable builtins, and diagnoses nothing", () => {
-    const coverage = { ...countReviewable(POLICY_CATALOG), customFiles: 0 };
+  it("reports the fifteen reviewable builtins, and diagnoses nothing, with jev-policies' checks installed", () => {
+    const coverage = { ...countReviewable(POLICY_CATALOG, JEV), customFiles: 0, jevChecks: JEV.size };
     expect(coverage.reviewable).toBe(15);
     expect(REVIEWABLE_BUILTINS.map((p) => p.name)).toEqual([
       // Catalog order. The nine after `block-read-outside-cwd` arrived with the pack
@@ -94,6 +100,20 @@ describe("counting what Jev may clear", () => {
     expect(reviewableProblem(coverage)).toBeNull();
   });
 
+  it("counts every one of them hard with no Jev check installed, and names the pack that fixes it", () => {
+    // This build asks no Jev check of its own: a reviewer no pack supplies is
+    // one that cannot be asked, and the safe answer to that is hard.
+    const coverage = { ...countReviewable(POLICY_CATALOG, new Set()), customFiles: 0, jevChecks: 0 };
+    expect(coverage.reviewable).toBe(0);
+    expect(countReviewable(POLICY_CATALOG)).toEqual({ enabled: POLICY_CATALOG.length, reviewable: 0 });
+    expect(reviewableProblem(coverage)).toBe(NO_JEV_CHECKS_HINT);
+    expect(NO_JEV_CHECKS_HINT).toContain(JEV_CHECKS_PACK_COMMAND);
+    expect(JEV_CHECKS_PACK_COMMAND).toBe("failproofai policies add FailproofAI/jev-policies");
+    // Even with policies from the user's own files uncounted: the idle Jev is
+    // the thing to say, whatever those files declare.
+    expect(reviewableProblem({ ...coverage, customFiles: 3 })).toBe(NO_JEV_CHECKS_HINT);
+  });
+
   it("counts by the authority a policy will REGISTER with, so a declaration that does not hold does not count", () => {
     // Each of these asks to be reviewable and is hard anyway: the
     // self-protection guard, an empty `reviewedBy`, and a `reviewedBy` that is
@@ -104,7 +124,7 @@ describe("counting what Jev may clear", () => {
       { authority: "reviewable", reviewedBy: "secret-exposure" },
       { authority: "reviewable" },
     ];
-    expect(countReviewable(wishful)).toEqual({ enabled: 4, reviewable: 0 });
+    expect(countReviewable(wishful, JEV)).toEqual({ enabled: 4, reviewable: 0 });
   });
 
   it("counts a reviewer this build does not have as hard, and says so", () => {
@@ -127,8 +147,8 @@ describe("counting what Jev may clear", () => {
     expect(fromANewerPack.map((p) => effectiveAuthority(p))).toEqual(["reviewable", "reviewable"]);
     expect(fromANewerPack.map((p) => resolvePolicyAuthority(p).authority)).toEqual(["hard", "hard"]);
 
-    const coverage = { ...countReviewable(fromANewerPack), customFiles: 0 };
-    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0 });
+    const coverage = { ...countReviewable(fromANewerPack, JEV), customFiles: 0, jevChecks: JEV.size };
+    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0, jevChecks: 16 });
     expect(reviewableSummary(coverage)).toBe("0 of 2 enabled policies are reviewable.");
     expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
@@ -187,29 +207,27 @@ describe("surveying a real machine", () => {
     writeFileSync(join(home, "policies-config.json"), JSON.stringify(config));
   }
 
-  /** An installed pack, through the real manifest the loader verifies. */
-  function installPack(policies: Array<Record<string, unknown>>, enabled?: string[]): void {
+  /**
+   * An installed pack, through the real manifest the loader verifies — with
+   * `FailproofAI/jev-policies` beside it unless `jev` is false, since the
+   * checks its policies name come only from that pack.
+   */
+  function installPack(policies: Array<Record<string, unknown>>, enabled?: string[], jev = true): void {
     const artifact = "// a pack artifact this test never executes\n";
     const digest = createHash("sha256").update(artifact).digest("hex");
     mkdirSync(join(packRoot, "artifacts"), { recursive: true });
     writeFileSync(join(packRoot, "artifacts", `${digest}.mjs`), artifact);
-    writeFileSync(
-      join(packRoot, "installed.json"),
-      JSON.stringify({
-        schemaVersion: 1,
-        packs: [
-          {
-            id: "FailproofAI/policies",
-            version: "0.9.0",
-            source: "github:FailproofAI/policies@v0.9.0",
-            entry: `artifacts/${digest}.mjs`,
-            sha256: digest,
-            policies,
-            ...(enabled ? { enabled } : {}),
-          },
-        ],
-      }),
-    );
+    const record = {
+      id: "FailproofAI/policies",
+      version: "0.9.0",
+      source: "github:FailproofAI/policies@v0.9.0",
+      entry: `artifacts/${digest}.mjs`,
+      sha256: digest,
+      policies,
+      ...(enabled ? { enabled } : {}),
+    };
+    if (jev) installJevPoliciesPack(packRoot, [record]);
+    else writeFileSync(join(packRoot, "installed.json"), JSON.stringify({ schemaVersion: 1, packs: [record] }));
   }
 
   it("a pack from before this release: zero of N, with the remedy", () => {
@@ -222,7 +240,7 @@ describe("surveying a real machine", () => {
     const coverage = surveyReviewableCoverage(project);
     // The pack's policies, plus the one guard that ships compiled in and
     // registers whatever else is enabled.
-    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0, jevChecks: 16 });
     expect(reviewableSummary(coverage)).toContain(`0 of ${PACKABLE.length + 1} enabled policies are reviewable`);
     expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
@@ -232,8 +250,17 @@ describe("surveying a real machine", () => {
     installPack(PACKABLE as unknown as Array<Record<string, unknown>>);
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 15, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 15, customFiles: 0, jevChecks: 16 });
     expect(reviewableProblem(coverage)).toBeNull();
+  });
+
+  it("the same pack with no Jev checks installed: every one hard, and the jev-policies command", () => {
+    writeConfig({ enabledPolicies: [] });
+    installPack(PACKABLE as unknown as Array<Record<string, unknown>>, undefined, false);
+
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0, jevChecks: 0 });
+    expect(reviewableProblem(coverage)).toBe(NO_JEV_CHECKS_HINT);
   });
 
   it("a pack built against a NEWER semantic set: hard here, with the remedy", () => {
@@ -250,7 +277,7 @@ describe("surveying a real machine", () => {
     );
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: PACKABLE.length + 1, reviewable: 0, customFiles: 0, jevChecks: 16 });
     expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
 
@@ -260,15 +287,15 @@ describe("surveying a real machine", () => {
 
     const coverage = surveyReviewableCoverage(project);
     // Two selected + the always-on guard; one of the two is reviewable.
-    expect(coverage).toEqual({ enabled: 3, reviewable: 1, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: 3, reviewable: 1, customFiles: 0, jevChecks: 16 });
   });
 
-  it("falls back to this build's builtins while no pack is installed", () => {
+  it("falls back to this build's builtins while no pack is installed — all hard, since no pack supplies a check", () => {
     writeConfig({ enabledPolicies: REVIEWABLE_BUILTINS.map((p) => p.name).concat("block-sudo") });
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: 17, reviewable: 15, customFiles: 0 });
-    expect(reviewableProblem(coverage)).toBeNull();
+    expect(coverage).toEqual({ enabled: 17, reviewable: 0, customFiles: 0, jevChecks: 0 });
+    expect(reviewableProblem(coverage)).toBe(NO_JEV_CHECKS_HINT);
   });
 
   it("reads a cloud assignment's authority, which only the deployment decides", () => {
@@ -288,9 +315,11 @@ describe("surveying a real machine", () => {
       }),
     );
 
+    // The check the assignment names comes from jev-policies.
+    installPack([]);
     const coverage = surveyReviewableCoverage(project);
     // Two assignments + the always-on guard, one of them reviewable.
-    expect(coverage).toEqual({ enabled: 3, reviewable: 1, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: 3, reviewable: 1, customFiles: 0, jevChecks: 16 });
   });
 
   it("counts the custom policy files it cannot read without running them", () => {
@@ -306,6 +335,7 @@ describe("surveying a real machine", () => {
     const projectFile = join(project, ".failproofai", "policies", "a-policies.mjs");
     mkdirSync(join(project, ".failproofai", "policies"), { recursive: true });
     writeFileSync(projectFile, "export {};\n");
+    installPack([]);
     const coverage = surveyReviewableCoverage(project);
     expect(coverage.customFiles).toBe(1);
     expect(reviewableProblem(coverage)).toBeNull();
@@ -331,6 +361,6 @@ describe("surveying a real machine", () => {
     writeFileSync(join(packRoot, "installed.json"), "{ not json");
     writeFileSync(join(cloudRoot, "active.json"), "{ not json");
     // The guard that ships compiled in is all that is left, and it is hard.
-    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 1, reviewable: 0, customFiles: 0 });
+    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 1, reviewable: 0, customFiles: 0, jevChecks: 0 });
   });
 });

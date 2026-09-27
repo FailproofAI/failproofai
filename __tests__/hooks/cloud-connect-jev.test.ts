@@ -22,7 +22,8 @@ import { resolve } from "node:path";
 import { connectToCloud, configuredPaths, describeOutcome } from "../../src/hooks/cloud-connection";
 import { runConnectCommand, runDisconnectCommand } from "../../src/hooks/cloud-enrollment-cli";
 import { readCredentials, writeJevCloudCredential } from "../../src/hooks/fp-config";
-import { credentialsFile, jevConfigFile } from "../../src/hooks/fp-home";
+import { credentialsFile, jevConfigFile, packsDir } from "../../src/hooks/fp-home";
+import { installJevPoliciesPack } from "../fixtures/jev-policies-pack";
 import { inspectJevConfig, loadJevConfig, validateJevConfig } from "../../src/hooks/semantic/jev-config";
 import { writeCloudJevConfigIfAbsent } from "../../src/hooks/jev-cloud-connection";
 import { introspectKey, type IntrospectResult } from "../../src/hooks/cloud-introspect";
@@ -46,6 +47,10 @@ beforeEach(() => {
   home = mkdtempSync(resolve(tmpdir(), "fpai-connect-jev-"));
   process.env.FAILPROOFAI_HOME = home;
   chmodSync(home, 0o700);
+  // FailproofAI's Jev checks, which come only from this pack: without it Jev
+  // is idle and every "on" line here gains the jev-policies hint (pinned in
+  // `jev-checks-pack-only.test.ts`).
+  installJevPoliciesPack(packsDir());
 });
 
 afterEach(() => {

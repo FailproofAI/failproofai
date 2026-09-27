@@ -25,7 +25,8 @@
  * an exit code. See `runScheduledAudit`.
  */
 import { runAudit } from "./index";
-import { hasInstalledPacks } from "../hooks/pack-manifest";
+import { hasRegexPacks } from "../hooks/pack-manifest";
+import { readMergedHooksConfig } from "../hooks/hooks-config";
 import { CORE_SOURCE } from "../hooks/pack-store";
 import { acquireAuditLock, type AuditLockInfo } from "./audit-lock";
 import { writeDashboardCache } from "./dashboard-cache";
@@ -511,7 +512,10 @@ export async function runPostSetupAudit(): Promise<void> {
     // happening again. This is the first thing a new machine runs, and setup
     // installs no policies by design, so without this the whole first session
     // ends on a count of findings and no way to act on it.
-    if (!hasInstalledPacks()) {
+    // A pack of Jev checks alone enforces no regex policy, so it is not "ours".
+    // Built-ins turned on through `enabledPolicies` DO enforce while no regex
+    // pack is installed (handler.ts registers them), so say nothing then.
+    if (!hasRegexPacks() && !builtinPoliciesEnabled()) {
       process.stdout.write(
         `  ${c(DIM, "none of this is being enforced yet. take ours, or anyone's:")}\n` +
           `    ${c(CYAN, `failproofai policies add ${CORE_SOURCE}`)}\n\n`,
@@ -519,6 +523,15 @@ export async function runPostSetupAudit(): Promise<void> {
     }
   } finally {
     attempt.lock.release();
+  }
+}
+
+/** Whether `enabledPolicies` names any built-in policy; unreadable config counts as none. */
+function builtinPoliciesEnabled(): boolean {
+  try {
+    return (readMergedHooksConfig().enabledPolicies ?? []).length > 0;
+  } catch {
+    return false;
   }
 }
 

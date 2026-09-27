@@ -26,6 +26,7 @@ const h = vi.hoisted(() => ({
   writeDashboardCache: vi.fn(() => true),
   openWhenReady: vi.fn(),
   launch: vi.fn(),
+  enabledPolicies: [] as string[],
 }));
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({ trackHookEvent: h.trackHookEvent }));
@@ -34,6 +35,10 @@ vi.mock("../../src/audit/dashboard-cache", () => ({ writeDashboardCache: h.write
 vi.mock("../../src/audit/open-browser", () => ({ openWhenReady: h.openWhenReady }));
 vi.mock("../../scripts/launch", () => ({ launch: h.launch }));
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
+vi.mock("../../src/hooks/hooks-config", async (orig) => ({
+  ...(await orig<typeof import("../../src/hooks/hooks-config")>()),
+  readMergedHooksConfig: () => ({ enabledPolicies: h.enabledPolicies }),
+}));
 
 import { runAuditCli, runPostSetupAudit } from "../../src/audit/cli";
 
@@ -233,5 +238,31 @@ describe("post-setup (onboarding) audit telemetry", () => {
     await runPostSetupAudit();
 
     expect(exitInfo).toBeNull();
+  });
+});
+
+// The closing hint after the onboarding audit says nothing is enforced. That is
+// only true when no regex pack is installed AND `enabledPolicies` is empty: with
+// no regex pack, the handler registers the enabledPolicies built-ins.
+describe("post-setup audit enforcement hint", () => {
+  const out = () =>
+    (process.stdout.write as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0])).join("");
+
+  afterEach(() => {
+    h.enabledPolicies = [];
+  });
+
+  it("says nothing is enforced when no regex pack and no built-in policy is on", async () => {
+    h.enabledPolicies = [];
+    h.runAudit.mockResolvedValue(result({ eventsScanned: 100, totals: { hits: 2, projectsWithHits: 1 } }));
+    await runPostSetupAudit();
+    expect(out()).toContain("none of this is being enforced yet");
+  });
+
+  it("stays quiet when enabledPolicies built-ins are enforcing without a regex pack", async () => {
+    h.enabledPolicies = ["block-rm-rf", "block-sudo"];
+    h.runAudit.mockResolvedValue(result({ eventsScanned: 100, totals: { hits: 2, projectsWithHits: 1 } }));
+    await runPostSetupAudit();
+    expect(out()).not.toContain("none of this is being enforced yet");
   });
 });

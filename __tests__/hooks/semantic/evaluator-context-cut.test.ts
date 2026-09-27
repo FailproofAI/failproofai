@@ -34,7 +34,7 @@
  * contract stub and T4's real store alike. `two-tier-intent-storage.test.ts`
  * runs the same rule end to end through whichever intent store is built in.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { combineTwoTier, type RegexVerdict } from "../../../src/hooks/semantic/combine";
@@ -43,6 +43,26 @@ import { MAX_USER_MESSAGE_CHARS, capHeadTail } from "../../../src/hooks/semantic
 import { evaluateSemantic, prepareSemantic, type SemanticOptions } from "../../../src/hooks/semantic/evaluator";
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import type { JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+
+/**
+ * FailproofAI's Jev checks come only from an installed pack, so the pack is
+ * "installed" here: added to what the manifest reader returns, leaving
+ * `installed.json` alone so this build's builtin regex policies keep
+ * registering beside it. A test that wants the idle machine sets
+ * `jevPackInstalled = false`.
+ */
+let jevPackInstalled = true;
+vi.mock("../../../src/hooks/pack-manifest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/hooks/pack-manifest")>();
+  const { withJevPoliciesPack } = await import("../../fixtures/jev-policies-pack");
+  return {
+    ...actual,
+    readInstalledPacks: vi.fn(() => {
+      const read = actual.readInstalledPacks();
+      return jevPackInstalled ? withJevPoliciesPack(read, process.env.FAILPROOFAI_PACK_DIR) : read;
+    }),
+  };
+});
 
 const mark = (omitted: number) => `\n…[${omitted} characters omitted]…\n`;
 

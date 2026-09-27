@@ -55,10 +55,13 @@ export interface ResolvedAuthority {
 }
 
 /**
- * The names `reviewedBy` may use: the semantic policies in
- * `src/hooks/semantic/policies.ts`. Not the probes (`INJECTION_PROBE`,
- * `SCOPE_PROBE`, the task probes) — those are inputs to Jev's decision, not
- * checks a regex verdict can be cleared by.
+ * FailproofAI's own Jev check names: the sixteen semantic policies defined in
+ * `src/hooks/semantic/policies.ts` and shipped in the `FailproofAI/jev-policies`
+ * pack. RESERVED to FailproofAI's packs (`isReservedClaim`) and NEVER asked on
+ * their own: this build asks only what installed packs supply, so with no such
+ * pack a `reviewedBy` naming these resolves hard. Not the probes
+ * (`INJECTION_PROBE`, `SCOPE_PROBE`, the task probes) — those are inputs to
+ * Jev's decision, not checks a regex verdict can be cleared by.
  *
  * Written out rather than read off `SEMANTIC_POLICIES`, and pinned to it by
  * `policy-authority.test.ts`. The registry imports this module, so a runtime
@@ -86,14 +89,14 @@ export const SEMANTIC_POLICY_NAMES = [
 ] as const;
 
 /**
- * The compiled-in reviewer set, and the DEFAULT rather than the only one.
+ * The reserved names as a set: the names a BUILD step may accept in a
+ * `reviewedBy` (`authorityProblem`, `manifestAuthority`), because they are what
+ * `FailproofAI/jev-policies` supplies wherever it is installed.
  *
- * A pack that declares its own `semantic` entries replaces
- * `SEMANTIC_POLICIES` wholesale on the machine that installed it, so the names
- * a `reviewedBy` may use there are the pack's. Callers that know which set is
- * live pass it (`effectiveReviewerNames()` in `effective-reviewers.ts`, which reads
- * the manifest and imports nothing from `semantic/`); everyone else gets this
- * one, which is what a machine with no pack runs.
+ * Not the set a running machine judges by. Registration passes
+ * `effectiveReviewerNames()` (`effective-reviewers.ts`), which holds only the
+ * checks installed packs declare — empty with no such pack — so this default is
+ * never what makes a registered policy reviewable.
  */
 export const SEMANTIC_REVIEWER_NAMES: ReadonlySet<string> = new Set(SEMANTIC_POLICY_NAMES);
 
@@ -115,8 +118,9 @@ const isName = (n: unknown): n is string => typeof n === "string" && n.length > 
  * `reviewedBy` is always clean and the two functions agree on it.
  *
  * @param knownReviewers - the semantic policies that CAN be asked on this
- *   machine. Defaults to the compiled-in set, which is what runs until a pack
- *   ships its own; see {@link SEMANTIC_REVIEWER_NAMES}. It is a parameter rather
+ *   machine. Defaults to the reserved FailproofAI names, which is right for a
+ *   build step; a running machine passes the installed packs' set (see
+ *   {@link SEMANTIC_REVIEWER_NAMES}). It is a parameter rather
  *   than a lookup because this module is imported by the registry, and reading
  *   which set is live means reading a file — a cost registration is willing to
  *   pay once and this judgement must not pay per call.
@@ -145,7 +149,8 @@ export function resolvePolicyAuthority(
 
 /**
  * The rule that kept one name out. "Not in this build" is only true of the
- * compiled-in set: a pack's own checks, or a name two packs disagree on, is a
+ * reserved set a build step judges by: a reserved check no installed pack
+ * supplies, a pack's own checks, or a name two packs disagree on, is a
  * different reason, and the author reading it has a different fix.
  */
 function whyUnknown(name: string, known: ReadonlySet<string>, contested?: ReadonlyMap<string, string[]>): string {
@@ -155,6 +160,10 @@ function whyUnknown(name: string, known: ReadonlySet<string>, contested?: Readon
   const claimants = contested?.get(name);
   if (claimants) return `${quoted}, which packs ${claimants.join(" and ")} declare differently, so it is asked for neither`;
   if (known === SEMANTIC_REVIEWER_NAMES) return `${quoted}, which is not a semantic policy in this build`;
+  // Nothing to judge against at all: no installed pack supplies a Jev check.
+  if (known.size === 0) {
+    return `${quoted}, and no installed pack supplies any Jev check (failproofai policies add FailproofAI/jev-policies)`;
+  }
   const sorted = [...known].sort();
   const listed = sorted.length > 6 ? `${sorted.slice(0, 6).join(", ")} and ${sorted.length - 6} more` : sorted.join(", ");
   return `${quoted}, which is not among the Jev checks it is judged against (${listed})`;
@@ -283,8 +292,8 @@ export function manifestAuthority(
  *
  * @param knownReviewers - the checks that can be asked on this machine. Callers
  *   that merge what will be REGISTERED must pass `effectiveReviewerNames()`;
- *   the default is this build's compiled-in set, which is what a machine with no
- *   pack runs.
+ *   the default is the reserved FailproofAI names, which only a build step
+ *   should judge by.
  */
 export function withMergedAuthority<T extends AuthorityFields>(
   record: T,

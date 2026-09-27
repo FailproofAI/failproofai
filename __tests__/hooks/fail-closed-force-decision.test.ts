@@ -42,6 +42,8 @@ vi.mock("../../src/hooks/pack-manifest", () => ({
   // The handler asks this per event to decide whether the migration shim
   // still applies. Mirrors the mocked readInstalledPacks above.
   hasInstalledPacks: vi.fn(() => false),
+  // The shim's own test: only a pack carrying regex policies replaces the builtins.
+  hasRegexPacks: vi.fn(() => false),
 }));
 
 import { evaluateHookEvent } from "../../src/hooks/handler";

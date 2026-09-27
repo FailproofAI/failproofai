@@ -37,4 +37,4 @@ pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,
     spawn_supervised,
 };
-pub use uploader::{UploadError, UploadMetrics, Uploader};
+pub use uploader::{UploadError, UploadMetrics, Uploader, error_chain};

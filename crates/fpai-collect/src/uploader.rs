@@ -189,7 +189,7 @@ impl Uploader {
             // the body from leaving too.
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|e| format!("could not build the HTTP client: {e}"))?;
+            .map_err(|e| format!("could not build the HTTP client: {}", error_chain(&e)))?;
 
         Ok(Uploader {
             client,
@@ -348,7 +348,7 @@ impl Uploader {
                         self.park(path, None, attempt).await;
                         return Err(UploadError::Network {
                             attempts: attempt,
-                            detail: err.to_string(),
+                            detail: error_chain(&err),
                         });
                     }
                     tokio::time::sleep(self.backoff(attempt)).await;
@@ -524,6 +524,23 @@ fn redact_batch(bytes: &[u8], mode: Redact) -> Vec<u8> {
         if newline {
             out.push(b'\n');
         }
+    }
+    out
+}
+
+/// An error and every `source()` beneath it, joined with ": ".
+///
+/// reqwest's own message is "error sending request for url (...)" whatever
+/// went wrong; the cause (connection refused, DNS, `UnknownIssuer`) is only in
+/// the source chain, and logging the top alone made a private-CA failure look
+/// like an outage.
+pub fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        out.push_str(": ");
+        out.push_str(&cause.to_string());
+        source = cause.source();
     }
     out
 }

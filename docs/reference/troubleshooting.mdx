@@ -77,7 +77,7 @@ icon: "wrench"
         sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
         ```
 
-        `SSL_CERT_FILE` or `SSL_CERT_DIR` in the service's environment replaces the system store for the daemon, and the bundled certificates still apply. Batches that failed while the CA was untrusted are kept in `~/.failproofai/state/failed` and retried automatically, about hourly and when the daemon restarts.
+        The daemon's log names the cause: `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer` on Linux. `SSL_CERT_FILE` or `SSL_CERT_DIR` in the service's environment replaces the system store for the daemon, and the bundled certificates still apply. Batches that failed while the CA was untrusted are kept in `~/.failproofai/state/failed` and retried automatically, about hourly and when the daemon restarts.
       </Tab>
     </Tabs>
   </Accordion>

@@ -136,7 +136,13 @@ async fn a_private_ca_in_the_system_trust_store_is_trusted_for_uploads() {
         .upload_file(&batch)
         .await
         .unwrap_err();
-    assert!(matches!(err, UploadError::Network { .. }), "{err}");
+    // The log line has to name the cause. reqwest's own message is only "error
+    // sending request for url"; the certificate verdict is three sources down,
+    // and without it nobody reading the journal can tell this from an outage.
+    let UploadError::Network { detail, .. } = &err else {
+        panic!("expected a network error, got {err}");
+    };
+    assert!(detail.contains("UnknownIssuer"), "{detail}");
     assert_eq!(hits.load(Ordering::SeqCst), 0);
 
     // (b) The CA is in the system store, as `update-ca-certificates` would put

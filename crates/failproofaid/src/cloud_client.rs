@@ -304,7 +304,12 @@ impl CloudClient {
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
             .build()
-            .map_err(|err| format!("failed to build cloud HTTP client: {err}"))?;
+            .map_err(|err| {
+                format!(
+                    "failed to build cloud HTTP client: {}",
+                    fpai_collect::error_chain(&err)
+                )
+            })?;
         Ok(Self {
             base_url,
             token,
@@ -350,7 +355,12 @@ impl CloudClient {
             .bearer_auth(&self.token)
             .send()
             .and_then(|response| response.error_for_status())
-            .map_err(|err| format!("desired-state request failed: {err}"))?
+            .map_err(|err| {
+                format!(
+                    "desired-state request failed: {}",
+                    fpai_collect::error_chain(&err)
+                )
+            })?
             .json::<serde_json::Value>()
             .map_err(|err| format!("invalid desired-state response: {err}"))
             .and_then(|raw| {
@@ -400,7 +410,12 @@ impl CloudClient {
             .bearer_auth(&self.token)
             .send()
             .and_then(|response| response.error_for_status())
-            .map_err(|err| format!("artifact request failed: {err}"))?
+            .map_err(|err| {
+                format!(
+                    "artifact request failed: {}",
+                    fpai_collect::error_chain(&err)
+                )
+            })?
             .bytes()
             .map(|bytes| bytes.to_vec())
             .map_err(|err| format!("failed to read artifact response: {err}"))
@@ -869,6 +884,26 @@ mod tests {
             effect: PolicyEffect::Enforce,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
+    }
+
+    /// A failed poll names its cause. reqwest's own message is only "error
+    /// sending request for url"; a refused connection, a DNS failure and an
+    /// untrusted certificate all read the same until the source chain is kept.
+    #[test]
+    fn a_failed_poll_names_the_underlying_cause() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let cloud = CloudClient::new(
+            &format!("http://127.0.0.1:{port}"),
+            "secret".into(),
+            "machine".into(),
+        )
+        .unwrap();
+        let err = cloud.desired_state(None).unwrap_err();
+        assert!(err.contains("Connection refused"), "{err}");
     }
 
     /// Plain http may not carry the machine token off the host.

@@ -1,15 +1,15 @@
 ---
 title: "एक policy pack का उपयोग करें"
-description: "अपने उपयोग के लिए एक Failproof AI policy pack को plug in करें, या policy hub से एक community pack को चुनें, और यह तय करें कि यह क्या enforce करेगा।"
+description: "अपने उपयोग के लिए एक Failproof AI policy pack को जोड़ें, या policy hub से एक community pack लें, और चुनें कि यह क्या enforce करता है।"
 icon: "package"
 ---
 
-एक pack policies का एक समूह है जो GitHub release के रूप में प्रकाशित किया जाता है। एक कमांड इसे install करता है: release के checksums को verify किया जाता है इससे पहले कि कुछ भी चले, और इसका digest record किया जाता है ताकि pack आपकी machine के अंतर्गत बाद में बदल न सके।
+एक pack GitHub release के रूप में प्रकाशित policies का एक सेट है। एक कमांड इसे install करता है: release के checksums को सत्यापित किया जाता है इससे पहले कि कुछ भी चले, और इसका digest दर्ज किया जाता है ताकि pack आपकी मशीन के तहत नहीं बदल सके।
 
-हर pack को browse करें, और [policy hub](https://befailproof.ai/policy-hub/) पर प्रत्येक में हर policy को देखें। दो प्रकार हैं:
+[policy hub](https://befailproof.ai/policy-hub/) पर हर pack और प्रत्येक में हर policy देखें। दो तरह हैं:
 
-- **Failproof AI policy packs** — पूर्वनिर्धारित use cases के लिए ready-made packs: एक को plug in करें और यह काम करता है। [coding agent policy pack](https://befailproof.ai/policy-hub/failproofai/policies/) अभी उपलब्ध है, और अधिक use cases के लिए packs जल्द ही आ रहे हैं।
-- **Community policy packs** — policies जो developers ने अपने use cases के लिए लिखी हैं और किसी को भी लेने के लिए प्रकाशित की हैं।
+- **Failproof AI policy packs** — पूर्वनिर्धारित उपयोग के मामलों के लिए तैयार पैक: एक को जोड़ें और यह काम करता है। [coding agent policy pack](https://befailproof.ai/policy-hub/failproofai/policies/) अभी उपलब्ध है, और अधिक उपयोग के मामलों के लिए packs जल्द आ रहे हैं।
+- **Community policy packs** — policies जिन्हें developers ने अपने स्वयं के उपयोग के मामलों के लिए लिखा है और किसी को भी लेने के लिए प्रकाशित किया है।
 
 ## Failproof AI policy packs
 
@@ -19,22 +19,22 @@ icon: "package"
 failproofai policies add FailproofAI/policies
 ```
 
-pack में 38 policies हैं और अपने manifest में 10 को safe के रूप में चिह्नित करता है ताकि unattended enable किया जा सके; बाकी को आपको चुनने के लिए सूचीबद्ध किया जाता है। सबसे अधिक उपयोग किए जाने वाले कुछ, और क्या एक plain `policies add` उन्हें switch on करता है:
+Pack में 39 policies हैं और अपने manifest में 10 को सुरक्षित के रूप में चिह्नित करता है जिन्हें unattended मोड में enable किया जा सकता है; बाकी को आपके चुनने के लिए सूचीबद्ध किया गया है। सबसे अधिक उपयोग किए जाने वाले में से कुछ, और क्या एक सादा `policies add` उन्हें चालू करता है:
 
-| Policy | यह क्या करता है | डिफ़ॉल्ट रूप से चालू |
+| Policy | यह क्या करता है | डिफ़ॉल्ट रूप से चालू है |
 | --- | --- | --- |
-| `block-push-master` | Protected branches में direct pushes को block करता है | Yes |
-| `block-env-files` | `.env` files को read और write करने को block करता है | Yes |
-| `protect-env-vars` | Environment variables को dump करने वाली commands को block करता है | Yes |
-| `block-sudo` | `sudo` को block करता है जब तक allow pattern match न हो | Yes |
-| `block-curl-pipe-sh` | Downloaded scripts को सीधे shell में piped करने को block करता है | Yes |
-| `sanitize-*` (पाँच policies) | API keys, bearer tokens, JWTs, private keys, और connection strings को report करता है जो tool output में मिली हों | Yes |
-| `block-rm-rf` | Catastrophic recursive deletes को block करता है | No |
-| `block-force-push` | Force-pushes को block करता है | No |
-| `block-secrets-write` | Credential और secret-key files में writes को block करता है | No |
-| `warn-destructive-sql` | `DROP`, `TRUNCATE`, और `WHERE` के बिना `DELETE` पर warning देता है | No |
+| `block-push-master` | सुरक्षित branches को direct pushes को block करता है | हाँ |
+| `block-env-files` | `.env` फ़ाइलों को पढ़ने और लिखने को block करता है | हाँ |
+| `protect-env-vars` | Environment variables को dump करने वाली commands को block करता है | हाँ |
+| `block-sudo` | `sudo` को block करता है जब तक कि एक allow pattern match न हो | हाँ |
+| `block-curl-pipe-sh` | Downloaded scripts को सीधे shell में pipe करने को block करता है | हाँ |
+| `sanitize-*` (पाँच policies) | Tool output में पाई गई API keys, bearer tokens, JWTs, private keys, और connection strings की रिपोर्ट करें | हाँ |
+| `block-rm-rf` | Catastrophic recursive deletes को block करता है | नहीं |
+| `block-force-push` | Force-pushes को block करता है | नहीं |
+| `block-secrets-write` | Credential और secret-key फ़ाइलों को लिखने को block करता है | नहीं |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, और `WHERE` के बिना `DELETE` पर warning देता है | नहीं |
 
-जो off हैं उन्हें नाम से switch on करें — `failproofai policies add block-rm-rf` — या `--all` के साथ पूरे pack को लें। इसमें हर policy को देखें, category के अनुसार समूहबद्ध:
+जो बंद हैं उन्हें नाम से चालू करें — `failproofai policies add block-rm-rf` — या पूरे pack को `--all` के साथ लें। इसमें हर policy देखें, category के अनुसार grouped:
 
 ```bash
 failproofai policies show FailproofAI/policies
@@ -42,13 +42,13 @@ failproofai policies show FailproofAI/policies
 
 ## Community policy packs
 
-Developers अपने द्वारा मिले use cases के लिए packs प्रकाशित करते हैं, और [policy hub](https://befailproof.ai/policy-hub/) उन्हें सूचीबद्ध करता है। एक community pack अपने author द्वारा प्रकाशित है, Failproof AI द्वारा audited नहीं है, इसलिए इसे install करने से पहले यह पढ़ें कि इसमें क्या है:
+Developers अपने मिले हुए उपयोग के मामलों के लिए packs प्रकाशित करते हैं, और [policy hub](https://befailproof.ai/policy-hub/) उन्हें सूचीबद्ध करता है। एक community pack अपने author द्वारा प्रकाशित होता है, Failproof AI द्वारा audited नहीं, इसलिए इसे install करने से पहले पढ़ें कि यह क्या ले जाता है:
 
 ```bash
 failproofai policies show acme/support-agent
 ```
 
-यह हर policy को list करता है जो इसमें है, category के अनुसार समूहबद्ध, और चिह्नित करता है कि इसके author कौन सी policies को डिफ़ॉल्ट रूप से switch on करते हैं। यह **केवल manifest को पढ़ता है** — entry artifact को कभी download या import नहीं किया जाता है, इसलिए एक अजनबी के pack को देखना एक अजनबी के code को नहीं चलाता है। Manifest को अभी भी release के अपने `SHA256SUMS` के विरुद्ध checked किया जाता है, इसलिए जो आप पढ़ते हैं वह यही है जो install होता।
+यह हर policy को सूचीबद्ध करता है जो यह ले जाता है, category के अनुसार grouped, और चिह्नित करता है कि इसके author द्वारा कौन से को डिफ़ॉल्ट रूप से चालू किया जाता है। यह **केवल manifest को पढ़ता है** — entry artifact को कभी download या import नहीं किया जाता है, इसलिए किसी अजनबी के pack को देखना किसी अजनबी के code को नहीं चला सकता। Manifest को अभी भी release के स्वयं के `SHA256SUMS` के विरुद्ध जांचा जाता है, इसलिए आप जो पढ़ते हैं वह install होगा।
 
 फिर इसे install करें:
 
@@ -56,64 +56,66 @@ failproofai policies show acme/support-agent
 failproofai policies add acme/support-agent
 ```
 
-ये सभी काम करते हैं — जो भी आपके पास है paste करें:
+इनमें से कोई भी काम करता है — जो आपके पास है उसे paste करें:
 
-| Source | परिणाम |
+| Source | Result |
 | --- | --- |
-| `acme/support-agent` | Newest release, **pinned** को exact tag से जो resolve हुआ |
+| `acme/support-agent` | Newest release, **pinned** को exact tag पर जो यह resolve करता है |
 | `acme/support-agent@v2.1.0` | वह release |
-| `github:acme/support-agent@v2.1.0` | वही, explicitly लिखा हुआ |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | वही, browser से copied |
+| `github:acme/support-agent@v2.1.0` | समान, explicitly लिखा गया |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | समान, browser से copied |
 
-कोई tag नाम न रखना newest release को install करता है **और इसे pin करता है**, फिर आपको बताता है कि इसने कौन सा tag चुना। जो record किया जाता है वह हमेशा बिल्कुल एक release का नाम देता है, इसलिए एक reinstall drift नहीं कर सकता।
+कोई tag नाम न देने से newest release install होता है **और यह pinned हो जाता है**, फिर यह आपको बताता है कि इसने कौन सा tag चुना है। जो record होता है वह हमेशा बिल्कुल एक release का नाम देता है, इसलिए reinstall drift नहीं कर सकता।
 
-## एक pack का एक हिस्सा लें
+## Pack का एक हिस्सा लें
 
-डिफ़ॉल्ट रूप से आप pack के **अपने** defaults प्राप्त करते हैं — policies जो इसके author ने unattended switch on करने के लिए safe चिह्नित की हैं — यह सब कुछ नहीं जो यह contain करता है।
+डिफ़ॉल्ट रूप से आप pack के **अपने** defaults प्राप्त करते हैं — policies जिन्हें इसके author ने unattended मोड में enable करने के लिए सुरक्षित चिह्नित किया है — न कि यह सब कुछ जो इसमें है।
 
 ```bash
-failproofai policies add FailproofAI/policies --policy block-rm-rf          # एक, या कुछ comma-separated
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # एक, या comma-separated कुछ
 failproofai policies add FailproofAI/policies --category dangerous-commands # एक पूरी category
 failproofai policies add FailproofAI/policies --all                         # इसमें सब कुछ
 ```
 
-`--category` और `--policy` एक union के रूप में combine होते हैं (`--only` को `--policy` के लिए एक synonym के रूप में स्वीकार किया जाता है)। जब pack पहले से ही installed है, तो flags आपके पास जो थे उसमें जोड़ते हैं, और इसे कोई flag और कोई terminal के साथ फिर से जोड़ना — upgrade करने के लिए, कहें — आपकी selection को जैसे है रखता है। एक terminal में कोई flag के साथ, `add` picker को खोलता है इसके बजाय, author के defaults के साथ pre-ticked, और जो आप tick करते हैं आपकी selection को replace करता है।
+`--category` और `--policy` एक union के रूप में combine होते हैं (`--only` को `--policy` के लिए एक synonym के रूप में स्वीकार किया जाता है), और प्रत्येक को दोहराया जा सकता है: `--policy a --policy b` दोनों को लेता है। जब pack पहले से installed हो, flags जो आपके पास था उसमें जोड़ते हैं, और इसे बिना flag और बिना terminal के फिर से add करना — upgrade के लिए कहते हैं — आपके चयन को वैसा ही रखता है। एक terminal पर कोई flag नहीं के साथ, `add` picker को खोलता है इसकी जगह, author के defaults के साथ pre-ticked, और आप जो tick करते हैं वह आपके चयन को replace करता है।
 
-## क्या है यह manage करें
+## क्या चालू है इसे manage करें
 
 ```bash
-failproofai policies                                  # एक list में हर source, packs शामिल
-failproofai policies add block-rm-rf                  # एक policy को switch on करें
-failproofai policies --uninstall block-refunds        # एक pack policy को turn off करें
-failproofai policies --install block-refunds          # और फिर से on करें
+failproofai policies                                  # हर source एक सूची में, packs सहित
+failproofai policies add block-rm-rf                  # एक policy को चालू करें
+failproofai policies --uninstall block-refunds        # एक pack policy को बंद करें
+failproofai policies --install block-refunds          # और फिर से चालू करें
 failproofai policies remove acme/support-agent        # pack को uninstall करें
 ```
 
-एक pack policy को on या off करना पूरी machine पर लागू होता है: switch को installed pack के साथ record किया जाता है, project के configuration में नहीं, चाहे `--scope` क्या कहे।
+Pack policy को चालू या बंद करना पूरी मशीन पर लागू होता है: switch को installed pack के साथ record किया जाता है, project के configuration में नहीं, `--scope` कुछ भी कहे।
 
-कोई slash के बिना एक नाम एक policy है; जो कुछ भी एक के साथ एक pack source है। एक bare नाम installed pack में resolve होता है जो इसे declare करता है। जब दो installed packs एक ही नाम declare करते हैं, तो जिस एक का आप मतलब करते हैं उसका नाम दें:
+एक नाम कोई slash नहीं के साथ एक policy है; कोई भी एक के साथ एक pack source है। एक bare name installed pack के लिए resolve होता है जो इसे declare करता है। जब दो installed packs एक ही नाम को declare करते हैं, जिसे आप मतलब है उसका नाम दें:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-Scopes, parameters, और ये commands जो files लिखती हैं वे [local configuration](/hi/policies/local-configuration) में cover हैं।
+Scopes, parameters, और files ये commands लिखते हैं [local configuration](/hi/policies/local-configuration) में cover किए गए हैं।
 
-## Integrity क्या करती है और क्या नहीं करती है
+## Integrity क्या करता है और नहीं करता है
 
-`SHA256SUMS` artifact के समान release में ships करता है, इसलिए यह **एक signature नहीं है** और किसी को publish करने के बारे में कुछ भी prove नहीं करता है। यह क्या prove करता है कि bytes वो हैं जो release ने publish किए — और क्योंकि digest को record किया जाता है जब आप pack add करते हैं और हर import से पहले re-verified होता है, एक pack आपकी machine के अंतर्गत बाद में नहीं बदल सकता। एक repository जो retags या एक asset को replace करता है loading को रोकता है इसके बजाय quietly कुछ और run करने के।
+`SHA256SUMS` artifact के रूप में एक ही release में ships होता है, इसलिए यह **एक signature नहीं** है और कुछ भी prove नहीं करता है कि किसने इसे प्रकाशित किया। यह क्या prove करता है वह यह है कि bytes वो हैं जो release ने प्रकाशित किया — और क्योंकि digest को pack add करते समय record किया जाता है और हर import से पहले फिर से verify किया जाता है, एक pack आपकी मशीन के तहत नहीं बदल सकता। एक repository जो retags या एक asset को replace करता है वह quietly कुछ और चलाने की बजाय load होना बंद कर देता है।
 
-Install time पर pack को भी **एक बार import** किया जाता है और अपने manifest के विरुद्ध checked किया जाता है। एक pack जिसका artifact parse नहीं होता, या जो कुछ और register करता है जो वह declare नहीं करता, को refuse किया जाता है इससे पहले कि कुछ भी activate हो — इसके बजाय cleanly install होना और आपकी अगली tool call पर fail होना।
+Install time पर pack को भी **एक बार import** किया जाता है और अपने manifest के विरुद्ध जांचा जाता है। एक pack जिसका artifact parse नहीं करता, या जो कुछ और register करता है जो यह declare नहीं करता, कुछ भी activated होने से पहले refuse किया जाता है — cleanly install करने और अपनी अगली tool call पर fail करने की बजाय। एक pack भी जिसका id `FailproofAI/` namespace को claim करता है लेकिन जिसका release एक FailproofAI repository में नहीं है।
 
 ## जब एक pack load नहीं होगा
 
-एक pack जिसे इस machine को enforce करने के लिए कहा गया था और run नहीं कर सकता **deny** करता है events को जो इसकी missing policies covered करती थीं, उन्हें silently allow करने के बजाय — `pack/failproofai-pack-unavailable` के रूप में, जो policies को outrank करता है जो load हुई इसलिए deny को missing pack को attribute किया जाता है बजाय whichever guard happened to fire first के। Exception `UserPromptSubmit` है, जो इसके बजाय instruct करता है: वहाँ deny करना आपको lock कर देगा agent से जिसकी आप जरूरत है इसे ठीक करने के लिए। [Failure behavior](/hi/policies/failure-behavior) देखें।
+एक pack जिसे इस मशीन को enforce करने के लिए कहा गया था और नहीं चल सकता **deny** करता है उन events को जिन्हें इसकी missing policies cover करती हैं, इसके बजाय उन्हें silently allow करने के बजाय — `pack/failproofai-pack-unavailable` के रूप में, जो loaded policies को outrank करता है इसलिए deny को missing pack के लिए attribute किया जाता है बजाय इसके कि whichever guard happened fire किया। Exception `UserPromptSubmit` है, जो इसके बजाय instruct करता है: वहां deny करना आपको उस agent से lock कर देता है जिसे आपको इसे ठीक करने के लिए चाहिए। [Failure behavior](/hi/policies/failure-behavior) देखें।
+
+एक pack oldest failproofai का नाम दे सकता है जिसके साथ यह काम करता है (`minCliVersion`, इसके publisher द्वारा set)। एक पुराना CLI इसे add करने से refuse करता है और upgrade command को print करता है, `npm i -g "failproofai@>=<minCliVersion>" && failproofai update` (एक range, इसलिए npm एक release pick करता है जो इसे meet करता है — एक bare `failproofai` `latest` को install करता है, जो एक prerelease minimum की तुलना में पुराना हो सकता है); एक पहले से installed जिसके लिए running CLI बहुत पुराना है load नहीं होता, ऊपर के result के साथ। एक `minCliVersion` जो CLI नहीं पढ़ सकता वह warning के साथ ignored होता है बजाय pack को refuse करने के।
 
 ## Offline और mirrors
 
-| Variable | प्रभाव |
+| Variable | Effect |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Fetch करने से refuses करता है; पहले से ही installed packs enforce करते रहते हैं |
-| `FAILPROOFAI_PACK_BASE_URL` | Pack fetching को `github.com` के बजाय एक mirror की ओर point करता है |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Fetch करने से refuse करता है; पहले से installed packs enforce करते रहते हैं |
+| `FAILPROOFAI_PACK_BASE_URL` | Pack fetching को mirror पर point करता है `github.com` की बजाय |
 
-अपनी policies को इस तरह share करने के लिए, [Publish a policy pack](/hi/policies/publish-a-pack) देखें।
+अपनी अपनी policies को इस तरीके से share करने के लिए, [Publish a policy pack](/hi/policies/publish-a-pack) देखें।

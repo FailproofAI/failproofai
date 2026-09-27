@@ -1,119 +1,121 @@
 ---
-title: "İlke paketini kullanma"
-description: "Failproof AI ilke paketini veya politika merkezindeki bir topluluk paketini kullanım durumunuz için eklyin ve neyi uyguladığını seçin."
+title: "Bir policy pack kullanın"
+description: "Failproof AI policy pack'ini kendi kullanım durumunuz için bağlayın, politika hub'ından bir topluluk pack'ini seçin ve hangi kuralları uygulanacağını belirleyin."
 icon: "package"
 ---
 
-Paket, bir GitHub sürümü olarak yayımlanan bir ilke setidir. Tek bir komut ile kurar: sürümün kontrol toplamları herhangi bir şey çalışmadan önce doğrulanır ve paketi makineniz altında değiştiremeyecek şekilde özeti kaydedilir.
+Pack, bir GitHub release'i olarak yayınlanan bir dizi politikadır. Tek bir komut bunu kurar: release'in sağlama toplamları herhangi bir şey çalışmadan önce doğrulanır ve paketi makinenizde daha sonra değiştirilmesini engelleme amacıyla özeti kaydedilir.
 
-Her paketi ve içindeki her ilkeyi [politika merkezinde](https://befailproof.ai/policy-hub/) bulabilirsiniz. İki tür vardır:
+Her pack'i ve içindeki her politikayı [politika hub'ında](https://befailproof.ai/policy-hub/) göz atın. İki tür vardır:
 
-- **Failproof AI ilke paketleri** — önceden tanımlanmış kullanım durumları için hazır paketler: birini ekleyin ve çalışır. [Kodlama aracısı ilke paketi](https://befailproof.ai/policy-hub/failproofai/policies/) şu anda kullanılabilir ve daha fazla kullanım durumu için paketler yakında geliyor.
-- **Topluluk ilke paketleri** — geliştiricilerin kendi kullanım durumları için yazdığı ve herkese açık olarak yayımladığı ilkeler.
+- **Failproof AI policy pack'leri** — önceden tanımlı kullanım durumları için hazır pack'ler: birini bağlayın ve çalışır. [coding agent policy pack](https://befailproof.ai/policy-hub/failproofai/policies/) artık mevcuttur ve daha fazla kullanım durumu için pack'ler yakında gelecektir.
+- **Topluluk policy pack'leri** — geliştiricilerin kendi kullanım durumları için yazdıkları ve herkesin almasına açtıkları politikalar.
 
-## Failproof AI ilke paketleri
+## Failproof AI policy pack'leri
 
-### Kodlama aracısı ilke paketi
+### Coding agent policy pack
 
 ```bash
 failproofai policies add FailproofAI/policies
 ```
 
-Paket 38 ilke taşır ve bildiriminin uygun olarak işaretlediği 10'unu katılımsız şekilde etkinleştirir; geriye kalanlar sizin seçmeniz için listelenir. En çok kullanılanlardan bazıları ve düz `policies add` ile açılıp açılmadığı:
+Pack 39 politika taşır ve manifestinde güvenli olarak işaretlenen 10'unu açar; geri kalanlar sizin seçim yapmanız için listelenmiştir. En çok kullanılanlardan bazıları ve sade bir `policies add` komutuyla açılıp açılmadıkları:
 
-| İlke | Ne yaptığı | Varsayılan olarak açık |
+| Politika | Ne yaptığı | Varsayılan olarak açık |
 | --- | --- | --- |
-| `block-push-master` | Korumalı dalara doğrudan itmeleri engeller | Evet |
+| `block-push-master` | Korunan dallara doğrudan push'ları engeller | Evet |
 | `block-env-files` | `.env` dosyalarını okuma ve yazma işlemlerini engeller | Evet |
 | `protect-env-vars` | Ortam değişkenlerini döken komutları engeller | Evet |
-| `block-sudo` | İzin desenine uymadıkça `sudo` öğesini engeller | Evet |
-| `block-curl-pipe-sh` | İndirilen komut dosyalarının doğrudan bir kabuk içine boru aktarılmasını engeller | Evet |
-| `sanitize-*` (beş ilke) | Araç çıkışında bulunan API anahtarları, taşıyıcı belirteçleri, JWT'ler, özel anahtarlar ve bağlantı dizelerini bildir | Evet |
+| `block-sudo` | İzin deseni eşleşmedikçe `sudo` komutunu engeller | Evet |
+| `block-curl-pipe-sh` | İndirilen scriptleri doğrudan shell'e yönlendirme işlemini engeller | Evet |
+| `sanitize-*` (beş politika) | Araç çıktısında bulunan API anahtarlarını, taşıyıcı tokenlarını, JWT'leri, özel anahtarları ve bağlantı dizelerini bildir | Evet |
 | `block-rm-rf` | Yıkıcı özyinelemeli silmeleri engeller | Hayır |
-| `block-force-push` | Kuvvet itişlerini engeller | Hayır |
+| `block-force-push` | Force-push'ları engeller | Hayır |
 | `block-secrets-write` | Kimlik bilgisi ve gizli anahtar dosyalarına yazma işlemlerini engeller | Hayır |
-| `warn-destructive-sql` | `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` öğelerinde uyarır | Hayır |
+| `warn-destructive-sql` | `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` işlemlerinde uyarır | Hayır |
 
-Kapalı olanları ada göre açın — `failproofai policies add block-rm-rf` — veya `--all` ile tüm paketi alın. İçindeki her ilkeyi kategoriye göre gruplandırılmış olarak görün:
+Kapatı olanlardan herhangi birini adıyla açın — `failproofai policies add block-rm-rf` — ya da tüm pack'i `--all` ile alın. Kategoriye göre gruplandırılmış içindeki tüm politikaları görmek için:
 
 ```bash
 failproofai policies show FailproofAI/policies
 ```
 
-## Topluluk ilke paketleri
+## Topluluk policy pack'leri
 
-Geliştiriciler karşılaştıkları kullanım durumları için paketler yayımlar ve [politika merkezi](https://befailproof.ai/policy-hub/) bunları listeler. Bir topluluk paketi yazar tarafından yayımlanır, Failproof AI tarafından denetlenmez; bu nedenle kurmadan önce neyi taşıdığını okuyun:
+Geliştiriciler karşılaştıkları kullanım durumları için pack'ler yayınlar ve [politika hub'ı](https://befailproof.ai/policy-hub/) bunları listeler. Topluluk pack'i yayımcısı tarafından yayınlanır, Failproof AI tarafından denetlenmez, bu nedenle kurmadan önce neyi taşıdığını okuyun:
 
 ```bash
 failproofai policies show acme/support-agent
 ```
 
-Bu, taşıdığı her ilkeyi kategoriye göre gruplandırılmış olarak listeler ve yazarın varsayılan olarak hangi olanları etkinleştirdiğini işaretler. **Yalnızca bildirimi** okur — giriş yapısı hiçbir zaman indirilmez veya ithal edilmez; bu nedenle bir yabancının paketine bakmak bir yabancının kodunu çalıştıramaz. Bildirim yine de sürümün kendi `SHA256SUMS` dosyasına karşı denetlenir; bu nedenle okuduğunuz şey yükleyeceğiniz şeydir.
+Bu, taşıdığı tüm politikaları kategoriye göre gruplandırarak listeler ve yazarının varsayılan olarak hangilerini açtığını işaretler. **Yalnızca manifestoyu okur** — giriş artifact'ı hiçbir zaman indirilmez veya içe aktarılmaz, bu nedenle bilinmeyen birinin pack'ine bakmak bilinmeyen birinin kodunu çalıştıramaz. Manifesto hala release'in kendi `SHA256SUMS` dosyasına göre denetlenir, bu nedenle okuduğunuz şey kuracak olduğunuz şeydir.
 
-Ardından onu kurun:
+Ardından kurun:
 
 ```bash
 failproofai policies add acme/support-agent
 ```
 
-Bunların herhangi biri çalışır — sahip olduğunuz herhangi birini yapıştırın:
+Bunların herhangi biri çalışır — sahip olduğunuzu yapıştırın:
 
 | Kaynak | Sonuç |
 | --- | --- |
-| `acme/support-agent` | En yeni sürüm, **sabitlenmiş** tam etikete |
-| `acme/support-agent@v2.1.0` | O sürüm |
+| `acme/support-agent` | En yeni release, çözüldüğü tam etikete **sabitlenmiş** |
+| `acme/support-agent@v2.1.0` | O release |
 | `github:acme/support-agent@v2.1.0` | Aynı, açıkça yazılmış |
 | `https://github.com/acme/support-agent/releases/tag/v2.1.0` | Aynı, tarayıcıdan kopyalanmış |
 
-Etiket adını vermeme en yeni sürümü yükler **ve sabitler**, ardından seçtiği etiketi söyler. Kaydedilen her zaman tam olarak bir sürümü adlandırır; bu nedenle yeniden kurulum bozulamaz.
+Etiket adı belirtmemek en yeni release'i kurar **ve sabitler**, ardından hangi etiketi seçtiğini söyler. Kaydedilen her zaman tam olarak bir release'i adlandırır, bu nedenle yeniden kurulum sapamaz.
 
-## Bir paket parçasını alın
+## Bir pack'in parçasını alın
 
-Varsayılan olarak paket **kendi** varsayılanlarını alırsınız — ilkesinin yazarı katılımsız olarak açılmak için güvenli olarak işaretlediği; içerdiği her şeyi değil.
+Varsayılan olarak pack'in **kendi** varsayılanlarını alırsınız — yazarı güvenli olarak unattended açmak için işaretlediği politikaları — içerdiği her şeyi değil.
 
 ```bash
-failproofai policies add FailproofAI/policies --policy block-rm-rf          # bir veya virgülle ayrılmış birkaç
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # bir tane, ya da virgülle ayrılmış birkaç tane
 failproofai policies add FailproofAI/policies --category dangerous-commands # tüm bir kategori
 failproofai policies add FailproofAI/policies --all                         # içindeki her şey
 ```
 
-`--category` ve `--policy` bir birleşim olarak birleşir (`--only` `--policy` için eş anlamlı olarak kabul edilir). Paket zaten yüklendiğinde, bayraklar sahip olduklarınıza eklenir ve yükseltme gibi hiçbir bayrak ve terminal olmadan yeniden eklenmesi seçiminizi olduğu gibi tutar. Terminal ile bayrak olmadan `add` seçiciyi açar; yazarın varsayılanları ile önceden işaretlenmiş ve işaretledikleriniz seçiminizi değiştirir.
+`--category` ve `--policy` birleşim olarak birleşir (`--only`, `--policy` için eş anlamlı olarak kabul edilir) ve her biri tekrarlanabilir: `--policy a --policy b` her ikisini alır. Pack zaten kuruluysa, bayraklar sahip olduğunuza eklenir ve terinal olmadan ve bayrak olmadan yeniden ekleme — örneğin yükseltme — seçiminizi olduğu gibi tutar. Terminal ile bayrak olmadan, `add` seçiciyi açar, yazarın varsayılanları ile ön işaretlenerek ve işaretledikleriniz seçiminizi değiştirir.
 
-## Açık olanları yönetin
+## Hangi politikaların açık olduğunu yönetin
 
 ```bash
-failproofai policies                                  # her kaynak tek bir listede, paketler dahil
-failproofai policies add block-rm-rf                  # bir ilkeyi açın
-failproofai policies --uninstall block-refunds        # bir paket ilkesini kapatın
+failproofai policies                                  # bir listede her kaynak, pack'ler dahil
+failproofai policies add block-rm-rf                  # bir politikayı açın
+failproofai policies --uninstall block-refunds        # bir pack politikasını kapatın
 failproofai policies --install block-refunds          # ve geri açın
-failproofai policies remove acme/support-agent        # paketi kaldırın
+failproofai policies remove acme/support-agent        # pack'i kaldırın
 ```
 
-Bir paket ilkesini açmak veya kapatmak tüm makine için geçerlidir: anahtar, `--scope` ne derse desin, bir projenin yapılandırmasında değil, yüklü paket ile kaydedilir.
+Bir pack politikasını açmak veya kapatmak tüm makineye uygulanır: anahtar, proje yapılandırmasında değil, kurulan pack ile kaydedilir, `--scope` ne söylerse söylesin.
 
-Eğik çizgisi olmayan bir ad, bir ilkedir; biri olan herhangi bir şey, bir paket kaynağıdır. Çıplak bir ad, onu bildiren yüklü paketi çözer. İki yüklü paket aynı adı bildirdiğinde, istediğinizi adlandırın:
+Eğik çizgi olmayan bir ad bir politikadır; bir tane olan herhangi bir şey bir pack kaynağıdır. Çıplak ad, onu bildiren kurulan pack'e çözümlenir. İki kurulan pack aynı adı bildirirse, istediğiniz olanı adlandırın:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-Kapsamlar, parametreler ve bu komutların yazdığı dosyalar [yerel yapılandırma](/tr/policies/local-configuration) içinde ele alınır.
+Kapsamlar, parametreler ve bu komutların yazdığı dosyalar [yerel yapılandırma](/tr/policies/local-configuration) bölümünde ele alınmıştır.
 
-## Bütünlüğün ne satın aldığı ve almadığı
+## Bütünlüğün ne sağladığı ve sağlamadığı
 
-`SHA256SUMS` yapıyla aynı sürümde gemi; bu nedenle **imza değildir** ve yayımlayanlar hakkında hiçbir şey kanıtlamaz. Kanıtladığı şey, baytların o sürümün yayımladıkları olmasıdır — ve paketi eklediğinizde özet kaydedildiği ve her ithalatından önce yeniden doğrulandığı için, paket makineniz altında değişemez. Etiketi yeniden etiketleyen veya bir varlığı değiştiren bir depo, sessizce başka bir şey çalıştırmak yerine yüklemeyi durdurur.
+`SHA256SUMS` artifact ile aynı release'de gemi hakemliği gerçekleştirir, bu nedenle **imza değildir** ve onu kimin yayınladığı hakkında hiçbir şey kanıtlamaz. Kanıtladığı şey, baytların release'in yayınladığı olanlar olduğudur — ve özet pack eklendiğinde kaydedildiği ve her alma öncesi yeniden doğrulandığı için, pack makinenizin altında değişemez. Bir depo etiketi yeniden etiketleyen veya bir varlığı değiştiren sessizce başka bir şey çalıştırmak yerine yüklemeyi durdurur.
 
-Kurulum sırasında paket da **bir kez ithal** edilir ve kendi bildirimine karşı denetlenir. Yapısı ayrıştırılmayan veya bildirdiğinden başka bir şey kaydeden bir paket, hiçbir şey etkinleştirilmeden önce reddedilir — temiz şekilde kurulduktan sonra bir sonraki araç çağrısında başarısız olmak yerine.
+Kurulum sırasında pack de **bir kez içe aktarılır** ve kendi manifestosuna göre denetlenir. Artifact'ı ayrıştırılmayan veya manifestosundan başka bir şey kaydeden bir pack, temiz kurulum ve bir sonraki araç çağrısında başarısız olmak yerine herhangi bir şey etkinleştirilmeden önce reddedilir. `FailproofAI/` ad alanını iddia eden ancak release'i FailproofAI deposunda olmayan bir pack da öyledir.
 
-## Bir paket yüklenemeyen zaman
+## Bir pack yüklenemediğinde
 
-Bu makinenin uygulaması söylendiği ve çalışması imkansız olan paket, eksik ilkelerinin kapsadığı olayları yoksayarak **reddeder** — `pack/failproofai-pack-unavailable` olarak, yüklü ilkeleri geçersiz kılan politikaları sıralar; bu nedenle reddin eksik pakete atfı yapılır; hangisi ateşlendi. İstisna `UserPromptSubmit` dır; orada reddetmek sizi düzeltmek için ihtiyaç duyduğunuz aracıdan kilitlerdi. Bkz. [Başarısızlık davranışı](/tr/policies/failure-behavior).
+Bu makineye uygulanması söylenen ve çalıştırılamayan bir pack, eksik politikaların kapsadığı olayları `pack/failproofai-pack-unavailable` olarak sessizce izin veriş yerine **reddeder**, bu da yüklenen politikaların üstünde yer alır, bu nedenle ret önce ateş eden koruma türü yerine eksik pack'e atfedilir. İstisna `UserPromptSubmit`'dir ve bunun yerine talimat verir: orada reddetmek sizi düzeltmesi gereken aracı kilitler. Bkz. [Başarısızlık davranışı](/tr/policies/failure-behavior).
+
+Bir pack, çalıştığı en eski failproofai'yi adlandırabilir (`minCliVersion`, yayımcısı tarafından ayarlanmış). Eski bir CLI bunu eklemeyi reddeder ve yükseltme komutunu yazdırır, `npm i -g "failproofai@>=<minCliVersion>" && failproofai update` (bir aralık, bu nedenle npm bunu karşılayan bir release seçer — çıplak `failproofai` kurtar `latest` yükler, bu da ön-sürüm minimum'dan daha eski olabilir); zaten kurulan ve çalıştıran CLI çok eski olan yüklenmez, yukarıdaki sonuçla. CLI'nin okunamadığı bir `minCliVersion` pack'i reddetmek yerine uyarı ile yoksayılır.
 
 ## Çevrimdışı ve aynalar
 
 | Değişken | Etki |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Getirmeyi reddeder; zaten yüklü paketler uygulamaya devam eder |
-| `FAILPROOFAI_PACK_BASE_URL` | Paket getirmesini `github.com` yerine bir aynaya işaret eder |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Getirmeyi reddeder; zaten kurulan pack'ler uygulamaya devam eder |
+| `FAILPROOFAI_PACK_BASE_URL` | Pack getirmeyi `github.com` yerine bir aynaya işaret eder |
 
-Kendi ilkelerinizi bu şekilde paylaşmak için bkz. [İlke paketi yayımla](/tr/policies/publish-a-pack).
+Kendi politikalarınızı bu şekilde paylaşmak için bkz. [Bir policy pack yayınlayın](/tr/policies/publish-a-pack).

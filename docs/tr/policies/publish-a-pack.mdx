@@ -1,83 +1,96 @@
 ---
-title: "Bir politika paketini yayınla"
-description: "Kendi politikalarını herkesin yükleyebileceği bir GitHub sürümü olarak dağıt."
+title: "Bir politika paketi yayınla"
+description: "Kendi politikalarını herkesin kurabilmesi için GitHub sürümü olarak gönder."
 icon: "upload"
 ---
 
-Bir paket, bir GitHub sürümüne eklenen üç dosyadan oluşur. `failproofai publish` bunların hepsini önündeki politika dosyalarından yazar, sürümü oluşturur ve bunları yükler.
+Bir paket, GitHub sürümüne bağlı üç dosyadan oluşur. `failproofai publish` bu üç dosyayı öndeki politika dosyalarından yazar, sürümü oluşturur ve bunları yükler.
 
 ## 1. Politikaları yaz
 
-Boşlukları olan bir şablondan ziyade zaten çalışan bir şeyden başla:
+Boş şablondan ziyade zaten çalışan bir şeyden başla:
 
 ```bash
 failproofai publish --init
 ```
 
-Bu, paketin adını sorar, `<name>.mjs` dosyasını yazar ve durur — ağ yok, git yok, hiçbir şey yayınlanmadı. Yazdığı dosya, `git push --force` komutunu zaten engelleyen bir politikadır. Zaten var olan bir dosyanın üzerine yazmayı reddeder.
+Paketin adını sorar, `<name>.mjs` dosyasını yazar ve durur — ağ yok, git yok, hiçbir şey yayınlanmaz. Yazdığı dosya, `git push --force` komutunu engelleyen bir politikadır. Var olan bir dosyayı üzerine yazmayı reddeder.
 
-Politikalar, herhangi bir özel politika ile aynı API'yi kullanır. Bir paket için önemli olan iki ekstra alan vardır:
+Politikalar, herhangi bir özel politika gibi aynı API'yi kullanır. Bir paket için iki ek alan önemlidir:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
 
 customPolicies.add({
   name: "block-refunds",
-  description: "Refunds above the approved limit need a human",
-  category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `policies add`
+  description: "İzin verilen limiti aşan para iadeleri insan gözlemlemeli",
+  category: "Billing",        // gruplandırır ve --category tarafından seçilir
+  defaultEnabled: true,       // düz `policies add` ile açılır
   match: { events: ["PreToolUse"], tools: ["Bash"] },
   fn: async (ctx) =>
     String(ctx.toolInput?.command ?? "").includes("refund")
-      ? deny("Refunds need a human. Ask before running this.")
+      ? deny("Para iadesine bir insan gerekli. Çalıştırmadan önce sor.")
       : allow(),
 });
 ```
 
-`defaultEnabled` değerini atladığında varsayılan olarak **false** olur. Düz `failproofai policies add` komutu yalnızca işaretlediklerinizi açar — bir yabancının her politikasını kurulu olarak yüklemek, yükleyicinin kullanıcısı için yapması gereken bir karar değildir.
+`defaultEnabled` eksik olduğunda **false** olarak ayarlanır. Düz `failproofai policies add` komutu yalnızca işaretlediklerini açar — bir yabancının her politikasını kurulu olarak yüklemek, kurucunun kullanıcısı için yapması gereken bir karar değildir.
 
-İstediğiniz kadar dosya yazabilirsiniz; kategori başına bir dosya iyi okunur. Politikalara kayıt olan dizindeki her dosya, bir paketin sahip olması gereken tek yapıya dahil edilir.
+Bir politika ayrıca `authority: "reviewable"` ve bir `reviewedBy` listesi ile bildirilebilir; bu, Jev anlamsal değerlendiricisinin Jev'i yapılandıran makinelerde kararını temizlemesine izin verir. `failproofai publish`, her ikisini manifeste kopyalar ve bir makine oradan okur; yanlış yazılan kontrol adı gibi, bir bildirimin onurlandırılamayacağı durumlarda derlemeyi reddeder veya bildirilen Jev kontrollerini içeren bir pakette, bildirmediklerinden birine. Bunları çıkarırsanız politika kattı olur. Bkz. [Policy authority](/tr/policies/authority).
+
+### Bir pakette Jev kontrolleri
+
+Bir paket ayrıca [Jev kontrolleri](/tr/reference/policy-sdk#jev-checks) — `semanticPolicies.add()` — politikaları yanında veya kendi başlarına taşıyabilir. Bir paket, Jev kontrolünün bir makineye ulaşmasının tek yoludur: yerel bir politika dosyasında hiçbir zaman sorulmaz. `publish`, her birini yükleyicinin kurallarıyla doğrular ve bunları manifestin `semantic` dizisine yazar.
+
+- **Sınırlar.** Paket başına en fazla 24 kontrol. Soruları birlikte, bir Jev isteğinin sığdırabileceği şeye, her makinenin sorduğu 16 yerleşik kontrol tarafından ilk olarak alınan şeyi eksi (yaklaşık 9.100 karakter kalır) — havuzun FailproofAI'ninki olmadığı sürece uymalıdır; `publish`, bu bütçeyi aşan bir paketi reddeder ve sayıları yazdırır. Diğer paketlerin kontrolleri aynı odayı paylaşır, bu nedenle yanlarına sığmayan bir kontrol orada sorulmaz: `policies add` adını verir.
+- **Bunlar yerleşik kontrollere eklenir.** Jev, paketinizin kontrollerini ve çalışmaya devam eden 16 [yerleşik kontrol](/tr/policies/authority#semantic-policy-names)ü sorar. Yalnızca bir FailproofAI deposundan yüklenen paket (`FailproofAI/jev-policies`) yerleşik kontrolleri kendi olanlarıyla değiştirir. Birden fazla paketten gelen kontroller toplanır; soruları bir Jev isteğinin taşıyabileceği şeyi aştığında, FailproofAI'nin kontrolleri ilk olarak tutulur ve geri kalanlar bir uyarı ile bırakılır. İki paketin farklı olarak bildirdiği bir ad hiçbiri için onurlandırılmaz — adı bildiren her politika kattı olur — aynı adın özdeş bildirimleri iyidir. 16 yerleşik ad ayrılmıştır: bir FailproofAI deposundan yüklenmemiş bir paket tarafından bildirilen, bu paketin sürümü hiçbir zaman sorulmaz, bu nedenle `publish` orada bir tane reddeder; kendi adlarınızı seçin.
+- **`reviewedBy` paketin kendi kontrollerini adlandırır.** Paket herhangi birini bildirdiğinde, `publish` her `reviewedBy`yi yalnızca o adlara karşı yargılar, bu nedenle paketin kendisinin bildirmediği yerleşik bir kontrol adı reddedilir. Kendi kontrolü olmayan bir paket yerleşik adlara karşı yargılanır.
+- **`--min-cli-version` ayarlayın.** Jev kontrolleri için çok eski bir CLI, `semantic` dizisini yok sayar ve geri kalanını kurar, bu nedenle kontroller taşıyan bir paket için `--min-cli-version <version>` iletin. Manifeste `minCliVersion` olarak yazılır: daha eski bir CLI paketi kurmayı reddeder ve zaten yüklüyse yüklemeyi reddeder — `enforce` politikalarına sahip bir paket için, bu politikaların kapsadığı şeyi reddeder (bkz. [Bir paket ne zaman yüklenmeyecek](/tr/policies/packs#when-a-pack-will-not-load)). Değer düz semver olmalı veya `publish` reddeder; karşılaştıramayan bir CLI saklanmış bir değeri uyarır ve görmezden gelir. Kontrolleri olan bir paket için en az `1.0.8-beta.0` olmalıdır, bir paketin kontrollerini yayınlandığı şekilde çalıştıran ilk sürüm (1.0.7 onları yok sayar, 1.0.7-beta.x yerleşik kontrolleri onlarla değiştirir): `publish` daha düşük bir değeri reddeder ve hiçbir şey geçmezseniz `1.0.8-beta.0` yazar.
+
+Yalnız bir Jev kontrolleri paketi (hiçbir `customPolicies.add`) Jev kontrolleri için çok eski olan bir CLI tarafından reddedilir ("paket manifestası politika bildirmiyor") ve zaten yüklüyse yok sayılır. Bir makine yüklerken böyle bir paketi reddederse (karşılamadığı bir `minCliVersion`, eksik veya değiştirilmiş bir eser), nedenini bildirir ve hiçbir şeyi reddeder, çünkü paket Jev olmadan hiçbir şeyi engellemez. Daha eski yapılar tamamen aynı fikirde değildir: 1.0.7 bir tanesini boş paket olarak yükler ama eser eksik veya değiştirilirse her araç çağrısını reddeder; 1.0.8-beta.0'dan önceki Jev özellikli ön sürüm (1.0.7-beta.2 gibi), bir `minCliVersion` dahil olmak üzere herhangi birini reddetmesi dahil her zaman bir reddetme isteyen her araç çağrısını reddeder. Bu nedenle, bir makineyi geri almadan önce paketi kaldırın (`failproofai policies remove <id>`); `publish` bu hatırlatmayı yalnızca kontroller paketi için yazdırır.
+
+İstediğiniz kadar dosya yazın; kategori başına birer tane iyi okunur. Politikaları kaydeden dizindeki her dosya, bir paketin sahip olması gereken tek esere birleştirilir.
 
 <Warning>
-  Paketleme **bun** gerektirir. Bunu olmadan, tek bir kendi kendine yeterli dosyada kalın. Her iki durumda da yayınlanan giriş, yükleme zamanında yerel dosyaları içe aktarmamalıdır: yalnızca giriş özet-sabitlemiştir, bu nedenle kardeş dosyalara uzanan bir paket, özetin çalışan şeyi kapsadığını dürüstçe iddia edemez — ve `publish` bunu yapan yerine, tutamayacağı bir söz göndermekten kaçınır.
+  Birleştirme **bun** gerektirir. Olmadan, bir bağımsız dosya ile kalın. Her iki durumda da yayınlanan giriş, kurulum sırasında yerel dosyaları içe aktarmamalıdır: yalnızca giriş digest tarafından sabitlenir, bu nedenle kardeşlerine ulaşan bir paket, digest ne çalıştığını kapsadığını dürüstçe iddia edemez — ve `publish`, bir imkansız vaat göndermek yerine bir paket reddeder.
 </Warning>
 
-## 2. Önce burada dene
+## 2. Önce burada deneyin
 
-Başka biri onu görmeden önce, dosyayı bu makinede uygula:
+Başka biri bunu görebilmeden önce, dosyayı bu makinede zorlayın:
 
 ```bash
 failproofai policies -i -c ./<name>.mjs
 ```
 
-Herhangi bir yol, herhangi bir dosya adı. Aracınızdan engellediğiniz şeyi yapmasını isteyin ve bunun reddedildiğini izleyin. Hiçbir şey yayınlanmaz ve başka hiç kimse etkilenmez. [Bir politikayı test et](/tr/policies/test) kalanını kapsar: izin vermesi gereken yasal durum ve onu kıran girdiler.
+Herhangi bir yol, herhangi bir dosya adı. Aracınızdan engellediğiniz şeyi yapmasını isteyin ve reddedilişini izleyin. Hiçbir şey yayınlanmaz ve başka kimse etkilenmez. [Test a policy](/tr/policies/test) gerisi hakkında bilgi verir: izin vermesi gereken yasal durum ve onu bozan girdiler.
 
-## 3. Bunu yayınla
+## 3. Yayınla
 
 ```bash
 failproofai publish
 ```
 
-Nereye yayınlanacağını, ne paketleneceğini ve buna hangi sürümü çağırılacağını çözer ve yalnızca depo hiçbir şey söylemediğinde sorar. Herhangi bir şey yanlışsa bir sürüm oluşturmadan önce durarak sırasıyla:
+Nereye yayınlanacağını, ne birleştirileceğini ve hangi versiyona çağrılacağını belirler ve bir sürüm oluştururmadan önce hiçbir şey yanlışsa yalnızca sorar. Sırayla, aşağıdakilerden herhangi biri yanlışsa sürüm oluşturmadan durdurur:
 
-1. Politika dosyalarını burada **içerik** yoluyla bulur — `failproofai` içe aktaran ve `customPolicies.add` çağıran dosyalar — dosya adına göre değil, bu nedenle `guards.mjs` bulur ve ilgisiz `policies.mjs` öğesini yoksayar. Alt dizinlere inmez, bu nedenle bir test demeti asla yanlışlıkla taranmaz.
-2. `git remote get-url origin` öğesinden depoyu okur, **dosyanızın** dizininde sizin dizininiz yerine ve sürümü belirler.
-3. Kimlik bilgilerinizi bulur: `GITHUB_TOKEN`, `GH_TOKEN` veya `gh auth login`. Sürüm-yazma gerekir ve başka hiçbir şey gerekli değildir ve asla yazdırılmaz.
-4. Depo zaten var olmadığında oluşturur. Bu, yapıdan önce gerçekleşir, bu nedenle sonraki adımda reddedilen bir paket, içinde hiçbir sürüm olmayan yeni bir depo bırakabilir.
-5. Üç varlığı oluşturur ve **yükleyicinin kendi kurallarıyla** doğrular — bir yabancının makinesine neyin yüklenmesine izin verileceğini belirleyen aynı kod — bu nedenle asla yüklenmeyebilecek bir paket burada başarısız olur, burada hala bunu düzeltebilirsiniz.
-6. Sürümü oluşturur veya yeniden kullanır ve varlıkları yükler, aynı adla olanları değiştirir.
+1. Politika dosyalarını burada **içerik** ile bulur — `failproofai`'yi içe aktaranlar ve `customPolicies.add` veya `semanticPolicies.add`'i çağırırlar — dosya adına göre değil, bu nedenle `guards.mjs`'yi bulur ve ilgisiz bir `policies.mjs`'yi yok sayar. Alt dizinlere inmez, bu nedenle test tutucu asla yanlışlıkla yerleştirilmez.
+2. Depoyu dosya dizininde `git remote get-url origin`'den okur (sizin dizininizden ziyade) ve sürümü belirler.
+3. Kimlik bilgisini bulur: `GITHUB_TOKEN`, `GH_TOKEN` veya `gh auth login`. Yayın yazma işleminin yazma yetkisine ihtiyaç duyar ve başka hiçbir şeye ihtiyaç duymaz ve hiçbir zaman yazdırılmaz.
+4. Depoyu oluşturur (yoksa). Bu derlemeyi aşamamasından önce oluşur, bu nedenle sonraki adımda reddedilen bir paket, sürümü olmayan yeni bir depo bırakabilir.
+5. Üç varlık derler, **yükleyicinin kendi kuralları** ile doğrularlar — bir yabancının makinesine kurulmasına ne karar veren aynı kod — bu nedenle asla kurulamayan bir paket burada başarısız olur, hala onarabilirsiniz.
+6. Sürümü oluşturur veya tekrar kullanır ve yükler, aynı ada sahip varlıkları değiştirir.
 
 | Dosya | Ne olduğu |
 | --- | --- |
-| `failproofai-pack.json` | Bildirim: id, sürüm, etki ve politika başına bir giriş |
-| `failproofai-pack.mjs` | Paketlenmiş girişiniz |
-| `SHA256SUMS` | `<sha256>  <filename>` diğer ikisiniz için |
+| `failproofai-pack.json` | Manifest: id, sürüm, etki, politika başına bir giriş ve — herhangi biriyse — Jev kontrolleri (`semantic`) ve `minCliVersion` |
+| `failproofai-pack.mjs` | Birleştirmiş giriş |
+| `SHA256SUMS` | Diğer ikisinin `<sha256>  <filename>` |
 
-Varlık adları sabittir — bir tüketicinin CLI'sinin URL'lerini bunlardan oluşturduğu şeydir, API çağrısı yok ve keşif yok.
+Varlık adları sabittir — bir tüketicinin CLI, hiçbir API çağrısı ve keşif olmadan URL'lerini nereden inşa ettiğidir.
 
-Derleme zamanında reddedildi: `publisher/name` olmayan bir id, `/` içeren bir politika adı, `alwaysOn` bildiren bir politika, eksik `description`, `category` veya `match`, hiçbir şeye kaydolmayan bir giriş ve yerel dosyaları içe aktaran bir giriş.
+Derleme sırasında reddedilir: `publisher/name` olmayan bir id, `/` içeren bir politika adı, `alwaysOn` bildiren bir politika, eksik `description`, `category` veya `match`, hiçbir şey kaydedermeyen bir giriş, yerel dosyaları içe aktaran bir giriş ve depo FailproofAI'ninki olmadığı sürece yerleşik bir denetim sonrasında adlandırılan bir Jev kontrolü.
 
-Belirlediği herhangi bir şeyi geçersiz kıl:
+Karar verdiği herhangi bir şeyi geçersiz kıl:
 
 ```bash
 failproofai publish \
@@ -87,41 +100,41 @@ failproofai publish \
   --dry-run
 ```
 
-`--id` depo ile farklı olması gereken durumlarda paket id'sini ayarlar, `--tag` sürüm etiketini ayarlar, `--notes` oluşturulan sürüm notlarının yerini alır — `policies show --releases`'in her sürümün sayılarını ve commit'ini okuduğu yer — `--out` varlıkların nereye yazıldığını seçer (varsayılan `dist-pack`) ve `--dry-run` bunları yayınlamadan oluşturur ve kimlik bilgisi gerektirmez.
+`--id` depo farklı olması gereken paket kimliğini ayarlar, `--tag` sürümün etiketini ayarlar, `--notes` oluşturulan sürüm notlarını değiştirir — `policies show --releases`'in her sürümün sayılarını ve commit'ini buradan okuduğu yer — `--out` varlıkların yazıldığı yeri seçer (varsayılan `dist-pack`), `--min-cli-version` paketi kurabilen en eski CLI'yi ayarlar ([yukarı](#jev-checks-in-a-pack)) ve `--dry-run` bunları yayınlamadan derler ve kimlik bilgisine ihtiyaç duymaz.
 
-Herkes şimdi `failproofai policies add acme/support-agent` komutu ile bunu yükleyebilir. Bir sürümü sabitleme ve birinin sadece bir kısmını alma hakkında [politika paketleri](/tr/policies/packs) bölümüne bakın.
+Herhangi biri şimdi bunu `failproofai policies add acme/support-agent` ile kurabilir. Bir sürümü sabitleme ve birinin yalnızca bir kısmını alma için bkz. [policy packs](/tr/policies/packs).
 
-### Bunu politika hub'ında listele
+### Politika merkezine listele
 
-GitHub'daki deponuza `failproofai-policies` konusunu ekleyin. Gönderim formu yok ve onay kuyruğu yok: [politika hub'ı](https://befailproof.ai/policy-hub/) tarayıcı sonraki geçişinde depoyu alır. Konu yalnızca onu değerlendirmeye koymaktadır — bunu listeleyen şey, bildirimi kendi `SHA256SUMS` ile doğrulayan ve CLI'nin kullandığı kurallar altında ayrıştıran bir sürümdür; bu tam olarak `failproofai publish` ürettiği şeydir.
+`failproofai-policies` konusunu GitHub'da depoya ekle. Gönderme formu ve onay kuyruğu yoktur: [politika merkezi](https://befailproof.ai/policy-hub/)'nin gezgini sonraki geçişinde depoyu alır. Konu onu yalnızca dikkate almaya koyar — onu listeleyen, manifestin kendi `SHA256SUMS`'ine karşı doğrulayan ve CLI'nin kullandığı aynı kurallar altında ayrıştıran bir sürümdür, bu tam olarak `failproofai publish`'in ürettiği şeydir.
 
-## Sürümün nasıl belirlendiği
+## Sürüm nasıl belirlenir
 
-Sürüm, **yayınladığınız commit** — onun kısa sha'sı, on iki karakter: `a1b2c3d4e5f6`. Seçilecek hiçbir şey yok ve artırılacak hiçbir şey yok ve sürüm tam olarak baytların nereden geldiğini adlandırır, bu nedenle aynı kaynağı iki kez yayınlamak aynı sürümü verir.
+Sürüm, **yayınladığınız işlem** — kısa sha'sı, on iki karakter: `a1b2c3d4e5f6`. Seçilecek hiçbir şey yok ve artırılacak hiçbir şey yok, sürüm tam olarak baytların nereden geldiğini adlandırır, bu nedenle aynı kaynağı iki kez yayınlamak aynı sürümü verir.
 
-Depoların sürümlerinden asla sizin önünüzdeki ağaçtan okunur, bu nedenle yeni bir klon ve hava geçişli bir makine GitHub'a bundan önce ne olduğunu sormadan aynı cevabı hesaplar.
+Deponun sürümlerinden değil, sizin önündeki ağaçtan okunur, bu nedenle taze bir klon ve hava boşluğu makine GitHub'dan ne olduğunu sormadan aynı cevabı hesaplar.
 
-Sürüm bir commit'i adlandırdığından, bu commit var olmalıdır. Terminal'de, `publish` bunu sizin için yapar: bir depo olmadığında başlatır ve derlenmeden önce değişen politika dosyalarını commit'ler. Bunun yerine **reddeder** — `--version` olarak çıkış yolunu adlandırarak — terminal olmadan çalıştığında (CI koşucuda yapılan bir commit başka hiçbir yerde var olmaz), dosyalar politikalardan farklı olduğunda komut edilmediğinde veya henüz hiçbir commit'lik bir checkout'ta. `HEAD` üzerinde bir etiket sha'yı geçer — birisi `v1.2.0` etiketlendirmişse bu sürümün ne olduğunu söylemiştir.
+Sürüm bir işlemle adlandırıldığından, işlem var olması gerekir. Terminal'de `publish` bunu sizin için yapar: depo yoksa başlatır, derlemeden önce değiştirilen politika dosyalarını taahhüt eder. Bunun yerine reddeder — `--version`'u bir çıkış yolu olarak adlandırır — terminal olmadan çalışırsa (CI koşucusunda yapılan bir işlem başka hiçbir yerde var olmaz), politikalar dışında dosyalar taahhüt edilmeyse veya henüz işlem olmayan bir çıkışta. `HEAD`'e bir etiket sha'yı kazanır — `v1.2.0`'ı etiketleyen biri bunun ne olduğunu söyledi.
 
-Bir sha'nın kendine ait bir sıralaması yoktur, bu nedenle hangi sürümün ilk geldiğini görmek için `failproofai policies show <owner>/<repo> --releases` kullanın — en yeni en üstte.
+Bir sha kendi sırasına sahip değildir, bu nedenle hangi sürümün ilk geldiğini görmek için `failproofai policies show <owner>/<repo> --releases` kullanın — en üstte en yeni.
 
-## Yeni bir sürüm gönderm
+## Yeni bir sürüm gönderin
 
-Değişikliği commit'leyin ve tekrar `failproofai publish` çalıştırın — yeni commit yeni sürümdür. Tüketiciler aynı `failproofai policies add` komutunu çalıştırır. Terminal olmadan veya bir seçim bayrağı ile, seçtikleri alt kümesini tutar ve açtıkları bir politika kapalı kalır; hiçbir bayrak olmadan terminalde seçici, varsayılanlarınız ile önceden işaretlenmiş durumda açılır ve cevapları seçimlerini değiştirir.
+Değişimi taahhüt edin ve `failproofai publish`'i tekrar çalıştırın — yeni işlem yeni sürümdür. Tüketiciler aynı `failproofai policies add`'i çalıştırır. Terminal olmadan veya bir seçim bayrağı ile, seçtikleri alt kümesini korurlar ve kapatmış oldukları bir politika kapalı kalır; terminal'de bayrak olmadan, seçici varsayılanlarınız ile önceden işaretlenmiş olarak açılır ve cevapları seçimlerini değiştirir.
 
-Bir politikanın **adını** değiştirmek kırılan bir değişikliktir: onu kapattığı bir makine artık var olmayan bir adı kapatıyor ve yeni ad, ne olursa olsun `defaultEnabled` söyler.
+Bir politikanın **adını** değiştirmek kırılma değişikliğidir: kapatmış olduğu makine artık var olmayan bir adı kapatıyor, yeni ad ne `defaultEnabled` diyorsa oraya gelir.
 
-## Kullanıcılarınızın ne güvendiği
+## Kullanıcılarınızın neye güvendiği
 
-`SHA256SUMS`, yapıtla aynı sürümde yer alır, bu nedenle baytların yayınladıklarınız olduğunu kanıtlar — siz kim değil. Depoya yazabilen herkez her iki dosyayı yazabilir. Kullanıcılarınızın koruması, yüklediklerinde özet sabitlendikçe, gönderdikleriniz sonra onların altında değişemez.
+`SHA256SUMS` eserin aynı sürümünde yaşar, bu nedenle baytların yayınladığınız olanlar olduğunu kanıtlar — kim olduğunu değil. Depoyu yazabilen herkes her iki dosyayı yazabilir. Kullanıcılarınızın koruması, kuraştıklarında digest'in sabitlenmesidir, bu nedenle gönderdikleriniz daha sonra değişemez.
 
 Yazma erişimini kontrol ettiğiniz bir depodan yayınlayın ve bir paket sürümünü bir paket yayınlamak gibi ele alın.
 
-Depo da **public** olmalıdır. Yüklemeler, sunacak kimlik bilgisi olmayan anonim HTTPS'dir, bu nedenle mevcut bir özel depo, herhangi bir şey oluşturulmadan veya yüklenmedikten önce reddedilir ve `publish` oluşturduğu bir depo aynı nedenle halka açıktır. `--allow-private` bunu birinin üç varlığı başka bir yolla teslim ettiği biri için geçersiz kılar ve `policies add`'in bunlara ulaşamayacağını açıkça söyler. Yalnızca sürüm önemlidir: yüklemeler `releases/download/<tag>/<asset>` okur ve git ağacınıza asla dokunmaz.
+Depo ayrıca **genel** olmalıdır. Yüklemeler kimlik bilgisi sunacak şekilde anonimdir, bu nedenle var olan özel depo herhangi bir şey derlenmeden veya yüklenmeden önce reddedilir ve `publish`'in oluşturduğu aynı nedenden ötürü genel. `--allow-private`, bunu başka bir şekilde üç varlığı iletene geçersiz kılar ve hiçbir `policies add`'in onlara ulaşamayacağını açıkça söyler. Yalnızca sürüm önemlidir: yüklemeler `releases/download/<tag>/<asset>` okur ve hiçbir zaman git ağacına dokunmaz.
 
-## Uygulamadan önce gözlemleyin
+## Uygulamadan önce gözlemle
 
-Bir bildirim `"effect": "observe"` bildirebilir — `failproofai publish --effect observe` bunu ayarlayan şeydir. Bu politikalar çalışır ve verdiktleri **kaydedilir ve atılır** — hiçbir şey engellenmez. Bu, yeni bir kuralı gerçek trafiğe karşı ölçmenin yolu, herkesin çalışmasını kesintiye uğratmadan önce.
+Bir manifest `"effect": "observe"` bildirebilir — `failproofai publish --effect observe` bunu ayarlayan şeydir. Bu politikalar çalışır ve kararları **kaydedilir ve atılır** — hiçbir şey engellenmez. Gözlemle paketinin Jev kontrolleri hiç sorulmaz; ne de başka temsilcilerde `--cli` ile kurulan paketin kontrolleri. Birisinin işini kesintiye uğratmadan önce yeni bir kuralı gerçek trafiğe karşı ölçmenin yoludur.
 
 ```json
 { "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }

@@ -1,40 +1,40 @@
 ---
 title: "使用策略包"
-description: "为您的用例接入 Failproof AI 策略包，或从策略中心获取社区包，并自定义其执行内容。"
+description: "为您的使用场景接入 Failproof AI 策略包或来自策略中心的社区包，并选择其强制执行的内容。"
 icon: "package"
 ---
 
-策略包是以 GitHub Release 形式发布的一组策略。只需一条命令即可完成安装：在运行任何内容之前，系统会验证发布版本的校验和，并记录其摘要，以确保该包在安装后无法在您的机器上被悄然替换。
+策略包是以 GitHub Release 形式发布的一组策略。一条命令即可完成安装：在任何内容运行之前，系统会验证 Release 的校验和，并记录其摘要，确保该包在安装后无法在您的机器上被篡改。
 
 您可以在[策略中心](https://befailproof.ai/policy-hub/)浏览所有策略包及其中的每条策略。策略包分为两类：
 
-- **Failproof AI 策略包** — 针对预定义用例的现成策略包：接入即可使用。[代码智能体策略包](https://befailproof.ai/policy-hub/failproofai/policies/)现已上线，更多用例的策略包即将推出。
-- **社区策略包** — 开发者为自己的用例编写并公开发布、供他人使用的策略。
+- **Failproof AI 策略包** — 面向预定义使用场景的即用型策略包：接入即可使用。[编码代理策略包](https://befailproof.ai/policy-hub/failproofai/policies/)现已上线，更多使用场景的策略包即将推出。
+- **社区策略包** — 由开发者为自身使用场景编写并公开发布的策略，供任何人使用。
 
 ## Failproof AI 策略包
 
-### 代码智能体策略包
+### 编码代理策略包
 
 ```bash
 failproofai policies add FailproofAI/policies
 ```
 
-该包包含 38 条策略，其中清单标记为可无人值守启用的 10 条会自动开启；其余策略供您按需选择。以下列出了一些最常用的策略，以及仅执行 `policies add` 时是否会开启它们：
+该包包含 39 条策略，并默认开启其清单中标记为可无人值守启用的 10 条；其余策略会列出供您自行选择。以下是一些常用策略及其是否在 `policies add` 时默认开启的说明：
 
 | 策略 | 作用 | 默认开启 |
 | --- | --- | --- |
 | `block-push-master` | 阻止直接推送到受保护分支 | 是 |
 | `block-env-files` | 阻止读写 `.env` 文件 | 是 |
-| `protect-env-vars` | 阻止转储环境变量的命令 | 是 |
-| `block-sudo` | 阻止 `sudo`，除非匹配到允许模式 | 是 |
+| `protect-env-vars` | 阻止会转储环境变量的命令 | 是 |
+| `block-sudo` | 阻止 `sudo`，除非匹配允许规则 | 是 |
 | `block-curl-pipe-sh` | 阻止将下载的脚本直接通过管道传入 shell 执行 | 是 |
-| `sanitize-*`（五条策略） | 报告工具输出中发现的 API 密钥、Bearer Token、JWT、私钥及连接字符串 | 是 |
-| `block-rm-rf` | 阻止灾难性的递归删除操作 | 否 |
+| `sanitize-*`（五条策略） | 检测工具输出中的 API 密钥、Bearer Token、JWT、私钥和连接字符串 | 是 |
+| `block-rm-rf` | 阻止灾难性的递归删除 | 否 |
 | `block-force-push` | 阻止强制推送 | 否 |
-| `block-secrets-write` | 阻止写入凭据和密钥文件 | 否 |
-| `warn-destructive-sql` | 对不带 `WHERE` 子句的 `DROP`、`TRUNCATE` 和 `DELETE` 操作发出警告 | 否 |
+| `block-secrets-write` | 阻止向凭据和密钥文件写入 | 否 |
+| `warn-destructive-sql` | 对不带 `WHERE` 的 `DROP`、`TRUNCATE` 和 `DELETE` 发出警告 | 否 |
 
-按名称开启任意未启用的策略 — `failproofai policies add block-rm-rf` — 或使用 `--all` 获取整个策略包。查看按类别分组的所有策略：
+按名称开启未启用的策略 — `failproofai policies add block-rm-rf` — 或使用 `--all` 启用整个包中的所有策略。查看按类别分组的所有策略：
 
 ```bash
 failproofai policies show FailproofAI/policies
@@ -42,78 +42,80 @@ failproofai policies show FailproofAI/policies
 
 ## 社区策略包
 
-开发者会针对自己遇到的用例发布策略包，[策略中心](https://befailproof.ai/policy-hub/)会统一列出。社区策略包由作者自行发布，未经 Failproof AI 审核，因此请在安装前了解其内容：
+开发者会发布针对自身遇到的使用场景的策略包，[策略中心](https://befailproof.ai/policy-hub/)会列出这些包。社区策略包由其作者发布，未经 Failproof AI 审核，因此请在安装前先了解其内容：
 
 ```bash
 failproofai policies show acme/support-agent
 ```
 
-该命令会按类别列出策略包中的每条策略，并标注哪些是作者默认开启的。它**仅读取清单**——入口构件不会被下载或导入，因此查看陌生人的策略包不会执行陌生人的代码。清单仍会与发布版本自带的 `SHA256SUMS` 进行核验，确保您所看到的内容与实际安装内容一致。
+该命令会列出策略包中的所有策略（按类别分组），并标注作者默认开启的策略。它**仅读取清单**——入口构件不会被下载或导入，因此查看陌生人的策略包不会执行陌生人的代码。清单仍会与 Release 自身的 `SHA256SUMS` 进行核验，确保您看到的内容与实际安装的内容一致。
 
-然后执行安装：
+然后安装它：
 
 ```bash
 failproofai policies add acme/support-agent
 ```
 
-以下写法均有效——粘贴您手头的任意一种即可：
+以下几种方式均可使用 — 粘贴您手头的任意一种：
 
 | 来源 | 结果 |
 | --- | --- |
-| `acme/support-agent` | 最新发布版本，**锁定**到解析到的确切标签 |
-| `acme/support-agent@v2.1.0` | 指定版本 |
-| `github:acme/support-agent@v2.1.0` | 与上一条相同，显式写法 |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 与上一条相同，从浏览器复制的链接 |
+| `acme/support-agent` | 最新 Release，**锁定**到解析到的确切标签 |
+| `acme/support-agent@v2.1.0` | 该 Release |
+| `github:acme/support-agent@v2.1.0` | 同上，明确写出来源 |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 同上，从浏览器复制 |
 
-不指定标签时，将安装最新发布版本并**锁定该版本**，同时告知您所选的标签。记录的内容始终精确对应某一个发布版本，因此重新安装时不会发生版本漂移。
+不指定标签时，系统会安装最新 Release **并锁定版本**，然后告知您所选的标签。记录的内容始终精确对应某一个 Release，因此重新安装不会发生版本漂移。
 
-## 仅使用策略包的部分内容
+## 使用策略包的部分内容
 
-默认情况下，您获取的是策略包**自身**的默认配置——即作者标记为可无人值守启用的策略——而非包中的全部内容。
+默认情况下，您获得的是策略包**自身**的默认配置——即作者标记为可无人值守开启的策略——而非包中的全部内容。
 
 ```bash
-failproofai policies add FailproofAI/policies --policy block-rm-rf          # 单条策略，或以逗号分隔的多条策略
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # 单条，或逗号分隔的若干条
 failproofai policies add FailproofAI/policies --category dangerous-commands # 整个类别
-failproofai policies add FailproofAI/policies --all                         # 包中的全部内容
+failproofai policies add FailproofAI/policies --all                         # 包中的所有内容
 ```
 
-`--category` 与 `--policy` 以并集方式组合使用（`--only` 是 `--policy` 的同义词）。当策略包已安装时，这些标志会在现有选择的基础上追加；在无终端的情况下不带任何标志地重新添加（例如用于升级），会保持您当前的选择不变。在终端中不带标志执行 `add` 时，会打开选择器，预先勾选作者的默认项，您的勾选结果将替换当前选择。
+`--category` 和 `--policy` 以并集方式组合（`--only` 是 `--policy` 的同义词），且均可重复使用：`--policy a --policy b` 会同时启用两者。当策略包已安装时，这些标志会在已有选择的基础上追加；以无标志、无终端的方式重新添加（例如用于升级）时，会保留当前的选择不变。在终端中不带标志运行时，`add` 会打开选择器，预先勾选作者的默认项，您的勾选结果将替换当前的选择。
 
 ## 管理已启用的策略
 
 ```bash
-failproofai policies                                  # 在一个列表中查看所有来源，包括策略包
-failproofai policies add block-rm-rf                  # 开启单条策略
-failproofai policies --uninstall block-refunds        # 关闭某条策略包策略
+failproofai policies                                  # 以统一列表显示所有来源，包括策略包
+failproofai policies add block-rm-rf                  # 开启某条策略
+failproofai policies --uninstall block-refunds        # 关闭某条包策略
 failproofai policies --install block-refunds          # 重新开启
 failproofai policies remove acme/support-agent        # 卸载策略包
 ```
 
-开启或关闭某条策略包策略对整台机器生效：该开关与已安装的策略包一同记录，而非存储在项目配置中，无论 `--scope` 如何设置。
+开启或关闭包内策略对整台机器生效：该开关记录在已安装的策略包中，而非项目配置中，与 `--scope` 的设置无关。
 
-不含斜杠的名称表示策略；含有斜杠的表示策略包来源。裸名称会解析为声明该策略的已安装策略包。当两个已安装的策略包声明了相同名称时，请明确指定目标包：
+不含斜杠的名称表示策略；含斜杠的则表示策略包来源。裸名称会解析到声明该策略的已安装包。若两个已安装的包声明了相同的名称，请指明您要操作的那个：
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-作用域、参数以及这些命令所写入的文件，详见[本地配置](/zh/policies/local-configuration)。
+作用域、参数以及这些命令写入的文件详见[本地配置](/zh/policies/local-configuration)。
 
-## 完整性校验的能力边界
+## 完整性验证的能与不能
 
-`SHA256SUMS` 与构件一同包含在同一个发布版本中，因此它**不是签名**，无法证明发布者身份。它所能证明的是：这些字节与该发布版本所发布的内容一致——由于摘要在添加策略包时记录，并在每次导入前重新校验，策略包在安装后无法在您的机器上被悄然替换。如果某个仓库重新打标签或替换了构件，该包将停止加载，而不是静默地执行其他内容。
+`SHA256SUMS` 与构件一同包含在同一个 Release 中，因此它**不是**签名，无法证明发布者是谁。它所能证明的是：这些字节与该 Release 发布的内容一致——由于摘要在您添加策略包时记录，并在每次导入前重新验证，策略包在安装后无法在您的机器上被篡改。若某仓库重新打标签或替换了资产，该包将无法加载，而不会悄悄运行其他内容。
 
-安装时，策略包还会被**导入一次**并与自身清单进行核对。若构件无法解析，或注册内容与声明不符，则会在激活任何内容之前被拒绝——而不是安装成功后在您下次调用工具时才报错。
+安装时，策略包还会被**导入一次**并与其自身清单进行核对。若包的构件无法解析，或注册的内容与声明不符，则会在任何内容激活之前被拒绝——而不是安装成功后在下次工具调用时才失败。声称属于 `FailproofAI/` 命名空间但 Release 并非来自 FailproofAI 仓库的包，同样会被拒绝。
 
 ## 策略包无法加载时的行为
 
-如果本机被要求执行的策略包无法运行，该包所覆盖事件会被**拒绝**，而非静默放行——以 `pack/failproofai-pack-unavailable` 的形式，其优先级高于已加载的策略，因此拒绝行为归因于缺失的策略包，而非碰巧触发的某个守卫。唯一例外是 `UserPromptSubmit`，该事件会改为发出指令而非拒绝——因为拒绝此事件会将您锁定在修复所需的智能体之外。详见[失败行为](/zh/policies/failure-behavior)。
+若本机被要求强制执行某个策略包但该包无法运行，则其缺失策略所覆盖的事件将被**拒绝**，而非静默放行——以 `pack/failproofai-pack-unavailable` 的形式，其优先级高于已加载的策略，从而将拒绝归因于缺失的包，而非碰巧先触发的某个守卫。例外情况是 `UserPromptSubmit`，此时系统会下达指令而非拒绝：在此处拒绝会将您锁出用于修复问题所需的代理。详见[故障行为](/zh/policies/failure-behavior)。
 
-## 离线使用与镜像
+策略包可以声明其兼容的最低 failproofai 版本（`minCliVersion`，由发布者设置）。版本过旧的 CLI 将拒绝添加该包并打印升级命令：`npm i -g "failproofai@>=<minCliVersion>" && failproofai update`（这是一个范围要求，npm 会选取满足条件的 Release——直接安装 `failproofai` 会得到 `latest`，而 `latest` 可能低于预发布版本的最低要求）；若某个已安装的包要求的版本高于当前运行的 CLI，则该包不会加载，结果如上所述。CLI 无法解析的 `minCliVersion` 会被忽略并附带警告，而不会直接拒绝该包。
+
+## 离线与镜像
 
 | 变量 | 效果 |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝网络获取；已安装的策略包继续执行 |
-| `FAILPROOFAI_PACK_BASE_URL` | 将策略包获取指向镜像地址，而非 `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝联网获取；已安装的策略包继续执行 |
+| `FAILPROOFAI_PACK_BASE_URL` | 将策略包的获取地址指向镜像，而非 `github.com` |
 
-如需以这种方式分享您自己的策略，请参阅[发布策略包](/zh/policies/publish-a-pack)。
+若要以此方式共享自己的策略，请参阅[发布策略包](/zh/policies/publish-a-pack)。

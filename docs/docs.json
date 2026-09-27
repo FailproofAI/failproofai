@@ -170,7 +170,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "policies/overview"
+                  "policies/overview",
+                  "policies/jev-byok",
+                  "policies/jev-cloud"
                 ]
               },
               {
@@ -217,6 +219,7 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
+                  "reference/jev-intent",
                   "reference/custom-agents",
                   "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
@@ -231,6 +234,7 @@
                   "reference/failproof-cli",
                   "reference/local-dashboard",
                   "policies/local-configuration",
+                  "policies/authority",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",
@@ -353,7 +357,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "zh/policies/overview"
+                  "zh/policies/overview",
+                  "zh/policies/jev-byok",
+                  "zh/policies/jev-cloud"
                 ]
               },
               {
@@ -400,6 +406,7 @@
                 "pages": [
                   "zh/reference/overview",
                   "zh/reference/harnesses",
+                  "zh/reference/jev-intent",
                   "zh/reference/custom-agents",
                   "zh/reference/custom-agents-typescript",
                   "zh/reference/evaluator-sdk",
@@ -414,6 +421,7 @@
                   "zh/reference/failproof-cli",
                   "zh/reference/local-dashboard",
                   "zh/policies/local-configuration",
+                  "zh/policies/authority",
                   "zh/reference/cloud-cli",
                   "zh/reference/http-api",
                   "zh/reference/events-and-configuration",
@@ -530,7 +538,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ja/policies/overview"
+                  "ja/policies/overview",
+                  "ja/policies/jev-byok",
+                  "ja/policies/jev-cloud"
                 ]
               },
               {
@@ -577,6 +587,7 @@
                 "pages": [
                   "ja/reference/overview",
                   "ja/reference/harnesses",
+                  "ja/reference/jev-intent",
                   "ja/reference/custom-agents",
                   "ja/reference/custom-agents-typescript",
                   "ja/reference/evaluator-sdk",
@@ -591,6 +602,7 @@
                   "ja/reference/failproof-cli",
                   "ja/reference/local-dashboard",
                   "ja/policies/local-configuration",
+                  "ja/policies/authority",
                   "ja/reference/cloud-cli",
                   "ja/reference/http-api",
                   "ja/reference/events-and-configuration",
@@ -707,7 +719,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ko/policies/overview"
+                  "ko/policies/overview",
+                  "ko/policies/jev-byok",
+                  "ko/policies/jev-cloud"
                 ]
               },
               {
@@ -754,6 +768,7 @@
                 "pages": [
                   "ko/reference/overview",
                   "ko/reference/harnesses",
+                  "ko/reference/jev-intent",
                   "ko/reference/custom-agents",
                   "ko/reference/custom-agents-typescript",
                   "ko/reference/evaluator-sdk",
@@ -768,6 +783,7 @@
                   "ko/reference/failproof-cli",
                   "ko/reference/local-dashboard",
                   "ko/policies/local-configuration",
+                  "ko/policies/authority",
                   "ko/reference/cloud-cli",
                   "ko/reference/http-api",
                   "ko/reference/events-and-configuration",
@@ -884,7 +900,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "es/policies/overview"
+                  "es/policies/overview",
+                  "es/policies/jev-byok",
+                  "es/policies/jev-cloud"
                 ]
               },
               {
@@ -931,6 +949,7 @@
                 "pages": [
                   "es/reference/overview",
                   "es/reference/harnesses",
+                  "es/reference/jev-intent",
                   "es/reference/custom-agents",
                   "es/reference/custom-agents-typescript",
                   "es/reference/evaluator-sdk",
@@ -945,6 +964,7 @@
                   "es/reference/failproof-cli",
                   "es/reference/local-dashboard",
                   "es/policies/local-configuration",
+                  "es/policies/authority",
                   "es/reference/cloud-cli",
                   "es/reference/http-api",
                   "es/reference/events-and-configuration",
@@ -1061,7 +1081,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "pt-br/policies/overview"
+                  "pt-br/policies/overview",
+                  "pt-br/policies/jev-byok",
+                  "pt-br/policies/jev-cloud"
                 ]
               },
               {
@@ -1108,6 +1130,7 @@
                 "pages": [
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
+                  "pt-br/reference/jev-intent",
                   "pt-br/reference/custom-agents",
                   "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
@@ -1122,6 +1145,7 @@
                   "pt-br/reference/failproof-cli",
                   "pt-br/reference/local-dashboard",
                   "pt-br/policies/local-configuration",
+                  "pt-br/policies/authority",
                   "pt-br/reference/cloud-cli",
                   "pt-br/reference/http-api",
                   "pt-br/reference/events-and-configuration",
@@ -1238,7 +1262,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "de/policies/overview"
+                  "de/policies/overview",
+                  "de/policies/jev-byok",
+                  "de/policies/jev-cloud"
                 ]
               },
               {
@@ -1285,6 +1311,7 @@
                 "pages": [
                   "de/reference/overview",
                   "de/reference/harnesses",
+                  "de/reference/jev-intent",
                   "de/reference/custom-agents",
                   "de/reference/custom-agents-typescript",
                   "de/reference/evaluator-sdk",
@@ -1299,6 +1326,7 @@
                   "de/reference/failproof-cli",
                   "de/reference/local-dashboard",
                   "de/policies/local-configuration",
+                  "de/policies/authority",
                   "de/reference/cloud-cli",
                   "de/reference/http-api",
                   "de/reference/events-and-configuration",
@@ -1415,7 +1443,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "fr/policies/overview"
+                  "fr/policies/overview",
+                  "fr/policies/jev-byok",
+                  "fr/policies/jev-cloud"
                 ]
               },
               {
@@ -1462,6 +1492,7 @@
                 "pages": [
                   "fr/reference/overview",
                   "fr/reference/harnesses",
+                  "fr/reference/jev-intent",
                   "fr/reference/custom-agents",
                   "fr/reference/custom-agents-typescript",
                   "fr/reference/evaluator-sdk",
@@ -1476,6 +1507,7 @@
                   "fr/reference/failproof-cli",
                   "fr/reference/local-dashboard",
                   "fr/policies/local-configuration",
+                  "fr/policies/authority",
                   "fr/reference/cloud-cli",
                   "fr/reference/http-api",
                   "fr/reference/events-and-configuration",
@@ -1592,7 +1624,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ru/policies/overview"
+                  "ru/policies/overview",
+                  "ru/policies/jev-byok",
+                  "ru/policies/jev-cloud"
                 ]
               },
               {
@@ -1639,6 +1673,7 @@
                 "pages": [
                   "ru/reference/overview",
                   "ru/reference/harnesses",
+                  "ru/reference/jev-intent",
                   "ru/reference/custom-agents",
                   "ru/reference/custom-agents-typescript",
                   "ru/reference/evaluator-sdk",
@@ -1653,6 +1688,7 @@
                   "ru/reference/failproof-cli",
                   "ru/reference/local-dashboard",
                   "ru/policies/local-configuration",
+                  "ru/policies/authority",
                   "ru/reference/cloud-cli",
                   "ru/reference/http-api",
                   "ru/reference/events-and-configuration",
@@ -1769,7 +1805,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "hi/policies/overview"
+                  "hi/policies/overview",
+                  "hi/policies/jev-byok",
+                  "hi/policies/jev-cloud"
                 ]
               },
               {
@@ -1816,6 +1854,7 @@
                 "pages": [
                   "hi/reference/overview",
                   "hi/reference/harnesses",
+                  "hi/reference/jev-intent",
                   "hi/reference/custom-agents",
                   "hi/reference/custom-agents-typescript",
                   "hi/reference/evaluator-sdk",
@@ -1830,6 +1869,7 @@
                   "hi/reference/failproof-cli",
                   "hi/reference/local-dashboard",
                   "hi/policies/local-configuration",
+                  "hi/policies/authority",
                   "hi/reference/cloud-cli",
                   "hi/reference/http-api",
                   "hi/reference/events-and-configuration",
@@ -1946,7 +1986,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "tr/policies/overview"
+                  "tr/policies/overview",
+                  "tr/policies/jev-byok",
+                  "tr/policies/jev-cloud"
                 ]
               },
               {
@@ -1993,6 +2035,7 @@
                 "pages": [
                   "tr/reference/overview",
                   "tr/reference/harnesses",
+                  "tr/reference/jev-intent",
                   "tr/reference/custom-agents",
                   "tr/reference/custom-agents-typescript",
                   "tr/reference/evaluator-sdk",
@@ -2007,6 +2050,7 @@
                   "tr/reference/failproof-cli",
                   "tr/reference/local-dashboard",
                   "tr/policies/local-configuration",
+                  "tr/policies/authority",
                   "tr/reference/cloud-cli",
                   "tr/reference/http-api",
                   "tr/reference/events-and-configuration",
@@ -2123,7 +2167,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "vi/policies/overview"
+                  "vi/policies/overview",
+                  "vi/policies/jev-byok",
+                  "vi/policies/jev-cloud"
                 ]
               },
               {
@@ -2170,6 +2216,7 @@
                 "pages": [
                   "vi/reference/overview",
                   "vi/reference/harnesses",
+                  "vi/reference/jev-intent",
                   "vi/reference/custom-agents",
                   "vi/reference/custom-agents-typescript",
                   "vi/reference/evaluator-sdk",
@@ -2184,6 +2231,7 @@
                   "vi/reference/failproof-cli",
                   "vi/reference/local-dashboard",
                   "vi/policies/local-configuration",
+                  "vi/policies/authority",
                   "vi/reference/cloud-cli",
                   "vi/reference/http-api",
                   "vi/reference/events-and-configuration",
@@ -2300,7 +2348,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "it/policies/overview"
+                  "it/policies/overview",
+                  "it/policies/jev-byok",
+                  "it/policies/jev-cloud"
                 ]
               },
               {
@@ -2347,6 +2397,7 @@
                 "pages": [
                   "it/reference/overview",
                   "it/reference/harnesses",
+                  "it/reference/jev-intent",
                   "it/reference/custom-agents",
                   "it/reference/custom-agents-typescript",
                   "it/reference/evaluator-sdk",
@@ -2361,6 +2412,7 @@
                   "it/reference/failproof-cli",
                   "it/reference/local-dashboard",
                   "it/policies/local-configuration",
+                  "it/policies/authority",
                   "it/reference/cloud-cli",
                   "it/reference/http-api",
                   "it/reference/events-and-configuration",
@@ -2477,7 +2529,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ar/policies/overview"
+                  "ar/policies/overview",
+                  "ar/policies/jev-byok",
+                  "ar/policies/jev-cloud"
                 ]
               },
               {
@@ -2524,6 +2578,7 @@
                 "pages": [
                   "ar/reference/overview",
                   "ar/reference/harnesses",
+                  "ar/reference/jev-intent",
                   "ar/reference/custom-agents",
                   "ar/reference/custom-agents-typescript",
                   "ar/reference/evaluator-sdk",
@@ -2538,6 +2593,7 @@
                   "ar/reference/failproof-cli",
                   "ar/reference/local-dashboard",
                   "ar/policies/local-configuration",
+                  "ar/policies/authority",
                   "ar/reference/cloud-cli",
                   "ar/reference/http-api",
                   "ar/reference/events-and-configuration",
@@ -2654,7 +2710,9 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "he/policies/overview"
+                  "he/policies/overview",
+                  "he/policies/jev-byok",
+                  "he/policies/jev-cloud"
                 ]
               },
               {
@@ -2701,6 +2759,7 @@
                 "pages": [
                   "he/reference/overview",
                   "he/reference/harnesses",
+                  "he/reference/jev-intent",
                   "he/reference/custom-agents",
                   "he/reference/custom-agents-typescript",
                   "he/reference/evaluator-sdk",
@@ -2715,6 +2774,7 @@
                   "he/reference/failproof-cli",
                   "he/reference/local-dashboard",
                   "he/policies/local-configuration",
+                  "he/policies/authority",
                   "he/reference/cloud-cli",
                   "he/reference/http-api",
                   "he/reference/events-and-configuration",

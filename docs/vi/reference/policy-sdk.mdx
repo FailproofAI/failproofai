@@ -1,35 +1,35 @@
 ---
 title: "Chính sách tùy chỉnh"
-description: "Soạn thảo, kiểm tra và triển khai chính sách JavaScript hoặc TypeScript cho các lỗi cụ thể của agents."
+description: "Viết, kiểm thử và triển khai các chính sách JavaScript hoặc TypeScript cho các lỗi cụ thể của các agent của bạn."
 icon: "shield-plus"
 ---
 
-Chính sách tùy chỉnh chuyển đổi một mẫu lỗi từ traces hoặc audits của bạn thành một quyết định chạy trong khi agent hoạt động. Một chính sách có thể cho phép một hành động, cung cấp hướng dẫn cho agent hoặc từ chối hành động trước khi nó gây ra một sự cố khác.
+Chính sách tùy chỉnh biến một mô hình lỗi từ các trace hoặc audit của bạn thành một quyết định chạy khi một agent hoạt động. Một chính sách có thể cho phép một hành động, hướng dẫn agent hoặc từ chối hành động trước khi nó gây ra sự cố khác.
 
-Sử dụng chính sách tùy chỉnh khi hành vi phụ thuộc vào các tools, đường dẫn, lệnh, môi trường hoặc quy tắc hoạt động của bạn. Kiểm tra [gói chính sách Failproof AI](/vi/policies/packs) trước để bạn không tạo lại một điều khiển hiện có.
+Sử dụng chính sách tùy chỉnh khi hành vi phụ thuộc vào các tool, đường dẫn, lệnh, môi trường hoặc quy tắc vận hành của bạn. Hãy kiểm tra [gói chính sách Failproof AI](/vi/policies/packs) trước để tránh tái tạo một kiểm soát hiện có.
 
-## Soạn thảo chính sách tùy chỉnh
+## Viết chính sách tùy chỉnh
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi đến **Admin → policy editor**, chọn **New policy**, và mô tả lỗi mà bạn muốn ngăn chặn.
-    2. Thêm mã nguồn chính sách, sau đó kiểm tra các kết quả khớp dự kiến và các kết quả không khớp an toàn trong trình chỉnh sửa. Giải quyết mọi lỗi xác thực.
-    3. Lưu bản nháp và chọn **Publish version** để tạo một phiên bản bất biến.
-    4. Đi đến **Admin → enforcement**, triển khai phiên bản sang một máy kiểm tra trong chế độ **observe**, và xác minh các quyết định của nó dưới **Observe → policy** trước khi áp dụng nó.
+    1. Vào **Admin → policy editor**, chọn **New policy**, và mô tả lỗi bạn muốn ngăn chặn.
+    2. Thêm mã chính sách, sau đó kiểm thử những trường hợp phù hợp dự kiến và những hành động an toàn không phù hợp trong trình soạn thảo. Giải quyết mọi lỗi xác thực.
+    3. Lưu bản nháp và chọn **Publish version** để tạo một phiên bản không thay đổi.
+    4. Vào **Admin → enforcement**, triển khai phiên bản cho một máy kiểm thử ở chế độ **observe**, và xác minh các quyết định của nó dưới **Observe → policy** trước khi thực thi nó.
 
-    ![Trình chỉnh sửa chính sách được sử dụng để soạn thảo và xuất bản chính sách tùy chỉnh.](/images/dashboard/policy-editor.png)
+    ![Trình soạn thảo chính sách được sử dụng để viết và xuất bản chính sách tùy chỉnh.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. Tạo `.failproofai/policies/checkout-policies.ts`. Tên file phải kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts`.
+    1. Tạo `.failproofai/policies/checkout-policies.ts`. Tên tệp phải kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts`.
     2. Đăng ký một hoặc nhiều chính sách với `customPolicies.add()`.
-    3. Xác thực và cài đặt file với `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Kích hoạt một hành động khớp và một hành động an toàn. Chạy `failproofai policies`, sau đó kiểm tra các quyết định được ghi nhận dưới **Observe → policy**.
+    3. Xác thực và cài đặt tệp với `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
+    4. Kích hoạt một hành động phù hợp và một hành động an toàn. Chạy `failproofai policies`, sau đó kiểm tra các quyết định được gán dưới **Observe → policy**.
   </Tab>
 </Tabs>
 
 ## Bắt đầu với một quy tắc hẹp
 
-Chính sách này chặn các lệnh Kubernetes phá hoại chỉ khi lệnh nhắm mục tiêu sản xuất. Mọi thứ bên ngoài chế độ lỗi chính xác đó trả về `allow()`.
+Chính sách này chặn các lệnh Kubernetes phá hủy chỉ khi lệnh nhắm vào production. Mọi thứ bên ngoài chế độ lỗi chính xác đó trả về `allow()`.
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,20 +55,20 @@ customPolicies.add({
 });
 ```
 
-Các chính sách tốt đủ hẹp để giải thích trong một câu. Khớp với hành động có thể quan sát được — không phải ý định mà bạn hy vọng agent có — và trả về `allow()` ngay khi quy tắc không áp dụng.
+Chính sách tốt đủ hẹp để giải thích trong một câu. Khớp với hành động quan sát được—không phải ý định bạn hy vọng agent có—và trả về `allow()` ngay khi quy tắc không áp dụng.
 
-## Chọn một quyết định
+## Chọn quyết định
 
-| Helper | Kết quả | Sử dụng nó khi |
+| Trợ giúp | Kết quả | Sử dụng khi |
 | --- | --- | --- |
-| `allow(reason?)` | Hoạt động tiếp tục. | Chính sách không áp dụng hoặc hành động là an toàn. |
-| `instruct(reason)` | Hoạt động tiếp tục với hướng dẫn nơi harness hỗ trợ. | Bạn muốn hướng dẫn agent hướng tới một cách tiếp cận tốt hơn mà không áp dụng một bất biến. |
-| `deny(reason)` | Hoạt động bị chặn khi sự kiện và harness hỗ trợ chặn. | Hành động không được tiếp tục. |
+| `allow(reason?)` | Hoạt động tiếp tục. | Chính sách không áp dụng hoặc hành động an toàn. |
+| `instruct(reason)` | Hoạt động tiếp tục với hướng dẫn nơi harness hỗ trợ. | Bạn muốn hướng dẫn agent theo hướng tốt hơn mà không thực thi một bất biến. |
+| `deny(reason)` | Hoạt động bị chặn khi sự kiện và harness hỗ trợ chặn. | Hành động không được phép tiếp tục. |
 
-Viết lý do cho agent phải phục hồi. Giải thích những gì được phát hiện và nó nên làm gì thay vào đó.
+Viết lý do cho agent phải phục hồi. Giải thích những gì đã được phát hiện và nó nên làm gì thay thế.
 
 <Warning>
-  Không sử dụng `instruct()` cho ranh giới an toàn. Việc cung cấp hướng dẫn khác nhau tùy theo harness agent. Sử dụng `deny()` khi hành động phải được ngăn chặn.
+  Không sử dụng `instruct()` cho một ranh giới an toàn. Cách phân phối hướng dẫn khác nhau tùy theo agent harness. Sử dụng `deny()` khi hành động phải được ngăn chặn.
 </Warning>
 
 ## Đối tượng chính sách
@@ -84,34 +84,36 @@ customPolicies.add({
 
 | Trường | Bắt buộc | Mô tả |
 | --- | --- | --- |
-| `name` | Có | Định danh ổn định cho chính sách. Giữ các tên duy nhất trên các file. |
-| `description` | Không | Mục đích có thể đọc được của con người được hiển thị trong danh sách chính sách và quyết định. |
-| `match.events` | Không | Các loại sự kiện gọi chính sách. Bỏ qua `match` gọi nó cho mọi sự kiện có sẵn. |
+| `name` | Có | Định danh ổn định cho chính sách. Giữ tên duy nhất trong các tệp. |
+| `description` | Không | Mục đích dễ đọc được hiển thị trong danh sách chính sách và quyết định. |
+| `match.events` | Không | Loại sự kiện gọi chính sách. Bỏ qua `match` gọi nó cho mọi sự kiện có sẵn. |
 | `fn` | Có | Hàm đồng bộ hoặc không đồng bộ trả về kết quả `allow`, `instruct`, hoặc `deny`. |
+| `authority` | Không | `"hard"` (mặc định) hoặc `"reviewable"`. Liệu trình đánh giá ngữ nghĩa Jev có thể xóa phán quyết của chính sách này hay không. Xem [Thẩm quyền chính sách](/vi/policies/authority). |
+| `reviewedBy` | Không | Các kiểm tra ngữ nghĩa mà Jev phải được hỏi tất cả, không ai trong số đó có thể trả lời từ chối, trước khi Jev có thể xóa phán quyết. Kiểm tra cảnh báo vẫn xóa nó. Bắt buộc cho `"reviewable"`. |
 
-Lọc các tools bên trong `fn`. `match.toolNames` không phải là một phần của loại chính sách tùy chỉnh công khai.
+Lọc các tool bên trong `fn`. `match.toolNames` không phải là một phần của loại custom-policy công khai.
 
-## Ngữ cảnh chính sách
+## Bối cảnh chính sách
 
 Mọi chính sách nhận một `PolicyContext`.
 
-| Trường | Loại | Nó chứa gì |
+| Trường | Loại | Nội dung |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | Sự kiện được chuẩn hóa hiện đang được đánh giá. |
+| `eventType` | `HookEventType` | Sự kiện bình thường hóa hiện được đánh giá. |
 | `toolName` | `string \| undefined` | Tên tool chính tắc như `Bash`, `Read`, `Write`, hoặc `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Đầu vào chính tắc cho lệnh gọi tool hiện tại. |
-| `payload` | `Record<string, unknown>` | Toàn bộ tải trọng sự kiện được chuẩn hóa. |
-| `session` | `SessionMetadata \| undefined` | ID phiên, thư mục làm việc, đường dẫn phiên ghi âm, chế độ quyền hạn, và siêu dữ liệu harness khi có sẵn. |
-| `cli` | `string \| undefined` | Harness agent nguồn, như `claude`, `codex`, hoặc `cursor`. |
-| `params` | `Record<string, unknown>` | Các tham số chính sách tích hợp sẵn. Các chính sách tùy chỉnh hiện tại nhận một đối tượng rỗng. |
+| `payload` | `Record<string, unknown>` | Trọng tải sự kiện bình thường hóa hoàn chỉnh. |
+| `session` | `SessionMetadata \| undefined` | ID phiên, thư mục làm việc, đường dẫn bản ghi đối thoại, chế độ quyền hạn, và siêu dữ liệu harness khi có sẵn. |
+| `cli` | `string \| undefined` | Harness agent nguồn, chẳng hạn như `claude`, `codex`, hoặc `cursor`. |
+| `params` | `Record<string, unknown>` | Các tham số chính sách tích hợp sẵn. Hiện tại chính sách tùy chỉnh nhận một đối tượng rỗng. |
 
-Coi mọi giá trị tùy chọn là thực sự tùy chọn. Các phiên bản agent và các loại sự kiện không cung cấp các trường giống nhau.
+Coi mọi giá trị tùy chọn là thực sự tùy chọn. Các phiên bản agent và loại sự kiện không cung cấp các trường giống nhau.
 
 ### Đầu vào tool phổ biến
 
-Failproof AI chuẩn hóa các tools phổ biến trên các harness được hỗ trợ để chính sách thường có thể sử dụng một hình dạng đầu vào.
+Failproof AI bình thường hóa các tool phổ biến trên các harness được hỗ trợ để một chính sách thường có thể sử dụng một hình dạng đầu vào.
 
-| Tool | Các trường phổ biến |
+| Tool | Trường phổ biến |
 | --- | --- |
 | `Bash` | `command` |
 | `Read` | `file_path` |
@@ -119,7 +121,7 @@ Failproof AI chuẩn hóa các tools phổ biến trên các harness được h�
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-Sử dụng việc chuyển đổi phòng thủ vì các giá trị đầu vào tool được nhập là `unknown`:
+Sử dụng ép buộc phòng ngừa vì các giá trị đầu vào tool được gõ là `unknown`:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
@@ -130,23 +132,23 @@ const filePath = String(ctx.toolInput?.file_path ?? "");
 
 | Sự kiện | Khi nó chạy | Sử dụng điển hình |
 | --- | --- | --- |
-| `PreToolUse` | Trước khi một tool thực thi. | Chặn hoặc hướng dẫn các lệnh, ghi, đọc, và hành động bên ngoài. |
-| `PostToolUse` | Sau khi một tool trả về. | Kiểm tra các kết quả trước khi chúng tiếp cận agent. Một deny chặn toàn bộ kết quả; nó không loại bỏ các trường được chọn. |
-| `PermissionRequest` | Khi agent yêu cầu quyền hạn. | Áp dụng các quy tắc quyền hạn cụ thể của tổ chức. |
-| `UserPromptSubmit` | Trước khi một lời nhắc được gửi tiếp tục. | Từ chối các hướng dẫn bị cấm hoặc thêm hướng dẫn quy trình làm việc. |
-| `Stop` | Khi agent cố gắng kết thúc. | Yêu cầu một điều kiện hoàn thành có thể đạt được, như một bước xác minh cục bộ. |
-| `SubagentStop` | Khi một subagent cố gắng kết thúc. | Chặn công việc được ủy thác trước khi nó trả về cho cha mẹ. |
-| `SessionStart` / `SessionEnd` | Tại các ranh giới phiên. | Ghi nhận hoặc kiểm tra trạng thái cấp phiên. |
+| `PreToolUse` | Trước khi một tool thực thi. | Chặn hoặc hướng dẫn các lệnh, ghi, đọc và hành động bên ngoài. |
+| `PostToolUse` | Sau khi một tool trả về. | Kiểm tra kết quả trước khi chúng đến agent. Từ chối chặn toàn bộ kết quả; nó không làm mờ các trường được chọn. |
+| `PermissionRequest` | Khi agent yêu cầu quyền hạn. | Áp dụng các quy tắc quyền hạn cụ thể về tổ chức. |
+| `UserPromptSubmit` | Trước khi một prompt được gửi tiếp tục. | Từ chối hướng dẫn bị cấm hoặc thêm hướng dẫn quy trình công việc. |
+| `Stop` | Khi agent cố gắng hoàn thành. | Yêu cầu một điều kiện hoàn thành có thể đạt được, chẳng hạn như một bước xác minh cục bộ. |
+| `SubagentStop` | Khi một subagent cố gắng hoàn thành. | Kiểm soát công việc được ủy quyền trước khi nó quay lại phần cha. |
+| `SessionStart` / `SessionEnd` | Tại các ranh giới phiên. | Ghi lại hoặc kiểm tra trạng thái cấp phiên. |
 
 Tính khả dụng sự kiện và hành vi chặn phụ thuộc vào harness agent. Xem [Agent harnesses](/vi/reference/harnesses) trước khi dựa vào một sự kiện trên một hạm đội hỗn hợp.
 
-<Accordion title="Tất cả các tên sự kiện chính sách">
+<Accordion title="Tất cả tên sự kiện chính sách">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, và `Setup`.
 </Accordion>
 
-## Soạn thảo các mẫu chính sách phổ biến
+## Viết các mô hình chính sách phổ biến
 
-### Chặn ghi vào đường dẫn được bảo vệ
+### Chặn ghi vào các đường dẫn được bảo vệ
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -186,7 +188,7 @@ customPolicies.add({
 });
 ```
 
-### Chặn hoàn thành phiên
+### Kiểm soát hoàn thành phiên
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,30 +217,30 @@ customPolicies.add({
 ```
 
 <Warning>
-  Một sự kiện `Stop` bị từ chối có thể khiến agent thử lại. Chỉ chặn trên một điều kiện mà agent có thể thỏa mãn trong môi trường hiện tại, và giới hạn mọi lệnh gọi con quy trình hoặc mạng.
+  Một sự kiện `Stop` bị từ chối có thể khiến agent thử lại. Chỉ kiểm soát trên một điều kiện mà agent có thể đáp ứng trong môi trường hiện tại, và giới hạn mọi lệnh gọi quy trình con hoặc mạng.
 </Warning>
 
-## Tải các file chính sách
+## Tải tệp chính sách
 
-### File quy ước
+### Tệp quy ước
 
-Các file quy ước tải tự động:
+Tệp quy ước tải tự động:
 
 ```text
 <project>/.failproofai/policies/security-policies.ts
 ~/.failproofai/policies/personal-policies.mjs
 ```
 
-- Cả thư mục chính sách của dự án và người dùng đều được tải.
-- Các file tải theo thứ tự bảng chữ cái trong mỗi thư mục.
-- Một file phải kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts`.
-- Nhiều lệnh gọi `customPolicies.add()` trong một file được hỗ trợ.
-- Các nhập tương đối từ các mô-đun cục bộ được hỗ trợ.
-- Các chính sách của dự án có thể được cam kết để cùng các quy tắc theo kho lưu trữ.
+- Cả thư mục chính sách dự án và người dùng đều được tải.
+- Tệp tải theo thứ tự bảng chữ cái trong mỗi thư mục.
+- Một tệp phải kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts`.
+- Hỗ trợ nhiều lệnh gọi `customPolicies.add()` trong một tệp.
+- Hỗ trợ nhập tương đối từ các mô-đun cục bộ.
+- Chính sách dự án có thể được cam kết để các quy tắc giống nhau theo kho lưu trữ.
 
-### File tường minh
+### Tệp rõ ràng
 
-Sử dụng các đường dẫn tường minh khi xác thực hoặc cấu hình phải đặt tên file đầu vào trực tiếp:
+Sử dụng đường dẫn rõ ràng khi xác thực hoặc cấu hình nên đặt tên tệp đầu vào trực tiếp:
 
 ```bash
 failproofai policies --install \
@@ -247,9 +249,9 @@ failproofai policies --install \
   --scope project
 ```
 
-Các file tường minh tải trước tiên, theo sau là các file quy ước của dự án và sau đó là các file quy ước của người dùng. Một file được phát hiện thông qua cả hai đường dẫn được tải một lần.
+Tệp rõ ràng tải trước, theo sau là các tệp quy ước dự án và sau đó là các tệp quy ước người dùng. Một tệp được phát hiện qua cả hai đường dẫn được tải một lần.
 
-## Xác thực và kiểm tra
+## Xác thực và kiểm thử
 
 Xác thực thực thi mô-đun thông qua trình tải sản xuất và xác nhận rằng nó đăng ký ít nhất một chính sách.
 
@@ -260,30 +262,88 @@ failproofai policies --install \
 failproofai policies
 ```
 
-Xác thực bắt các file bị thiếu, lỗi cú pháp, nhập không được giải quyết, ngoại lệ cấp cao nhất, và hết thời gian tải mô-đun. Nó không chứng minh rằng logic khớp của bạn là chính xác.
+Xác thực bắt các tệp bị thiếu, lỗi cú pháp, nhập không được phân giải, ngoại lệ cấp cao nhất và hết thời gian tải mô-đun. Nó không chứng minh rằng logic khớp của bạn là chính xác.
 
-Kiểm tra ít nhất các trường hợp này:
+Kiểm thử ít nhất những trường hợp này:
 
 - Một hành động phải khớp và tạo ra lý do chính sách dự định.
-- Một hành động gần nhưng an toàn phải trả về `allow()`.
-- Các trường tool bị thiếu hoặc sai định dạng.
-- Cú pháp lệnh thay thế, đường dẫn, trích dẫn, casing và khoảng trắng.
-- Một phụ thuộc con quy trình hoặc mạng không có sẵn.
+- Một hành động gần đó nhưng an toàn phải trả về `allow()`.
+- Các trường tool bị thiếu hoặc không hợp lệ.
+- Cú pháp lệnh thay thế, đường dẫn, trích dẫn, trường hợp và khoảng trắng.
+- Một quy trình con hoặc phụ thuộc mạng không có sẵn.
 
-Ghi nhận kết quả cho chính sách tùy chỉnh của bạn dưới **Observe → policy**. Một bài kiểm tra bị chặn không đủ nếu một chính sách tích hợp sẵn khác đã đưa ra quyết định.
+Gán kết quả cho chính sách tùy chỉnh của bạn dưới **Observe → policy**. Một bài kiểm thử bị chặn là không đủ nếu một chính sách tích hợp sẵn khác đã đưa ra quyết định.
 
-## Hành vi thời gian chạy
+## Hành vi lúc chạy
 
-- Các chính sách tích hợp sẵn đánh giá trước các chính sách tùy chỉnh.
-- Cái `deny` đầu tiên dừng đánh giá chính sách tiếp theo.
-- Nhiều kết quả `instruct` có thể được kết hợp khi không có chính sách nào từ chối sự kiện.
-- Một hàm chính sách có thời hạn thực thi 10 giây.
-- Một ngoại lệ bị ném hoặc hết thời gian là được ghi nhận và được coi là `allow()`.
-- Một file quy ước không tải được bị bỏ qua; các file tùy chỉnh khác và chính sách tích hợp sẵn tiếp tục.
-- Tải mô-đun cấp cao nhất cũng có thời hạn 10 giây.
-- Chế độ quan sát đám mây chạy chính sách nhưng ghi nhận quyết định không phải là allow mà không áp dụng nó.
+- Chính sách tích hợp sẵn được đánh giá trước các chính sách tùy chỉnh.
+- Từ chối đầu tiên dừng đánh giá chính sách tiếp theo.
+- Các kết quả `instruct` nhiều có thể được kết hợp khi không có chính sách nào từ chối sự kiện.
+- Một hàm chính sách có hạn chế thực thi 10 giây.
+- Một ngoại lệ được ném hoặc hết thời gian được ghi nhật ký và được coi là `allow()`.
+- Một tệp quy ước không tải được bị bỏ qua; các tệp tùy chỉnh khác và chính sách tích hợp sẵn tiếp tục.
+- Tải mô-đun cấp cao nhất cũng có hạn chế 10 giây.
+- Chế độ observe đám mây chạy chính sách nhưng ghi lại quyết định không cho phép mà không thực thi nó.
 
-Giữ các mô-đun chính sách xác định và nhanh. Tránh các lệnh gọi mạng cấp cao nhất hoặc khởi động máy chủ. Giới hạn công việc bên trong `fn`, bắt các lỗi phụ thuộc, và chọn có chủ ý xem liệu lỗi đó có nên cho phép hay từ chối hoạt động.
+Giữ các mô-đun chính sách xác định và nhanh. Tránh các lệnh gọi mạng cấp cao nhất hoặc khởi động máy chủ. Giới hạn công việc bên trong `fn`, bắt các lỗi phụ thuộc và chọn cố ý xem lỗi đó nên cho phép hay từ chối hoạt động.
+
+## Kiểm tra Jev
+
+Một chính sách tùy chỉnh quyết định bằng mã. Một **kiểm tra Jev** là một tập hợp các câu hỏi có/không mà trình đánh giá ngữ nghĩa Jev trả lời về một lệnh gọi tool thay thế. Một chính sách `reviewable` đặt tên các kiểm tra trong `reviewedBy`, và Jev chỉ có thể xóa phán quyết của nó thông qua chúng — xem [Thẩm quyền chính sách](/vi/policies/authority). Khai báo một với `semanticPolicies.add()`:
+
+```js
+import { semanticPolicies } from "failproofai";
+
+semanticPolicies.add({
+  name: "prod-db-write",
+  title: "Wrote to the production database",
+  appliesTo: ["shell"],
+  mode: "deny",
+  userCanOverride: true,
+  probes: [
+    {
+      id: "writes_data",
+      instructions: "Does this command insert, update or delete rows, or change a schema?",
+      criteria: { true: "It changes data or schema.", false: "It only reads." },
+    },
+    {
+      id: "production_target",
+      instructions: "Is the database it targets a production one, rather than a local or test copy?",
+    },
+  ],
+  guidance: "Writes to the production database need a human. Ask before running this.",
+});
+```
+
+<Warning>
+  Một kiểm tra Jev có hiệu lực **chỉ thông qua một gói được xuất bản**. `failproofai publish` là điều duy nhất đọc `semanticPolicies.add()`; trong một tệp chính sách cục bộ (`.failproofai/policies/`, `--custom`) nó tải mà không có lỗi, nhật ký hook đặt tên nó là bị bỏ qua, nó không bao giờ được hỏi, và một chính sách cục bộ mà `reviewedBy` của nó đặt tên nó vẫn là khó. Xem [Kiểm tra Jev trong một gói](/vi/policies/publish-a-pack#jev-checks-in-a-pack).
+</Warning>
+
+| Trường | Bắt buộc | Mô tả |
+| --- | --- | --- |
+| `name` | Có | Chữ cái, chữ số, `.`, `_` và `-`, lên tới 128 ký tự, duy nhất trong gói. Những gì `reviewedBy` đặt tên; báo cáo là `semantic/<name>`. |
+| `title` | Có | Một cụm từ quá khứ cho những gì đã bị bắt. Tối đa 120 ký tự. |
+| `appliesTo` | Có | Các lớp tool mà Jev được hỏi: một hoặc nhiều trong số `shell`, `write`, `read`, `network`, `other`. |
+| `mode` | Có | `"deny"` chặn bằng bằng chứng mạnh mẽ và cảnh báo bằng bằng chứng vừa phải. `"instruct"` chỉ bao giờ cảnh báo, vì vậy nó không bao giờ có thể giữ một từ chối đứng yên — ghép một chính sách chặn với nó một mình và một lần xóa không để lại gì có thể từ chối. |
+| `userCanOverride` | Có | Liệu yêu cầu rõ ràng của con người có xóa kiểm tra hay không. Nó quyết định xem các từ trong một prompt có thể nói chuyện vượt qua nó hay không, vì vậy nó không có mặc định. |
+| `probes` | Có | 1 đến 6 câu hỏi. **Mọi** probe phải giữ để kiểm tra kích hoạt. |
+| `probes[].id` | Có | Khớp `^[a-z][a-z0-9_]{0,31}$`, duy nhất trong kiểm tra. `exempt` và `user_asked` được dành riêng. |
+| `probes[].instructions` | Có | Câu hỏi. Tối đa 600 ký tự. |
+| `probes[].criteria` | Không | `{ true, false }`: những gì một có và một không có nghĩa là gì, tối đa 300 ký tự mỗi ký tự. Cả hai nửa hoặc không. |
+| `exempt` | Không | Thêm một câu hỏi trong hình dạng probe (cái `id` của nó bị bỏ qua). Khi nó giữ, kiểm tra không kích hoạt — những ngoại lệ được ghi chép. |
+| `precondition` | Không | Một tên từ bảng dưới đây. Vắng mặt có nghĩa là kiểm tra được hỏi trên mọi lệnh gọi `appliesTo` của nó bao gồm. |
+| `guidance` | Có | Được hiển thị cho agent khi kiểm tra kích hoạt, cho dù nó chặn hay cảnh báo — một kiểm tra `"deny"` chỉ cảnh báo bằng bằng chứng vừa phải, vì vậy đừng nói lệnh gọi bị chặn. Tối đa 600 ký tự. |
+
+Một điều kiện tiên quyết là một tên, không bao giờ mã: một bản kê khai không thể mang một hàm, và một gói được tải xuống không được quyết định những gì chạy trên mọi lệnh gọi tool.
+
+| Điều kiện tiên quyết | Kiểm tra được hỏi chỉ khi |
+| --- | --- |
+| `always` | Luôn luôn — giống như bỏ nó ra. |
+| `protected_branch` | Nhánh git hiện tại là `main`, `master`, `production`, `prod`, `release` hoặc `trunk`. |
+| `in_git_repo` | Lệnh gọi chạy trên một nhánh git. Một `HEAD` tách rời được tính là bên ngoài một kho lưu trữ. |
+| `has_paths` | Lệnh gọi đặt tên ít nhất một đường dẫn. |
+| `paths_outside_project` | Một số đường dẫn nó đặt tên ở bên ngoài dự án. |
+| `system_or_root_paths` | Một số đường dẫn nó đặt tên là đường dẫn hệ thống hoặc gốc hệ thống tệp. |
 
 ## Xuất API
 
@@ -293,11 +353,13 @@ Giữ các mô-đun chính sách xác định và nhanh. Tránh các lệnh gọ
 | `allow(reason?)` | Cho phép hoạt động. |
 | `instruct(reason)` | Cho phép hoạt động và cung cấp hướng dẫn nơi được hỗ trợ. |
 | `deny(reason)` | Chặn hoạt động nơi được hỗ trợ. |
-| `getCustomHooks()` | Trả về các chính sách hiện đang được đăng ký trong sổ đăng ký mô-đun. |
-| `clearCustomHooks()` | Xóa sổ đăng ký đó, chủ yếu cho các bài kiểm tra và trình tải. |
+| `semanticPolicies.add(check)` | Khai báo một [kiểm tra Jev](#jev-checks) để `failproofai publish` đặt trong một gói. |
+| `getCustomHooks()` | Trả về các chính sách hiện đang được đăng ký trong đăng ký mô-đun. |
+| `getSemanticRegistrations()` | Trả về các kiểm tra Jev hiện được khai báo, chủ yếu cho các bài kiểm thử và trình tải. |
+| `clearCustomHooks()` | Xóa cả hai đăng ký, chủ yếu cho các bài kiểm thử và trình tải. |
 
-TypeScript xuất `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, và `PolicyFunction`.
+TypeScript xuất `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, `PolicyAuthority`, `SemanticPolicyDeclaration`, `SemanticProbeDeclaration`, và `SemanticToolClass`.
 
 <Card title="Triển khai chính sách tùy chỉnh" icon="server-cog" href="/vi/policies/deploy">
-  Xuất bản một phiên bản, triển khai nó trong chế độ quan sát, xác minh các quyết định, và chuyển sang thực thi.
+  Xuất bản một phiên bản, triển khai nó ở chế độ observe, xác minh quyết định và chuyển sang thực thi.
 </Card>

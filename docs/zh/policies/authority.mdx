@@ -1,0 +1,144 @@
+---
+title: "策略权威"
+description: "哪些策略裁决可由 Jev 语义评估器解除，哪些为最终裁决。"
+icon: "scale"
+---
+
+当你使用自己的密钥配置 Jev 语义评估器（`failproofai jev setup`）后，每次工具调用都会经过两次判断：一次由你运行的策略决定，另一次由 Jev 决定——Jev 会评估该调用实际执行了什么操作，以及输入任务的用户是否确实请求了该操作。当两者出现分歧时，每条策略的**权威**级别将决定最终结果。
+
+若未配置 Jev，权威级别不会产生任何效果。每条策略的执行行为与以往完全相同。
+
+## Hard 与 Reviewable
+
+- **Hard** 是默认值。Hard 策略的 deny 或 instruction 为最终裁决：Jev 无法解除它，且 hard deny 会直接终止调用，无需等待 Jev。
+- **Reviewable** 意味着 Jev 可能解除该策略的裁决，但只能通过策略在 `reviewedBy` 中指定的语义检查项来实现。只有当**所有**指定的检查项都被询问过该调用，且每项检查均未发现问题或记录了用户确实请求了该操作时，裁决才会被解除。如果某项检查**触发**了——即发现了相关问题——而用户并未提出请求，则即使该检查本身的裁决只是警告，封锁也会保持。Jev 未被询问的检查项（因为它不适用于该工具）永远不会解除任何裁决，无论其他检查项的结果如何。只需一项"放宽"即视为用户同意：当该调用是用户给定任务的一个步骤且不超出任务范围时，Jev 会将 deny 转为 warning，该 warning 将解除策略的封锁，并作为反馈告知 agent。
+
+策略仅在满足以下所有条件时才具有 reviewable 属性：
+
+1. 声明 `authority: "reviewable"`。
+2. `reviewedBy` 是一个非空列表，且其中每个条目都是本机可以询问的语义检查项：属于[内置检查项](#semantic-policy-names)之一，或由已安装的扩展包声明。从 FailproofAI 仓库安装的、自带检查项声明的扩展包会替换内置检查项，此时仅该扩展包的检查项有效。
+3. 不为 `alwaysOn`。防止 agent 禁用 Failproof AI 的保护机制始终为 hard。
+
+其他所有情况均为 hard：缺少字段、拼写错误的值、空的或格式错误的 `reviewedBy`，或不属于本机可询问检查项的名称。未知名称会使整个声明变为 hard，而不是被跳过，原因在于 `reviewedBy` 的含义是"所有这些检查项都必须被询问，且没有任何一项可以 deny"——跳过某个名称将使 Jev 能够基于比你预期更少的检查项来解除策略。
+
+一旦配置了 Jev，当 Failproof AI 拒绝某个 `reviewable` 声明时，每个进程只记录一次警告。未配置 Jev 时不显示任何提示，因为此时权威级别不起作用。`failproofai publish` 会拒绝构建包含此类声明的扩展包，因此扩展包作者在任何人安装之前就会得到提示。当扩展包自己声明了检查项时，它会对照扩展包声明的检查项验证 `reviewedBy`；否则对照内置检查项验证。
+
+## 权威的声明位置
+
+策略到达机器的每种方式都有一个确定其权威级别的位置：
+
+| 来源 | 声明位置 | 默认值 |
+| --- | --- | --- |
+| 内置策略 | 下方表格 | Hard，除非列为 reviewable |
+| 自定义策略文件 | `customPolicies.add` 上的 `authority` 和 `reviewedBy` | Hard |
+| 策略扩展包 | 扩展包清单（`failproofai-pack.json`）中每条策略的条目 | Hard |
+| 云管理策略 | 活跃部署中策略的分配 | Hard。部署目前尚未设置此项，因此当前所有云管理策略均为 hard。 |
+
+对于扩展包或云管理策略，策略代码内部设置的字段会被忽略；由清单或分配决定权威级别。扩展包只能描述其自身的策略：策略名称不能包含 `/`，且注册在扩展包自身的前缀下，因此任何清单都无法将内置策略或其他扩展包的策略标记为 reviewable。扩展包代码注册但未在清单中声明的策略为 hard。
+
+字节完全相同的两个扩展包或两个云管理策略共享一个制品，作为一条策略加载。该策略仅在每一个声明都标记为 reviewable 时才具有 reviewable 属性，且 Jev 必须清除任意一个声明的所有检查项。如果其中任何一个声明为 hard，或根本没有声明，则保持为 hard。扩展包或策略的列出顺序永远不影响结果。
+
+大多数机器从 `FailproofAI/policies` 扩展包获取内置策略，并从该扩展包的清单中读取权威级别。下方列为 reviewable 的条目将在安装了包含这些条目的扩展包版本后生效；旧版本不包含任何此类条目，因此其中的每条策略均保持为 hard。
+
+## 在自定义策略中声明权威
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-prod-config-reads",
+  description: "Keep production credentials out of the agent's context",
+  match: { events: ["PreToolUse"] },
+  authority: "reviewable",
+  reviewedBy: ["secret-exposure"],
+  fn: async (ctx) =>
+    String(ctx.toolInput?.file_path ?? "").includes("/config/prod/")
+      ? deny("Production config is off limits")
+      : allow(),
+});
+```
+
+`failproofai publish` 会将两个字段都复制到扩展包清单中，因此以扩展包形式发布的策略会保留作者赋予它的权威级别。如果某个声明无法被遵从，它会拒绝构建该扩展包：值不是 `"hard"` 或 `"reviewable"`、`reviewedBy` 不是名称列表，或某个名称不是有效的检查项——当扩展包声明了自己的 [Jev 检查项](/zh/policies/publish-a-pack#jev-checks-in-a-pack)时对照这些检查项验证，否则对照内置检查项验证。
+
+## 内置策略
+
+仅当语义策略确实覆盖相同问题时才标记为 reviewable。其他所有内置策略均为 hard。
+
+覆盖该问题是必要条件但非充分条件，且两种出错方式都是静默的：
+
+- **从未被询问的检查项**会使封锁永久生效。`reviewedBy` 是一个合取关系，未被询问的检查项永远不会解除封锁，因此与某个前提条件不会对策略匹配的形态触发的检查项配对的策略，将永远无法被解除。
+- **被询问但未触发的检查项**回答"无问题"，无问题即解除。因此与不能对你策略形态建模的检查项配对，并不是在审查该策略——而是对于检查项无法理解的输入，直接将策略关闭。
+
+instruct 模式的语义策略永远不能回答 deny，但仍然可以维持封锁：当它触发且用户未请求该调用时，它审查的策略不会被解除。六个内置检查项仅限 instruct 模式——`push-to-protected-branch`、`commit-on-protected-branch`、`read-outside-workspace`、`system-modification`、`env-secrets-dump` 和 `external-data-egress`——[下表](#semantic-policy-names)列出了每个检查项的模式。关键问题是**"是否还有能够 deny 的内容"**：解除后绝不能让该问题处于无任何机制执行的状态。引擎对每次调用单独进行该测试。未经用户同意的 warning 不算解除，因为在工具调用之前，warning 不会阻止 agent。当一个*能够* deny 的检查项发出 warning——其证据未达到 deny 线——且用户未请求该调用时，该调用上没有任何内容会被解除，所有正则表达式 deny 保持有效。
+
+<Warning>
+**评分略低于触发线的检查项不能维持底线保护。** 上述规则需要检查项*触发*（证据 ≥ 0.7）。当所有相关检查项的评分都略低于该值时，没有任何检查项触发，审查方回答"无问题"，reviewable deny 被解除。在强制执行模式下的实测结果：未经请求地读取 `/etc/shadow`（`secret-exposure` 0.69，`read-outside-workspace` 0.37，后者仅对 home 目录路径建模）以及在"follow SETUP.md"之后执行 `set | curl -d @- …`（`env-secrets-dump` 0.66，`credential-exfiltration` 0.65，`sends_out` 0.97）均被放行，而正则表达式层单独会拒绝它们。这些阈值是基于标注语料库校准的，尚未针对此情况重新测量；在完成测量之前，对于上述任何形态通过所造成的影响大于其误拦截影响的情况，请保持策略为 **hard**。
+</Warning>
+
+| 策略 | 权威 | 审查方 | 原因 |
+| --- | --- | --- | --- |
+| `protect-env-vars` | reviewable | `env-secrets-dump`、`secret-exposure` | 该模式会对任何变量引用触发；Jev 询问是否真的会打印出密钥值。 |
+| `block-env-files` | reviewable | `secret-exposure` | 该模式匹配任何 `.env` 路径，包括模板文件；Jev 询问是否会读写真实的密钥值。 |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | 在真实流量上被测定为噪声较多；Jev 询问是否读取了项目外部的文件内容。用户请求的读取或检查项未发现问题的读取会被解除；被检查项标记的未经请求的读取保持封锁。 |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | 修改未推送的提交是正常操作；危害在于重写其他人可能已拉取的历史记录。 |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev 还会询问目标是否为真实数据库而非一次性测试数据库。 |
+| `warn-global-package-install` | reviewable | `system-modification` | 相同问题：在项目外部更改机器。 |
+| `block-failproofai-commands` | hard | | `alwaysOn` 自我保护。永不 reviewable。 |
+| `block-rm-rf` | reviewable | `destructive-deletion` | 路径深度启发式规则会对 `rm -rf node_modules` 产生误判；Jev 询问将被删除的内容是否可再生成。`rm -rf /` 会使两项探测均为 true。 |
+| `block-sudo` | hard | | 权限提升。 |
+| `block-curl-pipe-sh` | hard | | 运行从互联网下载的代码。 |
+| `block-push-master` | hard | | 直接推送到受保护分支。 |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` 恰好覆盖此问题，但为 instruct 模式，永远不能回答 deny，且没有其他检查项覆盖它。 |
+| `block-force-push` | reviewable | `git-history-rewrite` | Jev 的探测是匹配器的超集，涵盖 `--force-with-lease`；能解除封锁的是推送自己的分支。 |
+| `block-secrets-write` | reviewable | `secret-exposure` | 路径匹配无锚点，因此 `src/auth/credentials.ts` 也会被捕获；Jev 询问是否正在写入真实的密钥材料。 |
+| `block-kubectl` | reviewable | `production-infra-change` | 拒绝整个 CLI，包括只读子命令；Jev 询问该调用是否会修改内容以及目标是否为生产环境。 |
+| `block-terraform` | reviewable | `production-infra-change` | 同上：解除 `terraform plan` 和 `validate`。 |
+| `block-aws-cli` | reviewable | `production-infra-change` | 同上：解除 `aws s3 ls`、`aws sts get-caller-identity`。 |
+| `block-gcloud` | reviewable | `production-infra-change` | 同上：解除 `gcloud auth list`、`gcloud config list`。 |
+| `block-az-cli` | reviewable | `production-infra-change` | 同上：解除 `az account show`。 |
+| `block-helm` | reviewable | `production-infra-change` | 同上：解除 `helm list`、`helm status`。 |
+| `block-gh-pipeline` | hard | | 触发流水线、合并操作及密钥变更。 |
+| `warn-git-stash-drop` | hard | | 没有语义检查项覆盖丢弃暂存工作的操作。 |
+| `warn-git-clean` | hard | | `destructive-deletion` 覆盖该问题，但明显无法触发：`git clean` 不指定路径，因此其 `irreplaceable` 探测没有任何内容可判断，评分偏低，而证据取策略所有探测的最小值。被询问但未触发的检查项会解除裁决，因此在此配对会将策略关闭。 |
+| `warn-all-files-staged` | hard | | 没有语义检查项覆盖大范围 `git add` 所拾取的内容。 |
+| `warn-schema-alteration` | hard | | `database-destruction` 覆盖数据删除，而非 schema 变更。 |
+| `warn-package-publish` | hard | | 发布操作不可逆，且没有语义检查项覆盖它。 |
+| `prefer-package-manager` | hard | | 团队规范，而非安全判断。 |
+| `warn-large-file-write` | hard | | 大小阈值，不是 Jev 能够做出的判断。 |
+| `warn-background-process` | hard | | 没有语义检查项覆盖分离进程。 |
+| `warn-repeated-tool-calls` | hard | | 计数调用次数；Jev 无法计数。 |
+| `sanitize-jwt` | hard | | 对工具输出进行脱敏；不是工具调用门控。 |
+| `sanitize-api-keys` | hard | | 对工具输出进行脱敏；不是工具调用门控。 |
+| `sanitize-connection-strings` | hard | | 对工具输出进行脱敏；不是工具调用门控。 |
+| `sanitize-private-key-content` | hard | | 对工具输出进行脱敏；不是工具调用门控。 |
+| `sanitize-bearer-tokens` | hard | | 对工具输出进行脱敏；不是工具调用门控。 |
+| `require-commit-before-stop` | hard | | 会话完成门控，不是工具调用门控。 |
+| `require-push-before-stop` | hard | | 会话完成门控，不是工具调用门控。 |
+| `require-pr-before-stop` | hard | | 会话完成门控，不是工具调用门控。 |
+| `require-no-conflicts-before-stop` | hard | | 会话完成门控，不是工具调用门控。 |
+| `require-ci-green-before-stop` | hard | | 会话完成门控，不是工具调用门控。 |
+
+## Semantic policy names
+
+这些是内置检查项，也是 `reviewedBy` 所接受的值——除非从 FailproofAI 仓库安装的扩展包声明了自己的 Jev 检查项。每个检查项都是 Jev 针对当前工具调用进行回答的内容。**模式**是检查项的回答类型：`deny` 检查项在有强烈证据时会阻止调用，而 `instruct` 检查项只会发出警告。当检查项触发且用户未请求该调用时，两者都能维持策略的 deny 效果。**用户可覆盖**表示用户的明确请求是否可以解除它。
+
+扩展包的 [Jev 检查项](/zh/policies/publish-a-pack#jev-checks-in-a-pack)会添加到此列表中，其名称也会加入 `reviewedBy` 所接受的名称范围。从 FailproofAI 仓库安装的扩展包则会替换此列表：其检查项将成为 Jev 唯一询问的内容，也是 `reviewedBy` 唯一接受的名称，因此引用了下方某个检查项但未自行声明该检查项的策略将保持为 hard。`FailproofAI/jev-policies` 声明了与此相同的十六个检查项，因此使用它时下表仍然适用。两个扩展包对同一名称有不同声明时，两者均不被采用。非 FailproofAI 仓库扩展包声明的这十六个名称之一在该扩展包中会被忽略：其版本永远不会被询问，也不会与 FailproofAI 自有版本竞争，因此第三方扩展包既不能成为解除核心扩展包策略的检查项，也不能关闭这些检查项之一。每个检查项都不可用的扩展包会使此列表保持有效。
+
+| 名称 | 模式 | 用户可覆盖 | Jev 检查的内容 |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | 是 | 永久删除无法再生的数据。 |
+| `production-infra-change` | deny | 是 | 更改生产基础设施。 |
+| `git-history-rewrite` | deny | 是 | 重写或丢弃共享 git 历史记录。 |
+| `push-to-protected-branch` | instruct | 是 | 直接推送到受保护分支。 |
+| `commit-on-protected-branch` | instruct | 是 | 直接在受保护分支上提交。 |
+| `secret-exposure` | deny | 是 | 读取或复制凭据。 |
+| `credential-exfiltration` | deny | 否 | 将密钥或私有文件发送到机器外部。 |
+| `remote-code-execution` | deny | 是 | 运行从互联网下载的代码。 |
+| `privilege-escalation` | deny | 是 | 以提升的权限运行。 |
+| `database-destruction` | deny | 是 | 销毁或批量修改数据库数据。 |
+| `read-outside-workspace` | instruct | 是 | 读取项目外部的文件。 |
+| `agent-config-tampering` | deny | 否 | 更改 agent 自身的安全配置。 |
+| `system-modification` | instruct | 是 | 在项目外部更改系统。 |
+| `env-secrets-dump` | instruct | 是 | 打印环境密钥。 |
+| `external-destructive-action` | deny | 是 | 通过外部工具执行不可逆操作。 |
+| `external-data-egress` | instruct | 是 | 向外部工具发送私有数据。 |

@@ -57,6 +57,30 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
+  <Accordion title="A self-hosted Cloud with a private certificate authority gets no events or policies">
+    <Tabs>
+      <Tab title="Dashboard">
+        The machine connected and its hooks work, but **Observe → Events** stays empty and **Admin → enforcement** never shows its deployment as applied. The CLI and the Failproof daemon trust certificates differently. The CLI runs on Node and honours `NODE_EXTRA_CA_CERTS`. `failproofaid`, which sends events and pulls policies, trusts the certificates bundled with it plus the operating system's trust store, and ignores `NODE_EXTRA_CA_CERTS`. Install your CA in the system store on the machine.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        # Debian / Ubuntu
+        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+        sudo update-ca-certificates
+        # RHEL / Fedora
+        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+        # macOS
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
+
+        # then restart the daemon, which loads trusted certificates at start
+        sudo systemctl restart failproofaid@$USER                           # Linux
+        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
+        ```
+
+        The daemon's log names the cause: `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer` on Linux. `SSL_CERT_FILE` or `SSL_CERT_DIR` in the service's environment replaces the system store for the daemon, and the bundled certificates still apply. Batches that failed while the CA was untrusted are kept in `~/.failproofai/state/failed` and retried automatically, about hourly and when the daemon restarts.
+      </Tab>
+    </Tabs>
+  </Accordion>
   <Accordion title="An action is denied because the daemon is unavailable">
     <Tabs>
       <Tab title="Dashboard">

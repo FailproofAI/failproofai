@@ -1,19 +1,19 @@
 ---
-title: "Sentiment"
-description: "Xem cảm xúc của những người sử dụng agents của bạn, và liệu agents có đang xử lý đúng không, theo từng tin nhắn."
+title: "Cảm xúc"
+description: "Xem mọi người sử dụng agent của bạn cảm thấy như thế nào, và liệu agent của bạn có hoạt động đúng không, từng tin nhắn một lần."
 icon: "smile"
 ---
 
-Sentiment cho mỗi tin nhắn mà một người gửi đến agents của bạn một điểm từ 0 đến 100%, cho bốn cảm xúc — **angry** (tức giận), **frustrated** (bực bội), **happy** (vui vẻ) và **confused** (bối rối) — và ba tín hiệu về hiệu suất của agent:
+Cảm xúc chấm điểm từng tin nhắn mà người dùng gửi cho agent của bạn, mỗi tin từ 0 đến 100%, cho bốn cảm xúc — **tức giận**, **bực dọc**, **vui vẻ** và **bối rối** — và ba tín hiệu về hiệu suất của agent:
 
-- **Correcting**: người dùng nói rằng agent đã làm sai điều gì đó.
+- **Correcting**: người dùng nói agent đã làm sai điều gì đó.
 - **Resolved**: người dùng xác nhận agent đã giải quyết vấn đề của họ.
-- **Doubtful**: người dùng đặt câu hỏi về tính chính xác của câu trả lời của agent, hoặc liệu agent có thực sự thực hiện công việc đó không.
+- **Doubtful**: người dùng nghi ngờ câu trả lời của agent có đúng không, hoặc liệu agent có thực sự hoàn thành công việc đó không.
 
-Sử dụng nó để tìm các cuộc trò chuyện nơi mà người dùng đang mất kiên nhẫn, những agents phải sửa lại thường xuyên, và những câu trả lời hiệu quả.
+Sử dụng nó để tìm những cuộc trò chuyện nơi mọi người mất kiên nhẫn, các agent mà họ phải sửa chữa liên tục, và những câu trả lời hiệu quả.
 
 <Note>
-  Sentiment được tắt cho đến khi một quản trị viên bật nó cho tổ chức. Tính điểm sử dụng ngân sách LLM của tổ chức của bạn — một yêu cầu tính điểm cho mỗi tin nhắn — và gửi từng tin nhắn, cùng với câu trả lời của agent trước đó, đến mô hình tính điểm.
+  Cảm xúc bị tắt cho đến khi quản trị viên bật nó cho tổ chức. Chấm điểm sử dụng ngân sách LLM của tổ chức bạn — một yêu cầu chấm điểm cho mỗi tin nhắn — và gửi từng tin nhắn, cùng với câu trả lời của agent trước đó, đến mô hình chấm điểm.
 </Note>
 
 ## Bật nó
@@ -21,25 +21,25 @@ Sử dụng nó để tìm các cuộc trò chuyện nơi mà người dùng đa
 1. Đi tới **Administration → Settings**.
 2. Dưới **Human input sentiment**, chuyển nó **on** và lưu.
 
-Các tin nhắn từ ngày cuối cùng được tính điểm trước. Sau đó, các tin nhắn mới được tính điểm trong vòng một hoặc hai phút kể từ khi đến.
+Các tin nhắn từ ngày hôm qua sẽ được chấm điểm trước. Sau đó, các tin nhắn mới sẽ được chấm điểm trong vòng một hoặc hai phút sau khi đến.
 
-## Những tin nhắn nào được tính điểm
+## Tin nhắn nào được chấm điểm
 
-Chỉ những tin nhắn mà một người viết:
+Chỉ những tin nhắn mà người dùng đã viết:
 
-- Tin nhắn mà custom agents của bạn ghi lại như đầu vào của con người bằng SDK.
-- Các lời nhắc được gõ vào Claude Code, Codex, OpenCode, pi, Hermes và OpenClaw, khi các bản ghi phiên được gửi (mặc định). Các công việc được lên lịch, hướng dẫn được tiêm, chuyển giao giữa các agents phụ và các tекст khác mà runtime của agent viết không được tính điểm. Cũng không có các run không tương tác như `claude -p`, `codex exec` và `hermes -z`: một script đã viết những lời nhắc đó, chứ không phải một người.
+- Các tin nhắn mà custom agent của bạn ghi lại là đầu vào của con người bằng SDK.
+- Lời nhắc được gõ vào Claude Code, Codex, OpenCode, pi, Hermes và OpenClaw, khi bản ghi lại phiên được gửi (mặc định). Các công việc được lên lịch, các hướng dẫn được tiêm, chuyển giao giữa các sub-agent và văn bản khác mà runtime của agent viết không được chấm điểm. Cũng như các lần chạy không tương tác như `claude -p`, `codex exec` và `hermes -z`: một tập lệnh đã viết những lời nhắc đó, không phải người dùng.
 
-Tính điểm đánh giá chính những lời nói của chính người dùng. Một lệnh ngắn gọn, thẳng thừng như "fix it" không được tính là sự tức giận, và đặt câu hỏi không được tính là sự bối rối. Một yêu cầu mới không phải là một sự sửa chữa, và lời cảm ơn riêng không được tính là đã giải quyết.
+Chấm điểm đánh giá những lời của chính người dùng. Một hướng dẫn ngắn, cứng rắn như "fix it" không được tính là tức giận, và đặt câu hỏi không được tính là bối rối. Một yêu cầu mới không phải là sửa chữa, và lời cảm ơn một mình không được tính là đã giải quyết.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Observe → Sentiment**.
-    2. Lọc theo môi trường, agent, hoặc session ID.
-    3. Tiêu đề đếm các tin nhắn **flagged** — bất kỳ điểm âm nào (angry, frustrated, correcting, confused hoặc doubtful) từ 35 trở lên trên 100 — và đặt tên tín hiệu hàng đầu.
-    4. **Score over time** vẽ biểu đồ mức trung bình của mỗi điểm. Chọn những điểm nào để hiển thị, và bấm vào một điểm để đọc những tin nhắn phía sau nó.
-    5. **By agent** so sánh các agents cạnh nhau.
-    6. **Messages** liệt kê các tin nhắn được đánh dấu, những cái mạnh nhất trước. Chuyển sang tất cả các tin nhắn, hoặc sắp xếp theo mới nhất hoặc bất kỳ một điểm nào, và mở phiên của tin nhắn để đọc cuộc trò chuyện xung quanh nó.
+    2. Lọc theo môi trường, agent hoặc ID phiên.
+    3. Tiêu đề đếm các tin nhắn **flagged** — bất kỳ điểm âm nào (tức giận, bực dọc, sửa chữa, bối rối hoặc nghi ngờ) từ 35 trở lên trên 100 — và đặt tên tín hiệu hàng đầu.
+    4. Biểu đồ **Score over time** vẽ biểu đồ trung bình của mỗi điểm. Chọn điểm nào cần hiển thị, và nhấp vào một điểm để đọc các tin nhắn đằng sau nó.
+    5. **By agent** so sánh các agent cạnh nhau.
+    6. **Messages** liệt kê các tin nhắn được đánh dấu, mạnh nhất trước. Chuyển sang tất cả tin nhắn, hoặc sắp xếp theo mới nhất hoặc theo bất kỳ điểm nào, và mở phiên của một tin nhắn để đọc cuộc trò chuyện xung quanh nó.
   </Tab>
   <Tab title="CLI">
     ```bash

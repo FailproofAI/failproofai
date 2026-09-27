@@ -1,21 +1,21 @@
 ---
 title: "Benutzerdefinierte Richtlinien"
-description: "JavaScript- oder TypeScript-Richtlinien für Fehler spezifisch für Ihre Agenten erstellen, testen und bereitstellen."
+description: "JavaScript- oder TypeScript-Richtlinien für Fehler spezifisch zu Ihren Agenten erstellen, testen und bereitstellen."
 icon: "shield-plus"
 ---
 
-Benutzerdefinierte Richtlinien verwandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Hinweise geben oder die Aktion blockieren, bevor sie einen weiteren Vorfall verursacht.
+Benutzerdefinierte Richtlinien wandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung um, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Hinweise geben oder die Aktion blockieren, bevor sie einen weiteren Vorfall verursacht.
 
-Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zunächst das [Failproof AI Policy-Paket](/de/policies/packs), damit Sie keine vorhandene Kontrolle neu erstellen.
+Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zuerst das [Failproof AI Policy Pack](/de/policies/packs), damit Sie keine bereits vorhandene Kontrolle neu erstellen.
 
 ## Benutzerdefinierte Richtlinie erstellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → Policy-Editor**, wählen Sie **Neue Richtlinie** und beschreiben Sie den Fehler, den Sie verhindern möchten.
-    2. Fügen Sie den Richtlinienquellcode hinzu und testen Sie im Editor erwartete Treffer sowie sichere Nicht-Treffer. Beheben Sie jeden Validierungsfehler.
+    1. Navigieren Sie zu **Admin → Policy-Editor**, wählen Sie **Neue Richtlinie** und beschreiben Sie den Fehler, den Sie verhindern möchten.
+    2. Fügen Sie den Richtlinienquellcode hinzu und testen Sie erwartete Treffer sowie sichere Nicht-Treffer im Editor. Beheben Sie jeden Validierungsfehler.
     3. Speichern Sie den Entwurf und wählen Sie **Version veröffentlichen**, um eine unveränderliche Version zu erstellen.
-    4. Gehen Sie zu **Admin → Durchsetzung**, stellen Sie die Version auf einem Testrechner im **Beobachtungs**-Modus bereit, und überprüfen Sie die Entscheidungen unter **Beobachten → Richtlinie**, bevor Sie sie durchsetzen.
+    4. Navigieren Sie zu **Admin → Durchsetzung**, stellen Sie die Version im Modus **Beobachten** auf einem Testrechner bereit und überprüfen Sie die Entscheidungen unter **Beobachten → Richtlinie**, bevor Sie sie durchsetzen.
 
     ![Der Policy-Editor zum Erstellen und Veröffentlichen einer benutzerdefinierten Richtlinie.](/images/dashboard/policy-editor.png)
   </Tab>
@@ -23,13 +23,13 @@ Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren T
     1. Erstellen Sie `.failproofai/policies/checkout-policies.ts`. Der Dateiname muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
     2. Registrieren Sie eine oder mehrere Richtlinien mit `customPolicies.add()`.
     3. Validieren und installieren Sie die Datei mit `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Lösen Sie eine passende Aktion und eine sichere Aktion aus. Führen Sie `failproofai policies` aus und prüfen Sie die zugeordneten Entscheidungen unter **Beobachten → Richtlinie**.
+    4. Lösen Sie eine übereinstimmende Aktion und eine sichere Aktion aus. Führen Sie `failproofai policies` aus und überprüfen Sie dann die zugeordneten Entscheidungen unter **Beobachten → Richtlinie**.
   </Tab>
 </Tabs>
 
 ## Mit einer engen Regel beginnen
 
-Diese Richtlinie blockiert destruktive Kubernetes-Befehle nur dann, wenn der Befehl auf die Produktionsumgebung abzielt. Alles außerhalb dieses genauen Fehlermusters gibt `allow()` zurück.
+Diese Richtlinie blockiert destruktive Kubernetes-Befehle ausschließlich dann, wenn der Befehl auf die Produktionsumgebung abzielt. Alles außerhalb dieses genauen Fehlermusters gibt `allow()` zurück.
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,23 +55,23 @@ customPolicies.add({
 });
 ```
 
-Gute Richtlinien sind eng genug, um sie in einem Satz zu erklären. Treffen Sie die beobachtbare Aktion – nicht die Absicht, die Sie dem Agenten zuschreiben – und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
+Gute Richtlinien sind eng genug, um sie in einem Satz zu erklären. Treffen Sie die beobachtbare Aktion — nicht die Absicht, die Sie dem Agenten unterstellen — und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
 
-## Eine Entscheidung auswählen
+## Eine Entscheidung treffen
 
-| Hilfsfunktion | Ergebnis | Verwenden, wenn |
+| Helper | Ergebnis | Verwenden Sie es, wenn |
 | --- | --- | --- |
-| `allow(reason?)` | Die Operation wird fortgesetzt. | Die Richtlinie gilt nicht oder die Aktion ist sicher. |
-| `instruct(reason)` | Die Operation wird mit Hinweisen fortgesetzt, sofern der Harness dies unterstützt. | Sie den Agenten zu einem besseren Vorgehen lenken möchten, ohne eine Invariante zu erzwingen. |
-| `deny(reason)` | Die Operation wird blockiert, wenn Ereignis und Harness das Blockieren unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
+| `allow(reason?)` | Der Vorgang wird fortgesetzt. | Die Richtlinie gilt nicht oder die Aktion ist sicher. |
+| `instruct(reason)` | Der Vorgang wird mit Hinweisen fortgesetzt, sofern der Harness dies unterstützt. | Sie den Agenten zu einem besseren Ansatz lenken möchten, ohne eine Invariante durchzusetzen. |
+| `deny(reason)` | Der Vorgang wird blockiert, wenn Ereignis und Harness das Blockieren unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
 
-Schreiben Sie die Begründung für den Agenten, der sich erholen muss. Erklären Sie, was erkannt wurde und was stattdessen getan werden sollte.
+Formulieren Sie den Grund für den Agenten, der sich erholen muss. Erläutern Sie, was erkannt wurde und was stattdessen getan werden sollte.
 
 <Warning>
-  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Zustellung von Hinweisen variiert je nach Agent-Harness. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
+  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Übermittlung von Hinweisen variiert je nach Agent-Harness. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
 </Warning>
 
-## Policy-Objekt
+## Richtlinienobjekt
 
 ```ts
 customPolicies.add({
@@ -84,28 +84,30 @@ customPolicies.add({
 
 | Feld | Erforderlich | Beschreibung |
 | --- | --- | --- |
-| `name` | Ja | Stabiler Bezeichner für die Richtlinie. Namen über Dateien hinweg eindeutig halten. |
-| `description` | Nein | Menschenlesbare Beschreibung, die in Richtlinienübersichten und Entscheidungen angezeigt wird. |
-| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Wenn `match` weggelassen wird, wird sie für jedes verfügbare Ereignis aufgerufen. |
+| `name` | Ja | Stabiler Bezeichner für die Richtlinie. Namen müssen dateiübergreifend eindeutig sein. |
+| `description` | Nein | Menschenlesbarer Zweck, der in Richtlinienauflistungen und Entscheidungen angezeigt wird. |
+| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Wird `match` weggelassen, wird sie für jedes verfügbare Ereignis aufgerufen. |
 | `fn` | Ja | Synchrone oder asynchrone Funktion, die ein `allow`-, `instruct`- oder `deny`-Ergebnis zurückgibt. |
+| `authority` | Nein | `"hard"` (Standard) oder `"reviewable"`. Gibt an, ob der semantische Jev-Evaluator das Urteil dieser Richtlinie aufheben darf. Siehe [Policy authority](/de/policies/authority). |
+| `reviewedBy` | Nein | Die semantischen Prüfungen, die Jev alle gestellt werden müssen und bei denen keine mit Ablehnen antworten darf, bevor Jev das Urteil aufheben darf. Eine Prüfung, die warnt, hebt es trotzdem auf. Erforderlich für `"reviewable"`. |
 
-Tools innerhalb von `fn` filtern. `match.toolNames` ist nicht Teil des öffentlichen benutzerdefinierten Richtlinientyps.
+Filtern Sie Tools innerhalb von `fn`. `match.toolNames` ist kein Bestandteil des öffentlichen Typs für benutzerdefinierte Richtlinien.
 
 ## Richtlinienkontext
 
-Jede Richtlinie empfängt einen `PolicyContext`.
+Jede Richtlinie erhält einen `PolicyContext`.
 
 | Feld | Typ | Inhalt |
 | --- | --- | --- |
 | `eventType` | `HookEventType` | Normalisiertes Ereignis, das aktuell ausgewertet wird. |
-| `toolName` | `string \| undefined` | Kanonischer Tool-Name wie `Bash`, `Read`, `Write` oder `Edit`. |
+| `toolName` | `string \| undefined` | Kanonischer Tool-Name, z. B. `Bash`, `Read`, `Write` oder `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Kanonische Eingabe für den aktuellen Tool-Aufruf. |
-| `payload` | `Record<string, unknown>` | Vollständige normalisierte Ereignis-Nutzlast. |
-| `session` | `SessionMetadata \| undefined` | Sitzungs-ID, Arbeitsverzeichnis, Transcript-Pfad, Berechtigungsmodus und Harness-Metadaten, sofern verfügbar. |
+| `payload` | `Record<string, unknown>` | Vollständige normalisierte Ereignis-Payload. |
+| `session` | `SessionMetadata \| undefined` | Session-ID, Arbeitsverzeichnis, Transcript-Pfad, Berechtigungsmodus und Harness-Metadaten, sofern verfügbar. |
 | `cli` | `string \| undefined` | Quell-Agent-Harness, z. B. `claude`, `codex` oder `cursor`. |
-| `params` | `Record<string, unknown>` | Eingebaute Richtlinienparameter. Benutzerdefinierte Richtlinien erhalten aktuell ein leeres Objekt. |
+| `params` | `Record<string, unknown>` | Eingebaute Richtlinienparameter. Benutzerdefinierte Richtlinien erhalten derzeit ein leeres Objekt. |
 
-Jeden optionalen Wert als tatsächlich optional behandeln. Agent-Versionen und Ereignistypen stellen nicht alle dieselben Felder bereit.
+Behandeln Sie jeden optionalen Wert als wirklich optional. Agent-Versionen und Ereignistypen stellen nicht alle dieselben Felder bereit.
 
 ### Häufige Tool-Eingaben
 
@@ -119,26 +121,26 @@ Failproof AI normalisiert gängige Tools über unterstützte Harnesses hinweg, s
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-Defensive Typumwandlung verwenden, da Tool-Eingabewerte als `unknown` typisiert sind:
+Verwenden Sie defensive Typumwandlung, da Tool-Eingabewerte als `unknown` typisiert sind:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## Ereignis auswählen
+## Das Ereignis auswählen
 
 | Ereignis | Zeitpunkt | Typische Verwendung |
 | --- | --- | --- |
-| `PreToolUse` | Vor der Ausführung eines Tools. | Befehle, Schreibvorgänge, Lesevorgänge und externe Aktionen blockieren oder steuern. |
-| `PostToolUse` | Nachdem ein Tool zurückgekehrt ist. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein Deny blockiert das gesamte Ergebnis; es schwärzt keine einzelnen Felder. |
+| `PreToolUse` | Bevor ein Tool ausgeführt wird. | Befehle, Schreibvorgänge, Lesevorgänge und externe Aktionen blockieren oder steuern. |
+| `PostToolUse` | Nachdem ein Tool zurückgekehrt ist. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein Deny blockiert das gesamte Ergebnis; einzelne Felder werden nicht geschwärzt. |
 | `PermissionRequest` | Wenn der Agent eine Berechtigung anfordert. | Organisationsspezifische Berechtigungsregeln anwenden. |
-| `UserPromptSubmit` | Bevor ein eingereichter Prompt fortgesetzt wird. | Verbotene Anweisungen ablehnen oder Workflow-Hinweise hinzufügen. |
-| `Stop` | Wenn der Agent versucht, abzuschließen. | Eine erreichbare Abschlussbedingung erfordern, z. B. einen lokalen Verifizierungsschritt. |
-| `SubagentStop` | Wenn ein Subagent versucht, abzuschließen. | Delegierte Arbeit prüfen, bevor sie an den übergeordneten Agenten zurückgegeben wird. |
-| `SessionStart` / `SessionEnd` | An Sitzungsgrenzen. | Sitzungsweiten Zustand aufzeichnen oder prüfen. |
+| `UserPromptSubmit` | Bevor ein übermittelter Prompt fortgesetzt wird. | Unzulässige Anweisungen ablehnen oder Workflow-Hinweise hinzufügen. |
+| `Stop` | Wenn der Agent versucht, die Arbeit zu beenden. | Eine erreichbare Abschlussbedingung erfordern, z. B. einen lokalen Verifikationsschritt. |
+| `SubagentStop` | Wenn ein Subagent versucht, die Arbeit zu beenden. | Delegierte Arbeit prüfen, bevor sie zum übergeordneten Agenten zurückkehrt. |
+| `SessionStart` / `SessionEnd` | An Session-Grenzen. | Zustand auf Session-Ebene aufzeichnen oder prüfen. |
 
-Die Verfügbarkeit von Ereignissen und das Blockierverhalten hängen vom Agent-Harness ab. Lesen Sie [Agent-Harnesses](/de/reference/harnesses), bevor Sie sich auf ein Ereignis über eine gemischte Flotte hinweg verlassen.
+Die Verfügbarkeit von Ereignissen und das Blockierungsverhalten hängen vom Agent-Harness ab. Lesen Sie [Agent harnesses](/de/reference/harnesses), bevor Sie sich für eine gemischte Flotte auf ein Ereignis verlassen.
 
 <Accordion title="Alle Richtlinienereignisnamen">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` und `Setup`.
@@ -186,7 +188,7 @@ customPolicies.add({
 });
 ```
 
-### Sitzungsabschluss prüfen
+### Sitzungsabschluss absichern
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,7 +217,7 @@ customPolicies.add({
 ```
 
 <Warning>
-  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Prüfen Sie nur eine Bedingung, die der Agent in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Unterprozess oder Netzwerkaufruf.
+  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Sichern Sie nur eine Bedingung ab, die der Agent in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Subprozess- oder Netzwerkaufruf zeitlich.
 </Warning>
 
 ## Richtliniendateien laden
@@ -229,8 +231,8 @@ Konventionsdateien werden automatisch geladen:
 ~/.failproofai/policies/personal-policies.mjs
 ```
 
-- Projekt- und Benutzer-Richtlinienverzeichnisse werden beide geladen.
-- Dateien werden alphabetisch innerhalb jedes Verzeichnisses geladen.
+- Projekt- und benutzerweite Richtlinienverzeichnisse werden beide geladen.
+- Dateien werden innerhalb jedes Verzeichnisses alphabetisch geladen.
 - Eine Datei muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
 - Mehrere `customPolicies.add()`-Aufrufe in einer Datei werden unterstützt.
 - Relative Importe aus lokalen Modulen werden unterstützt.
@@ -247,11 +249,11 @@ failproofai policies --install \
   --scope project
 ```
 
-Explizite Dateien werden zuerst geladen, gefolgt von Projekt-Konventionsdateien und dann Benutzer-Konventionsdateien. Eine Datei, die über beide Pfade gefunden wird, wird nur einmal geladen.
+Explizite Dateien werden zuerst geladen, gefolgt von Projekt-Konventionsdateien und anschließend Benutzer-Konventionsdateien. Eine Datei, die über beide Pfade gefunden wird, wird nur einmal geladen.
 
 ## Validieren und testen
 
-Die Validierung führt das Modul durch den Produktionslader aus und bestätigt, dass es mindestens eine Richtlinie registriert.
+Die Validierung führt das Modul über den Produktions-Loader aus und bestätigt, dass mindestens eine Richtlinie registriert wird.
 
 ```bash
 failproofai policies --install \
@@ -260,44 +262,104 @@ failproofai policies --install \
 failproofai policies
 ```
 
-Die Validierung erkennt fehlende Dateien, Syntaxfehler, ungelöste Importe, Top-Level-Ausnahmen und Modul-Lade-Timeouts. Sie beweist nicht, dass Ihre Match-Logik korrekt ist.
+Die Validierung erkennt fehlende Dateien, Syntaxfehler, unaufgelöste Importe, Ausnahmen auf oberster Ebene und Timeouts beim Laden von Modulen. Sie beweist nicht, dass Ihre Trefferlogik korrekt ist.
 
 Testen Sie mindestens diese Fälle:
 
-- Eine Aktion, die treffen muss und den vorgesehenen Richtliniengrund erzeugt.
+- Eine Aktion, die übereinstimmen und den vorgesehenen Richtliniengrund erzeugen muss.
 - Eine ähnliche, aber sichere Aktion, die `allow()` zurückgeben muss.
 - Fehlende oder fehlerhafte Tool-Felder.
 - Alternative Befehlssyntax, Pfade, Anführungszeichen, Groß-/Kleinschreibung und Leerzeichen.
-- Ein nicht verfügbarer Unterprozess oder eine Netzwerkabhängigkeit.
+- Ein nicht verfügbarer Subprozess oder eine Netzwerkabhängigkeit.
 
-Ordnen Sie das Ergebnis unter **Beobachten → Richtlinie** Ihrer benutzerdefinierten Richtlinie zu. Ein blockierter Test reicht nicht aus, wenn eine andere eingebaute Richtlinie die Entscheidung getroffen hat.
+Ordnen Sie das Ergebnis Ihrer benutzerdefinierten Richtlinie unter **Beobachten → Richtlinie** zu. Ein blockierter Test ist nicht ausreichend, wenn eine andere integrierte Richtlinie die Entscheidung getroffen hat.
 
 ## Laufzeitverhalten
 
-- Eingebaute Richtlinien werden vor benutzerdefinierten Richtlinien ausgewertet.
+- Integrierte Richtlinien werden vor benutzerdefinierten Richtlinien ausgewertet.
 - Das erste `deny` stoppt die weitere Richtlinienauswertung.
 - Mehrere `instruct`-Ergebnisse können kombiniert werden, wenn keine Richtlinie das Ereignis ablehnt.
 - Eine Richtlinienfunktion hat eine Ausführungsfrist von 10 Sekunden.
 - Eine ausgelöste Ausnahme oder ein Timeout wird protokolliert und als `allow()` behandelt.
-- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und eingebaute Richtlinien werden weiter ausgeführt.
-- Das Top-Level-Modulladen hat ebenfalls eine Frist von 10 Sekunden.
+- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und integrierte Richtlinien werden weiterhin ausgeführt.
+- Das Laden von Modulen auf oberster Ebene hat ebenfalls eine Frist von 10 Sekunden.
 - Der Cloud-Beobachtungsmodus führt die Richtlinie aus, zeichnet aber eine Nicht-allow-Entscheidung auf, ohne sie durchzusetzen.
 
-Richtlinienmodule deterministisch und schnell halten. Top-Level-Netzwerkaufrufe oder Server-Starts vermeiden. Arbeit innerhalb von `fn` begrenzen, Abhängigkeitsfehler abfangen und bewusst entscheiden, ob dieser Fehler die Operation erlauben oder blockieren soll.
+Halten Sie Richtlinienmodule deterministisch und schnell. Vermeiden Sie Netzwerkaufrufe oder Server-Starts auf oberster Ebene. Begrenzen Sie die Arbeit innerhalb von `fn`, fangen Sie Abhängigkeitsfehler ab und entscheiden Sie bewusst, ob dieser Fehler die Operation erlauben oder ablehnen soll.
+
+## Jev-Prüfungen
+
+Eine benutzerdefinierte Richtlinie entscheidet per Code. Eine **Jev-Prüfung** ist eine Reihe von Ja/Nein-Fragen, die der semantische Jev-Evaluator zu einem Tool-Aufruf beantwortet. Eine `reviewable`-Richtlinie benennt Prüfungen in `reviewedBy`, und Jev darf ihr Urteil nur durch diese aufheben — siehe [Policy authority](/de/policies/authority). Deklarieren Sie eine mit `semanticPolicies.add()`:
+
+```js
+import { semanticPolicies } from "failproofai";
+
+semanticPolicies.add({
+  name: "prod-db-write",
+  title: "Wrote to the production database",
+  appliesTo: ["shell"],
+  mode: "deny",
+  userCanOverride: true,
+  probes: [
+    {
+      id: "writes_data",
+      instructions: "Does this command insert, update or delete rows, or change a schema?",
+      criteria: { true: "It changes data or schema.", false: "It only reads." },
+    },
+    {
+      id: "production_target",
+      instructions: "Is the database it targets a production one, rather than a local or test copy?",
+    },
+  ],
+  guidance: "Writes to the production database need a human. Ask before running this.",
+});
+```
+
+<Warning>
+  Eine Jev-Prüfung wird **nur durch ein veröffentlichtes Pack** wirksam. `failproofai publish` ist das Einzige, das `semanticPolicies.add()` liest; in einer lokalen Richtliniendatei (`.failproofai/policies/`, `--custom`) wird sie ohne Fehler geladen, das Hook-Log nennt sie als ignoriert, sie wird nie abgefragt, und eine lokale Richtlinie, deren `reviewedBy` sie benennt, bleibt hard. Siehe [Jev checks in a pack](/de/policies/publish-a-pack#jev-checks-in-a-pack).
+</Warning>
+
+| Feld | Erforderlich | Beschreibung |
+| --- | --- | --- |
+| `name` | Ja | Buchstaben, Ziffern, `.`, `_` und `-`, bis zu 128 Zeichen, eindeutig im Pack. Was ein `reviewedBy` benennt; gemeldet als `semantic/<name>`. |
+| `title` | Ja | Ein Satz in der Vergangenheitsform, der beschreibt, was erkannt wurde. Bis zu 120 Zeichen. |
+| `appliesTo` | Ja | Die Tool-Klassen, zu denen Jev befragt wird: eines oder mehrere aus `shell`, `write`, `read`, `network`, `other`. |
+| `mode` | Ja | `"deny"` blockiert bei starken Belegen und warnt bei mäßigen Belegen. `"instruct"` warnt immer nur, kann also ein Deny niemals aufrechterhalten — paaren Sie eine blockierende Richtlinie damit allein, und ein Clear hinterlässt nichts, was ablehnen könnte. |
+| `userCanOverride` | Ja | Ob die eigene explizite Anfrage des Nutzers die Prüfung aufhebt. Legt fest, ob Worte in einem Prompt die Prüfung umgehen können, daher kein Standardwert. |
+| `probes` | Ja | 1 bis 6 Fragen. **Jede** Probe muss zutreffen, damit die Prüfung ausgelöst wird. |
+| `probes[].id` | Ja | Entspricht `^[a-z][a-z0-9_]{0,31}$`, eindeutig innerhalb der Prüfung. `exempt` und `user_asked` sind reserviert. |
+| `probes[].instructions` | Ja | Die Frage. Bis zu 600 Zeichen. |
+| `probes[].criteria` | Nein | `{ true, false }`: Was ein Ja und ein Nein bedeuten, jeweils bis zu 300 Zeichen. Beide Hälften oder keine. |
+| `exempt` | Nein | Eine weitere Frage in der Probe-Form (ihre `id` wird ignoriert). Wenn sie zutrifft, wird die Prüfung nicht ausgelöst — die dokumentierten Ausnahmen. |
+| `precondition` | Nein | Ein Name aus der folgenden Tabelle. Fehlt er, wird die Prüfung bei jedem Aufruf gestellt, den ihr `appliesTo` abdeckt. |
+| `guidance` | Ja | Wird dem Agenten angezeigt, wenn die Prüfung ausgelöst wird, egal ob sie blockiert oder warnt — eine `"deny"`-Prüfung warnt bei mäßigen Belegen nur, schreiben Sie also nicht, dass der Aufruf blockiert ist. Bis zu 600 Zeichen. |
+
+Eine Vorbedingung ist ein Name, kein Code: Ein Manifest kann keine Funktion tragen, und ein heruntergeladenes Pack darf nicht entscheiden, was bei jedem Tool-Aufruf ausgeführt wird.
+
+| Vorbedingung | Die Prüfung wird nur gestellt, wenn |
+| --- | --- |
+| `always` | Immer — dasselbe wie Weglassen. |
+| `protected_branch` | Der aktuelle Git-Branch `main`, `master`, `production`, `prod`, `release` oder `trunk` ist. |
+| `in_git_repo` | Der Aufruf auf einem Git-Branch läuft. Ein abgetrennter `HEAD` gilt als außerhalb eines Repositorys. |
+| `has_paths` | Der Aufruf mindestens einen Pfad benennt. |
+| `paths_outside_project` | Ein benannter Pfad außerhalb des Projekts liegt. |
+| `system_or_root_paths` | Ein benannter Pfad ein Systempfad oder das Dateisystemwurzelverzeichnis ist. |
 
 ## API-Exporte
 
 | Export | Zweck |
 | --- | --- |
 | `customPolicies.add(policy)` | Benutzerdefinierte Richtlinie beim Laden des Moduls registrieren. |
-| `allow(reason?)` | Operation erlauben. |
-| `instruct(reason)` | Operation erlauben und Hinweise bereitstellen, sofern unterstützt. |
-| `deny(reason)` | Operation blockieren, sofern unterstützt. |
-| `getCustomHooks()` | Die aktuell im Modulregister registrierten Richtlinien zurückgeben. |
-| `clearCustomHooks()` | Dieses Register leeren, hauptsächlich für Tests und Lader. |
+| `allow(reason?)` | Den Vorgang erlauben. |
+| `instruct(reason)` | Den Vorgang erlauben und Hinweise bereitstellen, sofern unterstützt. |
+| `deny(reason)` | Den Vorgang blockieren, sofern unterstützt. |
+| `semanticPolicies.add(check)` | Eine [Jev-Prüfung](#jev-checks) deklarieren, die `failproofai publish` in ein Pack aufnimmt. |
+| `getCustomHooks()` | Die aktuell im Modul-Registry registrierten Richtlinien zurückgeben. |
+| `getSemanticRegistrations()` | Die aktuell deklarierten Jev-Prüfungen zurückgeben, primär für Tests und Loader. |
+| `clearCustomHooks()` | Beide Registries leeren, primär für Tests und Loader. |
 
-TypeScript exportiert `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` und `PolicyFunction`.
+TypeScript exportiert `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, `PolicyAuthority`, `SemanticPolicyDeclaration`, `SemanticProbeDeclaration` und `SemanticToolClass`.
 
 <Card title="Benutzerdefinierte Richtlinien bereitstellen" icon="server-cog" href="/de/policies/deploy">
-  Eine Version veröffentlichen, im Beobachtungsmodus bereitstellen, Entscheidungen überprüfen und zur Durchsetzung übergehen.
+  Veröffentlichen Sie eine Version, stellen Sie sie im Beobachtungsmodus bereit, überprüfen Sie Entscheidungen und wechseln Sie zur Durchsetzung.
 </Card>

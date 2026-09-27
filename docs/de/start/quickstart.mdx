@@ -1,12 +1,12 @@
 ---
 title: "Quickstart"
-description: "Eine Agentensitzung aufzeichnen, einen Fehler finden und mit der Prävention beginnen."
+description: "Erfasse eine Agent-Session, finde einen Fehler und beginne, ihn zu verhindern."
 icon: "zap"
 ---
 
-Dieser Quickstart verbindet eine Maschine mit der Berichterstattung, führt ein Audit durch und setzt eine Richtlinie ein. Verwende die Skill-Methode oder folge den manuellen Schritten.
+Dieser Quickstart bringt eine Maschine dazu, Sessions zu melden, führt ein Audit durch und stellt eine Policy bereit. Nutze den Skill, um Failproof einzurichten, oder folge den manuellen Schritten.
 
-**Welcher Weg passt zu dir?** Wenn dein Agent in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) läuft – einer Coding-CLI oder einem Gateway wie Hermes oder OpenClaw – folge den Schritten unten; du benötigst Node.js 20.9 oder höher. Wenn dein Agent kein Harness hat, instrumentiere ihn mit dem [Python SDK](/de/reference/custom-agents) für Tracing und Audits, und steige dann bei [Erste Fehlerprüfung ausführen](/de/start/first-audit) wieder ein; die Durchsetzung auf diesem Weg erfordert einen Hook in deiner Runtime.
+**Welcher Weg ist deiner?** Wenn dein Agent in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) läuft – einer Coding-CLI oder einem Gateway wie Hermes oder OpenClaw – folge den Schritten unten; du benötigst Node.js 20.9 oder höher. Wenn dein Agent kein Harness hat, instrumentiere ihn mit dem [Python SDK](/de/reference/custom-agents) für Tracing und Audits und steige dann bei [Führe deinen ersten Fehler-Check durch](/de/start/first-audit) wieder ein; die Durchsetzung auf diesem Pfad erfordert einen Hook in deiner Runtime.
 
 <Tabs>
   <Tab title="Skill verwenden">
@@ -21,16 +21,16 @@ Dieser Quickstart verbindet eine Maschine mit der Berichterstattung, führt ein 
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Dein Agent untersucht das Projekt, wählt die passende Integration, führt das Setup durch und verifiziert es. Einzelne Skills und erweiterte Installationsoptionen findest du im [FailproofAI Skills-Repository](https://github.com/FailproofAI/skills).
+        Dein Agent untersucht das Projekt, wählt die passende Integration aus, führt die Einrichtung durch und verifiziert sie. Siehe das [FailproofAI Skills-Repository](https://github.com/FailproofAI/skills) für einzelne Skills und erweiterte Installationsoptionen.
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Manuelles Setup">
-    ## Vorbereitung
+  <Tab title="Manuelle Einrichtung">
+    ## Bevor du beginnst
 
 1. Öffne das [Failproof AI Dashboard](https://app.befailproof.ai) und erstelle ein Konto oder melde dich mit deiner Arbeits-E-Mail an.
 2. Gehe zu **Administration → Keys** und erstelle einen Schlüssel mit `events:add` und `policies:pull`.
-3. Kopiere das einmalige Secret und lies es dann in eine Shell auf der Zielmaschine ein. `read -s` liest es über eine Eingabeaufforderung ohne Echo, sodass es nie in einem Befehl erscheint:
+3. Kopiere das einmalige Secret und lese es dann in einer Shell auf der Zielmaschine ein. `read -s` nimmt es an einer Eingabeaufforderung entgegen, die nicht angezeigt wird, sodass es nie in einem Befehl erscheint:
 
 ```bash
 read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
@@ -45,15 +45,15 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
     FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    Dieser eine Befehl erledigt das gesamte Setup: Er installiert den lokalen Daemon (einmalig als root), verbindet Hooks mit jeder gefundenen Agent-CLI und verbindet diese Maschine mit der Cloud. Den Schlüssel über die Umgebungsvariable statt mit `--token` zu übergeben hält ihn aus `ps` heraus, wo alle Benutzer der Maschine die Argumente eines Befehls lesen können. Aus dem Shell-Verlauf hält ihn das nicht heraus – dafür ist das Einlesen mit `read -s` zuständig. In CI sollte er als maskiertes Secret injiziert werden, und Shell-Tracing (`set -x`) sollte deaktiviert sein, da der Trace sonst den Schlüssel ausgibt.
+    Dieser eine Befehl umfasst die gesamte Einrichtung: Er installiert den lokalen Daemon (einmalig als Root), verdrahtet Hooks in jede gefundene Agent-CLI und verbindet diese Maschine mit der Cloud. Die Übergabe des Schlüssels über die Umgebungsvariable statt über `--token` hält ihn aus `ps` heraus, wo jeder Benutzer auf der Maschine die Argumente eines Befehls lesen kann. Er hält ihn jedoch nicht aus dem Shell-Verlauf heraus – das erreicht man durch das Einlesen mit `read -s`. In CI sollte er als maskiertes Secret injiziert werden, und Shell-Tracing (`set -x`) sollte deaktiviert sein, da der Trace ihn andernfalls ausgibt.
 
-    Sitzungstranskripte werden standardmäßig gesendet. Füge `--no-transcripts` hinzu, um nur Hook-Aktivitäten und Richtlinienentscheidungen ohne Transkriptinhalt zu melden.
+    Session-Transkripte werden standardmäßig gesendet. Füge `--no-transcripts` hinzu, um Hook-Aktivität und Policy-Entscheidungen ohne Transkriptinhalt zu melden.
 
     <Warning>
-      Verwende hier nicht `failproofai config --connect <url>`. Dieses Flag meldet eine Maschine an, die **bereits** eingerichtet ist, und kehrt sofort zurück – ohne Daemon, ohne Hooks – die Maschine würde in der Cloud erscheinen, ohne etwas zu erfassen oder durchzusetzen.
+      Verwende hier nicht `failproofai config --connect <url>`. Dieses Flag registriert eine Maschine, die **bereits** eingerichtet ist, und kehrt sofort zurück – kein Daemon, keine Hooks – sodass die Maschine in der Cloud erscheinen würde, ohne etwas zu erfassen oder durchzusetzen.
     </Warning>
 
-    Wenn diese Maschine bereits einen Agent-Verlauf hat, zeige die letzten sieben Tage in der Vorschau an, importiere sie und warte auf den Abschluss der Übertragung. Überspringe diesen Schritt auf einer neuen Maschine.
+    Wenn diese Maschine bereits eine Agent-Historie hat, zeige die letzten sieben Tage in der Vorschau an und importiere sie, dann warte, bis die Übertragung abgeschlossen ist. Überspringe diesen Schritt auf einer neuen Maschine.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -61,41 +61,41 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
     failproofai flush --wait
     ```
 
-    Öffne **Sessions** in Failproof AI und wähle eine importierte Sitzung aus.
+    Öffne **Sessions** in Failproof AI und wähle eine importierte Session aus.
   </Step>
   <Step title="Failproof AI mit einem Harness verbinden">
-    Der vorherige Schritt hat bereits alle erkannten Agent-CLIs verbunden. Führe ihn für ein einzelnes Harness explizit erneut aus, wenn nötig, oder um ein nachträglich installiertes Harness hinzuzufügen. Alle 12 sind gültige `--cli`-Werte — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+    Der vorherige Schritt hat bereits jede erkannte Agent-CLI verdrahtet. Führe ihn für ein bestimmtes Harness explizit erneut aus, wenn nötig, oder um ein nachträglich installiertes Harness hinzuzufügen. Alle 12 sind gültige `--cli`-Werte – `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
     failproofai policies --install --cli claude --scope user     # eine Coding-CLI
     failproofai policies --install --cli hermes --scope user     # ein Slack/Telegram-Gateway
     ```
 
-    Das Blockieren eines Tool-Aufrufs vor seiner Ausführung ist auf allen 12 verifiziert. Turn-End-Gates sind auf 8 verifiziert — die harness-spezifische Matrix ist unter [Durchsetzungsfähigkeit](/de/reference/harnesses#enforcement-fähigkeiten) zu finden.
+    Das Blockieren eines Tool-Aufrufs vor seiner Ausführung ist bei allen 12 verifiziert. Turn-End-Gates sind bei 8 verifiziert – siehe [Enforcement-Fähigkeit](/de/reference/harnesses#enforcement-capability) für die Harness-spezifische Matrix.
   </Step>
-  <Step title="Durchsetzung konfigurieren">
-    Das Verbinden der Hooks aktiviert keine Richtlinie. Das Setup wählt bewusst keine aus – diese Entscheidung liegt bei dir – nimm daher ein Paket:
+  <Step title="Durchsetzung festlegen">
+    Das Verdrahten von Hooks aktiviert keine Policy. Die Einrichtung wählt bewusst keine aus – diese Entscheidung liegt bei dir – also hol dir ein Pack:
 
     ```bash
     failproofai policies add FailproofAI/policies
     ```
 
-    Das Paket wird von seinem GitHub-Release abgerufen, per Prüfsumme verifiziert und auf den exakt aufgelösten Tag festgelegt. Es enthält 38 Richtlinien und aktiviert die 10, die sein Manifest als sicher für den unbeaufsichtigten Betrieb markiert. Nutze sie, um lokale Richtlinienentscheidungen zu sehen und die Durchsetzung auszuprobieren, bevor Failproof AI deine Sitzungen auditiert und Richtlinien für deine Agenten erstellt.
+    Das Pack wird von seinem GitHub-Release abgerufen, per Prüfsumme verifiziert und auf den exakten aufgelösten Tag gepinnt. Es enthält 39 Policies und aktiviert die 10, die sein Manifest als sicher für den unbeaufsichtigten Betrieb markiert. Nutze sie, um lokale Policy-Entscheidungen zu sehen und die Durchsetzung auszuprobieren, bevor Failproof AI deine Sessions auditiert und Policies für deine Agents schreibt.
 
-    Lies ein Paket vor der Übernahme mit `failproofai policies show <owner>/<repo>`, und informiere dich unter [Richtlinienpakete](/de/policies/packs) darüber, wie du nur einen Teil davon übernimmst.
+    Lies ein Pack vor der Übernahme mit `failproofai policies show <owner>/<repo>` und siehe [Policy-Packs](/de/policies/packs) für die Übernahme nur eines Teils davon.
 
-    Bis dieser Schritt ausgeführt wird, ist das einzige aktive Element `block-failproofai-commands` – der immer aktive Schutz, der verhindert, dass ein Agent Failproof AI deaktiviert. `failproofai policies` listet auf, was aktiv ist.
+    Bis dieser Schritt ausgeführt wird, ist `block-failproofai-commands` das einzige aktive Enforcement – der immer aktive Schutz, der verhindert, dass ein Agent Failproof AI deaktiviert. `failproofai policies` listet auf, was aktiv ist.
   </Step>
-  <Step title="Verhalten auditieren">
-    Folge [Erste Fehlerprüfung ausführen](/de/start/first-audit). Verwende ein konkretes Ziel, zum Beispiel: „Sitzungen finden, in denen der Agent ein fehlgeschlagenes Tool ohne Änderung seines Ansatzes erneut versucht hat."
+  <Step title="Das Verhalten auditieren">
+    Folge [Führe deinen ersten Fehler-Check durch](/de/start/first-audit). Verwende ein konkretes Ziel, z. B. „Finde Sessions, in denen der Agent ein fehlgeschlagenes Tool wiederholt hat, ohne seinen Ansatz zu ändern."
   </Step>
-  <Step title="Fehler verhindern">
-    Folge [Ersten Fehler mit einer Richtlinie verhindern](/de/start/first-policy). Beginne im Beobachtungsmodus, überprüfe Treffer und setze dann die geprüfte Version durch.
+  <Step title="Den Fehler verhindern">
+    Folge [Verhindere deinen ersten Fehler mit einer Policy](/de/start/first-policy). Beginne im Beobachtungsmodus, prüfe die Treffer und setze dann die überprüfte Version durch.
   </Step>
 </Steps>
 
 <Check>
-  Führe `failproofai config --status` aus. Ein fehlerfreies Setup meldet die Cloud-Verbindung, den Daemon-Zustand und ob die Durchsetzung pausiert ist.
+  Führe `failproofai config --status` aus. Eine funktionierende Einrichtung meldet die Cloud-Verbindung, den Daemon-Status und ob die Durchsetzung pausiert ist.
 </Check>
   </Tab>
 </Tabs>

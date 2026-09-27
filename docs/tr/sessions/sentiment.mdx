@@ -1,45 +1,45 @@
 ---
 title: "Sentiment"
-description: "Ajanlarınızı kullanan kişilerin nasıl hissettiğini ve ajanlarınızın mesaj mesaj doğru yapıp yapmadığını görün."
+description: "Aracılarınızı kullanan insanların nasıl hissettiğini ve aracılarınızın doğru işlem yapıp yapmadığını, mesaj mesaj görün."
 icon: "smile"
 ---
 
-Sentiment, kişilerin ajanlarınıza gönderdikleri her mesajı 0 ile 100% arasında dört his için puanlandırır — **kızgın**, **sinirli**, **mutlu** ve **kafa karışık** — ve ajanın performansı hakkında üç sinyal:
+Sentiment, bir kişinin aracılarınıza gönderdiği her mesajı dört duygu için 0 ile %100 arasında puanlandırır — **öfkeli**, **sinirli**, **mutlu** ve **karıştırılmış** — ve aracının nasıl yaptığı hakkında üç sinyal:
 
-- **Düzeltme**: kişi ajanın bir şey yanlış yaptığını söyler.
-- **Çözüldü**: kişi ajanın sorunu çözdüğünü onaylar.
-- **Şüphe**: kişi ajanın cevabının doğru olup olmadığını veya işi gerçekten yapıp yapmadığını sorgulamaktadır.
+- **Düzeltme**: kişi aracının bir şeyler yanlış yaptığını söyler.
+- **Çözüldü**: kişi aracının sorunu çözdüğünü teyit eder.
+- **Şüpheli**: kişi aracının cevabının doğru olup olmadığını veya gerçekten çalışıp çalışmadığını sorgular.
 
-Sabrı tükenmeye başlayan konuşmaları, düzeltilmesi gereken ajanları ve başarılı yanıtları bulmak için kullanın.
+Bunu, insanların sabırlarını kaybettikleri konuşmaları, sürekli düzeltmen gereken aracıları ve iyi sonuç veren cevapları bulman için kullan.
 
 <Note>
-  Sentiment, bir yönetici tarafından organizasyon için açılıncaya kadar kapalıdır. Puanlama, organizasyonunuzun LLM bütçesini kullanır — mesaj başına bir puanlama isteği — ve her mesajı, öncesindeki ajan yanıtıyla birlikte puanlama modeline gönderir.
+  Sentiment, bir yönetici kuruluş için açıncaya kadar kapalıdır. Puanlama, kuruluşunuzun LLM bütçesini kullanır — mesaj başına bir puanlama isteği — ve her mesajı, öncesindeki ajan cevabıyla birlikte puanlama modeline gönderir.
 </Note>
 
-## Açın
+## Aç
 
-1. **Administration → Settings** bölümüne gidin.
-2. **Human input sentiment** altında **on** (açık) konumuna geçirin ve kaydedin.
+1. **Yönetim → Ayarlar**'a git.
+2. **İnsan girişi duyarlılığı** altında, **aç**'a basıp kaydet.
 
-Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar gelişinden bir veya iki dakika içinde puanlandırılır.
+Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar geliştikten sonra bir veya iki dakika içinde puanlandırılır.
 
 ## Hangi mesajlar puanlandırılır
 
 Yalnızca bir kişinin yazdığı mesajlar:
 
-- Özel ajanlarınızın SDK ile insan girdisi olarak kaydettikleri mesajlar.
-- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler (varsayılan olarak oturum transkriptleri gönderildiğinde). Zamanlanmış işler, enjekte edilen talimatlar, alt-ajan devirleri ve ajanın kendi çalışma zamanının yazdığı diğer metinler puanlandırılmaz. `claude -p`, `codex exec` ve `hermes -z` gibi etkileşimli olmayan çalıştırmalar da puanlandırılmaz: bir script bu istemleri yazmıştır, kişi değil.
+- Özel aracılarınızın SDK ile insan girişi olarak kaydettikleri mesajlar.
+- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler, oturum transkriptleri gönderildiğinde (varsayılan). Zamanlanmış işler, enjekte edilen talimatlar, alt-ajan devralmalar ve aracının kendi çalışma zamanının yazması gereken diğer metinler puanlandırılmaz. `claude -p`, `codex exec` ve `hermes -z` gibi etkileşimsiz çalıştırmalar da puanlandırılmaz: bir komut dosyası bu istekleri yazdı, bir kişi değil.
 
-Puanlama kişinin kendi sözlerini değerlendirir. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve bir soru sormak kafa karışıklığı olarak sayılmaz. Yeni bir istek düzeltme değildir ve yalnız başına teşekkürler çözüldü olarak sayılmaz.
+Puanlama, kişinin kendi sözcüklerini değerlendirir. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve soru sormak karıştırma olarak sayılmaz. Yeni bir istek düzeltme değildir ve kendi başlarına teşekkürler çözüldü olarak sayılmaz.
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Sentiment** bölümüne gidin.
-    2. Ortam, ajan veya oturum kimliğine göre filtreleyin.
-    3. Başlık, **işaretlenmiş** mesajları sayar — 100 üzerinden 35 veya daha yüksek herhangi bir negatif puan (kızgın, sinirli, düzeltme, kafa karışık veya şüphe) — ve en önemli sinyali adlandırır.
-    4. **Zaman içinde puan**, her puanın ortalamasını grafik haline getirir. Hangi puanları göstereceğinizi seçin ve bir mesajın arkasındaki mesajları okumak için bir noktaya tıklayın.
-    5. **Ajan başına** ajanları yan yana karşılaştırır.
-    6. **Mesajlar** işaretlenmiş mesajları en güçlü olandan başlayarak listeler. Tüm mesajlara geçin veya en yeniye veya herhangi bir puana göre sıralayın ve mesajın etrafındaki konuşmayı okumak için bir mesajın oturumunu açın.
+  <Tab title="Pano">
+    1. **Gözlemle → Sentiment**'e git.
+    2. Ortam, ajan veya oturum kimliğine göre filtrele.
+    3. Başlık, **işaretlenen** mesajları sayar — negatif puan (öfkeli, sinirli, düzeltme, karıştırılmış veya şüpheli) 100 üzerinden 35 veya daha yüksek — ve en üst sinyali adlandırır.
+    4. **Zaman içinde puan**, her puanın ortalamasını grafiklendiriyor. Gösterilecek puanları seç, bir noktaya tıkla ve arkasındaki mesajları oku.
+    5. **Ajan başına**, aracıları yan yana karşılaştırır.
+    6. **Mesajlar**, işaretlenen mesajları listeler, en güçlü ilk. Tüm mesajlara geç, ya da en yeniye veya herhangi bir tek puana göre sırala ve mesajın oturumunu aç, konuşmayı etrafıyla oku.
   </Tab>
   <Tab title="CLI">
     ```bash

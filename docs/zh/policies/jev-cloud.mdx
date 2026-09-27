@@ -1,0 +1,117 @@
+---
+title: "通过 FailproofAI Cloud 使用 Jev"
+description: "让 Jev 通过 FailproofAI Cloud 对您的 agent 工具调用进行判断，使用您组织的套餐，无需 TypeSafe 账户或自己的密钥。"
+icon: "cloud"
+---
+
+[Jev](/zh/policies/jev-byok) 是 TypeSafe 的分类器，它根据您的实际需求审查每一个工具调用，并在您的策略基础上给出判断，而非取而代之。通过 **FailproofAI Cloud**，已连接的机器可使用其现有连接密钥直接调用 Jev，无需 TypeSafe 账户、无需第二个密钥、无需配置任何端点。每次调用均从您组织的现有套餐额度中扣除。
+
+Jev 的所有行为与[自带密钥设置](/zh/policies/jev-byok)完全一致：强制策略始终有效，可审查策略的拒绝仅在 Jev 被明确询问该问题时才会被清除，任何失败都会回退到该调用的正则表达式结果。
+
+<Note>
+需要 **failproofai 1.0.8-beta.0** 或更高版本。1.0.7 不包含 Jev，尽管其版本号排在 1.0.7 beta 之后。未配置 Jev 时，行为不变：钩子将完全按照以往方式执行正则策略。
+</Note>
+
+## 开启 Jev
+
+1. **创建带有 Jev 权限的密钥。** 在 FailproofAI Cloud 控制台中，打开 **Keys → Create key**，选择 **machine** 预设。该预设授予机器所需的三项权限：`events:add`（发送活动）、`policies:pull`（接收策略）和 `jev:evaluate`（Jev，从您组织的套餐中计费）。密钥不能单独携带 `jev:evaluate`，必须同时具备其他两项权限。
+2. **使用该密钥连接机器：**
+
+   ```bash
+   failproofai config --token <key>
+   ```
+
+   如果您的组织运行的是自托管的 FailproofAI Cloud 而非托管版本，请添加其地址：`--url https://<your dashboard host>`（或导出 `FAILPROOFAI_CLOUD_URL`）。不指定地址时，密钥将对托管服务进行验证，连接会失败。如果该主机的证书来自私有 CA，请将 CA 安装到机器的系统信任存储中（例如使用 `update-ca-certificates`），而不仅仅是 `NODE_EXTRA_CA_CERTS`：发送事件和拉取策略的守护进程读取的是系统存储。请参阅[故障排查](/zh/reference/troubleshooting)。
+
+仅此而已。连接后会存储密钥，并且当机器**尚未**配置 Jev 时，会通过 FailproofAI Cloud 以**影子**模式开启 Jev：Jev 会对每个受管控的工具调用进行评估并记录结果，但实际执行的仍是您策略的结果。输出内容会说明这一点：
+
+```text
+  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (~/.failproofai/jev.json).
+```
+
+**使用 `--no-transcripts` 连接时，不会自动开启 Jev。** Jev 会将每个被检查的工具调用及最近的提示词发送到 FailproofAI Cloud，这超出了仅发送决策的连接所允许的范围。密钥仍会被存储，输出内容会说明 Jev 可用以及如何开启：
+
+```bash
+failproofai jev setup --provider failproofai
+```
+
+连接也不会关闭 Jev。如果机器的 `jev.json` 已通过 FailproofAI Cloud 运行 Jev，则保持不变，输出内容会说明 Jev 仍会发送每个被检查的工具调用和最近的提示词，以及使用 `failproofai jev setup --mode off` 可以关闭它。
+
+<Warning>
+连接**永远不会覆盖**已有的 `~/.failproofai/jev.json`。如果您已在使用自己的 Jev 端点，它将继续被使用，输出内容会说明该文件保持原有配置不变——当该文件将 Jev 设为关闭时（拒绝或已手动关闭），也会说明原因及修复方法。要将该机器切换到 FailproofAI Cloud，请运行 `failproofai jev setup --provider failproofai`。
+</Warning>
+
+## 影子模式、强制模式或关闭
+
+先以影子模式运行，在策略页面观察 Jev 的行为，再让其生效：
+
+```bash
+failproofai jev setup --mode enforce   # Jev 的判断生效：它可能清除可审查的拒绝并添加自己的判断
+failproofai jev setup --mode shadow    # Jev 被询问并记录；但实际执行的是您策略的结果
+failproofai jev setup --mode off       # 保留配置，停止询问 Jev
+```
+
+同样的开关也在本地控制台中：**Settings → Jev** 有开/关切换和影子/强制选项。它只会重写模式，其他不变。钩子在每次工具调用时都会读取配置，因此更改会从下一次调用起生效，无需重启。
+
+## 查看运行状态
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`status` 会显示提供者为 **FailproofAI Cloud**、机器连接的 Cloud 主机、当前模式，以及密钥来源为 **FailproofAI Cloud connection**，不会显示密钥本身。当 FailproofAI Cloud 的 `jev.json` 已配置但 Jev 无法运行时，会说明原因：
+
+| `status` 显示 | `status --json` | 含义 |
+| --- | --- | --- |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | 机器已连接，但未为其存储 Jev 密钥：密钥缺少 `jev:evaluate` 权限，或连接时无法确认该权限。请使用相同密钥重新运行 `failproofai config --token <key>`；如果密钥缺少该权限，请使用 **machine** 密钥。 |
+| **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | 此机器没有 FailproofAI Cloud 连接，Jev 密钥无处归属。 |
+
+执行 `failproofai config --disconnect` 后，FailproofAI Cloud 的 `jev.json` 将不复存在（除非已被切换为关闭状态，该状态会被保留），因此 `status` 将直接报告 Jev 为关闭。`status --json` 携带相同信息（`provider: "failproofai"`、`keySource: "cloud"`、`cloudConnected`、`keyCarriesJev`），即使配置缺失或被拒绝也一样。`permissions` 始终来自 `jev.json`；关于 `credentials.json` 的拒绝会额外添加 `credentialsPermissions`，以及 `fix`（当一条命令即可修复时）。`test` 发送一个实时请求，并报告其延迟和响应的 Jev 版本。当答案在钩子超时后才到达（钩子会记录 `timeout`）或对检查问题的回答有误时，命令会以退出码 1 结束，并在标题中说明原因。
+
+控制台的 **Settings → Jev** 面板也会显示 **FailproofAI Cloud connection**：机器所属的组织以及其密钥是否携带 Jev 权限。这些信息从机器自身的文件读取，无需网络请求。
+
+## 哪些内容会出现在策略页面
+
+机器已将钩子活动发送到 FailproofAI Cloud（`events:add`）。开启 Jev 后，每个受管控调用的记录还会包含：运行的评估器、Jev 的判断、清除了哪些策略、回退原因（如有）、延迟以及响应的模型——均为决策、代码和名称，不含命令或提示词内容。在您组织的**策略**页面上：
+
+- 由 Jev 自身判断决定的调用（强制模式）会归因于 **Jev**，如果决定性检查来自某个策略包，记录还会注明该包的名称和版本；
+- 在影子模式下，Jev 的拒绝或警告会以**假设情况**的形式显示，与您正在观察的推出情况并排展示；
+- Jev 已清除或在影子模式下本会清除的策略，会按策略分别计数。
+
+## Jev 无法响应时
+
+以下所有情况都会回退到该调用的策略结果，并记录原因：
+
+| 原因 | 起因 |
+| --- | --- |
+| `out-of-credits` | 您的组织已用完套餐额度。 |
+| `http-401`、`http-403` | 密钥已被撤销，或不携带 `jev:evaluate` 权限。请使用具有该权限的密钥重新连接。 |
+| `http-429` | FailproofAI Cloud 正在对您的组织进行 Jev 限速。在其要求的等待时间（`Retry-After`，最长 60 秒）结束之前，机器不会发送任何请求，每次调用都会立即回退。以此方式被阻止的调用会被记录为 `http-429`，或在机器自身限速先触发时记录为 `rate-limited`。 |
+| `http-429`（每日限额） | 您的组织已用完当日 Jev 调用次数：**每 UTC 日 10,000 次**，除非您的 FailproofAI Cloud 运营方设置了其他限额。每次调用都会回退，直到计数在 00:00 UTC 重置；机器最多每分钟询问一次，因此会在一分钟内感知到重置。`failproofai jev test` 会显示「Daily Jev limit for this org reached; resets at 00:00 UTC.」 |
+| `http-422` | Jev 拒绝了此次调用请求，通常是因为工具调用包含的密集文本（base64、十六进制、压缩代码）超过了 Jev 的 token 预算。该调用每次都会回退；这不是服务中断。 |
+| `http-502` | Jev 当前不可用。 |
+| `http-503` | 此 Cloud 无法为您的组织提供 Jev 服务：没有模型网关、组织尚未配置，或网关已宕机。请联系管理员；钩子最多每分钟重试一次。 |
+| `http-404` | 此 FailproofAI Cloud 尚不支持 Jev。 |
+| `timeout` | 在 `timeoutMs`（默认 3000）内未收到响应。 |
+| `model-mismatch` | 响应的 Jev 版本不是 1.13。 |
+
+## 密钥的存储位置及传输方式
+
+- 密钥存储在 `~/.failproofai/credentials.json`（权限 `0600`，位于仅限所有者访问的目录中），与其他 FailproofAI Cloud 凭据并列存放。此路由的 `jev.json` 不存储密钥；如果在其中写入密钥，配置将失效。
+- 如果 `credentials.json` 对除您以外的任何人（组或其他用户，读或写）具有**任何**权限，或其所在目录可被除您以外的任何人**写入**，则该文件将被**拒绝**而非读取，Jev 将保持关闭，直到您修复：对文件执行 `chmod 600`，对目录执行 `chmod 700`（或重新连接，这会以 `0600` 权限重写文件并将目录设为仅限所有者访问）。其他用户只能读取目录是允许的；可以写入则意味着他们可以替换文件。
+- 密钥仅在其所附带的连接存在于机器上时才有效：即同一文件中存在同一 FailproofAI Cloud 的策略或报告凭据，且使用**相同密钥**。没有对应连接的 Jev 密钥会被忽略，Jev 保持关闭。当旧版 failproofai 的 `config --disconnect` 将 Jev 密钥保留在原处时（旧版不知道需要删除它），或旧版 failproofai 的 `config --token` 使用了另一个密钥连接（在 FailproofAI Cloud 上该密钥可能属于另一个组织）时，就会出现这种情况。要重新开启 Jev，请使用 **machine** 密钥重新连接。
+- 密钥仅发送至验证它的 Cloud 来源。指向其他位置的 `jev.json` 会被拒绝。
+- **机器上的 agent 可以读取该密钥。** `credentials.json` 仅限所有者访问，而 agent 以该所有者身份运行。出于设计目的，读取 failproofai 自身文件是被允许的（仅修改操作被 `block-failproofai-commands` 阻止），因此 agent 与该文件之间唯一的障碍是 `block-read-outside-cwd`——一个*可审查*的策略——而从您的主目录启动的会话中，没有任何障碍。携带 `jev:evaluate` 权限的密钥会消耗您组织的 Jev 额度（直至每日上限），无论从何处使用，因此请将机器密钥像其他消费凭据一样对待：如果 agent 可能已读取该密钥，请在 Keys 页面禁用它，并使用新密钥重新连接。
+- 仅您的全局文件决定此行为。仓库无法开启 Cloud Jev、将其指向其他位置或提供密钥，`FAILPROOFAI_JEV_API_KEY` 对此路由无效。
+- 对于 Jev 评估的每次调用，都会向 FailproofAI Cloud 发送一个请求，携带[自带密钥页面](/zh/policies/jev-byok#what-leaves-the-machine)所列的内容（密钥已脱敏）。FailproofAI Cloud 将其转发给 TypeSafe，不会记录或保留。
+
+## 关闭 Jev
+
+| 命令 | 结果 |
+| --- | --- |
+| `failproofai jev setup --mode off` | 保留配置；不再询问 Jev。**这是持久有效的开关：** 再次连接永远不会覆盖已有的 `jev.json`，因此 Jev 保持关闭，直到您使用 `--mode shadow` 重新开启。 |
+| `failproofai jev remove` | 删除 `~/.failproofai/jev.json`；Jev 关闭——直到下次使用携带 `jev:evaluate` 权限密钥执行 `failproofai config --token`，届时找不到 `jev.json` 会再次以影子模式开启 Jev（除非使用 `--no-transcripts` 运行）。要保持关闭状态，请使用 `--mode off`。 |
+| `failproofai config --disconnect` | 断开机器连接：密钥被删除，当 `jev.json` 指向 FailproofAI Cloud 且未被切换为关闭时，`jev.json` 也会被删除。指向您自己端点的 `jev.json` 以及已切换为关闭的 `jev.json` 会被保留，因此再次连接时 Jev 仍保持关闭。 |
+
+从下一次工具调用起，钩子将完全按照以往方式执行正则策略。

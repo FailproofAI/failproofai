@@ -1,19 +1,19 @@
 ---
 title: "Sentimento"
-description: "Veja como as pessoas que usam seus agentes se sentem e se os agentes estão acertando, mensagem por mensagem."
+description: "Veja como as pessoas que usam seus agentes se sentem, e se seus agentes estão acertando, mensagem por mensagem."
 icon: "smile"
 ---
 
-O Sentimento pontua cada mensagem enviada por uma pessoa aos seus agentes, de 0 a 100%, para quatro emoções — **irritado**, **frustrado**, **feliz** e **confuso** — e três sinais sobre o desempenho do agente:
+O Sentimento pontua cada mensagem enviada por uma pessoa aos seus agentes, de 0 a 100%, em quatro emoções — **raiva**, **frustração**, **felicidade** e **confusão** — e três sinais sobre o desempenho do agente:
 
-- **Corrigindo**: a pessoa diz que o agente errou em algo.
+- **Corrigindo**: a pessoa diz que o agente errou algo.
 - **Resolvido**: a pessoa confirma que o agente resolveu o problema dela.
-- **Duvidoso**: a pessoa questiona se a resposta do agente é verdadeira ou se ele realmente fez o trabalho.
+- **Duvidoso**: a pessoa questiona se a resposta do agente é verdadeira, ou se ele realmente fez o trabalho.
 
-Use esse recurso para encontrar as conversas em que as pessoas estão perdendo a paciência, os agentes que precisam ser corrigidos com frequência e as respostas que funcionam bem.
+Use isso para encontrar as conversas em que as pessoas estão perdendo a paciência, os agentes que precisam ser corrigidos com frequência e as respostas que funcionam bem.
 
 <Note>
-  O Sentimento fica desativado até que um administrador o ative para a organização. A pontuação usa o orçamento de LLM da sua organização — uma solicitação de pontuação por mensagem — e envia cada mensagem, junto com a resposta do agente anterior, ao modelo de pontuação.
+  O Sentimento fica desativado até que um administrador o ative para a organização. A pontuação usa o orçamento de LLM da sua organização — uma requisição de pontuação por mensagem — e envia cada mensagem, junto com a resposta do agente anterior a ela, para o modelo de pontuação.
 </Note>
 
 ## Como ativar
@@ -28,18 +28,18 @@ As mensagens do último dia são pontuadas primeiro. Depois disso, as novas mens
 Apenas mensagens escritas por uma pessoa:
 
 - Mensagens que seus agentes personalizados registram como entrada humana com o SDK.
-- Prompts digitados no Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando as transcrições de sessão são enviadas (comportamento padrão). Tarefas agendadas, instruções injetadas, transferências para sub-agentes e outros textos escritos pelo próprio runtime do agente não são pontuados. Tampouco são pontuadas execuções não interativas como `claude -p`, `codex exec` e `hermes -z`: esses prompts foram escritos por um script, não por uma pessoa.
+- Prompts digitados no Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando transcrições de sessão são enviadas (o padrão). Jobs agendados, instruções injetadas, transferências entre sub-agentes e outros textos escritos pelo próprio runtime do agente não são pontuados. Também não são pontuadas execuções não interativas como `claude -p`, `codex exec` e `hermes -z`: esses prompts foram escritos por um script, não por uma pessoa.
 
-A pontuação avalia as próprias palavras da pessoa. Uma instrução curta e direta como "corrija isso" não é contabilizada como raiva, e fazer uma pergunta não é contabilizado como confusão. Um novo pedido não é uma correção, e um simples agradecimento por si só não conta como resolvido.
+A pontuação avalia as próprias palavras da pessoa. Uma instrução curta e direta como "conserte isso" não é contada como raiva, e fazer uma pergunta não é contado como confusão. Um novo pedido não é uma correção, e agradecimentos sozinhos não contam como resolvido.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Observe → Sentimento**.
     2. Filtre por ambiente, agente ou ID de sessão.
-    3. O cabeçalho conta as mensagens **sinalizadas** — qualquer pontuação negativa (irritado, frustrado, corrigindo, confuso ou duvidoso) igual ou superior a 35 de 100 — e indica o principal sinal.
-    4. **Pontuação ao longo do tempo** exibe um gráfico com a média de cada pontuação. Escolha quais pontuações exibir e clique em um ponto para ler as mensagens correspondentes.
+    3. O cabeçalho conta as mensagens **sinalizadas** — qualquer pontuação negativa (raiva, frustração, corrigindo, confusão ou duvidoso) de 35 ou mais de 100 — e exibe o principal sinal.
+    4. **Pontuação ao longo do tempo** exibe um gráfico com a média de cada pontuação. Escolha quais pontuações exibir e clique em um ponto para ler as mensagens por trás dele.
     5. **Por agente** compara os agentes lado a lado.
-    6. **Mensagens** lista as mensagens sinalizadas, da mais forte para a mais fraca. Alterne para ver todas as mensagens, ordene pelas mais recentes ou por qualquer pontuação individual, e abra a sessão de uma mensagem para ler a conversa ao redor dela.
+    6. **Mensagens** lista as mensagens sinalizadas, começando pelas mais intensas. Alterne para todas as mensagens, ou ordene pelas mais recentes ou por qualquer pontuação individual, e abra a sessão de uma mensagem para ler a conversa ao redor dela.
   </Tab>
   <Tab title="CLI">
     ```bash

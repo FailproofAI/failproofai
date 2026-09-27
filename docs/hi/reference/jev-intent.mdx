@@ -1,0 +1,112 @@
+---
+title: "Jev intent capture"
+description: "कौन से harness events Jev evaluator को बताते हैं कि human ने क्या माँगा है, कौन सा field text को ले जाता है, क्या कभी count नहीं होता है, और harness-delivered prompt पर भरोसा करने का जोखिम क्या है।"
+icon: "message-square-quote"
+---
+
+जब आप अपना स्वयं का Jev endpoint configure करते हैं, तो Jev evaluator प्रत्येक tool call को **जो human ने माँगा था** उसके विरुद्ध judge करता है, न कि harness ने agent के सामने जो भी text रखा हो। एक जवाब जैसे "yes, force-push it" एक **reviewable** policy को clear कर सकता है — जो evaluator का पूरा मतलब है, क्योंकि एक regex जो request को नहीं पढ़ सकता वह real work के एक तिहाई को block करता है।
+
+वह text एक ही जगह से आता है: **prompt जो harness खुद hook को अपने prompt-submit event पर देता है**। Failproof AI उसका हिस्सा record करता है जो human ने type किया — harness wrapping stripped, secrets redacted, capped — अपनी state directory के तहत एक `0600` file में। कोई भी disk पर नहीं देखा जाता: session transcript एक ऐसी file है जो agent एक command में rewrite कर सकता है, इसलिए इससे कभी नहीं पूछा जाता कि किसने एक prompt लिखा।
+
+## यह जोखिम जो स्वीकार करता है, स्पष्ट रूप से
+
+एक agent जो पहले से ही commands चला सकता है, एक harness को prompt submit करवा सकता है। `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` और `pi -p` सभी एक ही prompt-submit event को fire करते हैं, एक ही payload के साथ, एक person typing के रूप में, एक child session में जो वह agent नियंत्रित करता है। यह Failproof AI के अपने hook binary को भी चला सकता है और उसे एक payload feed कर सकता है जो इसने लिखा हो। Failproof AI के अंदर कुछ भी दोनों को real thing से अलग नहीं बता सकता — दोनों ही एक ही program हैं जो एक ही stdin को read कर रहे हैं।
+
+**इसलिए एक agent जिसके पास shell है वह अपनी खुद की consent forge कर सकता है।** यह एक intentional trade है, 2026-09-23 पर लिया गया, और यहाँ दोनों हिस्से हैं:
+
+- **यह क्या खरीदता है।** विकल्प build और measure किया गया था: एक field require करें जिसमें harness एक human को prompt के author के रूप में नाम दे, और अन्यथा कुछ भी record न करें। कोई भी shipping harness ऐसी field नहीं भेजता, इसलिए वह version **कुछ भी record नहीं करता था, हर harness पर** — Jev हर call को कोई stated intent के बिना judge करता था और कभी एक भी policy को clear नहीं कर सकता था। एक capture जो कभी fire नहीं होता वह एक safer product नहीं है, यह कोई product नहीं है।
+- **यह क्या नहीं कर सकता।** एक recorded prompt केवल एक policy को clear करता है जो पहले से ही **reviewable** marked है। एक **hard** policy कभी Jev कहे कुछ से clear नहीं होता, इसलिए एक forged prompt कभी एक hard deny को allow में नहीं बदल सकता — और hook को skip करना agent को कुछ नहीं देता: harness Failproof AI को tool call के लिए independently invoke करता है।
+- **यह क्या कर सकता है, full size पर।** सबसे बुरा यह है कि यह fifteen reviewable built-in policies में से एक को clear कर सकता है — और **उनमें से बारह block करते हैं**। `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` और six infrastructure-CLI blocks (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) denies हैं, इसलिए एक forged consent एक real deny को allow में बदल सकता है environment secrets print करने पर, `.env` file read करने पर, project के बाहर read करने पर, `rm -rf` पर, एक force-push पर, एक secrets file write करने पर, या live infrastructure change करने पर। केवल `warn-git-amend`, `warn-destructive-sql` और `warn-global-package-install` nudges हैं। एक default install दो of the twelve को चालू करता है, `protect-env-vars` और `block-env-files`; बाकी दस केवल एक machine पर पहुंचते हैं जहाँ किसी ने उन्हें enable किया हो। जो कोई भी prompt reach नहीं करता है वह सब कुछ hard है — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, वह guard जो एक agent को Failproof AI disable करने से रोकता है, और हर दूसरा built-in जो reviewable marked नहीं है। [Policy authority](/hi/policies/authority) सभी fifteen को list करता है और प्रत्येक को कौन review करता है।
+
+जो अभी भी refused है वह सब कुछ है जो check करने में सस्ता है और जो एक agent केवल पूछकर obtain नहीं कर सकता: एक turn जो harness का खुद का payload machine-submitted के रूप में mark करता है, एक payload जो एक sub-agent को नाम देता है, एक session id जो एक plain name नहीं है, एक event जो prompt-submit one नहीं है, और text जो केवल harness wrapping है — जिसमें Failproof AI के अपने stop-gate words भी शामिल हैं, जिन्हें कई harnesses next user turn के रूप में वापस feed करते हैं।
+
+## Per-harness table
+
+"Text field" stdin payload field है Failproof AI के per-harness normalization के बाद। "Recorded" कहता है कि prompt को human के request के रूप में रखा जाता है या नहीं।
+
+| Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | हाँ, जब तक कि payload का `source` एक turn को नाम न दे जो किसी ने submit नहीं किया (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`)। `user`, `sdk`, एक unknown value और एक build जो कोई `source` नहीं भेजता सभी recorded हैं | session transcript (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | हाँ | rollout JSONL (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | हाँ | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | हाँ, `<user_query>` wrapper के साथ peeled जब यह पूरा prompt है | agent transcript JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | हाँ — लेकिन current OpenCode उस event में कोई text नहीं ले जाता, इसलिए व्यावहारिक रूप से कुछ भी record नहीं होता; same message का एक repeat एक बार record होता है | none (sessions SQLite हैं) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | हाँ, जब तक कि `input_source` `extension` न हो — दूसरे extension का `sendUserMessage()`, जिसका text model-written या repo-derived हो सकता है | Pi session JSONL |
+| Hermes | `hermes` | none | — | नहीं — Hermes के पास कोई prompt-submit event नहीं है | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | हाँ, जब तक कि run metadata run को एक machine के रूप में न mark करे: एक `trigger` जो `user` नहीं है, एक `inputProvenance.kind` जो `external_user` नहीं है, या `senderIsOwner: false` | none (`before_agent_run` कोई transcript path नहीं ले जाता) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | हाँ | droid session JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | हाँ | none (sessions SQLite हैं) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | नहीं — `PreInvocation` एक turn में *हर* model call से पहले fire होता है और कोई prompt text नहीं ले जाता | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | हाँ | none (sessions SQLite हैं) |
+
+दो harnesses कुछ भी record नहीं करते, और दोनों cases में एक ही कारण के लिए: उनका event कोई human text नहीं deliver करता है। Hermes के पास कोई prompt-submit event नहीं है — इसका native plugin `pre_llm_call` को खुद handle करता है और केवल tool, session और subagent events को forward करता है। Antigravity का `PreInvocation` एक human turn पर और उसके बाद के पाँच पर हर model call से पहले fire होता है, और कोई prompt field नहीं ले जाता; hooks भी same conversation में `userMessage` steps inject कर सकते हैं। किसी भी event में record करने के लिए कुछ नहीं है।
+
+## क्या एक prompt को human का बनाता है
+
+1. **Event।** Failproof AI को harness के prompt-submit event के लिए invoke किया गया था, जिसे handler `UserPromptSubmit` में canonicalize करता है।
+2. **Payload।** Harness इसे hook के stdin पर लिखता है, और यह ऊपर नाम दिए गए field में text ले जाता है। एक call जो Failproof AI तक बिना payload के पहुंचता है कुछ भी record नहीं करता।
+3. **Payload में कुछ भी turn को बाहर नहीं करता।** एक payload जो एक sub-agent को नाम देता है (`agent_id`) agent अपने आप को prompt कर रहा है। एक `source`, `input_source` या OpenClaw run marker जो एक machine-submitted turn को नाम देता है refused है। एक **absent** marker कुछ भी बाहर नहीं करता — यह version से फर्क है जो कुछ भी record नहीं करता था, क्योंकि यहाँ हर marker हर shipping build पर absent है।
+4. **Wrapping stripped होने के बाद कुछ बचा हो** (नीचे देखें)।
+
+**Session transcript किसका proof नहीं है कि एक prompt को किसने लिखा।** इस page के पहले के versions ने एक transcript cross-check describe किया था: prompt refuse था अगर transcript दिखाता था कि model ने इसे schedule किया, और transcript को वह continue करना था जो पिछले prompt ने देखा। वह check चला गया है। एक transcript एक file है जो agent के पास पहले से ही shell है — इसे truncate, replace, read budget के past pad, एक turn की शुरुआत में snapshot और end में restore किया जा सकता है, या agent ने लिखी entries के साथ फिर से अच्छा लगने दिया जा सकता है। hardening के हर round के बाद एक ही forgery का एक और spelling आया, इसलिए पूरा mechanism repair करने की बजाय remove किया गया।
+
+Transcript अभी भी एक चीज के लिए read होता है: **agent का last visible message**। वह message agent-written है definition के द्वारा, Jev को यह बताया जाता है, और यह अपने आप में कभी consent नहीं है।
+
+## क्या एक prompt से रखा जाता है
+
+Harnesses एक prompt में human के words से ज्यादा रखते हैं। कुछ भी store होने से पहले:
+
+- `<system-reminder>` blocks remove किए जाते हैं, और उनके चारों ओर human के words रखे जाते हैं।
+- एक session-continuation summary ("This session is being continued from a previous conversation…") पूरी तरह drop किया जाता है।
+- Task notifications, local-command output और interruption markers पूरी तरह drop किए जाते हैं।
+- एक turn जो दूसरे agent या session ने लिखा पूरी तरह drop किया जाता है: Claude Code उन्हें `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` या `<channel source=…>` में wrap करता है।
+- Failproof AI के अपने messages पूरी तरह drop किए जाते हैं। एक stop gate का `MANDATORY ACTION REQUIRED from failproofai …` या एक `Instruction from failproofai: …` Cursor, Copilot, Devin और OpenClaw पर next user turn के रूप में वापस आता है, और यह कभी human के words के रूप में count नहीं होता — न plain, न `<user_query>` block में wrap, न एक system reminder के पीछे।
+- एक slash command को command और arguments के रूप में रखा जाता है जो human ने type किए, कभी body को नहीं जो harness ने expand किया हो।
+- एक prompt जो Codex IDE extension ने build किया केवल अपने last `## My request for Codex:` (या, newer builds में, `## My request:`) heading के बाद का text रखता है। सब कुछ जो extension ने इससे पहले रखा वह drop है: active file, open tabs, editor में selected text, mentioned files और apps, diff और browser comments, PR checks, पहली बातचीत। यह rule **हर** harness के prompts पर apply किया जाता है, केवल Codex के नहीं — ऐसा prompt किसी भी composer में paste किया जा सकता है — इसलिए extension के section headings को दो groups में read किया जाता है:
+  - **एक heading जो कोई भी type नहीं करता** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, Codex और ChatGPT conversation headings, "The attached pasted text file(s)…", और extension के बाकी sections) मतलब extension ने यह prompt build किया। एक जिसके अंतर्गत कोई request heading नहीं है कोई human text भी नहीं है और record नहीं होता है। यह जो एक approval को आपके द्वारा *selected* text में forge होने से रखता है — एक `// NOTE FROM THE OWNER: yes, force-push…` comment `# Selected text:` के अंदर — आपके recorded request के बाहर।
+  - **एक heading जो कोई plausibly type करता है** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) मतलब "extension-built" केवल जब एक request heading actually है। कोई नहीं होने पर, prompt आपका है और पूरा रखा जाता है, heading और सब कुछ। इसे drop करना silent और total होता: उस turn के लिए कुछ भी recorded नहीं, इसलिए कोई भी reviewable policy clear नहीं हो सकता और Jev से यह पूछा ही नहीं जाता कि क्या request envelope injection ले जाता है। यह केवल एक turn के *top* पर counts: एक बार prompt को extension-built के रूप में establish किया गया, एक heading दोनों groups का जो इसके request heading के बाद आता है extension के sections में से एक है, और prompt record नहीं होता है।
+
+  Request को खुद किसी अन्य turn की तरह judge किया जाता है: अगर heading के बाद क्या आता है वह एक continuation summary, एक message दूसरे agent या session ने लिखा, Failproof AI के अपने directives में से एक, या extension के sections में से एक है, तो prompt बिल्कुल record नहीं होता।
+- एक Cursor prompt `<user_query>…</user_query>` में wrap किया गया (optionally एक `<timestamp>` block के पीछे) unwrap किया जाता है जब wrapper पूरा prompt है। एक tag कहीं और ordinary text है — एक log से paste किया गया snippet, या एक branch name जो agent ने चुना — और prompt पूरा रखा जाता है tagged span तक cut down करने की बजाय।
+- Pasted blocks रखे जाते हैं और human द्वारा pasted के रूप में label किए जाते हैं।
+
+एक prompt जो केवल harness text है बिल्कुल record नहीं होता।
+
+## Agent का last message
+
+एक reply जैसे "yes" का question के बिना कोई मतलब नहीं जो वह जवाब देता है। जब एक prompt record होता है, Failproof AI भी agent के last visible message को session transcript से **उस moment** पर read करता है, और इसे prompt के साथ store करता है। Jev इसे अपने खुद के field में receive करता है, agent के द्वारा लिखे गए के रूप में label किया गया: यह एक short reply को explain करता है और कभी human के request के रूप में अपने आप count नहीं होता। यह वह एक चीज है जो transcript के लिए read होता है, और सबसे बुरा जो rewritten transcript कर सकता है वह एक message जो agent ने लिखा है जहाँ एक message जो agent ने लिखा है की जगह रखना है।
+
+यह transcript के end से read होता है, सबसे अधिक अंतिम 4 MB। समर्थित transcript formats Claude Code, Codex rollouts (पुराने `agent_message` events और नए `AgentMessage` items), Cursor, Copilot `events.jsonl`, और Pi, Factory और OpenClaw session JSONL हैं। Claude Code के अपने synthetic और API-error messages और subagent (sidechain) messages skip किए जाते हैं। Goose और OpenCode के लिए कोई snapshot नहीं है, जो sessions को SQLite में रखते हैं, Devin के लिए, जिसका transcript एक single JSON document है, या OpenClaw के लिए, जिसका `before_agent_run` event कोई transcript path नहीं ले जाता।
+
+## Storage
+
+| Property | Value |
+| --- | --- |
+| Location | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Permissions | file `0600`, directory `0700`। इसके ऊपर हर directory, `~/.failproofai` तक, उसी rule को hold किया जाता है `jev.json` का directory है: एक जो कोई भी **write** कर सकता है rename किया जा सकता है और replace किया जा सकता है, इसलिए read path जहाँ यह कर सकता है उन write bits को हटाता है, और **कुछ भी नहीं** read करता है जहाँ यह नहीं कर सकता। एक recorded prompt तब absent होता है बजाय forged के, और कुछ भी clear नहीं होता |
+| Kept per session | अंतिम 5 prompts; एक prompt जो इससे पहले के समान है इसे replace करता है बजाय एक new slot लेने के |
+| Window | 6 घंटे से पुराने prompts ignore किए जाते हैं |
+| Size | प्रत्येक prompt और agent message 6,000 characters पर capped, head और tail रखते हुए |
+| Secrets | same patterns के साथ redacted जैसे `sanitize-*` policies कुछ भी write होने से पहले। 48,000 characters से लंबा text अपने first 28,800 और last 19,200 characters के रूप में redacted है, और text उन cuts के बगल में, जहाँ एक secret को split किया जा सकता था, कभी store नहीं होता |
+
+एक session ID जिसमें letters, digits, `.`, `_` और `-` के अलावा कुछ भी है, या 128 characters से लंबा है, कभी file name के रूप में use नहीं किया जाता, इसलिए इसके लिए कुछ भी record नहीं होता।
+
+एक session file केवल एक बार exist करती है जब इसमें एक prompt record किया गया हो। यह prompts और कुछ भी नहीं रखती है — कोई origin state नहीं, कोई transcript mark नहीं — और यह delete कर दी जाती है जब यह six-hour window से अधिक समय silent रही हो, अगली बार एक new session अपना पहला prompt लिखे।
+
+कोई भी चीज़ record नहीं होती जब तक Jev endpoint configured न हो।
+
+### Project root
+
+"Project के अंदर" — जो `read-outside-workspace` और अन्य path checks judge करते हैं — मतलब project के अंदर जो session में था अपने **first reviewed call** पर। Root तब pin किया जाता है और बाद में `cd` इसे कभी move नहीं करता; एक `cd` अभी भी बदलता है कि एक relative path कैसे resolve होता है। इसे `cd` के बाद follow करने देना एक call में `cd ~/.ssh` को अगले के लिए `~/.ssh` को project बनाने देगा।
+
+Pin `~/.failproofai/state/semantic/roots/<session-id>.json` है, `{root, at}` को hold करते हुए: file `0600`, directory `0700`, और ऊपर जैसा ही session-ID rule। 7 दिन से पुरानी files delete होती हैं जब एक new session अपना root pin करे। एक `roots` directory जो दूसरे users write कर सकते हैं ignore किया जाता है, और live directory का root use किया जाता है। एक session को re-pin करने के लिए, इसकी file delete करें।
+
+## ज्ञात सीमाएँ
+
+- **एक prompt केवल hook invocation जितना trustworthy है।** यहाँ सब कुछ payload को read करता है जो harness ने hook के stdin पर लिखा। एक agent जो commands चला सकता है harness को headlessly चला सकता है (`claude -p` और ऊपर listed सात अन्य) या Failproof AI के hook binary को खुद run कर सकता है एक payload के साथ जो इसने लिखा, और एक prompt record कर सकता है जो किसी ने type नहीं किया। यह accepted trade है जो इस page के top पर describe किया गया है: यह केवल reviewable policies को clear करता है, कभी एक hard को नहीं — लेकिन fifteen reviewable built-ins में से बारह denies हैं, इसलिए एक forged prompt एक real block को उन बारह पर allow में बदल सकता है।
+- **Sub-agent detection Claude-shaped है।** एक payload जो `agent_id` carry करता है कभी record नहीं होता, किसी भी harness पर। वह field है जो Claude Code, Factory Droid और Devin use करते। Codex अपने prompt event को sub-agent threads के अंदर fire करता है, Copilot in-process sidekicks run करता है, Goose के पास एक `delegate` tool है और OpenClaw personas run करता है — जिनमें से कोई भी payload को एक ऐसे तरीके से mark नहीं करता जो यह recognise करता है, इसलिए उन harnesses पर एक sub-agent prompt session के खुद के रूप में record होता है। OpenClaw का `openclaw.agentId` **वह** mark नहीं है: shipped plugin इसे हर run पर set करता है, owner का included।
+- **Schedulers जो कोई marker carry नहीं करते।** Claude Code का `schedule_wakeup` और `loop_wakeup`, और OpenClaw का `cron` और `heartbeat` triggers, refuse हैं क्योंकि वे harnesses payload में ऐसा कहते हैं। Goose का खुद का scheduler (`goose schedule add`) और Codex का `codex exec` कुछ नहीं कहते, इसलिए एक run जो वे start करते उसे किसी अन्य की तरह record किया जाता है।
+- **एक agent का last message एक message हो सकता है जो agent ने चुना।** Transcript authenticated नहीं है, इसलिए एक agent जो अपना खुद का transcript लिखता है अपना "last message" decide कर सकता है कि क्या कहे। यह agent-written के रूप में label किया जाता है और अपने आप में कुछ भी clear नहीं करता — लेकिन note करें कि `decide.ts` का v1 path इसे deterministic "did the user name this target" check को satisfy करने देता है, इसलिए एक agent जो अपने transcript को control करता है एक target name supply कर सकता है जो एक override needs को।
+- **एक prompt जो extension के machine headings में से एक के साथ खुलता है whole drop किया जाता है।** एक prompt को `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` या ऊपर first group से दूसरी section heading के साथ शुरू करें, और कभी एक `## My request:` heading न लिखें, और उस turn के लिए कुछ भी record नहीं होता — तो इसके लिए कुछ भी clear नहीं होता। यह deliberate है: वे sections text ले जाते हैं जो कोई और controls करता है (code जो आप selected, एक reviewer की diff comment, एक page title), और उसे अपने words के रूप में record करना बदतर failure है। Headings जो एक developer plausibly type करता है दूसरे group में हैं और कभी अपने आप से एक prompt को drop नहीं करते।
+- **OpenCode व्यावहारिक रूप से कुछ भी record नहीं करता।** इसका `message.updated` event current OpenCode में कोई text नहीं ले जाता, और यह भी fire करता है child sessions के लिए जो इसका task tool create करता है, जिसका "user" message parent agent ने लिखा।
+- **`CODEX_HOME` को honour नहीं किया जाता** `lib/codex-sessions.ts` में rollout discovery के द्वारा। यह केवल प्रभावित करता है जहाँ एक agent-message snapshot को look किया जाता है, कभी नहीं कि क्या एक prompt record किया जाता है।

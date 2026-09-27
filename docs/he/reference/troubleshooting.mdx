@@ -1,16 +1,16 @@
 ---
 title: "פתרון בעיות"
-description: "אבחון של שסיונות חסרים, מדיניות חסרה, משלוח שנכשל, וזמימויות סוכן חסומות."
+description: "אבחן חיבורים חסרים, מדיניות חסרה, כשל בהעברה וחסימת פעולות סוכן."
 icon: "wrench"
 ---
 
 <AccordionGroup>
-  <Accordion title="אין שסיונות בענן">
+  <Accordion title="אין חיבורים בחלון Cloud">
     <Tabs>
       <Tab title="Dashboard">
-        פתח את **Administration → Keys** ובדוק שמפתח המכונה פעיל ויש לו `events:add`. לאחר מכן פתח את **Observe → Events**, הרחב את טווח הזמן, ומחק את המסננים של סביבה וסוכן. אם קיימים אירועים, חפש את מזהה השסיון ובדוק את **Observe → Sessions** לקבוצה. אם אין אירועים, אבחן את ה-Failproof daemon מה-CLI.
+        פתח את **Administration → Keys** וודא שמפתח המכונה פעיל ויש לו `events:add`. לאחר מכן פתח את **Observe → Events**, הרחב את טווח הזמן, וצא משימוש בסינוני סביבה וסוכן. אם קיימים אירועים, חפש את מזהה החיבור ואז בדוק **Observe → Sessions** לקבוצה. אם אין אירועים, אבחן את ה-daemon של Failproof מה-CLI.
 
-        ![זרם האירועים החי עם המסננים העיקריים שלו גלויים ואירועי סוכן עדכניים מגיעים.](/images/dashboard/events-stream-current.png)
+        ![הזרם Events חי עם סינוני ראשיים גלויים ואירועי סוכן עדכניים שמגיעים.](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +21,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        בדוק שהתיעוד מופעל, שמפתח מוגדר כולל `events:add`, ומסנן הדוד תואם את הסביבה הנפלטת.
+        אשר שלכידה מופעלת, למפתח שהוגדר יש `events:add`, ומסנן הלוח תואם את הסביבה הנפלטת.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="אירועי Python SDK נשארים בדיסק">
     <Tabs>
       <Tab title="Dashboard">
-        מחק מסננים ב- **Observe → Events** וחפש את מזהה השסיון של SDK המדויק. אם כלום לא מופיע, בדוק את הספול של SDK ו-Failproof daemon במכונת המקור.
+        נקה סינוני ב-**Observe → Events** וחפש את מזהה חיבור ה-SDK המדויק. אם כלום לא מופיע, בדוק את ה-spool של ה-SDK ו-daemon של Failproof במכונת המקור.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +36,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        בדוק שdaemon פועל ומחובר — ה-SDK מעמעם בין אם כן ובין אם לא. תיקיית הספול **לא** צריכה להיות קיימת מראש (הכותב יוצר אותה), ואף משתנה סביבה לא בוחר בה: `$FAILPROOFAI_HOME/custom-agents`, אחרת `~/.failproofai/custom-agents`, היא השורש היחיד, ו-`configure(base_dir=...)` היא הדרך היחידה לחזור עליה. אם התהליך הוקטל ב-`SIGKILL` או נהרג על ידי OOM, כל מה שעדיין היה בתור אבד — טיפל ב-`SIGTERM` כדי להגביל זאת.
+        אשר שה-daemon פועל ומחובר — ה-SDK עושה sooling בין אם יש או לא. ספריית ה-spool **לא** צריכה להיות קיימת מראש (הכותב יוצר אותה), ושום משתנה סביבה לא בוחר בה: `$FAILPROOFAI_HOME/custom-agents`, אחרת `~/.failproofai/custom-agents`, הוא השורש היחיד, ו-`configure(base_dir=...)` הוא ההחלפה היחידה. אם התהליך היה `SIGKILL`ed או נהרג ממחסור זיכרון, כל מה שהיה עדיין בתור אבד — טפל ב-`SIGTERM` כדי להגביל זאת.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="המכונה לא מקבלת מדיניות">
     <Tabs>
       <Tab title="Dashboard">
-        פתח את **Admin → enforcement**, בחר את המכונה, והשווה בין הגרסאות שלה שהוקצו, דווח עליהן, וגרסאות קודמות. בדוק שהיקף הפריסה כולל את המכונה וולמפתח שלה יש `policies:pull`. Ingest יכול לעבוד גם כאשר משלוח מדיניות לא עובד.
+        פתח את **Admin → enforcement**, בחר את המכונה, והשווה את הגרסאות שהוקצו לה, המדווחות והקודמות. אשר שטווח הגיוס כולל את המכונה ויש למפתח שלה `policies:pull`. ספיגה יכולה לעבוד גם כאשר העברת מדיניות לא.
 
       </Tab>
       <Tab title="CLI">
@@ -53,14 +53,38 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        בדוק שמזהה המכונה והתווית תואמים את היעד של הדוד. התחבר מחדש עם מפתח המסוגל למדיניות אם בעדכון הנוכחי יש רק הנתון רק תשדור.
+        אשר שמזהה המכונה והתווית תואמים את היעד בלוח. התחבר מחדש עם מפתח המסוגל למדיניות אם הפרטי הקיים מעניק רק ספיגת אירועים.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="פעולה נדחית מכיוון שה-daemon לא זמין">
+  <Accordion title="Cloud המתארח בעצמו עם רשות אישור פרטית לא מקבל אירועים או מדיניות">
     <Tabs>
       <Tab title="Dashboard">
-        פתח את **Admin → enforcement** ובדוק את זמן הנראות האחרון של המכונה וגרסה דווחה. אם המכונה ישנה, התייחס לזה כבעיה daemon מקומית. אל תחליש את המדיניות המופרסת רק כדי לעקוף daemon לא זמין.
+        המכונה התחברה והקישורים שלה פועלים, אך **Observe → Events** נשאר ריק ו-**Admin → enforcement** לא מראה את הגיוס שלה כמיושם. ה-CLI ו-daemon של Failproof סומכים על אישורים בצורה שונה. ה-CLI פועל ב-Node ומכבד `NODE_EXTRA_CA_CERTS`. `failproofaid`, שמעביר אירועים ומשיך מדיניות, סומך על אישורים המעוטפים איתו בתוספת ה-trust store של מערכת ההפעלה, ותופס `NODE_EXTRA_CA_CERTS`. התקן את ה-CA שלך ב-store של המערכת במכונה.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        # Debian / Ubuntu
+        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+        sudo update-ca-certificates
+        # RHEL / Fedora
+        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
+        # macOS
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
+
+        # לאחר מכן הפעל מחדש את ה-daemon, שטוען אישורים מהימנים בהפעלה
+        sudo systemctl restart failproofaid@$USER                           # Linux
+        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
+        ```
+
+        יומן ה-daemon מציין את הסיבה: `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer` ב-Linux. `SSL_CERT_FILE` או `SSL_CERT_DIR` בסביבת השירות מחליפים את ה-store של המערכת עבור ה-daemon, והאישורים המעוטפים עדיין חלים. אצווות שנכשלו בזמן שה-CA לא היה מהימן נשמרות ב-`~/.failproofai/state/failed` וחוזרות לבדיקה באופן אוטומטי, בערך כל שעה וכאשר ה-daemon מופעל מחדש.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="פעולה נחסמת כיוון שה-daemon אינו זמין">
+    <Tabs>
+      <Tab title="Dashboard">
+        פתח את **Admin → enforcement** ובדוק את זמן הראייה האחרון של המכונה וגרסת הדוח. אם המכונה ישנה, התחיל בבעיית daemon מקומית. אל תחליש את המדיניות הגרוסה רק כדי לעקוף daemon שאינו זמין.
 
       </Tab>
       <Tab title="CLI">
@@ -71,18 +95,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        הפעל מחדש או עדכן את `failproofaid`; הפעל קונפיגורציה מחדש כאשר גרסאות פרוטוקול CLI ו-daemon שונות. נתיב ה-daemon המוגדר נכשל בעיצוב סגור.
+        הפעל מחדש או עדכן את `failproofaid`; הצע קונפיגורציה מחדש כאשר גרסאות פרוטוקול CLI ו-daemon שונות. נתיב ה-daemon המוגדר נכשל בתכנון בצורה סגורה.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="מדיניות מותאמת אישית לא נטענת">
+  <Accordion title="מדיניות מותאמת אישית לא טוענת">
     <Tabs>
       <Tab title="Dashboard">
-        עבור מדיניות שנכתבה בענן, פתח את **Admin → policy editor**, בחר את הטיוטה, וסקור שגיאות אימות לפני פרסום. עבור מדיניות מקומית, השתמש ב-CLI כדי לאמת אותה, לאחר מכן פתח את **Observe → policy** לאחר פעולת בדיקה כדי לאשר שהחלטות מגיעות.
+        עבור מדיניות שנוצרה בענן, פתח את **Admin → policy editor**, בחר את הטיוטה, וסקור שגיאות אימות לפני פרסום. עבור מדיניות מקומית, השתמש ב-CLI כדי לאמת אותה, ואז פתח את **Observe → policy** לאחר פעולת בדיקה כדי לאשר שהחלטות מגיעות.
 
       </Tab>
       <Tab title="CLI">
-        בדוק שהשם של הקובץ מסתיים ב-`policies.js`, `policies.mjs`, או `policies.ts`, המודול קורא ל-`customPolicies.add(...)`, ויבוא משקר מהקובץ מדיניות.
+        אשר שהשם הקובץ מסתיים ב-`policies.js`, `policies.mjs`, או `policies.ts`, המודול קורא `customPolicies.add(...)`, וייבואים מתפזרים מקובץ המדיניות.
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -91,14 +115,14 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="ביקורת מחזירה אפס ממצאים">
+  <Accordion title="ביקורת אחזרת לא תוצאות">
     <Tabs>
       <Tab title="Dashboard">
-        פתח את **Analyze → audits**, בחר את ההרץ, ובדוק אם ניתוח מודל רץ. לאחר מכן השווה את ההיקף והחלון שלו עם **Observe → sessions** ופתח עקבות מייצגים מאותה אוכלוסייה.
+        פתח את **Analyze → audits**, בחר את ההרצה, ובדוק אם ניתוח מודל רץ. לאחר מכן השווה את ההיקף והחלון שלה עם **Observe → sessions** ופתח עקבות מייצגים מאותה אוכלוסייה.
 
-        תוצאה אפס משמעותית רק כאשר הניתוח רץ בהצלחה. אם ניתוח דולג או נכשל, ההרץ לא מייצר ממצאים ושומר את החלון שלא בדוק פתוח להרץ מוצלח בעתיד. אם ניתוח מודל מנוטרל, הביקורת גם לא מייצרת ממצאים כי הסריקה הדטרמיניסטית של נושא ההוכחה וזהות אישית מתעדת סטטיסטיקה אך לא עוד מעלה ממצאים.
+        תוצאה של אפס משמעותית רק כאשר ניתוח רץ בהצלחה. אם ניתוח דולג או נכשל, ההרצה לא מייצרת ממצאים ושמרה על החלון שלא נותח לעתיד הרצה מוצלחת. אם ניתוח מודל מנוטרל, ביקורת גם כן לא מייצרת ממצאים כיוון שסריקת PII והעדויות מעוררות נתונים אך כבר לא מעוררות ממצאים.
 
-        ![טופס הביקורת בו הסביבה, סוכן, קדנציה, ויחלון ניקוז מגדירים את אוכלוסיית השסיון.](/images/dashboard/audit-new.png)
+        ![טופס ביקורת כאשר סביבה, סוכן, קדנץ וחלון סחיפה מגדירים אוכלוסיית חיבורים.](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -110,31 +134,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        אם ההרץ נשאר בתור, חכה לקיבולת של audit-agent או בקש מפעיל הפריסה לבדוק את צי הביקורת. ביקורת בתור חוזרת על הניסיון; היא לא מדולגת מיד.
+        אם ההרצה נשארה בתור, חכה ליכולת audit-agent או בקש מאופרטור הגיוס בדוק את צי הביקורת. ביקורת בתור חוזרת; היא לא מדולגת מיד.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="הערכות מקוונות לא רצות באופן אוטומטי">
     <Tabs>
       <Tab title="Dashboard">
-        פתח שסיון שהושלם ובדוק אם הערכה ידנית מצליחה. ענן בהנחיית Cloud אין בקרה של נקודת קצה של מעריך בדוד; על המפעיל של השרת להגדיר זאת.
+        פתח חיבור שהושלם ובדוק אם הערכה ידנית מצליחה. Cloud המתארח כרגע אין שליטה בנקודת קצה של מעריך בלוח; אופרטור השרת חייב להגדיר זאת.
       </Tab>
       <Tab title="CLI">
-        אמת את המעריך עצמו, לאחר מכן בדוק מצבי הערכה עדכניים:
+        וודא את ה-evaluator עצמו, ואז בדוק מצבי הערכה עדכניים:
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        על ענן Cloud בעצמי, בדוק ש-`EVALUATOR_ENDPOINT` קיים בשרת ו-`EVALUATOR_TOKEN` מתאים למעריך. הערכה אוטומטית מנוטרלת כאשר נקודת הקצה חסרה.
+        ב-Cloud המתארח בעצמו, אשר `EVALUATOR_ENDPOINT` קיים בשרת ו-`EVALUATOR_TOKEN` תואם את ה-evaluator. הערכה אוטומטית מנוטרלת כאשר נקודת הקצה חסרה.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="אימות Cloud CLI של CLI תופס את הארגון ההשגוי">
+  <Accordion title="אימות CLI בענן מכוון לארגון הלא נכון">
     <Tabs>
       <Tab title="Dashboard">
-        השתמש במתג הארגון והנחה את הצלם הצפוי וההרשאות לפני השוואת תוצאות עם CLI.
+        השתמש במתג הארגון וודא את ה-slug והרשאות הצפויות לפני השוואת התוצאות עם ה-CLI.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -143,18 +167,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        במצב מפתח API, ציין `fp --org <slug> --api-key <key> ...` או הגדר `AGENTEYE_ORG`. מצב הארגון של שסיון אדם שנשמר בכוונה מתעלם לבקשות מפתח API.
+        במצב מפתח-API, ציין `fp --org <slug> --api-key <key> ...` או קבע `AGENTEYE_ORG`. מצב ארגון חיבור אנושי שמור בכוונה מתעלם לבקשות מפתח-API.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="מדיניות חוסמת עבודה תקפה">
     <Tabs>
       <Tab title="Dashboard">
-        פתח את **Observe → policy**, שמור את ההחלטה והשסיון המקושר, וזהה את מצב חיובי שקר. לאחר מכן פתח את **Admin → enforcement** והחזר את המכונות המושפעות לגרסה הקודמת. צור גרסה יותר צרה ב- **Policy editor**, בדוק אותה על היקף קטן, והרחב רק לאחר שעבודה תקפה מצליחה.
+        פתח את **Observe → policy**, שמר את ההחלטה וחיבור מקושר, וזהה את מצב החיוב השקר. לאחר מכן פתח את **Admin → enforcement** וגלגל חזרה את המכונות שהשפעו לגרסה הקודמת. צור גרסה צרה יותר ב-**Policy editor**, בדוק אותה בהיקף קטן, והרחב רק לאחר הצלחת עבודה תקפה.
 
       </Tab>
       <Tab title="CLI">
-        שחרור פריסה בענן הוא רק דוד. השהיית שסיון מקומית לא מנטרלת מדיניות מנוהלת בענן. אם הדוד אינו זמין, תפוס את מצב המכונה ופריסה והחזר גישה לדוד במקום לנסות שוב בשינויים הפעולה החסומה.
+        גלגול חזרה של גיוס Cloud הוא dash-board-only. השהיית חיבור מקומית אינה משבית מדיניות שנוהלת בענן. אם הלוח אינו זמין, לכוד את מכונה וגיוס למדינה והשב גישת לוח במקום ניסיון חוזר חוזר לפעולה חסומה.
 
         ```bash
         failproofai config --status
@@ -164,4 +188,4 @@ icon: "wrench"
   </Accordion>
 </AccordionGroup>
 
-בעת יצירת קשר עם התמיכה, כלול את גרסת CLI, תנור הנושא, הסביבה, מזהה שסיון או פריסה רלוונטי, ו- output של `failproofai config --status` עם סודות הוסרו.
+כאשר יוצרים קשר עם התמיכה, כללו את גרסת ה-CLI, קשור, סביבה, מזהה חיבור או גיוס רלוונטי, ופלט של `failproofai config --status` עם סודות מוסרים.

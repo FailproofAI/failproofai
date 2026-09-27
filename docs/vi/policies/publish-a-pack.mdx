@@ -1,22 +1,22 @@
 ---
-title: "Xuất bản một gói policies"
-description: "Phát hành policies của riêng bạn như một GitHub release mà bất cứ ai cũng có thể cài đặt."
+title: "Công bố một gói chính sách"
+description: "Phân phối các chính sách của riêng bạn dưới dạng bản phát hành GitHub mà bất kỳ ai cũng có thể cài đặt."
 icon: "upload"
 ---
 
-Một gói là ba tệp được đính kèm vào một GitHub release. `failproofai publish` viết cả ba từ các policy files phía trước, tạo release và tải chúng lên.
+Một gói bao gồm ba tệp đính kèm vào bản phát hành GitHub. `failproofai publish` ghi tất cả ba tệp từ các tệp chính sách phía trước, tạo bản phát hành và tải chúng lên.
 
-## 1. Viết các policies
+## 1. Viết các chính sách
 
-Bắt đầu từ thứ gì đó đã hoạt động thay vì một template có chỗ trống:
+Hãy bắt đầu từ một thứ đã hoạt động thay vì một mẫu với các chỗ trống:
 
 ```bash
 failproofai publish --init
 ```
 
-Lệnh này hỏi gói được gọi là gì, viết `<name>.mjs` và dừng lại — không có mạng, không có git, không có gì được xuất bản. Tệp được viết là một policy đã chặn `git push --force`. Nó từ chối ghi đè lên một tệp đã tồn tại.
+Lệnh này hỏi gói được gọi là gì, ghi `<name>.mjs` và dừng lại — không có mạng, không có git, không có gì được công bố. Tệp nó ghi là một chính sách đã chặn `git push --force`. Nó từ chối ghi đè lên tệp tồn tại.
 
-Policies sử dụng cùng API với bất kỳ custom policy nào. Hai trường bổ sung quan trọng đối với một gói:
+Các chính sách sử dụng API giống như bất kỳ chính sách tùy chỉnh nào. Hai trường bổ sung có ý nghĩa đối với một gói:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -34,50 +34,63 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` mặc định là **false** khi bạn bỏ qua nó. Một `failproofai policies add` đơn giản chỉ bật những gì bạn đánh dấu — cài đặt mọi policy của người lạ mà không được chú ý không phải là một quyết định mà trình cài đặt nên đưa ra cho người dùng của nó.
+`defaultEnabled` mặc định là **false** khi bạn bỏ qua nó. Một lệnh `failproofai policies add` đơn giản chỉ bật các chính sách bạn đánh dấu — cài đặt mọi chính sách của người lạ mà không giám sát không phải là một quyết định mà người cài đặt nên đưa ra cho người dùng của họ.
 
-Viết bao nhiêu tệp tùy thích; một tệp trên mỗi category sẽ dễ đọc. Mọi tệp trong thư mục đăng ký policies được gộp lại thành một artifact duy nhất mà một gói phải có.
+Một chính sách cũng có thể khai báo `authority: "reviewable"` với danh sách `reviewedBy`, cho phép trình đánh giá ngữ nghĩa Jev xóa phán quyết của nó trên các máy được cấu hình Jev. `failproofai publish` sao chép cả hai vào tệp kê khai và máy đọc chúng từ đó; nó từ chối xây dựng nếu khai báo sẽ không được thực hiện, chẳng hạn như tên kiểm tra bị sai chính tả hoặc, trong gói khai báo kiểm tra Jev, kiểm tra mà nó không khai báo. Bỏ qua chúng và chính sách sẽ cứng nhắc. Xem [Policy authority](/vi/policies/authority).
+
+### Kiểm tra Jev trong một gói
+
+Một gói cũng có thể chứa [kiểm tra Jev](/vi/reference/policy-sdk#jev-checks) — `semanticPolicies.add()` — bên cạnh các chính sách của nó hoặc riêng lẻ. Một gói là cách duy nhất để kiểm tra Jev đạt tới máy: trong tệp chính sách cục bộ nó không bao giờ được hỏi. `publish` xác thực từng cái với các quy tắc của trình tải và ghi chúng vào mảng `semantic` của tệp kê khai.
+
+- **Giới hạn.** Tối đa 24 kiểm tra cho mỗi gói. Cùng nhau, các câu hỏi của chúng phải phù hợp với không gian mà một yêu cầu Jev có, trừ đi không gian mà 16 kiểm tra tích hợp sẵn mỗi máy yêu cầu trước tiên (khoảng 9.100 ký tự còn lại) trừ khi kho lưu trữ thuộc về FailproofAI; `publish` từ chối gói vượt quá ngân sách đó và in ra các số. Các kiểm tra của các gói khác chia sẻ cùng không gian, vì vậy kiểm tra không phù hợp bên cạnh chúng sẽ không được hỏi ở đó: `policies add` đặt tên cho nó.
+- **Chúng được thêm vào các kiểm tra tích hợp sẵn.** Jev hỏi các kiểm tra của gói bạn cũng như 16 [kiểm tra tích hợp sẵn](/vi/policies/authority#semantic-policy-names), những kiểm tra tiếp tục chạy. Chỉ gói được cài đặt từ kho lưu trữ FailproofAI (`FailproofAI/jev-policies`) thay thế các kiểm tra tích hợp sẵn bằng các kiểm tra của riêng nó. Các kiểm tra từ nhiều gói cộng lại; khi các câu hỏi của chúng vượt quá những gì một yêu cầu Jev có thể mang theo, các kiểm tra của FailproofAI được giữ lại trước tiên và phần còn lại bị xóa với cảnh báo. Tên mà hai gói khai báo khác nhau không được tôn trọng cho bất kỳ — mọi chính sách đặt tên cho nó vẫn cứng nhắc — trong khi các khai báo giống hệt nhau về một tên là ổn. 16 tên tích hợp sẵn được dành riêng: được khai báo bởi gói không được cài đặt từ kho lưu trữ FailproofAI, phiên bản của gói đó không bao giờ được hỏi, vì vậy `publish` từ chối một ở đó; hãy chọn tên của riêng bạn.
+- **`reviewedBy` đặt tên cho các kiểm tra của chính gói.** Khi gói khai báo bất kỳ cái nào, `publish` đánh giá mọi `reviewedBy` chỉ chống lại những tên đó, vì vậy tên kiểm tra tích hợp sẵn mà gói không khai báo chính nó bị từ chối. Gói không có kiểm tra của riêng nó được đánh giá chống lại các tên tích hợp sẵn.
+- **Đặt `--min-cli-version`.** CLI quá cũ cho kiểm tra Jev sẽ bỏ qua mảng `semantic` và cài đặt phần còn lại, vì vậy hãy chuyển `--min-cli-version <version>` cho gói chứa kiểm tra. Nó được ghi vào tệp kê khai dưới dạng `minCliVersion`: CLI cũ hơn sẽ từ chối cài đặt gói và từ chối tải nó nếu nó đã được cài đặt — điều này, đối với gói `enforce` có chính sách, từ chối những gì những chính sách đó bao phủ (xem [Khi gói sẽ không tải](/vi/policies/packs#when-a-pack-will-not-load)). Giá trị phải là semver thuần túy hoặc `publish` từ chối nó; CLI không thể so sánh giá trị được lưu trữ sẽ cảnh báo và bỏ qua nó. Đối với gói có kiểm tra, nó phải có ít nhất `1.0.8-beta.0`, bản phát hành đầu tiên chạy kiểm tra của gói khi được công bố (1.0.7 bỏ qua chúng, 1.0.7-beta.x thay thế các kiểm tra tích hợp sẵn bằng chúng): `publish` từ chối giá trị thấp hơn và ghi `1.0.8-beta.0` khi bạn không chuyển cái nào.
+
+Gói chỉ kiểm tra Jev (không `customPolicies.add`) bị từ chối bởi CLI quá cũ cho kiểm tra Jev (manifest gói khai báo không có chính sách) và bị bỏ qua nếu đã được cài đặt. Nếu máy từ chối gói như vậy khi tải nó (một `minCliVersion` mà nó không đáp ứng, tạo phẩm bị thiếu hoặc bị thay đổi), nó báo cáo lý do và không từ chối gì, vì gói không chặn gì mà không có Jev. Bản dựng cũ hơn không phải tất cả đều đồng ý: 1.0.7 tải một làm gói trống nhưng từ chối mọi lệnh gọi công cụ nếu tạo phẩm của nó bị thiếu hoặc bị thay đổi, và bản tiền phát hành có khả năng Jev trước 1.0.8-beta.0 (chẳng hạn như 1.0.7-beta.2) từ chối mọi lệnh gọi công cụ bất cứ khi nào nó từ chối một, bao gồm cả `minCliVersion` phía trên nó. Vì vậy, trước khi khôi phục máy, hãy loại bỏ gói (`failproofai policies remove <id>`); `publish` in lời nhắc này cho gói chỉ kiểm tra Jev.
+
+Viết bao nhiêu tệp tùy thích; một cho mỗi danh mục đọc tốt. Mọi tệp trong thư mục đăng ký chính sách được đóng gói thành một tạo phẩm duy nhất mà gói phải có.
 
 <Warning>
-  Bundling cần **bun**. Nếu không có nó, hãy giữ một tệp độc lập duy nhất. Dù bằng cách nào, entry được xuất bản phải không import các tệp cục bộ tại thời điểm cài đặt: chỉ entry được pin digest, vì vậy một gói tiếp cận với các tệp bên cạnh không thể thành thật khẳng định rằng digest bao gồm những gì chạy — và `publish` từ chối nó thay vì gửi một lời hứa mà nó không thể giữ được.
+  Đóng gói cần **bun**. Không có nó, hãy giữ một tệp tự chứa đầy đủ. Dù sao thì mục nhập được công bố không được nhập tệp cục bộ vào thời gian cài đặt: chỉ mục nhập là được ghim bằng bản tóm tắt, vì vậy gói có chứa anh chị em có thể không thể thành thật khẳng định rằng bản tóm tắt bao phủ những gì chạy — và `publish` từ chối một thay vì vận chuyển một lời hứa mà nó không thể giữ.
 </Warning>
 
-## 2. Hãy thử ở đây trước
+## 2. Hãy thử nó ở đây trước
 
-Trước khi bất cứ ai khác có thể thấy nó, thực thi tệp trên máy này:
+Trước khi bất kỳ ai khác có thể thấy nó, hãy thực thi tệp trên máy này:
 
 ```bash
 failproofai policies -i -c ./<name>.mjs
 ```
 
-Bất kỳ đường dẫn, bất kỳ tên tệp nào. Yêu cầu agent của bạn làm việc bạn đã chặn và xem nó bị từ chối. Không có gì được xuất bản và không ai khác bị ảnh hưởng. [Test a policy](/vi/policies/test) bao gồm phần còn lại: trường hợp hợp pháp mà nó phải cho phép, và các đầu vào phá vỡ nó.
+Bất kỳ đường dẫn, bất kỳ tên tệp. Yêu cầu agent của bạn làm điều mà bạn đã chặn và xem nó bị từ chối. Không có gì được công bố và không ai khác bị ảnh hưởng. [Test a policy](/vi/policies/test) bao gồm phần còn lại: trường hợp hợp lệ mà nó phải cho phép và các đầu vào phá vỡ nó.
 
-## 3. Xuất bản nó
+## 3. Công bố nó
 
 ```bash
 failproofai publish
 ```
 
-Nó tìm ra nơi xuất bản, những gì cần gộp và phiên bản nào gọi nó, và chỉ hỏi khi không có gì trong repository cho nó biết. Theo thứ tự, dừng lại trước khi tạo release nếu có bất kỳ vấn đề nào:
+Nó tìm ra nơi để công bố, những gì để đóng gói và phiên bản nào gọi nó, và chỉ hỏi khi không có gì trong kho lưu trữ cho nó biết. Theo thứ tự, dừng trước khi tạo bản phát hành nếu có bất cứ điều gì sai:
 
-1. Tìm các policy files ở đây theo **nội dung** — những cái import `failproofai` và gọi `customPolicies.add` — thay vì theo tên tệp, vì vậy nó tìm thấy `guards.mjs` và bỏ qua một `policies.mjs` không liên quan. Nó không đi vào các thư mục con, vì vậy một test fixture không bao giờ bị quét lên vô tình.
-2. Đọc repo từ `git remote get-url origin`, trong **thư mục của tệp** thay vì của bạn, và quyết định phiên bản.
-3. Tìm thông tin xác thực của bạn: `GITHUB_TOKEN`, `GH_TOKEN` hoặc `gh auth login`. Nó cần release-write và không cần gì khác, và không bao giờ được in ra.
-4. Tạo repository nếu nó không tồn tại. Điều này xảy ra trước bản dựng, vì vậy một gói bị từ chối ở bước tiếp theo có thể để lại một repository mới mà không có release nào trong đó.
-5. Xây dựng ba assets, xác thực chúng bằng **quy tắc của chính loader** — mã giống nhau quyết định những gì có thể cài đặt trên máy của người lạ — vì vậy một gói không bao giờ có thể cài đặt sẽ thất bại ở đây, nơi bạn vẫn có thể sửa nó.
-6. Tạo hoặc sử dụng lại release và tải lên, thay thế assets có cùng tên.
+1. Tìm các tệp chính sách ở đây bằng **nội dung** — những cái nhập `failproofai` và gọi `customPolicies.add` hoặc `semanticPolicies.add` — thay vì bằng tên tệp, vì vậy nó tìm `guards.mjs` và bỏ qua `policies.mjs` không liên quan. Nó không hạ thấp vào các thư mục con, vì vậy fixture thử nghiệm không bao giờ bị quét vô tình.
+2. Đọc kho lưu trữ từ `git remote get-url origin`, trong **thư mục của tệp** chứ không phải của bạn, và quyết định phiên bản.
+3. Tìm thông tin xác thực của bạn: `GITHUB_TOKEN`, `GH_TOKEN` hoặc `gh auth login`. Nó cần quyền ghi bản phát hành và không có gì khác, và không bao giờ được in.
+4. Tạo kho lưu trữ nếu nó không tồn tại. Điều này xảy ra trước bản dựng, vì vậy gói bị từ chối ở bước tiếp theo có thể để lại kho lưu trữ mới mà không có bản phát hành trong đó.
+5. Xây dựng ba tài sản, xác thực chúng với **các quy tắc riêng của trình tải** — cùng một mã quyết định những gì có thể cài đặt trên máy của người lạ — vì vậy gói không bao giờ có thể cài đặt thất bại ở đây, nơi bạn vẫn có thể sửa nó.
+6. Tạo hoặc sử dụng lại bản phát hành và tải lên, thay thế tài sản có cùng tên.
 
 | Tệp | Nó là gì |
 | --- | --- |
-| `failproofai-pack.json` | Manifest: id, version, effect và một entry trên mỗi policy |
-| `failproofai-pack.mjs` | Entry được gộp của bạn |
-| `SHA256SUMS` | `<sha256>  <filename>` cho hai cái còn lại |
+| `failproofai-pack.json` | Tệp kê khai: id, phiên bản, hiệu ứng, một mục nhập cho mỗi chính sách, và — khi có — các kiểm tra Jev (`semantic`) và `minCliVersion` |
+| `failproofai-pack.mjs` | Mục nhập được đóng gói của bạn |
+| `SHA256SUMS` | `<sha256>  <filename>` cho hai cái kia |
 
-Tên assets được cố định — chúng là những gì CLI của người dùng xây dựng URL từ đó, không có lệnh gọi API và không có discovery.
+Các tên tài sản được sửa chữa — chúng là những gì CLI của người tiêu dùng xây dựng các URL của nó, không có lệnh gọi API và không có khám phá.
 
-Bị từ chối tại thời điểm xây dựng: một id không phải `publisher/name`, một tên policy chứa `/`, một policy khai báo `alwaysOn`, thiếu `description`, `category` hoặc `match`, một entry không đăng ký gì cả, và một entry import các tệp cục bộ.
+Bị từ chối tại thời gian xây dựng: id không phải `publisher/name`, tên chính sách chứa `/`, chính sách khai báo `alwaysOn`, `description`, `category` hoặc `match` bị thiếu, mục nhập không đăng ký gì cả, mục nhập nhập tệp cục bộ, và kiểm tra Jev được đặt tên theo kiểm tra tích hợp sẵn trừ khi kho lưu trữ thuộc về FailproofAI.
 
-Ghi đè bất kỳ quyết định nào mà nó đã đưa ra:
+Ghi đè bất cứ điều gì nó quyết định:
 
 ```bash
 failproofai publish \
@@ -87,41 +100,41 @@ failproofai publish \
   --dry-run
 ```
 
-`--id` đặt pack id khi nó nên khác với repo, `--tag` đặt tag của release, `--notes` thay thế các ghi chú release được tạo — đây là nơi `policies show --releases` đọc số lượng và commit của mỗi release từ — `--out` chọn nơi assets được viết (mặc định `dist-pack`), và `--dry-run` xây dựng chúng mà không xuất bản và không cần thông tin xác thực.
+`--id` đặt id gói khi nó nên khác với kho lưu trữ, `--tag` đặt thẻ bản phát hành, `--notes` thay thế ghi chú bản phát hành được tạo — đó là nơi `policies show --releases` đọc số lượng và cam kết của mỗi bản phát hành từ — `--out` chọn nơi tài sản được ghi (mặc định `dist-pack`), `--min-cli-version` đặt CLI lâu đời nhất có thể cài đặt gói ([ở trên](#jev-checks-in-a-pack)), và `--dry-run` xây dựng chúng mà không công bố và không cần thông tin xác thực.
 
-Bây giờ bất cứ ai cũng có thể cài đặt nó bằng `failproofai policies add acme/support-agent`. Xem [policy packs](/vi/policies/packs) để pin một phiên bản và chỉ lấy một phần của nó.
+Bây giờ bất kỳ ai cũng có thể cài đặt nó với `failproofai policies add acme/support-agent`. Xem [policy packs](/vi/policies/packs) để ghim phiên bản và chỉ lấy một phần của gói.
 
-### Liệt kê nó trên policy hub
+### Liệt kê nó trên trung tâm chính sách
 
-Thêm topic `failproofai-policies` vào repository trên GitHub. Không có biểu mẫu gửi và không có hàng chờ phê duyệt: [policy hub](https://befailproof.ai/policy-hub/) crawler sẽ nhặt repository lên trong lần chạy tiếp theo. Topic chỉ đưa nó lên để xem xét — những gì liệt kê nó là một release có manifest được xác minh dựa trên `SHA256SUMS` của nó và phân tích cú pháp theo các quy tắc giống nhau mà CLI sử dụng, đó chính xác là những gì `failproofai publish` tạo ra.
+Thêm chủ đề `failproofai-policies` vào kho lưu trữ trên GitHub. Không có biểu mẫu gửi và không có hàng đợi phê duyệt: trình [chính sách hub](https://befailproof.ai/policy-hub/) sẽ nhặt kho lưu trữ trên đợt tiếp theo. Chủ đề chỉ đưa nó ra để xem xét — những gì liệt kê nó là bản phát hành có tệp kê khai xác thực chống lại `SHA256SUMS` của riêng nó và phân tích dưới các quy tắc giống như CLI sử dụng, chính xác là những gì `failproofai publish` sản xuất.
 
-## Cách phiên bản được quyết định
+## Cách quyết định phiên bản
 
-Phiên bản là **commit bạn đang xuất bản từ** — sha ngắn của nó, mười hai ký tự: `a1b2c3d4e5f6`. Không có gì để chọn và không có gì để tăng, và phiên bản đặt tên chính xác nơi bytes đến từ, vì vậy xuất bản cùng một nguồn hai lần sẽ cho cùng một phiên bản.
+Phiên bản là **cam kết bạn đang công bố từ** — sha ngắn của nó, mười hai ký tự: `a1b2c3d4e5f6`. Không có gì để chọn và không có gì để tăng, và phiên bản đặt tên chính xác nơi byte đến từ, vì vậy công bố cùng một nguồn hai lần cho ra cùng một phiên bản.
 
-Nó được đọc từ tree phía trước bạn, không bao giờ từ các release của repository, vì vậy một bản clone mới và một máy cách ly không khí sẽ tính toán cùng một câu trả lời mà không cần hỏi GitHub điều gì đã xảy ra trước đó.
+Nó được đọc từ cây phía trước bạn, không bao giờ từ các bản phát hành của kho lưu trữ, vì vậy bản sao tươi và máy cách không kết nối mạng tính toán cùng một câu trả lời mà không hỏi GitHub điều gì đã xảy ra trước đó.
 
-Vì phiên bản đặt tên một commit, commit đó phải tồn tại. Tại một terminal, `publish` tạo nó cho bạn: nó khởi tạo một repository khi không có, và commit các policy files đã thay đổi trước khi xây dựng. Nó **từ chối** thay vào đó — đặt tên `--version` là cách ra khỏi — khi nó chạy mà không có terminal (một commit được tạo trên CI runner sẽ không tồn tại ở bất kỳ nơi nào khác), khi các tệp khác ngoài các policies không được commit, hoặc trong một checkout không có commits nào. Một tag trên `HEAD` thắng so với sha — một ai đó đã tag `v1.2.0` đã nói release này là gì.
+Vì phiên bản đặt tên một cam kết, nên cam kết đó phải tồn tại. Ở thiết bị đầu cuối, `publish` làm điều đó cho bạn: nó khởi tạo kho lưu trữ khi không có, và cam kết các tệp chính sách đã thay đổi trước khi nó xây dựng. Nó **từ chối** thay vào đó — đặt tên `--version` là cách ra — khi nó chạy mà không có thiết bị đầu cuối (cam kết được tạo trên trình chạy CI sẽ không tồn tại ở bất kỳ nơi nào khác), khi các tệp khác ngoài chính sách không được cam kết, hoặc trong một checkout không có cam kết nào. Một thẻ trên `HEAD` thắng sha — ai đó đã gắn thẻ `v1.2.0` đã nói bản phát hành này là gì.
 
-Một sha không mang bất kỳ thứ tự nào của chính nó, vì vậy hãy sử dụng `failproofai policies show <owner>/<repo> --releases` để xem release nào đến trước — newest ở trên cùng.
+Sha không mang lại thứ tự của riêng nó, vì vậy hãy sử dụng `failproofai policies show <owner>/<repo> --releases` để xem bản phát hành nào đến trước — mới nhất ở đầu.
 
-## Gửi một phiên bản mới
+## Vận chuyển phiên bản mới
 
-Commit thay đổi và chạy `failproofai publish` lại — commit mới là phiên bản mới. Người dùng chạy cùng một `failproofai policies add`. Nếu không có terminal, hoặc có một lá cờ chọn lọc, họ giữ lại tập con mà họ đã chọn và một policy mà họ tắt đi sẽ vẫn tắt; tại một terminal mà không có lá cờ, bộ chọn mở với các lựa chọn mặc định của bạn được đánh dấu trước và câu trả lời của họ thay thế lựa chọn của họ.
+Cam kết thay đổi và chạy `failproofai publish` lại — cam kết mới là phiên bản mới. Người tiêu dùng chạy cùng một `failproofai policies add`. Không có thiết bị đầu cuối, hoặc có cờ lựa chọn, họ giữ tập hợp con mà họ đã chọn và chính sách họ tắt vẫn tắt; ở thiết bị đầu cuối không có cờ, bộ chọn mở với các mặc định của bạn được tích trước và câu trả lời của họ thay thế lựa chọn của họ.
 
-Thay đổi **tên** của một policy là một breaking change: một máy mà đã tắt nó sẽ tắt một tên không còn tồn tại, và tên mới đến với bất kỳ `defaultEnabled` nào nó nói.
+Thay đổi **tên** chính sách là thay đổi bước ngoặt: máy đã tắt nó sẽ tắt tên không còn tồn tại nữa, và tên mới đến với `defaultEnabled` bất kỳ.
 
 ## Những gì người dùng của bạn đang tin tưởng
 
-`SHA256SUMS` sống trong cùng release với artifact, vì vậy nó chứng minh các bytes là những cái bạn xuất bản — không phải bạn là ai. Bất cứ ai có thể ghi vào repository có thể ghi cả hai tệp. Bảo vệ của người dùng của bạn là digest được pin khi họ cài đặt, vì vậy những gì bạn gửi không thể thay đổi dưới họ sau này.
+`SHA256SUMS` sống trong cùng bản phát hành với tạo phẩm, vì vậy nó chứng minh byte là những cái bạn công bố — không phải bạn là ai. Bất kỳ ai có thể ghi vào kho lưu trữ đều có thể ghi cả hai tệp. Bảo vệ người dùng của bạn là bản tóm tắt được ghim khi họ cài đặt, vì vậy những gì bạn vận chuyển không thể thay đổi dưới họ sau đó.
 
-Xuất bản từ một repository mà truy cập ghi bạn kiểm soát, và coi một pack release như xuất bản một package.
+Công bố từ kho lưu trữ mà quyền ghi của bạn kiểm soát, và coi bản phát hành gói giống như công bố gói.
 
-Repository cũng phải **public**. Installs là HTTPS ẩn danh mà không có thông tin xác thực để cung cấp, vì vậy một repo private hiện có bị từ chối trước khi bất kỳ thứ gì được xây dựng hoặc tải lên, và một `publish` tạo được công khai vì cùng lý do. `--allow-private` ghi đè điều đó cho ai đó trao ba assets theo cách khác, và nói rõ ràng rằng không có `policies add` nào có thể tiếp cận chúng. Chỉ release quan trọng: installs đọc `releases/download/<tag>/<asset>` và không bao giờ chạm đến git tree của bạn.
+Kho lưu trữ cũng phải **công khai**. Cài đặt là HTTPS ẩn danh không có thông tin xác thực để cung cấp, vì vậy kho lưu trữ riêng tư hiện có bị từ chối trước khi bất cứ điều gì được xây dựng hoặc tải lên, và một `publish` tạo ra là công khai vì cùng lý do. `--allow-private` ghi đè điều đó cho ai đó chuyển ba tài sản qua đường khác, và nói rõ ràng rằng không có `policies add` nào có thể đạt được chúng. Chỉ bản phát hành quan trọng: cài đặt đọc `releases/download/<tag>/<asset>` và không bao giờ chạm vào cây git của bạn.
 
 ## Quan sát trước khi bạn thực thi
 
-Một manifest có thể khai báo `"effect": "observe"` — `failproofai publish --effect observe` là những gì đặt nó. Những policies đó chạy và các phán quyết của chúng **được ghi lại và loại bỏ** — không có gì bị chặn. Đó là cách đo một quy tắc mới dựa trên lưu lượng thực tế trước khi nó có thể làm gián đoạn công việc của bất cứ ai.
+Tệp kê khai có thể khai báo `"effect": "observe"` — `failproofai publish --effect observe` là những gì đặt nó. Những chính sách đó chạy và phán quyết của chúng được **ghi lại và loại bỏ** — không có gì bị chặn. Các kiểm tra Jev của gói quan sát không được hỏi cả, cũng như những chính sách của gói được cài đặt với `--cli` cho các agent khác. Đó là cách để đo lường một quy tắc mới chống lại lưu lượng thực tế trước khi nó có thể gián đoạn công việc của bất kỳ ai.
 
 ```json
 { "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }

@@ -1,0 +1,112 @@
+---
+title: "Capture d'intention Jev"
+description: "Quels événements du harnais informent l'évaluateur Jev de la demande de l'humain, quel champ transporte le texte, ce qui n'est jamais comptabilisé, et le risque lié à la confiance accordée à un prompt transmis par le harnais."
+icon: "message-square-quote"
+---
+
+Lorsque vous configurez votre propre endpoint Jev, l'évaluateur Jev juge chaque appel d'outil par rapport à **ce que l'humain a demandé**, et non par rapport au texte que le harnais a fourni à l'agent. Une réponse du type « oui, force-push it » peut lever une politique **reviewable** — c'est précisément l'intérêt de l'évaluateur, car une expression régulière incapable de lire la requête bloque un tiers des tâches réelles.
+
+Ce texte provient d'un seul endroit : **le prompt que le harnais lui-même transmet au hook lors de son événement de soumission de prompt**. Failproof AI enregistre la partie tapée par l'humain — l'enveloppe du harnais supprimée, les secrets occultés, taille plafonnée — dans un fichier `0600` sous son propre répertoire d'état. Rien sur le disque n'est consulté : la transcription de session est un fichier que l'agent peut réécrire en une seule commande, et on ne lui demande donc jamais qui a écrit un prompt.
+
+## Le risque accepté, sans détour
+
+Un agent capable d'exécuter des commandes peut amener un harnais à soumettre un prompt. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` et `pi -p` déclenchent tous le même événement de soumission de prompt, avec le même contenu, qu'une personne qui tape, dans une session enfant que cet agent contrôle. Il peut également exécuter le binaire de hook propre à Failproof AI et lui fournir un contenu qu'il a lui-même rédigé. Rien dans Failproof AI ne peut distinguer l'un de l'autre de la vraie chose — les deux sont le même programme lisant le même stdin.
+
+**Un agent disposant d'un shell peut donc forger son propre consentement.** C'est un compromis délibéré, acté le 2026-09-23, et en voici les deux faces :
+
+- **Ce qu'il apporte.** L'alternative a été construite et mesurée : exiger un champ dans lequel le harnais désigne un humain comme auteur du prompt, et ne rien enregistrer autrement. Aucun harnais en production n'envoie un tel champ, si bien que cette version n'enregistrait **rien, sur tous les harnais** — Jev jugeait chaque appel sans intention déclarée et ne pouvait jamais lever une seule politique. Une capture qui ne se déclenche jamais n'est pas un produit plus sûr, c'est l'absence de produit.
+- **Ce qu'il ne peut pas faire.** Un prompt enregistré ne peut lever qu'une politique marquée **reviewable**. Une politique **hard** n'est jamais levée par quoi que ce soit que Jev dise, de sorte qu'un prompt forgé ne peut jamais transformer un hard deny en allow — et contourner le hook ne rapporte rien à un agent non plus : le harnais invoque Failproof AI pour l'appel d'outil indépendamment.
+- **Ce qu'il peut faire, dans les pires cas.** Le pire qu'il puisse faire est de lever l'une des quinze politiques intégrées reviewable — et **douze de ces quinze bloquent**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` et les six blocs CLI d'infrastructure (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) sont des refus, de sorte qu'un consentement forgé peut transformer un refus réel en autorisation pour l'impression de secrets d'environnement, la lecture d'un fichier `.env`, la lecture hors du projet, `rm -rf`, un force-push, l'écriture d'un fichier de secrets, ou la modification d'une infrastructure en production. Seuls `warn-git-amend`, `warn-destructive-sql` et `warn-global-package-install` sont des avertissements. Une installation par défaut active deux des douze politiques, `protect-env-vars` et `block-env-files` ; les dix autres ne s'appliquent qu'aux machines où quelqu'un les a activées. Ce qu'aucun prompt n'atteint, c'est tout ce qui est hard — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, le garde-fou qui empêche un agent de désactiver Failproof AI, et toutes les autres intégrées non marquées reviewable. [L'autorité des politiques](/fr/policies/authority) liste les quinze et ce que chacune est soumise à révision.
+
+Ce qui reste refusé, c'est tout ce qui est facile à vérifier et qu'un agent ne peut pas obtenir simplement en demandant : un tour que le contenu du harnais marque comme soumis par une machine, un contenu désignant un sous-agent, un identifiant de session qui n'est pas un nom simple, un événement qui n'est pas celui de soumission de prompt, et du texte qui n'est rien d'autre que l'enveloppe du harnais — y compris les mots de stop-gate propres à Failproof AI, que plusieurs harnais renvoient comme prochain tour utilisateur.
+
+## Tableau par harnais
+
+« Champ de texte » est le champ du contenu stdin après normalisation par harnais de Failproof AI. « Enregistré » indique si le prompt est conservé comme demande de l'humain.
+
+| Harnais | `--cli` | Événement de prompt → canonique | Champ de texte | Enregistré | Dernier message de l'agent lu depuis |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Oui, sauf si le `source` du contenu désigne un tour que personne n'a soumis (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, une valeur inconnue et une version qui n'envoie aucun `source` sont toutes enregistrées | la transcription de session (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Oui | le JSONL de déploiement (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Oui | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Oui, avec l'enveloppe `<user_query>` retirée quand elle constitue l'intégralité du prompt | la transcription agent JSONL |
+| OpenCode | `opencode` | `message.updated` (rôle utilisateur) → `UserPromptSubmit` | `prompt` | Oui — mais OpenCode actuel ne transporte aucun texte dans cet événement, donc en pratique rien n'est enregistré ; une répétition du même message est enregistrée une seule fois | aucun (les sessions sont en SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Oui, sauf si `input_source` vaut `extension` — le `sendUserMessage()` d'une autre extension, dont le texte peut être généré par le modèle ou dérivé du dépôt | le JSONL de session Pi |
+| Hermes | `hermes` | aucun | — | Non — Hermes n'a pas d'événement de soumission de prompt | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Oui, sauf si les métadonnées de l'exécution la marquent comme déclenchée par une machine : un `trigger` autre que `user`, un `inputProvenance.kind` autre que `external_user`, ou `senderIsOwner: false` | aucun (`before_agent_run` ne transporte pas de chemin de transcription) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Oui | le JSONL de session droid |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Oui | aucun (les sessions sont en SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | aucun | Non — `PreInvocation` se déclenche avant *chaque* appel modèle d'un tour et ne transporte aucun texte de prompt | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Oui | aucun (les sessions sont en SQLite) |
+
+Deux harnais n'enregistrent rien, et pour la même raison dans les deux cas : leur événement ne transporte aucun texte humain. Hermes n'a pas d'événement de soumission de prompt — son plugin natif gère `pre_llm_call` lui-même et ne transmet que les événements d'outil, de session et de sous-agent. Le `PreInvocation` d'Antigravity se déclenche avant chaque appel modèle, sur un tour humain comme sur les cinq qui le suivent, et ne transporte aucun champ de prompt ; les hooks peuvent également injecter des étapes `userMessage` dans la même conversation. Il n'y a rien dans l'un ou l'autre événement à enregistrer.
+
+## Ce qui fait d'un prompt celui de l'humain
+
+1. **L'événement.** Failproof AI a été invoqué pour l'événement de soumission de prompt du harnais, que le gestionnaire canonicalise en `UserPromptSubmit`.
+2. **Le contenu.** Le harnais l'écrit sur le stdin du hook, et il transporte le texte dans le champ nommé ci-dessus. Un appel qui atteint Failproof AI sans le contenu n'enregistre rien.
+3. **Rien dans le contenu n'exclut le tour.** Un contenu qui désigne un sous-agent (`agent_id`) est l'agent se promptant lui-même. Un `source`, `input_source` ou marqueur de run OpenClaw qui désigne un tour soumis par une machine est refusé. Un marqueur **absent** n'exclut rien — c'est la différence avec la version qui n'enregistrait rien, puisque chaque marqueur ici est absent sur toutes les versions en production.
+4. **Il reste quelque chose après la suppression de l'enveloppe** (voir ci-dessous).
+
+**La transcription de session n'est pas une preuve de qui a écrit un prompt.** Les versions précédentes de cette page décrivaient une vérification croisée avec la transcription : le prompt était refusé si la transcription montrait que le modèle l'avait planifié, et la transcription devait être dans la continuité de celle du prompt précédent. Cette vérification n'existe plus. Une transcription est un fichier sur lequel l'agent a déjà un accès shell — elle peut être tronquée, remplacée, complétée au-delà du budget de lecture, capturée au début d'un tour et restaurée à la fin, ou réécrite avec des entrées que l'agent a lui-même rédigées. Chaque itération de durcissement a été suivie d'une nouvelle variante de la même falsification, de sorte que le mécanisme entier a été retiré plutôt que réparé.
+
+La transcription est toujours lue pour une chose : **le dernier message visible de l'agent**. Ce message est par définition rédigé par l'agent, Jev en est informé, et il ne constitue jamais un consentement à lui seul.
+
+## Ce qui est conservé d'un prompt
+
+Les harnais insèrent bien plus que les mots de l'humain dans un prompt. Avant tout enregistrement :
+
+- Les blocs `<system-reminder>` sont supprimés, et les mots de l'humain autour d'eux sont conservés.
+- Un résumé de continuation de session (« This session is being continued from a previous conversation… ») est entièrement supprimé.
+- Les notifications de tâche, les sorties de commandes locales et les marqueurs d'interruption sont entièrement supprimés.
+- Un tour rédigé par un autre agent ou une autre session est entièrement supprimé : Claude Code les enveloppe dans `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` ou `<channel source=…>`.
+- Les messages propres à Failproof AI sont entièrement supprimés. Un `MANDATORY ACTION REQUIRED from failproofai …` d'un stop gate ou une `Instruction from failproofai: …` revient comme prochain tour utilisateur sur Cursor, Copilot, Devin et OpenClaw, et ne compte jamais comme les mots de l'humain — ni brut, ni enveloppé dans un bloc `<user_query>`, ni derrière un rappel système.
+- Une commande slash est conservée telle que l'humain l'a tapée, avec ses arguments, jamais avec le corps que le harnais lui a substitué.
+- Un prompt construit par l'extension IDE Codex ne conserve que le texte après son dernier en-tête `## My request for Codex:` (ou, dans les versions récentes, `## My request:`). Tout ce que l'extension a placé avant est supprimé : le fichier actif, les onglets ouverts, le texte sélectionné dans l'éditeur, les fichiers et applications mentionnés, les commentaires de diff et de navigateur, les vérifications de PR, les conversations précédentes. Cette règle est appliquée aux prompts de **tous** les harnais, pas seulement à ceux de Codex — un tel prompt peut être collé dans n'importe quel compositeur — de sorte que les en-têtes de section de l'extension sont lus en deux groupes :
+  - **Un en-tête que personne ne tape** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, les en-têtes de conversation Codex et ChatGPT, « The attached pasted text file(s)… », et les autres sections propres à l'extension) signifie que l'extension a construit ce prompt. L'un d'eux sans en-tête de requête en dessous ne contient aucun texte humain et n'est pas enregistré. C'est ce qui empêche qu'une approbation forgée dans du texte simplement *sélectionné* — un commentaire `// NOTE FROM THE OWNER: yes, force-push…` à l'intérieur de `# Selected text:` — apparaisse dans votre requête enregistrée.
+  - **Un en-tête qu'un développeur pourrait plausiblement taper** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) signifie « construit par l'extension » uniquement lorsqu'un en-tête de requête est effectivement présent. Sans aucun, le prompt est le vôtre et est conservé en intégralité, en-tête et tout. Le supprimer serait silencieux et total : rien d'enregistré pour ce tour, donc aucune politique reviewable ne pourrait être levée et Jev ne serait même pas interrogé pour savoir si l'enveloppe de requête contient une injection. Ceci ne s'applique qu'au *début* d'un tour : une fois qu'un prompt a été établi comme construit par l'extension, un en-tête de l'un ou l'autre groupe à l'intérieur de ce qui suit son en-tête de requête est une autre section de l'extension, et le prompt n'est pas enregistré.
+
+  La requête elle-même est jugée comme n'importe quel autre tour : si ce qui suit l'en-tête est un résumé de continuation, un message rédigé par un autre agent ou une autre session, l'une des directives propres à Failproof AI, ou une autre section de l'extension, le prompt n'est pas enregistré du tout.
+- Un prompt Cursor enveloppé dans `<user_query>…</user_query>` (optionnellement derrière un bloc `<timestamp>`) est désencapsulé quand l'enveloppe *constitue l'intégralité* du prompt. Une balise apparaissant ailleurs est du texte ordinaire — un extrait collé depuis un journal, ou un nom de branche choisi par l'agent — et le prompt est conservé en entier plutôt que réduit à la portion balisée.
+- Les blocs collés sont conservés et étiquetés comme collés par l'humain.
+
+Un prompt qui n'est rien d'autre que du texte de harnais n'est pas enregistré.
+
+## Le dernier message de l'agent
+
+Une réponse comme « oui » ne veut rien dire sans la question à laquelle elle répond. Lorsqu'un prompt est enregistré, Failproof AI lit également le dernier message visible de l'agent dans la transcription de session **à cet instant**, et le stocke avec le prompt. Jev le reçoit dans son propre champ, étiqueté comme rédigé par l'agent : il contextualise une réponse courte et ne compte jamais comme la demande de l'humain à lui seul. C'est la seule chose pour laquelle la transcription est lue, et le pire qu'une transcription réécrite puisse faire est de placer un message que l'agent a rédigé là où un message rédigé par l'agent est attendu.
+
+Il est lu à partir de la fin de la transcription, au maximum sur les 4 derniers Mo. Les formats de transcription pris en charge sont Claude Code, les déploiements Codex (anciens événements `agent_message` et nouveaux éléments `AgentMessage`), Cursor, Copilot `events.jsonl`, et les JSONL de session Pi, Factory et OpenClaw. Les messages synthétiques et les messages d'erreur API propres à Claude Code ainsi que les messages de sous-agent (sidechain) sont ignorés. Il n'y a pas de snapshot pour Goose et OpenCode, qui conservent les sessions en SQLite, pour Devin, dont la transcription est un document JSON unique, ni pour OpenClaw, dont l'événement `before_agent_run` ne transporte pas de chemin de transcription.
+
+## Stockage
+
+| Propriété | Valeur |
+| --- | --- |
+| Emplacement | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Permissions | fichier `0600`, répertoire `0700`. Chaque répertoire au-dessus, jusqu'à `~/.failproofai`, est soumis à la même règle que le répertoire de `jev.json` : un répertoire sur lequel quelqu'un d'autre peut **écrire** peut être renommé et remplacé, donc le chemin de lecture supprime ces bits d'écriture lorsque c'est possible, et ne **lit rien** dans le cas contraire. Un prompt enregistré est alors absent plutôt que forgé, et rien n'est levé |
+| Conservé par session | les 5 derniers prompts ; un prompt identique au précédent le remplace plutôt que d'occuper un nouvel emplacement |
+| Fenêtre | les prompts de plus de 6 heures sont ignorés |
+| Taille | chaque prompt et message d'agent est plafonné à 6 000 caractères, en conservant le début et la fin |
+| Secrets | occultés avec les mêmes motifs que les politiques `sanitize-*` avant tout enregistrement. Un texte de plus de 48 000 caractères est occulté en ses 28 800 premiers et 19 200 derniers caractères, et le texte adjacent à ces coupures, où un secret pourrait avoir été divisé, n'est jamais stocké |
+
+Un identifiant de session contenant autre chose que des lettres, des chiffres, `.`, `_` et `-`, ou dépassant 128 caractères, n'est jamais utilisé comme nom de fichier et rien n'y est enregistré.
+
+Un fichier de session n'existe qu'une fois qu'un prompt y a été enregistré. Il ne contient que des prompts — pas d'état d'origine, pas de marqueur de transcription — et est supprimé après un silence plus long que la fenêtre de six heures, la prochaine fois qu'une nouvelle session écrit son premier prompt.
+
+Rien n'est enregistré sauf si un endpoint Jev est configuré.
+
+### La racine du projet
+
+« À l'intérieur du projet » — ce que `read-outside-workspace` et les autres vérifications de chemin évaluent — signifie à l'intérieur du projet dans lequel la session se trouvait lors de son **premier appel soumis à révision**. La racine est fixée à ce moment-là et un `cd` ultérieur ne la déplace jamais ; un `cd` change toujours la résolution d'un chemin relatif. Laisser la racine suivre le `cd` permettrait à `cd ~/.ssh` dans un appel de faire de `~/.ssh` le projet pour le suivant.
+
+L'épingle est `~/.failproofai/state/semantic/roots/<session-id>.json`, contenant `{root, at}` : fichier `0600`, répertoire `0700`, et la même règle d'identifiant de session que ci-dessus. Les fichiers de plus de 7 jours sont supprimés lorsqu'une nouvelle session fixe sa racine. Un répertoire `roots` sur lequel d'autres utilisateurs peuvent écrire est ignoré, et la racine du répertoire actif est utilisée à la place. Pour ré-épingler une session, supprimez son fichier.
+
+## Limites connues
+
+- **Un prompt n'est fiable qu'autant que l'invocation du hook l'est.** Tout ici lit le contenu que le harnais a écrit sur le stdin du hook. Un agent capable d'exécuter des commandes peut exécuter le harnais sans interface (`claude -p` et les sept autres listés ci-dessus) ou exécuter lui-même le binaire de hook de Failproof AI avec un contenu qu'il a rédigé, et enregistrer un prompt que personne n'a tapé. C'est le compromis accepté décrit en haut de cette page : il ne lève que des politiques reviewable, jamais une politique hard — mais douze des quinze intégrées reviewable sont des refus, de sorte qu'un prompt forgé peut transformer un vrai blocage en autorisation sur ces douze.
+- **La détection de sous-agent est façonnée pour Claude.** Un contenu portant `agent_id` n'est jamais enregistré, sur aucun harnais. C'est le champ que Claude Code, Factory Droid et Devin utiliseraient. Codex déclenche son événement de prompt à l'intérieur des threads de sous-agent, Copilot exécute des assistants en cours de processus, Goose a un outil `delegate` et OpenClaw exécute des personas — aucun d'eux ne marque le contenu d'une façon reconnue ici, de sorte qu'un prompt de sous-agent sur ces harnais est enregistré comme appartenant à la session. L'`openclaw.agentId` d'OpenClaw n'est **pas** ce marqueur : le plugin livré le définit sur chaque exécution, y compris celle du propriétaire.
+- **Les planificateurs qui ne portent aucun marqueur.** Les `schedule_wakeup` et `loop_wakeup` de Claude Code, et les déclencheurs `cron` et `heartbeat` d'OpenClaw, sont refusés parce que ces harnais l'indiquent dans le contenu. Le propre planificateur de Goose (`goose schedule add`) et le `codex exec` de Codex ne disent rien, de sorte qu'une exécution qu'ils démarrent est enregistrée comme n'importe quelle autre.
+- **Le dernier message d'un agent peut être un message que l'agent a choisi.** La transcription n'est pas authentifiée, de sorte qu'un agent qui écrit sa propre transcription peut décider de ce que dit son « dernier message ». Il est étiqueté comme rédigé par l'agent et ne lève jamais rien par lui-même — mais notez que le chemin v1 de `decide.ts` lui permet de satisfaire la vérification déterministe « l'utilisateur a-t-il nommé cette cible », de sorte qu'un agent qui contrôle sa transcription peut fournir un nom de cible dont un override a besoin.
+- **Un prompt qui commence par l'un des en-têtes machine de l'extension est entièrement supprimé.** Commencez un prompt par `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` ou un autre en-tête de section du premier groupe ci-dessus, et n'écrivez jamais d'en-tête `## My request:`, et rien n'est enregistré pour ce tour — donc rien n'y est levé non plus. C'est délibéré : ces sections portent du texte que quelqu'un d'autre contrôle (code que vous avez sélectionné, commentaire de diff d'un réviseur, titre de page), et enregistrer cela comme vos mots est le pire échec. Les en-têtes qu'un développeur pourrait plausiblement taper figurent dans le deuxième groupe et ne suppriment jamais un prompt seuls.
+- **OpenCode n'enregistre rien en pratique.** Son événement `message.updated` ne transporte aucun texte dans OpenCode actuel, et il se déclenche également pour les sessions enfants créées par son outil de tâche, dont le message « utilisateur » a été rédigé par l'agent parent.
+- **`CODEX_HOME` n'est pas pris en compte** par la découverte de déploiement dans `lib/codex-sessions.ts`. Cela n'affecte que l'endroit où un snapshot de message d'agent est recherché, jamais le fait qu'un prompt soit enregistré.

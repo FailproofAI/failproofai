@@ -62,6 +62,15 @@ export interface ScannedCommand {
 /** Shells whose `-c` argument is a second command line this scan does not parse. */
 const NESTED_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
 
+/**
+ * A `$` followed by this starts an expansion bash performs outside single
+ * quotes: `$NAME`, `$1`, `$@ $* $# $? $$ $! $-`, `${…}`, `$(…)` and `$((…))`.
+ * The scan does not resolve any of them — `DANGER=/critical; rm -rf $DANGER`
+ * names `/critical` only through the variable — so each makes it incomplete.
+ * A `$` before anything else (a space, `/`, the end) is a literal dollar.
+ */
+const EXPANSION_START = /[A-Za-z_0-9@*#?$!\-({]/;
+
 /** A segment that hands a string to a shell to parse again: `eval …`, `bash -c …`, `sudo sh -lc …`. */
 function runsNestedShell(tokens: string[]): boolean {
   // One pass, so a segment of ten thousand `sh` words stays linear.
@@ -83,7 +92,8 @@ function runsNestedShell(tokens: string[]): boolean {
  *
  * Because it is not bash, it says when it may be wrong: `complete` is false on
  * any construct whose quoting or word boundaries it does not follow — `$'…'`
- * and `$"…"`, `${…}`, `$(…)` and backticks, `<(…)` / `>(…)`, heredocs and
+ * and `$"…"`, any parameter expansion (`$NAME`, `$1`, `$@`, `${…}`, `$((…))`),
+ * `$(…)` and backticks, `<(…)` / `>(…)`, heredocs and
  * here-strings (`<<`), a backslash-newline, a quote left open at the end,
  * `eval` or a shell's `-c` string, and a command cut at `MAX_SCAN_CHARS`.
  * Each of those can put a `#` where the scan sees a comment and bash does not
@@ -120,9 +130,9 @@ export function scanCommand(command: string): ScannedCommand {
     const c = text[i];
     if (quote) {
       out += c;
-      // Inside "…", bash still expands `$(…)`, `${…}` and backticks, and a
-      // backslash-newline is a continuation: none of that is followed here.
-      if (quote === '"' && (c === "`" || (c === "$" && (text[i + 1] === "(" || text[i + 1] === "{")) || (c === "\\" && text[i + 1] === "\n"))) {
+      // Inside "…", bash still expands `$NAME`, `$(…)`, `${…}` and backticks,
+      // and a backslash-newline is a continuation: none of that is followed here.
+      if (quote === '"' && (c === "`" || (c === "$" && EXPANSION_START.test(text[i + 1] ?? "")) || (c === "\\" && text[i + 1] === "\n"))) {
         complete = false;
       }
       if (c === quote) {
@@ -138,7 +148,7 @@ export function scanCommand(command: string): ScannedCommand {
     // Unquoted constructs whose contents the scan does not parse as bash does.
     if (
       c === "`" ||
-      (c === "$" && (text[i + 1] === "'" || text[i + 1] === '"' || text[i + 1] === "(" || text[i + 1] === "{")) ||
+      (c === "$" && (text[i + 1] === "'" || text[i + 1] === '"' || EXPANSION_START.test(text[i + 1] ?? ""))) ||
       ((c === "<" || c === ">") && text[i + 1] === "(") ||
       (c === "<" && text[i + 1] === "<") ||
       (c === "\\" && text[i + 1] === "\n")

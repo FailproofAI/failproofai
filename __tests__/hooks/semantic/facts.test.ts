@@ -77,6 +77,12 @@ describe("semantic/facts", () => {
       ["eval", "eval 'rm -rf /critical'"],
       ["bash -c", "bash -c 'rm -rf /critical'"],
       ["sudo sh -lc", "sudo /bin/sh -lc 'rm -rf /critical'"],
+      ["a bare variable", "rm -rf $HOME"],
+      ["a quoted variable", 'rm -rf "$HOME"'],
+      ["a positional parameter", "rm -rf $1"],
+      ["special parameters", "echo $@ $? $$"],
+      ["arithmetic expansion", "rm -rf $((1))x"],
+      ["an assignment used later", "DANGER=/critical; rm -rf $DANGER"],
       ["cut at MAX_SCAN_CHARS", "echo " + "a".repeat(MAX_SCAN_CHARS) + " ; rm -rf /critical"],
     ])("reports an incomplete scan: %s", (_what, cmd) => {
       expect(scanCommand(cmd).complete).toBe(false);
@@ -89,6 +95,9 @@ describe("semantic/facts", () => {
       "echo 'a $(b) `c` <<d' && ls -c",
       `git commit -m "fix; kubectl bug && more"`,
       "ls 2>&1 | grep -c x",
+      "rm -rf '$HOME'",
+      "rm -rf \\$HOME",
+      'echo "costs \\$5" and $ alone',
     ])("reports a complete scan for syntax it follows: %s", (cmd) => {
       expect(scanCommand(cmd).complete).toBe(true);
     });

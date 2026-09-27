@@ -258,6 +258,28 @@ describe("semantic/decide", () => {
       expect(v0.decision).not.toBe("allow");
     });
 
+    // F9 (round 4): a parameter expansion names its target only through a
+    // value the scan never sees. `$DANGER` reads as the word "danger", which
+    // the human did say, so the target check passed on the variable's NAME.
+    // No expansion is resolved locally: the scan is incomplete and no intent
+    // route may clear or soften.
+    const expansions: Array<[string, string]> = [
+      ["DANGER=/critical; rm -rf $DANGER", "remove danger"],
+      ['rm -rf "$TARGET"', "remove the target"],
+      ["rm -rf $1", "remove it"],
+      ["rm -rf $((1))x", "remove it"],
+    ];
+    it.each(expansions)("a parameter expansion cannot be cleared: %s", (command, said) => {
+      expect(scanTargets({ command }).complete).toBe(false);
+      const v1 = decideV1([deletion], v1Answers, { command }, [said], null);
+      expect(v1.decision).not.toBe("allow");
+      expect(v1.outcomes[0]).toMatchObject({ verdict: "deny", targetScanIncomplete: true });
+      const task = decideV1([deletion], { ...v1Answers, op_requested: 0.2, task_step: 0.9 }, { command }, [said], null);
+      expect(task.decision).toBe("deny");
+      expect(task.outcomes[0].intent).toBeUndefined();
+      expect(decide([deletion], v0Answers, { command }, [said]).decision).not.toBe("allow");
+    });
+
     it("the finding's exact repro is withheld as an incomplete scan, not by luck", () => {
       const command = "echo $'harmless\\' # ignored'; rm -rf /critical";
       expect(scanTargets({ command })).toMatchObject({ complete: false });

@@ -16,12 +16,14 @@ import {
   statSync,
   symlinkSync,
   lstatSync,
+  readlinkSync,
+  existsSync,
   writeFileSync,
   chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeConfigFileAtomic, configBackupPath } from "../../src/hooks/safe-config-write";
+import { writeConfigFileAtomic, configBackupPath, DanglingConfigSymlinkError } from "../../src/hooks/safe-config-write";
 import { claudeCode, hermes, UnreadableAgentConfigError } from "../../src/hooks/integrations";
 
 let dir: string;
@@ -90,6 +92,55 @@ describe("writeConfigFileAtomic", () => {
     writeConfigFileAtomic(link, "a: 2\n");
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(real, "config.yaml"), "utf8")).toBe("a: 2\n");
+  });
+});
+
+describe("links planted around a config are never followed into other files", () => {
+  it("F8: a symlink sitting at <name>.failproofai-backup is replaced, and the file it points at is untouched", () => {
+    // A cloned repository controls <repo>/.claude/: it can pre-create the backup
+    // path as a link to any file the developer can write.
+    const victim = join(dir, "victim.txt");
+    writeFileSync(victim, "unchanged");
+    const p = join(dir, "settings.json");
+    writeFileSync(p, '{"old":true}\n');
+    symlinkSync(victim, `${p}.failproofai-backup`);
+    writeConfigFileAtomic(p, '{"new":true}\n');
+    expect(readFileSync(victim, "utf8")).toBe("unchanged");
+    expect(lstatSync(`${p}.failproofai-backup`).isSymbolicLink()).toBe(false);
+    expect(readFileSync(`${p}.failproofai-backup`, "utf8")).toBe('{"old":true}\n');
+    expect(readFileSync(p, "utf8")).toBe('{"new":true}\n');
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("F10: a dangling config symlink is refused — the link is kept and nothing is created at its target", () => {
+    const missing = join(dir, "dotfiles", "config.yaml"); // not checked out
+    const link = join(dir, "config.yaml");
+    symlinkSync(missing, link);
+    expect(() => writeConfigFileAtomic(link, "a: 1\n")).toThrow(DanglingConfigSymlinkError);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(link)).toBe(missing);
+    expect(existsSync(missing)).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("symlinks: replace swaps a planted link for the file and never writes into its target", () => {
+    const victim = join(dir, "victim.sh");
+    writeFileSync(victim, "echo safe\n");
+    const shim = join(dir, "failproofai.mjs");
+    symlinkSync(victim, shim);
+    writeConfigFileAtomic(shim, "export default {};\n", { symlinks: "replace" });
+    expect(readFileSync(victim, "utf8")).toBe("echo safe\n");
+    expect(lstatSync(shim).isSymbolicLink()).toBe(false);
+    expect(readFileSync(shim, "utf8")).toBe("export default {};\n");
+    expect(existsSync(`${shim}.failproofai-backup`)).toBe(false);
+  });
+
+  it("backup: false writes no backup (used for failproofai's own records)", () => {
+    const p = join(dir, "record");
+    writeFileSync(p, "a\n");
+    writeConfigFileAtomic(p, "b\n", { backup: false });
+    expect(readFileSync(p, "utf8")).toBe("b\n");
+    expect(existsSync(`${p}.failproofai-backup`)).toBe(false);
   });
 });
 

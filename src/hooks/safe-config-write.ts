@@ -29,12 +29,14 @@
 import {
   chmodSync,
   closeSync,
+  constants as fsConstants,
   copyFileSync,
   existsSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -52,26 +54,97 @@ export function configBackupPath(path: string): string {
 /** Hooks for tests to simulate an interruption at the one step that matters. */
 export interface AtomicWriteDeps {
   rename?: (from: string, to: string) => void;
+  /** Keep `<name>.failproofai-backup` of the previous version (default true). */
+  backup?: boolean;
+  /**
+   * What to do when the path is a symlink. `follow` (default) writes through to
+   * the target — right for a user's config, which is read and parsed before it
+   * is written and may live in a dotfiles checkout. `replace` swaps the link
+   * itself for the new file and never touches what it pointed at — right for a
+   * file failproofai generates and fully owns (a plugin shim, an ownership
+   * record), which is written without being read, so a planted link must not
+   * steer the write into another file.
+   */
+  symlinks?: "follow" | "replace";
 }
 
-/** A symlinked config is written through to what it points at. */
-function resolveWriteTarget(path: string): string {
-  try {
-    if (lstatSync(path).isSymbolicLink()) return realpathSync(path);
-  } catch {
-    // Absent or unreadable: write to the path as given.
+/** A config that is a symlink to nothing: writing would either replace the link or create a file somewhere unknown. */
+export class DanglingConfigSymlinkError extends Error {
+  constructor(readonly path: string, readonly target: string) {
+    super(
+      `Refusing to write ${path}: it is a symlink to ${target}, which does not exist. ` +
+        `Fix or remove the link, then retry — failproofai will not replace it with a regular file.`,
+    );
+    this.name = "DanglingConfigSymlinkError";
   }
-  return path;
+}
+
+/**
+ * A symlinked config is written through to what it points at, so a dotfiles
+ * checkout keeps its link. A link whose target does not exist is refused: the
+ * rename would replace the link with a regular file (silently detaching the
+ * dotfiles), and creating the target instead would write wherever the link
+ * says — a path a cloned repository can choose for a project-scoped config.
+ */
+function resolveWriteTarget(path: string): string {
+  let isLink = false;
+  try {
+    isLink = lstatSync(path).isSymbolicLink();
+  } catch {
+    return path; // absent: a new file at the path as given
+  }
+  if (!isLink) return path;
+  try {
+    return realpathSync(path);
+  } catch {
+    let target = "(unreadable link)";
+    try {
+      target = readlinkSync(path);
+    } catch {
+      // keep the placeholder
+    }
+    throw new DanglingConfigSymlinkError(path, target);
+  }
+}
+
+function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keep the previous version beside the file without ever following a link that
+ * sits where the backup goes. `copyFileSync` onto `<name>.failproofai-backup`
+ * would write THROUGH a symlink planted there — for a project-scoped config
+ * inside a cloned repository, into any file the user can write. So the copy
+ * goes to a fresh, exclusively created temp file and is renamed over the backup
+ * path: a rename replaces a symlink, it does not follow one.
+ */
+function writeBackup(target: string, dir: string): void {
+  const backup = `${target}.failproofai-backup`;
+  const temporary = join(dir, `.${basename(target)}.failproofai-backup-${process.pid}-${randomBytes(4).toString("hex")}.tmp`);
+  try {
+    copyFileSync(target, temporary, fsConstants.COPYFILE_EXCL);
+    renameSync(temporary, backup);
+  } catch (err) {
+    rmSync(temporary, { force: true });
+    throw err;
+  }
 }
 
 export function writeConfigFileAtomic(path: string, content: string, deps: AtomicWriteDeps = {}): void {
-  const target = resolveWriteTarget(path);
+  const replacingLink = deps.symlinks === "replace" && isSymlink(path);
+  const target = deps.symlinks === "replace" ? path : resolveWriteTarget(path);
   const dir = dirname(target);
   mkdirSync(dir, { recursive: true });
 
   let mode: number | undefined;
   try {
-    mode = statSync(target).mode & 0o777;
+    // A link being replaced lends nothing: its target's mode is someone else's.
+    mode = replacingLink ? undefined : statSync(target).mode & 0o777;
   } catch {
     mode = undefined; // a new file: the process umask decides, as writeFileSync would
   }
@@ -89,7 +162,7 @@ export function writeConfigFileAtomic(path: string, content: string, deps: Atomi
     // `open` applies the umask; the live file's own bits are what should survive.
     if (mode !== undefined) chmodSync(temporary, mode);
 
-    if (existsSync(target)) copyFileSync(target, `${target}.failproofai-backup`);
+    if (deps.backup !== false && !replacingLink && existsSync(target)) writeBackup(target, dir);
 
     (deps.rename ?? renameSync)(temporary, target);
   } catch (err) {

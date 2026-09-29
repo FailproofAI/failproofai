@@ -4,6 +4,10 @@
 
 ### Fixes
 
+- **A planted link at `<config>.failproofai-backup` could redirect the backup into another file.** The previous version is now copied to an exclusively created temp file and renamed over the backup path, so a symlink there is replaced, never followed — for a project-scoped config in a cloned repository, the file it pointed at is untouched.
+- **A config that is a dangling symlink is refused instead of replaced.** Writing used to swap the link for a regular file (silently detaching a dotfiles checkout); it now stops with the link and its missing target named. Files failproofai generates and owns (the OpenCode plugin shim, the Hermes link record) replace a planted link rather than writing through it.
+- **A same-named Hermes plugin is only replaced when failproofai can prove it is its own.** A link counts as failproofai's when it matches the ownership record written beside it (`plugins/.failproofai-link`) or points into an npm `failproofai` package (links from the 1.0.9 betas are adopted and recorded); a look-alike directory named `hermes-plugin` with a `name: failproofai` manifest is left alone and `config --status` says another plugin occupies the name.
+- **One Hermes profile that cannot be inspected no longer stops `update` for the rest.** Each profile is handled on its own, the redundant second read of `config.yaml` is gone, and a failure is that profile's line in the report. Re-enabling a plugin listed in `plugins.disabled` now reads "plugin re-enabled".
 - **`failproofai update` exited 1 on a machine whose daemon was already current.** It reinstalled the service on every run, which needs root: interactively it asked for a password for nothing, and with no TTY (a fleet box, CI) it failed with "root privileges are required". When the service is running and `VERSION` records this CLI's version with its binary on disk, it now says the daemon is already current and asks root for nothing.
 
 ## 1.0.9-beta.2 — 2026-09-29

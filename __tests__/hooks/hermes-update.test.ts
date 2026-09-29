@@ -135,12 +135,62 @@ describe("linked Hermes plugin install", () => {
     expect(readFileSync(resolve(pluginPath(), "client.py"), "utf8")).toBe("# new release\n");
   });
 
-  it("relinks a dangling link left by a removed install prefix", () => {
+  it("relinks a dangling link it recorded, left by a removed install prefix", () => {
     const oldPrefix = resolve(tempDir, "old-node", "lib", "node_modules", "failproofai", "hermes-plugin");
     mkdirSync(resolve(home(), "plugins"), { recursive: true });
     symlinkSync(oldPrefix, pluginPath()); // target never existed: dangling
+    writeFileSync(resolve(home(), "plugins", ".failproofai-link"), oldPrefix + "\n");
     expect(installHermesPlugin(configPath())).toBe("linked");
     expect(readlinkSync(pluginPath())).toBe(source);
+    expect(readFileSync(resolve(home(), "plugins", ".failproofai-link"), "utf8").trim()).toBe(source);
+  });
+
+  it("treats an unrecorded dangling link as foreign: nothing can prove it is ours", () => {
+    const oldPrefix = resolve(tempDir, "old-node", "lib", "node_modules", "failproofai", "hermes-plugin");
+    mkdirSync(resolve(home(), "plugins"), { recursive: true });
+    symlinkSync(oldPrefix, pluginPath());
+    expect(() => installHermesPlugin(configPath())).toThrow(/unmanaged Hermes plugin/);
+    expect(readlinkSync(pluginPath())).toBe(oldPrefix);
+  });
+
+  it("refuses a same-named plugin with a failproofai manifest that is not ours (F9)", () => {
+    // Both public naming conditions met: a directory called hermes-plugin whose
+    // plugin.yaml says name: failproofai. Neither is proof of ownership.
+    const lookalike = resolve(tempDir, "vendor", "hermes-plugin");
+    mkdirSync(lookalike, { recursive: true });
+    for (const f of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
+      writeFileSync(resolve(lookalike, f), f === "plugin.yaml" ? "name: failproofai\n" : "# not ours\n");
+    }
+    mkdirSync(resolve(home(), "plugins"), { recursive: true });
+    symlinkSync(lookalike, pluginPath());
+    expect(() => installHermesPlugin(configPath())).toThrow(/unmanaged Hermes plugin/);
+    expect(readlinkSync(pluginPath())).toBe(lookalike);
+    expect(hermesProfileHealth()[0].pluginInstalled).toBe(false);
+    expect(hermesProfileHealth()[0].pluginForeign).toBe(true);
+    expect(hermesProfileStatusRows()[0][1]).toMatch(/another plugin occupies .*plugins\/failproofai/);
+  });
+
+  it("adopts a 1.0.9-beta link into an npm failproofai package by provenance, and records it", () => {
+    const pkg = resolve(tempDir, "prefix", "lib", "node_modules", "failproofai");
+    mkdirSync(resolve(pkg, "hermes-plugin"), { recursive: true });
+    writeFileSync(resolve(pkg, "package.json"), JSON.stringify({ name: "failproofai", version: "1.0.9-beta.1" }));
+    for (const f of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
+      writeFileSync(resolve(pkg, "hermes-plugin", f), f === "plugin.yaml" ? "name: failproofai\n" : "#\n");
+    }
+    mkdirSync(resolve(home(), "plugins"), { recursive: true });
+    symlinkSync(resolve(pkg, "hermes-plugin"), pluginPath()); // no record: a beta install
+    expect(installHermesPlugin(configPath())).toBe("linked"); // not current → relinked to this package
+    expect(readlinkSync(pluginPath())).toBe(source);
+    expect(readFileSync(resolve(home(), "plugins", ".failproofai-link"), "utf8").trim()).toBe(source);
+  });
+
+  it("uninstall removes the ownership record with the link", () => {
+    writeConfig("default", "model: gpt-5\n");
+    installHermesPlugin(configPath());
+    expect(existsSync(resolve(home(), "plugins", ".failproofai-link"))).toBe(true);
+    hermes.removeHooksFromFile(configPath());
+    expect(existsSync(pluginPath())).toBe(false);
+    expect(existsSync(resolve(home(), "plugins", ".failproofai-link"))).toBe(false);
   });
 
   it("refuses to replace a symlink to somebody else's plugin", () => {
@@ -277,6 +327,18 @@ describe("failproofai update → Hermes migration", () => {
     expect(result.lines.join("\n")).toMatch(/hermes\/work\s+skipped — no failproofai integration/);
   });
 
+  it("records ownership of an already-current link that has no record yet (a 1.0.9-beta install)", async () => {
+    writeConfig("default", "model: gpt-5\n");
+    hermes.prepareInstall!(configPath());
+    const settings = hermes.readSettings(configPath());
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(configPath(), settings);
+    rmSync(resolve(home(), "plugins", ".failproofai-link"), { force: true });
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });
+    expect(result.profiles[0].status).toBe("current");
+    expect(readFileSync(resolve(home(), "plugins", ".failproofai-link"), "utf8").trim()).toBe(source);
+  });
+
   it("reports an already-linked profile as current without probing the daemon", async () => {
     writeConfig("default", "model: gpt-5\n");
     hermes.prepareInstall!(configPath());
@@ -374,6 +436,18 @@ describe("failproofai update → Hermes migration", () => {
     expect(result.profiles[0].status).toBe("untouched");
     expect(readFileSync(configPath(), "utf8")).toBe(broken);
     expect(existsSync(pluginPath())).toBe(false);
+  });
+
+  it("one profile that cannot be inspected is reported failed and the others still migrate (F11)", async () => {
+    writeConfig("default", LEGACY_CONFIG);
+    writeConfig("work", LEGACY_CONFIG);
+    // Make the default profile's plugins/ path a FILE, so inspecting it throws
+    // mid-loop; the work profile must still be migrated and reported.
+    writeFileSync(resolve(home("default"), "plugins"), "not a directory");
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });
+    const byName = Object.fromEntries(result.profiles.map((p) => [p.name, p.status]));
+    expect(byName.work).toBe("migrated");
+    expect(byName.default).toBe("failed");
   });
 
   it("uses the copy fallback during migration when links are impossible", async () => {

@@ -4,7 +4,11 @@
 
 ### Docs
 
-- Add a first-run path for Jev through FailproofAI Cloud or a user's own key, including prerequisites, shadow-mode setup, a real tool-call verification step, and links from the policy overview and quickstart. Clarify the Cloud machine key's `jev:evaluate` permission.
+- Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a short quickstart with dashboard screenshots and CLI steps, clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.
+
+### Dependencies
+
+- Update the pinned `undici` override to 7.29.1 to address GHSA-3wwx-pv8p-q78v found by the lockfile scanner.
 
 ## 1.0.8-beta.0 — 2026-09-26
 

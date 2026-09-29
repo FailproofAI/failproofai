@@ -23,7 +23,7 @@ Hosted evaluations come in three shapes, and the assistant picks between them fo
 | | Reads the session with | Gives you |
 | --- | --- | --- |
 | **Code** | nothing — one Python expression, no imports, no network | a score, a metric, or an assertion |
-| **[Classifier](/evaluations/jev)** | a small model built for classification | a score, and nothing else — it does not explain itself |
+| **[Jev classifier](/evaluations/jev)** | a small model built for classification | a score, and nothing else — it does not explain itself |
 | **[Judge](/evaluations/judge)** | a general-purpose model | a score **and** the reasoning behind it |
 
 Code costs nothing to run. The other two cost a model call per session, so give them a condition that narrows them to the sessions the question is actually about.

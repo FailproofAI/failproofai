@@ -4,7 +4,7 @@ description: "Which policy verdicts the Jev semantic evaluator may clear, and wh
 icon: "scale"
 ---
 
-When you configure the Jev semantic evaluator with your own key (`failproofai jev setup`), every tool call is judged twice: by the policies you run, and by Jev, which asks what the call actually does and whether the person who typed the task asked for it. Each policy's **authority** decides what happens when the two disagree.
+When you configure [Jev policy review](/policies/jev) through FailproofAI Cloud or your own key, each gated tool call is judged by the policies you run and by Jev, which asks what the call actually does and whether the person who typed the task asked for it. Each policy's **authority** decides what happens when the two disagree.
 
 Without Jev configured, authority has no effect. Every policy enforces exactly as it always has.
 

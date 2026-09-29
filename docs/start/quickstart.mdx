@@ -29,7 +29,7 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
     ## Before you start
 
 1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
-2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/policies/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`.
+2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/reference/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`.
 3. Copy the one-time secret, then read it into a shell on the target machine. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
 
 ```bash
@@ -82,8 +82,6 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 
     The pack is fetched from its GitHub release, checksum-verified, and pinned to the exact tag it resolved. It carries 39 policies and switches on the 10 its manifest marks as safe to enable unattended. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
 
-    To add model-based review of gated tool calls, set up [Jev through FailproofAI Cloud](/policies/jev-cloud) with a machine key that includes `jev:evaluate`, or [use your own Jev key](/policies/jev-byok). Jev can clear a policy's deny only when that policy is marked reviewable; a hard policy stays final.
-
     Read any pack before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
 
     Until this runs, the only thing enforcing is `block-failproofai-commands` — the always-on guard that stops an agent switching Failproof AI off. `failproofai policies` lists what is on.
@@ -101,3 +99,37 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 </Check>
   </Tab>
 </Tabs>
+
+## Use Jev
+
+Jev is useful at two different moments. Use a [Jev evaluation](/evaluations/jev) to score a finished session when the answer is one of a few known choices. Use a [Jev policy](/policies/jev) to review a tool call before it runs when a string-matching policy needs the context of your request.
+
+### Score finished sessions
+
+In the Cloud dashboard, open **Analyze → eval authoring → new eval**. Describe one question with fixed answers, such as “Did the customer ask for a refund? Answer yes or no.” Select **draft**, check that it chose a classifier score, [test it](/evaluations/test) on real sessions, then deploy.
+
+![The shared eval authoring form where you describe a question, review the draft, and deploy it. This screenshot shows a code draft; use a fixed-answer question for Jev.](/images/dashboard/eval-authoring-draft.png)
+
+After a new session completes, open **Observe → Evaluations** or read the scores with the Cloud CLI:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+The CLI reads scores; creating a Jev evaluation currently uses the dashboard. See [Jev evaluations](/evaluations/jev) for question types and examples.
+
+### Review tool calls before they run
+
+If you connected with the **machine** key preset above, Cloud Jev is already on in **shadow** mode. It records Jev's answer while your installed policies still decide the call. Open the local dashboard's **Settings → Jev** to see the connection and mode. For your own endpoint, choose its provider, paste the token, select **shadow**, and turn Jev on:
+
+![The local Jev settings panel with a provider, token field, and shadow mode selected.](/images/dashboard/jev-settings.png)
+
+For an own-key setup from a terminal, these two commands configure and test it:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
+failproofai jev test
+```
+
+For Cloud Jev, run `failproofai jev status` and `failproofai jev test` after connecting. Review a real tool call under **Policies → Activity** before switching to enforce mode. [Jev policies](/policies/jev) explains what it can clear; the [integration reference](/reference/jev) covers providers and configuration.

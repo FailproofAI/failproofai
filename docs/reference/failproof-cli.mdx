@@ -40,7 +40,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | Command | Outcome |
 | --- | --- |
 | `failproofai config` | Set the machine up: agents, daemon, and Cloud when a key is present |
-| `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/policies/jev-cloud) in shadow mode, unless a `jev.json` already exists or `--no-transcripts` is given |
+| `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/reference/jev-cloud) in shadow mode, unless a `jev.json` already exists or `--no-transcripts` is given |
 | `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
 | `failproofai policies` | List builtin, custom, convention, pack, and Cloud-managed policies |
@@ -59,8 +59,8 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai audit --no-schedule` | Stop recurring scans without deleting audit history |
 | `failproofai harness list` | List extra capture paths |
 | `failproofai jev --url <url> --key-stdin` | Set Jev up in one step; the provider is taken from the URL's host |
-| `failproofai jev setup --provider <kind> --key-stdin` | Let [Jev](/policies/jev-byok) judge tool calls through your own endpoint and key |
-| `failproofai jev setup --provider failproofai` | Let Jev judge tool calls [through FailproofAI Cloud](/policies/jev-cloud), with this machine's Cloud key |
+| `failproofai jev setup --provider <kind> --key-stdin` | Let [Jev](/reference/jev-providers) judge tool calls through your own endpoint and key |
+| `failproofai jev setup --provider failproofai` | Let Jev judge tool calls [through FailproofAI Cloud](/reference/jev-cloud), with this machine's Cloud key |
 | `failproofai jev setup --mode <m>` | Switch Jev's mode: `enforce`, `shadow`, or `off` (keeps the config, stops asking Jev) |
 | `failproofai jev status` | Show the Jev config, its permissions and recent fallbacks; never the key |
 | `failproofai jev test` | Send one live Jev request and show its latency and version; exits 1 when the answer is late for hooks or wrong |

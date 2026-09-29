@@ -170,14 +170,8 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "policies/overview"
-                ]
-              },
-              {
-                "group": "Add Jev",
-                "pages": [
-                  "policies/jev-cloud",
-                  "policies/jev-byok"
+                  "policies/overview",
+                  "policies/jev"
                 ]
               },
               {
@@ -224,12 +218,22 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
-                  "reference/jev-intent",
                   "reference/custom-agents",
                   "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "reference/jev",
+                  "reference/jev-evaluations",
+                  "reference/jev-providers",
+                  "reference/jev-cloud",
+                  "reference/jev-intent",
+                  "policies/authority"
                 ]
               },
               {
@@ -239,7 +243,6 @@
                   "reference/failproof-cli",
                   "reference/local-dashboard",
                   "policies/local-configuration",
-                  "policies/authority",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",
@@ -2712,6 +2715,14 @@
     "indexing": "navigable"
   },
   "redirects": [
+    {
+      "source": "/policies/jev-byok",
+      "destination": "/reference/jev-providers"
+    },
+    {
+      "source": "/policies/jev-cloud",
+      "destination": "/reference/jev-cloud"
+    },
     {
       "source": "/reference/python-sdk",
       "destination": "/reference/custom-agents"

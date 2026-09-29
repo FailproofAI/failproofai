@@ -36,6 +36,22 @@ import type { JevConfig } from "../../src/hooks/semantic/jev-config";
 let jevConfig: JevConfig | null = null;
 /** Overrides the build's DEFAULT_JEV_MODE (D2) for one test; undefined → the real one. */
 let defaultModeOverride: "shadow" | "enforce" | undefined;
+// The package ships no Jev checks, so a handler only starts a review on a
+// machine with a pack declaring some. These tests drive the two-tier path over
+// the migration shim's builtins (which a real pack install would switch off),
+// so they stand in for FailproofAI/jev-policies directly: its sixteen checks
+// are the questions, and their names the reviewers.
+vi.mock("../../src/hooks/effective-reviewers", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../src/hooks/effective-reviewers")>();
+  const { SEMANTIC_REVIEWER_NAMES } = await import("../../src/hooks/policy-authority");
+  return { ...real, effectiveReviewerNames: () => SEMANTIC_REVIEWER_NAMES, jevChecksInstalled: () => true };
+});
+vi.mock("../../src/hooks/semantic/pack-policies", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../src/hooks/semantic/pack-policies")>();
+  const { JEV_PACK_POLICIES } = await import("../fixtures/jev-policies");
+  return { ...real, resolveSemanticPolicies: () => JEV_PACK_POLICIES };
+});
+
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-config")>();
   return {

@@ -30,7 +30,7 @@ import {
 } from "../../../src/hooks/semantic/combine";
 import { fallbackCode, toReview } from "../../../src/hooks/semantic/jev-review";
 import { DEFAULT_THRESHOLDS_V1, decideV1 } from "../../../src/hooks/semantic/decide";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
 import type { PolicyOutcome, SemanticVerdict } from "../../../src/hooks/semantic/types";
 

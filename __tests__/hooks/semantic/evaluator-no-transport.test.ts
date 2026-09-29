@@ -16,6 +16,11 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { evaluateSemantic } from "../../../src/hooks/semantic/evaluator";
 import type { SemanticInput } from "../../../src/hooks/semantic/types";
+import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+
+// The package ships no Jev checks; this file runs as a machine with
+// FailproofAI/jev-policies installed.
+useInstalledJevPoliciesPack();
 
 const ENV = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_JEV_CONFIG_DIR", "TYPESAFE_API_KEY"];
 const saved: Record<string, string | undefined> = {};

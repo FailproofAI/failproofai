@@ -23,7 +23,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { POLICY_CATALOG } from "@/src/hooks/policy-catalog";
-import { resolvePolicyAuthority } from "@/src/hooks/policy-authority";
+import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "@/src/hooks/policy-authority";
+import { installJevPoliciesPack, jevPoliciesPackRecord } from "../fixtures/jev-policies";
 import type { RegisteredPolicy } from "@/src/hooks/policy-types";
 
 const REPO = resolve(__dirname, "../..");
@@ -52,6 +53,9 @@ beforeEach(() => {
   process.env.FAILPROOFAI_CLOUD_POLICY_DIR = cloudRoot;
   delete process.env.FAILPROOFAI_PACK_BASE_URL;
   writeConfig({ enabledPolicies: [] });
+  // The checks every `reviewedBy` below names ship in FailproofAI/jev-policies,
+  // not in the package, so this machine has it installed.
+  installJevPoliciesPack(packRoot);
   stderr = [];
   vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
     stderr.push(String(chunk));
@@ -147,7 +151,7 @@ describe("catalog → build-policy-pack → policies add → loader → registry
   it("emits a resolved authority for every policy in the manifest", () => {
     const expected = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => ({
       name: p.name,
-      ...resolvePolicyAuthority(p),
+      ...resolvePolicyAuthority(p, SEMANTIC_REVIEWER_NAMES),
     }));
     expect(
       manifest.policies.map((p) => ({
@@ -177,8 +181,8 @@ describe("catalog → build-policy-pack → policies add → loader → registry
     const byName = new Map(hooks.map((h) => [h.name, h]));
     for (const p of manifest.policies) {
       const hook = byName.get(p.name as string)!;
-      expect(resolvePolicyAuthority(hook), p.name as string).toEqual(
-        resolvePolicyAuthority(p as never),
+      expect(resolvePolicyAuthority(hook, SEMANTIC_REVIEWER_NAMES), p.name as string).toEqual(
+        resolvePolicyAuthority(p as never, SEMANTIC_REVIEWER_NAMES),
       );
     }
   });
@@ -192,7 +196,7 @@ describe("catalog → build-policy-pack → policies add → loader → registry
     const { readInstalledPacks } = await import("@/src/hooks/pack-manifest");
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
-    const installed = packs[0].policies.find((p) => p.name === "protect-env-vars")!;
+    const installed = packs.find((p) => p.id === manifest.id)!.policies.find((p) => p.name === "protect-env-vars")!;
     expect(installed.authority).toBe("reviewable");
     expect(installed.reviewedBy).toEqual(["env-secrets-dump", "secret-exposure"]);
 
@@ -202,7 +206,7 @@ describe("catalog → build-policy-pack → policies add → loader → registry
       if (entry.alwaysOn) continue;
       const r = registered.get(prefix + entry.name);
       expect(r, `${entry.name} was not registered`).toBeDefined();
-      const { downgraded: _d, ...expected } = resolvePolicyAuthority(entry);
+      const { downgraded: _d, ...expected } = resolvePolicyAuthority(entry, SEMANTIC_REVIEWER_NAMES);
       expect(authorityOf(r), entry.name).toEqual(expected);
     }
     // The guard packs may not carry still ships compiled in, and stays hard.
@@ -246,7 +250,7 @@ describe("a third-party pack: its manifest decides, and only for its own policie
       join(packRoot, "installed.json"),
       JSON.stringify({
         schemaVersion: 1,
-        packs: [{
+        packs: [jevPoliciesPackRecord(packRoot), {
           id: "acme/ops", version: "1.0.0", source: "github:acme/ops@v1.0.0",
           entry: `artifacts/${digest}.mjs`, sha256: digest,
           policies: [
@@ -279,7 +283,7 @@ describe("a third-party pack: its manifest decides, and only for its own policie
     const { readInstalledPacks } = await import("@/src/hooks/pack-manifest");
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
-    const garbled = packs[0].policies.find((p) => p.name === "garbled")!;
+    const garbled = packs.find((p) => p.id === "acme/ops")!.policies.find((p) => p.name === "garbled")!;
     expect("authority" in garbled).toBe(false);
     expect("reviewedBy" in garbled).toBe(false);
 

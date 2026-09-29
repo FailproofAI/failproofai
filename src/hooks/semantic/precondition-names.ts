@@ -9,7 +9,7 @@
  * deciding, per tool call, what this process computes. A precondition gates
  * every hook event, so it is the last place to accept publisher-authored code.
  * So the manifest names one of a fixed, compiled-in set and
- * `preconditions.ts` owns the bodies. Only 2 of the 16 builtin semantic
+ * `preconditions.ts` owns the bodies. Only 2 of the 16 FailproofAI semantic
  * policies use a precondition at all, so the closed set costs nothing real.
  *
  * ## Why this file exists apart from `preconditions.ts`

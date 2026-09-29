@@ -26,7 +26,7 @@ import { compareVersions, parseSemver } from "./semver-precedence";
 // budget, which means reaching the semantic side. This is a CLI module — loaded
 // by `failproofai publish`, never by a hook — so the rule that keeps those
 // modules off an unconfigured machine's hook path does not apply here.
-import { BUILTIN_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS, questionChars, semanticPoliciesFromPacks } from "./semantic/pack-policies";
+import { JEV_POLICIES_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS, questionChars, semanticPoliciesFromPacks } from "./semantic/pack-policies";
 import {
   AmbiguousPackId,
   PACK_CHECKSUMS_ASSET,
@@ -484,19 +484,20 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // the user's machine, in manifest order — a pack that enforces less than it
   // says, which is the failure this whole lane is built to avoid.
   //
-  // A pack from outside FailproofAI is ADDED to the built-in checks, which every
-  // machine spends the budget on first (`semanticPoliciesFromPacks`), so it gets
-  // only what they leave.
+  // A pack from outside FailproofAI shares one request with FailproofAI's own
+  // checks wherever both are installed, and those spend the budget first
+  // (`semanticPoliciesFromPacks`), so it is held to what they leave.
   const questionCost = semantic.reduce((total, entry) => total + questionChars(entry), 0);
   const firstParty = isFirstPartyPack(packSource);
-  const questionBudget = MAX_PACK_QUESTION_CHARS - (firstParty ? 0 : BUILTIN_QUESTION_CHARS);
+  const questionBudget = MAX_PACK_QUESTION_CHARS - (firstParty ? 0 : JEV_POLICIES_QUESTION_CHARS);
   if (questionCost > questionBudget) {
     return fail([
       `This pack's ${semantic.length} semantic policies compile to ${questionCost} characters of questions, ` +
         (firstParty
           ? `over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for.`
           : `over the ${questionBudget} a machine leaves a pack from outside FailproofAI: one Jev request has room ` +
-            `for ${MAX_PACK_QUESTION_CHARS}, and the 16 built-in checks every machine asks take ${BUILTIN_QUESTION_CHARS} of it first.`),
+            `for ${MAX_PACK_QUESTION_CHARS}, and FailproofAI/jev-policies' 16 checks take ${JEV_POLICIES_QUESTION_CHARS} of it first ` +
+            `where both are installed.`),
       "Shorten the probe instructions and criteria, or ship fewer policies per pack.",
     ]);
   }
@@ -511,9 +512,9 @@ async function build(rest: string[]): Promise<PackCliResult> {
   // Judged against the reviewers the PACK SHIPS WITH, not this build's: a pack
   // that carries both tiers replaces the compiled semantic set on every machine
   // that installs it, so `reviewedBy: ["its-own-check"]` is exactly right and
-  // the builtin list would call it a name "this build does not have". A pack
-  // with no semantic entries still answers to the builtin set, which is what its
-  // machines will be running.
+  // FailproofAI's names would call it a name "this build does not have". A pack
+  // with no semantic entries answers to FailproofAI's sixteen names, which is
+  // what `FailproofAI/jev-policies` brings to the machines that install both.
   const reviewers = semantic.length > 0 ? new Set(semantic.map((s) => s.name)) : undefined;
   const authorityProblems = hooks.flatMap((hook) => {
     const problem = authorityProblem({ authority: hook.authority, reviewedBy: hook.reviewedBy }, reviewers);
@@ -590,8 +591,8 @@ async function build(rest: string[]): Promise<PackCliResult> {
   //
   // `minCliVersion` and `semantic` follow the same rule, and for `semantic` it is
   // load-bearing rather than tidy: an EMPTY array would still be "a pack that
-  // declares semantic entries" to a careless reader, and the replacement rule
-  // turns that into "this pack replaced the compiled-in set with nothing".
+  // declares semantic entries" to a careless reader, which would count it as a
+  // pack giving Jev checks when it gives none.
   const manifest =
     JSON.stringify(
       {
@@ -631,7 +632,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
             `(${questionCost} characters of questions), ` +
             (identity.effect === "observe"
               ? "not asked where it installs: Jev asks only the checks of packs that enforce."
-              : `${firstParty ? "replacing" : "added to"} the built-in checks where it installs.`),
+              : "asked by Jev wherever it installs."),
         ]
       : []),
     ...(requiredCli ? [`  Requires failproofai ${requiredCli} or newer.`] : []),
@@ -2651,17 +2652,17 @@ function semanticPhrase(count: number): string {
 }
 
 /**
- * How a pack's Jev checks sit beside this build's, for add, show and the
- * picker alike: a FailproofAI pack's replace them, anyone else's are added
- * (`replacesBuiltinChecks`), and only where `jevPacks` lets the pack take part —
- * never for an observe pack, only for its agents when scoped. One phrase, so
- * the three cannot drift apart again.
+ * Whether a pack's Jev checks are asked, for add, show and the picker alike:
+ * only where `jevPacks` lets the pack take part — never for an observe pack,
+ * only for its agents when scoped. The package ships no checks of its own, so
+ * a pack's are the whole set, beside any other pack's. One phrase, so the
+ * three cannot drift apart again.
  */
-function besideBuiltinChecks(pack: { source?: string; effect?: PolicyEffect; clis?: string[] | null }): string {
+function howJevAsksChecks(pack: { source?: string; effect?: PolicyEffect; clis?: string[] | null }): string {
   if (jevPacks([{ effect: pack.effect ?? "enforce", clis: null }]).length === 0) {
     return "not asked: this pack only observes, and Jev asks only the checks of packs that enforce";
   }
-  const how = isFirstPartyPack(pack) ? "replacing this build's own set" : "added to this build's own checks";
+  const how = "asked by Jev on every tool call they apply to";
   return pack.clis && pack.clis.length > 0 ? `${how}, for ${pack.clis.join(", ")} only` : how;
 }
 
@@ -2716,7 +2717,7 @@ async function pickFromSource(
   if (preview.semantic.length > 0) {
     io.stdout.write(
       `\n  This pack also brings ${semanticPhrase(preview.semantic.length)} (not selectable), ` +
-        `${besideBuiltinChecks(preview)}.\n  See: failproofai policies show ${source}\n\n`,
+        `${howJevAsksChecks(preview)}.\n  See: failproofai policies show ${source}\n\n`,
     );
   }
   const picked = await multiSelect<string>({
@@ -2851,7 +2852,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
     // the half somebody installed did nothing and nothing said so.
     if (result.semantic > 0) {
       lines.push(
-        `  ${semanticPhrase(result.semantic)}, ${besideBuiltinChecks(result)}. ` +
+        `  ${semanticPhrase(result.semantic)}, ${howJevAsksChecks(result)}. ` +
           "They apply only where you configured Jev (`failproofai jev status`).",
       );
     }
@@ -3133,7 +3134,7 @@ function relativeAge(iso: string): string {
  *
  * Judged with `resolvePolicyAuthority` against the pack's OWN check names,
  * because that is the rule the installing machine applies: a pack declaring
- * semantic entries replaces the compiled-in set (`effectiveReviewerNames`), so
+ * semantic entries supplies the only checks it can name (`effectiveReviewerNames`), so
  * its `reviewedBy` may name only its own checks, and a declaration that names
  * anything else — or one sitting under `authority: "hard"`, which a manifest may
  * carry because the two fields are parsed independently — registers HARD. A
@@ -3247,7 +3248,7 @@ export function jevChecksSection(
     "",
     ...note(
       "Nothing toggles them: `--policy` cannot name one and `failproofai policies` never lists them. " +
-        `They arrive whole, ${besideBuiltinChecks(pack)}.`,
+        `They arrive whole, ${howJevAsksChecks(pack)}.`,
       opts,
     ),
     ...note(

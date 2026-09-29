@@ -35,7 +35,7 @@ import { DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/se
 import { MAX_USER_MESSAGES, MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
 import { evaluateSemantic, prepareSemantic, type SemanticOptions } from "../../../src/hooks/semantic/evaluator";
 import { toReview } from "../../../src/hooks/semantic/jev-review";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { JevRequest, JevResponse, SemanticInput, SemanticPolicy } from "../../../src/hooks/semantic/types";
 
 const POLICY: SemanticPolicy = SEMANTIC_POLICIES.find((p) => p.name === "database-destruction")!;

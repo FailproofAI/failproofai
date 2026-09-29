@@ -2,12 +2,12 @@
 /**
  * The diagnostic has to count against the set the machine can actually ask.
  *
- * A pack that ships both tiers replaces the compiled-in semantic set where it
- * installs, so its regex policies name its OWN checks in `reviewedBy`. Counted
- * against this build's sixteen, every one of those names is "a check this build
- * does not have" — so `jev status` would say "0 of 39 enabled policies are
- * reviewable" and point at the remedy, on exactly the machines that already took
- * it. A diagnostic that lies on the state it was written for is worse than no
+ * The package ships no Jev checks: the reviewers on a machine are exactly the
+ * checks its installed packs declare. A pack that ships both tiers names its OWN
+ * checks in `reviewedBy`; counted against anything else, every one of those
+ * names is "a check this build does not have" — so `jev status` would say "0 of
+ * 39 enabled policies are reviewable" and point at the remedy, on exactly the
+ * machines that already took it. A diagnostic that lies on the state it was written for is worse than no
  * diagnostic: it sends people to re-take a pack they are already running.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -15,7 +15,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { countReviewable, reviewableProblem, reviewableSummary, surveyReviewableCoverage } from "@/src/hooks/policy-reviewability";
+import {
+  NO_JEV_CHECKS_PROBLEM,
+  countReviewable,
+  reviewableProblem,
+  reviewableSummary,
+  surveyReviewableCoverage,
+} from "@/src/hooks/policy-reviewability";
 import { SEMANTIC_REVIEWER_NAMES } from "@/src/hooks/policy-authority";
 import { forgetEffectiveReviewerNames } from "@/src/hooks/effective-reviewers";
 
@@ -102,12 +108,12 @@ describe("countReviewable with an explicit reviewer set", () => {
     });
   });
 
-  it("counts the same name as hard against this build's set", () => {
+  it("counts the same name as hard against FailproofAI's names, and against none", () => {
     expect(SEMANTIC_REVIEWER_NAMES.has("pack-destructive-deletion")).toBe(false);
-    expect(countReviewable([{ authority: "reviewable", reviewedBy: ["pack-destructive-deletion"] }])).toEqual({
-      enabled: 1,
-      reviewable: 0,
-    });
+    const decl = [{ authority: "reviewable", reviewedBy: ["pack-destructive-deletion"] }];
+    expect(countReviewable(decl, SEMANTIC_REVIEWER_NAMES)).toEqual({ enabled: 1, reviewable: 0 });
+    // The default: no pack declaring checks, no reviewers.
+    expect(countReviewable(decl)).toEqual({ enabled: 1, reviewable: 0 });
   });
 
   it("still requires EVERY name, because reviewedBy is a conjunction", () => {
@@ -138,18 +144,22 @@ describe("surveyReviewableCoverage on a machine running a two-tier pack", () => 
     expect(reviewableProblem(coverage)).toBeNull();
   });
 
-  it("counts a builtin name as hard once a pack has replaced the semantic set", () => {
+  it("counts a check no installed pack declares as hard", () => {
     // Not a nicety: that question will never be asked on this machine, so a
     // clear counted for it is a clear that cannot happen.
     installPack([regex({ authority: "reviewable", reviewedBy: ["secret-exposure"] })], [SEMANTIC]);
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0, jevChecks: 1 });
     expect(reviewableProblem(coverage)).toContain("it can never clear one");
   });
 
-  it("keeps counting against this build's set for a pack with no semantic entries", () => {
+  it("counts nothing reviewable for a pack with no semantic entries, and says to install the checks", () => {
+    // No compiled-in set to fall back on: with no pack declaring checks, Jev
+    // asks nothing, so nothing can be cleared.
     installPack([regex({ authority: "reviewable", reviewedBy: ["secret-exposure"] })]);
-    expect(surveyReviewableCoverage(project).reviewable).toBe(1);
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage).toEqual({ enabled: 2, reviewable: 0, customFiles: 0, jevChecks: 0 });
+    expect(reviewableProblem(coverage)).toBe(NO_JEV_CHECKS_PROBLEM);
   });
 
   it("ignores the pack's `enabled` narrowing when collecting reviewers", () => {
@@ -166,15 +176,15 @@ describe("surveyReviewableCoverage on a machine running a two-tier pack", () => 
     forgetEffectiveReviewerNames();
 
     const coverage = surveyReviewableCoverage(project);
-    expect(coverage).toEqual({ enabled: 2, reviewable: 1, customFiles: 0 });
+    expect(coverage).toEqual({ enabled: 2, reviewable: 1, customFiles: 0, jevChecks: 1 });
   });
 });
 
 describe("a check the question budget drops", () => {
   it("is no reviewer: the policy naming only it counts as hard", () => {
-    // Two third-party packs, each under the budget alone, over it together
-    // beside the compiled-in set they join. The later checks are never asked,
-    // so `jev status` must not call a policy reviewable by one of them.
+    // Two third-party packs, each under the budget alone, over it together.
+    // The later checks are never asked, so `jev status` must not call a policy
+    // reviewable by one of them.
     const fat = (name: string) => ({
       ...SEMANTIC,
       name,
@@ -188,11 +198,15 @@ describe("a check the question budget drops", () => {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { packs: Array<Record<string, unknown>> };
     Object.assign(manifest.packs[0], { id: "acme/yb", source: "github:acme/yb@1.0.0" });
     manifest.packs.unshift({
-      ...manifest.packs[0], id: "acme/xa", source: "github:acme/xa@1.0.0", policies: [], semantic: [fat("xa-check-1"), fat("xa-check-2")],
+      ...manifest.packs[0], id: "acme/xa", source: "github:acme/xa@1.0.0", policies: [],
+      semantic: [fat("xa-check-1"), fat("xa-check-2"), fat("xa-check-3"), fat("xa-check-4")],
     });
     writeFileSync(manifestPath, JSON.stringify(manifest));
     forgetEffectiveReviewerNames();
 
-    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 2, reviewable: 0, customFiles: 0 });
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage).toMatchObject({ enabled: 2, reviewable: 0, customFiles: 0 });
+    // Some checks were asked (the ones that fit), just not the one it names.
+    expect(coverage.jevChecks).toBeGreaterThan(0);
   });
 });

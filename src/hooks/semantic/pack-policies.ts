@@ -1,26 +1,26 @@
 /**
- * Which semantic policy set this machine runs: a pack's, or the compiled-in one.
+ * Which Jev checks this machine asks: the ones its installed packs declare, and
+ * nothing else.
  *
- * ## The replacement rule
+ * ## No pack, no questions
  *
- * A FailproofAI pack that declares at least ONE `semantic` entry replaces
- * `SEMANTIC_POLICIES` wholesale. It mirrors the rule already in force for the
- * regex builtins — installing a pack stops the compiled builtins registering —
- * and it exists for the same reason: one source of truth, so a name collision
- * between a pack's `destructive-deletion` and the builtin of that name cannot
- * arise, and `reviewedBy: ["destructive-deletion"]` in a pack manifest cannot
- * silently mean the builtin's question set instead of the pack's.
+ * The npm package ships NO Jev checks. The sixteen FailproofAI writes are
+ * published as the `FailproofAI/jev-policies` pack, and a machine asks them only
+ * after `failproofai policies add FailproofAI/jev-policies`. With no installed
+ * pack declaring a `semantic` entry the set is EMPTY: nothing is asked, no
+ * request is sent (the hook path does not even start a review —
+ * `jevChecksInstalled` in `effective-reviewers.ts`), and no regex verdict can be
+ * cleared, because the reviewer names come from the same packs and there are
+ * none. That holds whether or not the machine is Jev-configured or connected to
+ * FailproofAI Cloud: configuring a provider says where to ask, a pack says what.
  *
- * Anyone else's checks are ADDED to the compiled-in set instead. Their names
- * cannot collide with it (a third party's claim to a builtin name is void:
- * `isReservedClaim`),
- * and replacing it would drop deny-mode checks like `credential-exfiltration`
- * that add denies the regex tier does not have — weaker, not noisier.
- *
- * Two packs that both declare entries CONCATENATE; a name declared by two packs
- * keeps the first and drops the later one, because the answer map is keyed by
- * policy name and the second would overwrite the first's questions in the
- * compiled request.
+ * Several declaring packs CONCATENATE, FailproofAI's first. A name declared by
+ * two packs keeps the first and drops the later one, because the answer map is
+ * keyed by policy name and the second would overwrite the first's questions in
+ * the compiled request. The sixteen FailproofAI names are reserved: a pack not
+ * installed from a FailproofAI repository that declares one is ignored for that
+ * name (`isReservedClaim`), so it cannot become the question that clears the
+ * core pack's policies.
  *
  * ## Where the manifest ends and this begins
  *
@@ -39,7 +39,7 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks, replacesBuiltinChecks } from "../effective-reviewers";
+import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import {
   packSemantic,
@@ -50,7 +50,7 @@ import {
 } from "../pack-manifest";
 import { MAX_REQUEST_CHARS, userAskedQuestion } from "./compile";
 import { MAX_STATE_CHARS } from "./envelope";
-import { INJECTION_PROBE, SCOPE_PROBE, SEMANTIC_POLICIES, TASK_PROBES } from "./policies";
+import { INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "./policies";
 import { preconditionFor } from "./preconditions";
 import { isPackPreconditionName } from "./precondition-names";
 import type { NoulQuestion, SemanticPolicy } from "./types";
@@ -95,9 +95,9 @@ const GLOBAL_QUESTION_CHARS = Math.max(
  * "somebody installed a big pack", and the flag that was supposed to be
  * unreachable from ordinary work becomes routine.
  *
- * The real sixteen use `BUILTIN_QUESTION_CHARS` of it, so this is not a
- * constraint on the set we ship. A stranger's pack is added to them, so what it
- * may ask for is what they leave.
+ * `FailproofAI/jev-policies` uses `JEV_POLICIES_QUESTION_CHARS` of it, so this
+ * is not a constraint on the set we ship. FailproofAI's packs spend the budget
+ * first, so a stranger's pack installed beside that one gets what it leaves.
  */
 export const MAX_PACK_QUESTION_CHARS = MAX_REQUEST_CHARS - MAX_STATE_CHARS - GLOBAL_QUESTION_CHARS;
 
@@ -123,8 +123,15 @@ export function questionChars(entry: SemanticManifestEntry): number {
   return JSON.stringify(questions).length;
 }
 
-/** What the compiled-in set spends of that budget when third-party checks join it. */
-export const BUILTIN_QUESTION_CHARS = SEMANTIC_POLICIES.reduce((n, p) => n + questionChars(p as SemanticManifestEntry), 0);
+/**
+ * What `FailproofAI/jev-policies`' sixteen checks spend of that budget, which a
+ * pack from anyone else shares with them on a machine that has both installed.
+ * Measured, not chosen: `pack-semantic-registry.test.ts` pins it to the
+ * reference copy in `__tests__/fixtures/jev-policies.ts`. Only `publish` reads
+ * it, to warn an author before release; the machine measures what is actually
+ * installed.
+ */
+export const JEV_POLICIES_QUESTION_CHARS = 18490;
 
 export interface ResolvedSemanticPolicies {
   policies: ReadonlyArray<SemanticPolicy>;
@@ -166,8 +173,7 @@ function toSemanticPolicy(entry: SemanticManifestEntry, pack: { id: string; vers
 }
 
 /**
- * The semantic set these packs declare, or the compiled-in set when none of them
- * declares any.
+ * The semantic set these packs declare — empty when none of them declares any.
  *
  * Pure: it takes the packs rather than reading them, so the caller that already
  * has them does not read `installed.json` a second time and a test does not need
@@ -177,16 +183,13 @@ export function semanticPoliciesFromPacks(
   packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string; version?: string }>,
 ): ResolvedSemanticPolicies {
   const declared = packs.filter((p) => packSemantic(p).length > 0);
-  if (declared.length === 0) return { policies: SEMANTIC_POLICIES, fromPack: false, errors: [] };
+  if (declared.length === 0) return { policies: [], fromPack: false, errors: [] };
 
-  // FailproofAI's own checks replace the compiled-in set; anyone else's join it
-  // (`replacesBuiltinChecks`, which the reviewer set applies too). First-party
-  // packs spend the budget first, so install order cannot starve them.
-  const replace = replacesBuiltinChecks(declared);
+  // First-party packs spend the budget first, so install order cannot starve them.
   const ordered = [...declared.filter((p) => isFirstPartyPack(p)), ...declared.filter((p) => !isFirstPartyPack(p))];
-  const policies: SemanticPolicy[] = replace ? [] : [...SEMANTIC_POLICIES];
+  const policies: SemanticPolicy[] = [];
   const errors: string[] = [];
-  const seen = new Set<string>(policies.map((p) => p.name));
+  const seen = new Set<string>();
   // A name two packs declare DIFFERENTLY is asked for nobody. Keeping the first
   // was the escalation: the question that decides another pack's policies came
   // from whichever pack was listed first, so installing a permissive
@@ -196,7 +199,7 @@ export function semanticPoliciesFromPacks(
   // be the same name — a check in the set with nobody's question, or a question
   // nobody may name, are both worse than neither.
   const contested = contestedSemanticNames(declared);
-  let spent = replace ? 0 : BUILTIN_QUESTION_CHARS;
+  let spent = 0;
   for (const pack of ordered) {
     for (const entry of packSemantic(pack)) {
       if (isReservedClaim(pack, entry.name)) {
@@ -241,13 +244,11 @@ export function semanticPoliciesFromPacks(
     }
   }
 
-  // Every entry a declaring pack shipped was unusable. The compiled-in set is
-  // the honest answer — it is what the machine ran yesterday — and it is also
-  // the safe one: what a pack's regex half names in `reviewedBy` will not match
-  // it, so those policies stay hard rather than being cleared by questions
-  // nobody validated.
-  if (policies.length === (replace ? 0 : SEMANTIC_POLICIES.length)) return { policies: SEMANTIC_POLICIES, fromPack: false, errors };
-  return { policies, fromPack: true, errors };
+  // Every entry a declaring pack shipped was unusable: nothing is asked, and
+  // `fromPack` says no pack supplied anything. There is no compiled-in set to
+  // fall back to, and that is the safe direction — nothing is asked, so nothing
+  // a `reviewedBy` names is ever answered, and those policies stay hard.
+  return { policies, fromPack: policies.length > 0, errors };
 }
 
 const warned = new Set<string>();
@@ -262,10 +263,9 @@ const warned = new Set<string>();
  * exactly that reason. The read costs one digest per pack against a call that is
  * about to spend up to three seconds on the network.
  *
- * Never throws. An unreadable manifest yields the compiled-in set, which is the
- * same fail-open posture every other reader of that file takes, and here it also
- * fails in the safe direction: the set a pack's `reviewedBy` names is not the
- * builtin set, so nothing gets cleared by a policy nobody could read.
+ * Never throws. An unreadable manifest yields NO checks: nothing is asked and
+ * nothing is cleared, so every regex verdict stands. There is deliberately no
+ * compiled-in set to fall back to — the package ships none.
  */
 export function resolveSemanticPolicies(cli?: string): ReadonlyArray<SemanticPolicy> {
   let packs: ReadonlyArray<ResolvedPack> = [];
@@ -275,7 +275,7 @@ export function resolveSemanticPolicies(cli?: string): ReadonlyArray<SemanticPol
     packs = read.packs;
     manifestErrors = read.warnings ?? [];
   } catch {
-    return SEMANTIC_POLICIES;
+    return [];
   }
   const resolved = semanticPoliciesFromPacks(jevPacks(packs, cli));
   // Once per process per message, like `warnAuthority`: this runs on every gate

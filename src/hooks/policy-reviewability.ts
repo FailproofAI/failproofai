@@ -62,7 +62,7 @@ import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
-import { resolvePolicyAuthority, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
 import type { HooksConfig } from "./policy-types";
@@ -87,10 +87,22 @@ export interface ReviewableCoverage {
    * user convention files — whose policies are not in the counts above.
    */
   customFiles: number;
+  /**
+   * Jev checks the installed packs give it to ask. Zero on a machine with no
+   * pack declaring any — the vanilla install — and then Jev is never called.
+   */
+  jevChecks: number;
 }
 
 /** The command that replaces a pack with one built by this release. */
 export const RETAKE_PACK_COMMAND = "failproofai policies add FailproofAI/policies";
+
+/** The command that gives Jev its checks. The package ships none. */
+export const JEV_POLICIES_ADD_COMMAND = "failproofai policies add FailproofAI/jev-policies";
+
+/** Said wherever Jev is configured but has nothing to ask. Kept short: it is a status line. */
+export const NO_JEV_CHECKS_PROBLEM =
+  `Jev has no checks installed, so it asks nothing and clears nothing. To enable it: \`${JEV_POLICIES_ADD_COMMAND}\`.`;
 
 /**
  * Count a policy set by the authority it would REGISTER with —
@@ -112,11 +124,9 @@ export const RETAKE_PACK_COMMAND = "failproofai policies add FailproofAI/policie
 export function countReviewable(
   policies: Iterable<AuthorityRecord>,
   /**
-   * The semantic checks that can be asked on this machine. Defaults to the
-   * compiled-in set; `surveyReviewableCoverage` passes the pack's when one
-   * declares its own, because otherwise this diagnostic reports "0 of 11
-   * reviewable" on exactly the machines the feature was built for — the ones
-   * running a pack that carries both tiers.
+   * The semantic checks that can be asked on this machine — the ones installed
+   * packs declare. Defaults to none, which is what a machine with no such pack
+   * has: nothing is reviewable there.
    */
   knownReviewers?: ReadonlySet<string>,
 ): {
@@ -169,10 +179,11 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // hook path's manifest-only `reviewerNamesFor` cannot see. Anything else and
     // the panel and `jev status` promise a clear that cannot happen.
     const asked = semanticPoliciesFromPacks(jevPacks(packs));
-    reviewers = asked.fromPack ? new Set(asked.policies.map((p) => p.name)) : SEMANTIC_REVIEWER_NAMES;
+    reviewers = new Set(asked.policies.map((p) => p.name));
   } catch {
-    // An unreadable manifest enforces nothing; `readInstalledPacks` already
-    // reports that to the hook log on the path that cares.
+    // An unreadable manifest enforces nothing and gives Jev nothing to ask;
+    // `readInstalledPacks` already reports that to the hook log on the path
+    // that cares.
   }
 
   let config: HooksConfig;
@@ -212,7 +223,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records, reviewers), customFiles };
+  return { ...countReviewable(records, reviewers), customFiles, jevChecks: reviewers?.size ?? 0 };
 }
 
 /**
@@ -244,8 +255,13 @@ export function reviewableSummary(coverage: ReviewableCoverage): string {
  * Nothing is diagnosed for an empty policy set: there is no clear to lose, and
  * an authority warning to someone who enforces nothing answers a question they
  * did not ask.
+ *
+ * Except the one thing that comes first: no installed pack gives Jev any checks.
+ * Then Jev asks nothing whatever the policy set is, and the fix is to install
+ * them, not to re-mark anything.
  */
 export function reviewableProblem(coverage: ReviewableCoverage): string | null {
+  if (coverage.jevChecks === 0) return NO_JEV_CHECKS_PROBLEM;
   // Policies from the user's own files were not counted and may be reviewable,
   // so "never" cannot be said honestly; the summary already says what was skipped.
   if (coverage.enabled === 0 || coverage.reviewable > 0 || coverage.customFiles > 0) return null;

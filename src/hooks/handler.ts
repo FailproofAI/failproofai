@@ -38,7 +38,7 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames } from "./effective-reviewers";
+import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -217,6 +217,10 @@ async function runObserved(
 // alone — exactly as it did before two tiers existed — otherwise:
 //
 // - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
+// - an installed pack gives Jev checks to ask (`jevChecksInstalled`). The npm
+//   package ships none: until `failproofai policies add FailproofAI/jev-policies`
+//   (or another pack declaring `semantic` checks) Jev is inert — no request, no
+//   intent capture — whether the config is BYOK or FailproofAI Cloud's;
 // - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
 // - this is not the fail-closed `forceDecision` path and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
@@ -311,6 +315,8 @@ async function startTwoTier(
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
   if (jevForcedOff(opts) || activePause) return null;
+  // Read off the reviewer set registration just cached, so it is free.
+  if (!jevChecksInstalled()) return null;
   const loaded = await readJevConfig();
   if (!loaded) return null;
   const cfg = loaded.config;
@@ -398,6 +404,7 @@ async function captureJevIntent(
 ): Promise<void> {
   if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
   try {
+    if (!jevChecksInstalled()) return;
     if (!(await readJevConfig())) return;
     if (decision === "deny") {
       const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");

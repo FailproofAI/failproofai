@@ -2746,10 +2746,11 @@ describe("hooks/builtin-policies", () => {
   describe("workflow policy metadata", () => {
     const workflowPolicies = BUILTIN_POLICIES.filter((p) => p.category === "Workflow");
 
-    it("all 5 workflow policies exist", () => {
-      expect(workflowPolicies).toHaveLength(5);
+    it("all 6 workflow policies exist", () => {
+      expect(workflowPolicies).toHaveLength(6);
       const names = workflowPolicies.map((p) => p.name).sort();
       expect(names).toEqual([
+        "require-battery-green-before-stop",
         "require-ci-green-before-stop",
         "require-commit-before-stop",
         "require-no-conflicts-before-stop",

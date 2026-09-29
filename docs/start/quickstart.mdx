@@ -29,7 +29,7 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
     ## Before you start
 
 1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
-2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
+2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/reference/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`.
 3. Copy the one-time secret, then read it into a shell on the target machine. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
 
 ```bash
@@ -99,3 +99,7 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 </Check>
   </Tab>
 </Tabs>
+
+## Jev setup
+
+Use [Jev](/start/use-jev) to score finished sessions against a question with known answers, or to review tool calls in context before they run. The **Use Jev** page has both setup paths.

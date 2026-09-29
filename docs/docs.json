@@ -82,6 +82,7 @@
                   "start/first-policy",
                   "start/setup",
                   "start/concepts",
+                  "start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -111,7 +112,6 @@
                   "sessions/hooks",
                   "sessions/policy-decisions",
                   "sessions/tools",
-                  "sessions/sentiment",
                   "sessions/errors",
                   "sessions/metrics",
                   "sessions/dashboards",
@@ -150,6 +150,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "sessions/sentiment",
                   "audits/overview",
                   "audits/local-audit",
                   "audits/setup",
@@ -171,13 +172,13 @@
                 "group": "Prevent repeat failures",
                 "pages": [
                   "policies/overview",
-                  "policies/jev-byok",
-                  "policies/jev-cloud"
+                  "policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "policies/authority",
                   "policies/editor",
                   "policies/packs"
                 ]
@@ -219,12 +220,20 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
-                  "reference/jev-intent",
                   "reference/custom-agents",
                   "reference/custom-agents-typescript",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "reference/jev",
+                  "reference/jev-evaluations",
+                  "reference/jev-providers",
+                  "reference/jev-cloud"
                 ]
               },
               {
@@ -234,7 +243,6 @@
                   "reference/failproof-cli",
                   "reference/local-dashboard",
                   "policies/local-configuration",
-                  "policies/authority",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",
@@ -2707,6 +2715,14 @@
     "indexing": "navigable"
   },
   "redirects": [
+    {
+      "source": "/policies/jev-byok",
+      "destination": "/reference/jev-providers"
+    },
+    {
+      "source": "/policies/jev-cloud",
+      "destination": "/reference/jev-cloud"
+    },
     {
       "source": "/reference/python-sdk",
       "destination": "/reference/custom-agents"

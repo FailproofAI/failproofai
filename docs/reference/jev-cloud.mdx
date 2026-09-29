@@ -1,25 +1,34 @@
 ---
 title: "Jev through FailproofAI Cloud"
-description: "Let Jev judge your agents' tool calls through FailproofAI Cloud, on your organization's plan, with no TypeSafe account or key of your own."
+description: "Cloud machine keys, connection state, limits, and failure behavior for live Jev policy review."
 icon: "cloud"
 ---
 
-[Jev](/policies/jev-byok), TypeSafe's classifier, reads each tool call against what you actually asked for and answers alongside your policies, never instead of them. Through **FailproofAI Cloud**, a connected machine uses Jev with the same key it already connects with: no TypeSafe account, no second key, no endpoint to configure. Each call is charged to your organization's existing plan allowance.
+This is the Cloud route reference for [Jev policies](/policies/jev). Jev, TypeSafe's classifier, reads each tool call against what you actually asked for and answers alongside your policies, never instead of them. Through **FailproofAI Cloud**, a connected machine uses Jev with the same key it already connects with: no TypeSafe account, no second key, no endpoint to configure. Each call is charged to your organization's existing plan allowance.
 
-Everything Jev does is unchanged from the [bring-your-own-key setup](/policies/jev-byok): hard policies stay final, a reviewable policy's deny is cleared only when Jev was asked about exactly that concern, and any failure falls back to the regex result for that call.
+Everything Jev does is unchanged from the [bring-your-own-key setup](/reference/jev-providers): hard policies stay final, a reviewable policy's deny is cleared only when Jev was asked about exactly that concern, and any failure falls back to the regex result for that call.
 
 <Note>
 Requires **failproofai 1.0.8-beta.0** or later. 1.0.7 has no Jev, even though it sorts above the 1.0.7 betas. Without a Jev config nothing changes: hooks run the regex policies exactly as they always have.
 </Note>
 
+## Before you start
+
+Install Failproof AI on the machine where your agent runs and attach its hooks to a [supported harness](/reference/harnesses). If you are starting from scratch, follow the [quickstart](/start/quickstart) through hook installation. Check the installed CLI with `failproofai --version`; update it if it predates Jev. You also need access to your organization's **Administration → Keys** page to create a machine key.
+
+Jev reviews named tool calls at the `PreToolUse` or `PermissionRequest` gate. It does not review every event in a session. To see Jev clear a policy deny, you need an installed policy marked [reviewable](/policies/authority); all other policy denies remain final.
+
 ## Turn it on
 
-1. **Create a key with Jev.** In the FailproofAI Cloud dashboard, open **Keys → Create key** and pick the **machine** preset. It grants the three permissions a machine needs: `events:add` (send activity), `policies:pull` (receive policies) and `jev:evaluate` (Jev, charged to your organization's plan). A key cannot carry `jev:evaluate` without the other two.
-2. **Connect the machine** with that key:
+1. **Create a key with Jev.** In the FailproofAI Cloud dashboard, open **Administration → Keys → Create key** and pick the **machine** preset. It grants the three permissions a machine needs: `events:add` (send activity), `policies:pull` (receive policies) and `jev:evaluate` (Jev, charged to your organization's plan). A key cannot carry `jev:evaluate` without the other two.
+2. **Connect the machine** with that key. Read its one-time secret at a prompt, then run the full setup command:
 
    ```bash
-   failproofai config --token <key>
+   read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+   failproofai config
    ```
+
+   `failproofai config` installs the daemon, attaches hooks for the agent CLIs it finds, and connects the machine. The environment variable keeps the key out of the command's arguments and your shell history. If your harness was installed later, [attach it explicitly](/start/quickstart).
 
    If your organization runs its own FailproofAI Cloud rather than the hosted one, add its address: `--url https://<your dashboard host>` (or export `FAILPROOFAI_CLOUD_URL`). Without it the key is checked against the hosted service and the connection fails. If that host's certificate comes from a private CA, install the CA in the machine's system trust store (for example with `update-ca-certificates`), not only in `NODE_EXTRA_CA_CERTS`: the daemon that sends events and pulls policies reads the system store. See [Troubleshooting](/reference/troubleshooting).
 
@@ -64,12 +73,16 @@ failproofai jev test
 
 | `status` says | `status --json` | Meaning |
 | --- | --- | --- |
-| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | The machine is connected, but no Jev key is stored for it: the key lacks `jev:evaluate`, or the connect could not confirm it. Run `failproofai config --token <key>` again with the same key; if it lacks the permission, use a **machine** key. |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | The machine is connected, but no Jev key is stored for it: the key lacks `jev:evaluate`, or the connect could not confirm it. Run `failproofai config` again with the key in `FAILPROOFAI_CLOUD_TOKEN`; if it lacks the permission, use a **machine** key. |
 | **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | There is no FailproofAI Cloud connection on this machine for the Jev key to belong to. |
 
 After `failproofai config --disconnect` there is no FailproofAI Cloud `jev.json` any more (unless it was switched off, which is kept), so `status` simply reports Jev as off. `status --json` carries the same facts (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), also when the config is absent or refused. `permissions` is always `jev.json`'s; a refusal about `credentials.json` adds `credentialsPermissions`, and `fix` when one command fixes it. `test` sends one live request and reports its latency and the Jev version that answered. It exits 1, and says so in its title, when the answer arrives after the hook timeout (hooks would record `timeout`) or answers its check question wrongly.
 
 The dashboard's **Settings → Jev** panel also shows the **FailproofAI Cloud connection**: which organization the machine reports into and whether its key carries Jev. It is read from the machine's own files, with no network call.
+
+## Verify a real call
+
+Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect that call's Jev verdict and mode. In Cloud, the organization's **Policies** page shows Jev outcomes for delivered activity. In shadow mode, the verdict is recorded as a **would-have** and the policy result still decides the call. A clearance appears only when a reviewable policy matched and Jev cleared its named checks.
 
 ## What reaches the policy page
 
@@ -104,7 +117,7 @@ Every one of these falls back to your policies' result for that call, and is rec
 - The key is only ever sent to the Cloud origin it was verified against. A `jev.json` pointing anywhere else is refused.
 - **An agent on the machine can read it.** `credentials.json` is owner-only, and the agent runs as that owner. Reading failproofai's own files is allowed on purpose (only changing them is blocked, by `block-failproofai-commands`), so the only thing between an agent and this file is `block-read-outside-cwd` — a *reviewable* policy — and from a session started in your home directory, nothing. A key with `jev:evaluate` spends your organization's Jev allowance (up to the daily cap) from wherever it is used, so treat a machine key like any other spending credential: if an agent may have read it, disable it on the Keys page and reconnect with a new one.
 - Only your global files decide this. A repository cannot turn Cloud Jev on, point it elsewhere or supply its key, and `FAILPROOFAI_JEV_API_KEY` is ignored for this route.
-- For each call Jev evaluates, one request goes to FailproofAI Cloud, carrying what the [bring-your-own-key page](/policies/jev-byok#what-leaves-the-machine) lists (secrets redacted). FailproofAI Cloud forwards it to TypeSafe and does not log or keep it.
+- For each call Jev evaluates, one request goes to FailproofAI Cloud, carrying what the [bring-your-own-key page](/reference/jev-providers#what-leaves-the-machine) lists (secrets redacted). FailproofAI Cloud forwards it to TypeSafe and does not log or keep it.
 
 ## Turn it off
 

@@ -4,7 +4,7 @@ description: "Which harness events tell the Jev evaluator what the human asked f
 icon: "message-square-quote"
 ---
 
-When you configure your own Jev endpoint, the Jev evaluator judges each tool call against **what the human asked for**, not against whatever text the harness put in front of the agent. A reply such as "yes, force-push it" can clear a **reviewable** policy — which is the whole point of the evaluator, since a regex that cannot read the request blocks a third of real work.
+When you configure [Jev policy review](/policies/jev), the evaluator judges each gated tool call against **what the human asked for**, not against whatever text the harness put in front of the agent. A reply such as "yes, force-push it" can clear a **reviewable** policy — which is the whole point of the evaluator, since a regex that cannot read the request blocks a third of real work.
 
 That text comes from one place: **the prompt the harness itself hands the hook at its prompt-submit event**. Failproof AI records the part of it the human typed — harness wrapping stripped, secrets redacted, capped — into a `0600` file under its own state directory. Nothing on disk is consulted: the session transcript is a file the agent can rewrite in one command, so it is never asked who wrote a prompt.
 

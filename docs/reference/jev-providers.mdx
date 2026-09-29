@@ -1,10 +1,10 @@
 ---
-title: "Jev evaluator (bring your own key)"
-description: "Let TypeSafe's Jev classifier judge your agents' tool calls above a hard regex floor, through your own Jev endpoint and key."
+title: "Jev providers and own-key setup"
+description: "Provider endpoints, model IDs, configuration, and failure behavior for live Jev policy review with your own key."
 icon: "key-round"
 ---
 
-Regex policies match strings. They cannot tell `rm -rf build/` that you asked for from `rm -rf ~` that slipped into a plan, so they block too much in one place and too little in another. **Jev**, TypeSafe's classifier, reads the call against what you actually asked for and answers a set of yes/no questions about it in one fast request.
+This is the provider and configuration reference for [Jev policies](/policies/jev) with your own key. Regex policies match strings. They cannot tell `rm -rf build/` that you asked for from `rm -rf ~` that slipped into a plan, so they block too much in one place and too little in another. **Jev**, TypeSafe's classifier, reads the call against what you actually asked for and answers a set of yes/no questions about it in one fast request.
 
 With your own Jev endpoint and key configured, Failproof AI asks Jev about each tool call **alongside** the regex policies, never instead of them:
 
@@ -20,8 +20,14 @@ Without a Jev config nothing changes: hooks run the regex policies exactly as th
 </Note>
 
 <Tip>
-On FailproofAI Cloud? You do not need a key of your own: a machine connected with a key that carries `jev:evaluate` can use Jev on your organization's plan. See [Jev through FailproofAI Cloud](/policies/jev-cloud).
+On FailproofAI Cloud? You do not need a key of your own: a machine connected with a key that carries `jev:evaluate` can use Jev on your organization's plan. See [Jev through FailproofAI Cloud](/reference/jev-cloud).
 </Tip>
+
+## Before you start
+
+Install **failproofai 1.0.8-beta.0 or later** and attach its hooks to a [supported harness](/reference/harnesses) on the machine where your agent runs. Follow the [quickstart](/start/quickstart) if this is a new machine, or [set up local enforcement](/start/setup#enforce-locally) if you do not use Cloud. Check the installed CLI with `failproofai --version`.
+
+Get an API key from a provider below, or have a compatible endpoint and its key ready. Jev reviews named tool calls at the `PreToolUse` or `PermissionRequest` gate. It can issue its own verdict, but clearing an existing policy deny also requires an installed policy marked [reviewable](/policies/authority). Hard policy denies stay final.
 
 ## Choose a provider
 
@@ -41,10 +47,10 @@ With Vercel's own bring-your-own-key feature, a failed request is silently retri
 
 ## Set it up
 
-One command, the endpoint and the key:
+One command, the endpoint and the key. Start in `shadow` mode so you can inspect Jev's verdicts while the existing policies keep deciding calls:
 
 ```bash
-failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
 ```
 
 ### The URL picks the provider
@@ -74,29 +80,29 @@ Pipe it in with `--key-stdin`, or run the command in a terminal without it and p
 <Tabs>
   <Tab title="TypeSafe">
     ```bash
-    failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key
+    failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
     ```
   </Tab>
   <Tab title="OpenRouter">
     ```bash
-    failproofai jev --url https://openrouter.ai/api/v1 --key-stdin < ~/openrouter.key
+    failproofai jev --url https://openrouter.ai/api/v1 --mode shadow --key-stdin < ~/openrouter.key
     ```
   </Tab>
   <Tab title="Vercel">
     ```bash
-    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 \
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode shadow \
       --key-stdin < ~/vercel-gateway.key
     ```
   </Tab>
   <Tab title="Cloudflare">
     ```bash
     failproofai jev --url https://api.cloudflare.com/client/v4 \
-      --account-id <32-hex-account-id> --key-stdin < ~/cloudflare.token
+      --account-id <32-hex-account-id> --mode shadow --key-stdin < ~/cloudflare.token
     ```
   </Tab>
   <Tab title="Custom">
     ```bash
-    failproofai jev --url https://jev.internal.example.com/v1 --key-stdin < ~/jev.key
+    failproofai jev --url https://jev.internal.example.com/v1 --mode shadow --key-stdin < ~/jev.key
     ```
   </Tab>
 </Tabs>
@@ -145,6 +151,10 @@ failproofai jev status --json
 
 `status` shows the provider, endpoint, model, mode, the config file and its permissions, and never the key. Below that it summarizes recent activity: how many calls Jev evaluated, how often it fell back to regex and why, its latency, and which reviewable policies it cleared.
 
+## Verify a real call
+
+Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect the call's Jev verdict and mode. In shadow mode, the policy result still decides the call. A clearance appears only if a reviewable policy matched and Jev cleared every named check; an ordinary read may have no policy to clear.
+
 ## Shadow mode
 
 `enforce` is the default. To watch Jev without letting it change any decision, switch to `shadow`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced.
@@ -175,7 +185,7 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 
 | Field | Meaning |
 | --- | --- |
-| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom` — or `failproofai`, whose key comes from the FailproofAI Cloud connection instead of this file (see [Jev through FailproofAI Cloud](/policies/jev-cloud)). |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom` — or `failproofai`, whose key comes from the FailproofAI Cloud connection instead of this file (see [Jev through FailproofAI Cloud](/reference/jev-cloud)). |
 | `apiKey` | Sent as `Authorization: Bearer <key>`. |
 | `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |

@@ -2,6 +2,10 @@
 
 ## 1.0.9-beta.0 — 2026-09-29
 
+### Fixes
+
+- **The npm package no longer ships Jev's checks; a machine asks them only after `failproofai policies add FailproofAI/jev-policies`.** The sixteen semantic checks were compiled in and used whenever no installed pack declared any, so configuring Jev — BYOK, or `failproofai config --token` with a Cloud machine key — started asking them without anyone opting in. Now the checks, and the names `reviewedBy` may use, come only from installed packs. With none declaring checks Jev is inert whether or not it is configured: no request is sent (not even the injection or task probes), no prompt is recorded for it, and every `reviewable` policy resolves `hard`, so nothing is cleared and hooks answer exactly as on a machine without Jev. An unreadable pack list asks nothing too, rather than falling back to a built-in set. `failproofai jev status` (and its `--json`, as `reviewablePolicies.jevChecks`), the dashboard's Jev settings and `config --token`'s output say "Jev has no checks installed" and name the command. `publish` still reserves the sixteen names and judges a regex-only pack's `reviewedBy` against them.
+
 ### Docs
 
 - Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.

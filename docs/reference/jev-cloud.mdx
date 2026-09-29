@@ -32,10 +32,16 @@ Jev reviews named tool calls at the `PreToolUse` or `PermissionRequest` gate. It
 
    If your organization runs its own FailproofAI Cloud rather than the hosted one, add its address: `--url https://<your dashboard host>` (or export `FAILPROOFAI_CLOUD_URL`). Without it the key is checked against the hosted service and the connection fails. If that host's certificate comes from a private CA, install the CA in the machine's system trust store (for example with `update-ca-certificates`), not only in `NODE_EXTRA_CA_CERTS`: the daemon that sends events and pulls policies reads the system store. See [Troubleshooting](/reference/troubleshooting).
 
-That is all. Connecting stores the key and, when the machine has **no** Jev config yet, turns Jev on through FailproofAI Cloud in **shadow** mode: Jev is asked about every gated tool call and its verdicts are recorded, but your policies' result is what is enforced. The output says so:
+That is all. Connecting stores the key and, when the machine has **no** Jev config yet, turns Jev on through FailproofAI Cloud in **shadow** mode: once a pack gives it checks, Jev is asked about every gated tool call and its verdicts are recorded, but your policies' result is what is enforced. The output says so:
 
 ```text
   Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (~/.failproofai/jev.json).
+```
+
+Jev still asks nothing until a pack gives it checks. Failproof AI ships none; while no installed pack declares any, the output adds a line saying so, and `failproofai jev status` repeats it. Install them with:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
 ```
 
 **With `--no-transcripts`, connecting does not turn Jev on.** Jev sends each checked tool call and the recent prompt to FailproofAI Cloud, which is more than a decisions-only connection asked to send. The key is still stored, and the output says Jev is available and how to switch it on:

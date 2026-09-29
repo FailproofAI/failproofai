@@ -4,11 +4,11 @@
 
 ### Features
 
-- Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#TBD)
+- Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#872)
 
 ### Docs
 
-- Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support (#TBD)
+- Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support (#872)
 
 ## 1.0.9 — 2026-09-29
 

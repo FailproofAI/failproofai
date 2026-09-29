@@ -28,11 +28,11 @@ Jev helps at two points in an agent run: score a finished session against known 
     The CLI reads scores; creating a Jev eval currently uses the dashboard. See [Jev evaluations](/evaluations/jev) for question types and examples.
   </Tab>
   <Tab title="Jev policies">
-    Use Jev policy review when a string-matching policy needs the context of your request to decide whether a tool call is safe. Start in **shadow** mode so you can inspect Jev's answers while your installed policies still decide each call.
+    Use Jev policy review when a string-matching policy needs the context of your request to decide whether a tool call is safe. Start in **observe** mode so you can inspect Jev's answers while your installed policies still decide each call.
 
     ## Set up Cloud Jev
 
-    In the Cloud dashboard, open **Administration → Keys** and create a key with the **machine** preset. Use it with `failproofai config` as shown in the [quickstart](/start/quickstart). On a machine without an existing Jev configuration, this enables Cloud Jev in shadow mode. Check the connection with:
+    In the Cloud dashboard, open **Administration → Keys** and create a key with the **machine** preset. Use it with `failproofai config` as shown in the [quickstart](/start/quickstart). On a machine without an existing Jev configuration, this enables Cloud Jev in observe mode. Check the connection with:
 
     ```bash
     failproofai jev status
@@ -41,17 +41,17 @@ Jev helps at two points in an agent run: score a finished session against known 
 
     ## Use your own endpoint
 
-    In the local dashboard, open **Settings → Jev**. Choose the provider, paste its token, select **shadow**, and turn Jev on.
+    In the local dashboard, open **Settings → Jev**. Choose the provider, paste its token, select **observe**, and turn Jev on.
 
-    ![The local Jev settings panel with a provider, token field, and shadow mode selected.](/images/dashboard/jev-settings.png)
+    ![The local Jev settings panel with a provider, token field, and observe mode selected.](/images/dashboard/jev-settings.png)
 
     Or configure and test your endpoint from a terminal:
 
     ```bash
-    failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    Ask a hooked agent to use its file-reading tool on `README.md`. Confirm that tool call appears in the session, then inspect it under **Policies → Activity** in the local dashboard. Once the shadow results look right, [Jev policies](/policies/jev) explains when to enforce. For provider details and configuration, see the [integration reference](/reference/jev).
+    Ask a hooked agent to use its file-reading tool on `README.md`. Confirm that tool call appears in the session, then inspect it under **Policies → Activity** in the local dashboard. Once the observe results look right, [Jev policies](/policies/jev) explains when to enforce. For provider details and configuration, see the [integration reference](/reference/jev).
   </Tab>
 </Tabs>

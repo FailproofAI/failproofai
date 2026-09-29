@@ -2,6 +2,10 @@
 
 ## 1.0.9-beta.0 — 2026-09-29
 
+### Changed
+
+- Rename Jev's log-only mode from `shadow` to **`observe`**, the word already used for a policy rollout that is evaluated but not enforced. `failproofai jev setup --mode observe`, the dashboard's Jev settings, `jev status`, `config --token` (which now turns Jev on in observe mode) and the docs all say observe; `jev.json` is written with `mode: "observe"`, hook-activity rows with `jevMode: "observe"`, and `verdicts.jsonl` with `applied: "observe"`. `jev status --json` stats are now `observeClearsByPolicy` and `modes.observe` (were `shadowClearsByPolicy` / `modes.shadow`). `shadow` stays a read alias everywhere a mode is parsed: an existing `jev.json`, `--mode shadow` (saved as observe, with a one-line note), the dashboard's server actions, and hook rows an older worker wrote — the collector reads `jevMode` `shadow` or `observe` and always ships `jev_mode: "observe"`, so FailproofAI Cloud sees one value. The dashboard's Jev pill reads "jev observe".
+
 ### Docs
 
 - Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.

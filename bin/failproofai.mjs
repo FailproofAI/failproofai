@@ -1180,6 +1180,9 @@ async function runCli() {
               "",
               "This does the rest of the upgrade: runs any pending layout migrations,",
               "puts the matching daemon binary in place, and restarts the service.",
+              "Hermes profiles already using failproofai are moved to the linked",
+              "native plugin (legacy shell hooks never checked Hermes cron jobs).",
+              "Exits non-zero when any half could not be brought current.",
             ],
           },
           {
@@ -1270,17 +1273,40 @@ async function runCli() {
       }
     }
 
+    // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
+    // now running can do: the native plugin needs `policyEvaluation`, which
+    // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
+    // system service with no sudo) the shell hooks stay and this fails loudly.
+    let hermesOk = true;
+    let hermesMigrated = 0;
+    try {
+      const { runHermesUpdateMigration } = await import("../src/hooks/hermes-update");
+      const svc = await import("../src/hooks/daemon-service");
+      const hermesResult = await runHermesUpdateMigration({
+        daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
+      });
+      if (hermesResult.lines.length > 0) report.push("", ...hermesResult.lines);
+      hermesOk = hermesResult.ok;
+      hermesMigrated = hermesResult.profiles.filter((p) => p.status === "migrated").length;
+    } catch (err) {
+      report.push("", `Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      hermesOk = false;
+    }
+
+    const updateOk = daemonOk && !migrationFailed && hermesOk;
     await printReport("update", report, {
-      ok: daemonOk && !migrationFailed,
+      ok: updateOk,
       meta: `v${version}`,
     });
     await track("cli_update", {
-      ok: daemonOk && !migrationFailed,
+      ok: updateOk,
       migrations: migrationsRan,
       migration_failed: migrationFailed,
+      hermes_ok: hermesOk,
+      hermes_migrated: hermesMigrated,
     });
     lastSubcommand = null;
-    await exitAfterFlush(daemonOk && !migrationFailed ? 0 : 1);
+    await exitAfterFlush(updateOk ? 0 : 1);
     return;
   }
 

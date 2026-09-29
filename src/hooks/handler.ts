@@ -928,7 +928,18 @@ export async function evaluateHookEvent(
           } catch {
             // Nothing of its own to be reviewed by.
           }
-          const bound = own ? bindReviewedBy(authority, own) : { declaration: authority, unowned: [] };
+          // An `observe` policy with no Jev half deployed is a `both` whose half
+          // the server withheld (C9.3): its names are absent by design and it
+          // blocks nothing, so it registers hard WITHOUT the refusal warning —
+          // the same case `cloud-policy-errors.ts` leaves out of the report
+          // (D-FB-4). Without this the machine-wide set judged it and the hook
+          // warned on every in-process tool call, naming unrelated checks.
+          const withheld = own === null && cloudManaged.effect === "observe" && authority.authority === "reviewable";
+          const bound = withheld
+            ? { declaration: { authority: "hard" }, unowned: [] }
+            : own
+              ? bindReviewedBy(authority, own)
+              : { declaration: authority, unowned: [] };
           authority = bound.declaration;
           if (bound.unowned.length > 0) {
             warnAuthority(

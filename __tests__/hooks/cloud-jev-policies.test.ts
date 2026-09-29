@@ -841,6 +841,21 @@ describe("C9.3: an observe both policy arrives with its Jev half withheld", () =
     expect(text).toMatch(/trial\s+v2\s+both\s+\(not asked while observed\)/);
   });
 
+  it("says nothing on stderr either, on a machine where Jev is configured (e2e: warned on every in-process hook)", async () => {
+    localJev();
+    // Another Cloud Jev policy on the machine, so there ARE reviewer names to be
+    // judged against (with none, nothing is refused and nothing is said).
+    deploy({
+      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] }],
+      semantic: [{ id: "other", version: 1, declarations: [decl("acme-other")] }],
+      jevMode: "enforce",
+    });
+    const registered = await registeredAfterOneEvent();
+    expect(registered.get("cloud/trial@2/trial-hook")?.authority).toBe("hard");
+    expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
+    expect(existsSync(errorsFile())).toBe(false);
+  });
+
   it("an ENFORCE both with its Jev half missing is still reported", async () => {
     deploy({ policies: [{ id: "real", version: 1, authority: "reviewable", reviewedBy: ["acme-real"] }] });
     await registeredAfterOneEvent();

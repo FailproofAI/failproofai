@@ -61,7 +61,7 @@ import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
@@ -167,7 +167,9 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
    */
   let reviewers: ReadonlySet<string> | undefined;
   try {
-    packsInstalled = hasInstalledPacks();
+    // Only a pack with regex policies retires the shim, exactly as handler.ts
+    // decides it: a Jev-only pack (FailproofAI/jev-policies) replaces none.
+    packsInstalled = hasInstalledRegexPacks();
     const packs = readInstalledPacks().packs;
     for (const pack of packs) {
       const selected = pack.enabled;

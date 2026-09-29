@@ -270,6 +270,18 @@ describe("surveying a real machine", () => {
     expect(reviewableProblem(coverage)).toContain(RETAKE_PACK_COMMAND);
   });
 
+  it("a Jev-only pack does not hide builtins still enforced from enabledPolicies", () => {
+    // An upgraded machine with no core pack adds FailproofAI/jev-policies: the
+    // hook path keeps enforcing its enabledPolicies (hasInstalledRegexPacks), so
+    // the survey must count them too, reviewable ones included.
+    writeConfig({ enabledPolicies: ["protect-env-vars", "block-env-files"] });
+    installPack(null);
+    const coverage = surveyReviewableCoverage(project);
+    expect(coverage.enabled).toBeGreaterThanOrEqual(3); // the two + the always-on guard
+    expect(coverage.reviewable).toBe(2);
+    expect(coverage.jevChecks).toBeGreaterThan(0);
+  });
+
   it("a pack built by this release: the fifteen it marks, and no complaint", () => {
     writeConfig({ enabledPolicies: [] });
     installPack(PACKABLE as unknown as Array<Record<string, unknown>>);

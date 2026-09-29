@@ -30,6 +30,7 @@ import {
   hermesProfileHealth,
   hermesProfileStatusRows,
   installHermesPlugin,
+  findHermesPluginSourcePath,
 } from "../../src/hooks/integrations";
 import { runHermesUpdateMigration } from "../../src/hooks/hermes-update";
 import { FAILPROOFAI_HOOK_MARKER } from "../../src/hooks/types";
@@ -351,5 +352,37 @@ describe("failproofai update → Hermes migration", () => {
     expect(result.profiles[0].detail).toBe("shell hooks → plugin copy (symlink not possible here)");
     expect(existsSync(resolve(pluginPath(), ".failproofai-managed"))).toBe(true);
     expect(readConfig().hooks?.pre_tool_call).toEqual([{ command: "operator-check --tool" }]);
+  });
+});
+
+describe("findHermesPluginSourcePath — the package root from any layout", () => {
+  let pkg: string;
+  beforeEach(() => {
+    pkg = mkdtempSync(join(tmpdir(), "fpai-pkgroot-"));
+    mkdirSync(join(pkg, "hermes-plugin"), { recursive: true });
+    writeFileSync(join(pkg, "hermes-plugin", "plugin.yaml"), "name: failproofai\n");
+    mkdirSync(join(pkg, "src", "hooks"), { recursive: true });
+    mkdirSync(join(pkg, "dist"), { recursive: true });
+    mkdirSync(join(pkg, ".next", "standalone", "server", "chunks"), { recursive: true });
+  });
+  afterEach(() => rmSync(pkg, { recursive: true, force: true }));
+
+  it("finds it from the source tree (src/hooks)", () => {
+    expect(findHermesPluginSourcePath(join(pkg, "src", "hooks"))).toBe(resolve(pkg, "hermes-plugin"));
+  });
+
+  it("finds it from the bundled CLI (dist/), where three parents would overshoot", () => {
+    expect(findHermesPluginSourcePath(join(pkg, "dist"))).toBe(resolve(pkg, "hermes-plugin"));
+  });
+
+  it("finds it from the dashboard's standalone build", () => {
+    expect(findHermesPluginSourcePath(join(pkg, ".next", "standalone", "server", "chunks"))).toBe(
+      resolve(pkg, "hermes-plugin"),
+    );
+  });
+
+  it("with no plugin anywhere above, answers a path that does not exist so install fails loudly", () => {
+    rmSync(join(pkg, "hermes-plugin"), { recursive: true, force: true });
+    expect(existsSync(findHermesPluginSourcePath(join(pkg, "src", "hooks")))).toBe(false);
   });
 });

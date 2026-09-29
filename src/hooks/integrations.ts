@@ -1422,7 +1422,30 @@ const HERMES_PLUGIN_SOURCE_DIR = "hermes-plugin";
 function getHermesPluginSourcePath(): string {
   const fromEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
   if (fromEnv) return resolve(fromEnv, HERMES_PLUGIN_SOURCE_DIR);
-  return resolve(fileURLToPath(import.meta.url), "..", "..", "..", HERMES_PLUGIN_SOURCE_DIR);
+  return findHermesPluginSourcePath(dirname(fileURLToPath(import.meta.url)));
+}
+
+/**
+ * The package's `hermes-plugin/`, found by walking up from `startDir`.
+ *
+ * The CLI entry point sets `FAILPROOFAI_PACKAGE_ROOT`, so this is only the
+ * fallback — but a fixed number of parents is right for exactly one layout:
+ * three from `src/hooks/` is the package root, three from the bundled
+ * `dist/cli.mjs` is the package's PARENT. Walking up to the first directory
+ * that really holds the plugin's manifest works from source, from `dist/`, and
+ * from the dashboard's standalone build alike. When none is found the old
+ * answer is returned, so the install still fails loudly on a missing asset.
+ */
+export function findHermesPluginSourcePath(startDir: string): string {
+  let dir = resolve(startDir);
+  for (let i = 0; i < 8; i++) {
+    const candidate = resolve(dir, HERMES_PLUGIN_SOURCE_DIR);
+    if (existsSync(resolve(candidate, "plugin.yaml"))) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return resolve(startDir, "..", "..", HERMES_PLUGIN_SOURCE_DIR);
 }
 
 export function hermesPluginPathForSettings(settingsPath: string): string {
@@ -1599,11 +1622,16 @@ export function installHermesPlugin(
   if (linked && (existing.kind === "absent" || existing.kind === "link")) {
     try {
       renameSync(temporary, destination);
+      return "linked";
     } catch (err) {
-      rmSync(temporary, { force: true });
-      throw err;
+      // Windows cannot always rename a junction over another junction; the
+      // backup swap below moves the old link aside first, so try that before
+      // giving up. With nothing there to move aside, the rename is the error.
+      if (existing.kind !== "link") {
+        rmSync(temporary, { force: true });
+        throw err;
+      }
     }
-    return "linked";
   }
 
   const backup = `${destination}.backup-${suffix}`;

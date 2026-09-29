@@ -123,8 +123,18 @@ describe("hook-activity-store: Jev fields", () => {
     expect(row).not.toHaveProperty("jevDecision");
     expect(row).not.toHaveProperty("jevMode");
     expect(row).not.toHaveProperty("jevLatencyMs");
-    expect(row.jevCleared).toEqual(["block-env-files"]);
+    // An unknown mode cannot say whether its clears were enforced, so they go
+    // with it rather than being filed as enforce-mode clears.
+    expect(row).not.toHaveProperty("jevCleared");
     expect(row.durationMs).toBe(44);
+  });
+
+  it("keeps only name-shaped clears when the mode is valid", () => {
+    persistHookActivity(
+      makeEntry({ evaluator: "jev", jevMode: "enforce", jevCleared: ["block-env-files", "not a policy name"] }),
+    );
+    const [row] = rawLines();
+    expect(row.jevCleared).toEqual(["block-env-files"]);
   });
 
   it("keeps the fields across a page rotation", () => {

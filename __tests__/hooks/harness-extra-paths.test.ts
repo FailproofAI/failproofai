@@ -14,6 +14,9 @@ import { tmpdir } from "node:os";
 import { readConfig, writeConfig, DEFAULT_CONFIG } from "@/src/hooks/fp-config";
 import { configFile } from "@/src/hooks/fp-home";
 import { HARNESS_KEYS, addPath, removePath, listPaths, runHarnessCommand } from "@/src/hooks/harness-cli";
+import { updateConfig } from "@/src/hooks/fp-config";
+import { writeCollectorSettings } from "@/src/hooks/collector-config";
+import { setDaemonConfigured } from "@/src/hooks/daemon-service";
 
 describe("harness extra paths", () => {
   let home: string;
@@ -342,5 +345,43 @@ describe("harness extra paths", () => {
       expect(text).not.toContain("now also capturing");
       expect(text).toContain("validates it on the next read");
     });
+  });
+});
+
+describe("extra paths survive every config.json write that `config` and `update` make", () => {
+  let home: string;
+  let prevHome: string | undefined;
+
+  beforeEach(() => {
+    prevHome = process.env.FAILPROOFAI_HOME;
+    home = mkdtempSync(join(tmpdir(), "fpai-hx-cfg-"));
+    process.env.FAILPROOFAI_HOME = home;
+  });
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("keeps every harness path through a Cloud connect, collector settings, daemon install and disconnect", () => {
+    expect(addPath("hermes", "prod=/srv/hermes-prod/state.db").exitCode).toBe(0);
+    expect(addPath("claude", "work=/srv/team/.claude/projects").exitCode).toBe(0);
+    const before = readConfig().collector.sources;
+    expect(before).toBeDefined();
+
+    // `failproofai config` connecting to Cloud (cloud-connection.ts)
+    updateConfig({ mode: "cloud" });
+    writeCollectorSettings({ sessions: true, hooks: true, hooksVerbosity: "decisions", machineId: "m-1" });
+    // `config` / `update` installing or refreshing the daemon (daemon-service.ts)
+    setDaemonConfigured(true, "1.0.9");
+    // a re-run of `config` that changes the collector choices again
+    writeCollectorSettings({ sessions: false, hooks: true });
+    // uninstalling the daemon, then disconnecting
+    setDaemonConfigured(false);
+    updateConfig({ mode: "oss" });
+
+    expect(readConfig().collector.sources).toEqual(before);
+    expect(readFileSync(configFile(), "utf-8")).toContain("/srv/hermes-prod/state.db");
   });
 });

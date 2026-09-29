@@ -1,50 +1,43 @@
 ---
-title: "Sentiment"
-description: "Aracılarınızı kullanan insanların nasıl hissettiğini ve aracılarınızın doğru işlem yapıp yapmadığını, mesaj mesaj görün."
+title: "Duygu analizi"
+description: "Jev duygu puanlarıyla hayal kırıklığına uğramış, kafası karışmış ve düzeltici mesajları bulun."
 icon: "smile"
 ---
 
-Sentiment, bir kişinin aracılarınıza gönderdiği her mesajı dört duygu için 0 ile %100 arasında puanlandırır — **öfkeli**, **sinirli**, **mutlu** ve **karıştırılmış** — ve aracının nasıl yaptığı hakkında üç sinyal:
+Jev, bir kişinin ajanlarınıza gönderdiği her mesajı 0 ile 100 arasında dört duygu için puanlandırır — **öfkeli**, **hayal kırıklığına uğramış**, **mutlu** ve **kafası karışmış** — ve ajanın durumu hakkında üç sinyal:
 
-- **Düzeltme**: kişi aracının bir şeyler yanlış yaptığını söyler.
-- **Çözüldü**: kişi aracının sorunu çözdüğünü teyit eder.
-- **Şüpheli**: kişi aracının cevabının doğru olup olmadığını veya gerçekten çalışıp çalışmadığını sorgular.
+- **Düzeltici**: kişi ajanın bir şeyi yanlış anladığını söyler.
+- **Çözüldü**: kişi ajanın sorunlarını çözdüğünü doğrular.
+- **Şüpheli**: kişi ajanın cevabının doğru olup olmadığını veya gerçekten işe yarayıp yaramadığını sorgulamaktadır.
 
-Bunu, insanların sabırlarını kaybettikleri konuşmaları, sürekli düzeltmen gereken aracıları ve iyi sonuç veren cevapları bulman için kullan.
+Duygu analizini, insanların sabrını kaybettiği konuşmaları, sık sık düzeltilen ajanları ve iyi tepki alan yanıtları bulmak için kullanın. Bu, yerleşik Jev puanlamasıdır; bir değerlendirme yazmanız gerekmez. Kendi sabit cevaplı sorunuz için [bir Jev eval oluşturun](/tr/evaluations/jev).
 
 <Note>
-  Sentiment, bir yönetici kuruluş için açıncaya kadar kapalıdır. Puanlama, kuruluşunuzun LLM bütçesini kullanır — mesaj başına bir puanlama isteği — ve her mesajı, öncesindeki ajan cevabıyla birlikte puanlama modeline gönderir.
+  Duygu analizi, bir yönetici kuruluş için etkinleştirene kadar kapalıdır. Jev, mesaj başına bir puanlama isteği yapar ve bu mesajı ajanın yanıtından önce alır. Puanlama, kuruluşunuzun model bütçesini kullanır.
 </Note>
 
-## Aç
+## Açın
 
-1. **Yönetim → Ayarlar**'a git.
-2. **İnsan girişi duyarlılığı** altında, **aç**'a basıp kaydet.
+1. **İdari → Ayarlar**'a gidin.
+2. **İnsan girdisi duygusu** altında, açın ve kaydedin.
 
-Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar geliştikten sonra bir veya iki dakika içinde puanlandırılır.
+Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar geldikten bir iki dakika içinde puanlandırılır.
+
+## İncelemek için bir konuşma bulun
+
+**Gözlemle → Duygu**'yu açın. Zaman, ortam, ajan veya oturum kimliğine göre filtreleyin. Başlık, mesaj ve oturum sayısını belirtir, kaç mesajın **işaretlendiğini** gösterir ve en üst sinyali adlandırır. Öfkeli, hayal kırıklığına uğramış, düzeltici, kafası karışmış veya şüpheli puan 100 üzerinden 35'e ulaştığında bir mesaj işaretlenir.
+
+![Mesaj ve oturum sayılarını, işaretlenen mesajları ve zaman içinde Jev puanlarını gösteren Duygu panosu.](/images/dashboard/sentiment-overview.png)
+
+Sinyalleri karşılaştırmak için **Zaman içinde puan** kullanın. Gösterilecek puanları seçin, ardından bu zaman diliminin mesajlarını görmek için bir noktayı seçin. **Ajan başına** tablosu sinyalin nerede yoğunlaştığını gösterir. **Mesajlarda**, en güçlü negatif puana göre sıralayın veya tek bir puan seçin. Ne başarısız olduğuna karar vermeden önce çevresindeki konuşmayı okumak için bir mesajı oturumunda açın.
+
+![En güçlü negatif puana göre sıralanmış Duygu mesaj listesi, her kaynak oturumuyla bağlantı.](/images/dashboard/sentiment-messages.png)
 
 ## Hangi mesajlar puanlandırılır
 
 Yalnızca bir kişinin yazdığı mesajlar:
 
-- Özel aracılarınızın SDK ile insan girişi olarak kaydettikleri mesajlar.
-- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler, oturum transkriptleri gönderildiğinde (varsayılan). Zamanlanmış işler, enjekte edilen talimatlar, alt-ajan devralmalar ve aracının kendi çalışma zamanının yazması gereken diğer metinler puanlandırılmaz. `claude -p`, `codex exec` ve `hermes -z` gibi etkileşimsiz çalıştırmalar da puanlandırılmaz: bir komut dosyası bu istekleri yazdı, bir kişi değil.
+- Özel ajanlarınızın SDK ile insan girdisi olarak kaydettiği mesajlar.
+- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler, oturum dökümleri gönderildiğinde (varsayılan). Zamanlanmış işler, enjekte edilmiş talimatlar, alt ajan devrimleri ve ajanın kendi çalışma zamanının yazdığı diğer metinler puanlandırılmaz. `claude -p`, `codex exec` ve `hermes -z` gibi etkileşimsiz çalıştırmalar da puanlandırılmaz: bir script bu istemler yazıyor, bir kişi değil.
 
-Puanlama, kişinin kendi sözcüklerini değerlendirir. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve soru sormak karıştırma olarak sayılmaz. Yeni bir istek düzeltme değildir ve kendi başlarına teşekkürler çözüldü olarak sayılmaz.
-
-<Tabs>
-  <Tab title="Pano">
-    1. **Gözlemle → Sentiment**'e git.
-    2. Ortam, ajan veya oturum kimliğine göre filtrele.
-    3. Başlık, **işaretlenen** mesajları sayar — negatif puan (öfkeli, sinirli, düzeltme, karıştırılmış veya şüpheli) 100 üzerinden 35 veya daha yüksek — ve en üst sinyali adlandırır.
-    4. **Zaman içinde puan**, her puanın ortalamasını grafiklendiriyor. Gösterilecek puanları seç, bir noktaya tıkla ve arkasındaki mesajları oku.
-    5. **Ajan başına**, aracıları yan yana karşılaştırır.
-    6. **Mesajlar**, işaretlenen mesajları listeler, en güçlü ilk. Tüm mesajlara geç, ya da en yeniye veya herhangi bir tek puana göre sırala ve mesajın oturumunu aç, konuşmayı etrafıyla oku.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --event-type human_input --since 24h
-    fp --json events --full --session-id <session-id> --all
-    ```
-  </Tab>
-</Tabs>
+Puanlama, kişinin kendi sözlerine bakılır. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve soru sormak kafa karışıklığı olarak sayılmaz. Yeni bir istek bir düzeltme değildir ve kendi başlarına teşekkür çözüldü olarak sayılmaz.

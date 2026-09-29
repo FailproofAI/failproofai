@@ -1,34 +1,34 @@
 ---
-title: "Panel local"
+title: "Panel de control local"
 description: "Revisa proyectos locales, sesiones, actividad de políticas, configuración, auditorías y análisis programados."
 icon: "monitor-cog"
 ---
 
-Ejecuta `failproofai` sin argumentos para iniciar el panel integrado en `http://localhost:8020`. Lee los historiales de agentes locales, la configuración de políticas, los resultados de auditorías y la actividad de hooks directamente desde la máquina.
+Ejecuta `failproofai` sin argumentos para iniciar el panel de control integrado en `http://localhost:8020`. Lee los historiales de agentes locales, la configuración de políticas, los resultados de auditorías y la actividad de hooks directamente desde la máquina.
 
-El panel local es independiente de Failproof AI Cloud. Funciona sin una cuenta de Cloud y no verifica que los eventos hayan sido entregados a tu organización.
+El panel de control local es independiente de Failproof AI Cloud. Funciona sin una cuenta de Cloud y no garantiza que los eventos hayan sido entregados a tu organización.
 
-## Áreas del panel
+## Áreas del panel de control
 
 | Área | Qué puedes hacer |
 | --- | --- |
-| Políticas → Actividad | Inspecciona decisiones locales de allow, instruct y deny; filtra por decisión, evento, CLI, herramienta, origen, política y sesión. |
-| Políticas → Configurar | Activa funciones integradas, edita parámetros compatibles, activa o desactiva políticas personalizadas detectadas y selecciona los arneses de destino. |
-| Proyectos | Explora los proyectos descubiertos en los historiales de agentes compatibles y compara sus sesiones más recientes. |
-| Sesiones de proyecto | Abre una transcripción local, revisa las entradas ordenadas sin procesar y los subagentes, descárgala y correlaciona la actividad de políticas. |
-| Auditoría | Revisa el último análisis sin conexión, patrones de riesgo, puntos fuertes, proyectos afectados y políticas integradas sugeridas. |
-| Configuración | Configura análisis locales programados e informes de auditoría por correo electrónico cuando el daemon o la plataforma los admitan, y [Jev](#set-up-jev): su proveedor, endpoint, token y modo, y si la conexión de esta máquina con FailproofAI Cloud puede ejecutarlo. |
+| Políticas → Actividad | Inspeccionar decisiones locales de allow, instruct y deny; filtrar por decisión, evento, CLI, herramienta, origen, política y sesión. |
+| Políticas → Configurar | Activar funciones integradas, editar parámetros compatibles, alternar políticas personalizadas detectadas y seleccionar arneses de destino. |
+| Proyectos | Explorar proyectos descubiertos en los historiales de agentes compatibles y comparar sus sesiones más recientes. |
+| Sesiones de proyectos | Abrir una transcripción local, revisar entradas ordenadas sin procesar y subagentes, descargarla y correlacionar actividad de políticas. |
+| Auditoría | Revisar el último análisis sin conexión, patrones de riesgo, fortalezas, proyectos afectados y políticas integradas sugeridas. |
+| Configuración | Configurar análisis locales programados e informes de auditoría por correo cuando el daemon/plataforma lo admita, y [Jev](#set-up-jev): su proveedor, endpoint, token y modo, y si la conexión de esta máquina con FailproofAI Cloud puede ejecutarlo. |
 
 ## Revisar la actividad de políticas
 
 <Tabs>
-  <Tab title="Panel">
+  <Tab title="Panel de control">
     1. Abre **Políticas → Actividad** y establece los filtros de decisión y origen.
-    2. Reduce por evento, arnés, herramienta o nombre de política.
+    2. Filtra por evento, arnés, herramienta o nombre de política.
     3. Expande una fila para inspeccionar su motivo, políticas coincidentes, origen, modo de ejecución y duración.
-    4. Sigue el enlace de sesión para ubicar la decisión en el contexto de la transcripción.
+    4. Sigue el enlace de sesión para colocar la decisión en el contexto de la transcripción.
 
-    Una fila con aspecto de denegada puede seguir siendo observacional en un par arnés/evento que no consume veredictos de bloqueo. La vista de detalle indica la capacidad de aplicación verificada.
+    Una fila con apariencia de denegada puede ser aún observacional en un par de arnés/evento que no consume veredictos de bloqueo. La vista de detalle indica la capacidad de aplicación verificada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,20 +37,20 @@ El panel local es independiente de Failproof AI Cloud. Funciona sin una cuenta d
     failproofai
     ```
 
-    La actividad local se almacena en `~/.failproofai/hook-activity`. Usa el panel en lugar de editar estos archivos directamente.
+    La actividad local se almacena en `~/.failproofai/hook-activity`. Usa el panel de control en lugar de editar estos archivos directamente.
   </Tab>
 </Tabs>
 
 ## Configurar políticas localmente
 
 <Tabs>
-  <Tab title="Panel">
-    1. Abre **Políticas → Configurar** y elige los arneses y el alcance de configuración.
+  <Tab title="Panel de control">
+    1. Abre **Políticas → Configurar** y elige los arneses y el ámbito de configuración.
     2. Activa una política integrada o una política personalizada descubierta.
-    3. Para una política integrada con parámetros, abre su control de configuración y guarda los valores compatibles.
-    4. Vuelve a Actividad y ejecuta acciones que coincidan y que no coincidan.
+    3. Para una política integrada con parámetros, abre su control de configuración y guarda los valores admitidos.
+    4. Vuelve a Actividad y ejecuta acciones coincidentes y no coincidentes.
 
-    Las políticas de convención muestran su origen de proyecto o usuario. Los cambios explícitos de ruta personalizada pueden requerir volver a ejecutar la configuración de la CLI para que la ruta seleccionada quede registrada.
+    Las políticas de convención muestran su origen de proyecto o usuario. Los cambios de ruta personalizada explícita pueden requerir volver a ejecutar la configuración de CLI para que la ruta seleccionada quede registrada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,23 +63,23 @@ El panel local es independiente de Failproof AI Cloud. Funciona sin una cuenta d
 
 ## Explorar proyectos y sesiones
 
-La página Proyectos combina los almacenes de historial locales compatibles. Selecciona un proyecto para listar sus sesiones y luego abre una sesión para acceder al visor de registros sin procesar, los segmentos de subagentes, la acción de descarga y la actividad de políticas con alcance de sesión.
+La página de Proyectos combina los almacenes de historial local compatibles. Selecciona un proyecto para listar sus sesiones y luego abre una sesión para acceder al visor de registros sin procesar, los segmentos de subagentes, la acción de descarga y la actividad de políticas con ámbito de sesión.
 
 Si falta un proyecto o una sesión, confirma que el arnés utiliza su ubicación de historial predeterminada o registra una raíz adicional con `failproofai harness add-path`.
 
 ## Configurar Jev
 
-La sección Jev de la página **Configuración** escribe el mismo archivo `~/.failproofai/jev.json` que escribe `failproofai jev setup`, validado por las propias reglas del cargador, de modo que los hooks lo usan en su próxima llamada. Indica si Jev está activo y en qué modo, y —una vez activo— cuántas llamadas respondió y con qué frecuencia recurrió a las políticas de expresiones regulares.
+La sección Jev de la página **Configuración** escribe el mismo `~/.failproofai/jev.json` que escribe `failproofai jev setup`, validado por las propias reglas del cargador, de modo que los hooks lo usan en su próxima llamada. Indica si Jev está activado y en qué modo, y —una vez activado— cuántas llamadas respondió y con qué frecuencia recurrió a las políticas de expresiones regulares. Failproof AI no incluye comprobaciones de Jev: mientras ningún paquete instalado declare alguna, la sección lo indica y menciona `failproofai policies add FailproofAI/jev-policies`, y Jev no solicita nada.
 
-- **Tu propio endpoint.** Elige el proveedor, proporciona una URL de endpoint para `custom` (opcional para los demás) y un ID de cuenta para Cloudflare, pega el token y selecciona el modo (`shadow`, `enforce` u `off`). El token es de solo escritura: la página nunca lo muestra, y dejar el campo en blanco conserva el almacenado mientras el proveedor y el host del endpoint sigan siendo los mismos. Si cambias alguno de ellos, la página vuelve a solicitar el token, de modo que una clave almacenada nunca se envía a un destino para el que no fue proporcionada. Consulta [Jev con tu propia clave](/es/policies/jev-byok).
-- **FailproofAI Cloud.** Jev a través de Cloud se activa al conectar la máquina (`failproofai config --token <key>`); la página solo ofrece su interruptor de activación/desactivación y el modo. Consulta [Jev a través de FailproofAI Cloud](/es/policies/jev-cloud).
+- **Tu propio endpoint.** Elige el proveedor, proporciona una URL de endpoint para `custom` (opcional para los demás) y un ID de cuenta para Cloudflare, pega el token y selecciona el modo (`observe`, `enforce` u `off`). El token es de solo escritura: la página nunca lo muestra y dejar el campo en blanco conserva el almacenado mientras el proveedor y el host del endpoint permanezcan iguales. Si cambias cualquiera de los dos, la página solicitará el token nuevamente, de modo que una clave almacenada nunca se envía a un destino para el que no fue proporcionada. Consulta [Jev con tu propia clave](/es/reference/jev-providers).
+- **FailproofAI Cloud.** Jev a través de Cloud se activa conectando la máquina (`failproofai config --token <key>`); la página solo ofrece su interruptor de activación/desactivación y el modo. Consulta [Jev a través de FailproofAI Cloud](/es/reference/jev-cloud).
 
-Una configuración cuya clave proviene de `FAILPROOFAI_JEV_API_KEY` (`jev setup --key-from-env`) se evalúa desde el entorno propio del panel, que puede no ser el mismo en el que se ejecuta tu agente; ejecuta `failproofai jev status` donde se ejecute el agente para ver qué hacen sus hooks.
+Una configuración cuya clave proviene de `FAILPROOFAI_JEV_API_KEY` (`jev setup --key-from-env`) se evalúa desde el entorno propio del panel de control, que puede no ser el mismo en el que se ejecuta tu agente; ejecuta `failproofai jev status` donde se ejecuta el agente para ver qué hacen sus hooks.
 
 ## Programar auditorías sin conexión
 
 <Tabs>
-  <Tab title="Panel">
+  <Tab title="Panel de control">
     Abre **Configuración**, activa el análisis programado, elige el intervalo compatible y configura la entrega de informes cuando esté disponible. La página muestra la próxima ejecución, la última ejecución, el código de salida y si el daemon en segundo plano es compatible con la plataforma.
   </Tab>
   <Tab title="CLI">
@@ -88,10 +88,10 @@ Una configuración cuya clave proviene de `FAILPROOFAI_JEV_API_KEY` (`jev setup 
     failproofai audit --status
     ```
 
-    Cambia el número de días para establecer un intervalo diferente de entre 1 y 90 días. Desactiva los análisis recurrentes con `failproofai audit --no-schedule`; ejecuta `failproofai audit` para realizar un análisis interactivo inmediato.
+    Cambia el número de días para establecer un intervalo diferente entre 1 y 90 días. Desactiva los análisis recurrentes con `failproofai audit --no-schedule`; ejecuta `failproofai audit` para un análisis interactivo inmediato.
   </Tab>
 </Tabs>
 
 <Warning>
-  El panel local puede mostrar prompts, entradas de herramientas, contenido de archivos y salida de terminal de los historiales de agentes locales. Vincúlalo solo a interfaces de confianza y detén el proceso cuando la revisión esté completa.
+  El panel de control local puede mostrar prompts, entradas de herramientas, contenido de archivos y salida de terminal provenientes de los historiales de agentes locales. Vincúlalo solo a interfaces de confianza y detén el proceso cuando la revisión esté completa.
 </Warning>

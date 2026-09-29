@@ -1,55 +1,55 @@
 ---
-title: "Trọng tài AI"
-description: "Đánh giá phiên làm việc dựa trên những yếu tố mà code không thể đo lường — tính chính xác, giọng điệu, liệu tác nhân có tuân theo chính sách hay không — bằng cách mô tả điều tốt trông như thế nào và cho một mô hình đọc cuộc hội thoại."
+title: "Các bộ phán xét LLM"
+description: "Đánh giá phiên làm việc dựa trên những thứ mà code không thể đo lường — tính chính xác, giọng điệu, liệu agent có tuân theo chính sách hay không — bằng cách mô tả tiêu chuẩn tốt và cho phép một mô hình đọc cuộc hội thoại."
 icon: "scale"
 ---
 
-Một đánh giá Python được lưu trữ có thể đếm và so sánh: có bao nhiêu lần gọi công cụ, có bao nhiêu lỗi, phiên làm việc kéo dài bao lâu. Nhưng nó không thể cho bạn biết liệu câu trả lời có *chính xác* hay không, liệu trả lời có thô lỗ hay không, hoặc liệu tác nhân có kiểm tra chính sách trước khi hành động hay không.
+Một đánh giá Python được lưu trữ có thể đếm và so sánh: có bao nhiêu lệnh gọi công cụ, có bao nhiêu lỗi, phiên làm việc kéo dài bao lâu. Nó không thể cho bạn biết liệu câu trả lời có *chính xác* hay không, liệu câu trả lời có thô lỗ hay không, hoặc liệu agent có kiểm tra chính sách trước khi hành động hay không.
 
-Một **trọng tài AI** có thể. Bạn mô tả điều tốt trông như thế nào bằng ngôn ngữ thường nhật, và một mô hình đọc phiên làm việc rồi trả về điểm số từ 0 đến 1 kèm theo lý giải của nó.
+Một **bộ phán xét LLM** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ tự nhiên, và một mô hình đọc phiên làm việc và trả về một điểm từ 0 đến 1 cùng với lý do giải thích của nó.
 
 <Note>
-Một trọng tài tốn một lần gọi mô hình cho mỗi phiên làm việc nó chạy, còn đánh giá code không tốn gì. Chỉ sử dụng trọng tài cho những câu hỏi cần cuộc hội thoại được *hiểu rõ* — và đặt một điều kiện cho nó, để nó chỉ chạy trên những phiên làm việc mà câu hỏi thực sự liên quan.
+Một bộ phán xét tiêu tốn một lệnh gọi mô hình cho mỗi phiên làm việc mà nó chạy trên đó, trong khi đánh giá code không tốn gì. Chỉ sử dụng bộ phán xét cho các câu hỏi cần cuộc hội thoại được *hiểu rõ* — và cung cấp cho nó một điều kiện, để nó chạy trên những phiên làm việc mà câu hỏi thực sự liên quan đến.
 </Note>
 
-## Tôi nên dùng cái nào?
+## Tôi muốn cái nào?
 
 | Câu hỏi | Sử dụng |
 | --- | --- |
 | Nó có gọi cùng một công cụ hai lần không? | code |
 | Có bao nhiêu lỗi? | code |
 | Phiên làm việc có dưới 30 giây không? | code |
-| Khách hàng có biểu lộ sự khẩn cấp không? | [bộ phân loại](/vi/evaluations/jev) |
-| Khách hàng bực dọc đến mức nào? | [bộ phân loại](/vi/evaluations/jev) |
-| Câu trả lời có thực sự chính xác không? | **trọng tài** |
-| Câu trả lời có thô lỗ hoặc coi thường hay không? | **trọng tài** |
-| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **trọng tài** |
+| Khách hàng có bày tỏ sự khẩn cấp không? | [classifier](/vi/evaluations/jev) |
+| Khách hàng bực dọc đến mức nào? | [classifier](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **judge** |
+| Câu trả lời có thô lỗ hoặc coi thường hay không? | **judge** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **judge** |
 
-Quy tắc chung: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [bộ phân loại](/vi/evaluations/jev), cần lời giải thích → trọng tài.** Trọng tài là cái viết văn bản về những gì nó nhìn thấy; hãy dùng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+Quy tắc chung: **có thể đếm được → code, câu trả lời bạn có thể liệt kê trước → [classifier](/vi/evaluations/jev), cần lý giải → judge.** Bộ phán xét là bộ viết chữ về những gì nó thấy; sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
 
-Bạn không cần phải quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó chọn cái nào và tại sao. Bạn có thể thay đổi.
+Bạn không phải quyết định từ trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó chọn cái nào và tại sao. Bạn có thể chuyển đổi nó.
 
-## Viết một cái
+## Viết một bộ
 
 1. Đi đến **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả những gì bạn muốn đánh giá, và chọn **draft**.
-3. Xem xét **criteria**, **threshold**, và **condition**, rồi triển khai.
+2. Mô tả những gì bạn muốn phán xét, và chọn **draft**.
+3. Xem xét **criteria**, **threshold**, và **condition**, sau đó deploy.
 
 ### Criteria
 
-Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
+Một hoặc hai câu, được viết dưới dạng yêu cầu thay vì câu hỏi:
 
-> Trợ lý không được hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
+> Agent không được hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
 
-Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" cho bạn một con số không có nghĩa gì; câu phía trên cho bạn một con số bạn có thể hành động.
+Cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" sẽ cho bạn một con số không có ý nghĩa; câu trên sẽ cho bạn một con số bạn có thể hành động dựa trên đó.
 
 ### Threshold
 
-Điểm số ở mức hoặc trên đó phiên làm việc vượt qua. `0.7` là điểm khởi đầu hợp lý. Điểm số đầy đủ từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định vượt qua/không vượt qua — bạn có thể xem phân phối và điều chỉnh.
+Điểm tại hoặc trên đó phiên làm việc được coi là đạt. `0.7` là một điểm khởi đầu hợp lý. Toàn bộ điểm từ 0 đến 1 luôn được lưu trữ, vì vậy threshold chỉ quyết định pass/fail — bạn có thể xem phân bố và điều chỉnh.
 
 ### Condition
 
-Điều kiện Python giống như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có nó, trọng tài chạy trên **mỗi** phiên làm việc trong tổ chức của bạn, mỗi lần gọi một mô hình:
+Cùng điều kiện Python như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có, bộ phán xét sẽ chạy trên **mọi** phiên làm việc trong tổ chức của bạn, với một lệnh gọi mô hình cho mỗi cái:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Bảng điều khiển cảnh báo bạn nếu bạn triển khai một trọng tài mà không có điều kiện. Điều này đôi khi là đúng — một tác nhân có lưu lượng thấp bạn muốn được đánh giá đầy đủ — nhưng nó nên là một quyết định, không phải một tai nạn.
+Bảng điều khiển sẽ cảnh báo bạn nếu bạn deploy một bộ phán xét mà không có điều kiện. Đôi khi điều đó là đúng — một agent có lưu lượng thấp mà bạn muốn được phán xét hoàn toàn — nhưng nó phải là một quyết định, chứ không phải một tai nạn.
 
-## Trọng tài nhìn thấy gì
+## Bộ phán xét nhìn thấy gì
 
 Cuộc hội thoại, dưới dạng các lượt, mới nhất trước nếu phiên làm việc dài:
 
 - những gì người dùng nói
-- những gì trợ lý trả lời
-- **mỗi công cụ tác nhân gọi, và lệnh gọi đó trả về cái gì, theo thứ tự**
+- những gì assistant trả lời
+- **mọi công cụ mà agent gọi, và lệnh gọi đó trả về cái gì, theo thứ tự**
 
-Phần cuối cùng là những gì làm cho "nó có làm X *trước* Y không" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ không thành công được hiển thị dưới dạng một thất bại, vì vậy "nó có phục hồi một cách duyên dáng từ một lỗi không" cũng hoạt động.
+Phần cuối cùng là những gì làm cho "nó có thực hiện X *trước* Y hay không" trở thành một câu hỏi công bằng để đặt ra. Một lệnh gọi công cụ không thành công được hiển thị dưới dạng một lỗi, vì vậy "nó có phục hồi một cách dễ dàng từ một lỗi hay không" cũng hoạt động.
 
-Các phiên làm việc rất dài được cắt ngắn để phù hợp với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý giải nói rõ ràng — bạn sẽ không bao giờ thấy một phán quyết được đưa ra dựa trên một phần phiên làm việc được trình bày như là một phán quyết được đưa ra dựa trên toàn bộ nó.
+Các phiên làm việc rất dài bị cắt ngắn để phù hợp với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý do giải thích nói rõ ràng — bạn sẽ không bao giờ nhìn thấy một phán xét được đưa ra trên một phần của phiên được trình bày như một phán xét được đưa ra trên toàn bộ nó.
 
 ## Đọc kết quả
 
-Một trọng tài tạo ra một **score** giống như bất kỳ đánh giá được chấm điểm nào khác, vì vậy nó biểu đồ, lọc và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của trọng tài — đoạn văn giải thích những gì nó nhìn thấy. Hãy đọc điều đó trước tiên khi một điểm số bất ngờ; nó thường là một phiên làm việc thực sự thú vị hoặc một dấu hiệu rằng tiêu chí cần được hoàn thiện hơn.
+Một bộ phán xét tạo ra một **score** giống như bất kỳ đánh giá có điểm nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của bộ phán xét — đoạn văn giải thích những gì nó thấy. Hãy đọc điều đó trước tiên khi một điểm làm bạn ngạc nhiên; nó thường là một phiên làm việc thực sự thú vị hoặc một dấu hiệu rằng tiêu chí cần được làm sắc nét hơn.
 
-Điểm số ổn định cho các trường hợp rõ ràng nhưng không hoàn toàn xác định. Coi một điểm số cận biên duy nhất như một lời nhắc để đi đọc phiên làm việc, không phải là một phán quyết.
+Điểm số ổn định đối với các trường hợp rõ ràng nhưng không hoàn toàn xác định theo từng bit. Hãy xem một điểm biên giới duy nhất như một gợi ý để đi và đọc phiên làm việc, không phải như một phán quyết.
 
 ## Giới hạn
 
-- **Kiểm tra chưa khả dụng.** Một bản chạy khô không có phép gán phiên làm việc phía sau, và phép gán đó là những gì cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để một lệnh gọi kiểm tra tính phí. Triển khai dựa trên một điều kiện hẹp và đọc một vài kết quả đầu tiên.
-- **Backfill không khả dụng.** Backfill một đánh giá code qua hàng tháng lịch sử là miễn phí; làm điều đó với một trọng tài sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
-- **Chỉnh sửa tiêu chí xuất bản một phiên bản mới.** Điểm số cũ và mới không thể so sánh, vì vậy chúng được giữ riêng biệt chứ không phải trộn vào một đường xu hướng.
-- **Một trọng tài luôn tạo ra một điểm số**, không bao giờ là một số liệu hoặc một khẳng định.
+- **Testing chưa có sẵn.** Một đợt chạy thử không có phân công phiên làm việc đằng sau nó, và phân công đó là những gì cho phép chi tiêu ngân sách mô hình của bạn — vì vậy không có gì cho một lệnh gọi kiểm tra để tính phí. Deploy với một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không có sẵn.** Backfill một đánh giá code trên hàng tháng lịch sử là miễn phí; làm nó với một bộ phán xét sẽ chi tiêu toàn bộ ngân sách của bạn trong vòng vài phút.
+- **Chỉnh sửa criteria sẽ công bố một phiên bản mới.** Các điểm cũ và mới không thể so sánh được, vì vậy chúng được giữ riêng biệt thay vì trộn thành một đường xu hướng.
+- **Một bộ phán xét luôn tạo ra một điểm**, không bao giờ là một số liệu hoặc một khẳng định.
 
 ## Khi ngân sách của bạn hết
 
-Trọng tài chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, các đánh giá trọng tài dừng lại với một lý do rõ ràng chứ không phải thất bại im lặng, và **các đánh giá code tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên làm việc tiếp theo.
+Các bộ phán xét chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó được cạn kiệt, các đánh giá bộ phán xét sẽ dừng với một lý do rõ ràng thay vì thất bại âm thầm, và **đánh giá code tiếp tục chạy bình thường**. Tăng ngân sách và chúng sẽ tiếp tục trên phiên làm việc tiếp theo.

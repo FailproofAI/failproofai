@@ -1,19 +1,19 @@
 ---
-title: "Sentiment"
-description: "See how the people using your agents feel, and whether your agents are getting it right, message by message."
+title: "Sentiment analysis"
+description: "Find frustrated, confused, and corrective messages with Jev sentiment scores."
 icon: "smile"
 ---
 
-Sentiment scores every message a person sends your agents, each from 0 to 100%, for four feelings — **angry**, **frustrated**, **happy** and **confused** — and three signals about how the agent is doing:
+Jev scores each message a person sends your agents from 0 to 100 for four feelings — **angry**, **frustrated**, **happy** and **confused** — and three signals about how the agent is doing:
 
 - **Correcting**: the person says the agent got something wrong.
 - **Resolved**: the person confirms the agent solved their problem.
 - **Doubtful**: the person questions whether the agent's answer is true, or whether it really did the work.
 
-Use it to find the conversations where people are losing patience, the agents they keep having to correct, and the replies that land well.
+Use sentiment analysis to find conversations where people are losing patience, agents they keep correcting, and replies that land well. This is built-in Jev scoring; you do not need to author an evaluation. For your own fixed-answer question, [create a Jev eval](/evaluations/jev).
 
 <Note>
-  Sentiment is off until an admin turns it on for the organization. Scoring uses your organization's LLM budget — one scoring request per message — and sends each message, with the agent reply before it, to the scoring model.
+  Sentiment is off until an admin turns it on for the organization. Jev makes one scoring request per message and receives that message with the agent reply before it. Scoring uses your organization's model budget.
 </Note>
 
 ## Turn it on
@@ -23,6 +23,16 @@ Use it to find the conversations where people are losing patience, the agents th
 
 Messages from the last day are scored first. After that, new messages are scored within a minute or two of arriving.
 
+## Find a conversation to review
+
+Open **Observe → Sentiment**. Filter by time, environment, agent, or session ID. The header counts messages and sessions, shows how many messages are **flagged**, and names the top signal. A message is flagged when an angry, frustrated, correcting, confused, or doubtful score reaches 35 out of 100.
+
+![The Sentiment dashboard showing message and session counts, flagged messages, and Jev scores over time.](/images/dashboard/sentiment-overview.png)
+
+Use **Score over time** to compare signals. Choose the scores to show, then select a point to see that time bucket's messages. The **By agent** table shows where a signal is concentrated. In **Messages**, sort by the strongest negative score or select a single score. Open a message in its session to read the surrounding conversation before deciding what failed.
+
+![The Sentiment message list sorted by strongest negative score, with a link to each source session.](/images/dashboard/sentiment-messages.png)
+
 ## Which messages are scored
 
 Only messages a person wrote:
@@ -31,20 +41,3 @@ Only messages a person wrote:
 - Prompts typed into Claude Code, Codex, OpenCode, pi, Hermes and OpenClaw, when session transcripts are sent (the default). Scheduled jobs, injected instructions, sub-agent hand-offs and other text the agent's own runtime writes are not scored. Nor are non-interactive runs such as `claude -p`, `codex exec` and `hermes -z`: a script wrote those prompts, not a person.
 
 Scoring judges the person's own words. A short, blunt instruction such as "fix it" is not counted as anger, and asking a question is not counted as confusion. A new request is not a correction, and thanks on their own do not count as resolved.
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Observe → Sentiment**.
-    2. Filter by environment, agent, or session ID.
-    3. The header counts **flagged** messages — any negative score (angry, frustrated, correcting, confused or doubtful) of 35 or more out of 100 — and names the top signal.
-    4. **Score over time** charts the average of each score. Pick which scores to show, and click a point to read the messages behind it.
-    5. **By agent** compares agents side by side.
-    6. **Messages** lists the flagged messages, strongest first. Switch to all messages, or sort by newest or by any single score, and open a message's session to read the conversation around it.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --event-type human_input --since 24h
-    fp --json events --full --session-id <session-id> --all
-    ```
-  </Tab>
-</Tabs>

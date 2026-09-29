@@ -10,45 +10,49 @@ Una policy valuta un evento hook dell'agente e restituisce una di tre decisioni:
 - `instruct` fornisce all'agente una guida correttiva.
 - `deny` blocca l'azione con una motivazione.
 
-## Dove si trovano le policy
+## Dove vivono le policy
 
 | Nel dashboard | Cosa fai lì |
 | --- | --- |
-| **Observe → policy** | Rivedi le decisioni dalle sessioni reali: quale policy ha corrisposto, su quale macchina e perché |
-| **Admin → policy editor** | Scrivi una policy, effettua un backtest rispetto al traffico passato, pubblica una versione immutabile e confronta le versioni in **library** |
-| **Admin → enforcement** | Distribuisci le versioni sulle macchine, in modalità observe o enforce |
+| **Observe → policy** | Esamina le decisioni dalle sessioni reali: quale policy è stata abbinata, su quale macchina e perché |
+| **Admin → policy editor** | Scrivi una policy, esegui il backtest rispetto al traffico passato, pubblica una versione immutabile e confronta le versioni in **library** |
+| **Admin → enforcement** | Distribuisci le versioni alle macchine, in modalità observe o enforce |
 
-L'editor di policy è dove un errore diventa una regola. Descrivi la modalità di errore o incolla il codice della policy in **compose**, effettua un backtest della bozza rispetto al traffico che hai già, e pubblica una versione:
+L'editor delle policy è il luogo in cui un errore diventa una regola. Descrivi la modalità di errore o incolla il codice della policy in **compose**, esegui il backtest della bozza rispetto al traffico che già possiedi e pubblica una versione:
 
-![La vista compose dell'editor di policy con identità della policy, drafting assistito da AI, convalida del codice sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
+![La vista compose dell'editor delle policy con identità della policy, drafting assistito da AI, validazione del codice sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
 
-Su una macchina, `failproofai policies` elenca tutto ciò che viene applicato lì. `fp policies` e `fp fleet` coprono l'editor e l'enforcement da un terminale — vedi il [Cloud CLI reference](/it/reference/cloud-cli).
+Su una macchina, `failproofai policies` elenca tutto ciò che è in vigore lì. `fp policies` e `fp fleet` coprono l'editor e l'enforcement da un terminale — consulta il [Cloud CLI reference](/it/reference/cloud-cli).
 
-## Ottieni una policy
+## Ottenere una policy
 
-Ci sono due modi per ottenerne una.
+Ci sono due modi.
 
 <Columns cols={2}>
   <Card title="Scrivi una policy" icon="file-pen-line" href="/it/policies/editor">
-    Lascia che Failproof AI ne rediga una da una rilevazione di audit, oppure scrivi il codice sorgente tu stesso, quindi rivedi e pubblica nell'editor.
+    Lascia che Failproof AI ne rediga una da un'audit finding, oppure scrivi il codice sorgente tu stesso, quindi esamina e pubblica nella schermata dell'editor.
   </Card>
   <Card title="Usa un policy pack" icon="package" href="/it/policies/packs">
-    Integra un policy pack di Failproof AI per il tuo caso d'uso, oppure un pack della community dall'hub delle policy, con un unico comando.
+    Integra un policy pack Failproof AI per il tuo caso d'uso, o un pack della comunità dall'hub delle policy, in un comando.
   </Card>
 </Columns>
 
-## Poi distribuiscilo
+## Esamina le chiamate di tool con Jev
+
+Jev legge una tool call gestita nel contesto della tua richiesta. Può segnalare un problema che una policy basata sul pattern matching ha mancato o eliminare un deny da una policy esplicitamente contrassegnata come **reviewable**. Le policy hard rimangono definitive. [Inizia con le policy Jev](/it/policies/jev), quindi usa il [integration reference](/it/reference/jev) quando hai bisogno di dettagli su provider o configurazione.
+
+## Quindi rilasciala
 
 <Steps>
-  <Step title="Testalo">
-    Effettua un backtest della bozza rispetto al traffico che hai già, ed eseguila su un'azione che deve bloccare e una che deve consentire — tutto prima di pubblicare. Vedi [Test a policy](/it/policies/test).
+  <Step title="Testala">
+    Esegui il backtest della bozza rispetto al traffico che già possiedi e test su un'azione che deve bloccare e una che deve consentire — tutto prima di pubblicare. Vedi [Test a policy](/it/policies/test).
   </Step>
-  <Step title="Distribuiscilo">
-    Metti la versione sulle macchine in modalità **observe**, leggi le sue decisioni, quindi applica l'enforce. Vedi [Deploy a policy](/it/policies/deploy).
+  <Step title="Distribuiscila">
+    Metti la versione sulle macchine in modalità **observe**, leggi le sue decisioni, quindi enforce. Vedi [Deploy a policy](/it/policies/deploy).
   </Step>
-  <Step title="Versionamento e rollback">
-    Ogni pubblicazione è una versione nuova e immutabile, quindi un rollout che blocca lavoro valido viene annullato ridistribuendo l'ultima versione buona. Vedi [Versions and rollback](/it/policies/rollback).
+  <Step title="Versione e rollback">
+    Ogni pubblicazione è una nuova versione immutabile, quindi un rollout che blocca lavori validi viene annullato ridistribuendo l'ultimo buono. Vedi [Versions and rollback](/it/policies/rollback).
   </Step>
 </Steps>
 
-Per condividere le tue policy con altri team, [pubblicale come pack](/it/policies/publish-a-pack). Per scoprire cosa accade quando una policy non può essere valutata affatto, vedi [Failure behavior](/it/policies/failure-behavior).
+Per condividere le tue policy con altri team, [pubblicale come pack](/it/policies/publish-a-pack). Per sapere cosa succede quando una policy non può essere valutata affatto, vedi [Failure behavior](/it/policies/failure-behavior).

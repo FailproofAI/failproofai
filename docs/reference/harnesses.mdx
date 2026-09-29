@@ -46,16 +46,29 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
 ### Hermes native plugin
 
 Hermes is integrated through a profile-local native plugin rather than a shell
-command. Installation copies the plugin into every default and named Hermes
-profile, enables it in that profile's `config.yaml`, and migrates only legacy
-FailproofAI shell-hook entries. This avoids a process spawn on each hook and
-lets `instruct()` reach the model through Hermes' native blocked-tool result.
+command. Installation links every default and named Hermes profile's
+`plugins/failproofai` to the plugin shipped in the npm package (a copy where a
+symlink cannot be created), enables it in that profile's `config.yaml`, and
+migrates only legacy FailproofAI shell-hook entries. Because the plugin is
+linked, `npm install -g failproofai@latest` updates it with no reinstall. This
+avoids a process spawn on each hook and lets `instruct()` reach the model
+through Hermes' native blocked-tool result.
+
+Legacy shell hooks (installed by 1.0.5 and earlier) do **not** check Hermes
+cron jobs: each cron run builds its own hook scope, which the native plugin
+joins and `config.yaml` shell hooks do not. `failproofai update` migrates every
+profile that already uses FailproofAI to the linked plugin. If the running
+daemon cannot serve the plugin, `update` leaves the shell hooks in place and
+exits non-zero; run `failproofai config` to update the daemon, then
+`failproofai update` again. Cron jobs load the plugin on their next run; restart
+running gateways and interactive sessions to load it there.
 
 The first matching instruction blocks the pending call. The same API request
 stays blocked; a later model iteration may retry. A persistent, profile-scoped
 ledger and a per-turn cap prevent an advisory instruction from becoming an
 unbounded loop. `deny()` remains a hard block. Run `failproofai config --status`
-to detect a disabled, incomplete, duplicated, or newly unconfigured profile.
+to detect a disabled, incomplete, duplicated, or newly unconfigured profile, or
+one still on legacy shell hooks (reported as "Hermes cron jobs are not checked").
 
 ## Install capture and policy hooks
 

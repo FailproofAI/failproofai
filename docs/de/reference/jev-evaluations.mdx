@@ -1,0 +1,88 @@
+---
+title: "Jev-Evaluations – Referenz"
+description: "Fragetypen, kalibrierte Bewertungen, Grenzen und Backfill für Jev-Session-Evaluationen."
+icon: "list-checks"
+---
+
+Diese Seite beschreibt die Frageformen und Bewertungsregeln hinter [Jev-Evaluationen](/de/evaluations/jev). Einige Fragen erfordern, dass ein Modell die Konversation *liest*, aber nicht darüber *schreibt*. „Hat der Kunde Dringlichkeit ausgedrückt?" hat zwei Antworten. „Wie frustriert war er?" hat eine Handvoll, in einer bestimmten Reihenfolge. Alle Antworten sind bekannt, bevor man fragt.
+
+Eine **Classifier-Evaluation** ist genau dafür gedacht. Sie formulieren die Frage und die möglichen Antworten, und ein kleines, speziell für die Klassifikation entwickeltes Modell gibt eine kalibrierte Zahl zurück – niemals Freitext.
+
+<Note>
+Wie ein Richter kostet eine Classifier-Evaluation einen Modellaufruf pro Session. Im Unterschied zu einem Richter handelt es sich jedoch um ein kleines, zweckgebundenes Modell statt einem allgemeinen – es ist daher schneller und günstiger, erklärt sich aber nicht. Falls Sie die Begründung benötigen, verwenden Sie einen [Judge](/de/evaluations/judge).
+</Note>
+
+## Welche Option ist die richtige?
+
+| Frage | Verwenden Sie |
+| --- | --- |
+| Wie viele Tool-Aufrufe gab es? | Code |
+| War die Session kürzer als 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit ausgedrückt? | **Classifier** |
+| Welches Team sollte sich darum kümmern: Abrechnung, Technik oder Vertrieb? | **Classifier** |
+| Wie frustriert war der Kunde? | **Classifier** |
+| War die Antwort tatsächlich korrekt? | **Judge** |
+| Hat es unsere Eskalationsrichtlinie befolgt, und warum denken Sie das? | **Judge** |
+
+Die Faustregel lautet: **zählbar → Code, aufzählbare Antworten → Classifier, Begründung erforderlich → Judge.**
+
+Sie müssen sich nicht sofort entscheiden. Beschreiben Sie, was gemessen werden soll, und der Assistent wählt aus, teilt Ihnen mit, was er gewählt hat und warum – und Sie können jederzeit wechseln.
+
+## Die zwei Fragetypen
+
+### `noul` – ist das wahr?
+
+Zwei Antworten, und Sie beschreiben beide. Das Ergebnis ist die Wahrscheinlichkeit, dass die Beschreibung „wahr" zutrifft:
+
+```json
+{
+  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
+  "criteria": {
+    "true":  "A refund was promised or issued with no prior policy check or approval",
+    "false": "No refund was promised, or every refund followed a policy check"
+  }
+}
+```
+
+Beschreiben Sie beide Seiten. „Keine Dringlichkeit ausgedrückt" ist eine echte Antwort – sie zu formulieren macht die andere Seite schärfer.
+
+### `score` – wie viel davon?
+
+Ein geordnetes Rubrik, **schlechtester Wert zuerst**. Das Ergebnis zeigt, wo die Session auf dieser Skala liegt, auf 0–1 umskaliert:
+
+```json
+{
+  "instructions": "How frustrated is the customer?",
+  "criteria": ["Calm", "Frustrated", "Very angry"]
+}
+```
+
+**Eine Rubrik umfasst drei bis fünf Stufen, die alle unterschiedlich sein müssen.** Beide Grenzen sind sachlich begründet, nicht stilistischer Natur:
+
+- **Zwei Stufen** reduzieren die Frage auf das, was `noul` bereits besser leistet, und **mehr als fünf** verleitet das Modell dazu, zur Mitte zu tendieren, statt sich festzulegen. Dieselbe Frage über dieselbe Session erzielte 0,00 mit zwei Stufen, 0,01 mit drei und 0,55 mit zehn.
+- **Wiederholte Stufen** verteilen die Antwort willkürlich auf diese. Eine Session, die eindeutig wütend war, erzielte 1,00 gegen `["Calm", "Frustrated", "Very angry"]` und 0,66 gegen `["Angry", "Angry", "Angry"]` – eine formal korrekte Zahl, die nichts bedeutet.
+
+Kategorien ohne Reihenfolge – „Abrechnung, Technik oder Vertrieb" – sind keine Rubrik. Stellen Sie sie als `noul` pro Kategorie, oder verwenden Sie einen Judge.
+
+## Ergebnisse interpretieren
+
+Ein Classifier liefert einen **Score** von 0 bis 1, genau wie ein Judge – er lässt sich daher gleichermaßen in Diagrammen darstellen, filtern und für Alerts verwenden. Zwei Unterschiede sind wichtig:
+
+- **Es gibt keine Begründung.** Das Feld ist bewusst leer. Dieses Modell erklärt sich nicht, und eine Erklärung zu erfinden wäre eine Erfindung, keine Funktion.
+- **Unsicherheit wird gekennzeichnet.** Eine `score`-Frage gibt ihre eigene Konfidenz an, und ein Ergebnis, bei dem das Modell unsicher war, wird als `low_confidence` markiert – „welche davon sollte ein Mensch prüfen" ist damit eine Filterfunktion, kein Ratespiel. Eine `noul`-Frage gibt keine Konfidenz an und wird daher nie so markiert.
+
+Sehr lange Sessions werden ausschnittsweise gelesen und kombiniert. Wenn eine Session zu lang ist, um vollständig gelesen zu werden, gibt das Ergebnis an, wie viele Turns ausgelassen wurden – Sie sehen niemals ein Urteil, das auf einem Teil einer Session beruht und als vollständiges dargestellt wird.
+
+## Grenzen
+
+- **Drei bis fünf Rubrik-Stufen, alle unterschiedlich.** Siehe oben; beide Grenzen werden beim Erstellen durchgesetzt.
+- **Eine Frage pro Evaluation.** Wer zwei Dinge fragt, erhält zwei Evaluationen – was auch gewünscht ist, wenn man Diagramme betrachtet.
+- **Das Bearbeiten einer Frage veröffentlicht eine neue Version.** Alte und neue Scores sind nicht vergleichbar und werden daher getrennt gehalten, statt in einer gemeinsamen Trendlinie vermischt zu werden.
+- **Ein Classifier liefert immer einen Score**, nie eine Metrik oder eine Aussage.
+- **Keine Begründung**, wie oben beschrieben. Wenn eine Zahl jemanden zum Fragen „warum?" veranlassen wird, schreiben Sie stattdessen einen Judge.
+
+## Testen und Backfill
+
+Im Gegensatz zu einem Judge **kann** eine Classifier-Evaluation getestet werden, bevor Sie sie deployen – [testen Sie sie](/de/evaluations/test) an echten Sessions genauso, wie Sie es bei einer Code-Evaluation tun würden, und lesen Sie die Scores, bevor etwas live geht.
+
+Sie kann auch über bereits vorhandene Sessions [nachträglich ausgeführt werden (Backfill)](/de/evaluations/deploy#score-sessions-you-already-have). Da pro Session ein Modellaufruf anfällt, sollten Sie das Zeitfenster gezielt eingrenzen, statt alles neu zu berechnen.

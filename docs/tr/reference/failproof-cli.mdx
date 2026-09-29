@@ -1,23 +1,23 @@
 ---
 title: "Failproof AI CLI"
-description: "Hook'ları yükleyin, yerel politikaları yönetin, Cloud'a bağlanın ve yerel daemon'u işletiniz."
+description: "Hook'ları yükleyin, yerel politikaları yönetin, Cloud'a bağlanın ve yerel daemon'u işletim."
 icon: "terminal"
 ---
 
-Yerel CLI'yi `npm install -g failproofai` ile yükleyin. Bunu hiçbir argüman olmadan çalıştırarak yerel politika panosunu açın.
+`npm install -g failproofai` ile yerel CLI'yi yükleyin. Bunu hiç bir argüman olmadan çalıştırarak yerel politika panosunu açın.
 
-Paket Node.js 20.9 veya daha yeni bir sürümü gerektirir. Bun 1.3 veya daha yeni sürümü geliştirme ve kaynak yüklemeleri için desteklenir. `failproofai configure` ve `failproofai setup` komutları `failproofai config` için takma adlardır. `failproofai policy`, `failproofai pack` ve `failproofai p` komutlarının tümü `failproofai policies` için geçerli yazılışlardır — pack'ler ve tekil politikalar daha önce üç komut olan bir fikir olup artık bir komuttur. Eski yazılışlar hala çalışır, iki istisna dışında: `pack list <source>` artık `policies show <source>` oldu ve `pack build` artık `publish` oldu.
+Paket Node.js 20.9 veya daha yeni bir sürümü gerektirir. Bun 1.3 veya daha yeni bir sürüm geliştirme ve kaynak yüklemeleri için desteklenir. `failproofai configure` ve `failproofai setup` komutları `failproofai config` için takma adlardır. `failproofai policy`, `failproofai pack` ve `failproofai p` hepsi `failproofai policies` komutunun farklı yazılışlarıdır — pack'ler ve tekil politikalar önceden üç komut idi, şimdi bir komuttur. Eski yazılışlar hala çalışır, iki istisna ile: `pack list <source>` artık `policies show <source>` ve `pack build` artık `publish` komutudur.
 
-## Bir makineyi ayarla
+## Bir makineyi kurun
 
-CLI'yi yükleyin, ardından makine anahtarını shell'e okuyun. `read -s`, istemde giriş alır ve hiçbir yerde görünmez:
+CLI'yi yükleyin, ardından makine anahtarını shell'e okuyun. `read -s` anahtarı yankı yapmayan bir istemde alır, böylece komuta hiçbir zaman görünmez:
 
 ```bash
 npm install -g failproofai
 read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
 ```
 
-Ardından makineyi ayarlayın ve hangi politikaları uygulatacağını seçin:
+Ardından makineyi kurun ve hangi politikaları uyguladığını seçin:
 
 ```bash
 failproofai config
@@ -25,86 +25,86 @@ failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-`failproofai config` kurulumun tamamıdır: `failproofaid` hizmetini yükler (kök için bir kez, `sudo -n` aracılığıyla — asla etkileşimli bir şifre isteminden), bulduğu her agent CLI'ye hook'ları bağlar ve bir anahtar kullanılabilir olduğunda Cloud'a bağlanır. Terminal olmadan — CI, kapsayıcı, onu çalıştıran bir agent — sormak yerine uygular ve istenen herhangi bir şey gerçekleşmemişse 1 ile çıkar.
+`failproofai config` kurulumun tamamıdır: `failproofaid` servisini kurar (kök bir kez, `sudo -n` yoluyla — hiçbir zaman etkileşimli şifre istemi değil), bulduğu her agent CLI'ye hook'ları bağlar ve anahtar mevcut olduğunda Cloud'a bağlanır. Terminal olmadan — CI, bir kontainer, onu çalıştıran bir agent — sormak yerine uygular ve yapması istenen herhangi bir şey gerçekleşmezse 1 ile çıkar.
 
-**Hiç** politika seçmez. Bu ikinci komutun görevi olup, bunu olmadan yeni yapılandırılmış bir makine sadece her zaman açık olan koruma dışında hiçbir şey uygulamaz.
+**Hiçbir** politika seçmez. Bu ikinci komutun işidir ve onsuz yeni yapılandırılmış bir makine yalnızca her zaman açık olan koruyucu haricinde hiçbir şey uygulamaz.
 
-Ortam değişkenini `--token` yerine tercih edin: komut satırı argümanı kutu üzerindeki her kullanıcı tarafından `ps` içinden okunabilir. Değişkenin koruduğu tüm bunlar — herhangi bir komuta yazılan bir anahtar, `export` dahil olmak üzere, yine de shell geçmişine iner ve bu yüzden yukarıda `read -s` ile okunur. CI'de bunu gizli deposundan ayarlayın ve shell izlemesini (`set -x`) kapalı tutun, aksi takdirde izleme bunu yazdırır.
+Ortam değişkenini `--token` yerine tercih edin: komut satırı argümanı kutudaki her kullanıcı tarafından `ps` aracılığıyla okunabilir. Bu, değişkenin korunduğu tüm şeydir — herhangi bir komuta yazılan anahtar, `export` dahil, yine de shell geçmişine kaydedilir; bu nedenle yukarıdaki `read -s` ile okunur. CI'de bunu gizli depodan ayarlayın ve shell izlemesini kapalı tutun (`set -x`), aksi takdirde izleme bunu yazdırır.
 
 <Warning>
-  `--connect <url>` **zaten ayarlanmış** bir makineyi kaydeder. Kayıt başarılı olur olmaz döner — daemon'u yüklemez ve hiçbir hook bağlamaz. Henüz ayarlanmamış bir makineye düz `failproofai config` (veya `failproofai config --token <key>`) kullanın, aksi takdirde bağlı olarak görünerek hiçbir şey toplamaz ve uygulamaz.
+  `--connect <url>` **zaten kurulu** bir makineyi kaydeder. Kayıt başarılı olur olmaz geri döner — daemon'u kurmaz ve hiçbir hook'u bağlamaz. Henüz kurulmamış bir makinede düz `failproofai config` (veya `failproofai config --token <key>`) kullanın, aksi takdirde bağlı olarak okunur ve hiçbir şey toplayıp uygulamaz.
 </Warning>
 
-Yerel politika panosunu açmak için `failproofai` komutunu hiçbir argüman olmadan çalıştırın.
+Yerel politika panosunu açmak için `failproofai` komutunu hiç bir argüman olmadan çalıştırın.
 
 | Komut | Sonuç |
 | --- | --- |
-| `failproofai config` | Makineyi ayarla: agent'lar, daemon ve anahtar mevcut olduğunda Cloud |
-| `failproofai config --token <key>` | Bir geçişte ayarla ve bağlan, hiçbir şey sorma. `jev:evaluate` taşıyan bir anahtar, `jev.json` zaten var olmadığı sürece veya `--no-transcripts` verilmediği sürece [FailproofAI Cloud aracılığıyla Jev'i](/tr/policies/jev-cloud) gölge modunda açar |
-| `failproofai config --connect <url>` | **Zaten** ayarlanmış bir makineyi kaydet — daemon yok, hook yok |
-| `failproofai config --status` | Bağlantı, daemon, teslimat ve duraklatma durumunu göster |
-| `failproofai policies` | Yerleşik, özel, kural, pack ve Cloud tarafından yönetilen politikaları listele |
-| `failproofai policies --install` | Hook'ları agent CLI'lerinize bağla. Kendi başına hiçbir politikayı etkinleştirmez |
-| `failproofai policies add <name>` | Bir politikayı etkinleştir — yerleşik veya kurulu bir pack'ten `<pack-id>:<name>` |
-| `failproofai policies remove <name>` | Bir politikayı devre dışı bırak, aynı adlandırma |
-| `failproofai policies --uninstall` | Politikaları devre dışı bırak veya harness hook'larını kaldır |
-| `failproofai policies show <owner>/<repo>` | Bir pack'in taşıdığı şey, manifest'ten okundu, almadan önce |
-| `failproofai policies show <owner>/<repo> --releases` | Yayımladığı her sürüm ve buradaki hangisi olduğu |
-| `failproofai policies add <source>` | GitHub sürümünden bir politika pack'i yükle; etiket almayan en yeni olanı alır ve sabitler |
-| `failproofai publish` | Kendi politikalarınızı pack olarak gönderin; `--init` başlamak için bir tane yazar ve `--min-cli-version <version>` kurulum yapabilecek en eski CLI'yi ayarlar ([Bir pack'te Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack)) |
-| `failproofai policies remove <publisher/name>` | Bir pack'i kaldır |
-| `failproofai audit` | Yerel agent geçmişini tara ve yerel denetim görünümünü aç |
-| `failproofai audit --schedule [days] --email <address>` | Yinelenen yerel taramaları ve bulguların e-postasını zamanla |
-| `failproofai audit --status` | Rapor adresini, aralığı ve sonraki planlanan taramayı göster |
-| `failproofai audit --no-schedule` | Denetim geçmişini silmeden yinelenen taramaları durdur |
-| `failproofai harness list` | Ek yakalama yollarını listele |
-| `failproofai jev --url <url> --key-stdin` | Jev'i bir adımda ayarla; sağlayıcı URL'nin ana bilgisayarından alınır |
-| `failproofai jev setup --provider <kind> --key-stdin` | [Jev](/tr/policies/jev-byok)'in kendi uç noktanız ve anahtarınız aracılığıyla araç çağrılarını değerlendirmesine izin ver |
-| `failproofai jev setup --provider failproofai` | Jev'in [FailproofAI Cloud aracılığıyla](/tr/policies/jev-cloud) araç çağrılarını değerlendirmesine izin ver, bu makinenin Cloud anahtarıyla |
-| `failproofai jev setup --mode <m>` | Jev'in modunu değiştir: `enforce`, `shadow` veya `off` (yapılandırmayı tutar, Jev'i sorma durdurur) |
-| `failproofai jev status` | Jev yapılandırmasını, izinlerini ve son başarısızlıklarını göster; asla anahtarı gösterme |
-| `failproofai jev test` | Bir canlı Jev isteği gönder ve gecikme ve sürümünü göster; hook'lar için cevap geç olduğunda veya yanlış olduğunda 1 ile çıkar |
-| `failproofai jev models` | Model kimliklerini listele `GET <base>/models` uç noktanın sunduğu şeyleri |
-| `failproofai jev remove` | Jev'i kapat; hook'lar regex politikalarını tam olarak önceden çalıştır |
-| `failproofai flush --wait` | Geçerli olay biriktirmesini teslimat et |
-| `failproofai backfill --since 30d` | Daha önce iletilmiş geçmişi yeniden oku |
-| `failproofai config --pause [duration]` | Bir yerel oturumu varsayılan olarak 30 dakika, en fazla 8 saate kadar duraklatsa |
-| `failproofai config --resume` | Duraklatılmış bir yerel oturumu devam ettir; tüm duraklatamaları temizlemek için `--all` ekle |
-| `failproofai update` | Paket göçlerini bitir ve daemon'u güncelle |
-| `failproofai migrate --dry-run` | Bekleyen ana düzen göçlerinin önizlemesini veya çalıştırmasını yapın |
-| `failproofai uninstall` | Paketi kaldırmadan önce hook'ları ve daemon'u kaldır |
-| `failproofai --version` | Yüklü paket sürümünü yazdır |
-| `failproofai --help` | Komutları ve global kullanımı göster |
+| `failproofai config` | Makineyi kurun: agent'ler, daemon ve anahtar mevcut olduğunda Cloud |
+| `failproofai config --token <key>` | Bir adımda kurun ve bağlanın, hiçbir şey sorulmadan. `jev:evaluate` içeren bir anahtar [Jev aracılığıyla FailproofAI Cloud](/tr/reference/jev-cloud) gözlemle modunda açar (bir `jev.json` zaten yoksa veya `--no-transcripts` verilmemişse) |
+| `failproofai config --connect <url>` | **Zaten** kurulu bir makineyi kaydedin — daemon yok, hook'lar yok |
+| `failproofai config --status` | Bağlantı, daemon, teslimat ve duraklatma durumunu gösterin |
+| `failproofai policies` | Yerleşik, özel, kural, pack ve Cloud tarafından yönetilen politikaları listeleyin |
+| `failproofai policies --install` | Agent CLI'lerinize hook'ları bağlayın. Kendi başına hiçbir politikayı etkinleştirmez |
+| `failproofai policies add <name>` | Bir politikayı etkinleştirin — yerleşik veya yüklü bir pack'ten `<pack-id>:<name>` |
+| `failproofai policies remove <name>` | Bir politikayı devre dışı bırakın, aynı adlandırma |
+| `failproofai policies --uninstall` | Politikaları devre dışı bırakın veya harness hook'larını kaldırın |
+| `failproofai policies show <owner>/<repo>` | Pack'in ne içerdiğini, manifest'ten okuyun, almadan önce |
+| `failproofai policies show <owner>/<repo> --releases` | Yayımladığı her sürüm ve burada hangi sürüm olduğu |
+| `failproofai policies add <source>` | GitHub yayınından politika pack'ini yükleyin; etiket almayan en yenisini alır ve sabitler |
+| `failproofai publish` | Kendi politikalarınızı pack olarak gönderin; `--init` başlamak için bir tane yazar ve `--min-cli-version <version>` kurabilen en eski CLI'yi ayarlar ([Bir pack'te Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack)) |
+| `failproofai policies remove <publisher/name>` | Bir pack'i kaldırın |
+| `failproofai audit` | Yerel agent geçmişini tarayın ve yerel denetim görünümünü açın |
+| `failproofai audit --schedule [days] --email <address>` | Yinelenen yerel taramaları planlayın ve bulguları e-postayla gönderin |
+| `failproofai audit --status` | Rapor adresini, aralığı ve sonraki planlanan taramayı gösterin |
+| `failproofai audit --no-schedule` | Denetim geçmişini silmeden yinelenen taramaları durdurun |
+| `failproofai harness list` | Ek yakalama yollarını listeleyin |
+| `failproofai jev --url <url> --key-stdin` | Jev'i bir adımda kurun; sağlayıcı URL'nin ana bilgisayarından alınır |
+| `failproofai jev setup --provider <kind> --key-stdin` | [Jev](/tr/reference/jev-providers) aracı çağrılarını kendi uç noktanız ve anahtarınız aracılığıyla değerlendirebilsin |
+| `failproofai jev setup --provider failproofai` | Jev aracı çağrılarını [FailproofAI Cloud aracılığıyla](/tr/reference/jev-cloud) bu makinenin Cloud anahtarı ile değerlendirebilsin |
+| `failproofai jev setup --mode <m>` | Jev'in modunu değiştirin: `enforce`, `observe` veya `off` (yapılandırmayı tutar, Jev'i sorgulamayı durdurur) |
+| `failproofai jev status` | Jev yapılandırmasını, izinlerini ve son geri dönüşlerini gösterin; hiçbir zaman anahtarı göstermeyin |
+| `failproofai jev test` | Bir canlı Jev isteği gönderin ve gecikme ile versiyonunu gösterin; yanıt hook'lar için geç veya yanlışsa 1 ile çıkar |
+| `failproofai jev models` | Bir uç noktanın sunduğu `GET <base>/models>` model kimliklerini listeleyin |
+| `failproofai jev remove` | Jev'i kapatın; hook'lar regex politikalarını tam olarak önceki gibi çalıştırır |
+| `failproofai flush --wait` | Mevcut olay kuyruğunu teslim edin |
+| `failproofai backfill --since 30d` | Önceden geçilen geçmişi tekrar okuyun |
+| `failproofai config --pause [duration]` | Bir yerel oturumu varsayılan 30 dakika, en fazla 8 saat için duraklatın |
+| `failproofai config --resume` | Duraklatılan bir yerel oturuma devam edin; tüm duraklamaları temizlemek için `--all` ekleyin |
+| `failproofai update` | Paket geçişlerini tamamlayın ve daemon'u güncelleyin |
+| `failproofai migrate --dry-run` | Bekleyen ana sayfa düzeni geçişlerini önizleyin veya çalıştırın |
+| `failproofai uninstall` | Paketi kaldırmadan önce hook'ları ve daemon'u kaldırın |
+| `failproofai --version` | Yüklü paket sürümünü yazdırın |
+| `failproofai --help` | Komutları ve genel kullanımı gösterin |
 
 ## Yapılandırma bayrakları
 
 | Bayrak | Kullanım |
 | --- | --- |
-| `--token <key>` | Etkileşimli olmayan şekilde ayarla ve bağlan; ayrıca `FAILPROOFAI_CLOUD_TOKEN` adresinden oku |
-| `--url <url>` | `app.befailproof.ai` dışında bir yere bağlan; ayrıca `FAILPROOFAI_CLOUD_URL` adresinden oku |
-| `--connect <url>` | Zaten ayarlanmış bir makineye yalnızca kaydol. Daemon ve her hook'u atlar |
-| `--machine-id <id>` | Sabit makine kimliğini ayarla |
-| `--machine-label <name>` | **Zaten bağlı** olan bir makineyi yeniden adlandır. Kendi başına asla kurulum çalıştırmaz, bu nedenle `failproofai config` sonrasında ver, sırasında değil |
-| `--no-transcripts` | Transkript içeriği olmadan kararları gönder ve her kontrol edilen araç çağrısı ve son istem gönderecek Cloud Jev'i açma |
-| `--disconnect` | Cloud politika çekimlerini ve olay teslimatını durdur. Ayrıca Cloud Jev anahtarını ve FailproofAI Cloud'u adlandıran `jev.json` dosyasını kaldır; kendi Jev ayarınız yerinde bırakılır |
-| `--status` | Geçerli makine durumunu göster |
-| `--pause [duration]` | Geçerli dizindeki en yeni oturumu duraklatsa; saniye, dakika veya saat kabul eder ve varsayılan olarak 30 dakikadır |
-| `--resume` | Eşleşen bir duraklatamaları erken sonlandır |
-| `--session <id>` | Duraklatma veya devam etme için açık oturum hedefle |
-| `--all` | `--resume` ile, her etkin duraklatamaları sonlandır |
+| `--token <key>` | Etkileşimsiz olarak kurun ve bağlanın; ayrıca `FAILPROOFAI_CLOUD_TOKEN` değerinden okuyun |
+| `--url <url>` | `app.befailproof.ai` dışında bir yere bağlanın; ayrıca `FAILPROOFAI_CLOUD_URL` değerinden okuyun |
+| `--connect <url>` | Yalnızca zaten kurulu bir makinede kaydolun. Daemon ve her hook'u atlar |
+| `--machine-id <id>` | Sabit makine kimliğini ayarlayın |
+| `--machine-label <name>` | **Zaten bağlı** bir makineyi yeniden adlandırın. Kendi başına hiçbir zaman kurulum çalıştırmaz, bu nedenle `failproofai config` sonrasında verin, sırasında değil |
+| `--no-transcripts` | Kararları transkript içeriği olmadan gönderin ve Cloud Jev'i açmayın, bu da her kontrol edilen aracı çağrısı ve son istem'i göndermek isteyecektir |
+| `--disconnect` | Cloud politika çekişlerini ve etkinlik teslimini durdurun. Ayrıca Cloud Jev anahtarını ve FailproofAI Cloud'u adlandıran `jev.json` dosyasını kaldırın; kendi Jev kurulumunuz yerinde kalır |
+| `--status` | Mevcut makine durumunu gösterin |
+| `--pause [duration]` | Geçerli dizinde en yeni oturumu duraklatın; saniye, dakika veya saat kabul eder ve varsayılan 30 dakikadır |
+| `--resume` | Eşleşen bir duraklamayı erkene bitirin |
+| `--session <id>` | Duraklatma veya devam etme için açık bir oturum hedefleyin |
+| `--all` | `--resume` ile tüm etkin duraklamaları bitirin |
 
-Yerel duraklatmalar yerleşik, özel, kural ve pack politikalarını bir oturum için askıya alır. Bunlar her zaman sona erer ve Cloud tarafından yönetilen politikaları devre dışı bırakmaz. `block-failproofai-commands` — her zaman açık ve kendi başına devre dışı bırakılamaz veya duraklatılamaz — enstrümantalı bir agent'ı bu kaçış hatasını kendisinin kullanmasını engeller.
+Yerel duraklamalar bir oturum için yerleşik, özel, kural ve pack politikalarını askıya alır. Bunlar her zaman sona erer ve Cloud tarafından yönetilen politikaları devre dışı bırakmaz. `block-failproofai-commands` — her zaman açıktır ve kendisi devre dışı bırakılamaz veya duraklatılamaz — enstrüman uygulanmış bir agent'in bu kaçış yolunu kendisi kullanmasını engeller.
 
 ## Politika bayrakları
 
 | Bayrak | Kullanım |
 | --- | --- |
-| `--install`, `-i` | Harness hook'larını yükle. Bundan sonraki adlar bu politikaları etkinleştirir; hiç yoksa politika değişikliği yok |
-| `--uninstall`, `-u` | Politikaları devre dışı bırak veya hook'ları kaldır |
-| `--cli <names...>` | Bir veya daha fazla desteklenen harness'i hedefle |
-| `--scope user\|project\|local\|all` | Yapılandırma kapsamını seç; `all` kaldırma için |
-| `--beta` | Beta politikalarını dahil et |
-| `--custom`, `-c <path>` | Özel bir politika dosyasını doğrula ve yükle; tekrarlanabilir |
+| `--install`, `-i` | Harness hook'larını yükleyin. Ardından gelen isimler bu politikaları etkinleştirir; hiçbiri olmadan, hiçbir politika değişikliği |
+| `--uninstall`, `-u` | Politikaları devre dışı bırakın veya hook'ları kaldırın |
+| `--cli <names...>` | Bir veya daha fazla desteklenen harness'i hedefleyin |
+| `--scope user\|project\|local\|all` | Yapılandırma kapsamını seçin; `all` kaldırma için |
+| `--beta` | Beta politikalarını dahil edin |
+| `--custom`, `-c <path>` | Özel politika dosyasını doğrulayın ve yükleyin; tekrarlanabilir |
 
 ## Teslimat ve bakım bayrakları
 
@@ -116,7 +116,7 @@ Yerel duraklatmalar yerleşik, özel, kural ve pack politikalarını bir oturum 
 | `migrate` | `--dry-run` |
 | `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-`failproofai update` komutunu `npm install -g failproofai@latest` sonrasında çalıştırın; ana düzen göçlerini gerçekleştirir, eşleşen daemon ikilisini yükler ve hizmeti yeniden başlatır. `--no-daemon` yalnızca ana düzen göçünü gerçekleştirir.
+`failproofai update` komutunu `npm install -g failproofai@latest` sonrasında çalıştırılmalıdır; ana sayfa düzeni geçişleri yapar, eşleşen daemon ikili dosyasını kurar ve servisi yeniden başlatır. Ardından FailproofAI zaten kullanan her Hermes profilini bağlantılı yerel eklentiye taşır ve profil başına bir satır yazdırır. `--no-daemon` daemon adımını atlar. `update` daemon değiştirilemediğinde, bir geçiş başarısız olduğunda veya Hermes profili geçiştirilemediğinde (örneğin çalışan daemon yerel eklentiyi hizmet veremediğinde, bu durumda shell hook'ları yerinde bırakılır) sıfırdan farklı çıkar.
 
 ## Harness yolları
 
@@ -126,11 +126,11 @@ failproofai harness add-path <harness> [label=]<path>
 failproofai harness remove-path <harness> <path-or-label>
 ```
 
-Desteklenen harness adları `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` ve `goose` olur.
+Desteklenen harness adları `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` ve `goose` şeklindedir.
 
-Etiketler iki kök aynı projenin kopyalarını içerdiğinde türetilmiş agent kimliklerini adlandırır. Çakışan kökler ve yinelenen etiketler yinelenen koleksiyonu veya imleç bozulmasını önlemek için reddedilir. Ek yol yapılandırması daemon yeniden başlatma olmadan yeniden yüklenir.
+Etiketler, iki kök aynı projenin kopyalarını içerdiğinde türetilen agent kimliklerini ad alanı haline getirir. Çakışan kökler ve yinelenen etiketler yinelenen koleksiyonu veya cursor bozulmasını önlemek için reddedilir. Ek yol yapılandırması daemon yeniden başlatması olmadan yeniden yüklenir.
 
-Konteyner ortamları dosya tarafından yapılandırılan ek yolları `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` adında virgülle ayrılmış bir değişkenle değiştirebilir, örneğin:
+Kontainer ortamları dosya yapılandırılmış ek yolları `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` adlı virgülle ayrılmış bir değişkenle değiştirebilir, örneğin:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
@@ -138,30 +138,30 @@ export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/opencl
 
 ## Ortam değişkenleri
 
-Kalıcı makine davranışı için yapılandırma dosyalarını kullanın. Ortam değişkenleri kapsayıcılar, testler ve bir işlem için en faydalı olur.
+Kalıcı makine davranışı için yapılandırma dosyalarını kullanın. Ortam değişkenleri, kontainerlar, testler ve bir işlem için en yararlıdır.
 
 | Değişken | Kullanım |
 | --- | --- |
-| `FAILPROOFAI_CLOUD_TOKEN` | Cloud anahtarı, `--token` yerine. Bunu tercih edin: argüman kutu üzerindeki her kullanıcı tarafından `ps` adresinden okunabilir. Bunu `read -s` ile veya CI gizli deposundan ayarlayın, asla anahtarı bir komuta yazarak yapma, bu her iki durumda da shell geçmişine iner |
+| `FAILPROOFAI_CLOUD_TOKEN` | Cloud anahtarı, `--token` yerine. Bunu tercih edin: argüman her kullanıcı tarafından `ps` ile okunabilir. Bunu `read -s` veya CI gizli depodan ayarlayın, hiçbir zaman bir komuta anahtar yazarak, bu her halükarda shell geçmişine kaydedilir |
 | `FAILPROOFAI_CLOUD_URL` | Cloud URL'si, `--url` yerine. Daemon'un okuduğu aynı değişken |
-| `FAILPROOFAI_HOME` | Tam `~/.failproofai` ana düzenini taşıyın |
-| `FAILPROOFAI_LOG_LEVEL` | Yerel günlük ayrıntılılığını ayarla |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Hook tanılamalarını seçili bir dosyaya yazsa |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim telemetriyi devre dışı bırak |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Etkileşimli ilk çalıştırma kurulumunu atla |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Kurulum sonrası yerel denetim atla |
-| `FAILPROOFAI_LLM_BASE_URL` | LLM politikaları tarafından kullanılan OpenAI uyumlu uç noktayı geçersiz kıl |
-| `FAILPROOFAI_LLM_API_KEY` | LLM politikaları tarafından kullanılan API anahtarını sağla |
-| `FAILPROOFAI_LLM_MODEL` | LLM politikaları tarafından kullanılan modeli seç |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Özel politika modülü yüklemesini sınırla |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Pack'leri ve daemon ikililerini almayı reddet; kurulu olan uygulamayı zorla |
-| `FAILPROOFAI_PACK_BASE_URL` | `github.com` yerine bir yansıdan pack'leri getir |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Bir harness için yapılandırılmış ek yakalama yollarını değiştir |
-| `NO_COLOR` | Renkli terminal çıktısını devre dışı bırak |
+| `FAILPROOFAI_HOME` | Tüm `~/.failproofai` düzenini taşıyın |
+| `FAILPROOFAI_LOG_LEVEL` | Yerel günlükleme ayrıntılılığını ayarlayın |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Hook tanılamalarını seçilen bir dosyaya yazın |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim telemetriyi devre dışı bırakın |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Etkileşimli ilk çalıştırma kurulumunu atlayın |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Kurulum sonrası yerel denetimi atlayın |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM politikaları tarafından kullanılan OpenAI uyumlu uç noktasını geçersiz kılın |
+| `FAILPROOFAI_LLM_API_KEY` | LLM politikaları tarafından kullanılan API anahtarını sağlayın |
+| `FAILPROOFAI_LLM_MODEL` | LLM politikaları tarafından kullanılan modeli seçin |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Özel politika modülü yüklemeyi sınırlayın |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Pack'ler ve daemon ikili dosyalarını getirmeyi reddedin; yüklü olanlar uygulamaya devam eder |
+| `FAILPROOFAI_PACK_BASE_URL` | `github.com` yerine bir aynadan pack'ler getirin |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Bir harness için yapılandırılan ek yakalama yollarını değiştirin |
+| `NO_COLOR` | Renkli terminal çıktısını devre dışı bırakın |
 
-`CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` ve `OPENCLAW_HOME` gibi agent'a özgü ev değişkenleri, Failproof AI'nin bu harness için yerel oturumları keşfettiği yeri geçersiz kılar.
+`CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` ve `OPENCLAW_HOME` gibi agent'e özgü ana değişkenler, Failproof AI'nin bu harness için yerel oturumları nerede keşfettiğini geçersiz kılar.
 
-## Bir makineyi güvenli şekilde duraklatsa veya kaldır
+## Bir makineyi güvenle duraklatın veya kaldırın
 
 ```bash
 failproofai config --pause
@@ -169,9 +169,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-Yerel oturum duraklatması Cloud tarafından yönetilen politikaları devre dışı bırakmaz. Sorun kendisi dağıtım olduğunda Cloud politikalarını Cloud uygulanması iş akışı aracılığıyla geri yükle.
+Yerel oturum duraklaması Cloud tarafından yönetilen politikaları devre dışı bırakmaz. Sorun kendisi kullanıma alma olduğunda Cloud dağıtımlarını Cloud uygulaması iş akışı aracılığıyla geri yükleyin.
 
-npm paketini kaldırmadan önce, yüklenen hook'ları ve daemon'u kaldırın:
+npm paketini kaldırmadan önce yüklü hook'ları ve daemon'u kaldırın:
 
 ```bash
 failproofai uninstall --dry-run
@@ -182,5 +182,5 @@ npm rm -g failproofai
 Sürüme özgü ayrıntılar için `failproofai <command> --help` komutunu çalıştırın.
 
 <Warning>
-  `npm rm -g failproofai` öncesinde `failproofai uninstall` komutunu çalıştırın; npm yüklenen agent hook'larını veya daemon hizmetini kaldırmaz.
+  `npm rm -g failproofai` komutundan önce `failproofai uninstall` komutunu çalıştırın; npm yüklü agent hook'larını veya daemon servisini kaldırmaz.
 </Warning>

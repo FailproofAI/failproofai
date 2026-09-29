@@ -1,0 +1,22 @@
+---
+title: "Jev 통합 레퍼런스"
+description: "Jev의 설정, 프로바이더, 키, 요청 데이터, 실패 동작에 대한 참조 문서입니다."
+icon: "braces"
+---
+
+Jev는 Failproof AI에서 두 가지 용도로 사용됩니다:
+
+| 용도 | 실행 시점 | 반환값 | 시작 안내 |
+| --- | --- | --- | --- |
+| 세션 평가 | 세션이 완료된 후 | 고정 답변 질문에 대한 점수 | [Jev 평가](/ko/evaluations/jev) |
+| 툴 호출 정책 검토 | 게이팅된 툴 호출이 실행되기 전 | 설치된 정책과 함께 제공되는 판정 결과 | [Jev 정책](/ko/policies/jev) |
+
+## 레퍼런스 페이지
+
+| 주제 | 상세 내용 |
+| --- | --- |
+| [평가 질문](/ko/reference/jev-evaluations) | 불리언 및 순서형 점수 기준, 결과, 제한, 백필 |
+| [프로바이더 비교 및 자체 키 설정](/ko/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare 및 커스텀 엔드포인트, URL 추론, 모델 ID, `jev.json`, 모드, 폴백 코드 |
+| [FailproofAI Cloud 라우트](/ko/reference/jev-cloud) | 머신 키 권한, 자동 옵저브 설정, 사용 한도, 연결 상태, 데이터 처리 |
+
+로컬 CLI 명령어는 [Failproof AI CLI 레퍼런스](/ko/reference/failproof-cli)에 정리되어 있습니다. [로컬 대시보드 레퍼런스](/ko/reference/local-dashboard#set-up-jev)에서는 Jev 설정 및 활동 보기에 대해 설명합니다.

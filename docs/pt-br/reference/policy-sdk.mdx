@@ -4,26 +4,26 @@ description: "Crie, teste e implante políticas em JavaScript ou TypeScript para
 icon: "shield-plus"
 ---
 
-Políticas personalizadas transformam um padrão de falha identificado nos seus traces ou auditorias em uma decisão que é executada enquanto um agente trabalha. Uma política pode permitir uma ação, fornecer orientação ao agente ou negar a ação antes que ela cause outro incidente.
+Políticas personalizadas transformam um padrão de falha encontrado nos seus traces ou auditorias em uma decisão que é executada enquanto o agente trabalha. Uma política pode permitir uma ação, fornecer orientação ao agente ou bloquear a ação antes que ela cause um novo incidente.
 
-Use uma política personalizada quando o comportamento depender das suas ferramentas, caminhos, comandos, ambientes ou regras operacionais. Consulte primeiro o [pacote de políticas do Failproof AI](/pt-br/policies/packs) para não recriar um controle já existente.
+Use uma política personalizada quando o comportamento depende das suas ferramentas, caminhos, comandos, ambientes ou regras operacionais. Consulte primeiro o [pacote de políticas do Failproof AI](/pt-br/policies/packs) para não recriar um controle já existente.
 
-## Criando uma política personalizada
+## Criar uma política personalizada
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → policy editor**, selecione **New policy** e descreva a falha que deseja prevenir.
-    2. Adicione o código-fonte da política e teste as correspondências esperadas e os casos seguros que não devem corresponder no editor. Resolva todos os erros de validação.
-    3. Salve o rascunho e selecione **Publish version** para criar uma versão imutável.
-    4. Acesse **Admin → enforcement**, implante a versão em uma máquina de teste no modo **observe** e verifique as decisões em **Observe → policy** antes de aplicar a política.
+    1. Acesse **Admin → editor de políticas**, selecione **Nova política** e descreva a falha que você deseja prevenir.
+    2. Adicione o código-fonte da política, depois teste as correspondências esperadas e os casos seguros que não devem corresponder no editor. Resolva todos os erros de validação.
+    3. Salve o rascunho e selecione **Publicar versão** para criar uma versão imutável.
+    4. Acesse **Admin → enforcement**, implante a versão em uma máquina de teste no modo **observe** e verifique suas decisões em **Observe → policy** antes de aplicá-la.
 
-    ![O editor de políticas utilizado para criar e publicar uma política personalizada.](/images/dashboard/policy-editor.png)
+    ![O editor de políticas usado para criar e publicar uma política personalizada.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. Crie o arquivo `.failproofai/policies/checkout-policies.ts`. O nome do arquivo deve terminar com `policies.js`, `policies.mjs` ou `policies.ts`.
+    1. Crie `.failproofai/policies/checkout-policies.ts`. O nome do arquivo deve terminar em `policies.js`, `policies.mjs` ou `policies.ts`.
     2. Registre uma ou mais políticas com `customPolicies.add()`.
     3. Valide e instale o arquivo com `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Dispare uma ação que deve corresponder e uma ação segura que não deve corresponder. Execute `failproofai policies` e inspecione as decisões atribuídas em **Observe → policy**.
+    4. Acione uma ação que deve corresponder e uma ação segura. Execute `failproofai policies` e inspecione as decisões atribuídas em **Observe → policy**.
   </Tab>
 </Tabs>
 
@@ -55,20 +55,20 @@ customPolicies.add({
 });
 ```
 
-Boas políticas são restritas o suficiente para serem explicadas em uma única frase. Corresponda à ação observável — não à intenção que você espera que o agente tivesse — e retorne `allow()` assim que a regra não se aplicar.
+Boas políticas são restritas o suficiente para serem explicadas em uma única frase. Corresponda à ação observável — não à intenção que você espera que o agente tenha — e retorne `allow()` assim que a regra não se aplicar.
 
-## Escolhendo uma decisão
+## Escolha uma decisão
 
 | Helper | Resultado | Quando usar |
 | --- | --- | --- |
 | `allow(reason?)` | A operação continua. | A política não se aplica ou a ação é segura. |
-| `instruct(reason)` | A operação continua com orientação, quando o harness suportar. | Quando você quiser direcionar o agente para uma abordagem melhor sem impor uma restrição. |
+| `instruct(reason)` | A operação continua com orientação quando o harness suporta. | Você quer direcionar o agente para uma abordagem melhor sem impor uma invariante. |
 | `deny(reason)` | A operação é bloqueada quando o evento e o harness suportam bloqueio. | A ação não deve prosseguir. |
 
 Escreva o motivo para o agente que precisará se recuperar. Explique o que foi detectado e o que ele deve fazer em vez disso.
 
 <Warning>
-  Não use `instruct()` para definir um limite de segurança. A entrega de orientações varia conforme o harness do agente. Use `deny()` quando a ação precisar ser impedida.
+  Não use `instruct()` para um limite de segurança. A entrega de orientações varia conforme o harness do agente. Use `deny()` quando a ação deve ser impedida.
 </Warning>
 
 ## Objeto de política
@@ -84,34 +84,32 @@ customPolicies.add({
 
 | Campo | Obrigatório | Descrição |
 | --- | --- | --- |
-| `name` | Sim | Identificador estável para a política. Mantenha os nomes únicos entre os arquivos. |
-| `description` | Não | Descrição legível por humanos, exibida nas listagens de políticas e nas decisões. |
-| `match.events` | Não | Tipos de evento que invocam a política. Omitir `match` faz com que seja invocada para todos os eventos disponíveis. |
+| `name` | Sim | Identificador estável da política. Mantenha os nomes únicos entre arquivos. |
+| `description` | Não | Descrição legível exibida nas listagens de políticas e nas decisões. |
+| `match.events` | Não | Tipos de eventos que invocam a política. Omitir `match` faz com que ela seja invocada para todos os eventos disponíveis. |
 | `fn` | Sim | Função síncrona ou assíncrona que retorna um resultado `allow`, `instruct` ou `deny`. |
-| `authority` | Não | `"hard"` (padrão) ou `"reviewable"`. Define se o avaliador semântico Jev pode cancelar o veredicto desta política. Consulte [Autoridade de política](/pt-br/policies/authority). |
-| `reviewedBy` | Não | As verificações semânticas que o Jev deve realizar, nenhuma das quais pode responder com deny, antes que o Jev possa cancelar o veredicto. Uma verificação que emite aviso ainda permite o cancelamento. Obrigatório para `"reviewable"`. |
 
-Filtre ferramentas dentro de `fn`. `match.toolNames` não faz parte do tipo público de política personalizada.
+Filtre as ferramentas dentro de `fn`. O campo `match.toolNames` não faz parte do tipo público de política personalizada.
 
 ## Contexto da política
 
-Cada política recebe um `PolicyContext`.
+Toda política recebe um `PolicyContext`.
 
 | Campo | Tipo | O que contém |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | Evento normalizado que está sendo avaliado no momento. |
+| `eventType` | `HookEventType` | Evento normalizado sendo avaliado no momento. |
 | `toolName` | `string \| undefined` | Nome canônico da ferramenta, como `Bash`, `Read`, `Write` ou `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Entrada canônica para a chamada de ferramenta atual. |
 | `payload` | `Record<string, unknown>` | Payload completo do evento normalizado. |
-| `session` | `SessionMetadata \| undefined` | ID da sessão, diretório de trabalho, caminho do transcript, modo de permissão e metadados do harness, quando disponíveis. |
+| `session` | `SessionMetadata \| undefined` | ID da sessão, diretório de trabalho, caminho do transcript, modo de permissão e metadados do harness quando disponíveis. |
 | `cli` | `string \| undefined` | Harness do agente de origem, como `claude`, `codex` ou `cursor`. |
-| `params` | `Record<string, unknown>` | Parâmetros de política integrados. Políticas personalizadas recebem atualmente um objeto vazio. |
+| `params` | `Record<string, unknown>` | Parâmetros de políticas integradas. Políticas personalizadas atualmente recebem um objeto vazio. |
 
-Trate todos os valores opcionais como genuinamente opcionais. Versões de agentes e tipos de evento não fornecem os mesmos campos.
+Trate todos os valores opcionais como genuinamente opcionais. Versões de agentes e tipos de eventos nem sempre fornecem os mesmos campos.
 
 ### Entradas comuns de ferramentas
 
-O Failproof AI normaliza ferramentas comuns entre os harnesses suportados, de modo que uma política geralmente pode usar um único formato de entrada.
+O Failproof AI normaliza ferramentas comuns entre os harnesses suportados para que uma política geralmente possa usar um único formato de entrada.
 
 | Ferramenta | Campos comuns |
 | --- | --- |
@@ -121,26 +119,26 @@ O Failproof AI normaliza ferramentas comuns entre os harnesses suportados, de mo
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-Use coerção defensiva, pois os valores de entrada das ferramentas são tipados como `unknown`:
+Use coerção defensiva porque os valores de entrada das ferramentas são tipados como `unknown`:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## Escolhendo o evento
+## Escolha o evento
 
 | Evento | Quando é executado | Uso típico |
 | --- | --- | --- |
 | `PreToolUse` | Antes de uma ferramenta ser executada. | Bloquear ou orientar comandos, escritas, leituras e ações externas. |
-| `PostToolUse` | Após uma ferramenta retornar. | Inspecionar resultados antes que cheguem ao agente. Um deny bloqueia o resultado inteiro; não permite redigir campos específicos. |
+| `PostToolUse` | Após uma ferramenta retornar. | Inspecionar resultados antes de chegarem ao agente. Um deny bloqueia o resultado inteiro; não redige campos selecionados. |
 | `PermissionRequest` | Quando o agente solicita permissão. | Aplicar regras de permissão específicas da organização. |
 | `UserPromptSubmit` | Antes de um prompt enviado continuar. | Rejeitar instruções proibidas ou adicionar orientações de fluxo de trabalho. |
 | `Stop` | Quando o agente tenta finalizar. | Exigir uma condição de conclusão alcançável, como uma etapa de verificação local. |
-| `SubagentStop` | Quando um subagente tenta finalizar. | Controlar o trabalho delegado antes que retorne ao agente principal. |
-| `SessionStart` / `SessionEnd` | Nos limites de sessão. | Registrar ou verificar o estado no nível da sessão. |
+| `SubagentStop` | Quando um subagente tenta finalizar. | Controlar o trabalho delegado antes de retorná-lo ao agente pai. |
+| `SessionStart` / `SessionEnd` | Em limites de sessão. | Registrar ou verificar estado no nível da sessão. |
 
-A disponibilidade dos eventos e o comportamento de bloqueio dependem do harness do agente. Consulte [Harnesses de agentes](/pt-br/reference/harnesses) antes de depender de um evento em uma frota mista.
+A disponibilidade dos eventos e o comportamento de bloqueio dependem do harness do agente. Consulte [Harnesses de agentes](/pt-br/reference/harnesses) antes de depender de um evento em uma frota heterogênea.
 
 <Accordion title="Todos os nomes de eventos de política">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` e `Setup`.
@@ -217,10 +215,10 @@ customPolicies.add({
 ```
 
 <Warning>
-  Um evento `Stop` negado pode fazer o agente tentar novamente. Aplique o controle somente em condições que o agente possa satisfazer no ambiente atual e limite todos os subprocessos ou chamadas de rede.
+  Um evento `Stop` negado pode fazer o agente tentar novamente. Aplique a condição somente se o agente conseguir satisfazê-la no ambiente atual, e defina limites de tempo para todo subprocesso ou chamada de rede.
 </Warning>
 
-## Carregando arquivos de política
+## Carregar arquivos de política
 
 ### Arquivos de convenção
 
@@ -233,14 +231,14 @@ Arquivos de convenção são carregados automaticamente:
 
 - Os diretórios de políticas do projeto e do usuário são carregados.
 - Os arquivos são carregados em ordem alfabética dentro de cada diretório.
-- Um arquivo deve terminar com `policies.js`, `policies.mjs` ou `policies.ts`.
-- Múltiplas chamadas `customPolicies.add()` em um único arquivo são suportadas.
+- O arquivo deve terminar em `policies.js`, `policies.mjs` ou `policies.ts`.
+- Múltiplas chamadas `customPolicies.add()` em um mesmo arquivo são suportadas.
 - Importações relativas de módulos locais são suportadas.
-- Políticas do projeto podem ser commitadas para que as mesmas regras acompanhem o repositório.
+- As políticas do projeto podem ser versionadas para que as mesmas regras acompanhem o repositório.
 
 ### Arquivos explícitos
 
-Use caminhos explícitos quando a validação ou configuração precisar nomear o arquivo de entrada diretamente:
+Use caminhos explícitos quando a validação ou configuração precisar nomear diretamente o arquivo de entrada:
 
 ```bash
 failproofai policies --install \
@@ -249,11 +247,11 @@ failproofai policies --install \
   --scope project
 ```
 
-Arquivos explícitos são carregados primeiro, seguidos pelos arquivos de convenção do projeto e depois pelos arquivos de convenção do usuário. Um arquivo descoberto por ambos os caminhos é carregado apenas uma vez.
+Os arquivos explícitos são carregados primeiro, seguidos pelos arquivos de convenção do projeto e depois pelos do usuário. Um arquivo descoberto por ambos os caminhos é carregado apenas uma vez.
 
 ## Validar e testar
 
-A validação executa o módulo pelo loader de produção e confirma que ele registra ao menos uma política.
+A validação executa o módulo pelo carregador de produção e confirma que ele registra pelo menos uma política.
 
 ```bash
 failproofai policies --install \
@@ -262,88 +260,30 @@ failproofai policies --install \
 failproofai policies
 ```
 
-A validação detecta arquivos ausentes, erros de sintaxe, importações não resolvidas, exceções no nível superior e timeouts de carregamento de módulo. Ela não garante que a lógica de correspondência está correta.
+A validação detecta arquivos ausentes, erros de sintaxe, importações não resolvidas, exceções no nível superior e timeouts de carregamento de módulo. Ela não comprova que a lógica de correspondência está correta.
 
-Teste ao menos estes casos:
+Teste pelo menos estes casos:
 
 - Uma ação que deve corresponder e produzir o motivo de política esperado.
 - Uma ação próxima, mas segura, que deve retornar `allow()`.
 - Campos de ferramenta ausentes ou malformados.
-- Sintaxe de comando alternativa, caminhos, aspas, capitalização e espaços em branco.
+- Sintaxe alternativa de comandos, caminhos, aspas, capitalização e espaços em branco.
 - Um subprocesso ou dependência de rede indisponível.
 
 Atribua o resultado à sua política personalizada em **Observe → policy**. Um teste bloqueado não é suficiente se uma política integrada diferente tomou a decisão.
 
 ## Comportamento em tempo de execução
 
-- Políticas integradas são avaliadas antes das políticas personalizadas.
-- O primeiro `deny` interrompe a avaliação de políticas subsequentes.
-- Múltiplos resultados `instruct` podem ser combinados quando nenhuma política nega o evento.
+- As políticas integradas são avaliadas antes das políticas personalizadas.
+- O primeiro `deny` interrompe a avaliação das demais políticas.
+- Múltiplos resultados `instruct` podem ser combinados quando nenhuma políticanega o evento.
 - Uma função de política tem um prazo de execução de 10 segundos.
 - Uma exceção lançada ou timeout é registrado e tratado como `allow()`.
-- Um arquivo de convenção que falha ao carregar é ignorado; outros arquivos personalizados e políticas integradas continuam funcionando.
+- Um arquivo de convenção que falha ao carregar é ignorado; os outros arquivos personalizados e as políticas integradas continuam funcionando.
 - O carregamento de módulo no nível superior também tem um prazo de 10 segundos.
-- O modo de observação na nuvem executa a política, mas registra uma decisão que não seja allow sem aplicá-la.
+- O modo observe em nuvem executa a política, mas registra uma decisão diferente de allow sem aplicá-la.
 
-Mantenha os módulos de política determinísticos e rápidos. Evite chamadas de rede ou inicialização de servidor no nível superior. Limite o trabalho dentro de `fn`, trate falhas de dependência e decida deliberadamente se essa falha deve permitir ou negar a operação.
-
-## Verificações Jev
-
-Uma política personalizada decide por meio de código. Uma **verificação Jev** é um conjunto de perguntas de sim/não que o avaliador semântico Jev responde sobre uma chamada de ferramenta. Uma política `reviewable` nomeia verificações em `reviewedBy`, e o Jev só pode cancelar seu veredicto por meio delas — consulte [Autoridade de política](/pt-br/policies/authority). Declare uma com `semanticPolicies.add()`:
-
-```js
-import { semanticPolicies } from "failproofai";
-
-semanticPolicies.add({
-  name: "prod-db-write",
-  title: "Wrote to the production database",
-  appliesTo: ["shell"],
-  mode: "deny",
-  userCanOverride: true,
-  probes: [
-    {
-      id: "writes_data",
-      instructions: "Does this command insert, update or delete rows, or change a schema?",
-      criteria: { true: "It changes data or schema.", false: "It only reads." },
-    },
-    {
-      id: "production_target",
-      instructions: "Is the database it targets a production one, rather than a local or test copy?",
-    },
-  ],
-  guidance: "Writes to the production database need a human. Ask before running this.",
-});
-```
-
-<Warning>
-  Uma verificação Jev só entra em vigor **por meio de um pacote publicado**. `failproofai publish` é o único comando que lê `semanticPolicies.add()`; em um arquivo de política local (`.failproofai/policies/`, `--custom`) ele é carregado sem erro, o log do hook o nomeia como ignorado, nunca é consultado, e uma política local cujo `reviewedBy` o nomeia permanece hard. Consulte [Verificações Jev em um pacote](/pt-br/policies/publish-a-pack#jev-checks-in-a-pack).
-</Warning>
-
-| Campo | Obrigatório | Descrição |
-| --- | --- | --- |
-| `name` | Sim | Letras, dígitos, `.`, `_` e `-`, até 128 caracteres, único no pacote. O que um `reviewedBy` nomeia; reportado como `semantic/<name>`. |
-| `title` | Sim | Uma frase no passado descrevendo o que foi detectado. Até 120 caracteres. |
-| `appliesTo` | Sim | As classes de ferramentas sobre as quais o Jev é consultado: um ou mais de `shell`, `write`, `read`, `network`, `other`. |
-| `mode` | Sim | `"deny"` bloqueia em evidência forte e emite aviso em evidência moderada. `"instruct"` apenas emite avisos, portanto nunca pode manter um deny ativo — associe uma política de bloqueio a ele sozinho e um cancelamento não deixa nada que possa negar. |
-| `userCanOverride` | Sim | Se a solicitação explícita do humano cancela a verificação. Define se palavras em um prompt podem contorná-la, portanto não tem valor padrão. |
-| `probes` | Sim | 1 a 6 perguntas. **Todas** as probes devem ser verdadeiras para a verificação disparar. |
-| `probes[].id` | Sim | Corresponde a `^[a-z][a-z0-9_]{0,31}$`, único dentro da verificação. `exempt` e `user_asked` são reservados. |
-| `probes[].instructions` | Sim | A pergunta. Até 600 caracteres. |
-| `probes[].criteria` | Não | `{ true, false }`: o que um sim e um não significam, até 300 caracteres cada. Ambas as metades ou nenhuma. |
-| `exempt` | Não | Mais uma pergunta no formato de probe (seu `id` é ignorado). Quando verdadeira, a verificação não dispara — as exceções documentadas. |
-| `precondition` | Não | Um nome da tabela abaixo. Ausente significa que a verificação é consultada em cada chamada coberta por `appliesTo`. |
-| `guidance` | Sim | Exibido ao agente quando a verificação dispara, seja bloqueando ou emitindo aviso — uma verificação `"deny"` apenas emite aviso em evidência moderada, portanto não diga que a chamada está bloqueada. Até 600 caracteres. |
-
-Uma precondição é um nome, nunca código: um manifesto não pode carregar uma função, e um pacote baixado não deve decidir o que é executado em cada chamada de ferramenta.
-
-| Precondição | A verificação é consultada somente quando |
-| --- | --- |
-| `always` | Sempre — o mesmo que omitir. |
-| `protected_branch` | O branch git atual é `main`, `master`, `production`, `prod`, `release` ou `trunk`. |
-| `in_git_repo` | A chamada é executada em um branch git. Um `HEAD` desanexado conta como fora de um repositório. |
-| `has_paths` | A chamada nomeia ao menos um caminho. |
-| `paths_outside_project` | Algum caminho nomeado está fora do projeto. |
-| `system_or_root_paths` | Algum caminho nomeado é um caminho de sistema ou a raiz do sistema de arquivos. |
+Mantenha os módulos de política determinísticos e rápidos. Evite chamadas de rede ou inicialização de servidores no nível superior. Delimite o trabalho dentro de `fn`, trate falhas de dependência e decida conscientemente se essa falha deve permitir ou bloquear a operação.
 
 ## Exportações da API
 
@@ -353,13 +293,11 @@ Uma precondição é um nome, nunca código: um manifesto não pode carregar uma
 | `allow(reason?)` | Permite a operação. |
 | `instruct(reason)` | Permite a operação e fornece orientação onde suportado. |
 | `deny(reason)` | Bloqueia a operação onde suportado. |
-| `semanticPolicies.add(check)` | Declara uma [verificação Jev](#jev-checks) para o `failproofai publish` incluir em um pacote. |
 | `getCustomHooks()` | Retorna as políticas atualmente registradas no registro do módulo. |
-| `getSemanticRegistrations()` | Retorna as verificações Jev atualmente declaradas, principalmente para testes e loaders. |
-| `clearCustomHooks()` | Limpa ambos os registros, principalmente para testes e loaders. |
+| `clearCustomHooks()` | Limpa esse registro, principalmente para testes e carregadores. |
 
-TypeScript exporta `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, `PolicyAuthority`, `SemanticPolicyDeclaration`, `SemanticProbeDeclaration` e `SemanticToolClass`.
+O TypeScript exporta `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` e `PolicyFunction`.
 
 <Card title="Implantar políticas personalizadas" icon="server-cog" href="/pt-br/policies/deploy">
-  Publique uma versão, implante-a no modo observe, verifique as decisões e avance para a aplicação.
+  Publique uma versão, implante-a no modo observe, verifique as decisões e passe para a aplicação.
 </Card>

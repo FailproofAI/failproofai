@@ -8,9 +8,9 @@ icon: "wrench"
   <Accordion title="Cloud में कोई सेशन दिखाई नहीं देता">
     <Tabs>
       <Tab title="Dashboard">
-        **Administration → Keys** खोलें और पुष्टि करें कि मशीन की कुंजी सक्रिय है और उसके पास `events:add` है। फिर **Observe → Events** खोलें, समय श्रेणी को चौड़ा करें और पर्यावरण और एजेंट फ़िल्टर को साफ़ करें। यदि इवेंट मौजूद हैं, तो सेशन ID की खोज करें और फिर समूहीकरण के लिए **Observe → Sessions** की जांच करें। यदि कोई इवेंट नहीं हैं, तो CLI से Failproof डेमॉन का निदान करें।
+        **Administration → Keys** खोलें और सुनिश्चित करें कि मशीन की कुंजी सक्रिय है और `events:add` की अनुमति है। फिर **Observe → Events** खोलें, समय सीमा को विस्तृत करें, और environment और agent फ़िल्टर को साफ़ करें। यदि events मौजूद हैं, तो सेशन ID को खोजें और फिर समूहन के लिए **Observe → Sessions** की जांच करें। यदि कोई events मौजूद नहीं हैं, तो CLI से Failproof daemon का निदान करें।
 
-        ![लाइव इवेंट स्ट्रीम अपने प्राथमिक फ़िल्टर और हाल के एजेंट इवेंट के साथ।](/images/dashboard/events-stream-current.png)
+        ![लाइव Events स्ट्रीम अपने प्राथमिक फ़िल्टर के साथ दिखाई दे रहा है और हाल के एजेंट events आ रहे हैं।](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +21,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        पुष्टि करें कि कैप्चर सक्षम है, कॉन्फ़िगर की गई कुंजी के पास `events:add` है, और डैशबोर्ड फ़िल्टर उत्सर्जित पर्यावरण से मेल खाता है।
+        सुनिश्चित करें कि कैप्चर सक्षम है, कॉन्फ़िगर की गई कुंजी के पास `events:add` है, और डैशबोर्ड फ़िल्टर उत्सर्जित environment से मेल खाता है।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python SDK इवेंट डिस्क पर रहते हैं">
+  <Accordion title="Python SDK events डिस्क पर रहते हैं">
     <Tabs>
       <Tab title="Dashboard">
-        **Observe → Events** में फ़िल्टर साफ़ करें और सटीक SDK सेशन ID की खोज करें। यदि कुछ भी नहीं दिखता, तो स्रोत मशीन पर SDK स्पूल और Failproof डेमॉन का निरीक्षण करें।
+        **Observe → Events** में फ़िल्टर साफ़ करें और सटीक SDK सेशन ID को खोजें। यदि कुछ नहीं दिखाई देता है, तो स्रोत मशीन पर SDK spool और Failproof daemon का निरीक्षण करें।
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +36,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        पुष्टि करें कि एक डेमॉन चल रहा है और जुड़ा हुआ है — SDK चाहे वह हो या न हो स्पूल करता है। स्पूल निर्देशिका को पूर्व-अस्तित्व की आवश्यकता **नहीं** है (लेखक इसे बनाता है), और कोई पर्यावरण चर इसे चुनता नहीं है: `$FAILPROOFAI_HOME/custom-agents`, अन्यथा `~/.failproofai/custom-agents`, एकमात्र रूट है, और `configure(base_dir=...)` एकमात्र ओवरराइड है। यदि प्रक्रिया को `SIGKILL` किया गया था या OOM-killed किया गया था, तो जो भी अभी भी कतारबद्ध था वह खो गया — `SIGTERM` को संभालने के लिए इसे बाध्य करें।
+        सुनिश्चित करें कि एक daemon चल रहा है और कनेक्ट किया गया है — SDK इससे स्वतंत्र रूप से spool करता है। Spool निर्देशिका को पहले से मौजूद होने की **आवश्यकता नहीं** है (लेखक इसे बनाता है), और कोई environment variable इसे चुनता नहीं है: `$FAILPROOFAI_HOME/custom-agents`, अन्यथा `~/.failproofai/custom-agents`, एकमात्र मूल है, और `configure(base_dir=...)` एकमात्र override है। यदि प्रक्रिया को `SIGKILL` किया गया था या OOM-killed किया गया था, तो जो भी अभी भी क्यू में था वह खो गया — `SIGTERM` को संभालने के लिए इसे सीमित करें।
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="मशीन को नीतियां प्राप्त नहीं होती हैं">
     <Tabs>
       <Tab title="Dashboard">
-        **Admin → enforcement** खोलें, मशीन चुनें और इसके निर्दिष्ट, रिपोर्ट किए गए और पिछले संस्करणों की तुलना करें। पुष्टि करें कि डिप्लॉयमेंट स्कोप में मशीन शामिल है और इसकी कुंजी के पास `policies:pull` है। डिलीवरी तब भी काम कर सकता है जब नीति डिलीवरी नहीं हो रही हो।
+        **Admin → enforcement** खोलें, मशीन को चुनें, और इसके assigned, reported और previous versions की तुलना करें। सुनिश्चित करें कि deployment scope में मशीन शामिल है और इसकी कुंजी के पास `policies:pull` की अनुमति है। Ingest तब भी काम कर सकता है जब policy delivery न हो।
 
       </Tab>
       <Tab title="CLI">
@@ -53,38 +53,14 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        पुष्टि करें कि मशीन ID और लेबल डैशबोर्ड लक्ष्य से मेल खाते हैं। यदि मौजूदा क्रेडेंशियल केवल इवेंट खपत प्रदान करता है, तो नीति-सक्षम कुंजी के साथ पुनः कनेक्ट करें।
+        सुनिश्चित करें कि मशीन ID और label डैशबोर्ड लक्ष्य से मेल खाते हैं। यदि मौजूदा credential केवल event ingestion की अनुमति देता है तो policy-capable key के साथ पुनः कनेक्ट करें।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="एक निजी प्रमाणपत्र प्राधिकार के साथ एक स्व-होस्ट किया गया Cloud कोई इवेंट या नीतियां प्राप्त नहीं करता है">
+  <Accordion title="एक कार्य अस्वीकृत है क्योंकि daemon उपलब्ध नहीं है">
     <Tabs>
       <Tab title="Dashboard">
-        मशीन जुड़ी है और इसके हुक काम करते हैं, लेकिन **Observe → Events** खाली रहता है और **Admin → enforcement** कभी इसके डिप्लॉयमेंट को लागू दिखाता नहीं है। CLI और Failproof डेमॉन प्रमाणपत्रों पर अलग तरीके से विश्वास करते हैं। CLI Node पर चलता है और `NODE_EXTRA_CA_CERTS` को मानता है। `failproofaid`, जो इवेंट भेजता है और नीतियां लेता है, इसके साथ बंडल किए गए प्रमाणपत्र के अलावा ऑपरेटिंग सिस्टम के विश्वास स्टोर पर विश्वास करता है, और `NODE_EXTRA_CA_CERTS` को अनदेखा करता है। अपने CA को मशीन पर सिस्टम स्टोर में इंस्टॉल करें।
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        # Debian / Ubuntu
-        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
-        sudo update-ca-certificates
-        # RHEL / Fedora
-        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
-        # macOS
-        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
-
-        # फिर डेमॉन को पुनरारंभ करें, जो शुरुआत पर विश्वसनीय प्रमाणपत्र लोड करता है
-        sudo systemctl restart failproofaid@$USER                           # Linux
-        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
-        ```
-
-        डेमॉन का लॉग कारण नाम देता है: Linux पर `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer`। सेवा के पर्यावरण में `SSL_CERT_FILE` या `SSL_CERT_DIR` डेमॉन के लिए सिस्टम स्टोर को प्रतिस्थापित करता है, और बंडल किए गए प्रमाणपत्र अभी भी लागू होते हैं। बैच जो CA के अविश्वसनीय होने के दौरान विफल हुए, `~/.failproofai/state/failed` में रखे जाते हैं और स्वचालित रूप से पुनः प्रयास किए जाते हैं, लगभग प्रति घंटा और जब डेमॉन पुनरारंभ होता है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="एक क्रिया इसलिए अस्वीकार कर दी जाती है क्योंकि डेमॉन अनुपलब्ध है">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Admin → enforcement** खोलें और मशीन का अंतिम दिखा समय और रिपोर्ट किया गया संस्करण निरीक्षण करें। यदि मशीन पुरानी है, तो इसे एक स्थानीय डेमॉन समस्या के रूप में मानें। एक अनुपलब्ध डेमॉन को बायपास करने के लिए केवल डिप्लॉय की गई नीति को कमजोर न करें।
+        **Admin → enforcement** खोलें और मशीन के last-seen time और reported version का निरीक्षण करें। यदि मशीन stale है, तो इसे एक local daemon समस्या के रूप में मानें। unavailable daemon को bypass करने के लिए केवल deployed policy को कमजोर न करें।
 
       </Tab>
       <Tab title="CLI">
@@ -95,18 +71,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        `failproofaid` को पुनरारंभ या अपडेट करें; जब CLI और डेमॉन प्रोटोकॉल संस्करण भिन्न हों तो कॉन्फ़िगरेशन को फिर से चलाएं। कॉन्फ़िगर किया गया डेमॉन पथ डिज़ाइन द्वारा बंद विफल हो जाता है।
+        `failproofaid` को पुनः आरंभ या अपडेट करें; जब CLI और daemon protocol संस्करण भिन्न हों तो configuration को पुनः चलाएं। कॉन्फ़िगर किया गया daemon path डिज़ाइन द्वारा विफल होता है।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="एक कस्टम नीति लोड नहीं होती है">
+  <Accordion title="एक custom policy लोड नहीं होती है">
     <Tabs>
       <Tab title="Dashboard">
-        एक Cloud-लेखक नीति के लिए, **Admin → policy editor** खोलें, ड्राफ्ट चुनें और प्रकाशित करने से पहले सत्यापन त्रुटियों की समीक्षा करें। एक स्थानीय नीति के लिए, इसे सत्यापित करने के लिए CLI का उपयोग करें, फिर एक परीक्षण क्रिया के बाद निर्णय सत्यापित करने के लिए **Observe → policy** खोलें।
+        एक Cloud-authored policy के लिए, **Admin → policy editor** खोलें, ड्राफ्ट को चुनें, और प्रकाशित करने से पहले validation errors की समीक्षा करें। एक local policy के लिए, इसे validate करने के लिए CLI का उपयोग करें, फिर एक परीक्षण कार्य के बाद **Observe → policy** खोलें यह पुष्टि करने के लिए कि निर्णय आते हैं।
 
       </Tab>
       <Tab title="CLI">
-        पुष्टि करें कि फ़ाइलनाम `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होता है, मॉड्यूल `customPolicies.add(...)` कॉल करता है, और आयात नीति फ़ाइल से हल होते हैं।
+        सुनिश्चित करें कि फ़ाइल नाम `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होता है, module `customPolicies.add(...)` को कॉल करता है, और imports policy फ़ाइल से resolve होता है।
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -115,14 +91,14 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="एक ऑडिट कोई निष्कर्ष नहीं देता है">
+  <Accordion title="एक audit कोई निष्कर्ष नहीं देता है">
     <Tabs>
       <Tab title="Dashboard">
-        **Analyze → audits** खोलें, रन चुनें और जांचें कि क्या मॉडल विश्लेषण चला। फिर इसके स्कोप और विंडो की तुलना **Observe → sessions** से करें और उस जनसंख्या से प्रतिनिधि ट्रेस खोलें।
+        **Analyze → audits** खोलें, रन को चुनें, और जांचें कि model analysis चलाया गया या नहीं। फिर इसके scope और window की तुलना **Observe → sessions** से करें और उस population से representative traces खोलें।
 
-        एक शून्य परिणाम केवल तभी सार्थक है जब विश्लेषण सफलतापूर्वक चल गया हो। यदि विश्लेषण छोड़ दिया गया था या विफल हो गया था, तो रन कोई निष्कर्ष नहीं देता और भविष्य के सफल रन के लिए अविश्लेषित विंडो को खुला रखता है। यदि मॉडल विश्लेषण अक्षम है, तो ऑडिट भी कोई निष्कर्ष नहीं देता है क्योंकि निर्धारक क्रेडेंशियल और PII स्कैन आंकड़े रिकॉर्ड करते हैं लेकिन अब निष्कर्ष नहीं उठाते।
+        एक zero result तब ही सार्थक है जब analysis सफलतापूर्वक चला हो। यदि analysis को छोड़ दिया गया या विफल हुआ, तो रन कोई निष्कर्ष नहीं देता और unanalysed window को भविष्य के सफल रन के लिए खुला रखता है। यदि model analysis अक्षम है, तो audit भी कोई निष्कर्ष नहीं देता क्योंकि deterministic credential और PII scan आंकड़े record करते हैं लेकिन अब निष्कर्ष नहीं उठाते हैं।
 
-        ![ऑडिट फॉर्म जहां पर्यावरण, एजेंट, कैडेंस और स्वीप विंडो सेशन जनसंख्या को परिभाषित करता है।](/images/dashboard/audit-new.png)
+        ![audit form जहां environment, agent, cadence, और sweep window सेशन population को define करते हैं।](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -134,31 +110,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        यदि रन कतारबद्ध रहा, तो ऑडिट-एजेंट क्षमता की प्रतीक्षा करें या डिप्लॉयमेंट ऑपरेटर को ऑडिट फ्लीट का निरीक्षण करने के लिए कहें। एक कतारबद्ध ऑडिट पुनः प्रयास करता है; इसे तुरंत छोड़ा नहीं जाता।
+        यदि रन queued रहा, तो audit-agent capacity के लिए प्रतीक्षा करें या deployment operator को audit fleet का निरीक्षण करने के लिए कहें। एक queued audit retry करता है; इसे तुरंत छोड़ा नहीं जाता है।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="ऑनलाइन मूल्यांकन स्वचालित रूप से नहीं चलते हैं">
+  <Accordion title="Online evaluations स्वचालित रूप से नहीं चलती हैं">
     <Tabs>
       <Tab title="Dashboard">
-        एक पूर्ण सेशन खोलें और जांचें कि क्या एक मैनुअल मूल्यांकन सफल होता है। होस्ट किए गए Cloud में वर्तमान में डैशबोर्ड में कोई मूल्यांकनकर्ता एंडपॉइंट नियंत्रण नहीं है; सर्वर ऑपरेटर को इसे कॉन्फ़िगर करना होगा।
+        एक पूर्ण सेशन खोलें और जांचें कि manual evaluation सफल है या नहीं। Hosted Cloud के पास वर्तमान में डैशबोर्ड में कोई evaluator endpoint नियंत्रण नहीं है; server operator को इसे कॉन्फ़िगर करना होगा।
       </Tab>
       <Tab title="CLI">
-        पहले मूल्यांकनकर्ता को सत्यापित करें, फिर हाल के मूल्यांकन स्थिति का निरीक्षण करें:
+        Evaluator को स्वयं verify करें, फिर हाल के evaluation states का निरीक्षण करें:
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        स्व-होस्ट किए गए Cloud पर, पुष्टि करें कि `EVALUATOR_ENDPOINT` सर्वर पर मौजूद है और `EVALUATOR_TOKEN` मूल्यांकनकर्ता से मेल खाता है। जब एंडपॉइंट अनुपस्थित हो तो स्वचालित मूल्यांकन अक्षम होता है।
+        Self-hosted Cloud पर, सुनिश्चित करें कि `EVALUATOR_ENDPOINT` server पर मौजूद है और `EVALUATOR_TOKEN` evaluator से मेल खाता है। Automatic evaluation तब अक्षम होती है जब endpoint अनुपस्थित हो।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Cloud CLI प्रमाणीकरण गलत संगठन को लक्ष्य करता है">
+  <Accordion title="Cloud CLI authentication गलत organization को लक्ष्य करता है">
     <Tabs>
       <Tab title="Dashboard">
-        संगठन स्विचर का उपयोग करें और CLI के साथ परिणामों की तुलना करने से पहले अपेक्षित स्लग और अनुमतियों की पुष्टि करें।
+        Organization switcher का उपयोग करें और expected slug और permissions की पुष्टि करें फिर CLI के साथ परिणामों की तुलना करने से पहले।
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -167,18 +143,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        API-कुंजी मोड में, `fp --org <slug> --api-key <key> ...` निर्दिष्ट करें या `AGENTEYE_ORG` सेट करें। सहेजी गई मानव-सेशन संगठन स्थिति को जानबूझकर API-कुंजी अनुरोधों के लिए अनदेखा किया जाता है।
+        API-key mode में, `fp --org <slug> --api-key <key> ...` को निर्दिष्ट करें या `AGENTEYE_ORG` सेट करें। Saved human-session organization state को API-key requests के लिए जानबूझकर ignore किया जाता है।
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="एक नीति वैध कार्य को अवरुद्ध करती है">
+  <Accordion title="एक policy वैध कार्य को अवरुद्ध करता है">
     <Tabs>
       <Tab title="Dashboard">
-        **Observe → policy** खोलें, निर्णय और जुड़े सेशन को संरक्षित करें और गलत-सकारात्मक स्थिति की पहचान करें। फिर **Admin → enforcement** खोलें और प्रभावित मशीनों को पूर्व संस्करण में रोल करें। **Policy editor** में एक संकीर्ण संस्करण बनाएं, एक छोटे दायरे पर इसका परीक्षण करें और केवल तभी विस्तार करें जब वैध कार्य सफल हो।
+        **Observe → policy** खोलें, decision और linked session को preserve करें, और false-positive condition को identify करें। फिर **Admin → enforcement** खोलें और प्रभावित मशीनों को prior version पर rollback करें। **Policy editor** में एक narrower version बनाएं, इसे एक छोटे scope पर test करें, और केवल तभी expand करें जब valid work सफल हो।
 
       </Tab>
       <Tab title="CLI">
-        Cloud डिप्लॉयमेंट रोलबैक केवल डैशबोर्ड है। एक स्थानीय सेशन पॉज़ Cloud-प्रबंधित नीतियों को अक्षम नहीं करता है। यदि डैशबोर्ड अनुपलब्ध है, तो मशीन और डिप्लॉयमेंट स्थिति कैप्चर करें और डैशबोर्ड एक्सेस को पुनः स्थापित करने के बजाय अवरुद्ध क्रिया को बार-बार पुनः प्रयास करते रहें।
+        Cloud deployment rollback केवल dashboard पर है। एक local session pause Cloud-managed policies को disable नहीं करता है। यदि dashboard unavailable है, तो मशीन और deployment state को capture करें और dashboard access को restore करने के बजाय repeatedly blocked action को retry न करें।
 
         ```bash
         failproofai config --status
@@ -188,4 +164,4 @@ icon: "wrench"
   </Accordion>
 </AccordionGroup>
 
-सहायता से संपर्क करते समय, CLI संस्करण, हार्नेस, पर्यावरण, प्रासंगिक सेशन या डिप्लॉयमेंट ID, और `failproofai config --status` का आउटपुट शामिल करें जिसमें गोपनीयता हटाई गई हो।
+Support से संपर्क करते समय, CLI version, harness, environment, relevant session या deployment ID, और `failproofai config --status` के आउटपुट को शामिल करें (secrets को हटाए गए)।

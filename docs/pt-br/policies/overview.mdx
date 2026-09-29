@@ -1,54 +1,58 @@
 ---
-title: "Policies"
-description: "Observe, guie ou bloqueie ações de agentes antes que uma falha conhecida se repita."
+title: "Políticas"
+description: "Observe, oriente ou bloqueie ações do agente antes que uma falha conhecida se repita."
 icon: "shield-check"
 ---
 
-Uma policy avalia um evento de hook do agente e retorna uma de três decisões:
+Uma política avalia um evento de hook do agente e retorna uma de três decisões:
 
 - `allow` permite que a ação continue.
 - `instruct` fornece orientação corretiva ao agente.
 - `deny` bloqueia a ação com uma justificativa.
 
-## Onde as policies ficam
+## Onde as políticas ficam
 
 | No dashboard | O que você faz lá |
 | --- | --- |
-| **Observe → policy** | Revise decisões de sessões reais: qual policy correspondeu, em qual máquina e por quê |
-| **Admin → policy editor** | Escreva uma policy, faça backtest contra tráfego anterior, publique uma versão imutável e compare versões na **library** |
-| **Admin → enforcement** | Coloque versões em máquinas, no modo observe ou enforce |
+| **Observe → policy** | Revise decisões de sessões reais: qual política foi acionada, em qual máquina e por quê |
+| **Admin → policy editor** | Escreva uma política, faça backtesting com tráfego passado, publique uma versão imutável e compare versões na **library** |
+| **Admin → enforcement** | Aplique versões em máquinas, no modo observe ou enforce |
 
-O editor de policies é onde uma falha se transforma em regra. Descreva o modo de falha ou cole o código-fonte da policy em **compose**, faça backtest do rascunho contra o tráfego que você já possui e publique uma versão:
+O editor de políticas é onde uma falha vira uma regra. Descreva o modo de falha ou cole o código-fonte da política em **compose**, faça backtesting do rascunho com o tráfego que você já tem e publique uma versão:
 
-![A visão compose do editor de policies com identidade da policy, criação assistida por IA, validação de código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
+![A visão compose do editor de políticas, com identidade da política, criação assistida por IA, validação do código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
 
-Em uma máquina, `failproofai policies` lista tudo que está sendo aplicado ali. `fp policies` e `fp fleet` cobrem o editor e o enforcement a partir de um terminal — veja a [referência do Cloud CLI](/pt-br/reference/cloud-cli).
+Em uma máquina, `failproofai policies` lista tudo que está sendo aplicado ali. `fp policies` e `fp fleet` cobrem o editor e o enforcement pelo terminal — veja a [referência do Cloud CLI](/pt-br/reference/cloud-cli).
 
-## Obter uma policy
+## Obter uma política
 
-Há duas formas de obter uma.
+Há duas formas de conseguir uma.
 
 <Columns cols={2}>
-  <Card title="Escreva uma policy" icon="file-pen-line" href="/pt-br/policies/editor">
+  <Card title="Escrever uma política" icon="file-pen-line" href="/pt-br/policies/editor">
     Deixe o Failproof AI criar uma a partir de uma descoberta de auditoria, ou escreva o código-fonte você mesmo, depois revise e publique no editor.
   </Card>
-  <Card title="Use um policy pack" icon="package" href="/pt-br/policies/packs">
-    Conecte um policy pack do Failproof AI para o seu caso de uso, ou um pack da comunidade no hub de policies, com um único comando.
+  <Card title="Usar um pacote de políticas" icon="package" href="/pt-br/policies/packs">
+    Integre um pacote de políticas do Failproof AI para o seu caso de uso, ou um pacote da comunidade no hub de políticas, com um único comando.
   </Card>
 </Columns>
 
-## Depois, coloque em produção
+## Revise chamadas de ferramentas com Jev
+
+O Jev lê uma chamada de ferramenta bloqueada no contexto da sua solicitação. Ele pode sinalizar uma preocupação que uma política de correspondência de strings não detectou, ou liberar um deny de uma política explicitamente marcada como **reviewable**. Políticas rígidas permanecem definitivas. [Comece com políticas Jev](/pt-br/policies/jev), depois use a [referência de integração](/pt-br/reference/jev) quando precisar de detalhes sobre provedores ou configurações.
+
+## Então coloque em produção
 
 <Steps>
   <Step title="Teste">
-    Faça backtest do rascunho contra o tráfego que você já possui e execute-o contra uma ação que ele deve bloquear e uma que ele deve permitir — tudo antes de publicar. Veja [Testar uma policy](/pt-br/policies/test).
+    Faça backtesting do rascunho com o tráfego que você já tem e execute-o contra uma ação que deve ser bloqueada e outra que deve ser permitida — tudo antes de publicar. Veja [Testar uma política](/pt-br/policies/test).
   </Step>
-  <Step title="Faça o deploy">
-    Coloque a versão em máquinas no modo **observe**, leia suas decisões, depois aplique o enforcement. Veja [Fazer deploy de uma policy](/pt-br/policies/deploy).
+  <Step title="Implante">
+    Coloque a versão em máquinas no modo **observe**, leia as decisões e então aplique o enforcement. Veja [Implantar uma política](/pt-br/policies/deploy).
   </Step>
   <Step title="Versione e faça rollback">
-    Cada publicação é uma nova versão imutável, então um rollout que bloqueia trabalho válido é desfeito simplesmente reimplantando a última versão boa. Veja [Versões e rollback](/pt-br/policies/rollback).
+    Cada publicação gera uma nova versão imutável, então um rollout que bloqueia trabalho válido é desfeito reimplantando a última versão boa. Veja [Versões e rollback](/pt-br/policies/rollback).
   </Step>
 </Steps>
 
-Para compartilhar suas policies com outras equipes, [publique-as como um pack](/pt-br/policies/publish-a-pack). Para entender o que acontece quando uma policy não pode ser avaliada, veja [Comportamento em caso de falha](/pt-br/policies/failure-behavior).
+Para compartilhar suas políticas com outras equipes, [publique-as como um pacote](/pt-br/policies/publish-a-pack). Para saber o que acontece quando uma política não pode ser avaliada de forma alguma, veja [Comportamento em caso de falha](/pt-br/policies/failure-behavior).

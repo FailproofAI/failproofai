@@ -1,15 +1,15 @@
 ---
 title: "정책 팩 사용하기"
-description: "사용 사례에 맞는 Failproof AI 정책 팩이나 정책 허브의 커뮤니티 팩을 연결하고, 적용할 정책을 선택하세요."
+description: "사용 사례에 맞는 Failproof AI 정책 팩이나 정책 허브의 커뮤니티 팩을 연결하고, 적용할 내용을 선택하세요."
 icon: "package"
 ---
 
-팩은 GitHub 릴리스로 게시된 정책 모음입니다. 단 하나의 명령으로 설치할 수 있습니다. 실행 전에 릴리스의 체크섬이 검증되고, 다이제스트가 기록되어 설치 이후 팩이 변경되는 것을 방지합니다.
+팩은 GitHub 릴리스로 배포되는 정책 모음입니다. 명령어 하나로 설치할 수 있으며, 실행 전에 릴리스의 체크섬이 검증되고 다이제스트가 기록됩니다. 기록 이후에는 팩이 변조되더라도 머신에서 감지됩니다.
 
-모든 팩과 각 팩의 정책은 [정책 허브](https://befailproof.ai/policy-hub/)에서 확인할 수 있습니다. 두 가지 종류가 있습니다:
+모든 팩과 각 팩에 포함된 모든 정책은 [정책 허브](https://befailproof.ai/policy-hub/)에서 확인할 수 있습니다. 두 가지 종류가 있습니다:
 
-- **Failproof AI 정책 팩** — 미리 정의된 사용 사례를 위한 완성형 팩입니다. 연결하면 바로 작동합니다. [코딩 에이전트 정책 팩](https://befailproof.ai/policy-hub/failproofai/policies/)이 현재 제공되며, 더 많은 사용 사례를 위한 팩이 곧 출시됩니다.
-- **커뮤니티 정책 팩** — 개발자들이 자신의 사용 사례를 위해 작성하고 누구나 사용할 수 있도록 공개한 정책입니다.
+- **Failproof AI 정책 팩** — 사전 정의된 사용 사례를 위한 완성형 팩입니다. 연결하는 즉시 작동합니다. [코딩 에이전트 정책 팩](https://befailproof.ai/policy-hub/failproofai/policies/)이 현재 제공되며, 더 많은 사용 사례를 위한 팩이 곧 출시될 예정입니다.
+- **커뮤니티 정책 팩** — 개발자들이 자신의 사용 사례를 위해 작성하고 공개한 정책입니다.
 
 ## Failproof AI 정책 팩
 
@@ -19,22 +19,22 @@ icon: "package"
 failproofai policies add FailproofAI/policies
 ```
 
-이 팩에는 39개의 정책이 포함되어 있으며, 매니페스트에서 무인 실행 시 안전하다고 표시한 10개가 기본으로 활성화됩니다. 나머지는 선택할 수 있도록 목록으로 제공됩니다. 가장 많이 사용되는 정책과 `policies add` 명령 시 기본 활성화 여부는 다음과 같습니다:
+이 팩에는 38개의 정책이 포함되어 있으며, 매니페스트에서 무인 실행에 안전하다고 표시된 10개가 기본으로 활성화됩니다. 나머지는 목록으로 제공되어 직접 선택할 수 있습니다. 가장 많이 사용되는 정책과 `policies add` 명령만으로 활성화되는지 여부는 다음과 같습니다:
 
-| 정책 | 설명 | 기본 활성화 |
+| 정책 | 기능 | 기본 활성화 |
 | --- | --- | --- |
-| `block-push-master` | 보호된 브랜치에 직접 푸시를 차단합니다 | 예 |
-| `block-env-files` | `.env` 파일 읽기 및 쓰기를 차단합니다 | 예 |
-| `protect-env-vars` | 환경 변수를 덤프하는 명령을 차단합니다 | 예 |
-| `block-sudo` | allow 패턴에 일치하지 않는 `sudo` 사용을 차단합니다 | 예 |
-| `block-curl-pipe-sh` | 다운로드한 스크립트를 셸로 직접 파이프하는 것을 차단합니다 | 예 |
-| `sanitize-*` (5개 정책) | 도구 출력에서 API 키, 베어러 토큰, JWT, 개인 키, 연결 문자열을 감지하여 보고합니다 | 예 |
-| `block-rm-rf` | 재귀적 대량 삭제를 차단합니다 | 아니오 |
-| `block-force-push` | 강제 푸시를 차단합니다 | 아니오 |
-| `block-secrets-write` | 자격 증명 및 시크릿 키 파일에 대한 쓰기를 차단합니다 | 아니오 |
-| `warn-destructive-sql` | `WHERE` 없는 `DROP`, `TRUNCATE`, `DELETE` 사용 시 경고합니다 | 아니오 |
+| `block-push-master` | 보호된 브랜치에 대한 직접 푸시 차단 | 예 |
+| `block-env-files` | `.env` 파일 읽기 및 쓰기 차단 | 예 |
+| `protect-env-vars` | 환경 변수를 출력하는 명령 차단 | 예 |
+| `block-sudo` | allow 패턴이 일치하지 않는 한 `sudo` 차단 | 예 |
+| `block-curl-pipe-sh` | 다운로드한 스크립트를 셸에 직접 파이프하는 행위 차단 | 예 |
+| `sanitize-*` (5개 정책) | 도구 출력에서 발견된 API 키, 베어러 토큰, JWT, 개인 키, 연결 문자열 보고 | 예 |
+| `block-rm-rf` | 재귀적 삭제 명령 차단 | 아니요 |
+| `block-force-push` | 강제 푸시 차단 | 아니요 |
+| `block-secrets-write` | 자격 증명 및 비밀 키 파일 쓰기 차단 | 아니요 |
+| `warn-destructive-sql` | `WHERE` 절 없는 `DROP`, `TRUNCATE`, `DELETE` 경고 | 아니요 |
 
-비활성화된 정책은 이름으로 활성화할 수 있습니다 — `failproofai policies add block-rm-rf` — 또는 `--all`을 사용해 팩 전체를 적용할 수 있습니다. 카테고리별로 그룹화된 모든 정책을 확인하려면:
+비활성화된 정책은 이름으로 켤 수 있습니다 — `failproofai policies add block-rm-rf` — 또는 `--all`을 사용해 팩 전체를 가져올 수 있습니다. 카테고리별로 그룹화된 모든 정책 보기:
 
 ```bash
 failproofai policies show FailproofAI/policies
@@ -42,80 +42,78 @@ failproofai policies show FailproofAI/policies
 
 ## 커뮤니티 정책 팩
 
-개발자들이 자신이 경험한 사용 사례를 위한 팩을 게시하며, [정책 허브](https://befailproof.ai/policy-hub/)에 목록이 나열됩니다. 커뮤니티 팩은 작성자가 직접 게시한 것으로 Failproof AI의 감사를 거치지 않으므로, 설치 전에 내용을 먼저 확인하세요:
+개발자들은 자신이 경험한 사용 사례를 위한 팩을 배포하며, [정책 허브](https://befailproof.ai/policy-hub/)에서 목록을 확인할 수 있습니다. 커뮤니티 팩은 작성자가 직접 배포하며 Failproof AI의 감사를 거치지 않으므로, 설치 전에 포함된 내용을 먼저 확인하세요:
 
 ```bash
 failproofai policies show acme/support-agent
 ```
 
-이 명령은 팩에 포함된 모든 정책을 카테고리별로 나열하고, 작성자가 기본으로 활성화한 항목을 표시합니다. **매니페스트만 읽으며** — 진입점 아티팩트는 다운로드되거나 임포트되지 않으므로, 낯선 팩을 확인하더라도 낯선 코드가 실행되지 않습니다. 매니페스트는 여전히 릴리스의 `SHA256SUMS`와 대조하여 검증되므로, 확인한 내용이 실제로 설치되는 내용과 동일합니다.
+이 명령은 팩에 포함된 모든 정책을 카테고리별로 나열하고, 작성자가 기본으로 활성화한 항목을 표시합니다. **매니페스트만 읽으며** — 진입 아티팩트는 다운로드되거나 임포트되지 않으므로, 낯선 팩을 조회해도 낯선 코드가 실행되지 않습니다. 매니페스트는 릴리스의 `SHA256SUMS`에 대해 검증되므로, 확인한 내용이 실제 설치될 내용과 동일합니다.
 
-이후 설치합니다:
+그런 다음 설치하세요:
 
 ```bash
 failproofai policies add acme/support-agent
 ```
 
-다음 중 어떤 형식이든 사용할 수 있습니다:
+다음 형식 중 어느 것이든 사용할 수 있습니다:
 
 | 소스 | 결과 |
 | --- | --- |
-| `acme/support-agent` | 최신 릴리스, 해석된 정확한 태그로 **고정됨** |
+| `acme/support-agent` | 최신 릴리스, 정확한 태그로 **고정** |
 | `acme/support-agent@v2.1.0` | 해당 릴리스 |
-| `github:acme/support-agent@v2.1.0` | 동일, 명시적 표기 |
+| `github:acme/support-agent@v2.1.0` | 동일, 명시적 형식 |
 | `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 동일, 브라우저에서 복사한 URL |
 
-태그를 지정하지 않으면 최신 릴리스를 설치하고 **고정**한 후, 선택된 태그를 알려줍니다. 기록되는 내용은 항상 정확히 하나의 릴리스를 명시하므로 재설치 시 버전이 변경될 수 없습니다.
+태그를 지정하지 않으면 최신 릴리스를 설치하고 **고정**한 뒤 선택된 태그를 알려줍니다. 항상 정확히 하나의 릴리스가 기록되므로 재설치 시 버전이 달라지지 않습니다.
 
-## 팩의 일부만 적용하기
+## 팩의 일부만 가져오기
 
-기본적으로 팩의 **자체** 기본값 — 작성자가 무인 실행 시 안전하다고 표시한 정책들 — 만 적용되며, 팩 전체가 적용되지는 않습니다.
+기본적으로 팩에 포함된 전체 내용이 아닌, 작성자가 무인 실행에 안전하다고 표시한 **팩의 기본** 정책만 적용됩니다.
 
 ```bash
 failproofai policies add FailproofAI/policies --policy block-rm-rf          # 하나 또는 쉼표로 구분된 여러 개
 failproofai policies add FailproofAI/policies --category dangerous-commands # 카테고리 전체
-failproofai policies add FailproofAI/policies --all                         # 팩의 모든 정책
+failproofai policies add FailproofAI/policies --all                         # 팩의 모든 항목
 ```
 
-`--category`와 `--policy`는 합집합으로 결합되며 (`--only`는 `--policy`의 동의어로 사용 가능), 각각 반복 사용할 수 있습니다: `--policy a --policy b`는 두 가지 모두 적용합니다. 팩이 이미 설치되어 있는 경우 플래그는 기존 선택에 추가되며, 플래그 없이 비터미널 환경에서 재추가할 경우 — 예를 들어 업그레이드 시 — 기존 선택이 유지됩니다. 터미널에서 플래그 없이 실행하면 `add` 명령이 선택기를 열고 작성자의 기본값을 미리 선택한 상태로 표시되며, 선택한 항목이 기존 선택을 대체합니다.
+`--category`와 `--policy`는 합집합으로 결합됩니다(`--only`는 `--policy`의 동의어로 사용 가능). 팩이 이미 설치된 경우 이 플래그들은 기존 선택에 추가되며, 플래그 없이 비대화식으로 재추가하면(예: 업그레이드 시) 기존 선택이 유지됩니다. 터미널에서 플래그 없이 실행하면 `add`는 작성자의 기본값이 미리 선택된 피커를 열고, 선택한 항목이 기존 선택을 대체합니다.
 
-## 활성화된 정책 관리
+## 활성화 상태 관리
 
 ```bash
-failproofai policies                                  # 팩을 포함한 모든 소스 목록
+failproofai policies                                  # 팩 포함, 모든 소스를 하나의 목록으로
 failproofai policies add block-rm-rf                  # 정책 하나 활성화
 failproofai policies --uninstall block-refunds        # 팩 정책 하나 비활성화
 failproofai policies --install block-refunds          # 다시 활성화
 failproofai policies remove acme/support-agent        # 팩 제거
 ```
 
-팩 정책의 활성화 또는 비활성화는 전체 머신에 적용됩니다. `--scope` 설정과 관계없이 해당 설정은 프로젝트 설정이 아닌 설치된 팩에 기록됩니다.
+팩 정책의 활성화 또는 비활성화는 머신 전체에 적용됩니다. `--scope`와 관계없이 해당 설정은 프로젝트 구성이 아닌 설치된 팩과 함께 기록됩니다.
 
-슬래시가 없는 이름은 정책이고, 슬래시가 있는 것은 팩 소스입니다. 슬래시 없는 이름은 해당 정책을 선언한 설치된 팩으로 해석됩니다. 두 팩이 같은 이름을 선언하는 경우, 원하는 팩을 명시하세요:
+슬래시가 없는 이름은 정책이고, 슬래시가 있는 이름은 팩 소스입니다. 슬래시 없는 이름은 해당 정책을 선언한 설치된 팩으로 해석됩니다. 설치된 두 팩이 동일한 이름을 선언하는 경우, 대상을 명확히 지정하세요:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-스코프, 파라미터, 이 명령들이 작성하는 파일에 대한 내용은 [로컬 설정](/ko/policies/local-configuration)을 참고하세요.
+스코프, 파라미터, 이 명령들이 작성하는 파일에 대한 내용은 [로컬 구성](/ko/policies/local-configuration)에서 다룹니다.
 
-## 무결성 검증의 범위
+## 무결성 보장의 범위
 
-`SHA256SUMS`는 아티팩트와 동일한 릴리스에 포함되어 있으므로, **서명이 아니며** 게시자의 신원을 증명하지 않습니다. 단, 해당 바이트가 릴리스에서 게시된 것과 동일함을 증명합니다. 팩을 추가할 때 다이제스트가 기록되고 임포트 전마다 재검증되므로, 설치 이후 팩이 변경될 수 없습니다. 태그를 다시 붙이거나 에셋을 교체한 저장소는 다른 코드를 조용히 실행하는 대신 로딩에 실패합니다.
+`SHA256SUMS`는 아티팩트와 동일한 릴리스에 포함되므로 **서명이 아니며** 게시자에 대한 증명이 아닙니다. 다만 바이트가 해당 릴리스에서 배포된 것임을 증명합니다. 팩을 추가할 때 다이제스트가 기록되고 임포트 전마다 재검증되므로, 이후 팩이 변조될 수 없습니다. 리포지토리가 태그를 변경하거나 에셋을 교체하면 조용히 다른 것을 실행하는 대신 로딩이 중단됩니다.
 
-설치 시 팩은 **한 번 임포트되어** 자체 매니페스트와 대조 검증됩니다. 아티팩트가 파싱되지 않거나 선언된 내용과 다른 항목을 등록하는 팩은 무언가 활성화되기 전에 거부됩니다 — 정상적으로 설치된 후 다음 도구 호출에서 실패하는 것이 아닙니다. `FailproofAI/` 네임스페이스를 주장하지만 FailproofAI 저장소에 없는 릴리스를 가진 팩도 마찬가지로 거부됩니다.
+설치 시 팩은 **한 번 임포트**되어 자체 매니페스트와 대조 검증됩니다. 아티팩트 파싱에 실패하거나 선언된 것과 다른 항목을 등록하려는 팩은 아무것도 활성화되기 전에 거부됩니다. 깔끔하게 설치된 후 다음 도구 호출 시 실패하는 대신, 미리 차단됩니다.
 
 ## 팩이 로드되지 않을 때
 
-이 머신이 적용하도록 설정했으나 실행할 수 없는 팩은 누락된 정책이 담당하던 이벤트를 — 조용히 허용하는 대신 — **거부**합니다. 이는 `pack/failproofai-pack-unavailable`로 처리되며, 로드된 정책보다 우선순위가 높아 거부가 먼저 실행된 가드가 아닌 누락된 팩에 귀속됩니다. 예외는 `UserPromptSubmit`으로, 이 경우 거부 대신 instruct를 사용합니다. 여기서 거부하면 문제를 해결하는 데 필요한 에이전트에 접근할 수 없게 되기 때문입니다. [실패 동작](/ko/policies/failure-behavior)을 참조하세요.
-
-팩은 호환 가능한 최소 failproofai 버전을 명시할 수 있습니다 (`minCliVersion`, 게시자가 설정). 이보다 오래된 CLI는 팩 추가를 거부하고 업그레이드 명령인 `npm i -g "failproofai@>=<minCliVersion>" && failproofai update`를 출력합니다 (범위로 지정되므로 npm이 조건을 충족하는 릴리스를 선택합니다 — 단순 `failproofai`는 `latest`를 설치하는데, 이는 사전 릴리스 최소 버전보다 오래될 수 있습니다). 이미 설치되었지만 실행 중인 CLI가 너무 오래된 경우에는 로드되지 않으며 위의 결과가 발생합니다. CLI가 읽을 수 없는 `minCliVersion`은 팩을 거부하는 대신 경고와 함께 무시됩니다.
+이 머신에서 적용하도록 설정된 팩이 실행되지 않을 경우, 누락된 정책이 다루던 이벤트는 조용히 허용되는 대신 **거부**됩니다 — `pack/failproofai-pack-unavailable`으로 처리되며, 이는 로드된 정책들보다 우선순위가 높아 거부가 우연히 먼저 실행된 가드가 아닌 누락된 팩에 귀속됩니다. 단, `UserPromptSubmit`는 예외로 거부 대신 지시를 내립니다. 여기서 거부하면 문제를 해결하는 데 필요한 에이전트 자체에서 잠겨버릴 수 있기 때문입니다. [오류 동작](/ko/policies/failure-behavior)을 참고하세요.
 
 ## 오프라인 및 미러
 
 | 변수 | 효과 |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | 패치를 거부합니다. 이미 설치된 팩은 계속 적용됩니다 |
-| `FAILPROOFAI_PACK_BASE_URL` | `github.com` 대신 미러에서 팩을 가져옵니다 |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | 네트워크 요청 거부; 이미 설치된 팩은 계속 적용 |
+| `FAILPROOFAI_PACK_BASE_URL` | 팩 다운로드를 `github.com` 대신 미러로 연결 |
 
-이 방식으로 자신의 정책을 공유하려면 [정책 팩 게시하기](/ko/policies/publish-a-pack)를 참조하세요.
+자신의 정책을 이 방식으로 공유하려면 [정책 팩 배포하기](/ko/policies/publish-a-pack)를 참고하세요.

@@ -1,29 +1,29 @@
 ---
-title: "Anahtarlar ve İzinler"
+title: "Anahtarlar ve izinler"
 description: "Makineler, otomasyon ve operatörler için kapsamlı API anahtarları oluşturun."
 icon: "key-round"
 ---
 
-API anahtarları bir organizasyona aittir ve açık izinleri taşır. Ajan alımı, politika teslimi, değerlendiriciler, CI otomasyonu ve yönetim betikleri için ayrı anahtarlar kullanın.
+API anahtarları bir organizasyona ait olup açık izinleri taşır. Ajan yutma, ilke dağıtımı, değerlendiriciler, CI otomasyonu ve yönetim betikleri için ayrı anahtarlar kullanın.
 
-## Anahtar Oluşturma ve Döndürme
+## Anahtar oluşturma ve döndürme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Yönetim → Anahtarlar** sayfasına gidin, **yeni anahtar** seçin ve bir iş yükü adı girin.
-    2. Bir izin seti seçin ve hazır ayarlar yetersiz kaldığında yalnızca bireysel izinleri ayarlayın.
-    3. Anahtarı oluşturun ve tek seferlik sırrını hemen kopyalayın.
-    4. Anahtarı daha sonra açarak yetkilendirmeleri güncelleyin, devre dışı bırakın veya sırrı yeniden oluşturun.
+    1. **Yönetim → Anahtarlar**'a gidin, **yeni anahtar**'ı seçin ve bir iş yükü adı girin.
+    2. İzin kümesini seçin ve önceden belirlenmiş küme yetersiz olduğunda sadece bireysel izinleri ayarlayın.
+    3. Anahtarı oluşturun ve tek seferlik gizli anahtarını hemen kopyalayın.
+    4. Anahtarı daha sonra açarak yetkiyi güncelleyin, devre dışı bırakın veya gizli anahtarı yeniden oluşturun.
 
-    Oluşturma paneli, iş yükü tarafından gereken en dar yetkilendirmeleri seçtiğiniz yerdir.
+    Oluşturma çekmecesi, iş yükü tarafından gereken en dar yetkileri seçtiğiniz yerdir.
 
-    ![İzin ön ayarları ve bireysel yetkilendirmeler gösteren yeni API anahtarı paneli.](/images/dashboard/key-create.png)
+    ![İzin ön ayarları ve bireysel yetkilerle yeni API anahtarı çekmecesi.](/images/dashboard/key-create.png)
 
-    Oluşturulduktan sonra, Anahtarlar sayfası kalıcı meta verileri ve yönetim işlemlerini gösterir. Tek seferlik sır bir daha gösterilmez.
+    Oluşturulduktan sonra, Anahtarlar sayfası kalıcı meta verileri ve yönetim işlemlerini gösterir. Tek seferlik gizli anahtar bir daha gösterilmez.
 
-    ![Anahtar izinlerini, oluşturulma zamanını ve yeniden oluştur ile devre dışı bırak işlemlerini gösteren API Anahtarları sayfası.](/images/dashboard/api-keys.png)
+    ![Anahtar izinlerini, oluşturma zamanını ve yeniden oluştur ile devre dışı bırak işlemlerini gösteren API Anahtarları sayfası.](/images/dashboard/api-keys.png)
 
-    Bu listeyi kullanarak izinleri düzenli olarak gözden geçirin ve artık etkin bir iş yüküne eşlenmeyen anahtarları devre dışı bırakın.
+    Bu listeyi kullanarak izinleri düzenli olarak inceleyin ve artık etkin bir iş yüküyle eşleşmeyen anahtarları devre dışı bırakın.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,42 @@ API anahtarları bir organizasyona aittir ve açık izinleri taşır. Ajan alım
     fp keys disable production-agents
     ```
 
-    Oluşturma/yeniden oluşturma çıktısını güvenli bir şekilde yönlendirin veya yakalayin; sır bir kez döndürülür.
+    Oluşturma/yeniden oluşturma çıktısını güvenli şekilde yönlendirin veya yakalayın; gizli anahtar bir kez döndürülür.
   </Tab>
 </Tabs>
 
-Bağlantılı bir Failproof AI makinesinin gerektirdiği iki izin bağımsızdır:
+Bağlı bir Failproof AI makinesinin gerektirdiği iki izin bağımsızdır:
 
-- `events:add` etkinlikleri ve oturum verilerini gönderir.
-- `policies:pull` atanan politika dağıtımlarını alır.
+- `events:add` olayları ve oturum verilerini gönderir.
+- `policies:pull` atanan ilke dağıtımlarını alır.
 
-Anahtar sırları oluşturulduğunda veya yeniden oluşturulduğunda gösterilir. Bunları bir sır yöneticisinde depolayın ve bir operatörün etkileşimli kimlik bilgilerini yeniden kullanmadan döndürün.
+[FailproofAI Cloud üzerinden Jev ilkelerini çalıştırmak](/tr/policies/jev) için, **machine** anahtar ön ayarını seçin. Yukarıdaki her iki izne `jev:evaluate` ekler. Cloud Jev bunu eksik olan bir anahtarla çalıştırılamaz.
 
-## İzin Kataloğu
+Anahtar gizli anahtarları oluşturulduğunda veya yeniden oluşturulduğunda gösterilir. Bunları bir gizli yöneticide saklayın ve bir operatörün etkileşimli kimlik bilgilerini yeniden kullanmadan döndürün.
+
+## İzin kataloğu
 
 | Alan | İzinler |
 | --- | --- |
-| Etkinlikler | `events:add`, `events:read` |
-| Anahtarlar | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` yalnızca insan oturumunda |
+| Olaylar | `events:add`, `events:read` |
+| Anahtarlar | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` yalnızca insan oturumu için |
 | Kullanıcılar | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Değerlendirmeler | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
-| Panolar | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Gösterge Tabloları | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
 | Sorgular | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
 | Asistan | `agent:use` |
 | Ayarlar | `settings:read`, `settings:write` |
 | Uyarılar | `alerts:read`, `alerts:write` |
 | Sorunlar | `issues:read`, `issues:create`, `issues:close` |
 | Denetimler | `audits:read`, `audits:write` |
-| Politikalar | `policies:read`, `policies:write`, `policies:pull` |
+| İlkeler | `policies:read`, `policies:write`, `policies:pull` |
 | Kullanım | `usage:read` |
+| Jev | `jev:evaluate` (`events:add` ve `policies:pull` gereklidir) |
 
-`orgs:admin` örnek operatörü için ayrılmıştır ve bir organizasyon anahtarına veya sıradan üyeye verilemez. Emekli `incidents:*` ve `alerts:ack` belirteçleri uyumluluk için kabul edilir ve geçerli `issues:*` izinlerine normalleştirilir.
+`orgs:admin` örnek operatörü için ayrılmış olup bir organizasyon anahtarına veya sıradan üyeye verilemez. Emekli `incidents:*` ve `alerts:ack` tokenleri uyumluluk için kabul edilir ve mevcut `issues:*` izinlerine normalleştirilir.
 
-Yerleşik izin setleri `read-only`, `standard` ve `admin` şeklindedir. `standard`, okuma izinlerine değerlendirme tetikleme, sorgu yürütme, sorun yanıtı ve asistan kullanımını ekler. Anahtar oluşturma, bir izin seti içerdiğinde bile insan için ayrılmış yetkileri kaldırır.
+Yerleşik izin kümeleri `read-only`, `standard` ve `admin`dir. `standard`, okuma izinlerine değerlendirme tetikleme, sorgu yürütme, sorun yanıtlama ve asistan kullanımı ekler. Anahtar oluşturma bir izin kümesi içinde olsa bile insan tarafından kullanılan yetkileri çıkarır.
 
 <Warning>
-  Örnek kapsamındaki anahtarlar `X-AgentEye-Org` başlığı ile bir organizasyon seçebilir. Çok organizasyonlu dağıtımlarda açıkça ayarlayın; atlama varsayılan organizasyonu seçebilir.
+  Örnek kapsamlı anahtarlar `X-AgentEye-Org` başlığı ile bir organizasyon seçebilir. Çok organizasyonlu dağıtımlarda açıkça ayarlayın; atlanması varsayılan organizasyonu seçebilir.
 </Warning>

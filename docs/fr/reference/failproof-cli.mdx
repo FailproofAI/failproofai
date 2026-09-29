@@ -1,23 +1,23 @@
 ---
 title: "Failproof AI CLI"
-description: "Installez les hooks, gérez les politiques locales, connectez-vous à Cloud et pilotez le démon local."
+description: "Installez les hooks, gérez les politiques locales, connectez le Cloud et pilotez le démon local."
 icon: "terminal"
 ---
 
 Installez le CLI local avec `npm install -g failproofai`. Lancez-le sans arguments pour ouvrir le tableau de bord des politiques locales.
 
-Le paquet nécessite Node.js 20.9 ou une version plus récente. Bun 1.3 ou une version plus récente est pris en charge pour le développement et les installations depuis les sources. `failproofai configure` et `failproofai setup` sont des alias de `failproofai config`. `failproofai policy`, `failproofai pack` et `failproofai p` sont toutes des variantes de `failproofai policies` — packs et politiques individuelles formaient trois commandes pour une seule idée, elles n'en font désormais plus qu'une. Les anciennes variantes fonctionnent toujours, à deux exceptions près : `pack list <source>` est maintenant `policies show <source>`, et `pack build` est maintenant `publish`.
+Le package nécessite Node.js 20.9 ou une version plus récente. Bun 1.3 ou une version plus récente est pris en charge pour le développement et les installations depuis les sources. `failproofai configure` et `failproofai setup` sont des alias de `failproofai config`. `failproofai policy`, `failproofai pack` et `failproofai p` sont toutes des variantes de `failproofai policies` — les packs et les politiques individuelles formaient trois commandes pour une seule idée, elles n'en forment plus qu'une. Les anciennes variantes fonctionnent toujours, à deux exceptions près : `pack list <source>` devient `policies show <source>`, et `pack build` devient `publish`.
 
 ## Configurer une machine
 
-Installez le CLI, puis chargez la clé machine dans le shell. `read -s` la saisit à une invite qui n'affiche rien, elle n'apparaît donc jamais dans une commande :
+Installez le CLI, puis lisez la clé machine dans le shell. `read -s` la saisit via une invite qui n'affiche pas les caractères, elle n'apparaît donc jamais dans une commande :
 
 ```bash
 npm install -g failproofai
 read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
 ```
 
-Configurez ensuite la machine et choisissez ce qu'elle doit appliquer :
+Configurez ensuite la machine et choisissez ce qu'elle applique :
 
 ```bash
 failproofai config
@@ -25,86 +25,86 @@ failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-`failproofai config` prend en charge l'intégralité de la configuration : il installe le service `failproofaid` (une seule fois en root, via `sudo -n` — jamais d'invite de mot de passe interactive), connecte les hooks à tous les CLI d'agent trouvés, et se connecte à Cloud lorsqu'une clé est disponible. Sans terminal — CI, conteneur, agent qui le pilote — il applique plutôt qu'il ne demande, et quitte avec le code 1 si quoi que ce soit qu'on lui a demandé de faire ne s'est pas produit.
+`failproofai config` couvre l'intégralité de la configuration : il installe le service `failproofaid` (une seule fois en tant que root, via `sudo -n` — jamais de saisie interactive de mot de passe), câble les hooks dans chaque CLI d'agent trouvé, et se connecte au Cloud si une clé est disponible. Sans terminal — en CI, dans un conteneur, ou piloté par un agent — il applique sans demander, et quitte avec le code 1 si une action demandée n'a pas pu être effectuée.
 
-Il ne choisit **aucune** politique. C'est le rôle de la deuxième commande ; sans elle, une machine fraîchement configurée n'applique rien d'autre que le garde-fou toujours actif.
+Il ne choisit **aucune** politique. C'est le rôle de la deuxième commande ; sans elle, une machine fraîchement configurée n'applique rien en dehors du garde-fou toujours actif.
 
-Préférez la variable d'environnement à `--token` : un argument en ligne de commande est lisible via `ps` par tous les utilisateurs de la machine. C'est la seule protection qu'offre la variable — une clé saisie dans une commande quelconque, `export` inclus, atterrit quand même dans l'historique du shell, c'est pourquoi elle est lue avec `read -s` ci-dessus. En CI, définissez-la depuis le coffre de secrets et désactivez la trace shell (`set -x`), sinon la trace l'affiche en clair.
+Préférez la variable d'environnement à `--token` : un argument en ligne de commande est lisible depuis `ps` par tous les utilisateurs de la machine. C'est la seule protection qu'offre la variable — une clé saisie dans n'importe quelle commande, y compris `export`, se retrouve dans l'historique du shell, d'où l'utilisation de `read -s` ci-dessus. En CI, définissez-la depuis le gestionnaire de secrets et désactivez la trace shell (`set -x`), au risque que la trace l'affiche.
 
 <Warning>
-  `--connect <url>` enrôle une machine **déjà configurée**. La commande se termine dès que l'enrôlement réussit — elle n'installe pas le démon et ne connecte aucun hook. Utilisez simplement `failproofai config` (ou `failproofai config --token <key>`) sur une machine qui n'a pas encore été configurée, sinon elle apparaîtra comme connectée tout en ne collectant et n'appliquant rien.
+  `--connect <url>` enrôle une machine **déjà configurée**. La commande se termine dès que l'enrôlement réussit — elle n'installe pas le démon et ne câble aucun hook. Utilisez simplement `failproofai config` (ou `failproofai config --token <key>`) sur une machine qui n'a pas encore été configurée, sinon elle apparaîtra comme connectée sans rien collecter ni appliquer.
 </Warning>
 
 Lancez `failproofai` sans arguments pour ouvrir le tableau de bord des politiques locales.
 
 | Commande | Résultat |
 | --- | --- |
-| `failproofai config` | Configure la machine : agents, démon et Cloud si une clé est présente |
-| `failproofai config --token <key>` | Configure et connecte en une seule passe, sans rien demander. Une clé portant `jev:evaluate` active également [Jev via FailproofAI Cloud](/fr/policies/jev-cloud) en mode shadow, sauf si un fichier `jev.json` existe déjà ou si `--no-transcripts` est fourni |
-| `failproofai config --connect <url>` | Enrôle une machine **déjà** configurée — sans démon ni hooks |
-| `failproofai config --status` | Affiche l'état de connexion, du démon, de la livraison et de la pause |
-| `failproofai policies` | Liste les politiques intégrées, personnalisées, de convention, de pack et gérées par Cloud |
-| `failproofai policies --install` | Connecte les hooks à vos CLI d'agent. N'active aucune politique en soi |
+| `failproofai config` | Configure la machine : agents, démon, et Cloud si une clé est présente |
+| `failproofai config --token <key>` | Configure et connecte en une seule passe, sans rien demander. Une clé portant `jev:evaluate` active également [Jev via FailproofAI Cloud](/fr/reference/jev-cloud) en mode observation, sauf si un fichier `jev.json` existe déjà ou si `--no-transcripts` est fourni |
+| `failproofai config --connect <url>` | Enrôle une machine **déjà** configurée — sans démon, sans hooks |
+| `failproofai config --status` | Affiche l'état de la connexion, du démon, de la livraison et de la pause |
+| `failproofai policies` | Liste les politiques intégrées, personnalisées, conventionnelles, de pack et gérées par le Cloud |
+| `failproofai policies --install` | Câble les hooks dans vos CLIs d'agent. N'active aucune politique en soi |
 | `failproofai policies add <name>` | Active une politique — intégrée, ou `<pack-id>:<name>` depuis un pack installé |
 | `failproofai policies remove <name>` | Désactive une politique, même convention de nommage |
-| `failproofai policies --uninstall` | Désactive les politiques ou supprime les hooks du harnais |
-| `failproofai policies show <owner>/<repo>` | Contenu d'un pack, lu depuis son manifeste, avant de l'installer |
-| `failproofai policies show <owner>/<repo> --releases` | Toutes les versions publiées et celle actuellement installée |
+| `failproofai policies --uninstall` | Désactive des politiques ou supprime les hooks du harnais |
+| `failproofai policies show <owner>/<repo>` | Ce que contient un pack, lu depuis son manifeste, avant de l'adopter |
+| `failproofai policies show <owner>/<repo> --releases` | Toutes les versions publiées, et celle actuellement installée |
 | `failproofai policies add <source>` | Installe un pack de politiques depuis une release GitHub ; sans tag, prend la plus récente et l'épingle |
-| `failproofai publish` | Publie vos propres politiques en tant que pack ; `--init` en écrit un pour démarrer, et `--min-cli-version <version>` définit le CLI le plus ancien pouvant l'installer ([Jev vérifie dans un pack](/fr/policies/publish-a-pack#jev-checks-in-a-pack)) |
+| `failproofai publish` | Publie vos propres politiques sous forme de pack ; `--init` en génère un de départ, et `--min-cli-version <version>` définit la version CLI minimale requise ([Jev vérifie dans un pack](/fr/policies/publish-a-pack#jev-checks-in-a-pack)) |
 | `failproofai policies remove <publisher/name>` | Désinstalle un pack |
-| `failproofai audit` | Analyse l'historique de l'agent local et ouvre la vue d'audit locale |
+| `failproofai audit` | Analyse l'historique local des agents et ouvre la vue d'audit locale |
 | `failproofai audit --schedule [days] --email <address>` | Planifie des analyses locales récurrentes et envoie les résultats par e-mail |
-| `failproofai audit --status` | Affiche l'adresse de rapport, l'intervalle et la prochaine analyse planifiée |
+| `failproofai audit --status` | Affiche l'adresse du rapport, l'intervalle et la prochaine analyse planifiée |
 | `failproofai audit --no-schedule` | Arrête les analyses récurrentes sans supprimer l'historique d'audit |
 | `failproofai harness list` | Liste les chemins de capture supplémentaires |
-| `failproofai jev --url <url> --key-stdin` | Configure Jev en une étape ; le fournisseur est déduit de l'hôte de l'URL |
-| `failproofai jev setup --provider <kind> --key-stdin` | Laisse [Jev](/fr/policies/jev-byok) évaluer les appels d'outil via votre propre endpoint et clé |
-| `failproofai jev setup --provider failproofai` | Laisse Jev évaluer les appels d'outil [via FailproofAI Cloud](/fr/policies/jev-cloud), avec la clé Cloud de cette machine |
-| `failproofai jev setup --mode <m>` | Change le mode de Jev : `enforce`, `shadow` ou `off` (conserve la configuration, cesse d'interroger Jev) |
-| `failproofai jev status` | Affiche la configuration de Jev, ses permissions et les replis récents ; jamais la clé |
-| `failproofai jev test` | Envoie une requête Jev en direct et affiche sa latence et sa version ; quitte avec le code 1 si la réponse est trop lente pour les hooks ou incorrecte |
-| `failproofai jev models` | Liste les identifiants de modèles que `GET <base>/models` indique comme servis par un endpoint |
+| `failproofai jev --url <url> --key-stdin` | Configure Jev en une seule étape ; le fournisseur est déduit du nom d'hôte de l'URL |
+| `failproofai jev setup --provider <kind> --key-stdin` | Permet à [Jev](/fr/reference/jev-providers) d'évaluer les appels d'outils via votre propre point de terminaison et clé |
+| `failproofai jev setup --provider failproofai` | Permet à Jev d'évaluer les appels d'outils [via FailproofAI Cloud](/fr/reference/jev-cloud), avec la clé Cloud de cette machine |
+| `failproofai jev setup --mode <m>` | Change le mode de Jev : `enforce`, `observe` ou `off` (conserve la configuration, cesse d'interroger Jev) |
+| `failproofai jev status` | Affiche la configuration de Jev, ses permissions et les récents replis ; jamais la clé |
+| `failproofai jev test` | Envoie une requête Jev réelle et affiche sa latence et sa version ; quitte avec le code 1 si la réponse est trop lente pour les hooks ou incorrecte |
+| `failproofai jev models` | Liste les identifiants de modèles que `GET <base>/models` indique comme servis par un point de terminaison |
 | `failproofai jev remove` | Désactive Jev ; les hooks exécutent les politiques regex exactement comme avant |
-| `failproofai flush --wait` | Livre le spool d'événements actuel |
-| `failproofai backfill --since 30d` | Relit l'historique précédemment traité |
-| `failproofai config --pause [duration]` | Met en pause une session locale pendant 30 minutes par défaut, jusqu'à 8 heures |
-| `failproofai config --resume` | Reprend une session locale en pause ; ajoutez `--all` pour lever toutes les pauses |
-| `failproofai update` | Finalise les migrations de paquet et met à jour le démon |
-| `failproofai migrate --dry-run` | Prévisualise ou exécute les migrations de layout du répertoire home en attente |
-| `failproofai uninstall` | Supprime les hooks et le démon avant de désinstaller le paquet |
-| `failproofai --version` | Affiche la version du paquet installé |
+| `failproofai flush --wait` | Livre le spool d'événements courant |
+| `failproofai backfill --since 30d` | Relit l'historique précédemment passé |
+| `failproofai config --pause [duration]` | Suspend une session locale pendant 30 minutes par défaut, jusqu'à 8 heures maximum |
+| `failproofai config --resume` | Reprend une session locale suspendue ; ajoutez `--all` pour lever toutes les pauses |
+| `failproofai update` | Effectue les migrations de packages et met à jour le démon |
+| `failproofai migrate --dry-run` | Prévisualise ou exécute les migrations de disposition du répertoire personnel en attente |
+| `failproofai uninstall` | Supprime les hooks et le démon avant de désinstaller le package |
+| `failproofai --version` | Affiche la version du package installé |
 | `failproofai --help` | Affiche les commandes et l'utilisation globale |
 
 ## Options de configuration
 
 | Option | Utilisation |
 | --- | --- |
-| `--token <key>` | Configure et connecte de manière non interactive ; également lu depuis `FAILPROOFAI_CLOUD_TOKEN` |
-| `--url <url>` | Se connecte ailleurs qu'à `app.befailproof.ai` ; également lu depuis `FAILPROOFAI_CLOUD_URL` |
+| `--token <key>` | Configure et connecte de façon non interactive ; lu également depuis `FAILPROOFAI_CLOUD_TOKEN` |
+| `--url <url>` | Se connecte à une URL autre que `app.befailproof.ai` ; lu également depuis `FAILPROOFAI_CLOUD_URL` |
 | `--connect <url>` | Enrôle uniquement, sur une machine déjà configurée. Ignore le démon et tous les hooks |
-| `--machine-id <id>` | Définit l'identifiant machine stable |
-| `--machine-label <name>` | Renomme une machine **déjà connectée**. Seul, il ne déclenche jamais la configuration ; à utiliser après `failproofai config`, pas pendant |
+| `--machine-id <id>` | Définit l'identifiant stable de la machine |
+| `--machine-label <name>` | Renomme une machine **déjà connectée**. Seul, il ne lance jamais la configuration — à utiliser après `failproofai config`, pas pendant |
 | `--no-transcripts` | Envoie les décisions sans le contenu des transcriptions, et n'active pas Cloud Jev, qui enverrait chaque appel d'outil vérifié et l'invite récente |
-| `--disconnect` | Arrête les synchronisations de politiques Cloud et la livraison d'événements. Supprime également la clé Cloud Jev et un fichier `jev.json` qui désigne FailproofAI Cloud ; votre propre configuration Jev reste en place |
+| `--disconnect` | Arrête les pulls de politiques Cloud et la livraison d'événements. Supprime également la clé Cloud Jev et un `jev.json` qui nomme FailproofAI Cloud ; votre propre configuration Jev est conservée |
 | `--status` | Affiche l'état actuel de la machine |
-| `--pause [duration]` | Met en pause la session la plus récente dans le répertoire courant ; accepte des secondes, minutes ou heures, avec 30 minutes par défaut |
-| `--resume` | Termine une pause correspondante avant son expiration |
-| `--session <id>` | Cible une session explicite pour la mise en pause ou la reprise |
-| `--all` | Avec `--resume`, termine toutes les pauses actives |
+| `--pause [duration]` | Suspend la session la plus récente dans le répertoire courant ; accepte des secondes, minutes ou heures, et vaut 30 minutes par défaut |
+| `--resume` | Met fin anticipativement à une pause correspondante |
+| `--session <id>` | Cible une session explicite pour la pause ou la reprise |
+| `--all` | Avec `--resume`, met fin à toutes les pauses actives |
 
-Les pauses locales suspendent les politiques intégrées, personnalisées, de convention et de pack pour une session. Elles expirent toujours et ne désactivent pas les politiques gérées par Cloud. `block-failproofai-commands` — qui est toujours actif et ne peut pas être désactivé ni mis en pause — empêche un agent instrumenté d'utiliser lui-même cette échappatoire.
+Les pauses locales suspendent les politiques intégrées, personnalisées, conventionnelles et de pack pour une session. Elles expirent toujours et ne désactivent pas les politiques gérées par le Cloud. `block-failproofai-commands` — toujours actif et ne pouvant lui-même être désactivé ou suspendu — empêche un agent instrumenté d'utiliser cette échappatoire.
 
-## Options de politique
+## Options de politiques
 
 | Option | Utilisation |
 | --- | --- |
-| `--install`, `-i` | Installe les hooks du harnais. Les noms qui suivent activent ces politiques ; sans nom, aucun changement de politique |
-| `--uninstall`, `-u` | Désactive les politiques ou supprime les hooks |
+| `--install`, `-i` | Installe les hooks du harnais. Les noms qui suivent activent ces politiques ; sans nom, aucune politique n'est modifiée |
+| `--uninstall`, `-u` | Désactive des politiques ou supprime les hooks |
 | `--cli <names...>` | Cible un ou plusieurs harnais pris en charge |
-| `--scope user\|project\|local\|all` | Choisit le périmètre de configuration ; `all` est réservé à la désinstallation |
+| `--scope user\|project\|local\|all` | Choisit le périmètre de configuration ; `all` est destiné à la désinstallation |
 | `--beta` | Inclut les politiques en version bêta |
-| `--custom`, `-c <path>` | Valide et charge un fichier de politique personnalisé ; répétable |
+| `--custom`, `-c <path>` | Valide et charge un fichier de politique personnalisée ; répétable |
 
 ## Options de livraison et de maintenance
 
@@ -116,9 +116,9 @@ Les pauses locales suspendent les politiques intégrées, personnalisées, de co
 | `migrate` | `--dry-run` |
 | `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-`failproofai update` doit être exécuté après `npm install -g failproofai@latest` ; il effectue les migrations de layout du répertoire home, installe le binaire de démon correspondant et redémarre le service. `--no-daemon` n'effectue que la migration du layout.
+`failproofai update` doit être exécuté après `npm install -g failproofai@latest` ; il effectue les migrations de disposition du répertoire personnel, installe le binaire du démon correspondant et redémarre le service. Il migre ensuite chaque profil Hermes utilisant déjà FailproofAI vers le plugin natif lié et affiche une ligne par profil. `--no-daemon` ignore l'étape du démon. `update` se termine avec un code non nul si le démon n'a pas pu être remplacé, si une migration a échoué, ou si un profil Hermes n'a pas pu être migré (par exemple parce que le démon en cours d'exécution ne peut pas servir le plugin natif, auquel cas ses hooks shell sont conservés).
 
-## Chemins de harnais
+## Chemins du harnais
 
 ```text
 failproofai harness list [harness]
@@ -128,9 +128,9 @@ failproofai harness remove-path <harness> <path-or-label>
 
 Les noms de harnais pris en charge sont `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` et `goose`.
 
-Les labels délimitent les identifiants d'agent dérivés lorsque deux racines contiennent des copies du même projet. Les racines qui se chevauchent et les labels dupliqués sont rejetés pour éviter une collecte en double ou une corruption du curseur. La configuration des chemins supplémentaires se recharge sans redémarrage du démon.
+Les labels namespacent les identifiants d'agent dérivés lorsque deux racines contiennent des copies d'un même projet. Les racines qui se chevauchent et les labels dupliqués sont rejetés pour éviter les collectes en double ou la corruption du curseur. La configuration des chemins supplémentaires se recharge sans redémarrer le démon.
 
-Les environnements conteneurisés peuvent remplacer les chemins de capture supplémentaires configurés par fichier avec une variable séparée par des virgules nommée `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, par exemple :
+Les environnements conteneurisés peuvent remplacer les chemins supplémentaires configurés par fichier avec une variable séparée par des virgules nommée `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, par exemple :
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
@@ -138,30 +138,30 @@ export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/opencl
 
 ## Variables d'environnement
 
-Utilisez les fichiers de configuration pour le comportement persistant de la machine. Les variables d'environnement sont particulièrement utiles pour les conteneurs, les tests et les processus uniques.
+Utilisez des fichiers de configuration pour le comportement persistant de la machine. Les variables d'environnement sont particulièrement utiles pour les conteneurs, les tests et les processus uniques.
 
 | Variable | Utilisation |
 | --- | --- |
-| `FAILPROOFAI_CLOUD_TOKEN` | La clé Cloud, à la place de `--token`. Préférez cette méthode : un argument est lisible via `ps` par tous les utilisateurs. Définissez-la avec `read -s` ou depuis un coffre de secrets CI, jamais en tapant la clé dans une commande, qui atterrit de toute façon dans l'historique du shell |
+| `FAILPROOFAI_CLOUD_TOKEN` | La clé Cloud, à la place de `--token`. Préférez cette option : un argument est lisible depuis `ps` par tous les utilisateurs. Définissez-la avec `read -s` ou depuis un gestionnaire de secrets CI, jamais en saisissant la clé dans une commande, qui atterrit dans l'historique du shell dans tous les cas |
 | `FAILPROOFAI_CLOUD_URL` | L'URL Cloud, à la place de `--url`. La même variable que lit le démon |
-| `FAILPROOFAI_HOME` | Déplace l'intégralité du layout `~/.failproofai` |
+| `FAILPROOFAI_HOME` | Délocalise l'intégralité de la disposition `~/.failproofai` |
 | `FAILPROOFAI_LOG_LEVEL` | Définit la verbosité de la journalisation locale |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Écrit les diagnostics de hook dans un fichier sélectionné |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Écrit les diagnostics des hooks dans un fichier choisi |
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactive la télémétrie anonyme pour ce processus |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignore la configuration interactive du premier lancement |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignore la configuration interactive au premier lancement |
 | `FAILPROOFAI_NO_AUTO_AUDIT=1` | Ignore l'audit local post-configuration |
-| `FAILPROOFAI_LLM_BASE_URL` | Remplace l'endpoint compatible OpenAI utilisé par les politiques LLM |
+| `FAILPROOFAI_LLM_BASE_URL` | Remplace le point de terminaison compatible OpenAI utilisé par les politiques LLM |
 | `FAILPROOFAI_LLM_API_KEY` | Fournit la clé API utilisée par les politiques LLM |
 | `FAILPROOFAI_LLM_MODEL` | Sélectionne le modèle utilisé par les politiques LLM |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Limite le temps de chargement des modules de politique personnalisés |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse de télécharger des packs et des binaires de démon ; ce qui est installé continue d'appliquer les politiques |
-| `FAILPROOFAI_PACK_BASE_URL` | Récupère les packs depuis un miroir plutôt que depuis `github.com` |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Limite le temps de chargement des modules de politique personnalisée |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse de télécharger des packs et des binaires de démon ; ce qui est installé continue d'être appliqué |
+| `FAILPROOFAI_PACK_BASE_URL` | Télécharge les packs depuis un miroir plutôt que depuis `github.com` |
 | `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Remplace les chemins de capture supplémentaires configurés pour un harnais |
-| `NO_COLOR` | Désactive la sortie terminal colorée |
+| `NO_COLOR` | Désactive la sortie terminale en couleur |
 
-Les variables home propres à chaque agent, telles que `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` et `OPENCLAW_HOME`, surchargent l'emplacement où Failproof AI découvre les sessions locales pour ce harnais.
+Les variables de répertoire personnel propres aux agents, comme `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` et `OPENCLAW_HOME`, remplacent l'emplacement où Failproof AI découvre les sessions locales pour ce harnais.
 
-## Mettre en pause ou retirer une machine en toute sécurité
+## Suspendre ou supprimer une machine en toute sécurité
 
 ```bash
 failproofai config --pause
@@ -169,9 +169,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-La mise en pause d'une session locale ne désactive pas les politiques gérées par Cloud. Restaurez les déploiements Cloud via le workflow d'application Cloud lorsque le déploiement lui-même est en cause.
+Une pause de session locale ne désactive pas les politiques gérées par le Cloud. Restaurez les déploiements Cloud via le workflow d'application Cloud lorsque le déploiement lui-même pose problème.
 
-Avant de supprimer le paquet npm, supprimez les hooks installés et le démon :
+Avant de supprimer le package npm, supprimez les hooks installés et le démon :
 
 ```bash
 failproofai uninstall --dry-run
@@ -179,8 +179,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-Exécutez `failproofai <command> --help` pour des détails spécifiques à la version.
+Exécutez `failproofai <command> --help` pour obtenir des détails spécifiques à la version.
 
 <Warning>
-  Exécutez `failproofai uninstall` avant `npm rm -g failproofai` ; npm ne supprime pas les hooks d'agent installés ni le service de démon.
+  Exécutez `failproofai uninstall` avant `npm rm -g failproofai` ; npm ne supprime pas les hooks d'agent installés ni le service démon.
 </Warning>

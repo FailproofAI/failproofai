@@ -1,0 +1,275 @@
+---
+title: "Jevプロバイダーと独自キーのセットアップ"
+description: "独自キーを使用したJevポリシーレビューのプロバイダーエンドポイント、モデルID、設定、および障害時の動作。"
+icon: "key-round"
+---
+
+これは、独自キーを使用した[Jevポリシー](/ja/policies/jev)のプロバイダーおよび設定リファレンスです。正規表現ポリシーは文字列を照合しますが、あなたが意図した `rm -rf build/` と、プランに紛れ込んだ `rm -rf ~` を区別できません。そのため、ある場所では過剰にブロックし、別の場所では不十分になります。TypeSafeの分類器である**Jev**は、呼び出しをあなたが実際に要求した内容と照らし合わせて読み取り、1回の高速リクエストで一連のyes/noの質問に答えます。
+
+独自のJevエンドポイントとキーが設定されていると、Failproof AIは各ツール呼び出しについて正規表現ポリシーと**並行して**Jevに問い合わせます。正規表現の代わりではありません：
+
+- **ハード**ポリシーのdenyは最終的なものです。Jevはそれをクリアできません。ポリシーは明示的にreviewableとしてマークされ、対象となるJevチェックが指定されていない限り、すべてハードです。つまり、何も記述していないカスタム・パック・Cloudポリシーはハードであり、常時オンの自己保護ガードは常にハードです。
+- **reviewable**ポリシーのdenyはクリアされる可能性がありますが、Jevがそのポリシーの対象となる懸念事項について正確に問い合わせられ、「問題なし」または「ユーザーがこれを要求した」と回答した場合に限ります。ユーザーが呼び出しを要求していないにもかかわらず懸念事項が実在すると判明したチェックは、そのチェック自体の評価が警告にとどまる場合でも、denyを維持します。ツール呼び出しの前では、警告はエージェントを止めないからです。また、denyできるチェック（シークレット漏洩、認証情報の持ち出し、破壊的な削除など）が1つでも該当する場合、その呼び出しに対してはいかなるクリアも行われません。
+- ブロックは、その呼び出しがあなたが与えたタスクのステップであり、それ以上及ばない場合に、**警告**に変わることがあります：Jevは独自のdenyを警告に緩和し、その警告（呼び出しの実際の問題点を示す）がポリシーのブロックを置き換えます。
+- Jevは正規表現が記述していない危害に対して、独自に警告またはdenyを発行することもできます。
+- Jevが回答できない場合（タイムアウト、レート制限、サーバーエラー、クレジット不足、予期しないモデルバージョン）、その呼び出しはJevなしの場合とまったく同じ正規表現結果を受け取ります。
+- Jevは、呼び出し全体を読み取り、正確な懸念事項について問い合わせられた場合を除いて、ポリシー単独よりも呼び出しを許容的にすることは決してありません。それ未満の場合（全体を送信できないほど大きな呼び出し、インジェクションの疑い）は、クリアを撤回し、すべてのdenyを維持します。
+
+<Note>
+Jevの設定がない場合は何も変わりません：フックは常にそうであったように、正規表現ポリシーをそのまま実行します。設定がオプトインのすべてです。
+</Note>
+
+<Tip>
+FailproofAI Cloudをご利用ですか？独自のキーは不要です：`jev:evaluate` を持つキーで接続されたマシンは、組織のプランでJevを使用できます。[FailproofAI CloudによるJev](/ja/reference/jev-cloud)をご覧ください。
+</Tip>
+
+## 開始する前に
+
+**failproofai 1.0.8-beta.0以降**をインストールし、エージェントが実行されているマシンの[サポートされているハーネス](/ja/reference/harnesses)にフックをアタッチします。新しいマシンの場合は[クイックスタート](/ja/start/quickstart)に従い、Cloudを使用しない場合は[ローカルエンフォースメントの設定](/ja/start/setup#enforce-locally)に従ってください。インストールされているCLIを `failproofai --version` で確認します。
+
+以下のプロバイダーからAPIキーを取得するか、互換性のあるエンドポイントとそのキーを用意してください。JevはPreToolUseまたはPermissionRequestゲートで名前付きツール呼び出しをレビューします。独自の評価を発行できますが、既存のポリシーdenyをクリアするには、[reviewable](/ja/policies/authority)とマークされたポリシーがインストールされている必要があります。ハードポリシーのdenyは最終的なままです。
+
+## プロバイダーを選択する
+
+Jevには5つのルートからアクセスできます。そのうちの1つのキーをご用意ください。
+
+| プロバイダー | `--provider` | エンドポイント | デフォルトモデル | 備考 |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | 厳密なバージョン固定。 |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | リクエストはゼロデータ保持エンドポイントにのみルーティングされ、他のプロバイダーへのフォールバックはありません。`typesafe/jev-1.13-20260917` のような日付付きバージョンを報告します。 |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Jevをエイリアスのみで識別するため、応答したバージョンは未検証として記録されます。 |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | `--account-id` が必要です。測定では1キーあたり1秒あたり約6回の呼び出しでHTTP 429が発生しました。 |
+| 独自エンドポイント | `custom` | `<base-url>/systemone` | `jev-1.13.0` | TypeSafeのリクエストボディを受け入れ、どのモデルが応答したかを報告するエンドポイント。`https` のみ；平文の `http://localhost` はobserveモードでのみ受け入れられます。 |
+
+<Warning>
+Vercel独自のbring-your-own-key機能では、失敗したリクエストはVercelの認証情報でサイレントに再試行されます。すべての呼び出しを自分のTypeSafeアカウントのみに課金・記録する必要がある場合は、TypeSafeを直接使用してください。
+</Warning>
+
+## セットアップ
+
+コマンド1つで、エンドポイントとキーを設定できます。既存のポリシーが呼び出しを決定しながらJevの評価を検査できるよう、`observe` モードで開始します：
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+```
+
+### URLがプロバイダーを決定する
+
+プロバイダーを明示的に指定する必要はありません：URLの**ホスト**がどのプロバイダーであるかを示します。
+
+| URLホスト | プロバイダー | 追加で必要なもの |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| その他のホスト | `custom` | — 指定したURLがベースURLになります |
+
+これから3つのことが導かれます：
+
+- **プロバイダー独自のAPIのURLはオーバーライドを書き込みません。** `--url https://api.typesafe.ai/v1` は `--provider typesafe` とまったく同じ設定を生成します。既知のプロバイダーで異なるパスまたはホストを指定すると、`--base-url` が保存するようにベースURLとして保存されます。
+- **`--provider` は推論を上書きします**。これにより、独自のホストからプロバイダーのAPIを話すプロキシにアクセスできます：`--url https://jev-proxy.internal/v1 --provider typesafe`。
+- **ホストと矛盾する `--provider` は拒否されます**。推測されません。`--provider openrouter --url https://api.typesafe.ai/v1` は何も書き込まず、理由を説明します：2つの指定がキーの送信先について一致していないからです。同じペアは `jev setup --base-url` およびダッシュボードのJev設定からも拒否されます。（`--provider custom` は矛盾ではありません — 「このURLをそのままとして扱う」という意味です — ただし、Cloudflareのホストは例外で、アカウントごとのエンドポイントにはcustomルートでアクセスできません。）
+
+`--url` は設定ファイルの `baseUrl` とまったく同じ方法で検証され、同じ言葉で拒否されます：`https`、またはobserveモードでのみ平文の `http://localhost`。
+
+### キー
+
+`--key-stdin` でパイプするか、ターミナルでコマンドを実行してマスクされたプロンプトにキーを貼り付けます。どちらの方法でも、キーは直接設定ファイルに書き込まれ、表示されることはありません。
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --mode observe --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode observe \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --mode observe --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --mode observe --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup` は同じフラグを受け取り、すべての長い形式です：URLよりもプロバイダーを名前で指定したい場合は `setup --provider <kind>` を使用します。
+
+### `--token` とそのコスト
+
+`--token <token>` はキーをコマンドラインに置きます。これはマシンを設定する最も速い方法ですが、設定ファイル以外にキーが残る唯一の方法でもあります：
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+コマンドライン引数はその後シェルの履歴ファイルに残り、コマンドの実行中はプロセスリストに表示されます — あなたとして実行されているすべてのプロセスが `/proc` から読み取れます。`setup` は `--token` が使用されるたびにこれを通知します。共有マシン、録画セッション、または履歴ファイルが同期される場所では `--key-stdin` を推奨します；この方法で渡したキーは、重要であれば必ずローテーションしてください。
+</Warning>
+
+`--token`、`--key-stdin`、`--key-from-env` は互いに排他的です：1つだけ指定してください。
+
+次に、キー、エンドポイント、どのJevが応答したかを確認するために、小さなライブリクエストを送信します：
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+`jev test` は、タイムアウト後に回答が届いた場合（すべてのフックが `timeout` として正規表現にフォールバックする）、またはチェック質問に誤って回答した場合、タイトルにその旨を表示して終了コード1で終了します。
+
+フックはすべてのツール呼び出しで設定を読み取るため、次の呼び出しから適用されます。デーモンの有無にかかわらず、再起動は不要です。
+
+## 動作を確認する
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` は、プロバイダー、エンドポイント、モデル、モード、設定ファイルとそのパーミッション、およびキーは決して表示しません。その下に最近のアクティビティの概要が表示されます：Jevが評価した呼び出し数、正規表現にフォールバックした頻度とその理由、レイテンシ、およびクリアしたreviewableポリシー。
+
+## 実際の呼び出しを検証する
+
+フックが設定されたエージェントで新しいセッションを開始します。`README.md` に対してファイル読み取りツールを使用してタイトルを報告するよう依頼します。セッションにそのツール呼び出しが含まれていることを確認してから、`failproofai jev status` を再度実行します：最近の評価済み呼び出し数が増加しているはずです。[ローカルダッシュボード](/ja/reference/local-dashboard#review-policy-activity)の**ポリシー → アクティビティ**を開いて、呼び出しのJev評価とモードを検査します。observeモードでは、ポリシーの結果が引き続き呼び出しを決定します。クリアが表示されるのは、reviewableポリシーが一致し、Jevがすべての指定されたチェックをクリアした場合のみです。通常の読み取りにはクリアすべきポリシーがない場合もあります。
+
+## Observeモード
+
+`enforce` がデフォルトです。Jevに判断を変えさせずに監視するには、`observe` に切り替えます：Jevは引き続き問い合わせられ、評価が記録されますが、実際に適用されるのは正規表現の結果です。
+
+```bash
+failproofai jev setup --mode observe
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off` は設定（エンドポイントとキー）を保持し、Jevへの問い合わせを停止します：フックは設定なしの場合とまったく同じように正規表現ポリシーを実行し、`failproofai jev status` は「off (switched off)」と表示します。`--mode observe` または `--mode enforce` で元に戻せます。
+
+同じプロバイダーで `setup` を再実行すると保存済みキーが維持されるため、モードの切り替えはフラグ1つで済みます。プロバイダーを切り替えると最初からやり直しになり、そのプロバイダーのキーが必要になります。リクエストを別のホストに移動する `--base-url` も同様です：保存されたキーは、提供されたホストまたはプロバイダー独自のAPIにのみ送信されます。
+
+## 設定ファイル
+
+すべては `~/.failproofai/jev.json` という1つのファイルに保存され、`setup` によって書き込まれます：
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| フィールド | 意味 |
+| --- | --- |
+| `provider` | `typesafe`、`openrouter`、`vercel`、`cloudflare`、`custom`、または `failproofai`（このファイルではなくFailproofAI Cloud接続からキーを取得します。[FailproofAI CloudによるJev](/ja/reference/jev-cloud)を参照）。 |
+| `apiKey` | `Authorization: Bearer <key>` として送信されます。 |
+| `baseUrl` | `custom` の場合は必須；それ以外の場合はプロバイダーのAPIベースを置き換えます。`https` である必要があります。`localhost` への平文の `http` は `mode: observe` でのみ受け入れられます：ローカルポートは認証されないため、プロキシがダウンしている間、エージェント自身を含むマシン上の任意のプロセスが代わりに応答できてしまいます。 |
+| `accountId` | Cloudflareのみ：32文字の小文字16進数。 |
+| `model` | プロバイダーのデフォルトモデルIDを置き換えます。バージョン付きIDはJev 1.13を指定する必要があります。APIキーのような形をした値は拒否されます（返却もされません）。つまり、`--model` に貼り付けたキーはモデルとして保存・送信されることはありません。 |
+| `timeoutMs` | ツール呼び出しが正規表現結果を使用する前にJevを待つ時間。100〜10000、デフォルト3000。 |
+| `mode` | `enforce`（デフォルト）、`observe`、または `off`（設定を保持し、Jevを実行しない）。 |
+
+3つのルールがファイルを保護します：
+
+- **オーナーのみ。** パーミッション `0600` で書き込まれます。他のユーザーまたはグループが読み取りまたは書き込みできるコピーは**拒否**され、`chmod 600 ~/.failproofai/jev.json` または `setup` を再実行するまで、フックは正規表現にフォールバックします。ディレクトリも確認されます：`~/.failproofai` は他の誰にも**書き込み可能**であってはなりません。ファイル自体のパーミッションに関わらず、ディレクトリに書き込める人はファイルを置き換えられるからです。`setup` は書き込みビットが設定されていれば削除します。`failproofai jev status` は設定が拒否された場合にその旨を表示し、ファイルが示すエンドポイントも表示します：他の誰かが変更した可能性があるため、`chmod` を実行する前にそれが自分のファイルであることを確認してください。そのようなファイルで `setup` を再実行すると、保存されたキーはプロバイダー独自のAPIにのみ送信されます；ファイルが示す他のエンドポイントには再度キーが必要です（`--key-stdin`）、または `--base-url default` でリクエストをプロバイダーに戻します。
+- **グローバルのみ。** リポジトリはJevをオンにしたり、別のエンドポイントに向けたり、モデルを選択したりできません：プロジェクト内の `.failproofai/jev.json` は無視され、プロバイダー、URL、モデル、アカウントIDはそのファイルからのみ読み取られます — リポジトリのエージェント設定が設定できる環境変数からは読み取られません。（`FAILPROOFAI_HOME` はこれを回避する方法ではありません：Jevのみをリダイレクトするのではなく、ポリシーを含むfailproofaiディレクトリ全体を移動します。）
+- **キーのみ環境変数から取得できます。** ファイルに `apiKey` がない場合、`FAILPROOFAI_JEV_API_KEY` がそのセッションで供給します（`setup --key-from-env` はそのようなファイルを書き込みます）。ファイルが保持するキーを置き換えることはなく、ファイルなしでJevをオンにすることもできません。変数が設定されていない場合、そのシェルではJevは単純にオフになります：`failproofai jev status` はその旨を表示し、終了コード0で終了し、設定には手を触れません（`status --json` は `"reason": "no-env-key"` と共に `"status": "key-missing"` を報告します）。`failproofaid` デーモンはシェルの環境を参照しないため、`failproofai config` でセットアップされたマシンでは、キーをファイルに保存してください。
+
+## どのJevが応答するか
+
+Failproof AIの判定しきい値はJev 1.13でキャリブレーションされているため、回答はそのファミリーから来た場合にのみ使用されます：`jev-1.13.x`、またはOpenRouterの `typesafe/jev-1.13-<date>`。プロバイダーがJevをエイリアスのみで識別し、バージョンを報告しない場合（VercelおよびCloudflareが報告しない場合）、回答は使用され、未検証として記録されます。`custom` エンドポイントは応答したモデルを報告する必要があります；唯一の例外は、設定したバージョンなしの `--model` 名で、エコーバックされた場合は同様に未検証として記録されます。他のバージョンを報告する回答、またはどのバージョンも報告しない `custom` の回答は使用されません：その呼び出しは `model-mismatch` という理由で正規表現にフォールバックします。
+
+## Jevが回答できない場合
+
+以下のそれぞれは、その呼び出しに対して正規表現結果にフォールバックし、理由とともに記録されます。`failproofai jev status` で合計を確認できます：
+
+| 理由 | 原因 |
+| --- | --- |
+| `timeout` | `timeoutMs` 以内に回答なし。 |
+| `http-429` | プロバイダーがキーをレート制限した。 |
+| `rate-limited` | Failproof AI独自のリミッターが送信前に呼び出しを保留した：1秒あたり5リクエスト、最大5のバースト、プロバイダーが `429` を返した後しばらく停止。プロバイダー側ではない。 |
+| `http-500`、`http-502`、`http-503`、… | プロバイダーでのサーバーエラー。正確なステータスが記録される。 |
+| `out-of-credits` | HTTP 402：プロバイダーアカウントのクレジットが残っていない。 |
+| `provider-refused` | Cloudflareからの「Model execution failed (Payment error)」というHTTP 402：プロバイダーがこのリクエストでモデルの実行を拒否した。通常は課金の問題ではないため、チャージアップしても解決しない。 |
+| `http-401`、`http-403` | キーが拒否された。 |
+| `http-404` | `<base>/systemone` に何も提供されていないため、ベースURLが間違っています — `/systemone` はベースURLに追加され、すべてのプロバイダーはバージョンルートで提供します。`failproofai jev models` でエンドポイントが提供しているものを確認できます。 |
+| `network` | エンドポイントに到達できなかった。 |
+| `http-301`、`http-302`、`http-307`、`http-308` | エンドポイントがリダイレクトで応答した。リダイレクトは決して追跡されないため、回答は常に設定のURLからのみ来ます；最終的なURLを `--base-url` に設定してください。 |
+| `malformed` | エンドポイントは応答したが、Jevの回答ではなかった — JSONでないボディ、または回答が含まれていないボディ。 |
+| `cloudflare-error`、`cloudflare-incomplete` | Cloudflareのエンベロープが失敗または未完了のジョブを報告した。 |
+| `model-mismatch` | 1.13以外のJevバージョンが応答したか、`custom` エンドポイントがどのモデルが応答したかを報告しなかった。 |
+| `request-cut` | **障害ではありません。** Jevは応答しましたが、呼び出しの一部のみを見たため、回答はクリアされませんでした。[Jevが応答したが呼び出し全体ではなかった場合](#when-jev-answered-but-not-on-the-whole-call)を参照してください。 |
+
+`failproofai jev status` は、`upstream-error`（回答にプロバイダー独自のエラーが含まれていた）や `config` などのより稀な理由も表示でき、名前を付けられない理由はすべて `other` として合計します。
+
+`request-cut` はこのテーブルにあるのは、`failproofai jev status` が他と合わせて集計するためと、それもすべてのdenyを維持するためです。ここで唯一、プロバイダーについては何も示さない理由です：リクエストは届き、Jevは応答しました。上のすべての行と異なり、その回答はまだカウントされます — Jevのdenyまたはwarningはregex結果に加えて適用され、廃棄されません。したがって、それが続く場合は、評価者に呼び出しが大きすぎて全体を送信できないほど届いていることを意味し、エンドポイントに問題があるわけではありません。クレジットを補充したりURLを変更しても数は変わりません。
+
+## Jevが応答したが呼び出し全体ではなかった場合
+
+さらに2つのことが起こる可能性がありますが、どちらもJevが回答に失敗したわけではありません。どちらも、呼び出しのどれだけが、または会話のどれだけが1つのリクエストに収まったかについてです。
+
+**呼び出し自体の一部が収まりきれなかった。** ツール呼び出しは固定のバジェット内で送信されますが、特大のもの — 非常に大きな `Write`、巨大なMCPボディ、上限まで埋め尽くされたコマンド — は収まった部分で送信されます。Jevは引き続き応答し、その回答はカウントされます：独自のdenyまたはwarningは通常通り適用されます。ただし、呼び出しの一部に対して下された評価は呼び出し全体に対する評価ではないため、**クリア**はできません。したがって、すべてのポリシーdenyが維持され、呼び出しは `request-cut` という理由でフォールバックとして記録されます。これにより次のルールが生まれます：呼び出しを大きくするとクリアを失う可能性があり、クリアを獲得することは決してできません。
+
+**メッセージが収まりきれなかった。** 貼り付けた長いプロンプト、エージェントの最後のメッセージ、またはこの評価器のストアが既にキャップしていたプロンプト。**何も変わりません**：呼び出しは他のものと同様に判断・クリア・記録され、フォールバックとしてはカウントされません。入力した内容の長さが評価を決めることはなく、カットが同意を生み出すことはできません：プロンプトが既にキャップされて届いた場合、「あなたはこれを要求しなかった」は引き出せる結論ではなくなります。
+
+2つの違いはテキストを誰が書いたかです。呼び出しはエージェントのものであり、その長さが重大性を減少させるルールはエージェントが利用できるルールになります；あなたのプロンプトはあなたのものであり、その長さをシグナルとして扱うことは、仕様やスタックトレースを貼り付けることへのペナルティにしかなりません。
+
+## マシンから送信されるもの
+
+Jevが評価する各ツール呼び出しについて、プロバイダーに1つのリクエストが送信され、以下が含まれます：
+
+- ツール呼び出し自体（APIキー、ベアラートークン、`KEY=` 代入などのシークレットは編集済み）；
+- あなたが入力した最近のプロンプト（エージェントのハーネスが追加したテキストは削除済み）；
+- 最新プロンプトの前のエージェントの最後のメッセージ（エージェント記述としてラベル付き）；
+- パスがプロジェクト内にあるかどうかなど、ローカルで計算されたファクト — 最初にレビューされた呼び出しでセッションが存在したプロジェクト（[セッションに固定](/ja/reference/jev-intent#the-project-root)）— および現在のgitブランチ。
+
+これはすべて、設定内のエンドポイントにのみ、あなたのキーの下で送信されます。
+
+## オフにする
+
+```bash
+failproofai jev remove
+```
+
+これにより `~/.failproofai/jev.json` が削除されます。次のツール呼び出しから、フックは以前と同様に正規表現ポリシーを実行します。`~/.failproofai/state/semantic/` 下のセッションごとのストア（`sessions/` の記録済みプロンプト、`roots/` のプロジェクトルート）はそのまま残り、自然に期限切れになります。Jevへの問い合わせを停止しつつ設定を保持するには、代わりに `failproofai jev setup --mode off` を使用してください。
+
+## コマンドリファレンス
+
+| コマンド | 結果 |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | 1つのコマンドで設定；プロバイダーはURLのホストから決定される |
+| `failproofai jev --url <url> --token <token>` | 同上、キーをコマンドラインに指定 — 履歴とプロセスリストから見える |
+| `failproofai jev setup --provider <kind> --key-stdin` | stdinにパイプされたキーから設定を書き込む |
+| `failproofai jev setup --provider <kind>` | 同上、マスクされたプロンプトでキーを要求 |
+| `failproofai jev setup --key-from-env` | キーを保存しない；セッションごとに `FAILPROOFAI_JEV_API_KEY` を読み取る |
+| `failproofai jev setup --mode observe` | モードを切り替える（`enforce`、`observe`、または `off`）、保存済みキーを保持 |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | モデルまたはAPIベースを上書き；`default` で上書きをクリア |
+| `failproofai jev setup --timeout-ms <n>` | 呼び出しごとのバジェットを変更 |
+| `failproofai jev status [--json]` | 設定、パーミッション、最近のアクティビティ；キーは表示しない |
+| `failproofai jev test [--json]` | 1回のライブリクエスト：レイテンシと応答したバージョン |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | エンドポイントの `/models` が報告するモデルID（設定済みのものをマーク） |
+| `failproofai jev remove` | 設定を削除；Jevはオフになる |

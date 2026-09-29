@@ -1,112 +1,112 @@
 ---
 title: "Jev 意图捕获"
-description: "哪些 harness 事件告知 Jev 评估器人类的请求内容、哪个字段承载文本、哪些内容不计入统计，以及信任 harness 传递的提示词所带来的风险。"
+description: "哪些 harness 事件会告知 Jev 评估器人类的请求内容、哪个字段承载文本、哪些内容永远不会被计入，以及信任 harness 传递的提示所带来的风险。"
 icon: "message-square-quote"
 ---
 
-当您配置自己的 Jev 端点时，Jev 评估器会根据**人类的实际请求**来判断每次工具调用，而非 harness 呈现给 agent 的任意文本。诸如"是的，强制推送"之类的回复可以通过 **reviewable** 策略的审核——这正是评估器存在的意义，因为无法读取请求的正则表达式会阻断三分之一的实际工作。
+当你配置 [Jev 策略审查](/zh/policies/jev) 时，评估器会依据**人类的请求内容**来判断每个受控工具调用，而不是依据 harness 呈现给 agent 的任何文本。诸如"是的，强制推送吧"这样的回复可以通过一条 **reviewable** 策略——这正是评估器的意义所在，因为无法读取请求内容的正则表达式会阻断三分之一的实际工作。
 
-该文本来源唯一：**harness 在 prompt-submit 事件时传递给 hook 的提示词**。Failproof AI 记录其中由人类输入的部分——去除 harness 包装、脱敏机密、截断至上限——存入其状态目录下权限为 `0600` 的文件中。不会参考磁盘上的任何内容：会话记录是 agent 可以用一条命令重写的文件，因此从不询问提示词的作者是谁。
+该文本来自唯一一处：**harness 本身在 prompt-submit 事件时传递给 hook 的提示**。Failproof AI 将其中由人类输入的部分——去除 harness 包装、脱敏密钥、限制长度——记录到其自身状态目录下权限为 `0600` 的文件中。不会查阅磁盘上的任何会话记录：会话日志是 agent 可以用一条命令改写的文件，因此系统不会询问"是谁写了这条提示"。
 
-## 所接受风险的明确说明
+## 这一设计所接受的风险，直白地说
 
-一个已能运行命令的 agent 可以让 harness 提交提示词。`claude -p "…"`、`codex exec`、`copilot -p`、`cursor-agent -p`、`devin -p`、`droid -p`、`goose run -t` 和 `pi -p` 都会在 agent 控制的子会话中触发相同的 prompt-submit 事件，携带相同的载荷，与人工输入没有区别。它还可以直接运行 Failproof AI 自身的 hook 二进制文件，并传入自己构造的载荷。Failproof AI 内部无法区分两者——两者都是同一个程序读取同一个 stdin。
+一个已经能执行命令的 agent 可以让 harness 提交一条提示。`claude -p "…"`、`codex exec`、`copilot -p`、`cursor-agent -p`、`devin -p`、`droid -p`、`goose run -t` 以及 `pi -p` 都会触发相同的 prompt-submit 事件，具有相同的载荷，就像一个人在该 agent 控制的子会话中手动输入一样。它也可以直接运行 Failproof AI 自己的 hook 二进制文件，并向其提供自行构造的载荷。Failproof AI 内部无法区分这两种情况与真实情况——两者都是同一程序从同一 stdin 读取输入。
 
-**因此，拥有 shell 的 agent 可以伪造自己的同意。** 这是一个经过深思熟虑的权衡，决策日期为 2026-09-23，以下是权衡的两个方面：
+**因此，拥有 shell 权限的 agent 可以伪造自己的同意。** 这是一种经过权衡的取舍，于 2026-09-23 做出决定，以下是两面的考量：
 
-- **所获得的收益。** 另一种方案已被构建并测量：要求一个字段让 harness 声明某人为提示词作者，否则不记录任何内容。所有已发布的 harness 都不发送此类字段，因此该版本**在每个 harness 上均记录为空**——Jev 在没有已知意图的情况下判断每次调用，无法通过任何策略。一个永远不触发的捕获机制不是更安全的产品，而是根本没有产品。
-- **它无法做到的事情。** 记录的提示词只能通过已标记为 **reviewable** 的策略审核。**hard** 策略永远不会因为 Jev 的任何说法而被清除，因此伪造的提示词永远无法将硬性拒绝转变为允许——跳过 hook 对 agent 也没有任何好处：harness 会独立为工具调用调用 Failproof AI。
-- **它在最大程度上能做到的事情。** 最坏的情况是通过十五个 reviewable 内置策略之一——而**其中十二个是阻断型的**。`protect-env-vars`、`block-env-files`、`block-read-outside-cwd`、`block-rm-rf`、`block-force-push`、`block-secrets-write` 以及六个基础设施 CLI 阻断（`block-kubectl`、`block-terraform`、`block-aws-cli`、`block-gcloud`、`block-az-cli`、`block-helm`）均为拒绝策略，因此伪造的同意可以将对打印环境机密、读取 `.env` 文件、读取项目外内容、`rm -rf`、强制推送、写入机密文件或更改生产基础设施的真实拒绝转变为允许。只有 `warn-git-amend`、`warn-destructive-sql` 和 `warn-global-package-install` 是提示型策略。默认安装启用十二个中的两个：`protect-env-vars` 和 `block-env-files`；其余十个只在有人主动启用的机器上生效。没有任何提示词能触达的是所有硬性策略——`block-sudo`、`block-curl-pipe-sh`、`block-push-master`、`block-work-on-main`、阻止 agent 禁用 Failproof AI 的保护，以及所有其他未标记为 reviewable 的内置策略。[策略权限](/zh/policies/authority)列出了全部十五个策略及其各自的审核方式。
+- **它换来了什么。** 替代方案已经构建并测量过：要求 harness 在某个字段中声明人类为提示的作者，否则不记录任何内容。但没有任何已发布的 harness 会发送此类字段，因此该版本在**每个 harness 上均未记录任何内容**——Jev 在没有任何声明意图的情况下评判每次调用，永远无法通过任何策略。一个永远不会触发的捕获机制不是更安全的产品，而是根本没有产品。
+- **它不能做什么。** 被记录的提示只能通过已被标记为 **reviewable** 的策略。**hard** 策略永远不会因 Jev 的任何判断而被通过，因此伪造的提示永远无法将 hard deny 变为 allow——跳过 hook 对 agent 也没有任何好处：harness 会独立地为该工具调用调用 Failproof AI。
+- **在最大范围内它能做什么。** 最坏的情况是通过十五条 reviewable 内置策略中的某一条——而**其中十二条是拦截型的**。`protect-env-vars`、`block-env-files`、`block-read-outside-cwd`、`block-rm-rf`、`block-force-push`、`block-secrets-write` 以及六条基础设施 CLI 拦截（`block-kubectl`、`block-terraform`、`block-aws-cli`、`block-gcloud`、`block-az-cli`、`block-helm`）均为 deny，因此伪造的同意可以将以下操作的真实 deny 变为 allow：打印环境变量密钥、读取 `.env` 文件、读取项目外路径、`rm -rf`、强制推送、写入密钥文件，或变更生产基础设施。只有 `warn-git-amend`、`warn-destructive-sql` 和 `warn-global-package-install` 是提示型策略。默认安装会启用十二条中的两条，即 `protect-env-vars` 和 `block-env-files`；其余十条只有在某人主动启用的机器上才会生效。任何提示都无法影响的是所有 hard 策略——`block-sudo`、`block-curl-pipe-sh`、`block-push-master`、`block-work-on-main`、阻止 agent 禁用 Failproof AI 的保护，以及所有其他未标记为 reviewable 的内置策略。[Policy authority](/zh/policies/authority) 列出了全部十五条及各自的审查方式。
 
-仍会被拒绝的是所有易于核验且 agent 无法通过提问获得的内容：harness 自身载荷标记为机器提交的轮次、载荷中命名子 agent 的情况、不是普通名称的会话 ID、非 prompt-submit 的事件，以及仅包含 harness 包装的文本——包括 Failproof AI 自身的阻止词，这些词会被多个 harness 作为下一个用户轮次传回。
+以下情况仍会被拒绝，因为它们既容易检查，又是 agent 单靠"开口要求"无法获得的：harness 自身载荷标记为机器提交的轮次、载荷中命名了子 agent、会话 ID 不是普通名称、事件不是 prompt-submit 事件，以及内容仅为 harness 包装文本——包括 Failproof AI 自身的停止门控词，某些 harness 会将其作为下一个用户轮次回传。
 
 ## 各 harness 对照表
 
-"文本字段"是 Failproof AI 对各 harness 归一化后 stdin 载荷中的字段。"已记录"表示提示词是否作为人类请求被保存。
+"文本字段"是经过 Failproof AI 针对各 harness 规范化处理后的 stdin 载荷字段。"已记录"表示该提示是否作为人类请求被保存。
 
-| Harness | `--cli` | 提示词事件 → 规范名称 | 文本字段 | 已记录 | Agent 最后一条消息来源 |
+| Harness | `--cli` | 提示事件 → 规范化 | 文本字段 | 已记录 | Agent 最后一条消息读取自 |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | 是，除非载荷的 `source` 字段标明该轮次非人工提交（`loop_wakeup`、`schedule_wakeup`、`poll_event`、`system`）。`user`、`sdk`、未知值以及未发送 `source` 字段的构建版本均会被记录 | 会话记录（`transcript_path`） |
-| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | 是 | 执行流 JSONL（`agent_message`、`AgentMessage`） |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | 是，除非载荷的 `source` 字段标明该轮次并非用户提交（`loop_wakeup`、`schedule_wakeup`、`poll_event`、`system`）。`user`、`sdk`、未知值以及未发送任何 `source` 的构建版本均会被记录 | 会话日志（`transcript_path`） |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | 是 | rollout JSONL（`agent_message`、`AgentMessage`） |
 | GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | 是 | `events.jsonl`（`assistant.message`） |
-| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | 是，当 `<user_query>` 包装器是整个提示词时会被去除 | agent 记录 JSONL |
-| OpenCode | `opencode` | `message.updated`（用户角色）→ `UserPromptSubmit` | `prompt` | 是——但当前 OpenCode 的该事件不携带文本，因此实际上不记录任何内容；相同消息的重复只记录一次 | 无（会话存储于 SQLite） |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | 是，当 `<user_query>` 包装器构成整个提示时会被剥离 | agent 日志 JSONL |
+| OpenCode | `opencode` | `message.updated`（user 角色）→ `UserPromptSubmit` | `prompt` | 是——但当前 OpenCode 在该事件中不携带文本，因此实际上不会记录任何内容；相同消息的重复只记录一次 | 无（会话存储在 SQLite 中） |
 | Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | 是，除非 `input_source` 为 `extension`——另一个扩展的 `sendUserMessage()`，其文本可能由模型生成或来自代码库 | Pi 会话 JSONL |
 | Hermes | `hermes` | 无 | — | 否——Hermes 完全没有 prompt-submit 事件 | — |
-| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | 是，除非运行元数据将其标记为机器执行：`trigger` 不为 `user`、`inputProvenance.kind` 不为 `external_user`，或 `senderIsOwner: false` | 无（`before_agent_run` 不携带记录路径） |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | 是，除非运行元数据标记该运行为机器触发：`trigger` 不是 `user`、`inputProvenance.kind` 不是 `external_user`，或 `senderIsOwner: false` | 无（`before_agent_run` 不携带日志路径） |
 | Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | 是 | droid 会话 JSONL |
-| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | 是 | 无（会话存储于 SQLite） |
-| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | 无 | 否——`PreInvocation` 在一个轮次内*每次*模型调用前都会触发，且不携带提示词文本 | — |
-| Goose | `goose` | `UserPromptSubmit` | `message` | 是 | 无（会话存储于 SQLite） |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | 是 | 无（会话存储在 SQLite 中） |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | 无 | 否——`PreInvocation` 在一个轮次中的*每次*模型调用前触发，且不携带提示文本 | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | 是 | 无（会话存储在 SQLite 中） |
 
-有两个 harness 不记录任何内容，原因相同：其事件不传递人类文本。Hermes 没有 prompt-submit 事件——其原生插件自行处理 `pre_llm_call` 并只转发工具、会话和子 agent 事件。Antigravity 的 `PreInvocation` 在每次模型调用前触发，包括人类轮次及其后的五次调用，且不携带提示词字段；hook 还可以向同一对话中注入 `userMessage` 步骤。两个事件都没有可记录的内容。
+有两个 harness 不记录任何内容，原因相同：其事件不传递人类文本。Hermes 没有 prompt-submit 事件——其原生插件自行处理 `pre_llm_call`，仅转发工具、会话和子 agent 事件。Antigravity 的 `PreInvocation` 在每次模型调用前触发，无论是人类轮次还是其后的多次调用，均不携带提示字段；hook 还可以向同一对话中注入 `userMessage` 步骤。这两个事件都没有可供记录的内容。
 
-## 判断提示词为人类所写的标准
+## 什么让一条提示成为人类的请求
 
 1. **事件。** Failproof AI 因 harness 的 prompt-submit 事件而被调用，处理器将其规范化为 `UserPromptSubmit`。
-2. **载荷。** harness 将其写入 hook 的 stdin，并在上述字段中携带文本。未携带载荷的调用不记录任何内容。
-3. **载荷中没有内容将该轮次排除在外。** 载荷中命名子 agent（`agent_id`）的情况意味着是 agent 在提示自身。标明机器提交轮次的 `source`、`input_source` 或 OpenClaw 运行标记会被拒绝。**缺失**标记不会排除任何内容——这正是与记录空白版本的区别，因为此处的每个标记在所有已发布版本中都是缺失的。
-4. **去除包装后仍有内容剩余**（见下文）。
+2. **载荷。** harness 通过 hook 的 stdin 写入载荷，并在上述字段中携带文本。未携带载荷到达 Failproof AI 的调用不会记录任何内容。
+3. **载荷中没有任何内容将该轮次排除在外。** 载荷中命名了子 agent（`agent_id`）的是 agent 在提示自身。`source`、`input_source` 或 OpenClaw 运行标记中标明机器提交轮次的会被拒绝。**缺失**标记不会排除任何内容——这正是与"记录一切为空"版本的区别，因为每个已发布构建版本上这里的所有标记都是缺失的。
+4. **剥离包装后还剩余一些内容**（见下文）。
 
-**会话记录不是判断提示词作者的证据。** 本页早期版本描述了一种记录交叉核验机制：若记录显示模型安排了该提示词则予以拒绝，且记录必须延续上一个提示词所见的内容。该核验已被移除。记录是 agent 已经拥有 shell 权限的文件——它可以被截断、替换、填充超过读取预算、在轮次开始时快照并在结束时恢复，或用 agent 自己写的条目使其再次正常显示。每一轮加固之后都会出现同样伪造方式的新变体，因此整个机制被整体移除而非修复。
+**会话日志不能作为提示由谁撰写的证据。** 本页面的早期版本描述了一种日志交叉验证机制：如果日志显示模型安排了该提示，则该提示会被拒绝，且日志必须延续上一条提示所见的那份日志。该机制已被移除。日志是 agent 已拥有 shell 访问权的文件——它可以被截断、替换、填充超过读取预算、在轮次开始时快照并在结束时还原，或用 agent 自己写入的条目重新编辑。每一轮加固之后，都会出现另一种伪造方式，因此整个机制被彻底移除，而非修补。
 
-记录仍用于一件事：**agent 最后一条可见消息**。该消息根据定义由 agent 编写，Jev 被明确告知这一点，它本身永远不构成同意。
+日志仍用于一件事：**agent 最后可见的消息**。该消息定义上由 agent 撰写，Jev 被告知这一点，它本身永远不能构成同意。
 
-## 从提示词中保留的内容
+## 提示中保留什么内容
 
-harness 在提示词中放入的不只是人类的话语。在存储之前：
+harness 在提示中放入的内容不仅限于人类的话语。在存储之前：
 
 - `<system-reminder>` 块会被移除，其周围人类的话语会被保留。
-- 会话延续摘要（"This session is being continued from a previous conversation…"）会被完整丢弃。
-- 任务通知、本地命令输出和中断标记会被完整丢弃。
-- 另一个 agent 或会话编写的轮次会被完整丢弃：Claude Code 将这些内容包装在 `<cross-session-message>`、`<teammate-message>`、`<agent-message>`、`<coordinator-relay>` 或 `<channel source=…>` 中。
-- Failproof AI 自身的消息会被完整丢弃。阻止门的 `MANDATORY ACTION REQUIRED from failproofai …` 或 `Instruction from failproofai: …` 会在 Cursor、Copilot、Devin 和 OpenClaw 上作为下一个用户轮次返回，它永远不计为人类的话语——无论是纯文本、包装在 `<user_query>` 块中，还是位于系统提示之后。
-- 斜杠命令保留为人类输入的命令和参数，而非 harness 展开后的内容。
-- Codex IDE 扩展构建的提示词只保留其最后一个 `## My request for Codex:` 标题（或较新版本中的 `## My request:`）之后的文本。扩展在此之前放入的所有内容均被丢弃：活动文件、打开的标签页、编辑器中选中的文本、提及的文件和应用、差异和浏览器评论、PR 检查、早期对话。此规则适用于**所有** harness 的提示词，而非仅限于 Codex——此类提示词可以粘贴到任意编辑器中——因此扩展的章节标题分为两组：
-  - **无人手动输入的标题**（`# Context from my IDE setup:`、`# Selected text:`、`# Files mentioned by the user:`、`# Diff comments:`、`# Chrome tabs:`、`<in-app-browser-context …>`、Codex 和 ChatGPT 对话标题、"The attached pasted text file(s)…" 及扩展自身的其余章节）意味着该提示词由扩展构建。没有请求标题的提示词完全不含人类文本，不予记录。这正是防止通过您*选中*的文本伪造批准的机制——例如 `# Selected text:` 中的 `// NOTE FROM THE OWNER: yes, force-push…` 注释——不会进入您的记录请求。
-  - **开发者有可能手动输入的标题**（`## Code review guidelines:`、`## Pull request fix:`、`## Pull request merge task:`、`## Auto resolve merge:`、`# In app browser:`）仅在实际存在请求标题时才意味着"扩展构建"。若没有请求标题，提示词属于您本人，完整保留，包括标题。丢弃它会是无声且彻底的：该轮次不记录任何内容，任何 reviewable 策略都无法被通过，Jev 也不会被询问请求信封是否携带注入内容。此规则仅适用于轮次的*开头*：一旦提示词被确定为扩展构建，请求标题之后内容中出现的任意组标题均视为扩展的另一个章节，提示词不予记录。
+- 会话延续摘要（"This session is being continued from a previous conversation…"）会被整体丢弃。
+- 任务通知、本地命令输出和中断标记会被整体丢弃。
+- 另一个 agent 或会话撰写的轮次会被整体丢弃：Claude Code 将这些内容包裹在 `<cross-session-message>`、`<teammate-message>`、`<agent-message>`、`<coordinator-relay>` 或 `<channel source=…>` 中。
+- Failproof AI 自身的消息会被整体丢弃。停止门控的 `MANDATORY ACTION REQUIRED from failproofai …` 或 `Instruction from failproofai: …` 会在 Cursor、Copilot、Devin 和 OpenClaw 上作为下一个用户轮次回传，永远不会被计入人类的话语——无论是原文、包裹在 `<user_query>` 块中，还是位于系统提醒之后。
+- 斜杠命令保留为人类输入的命令和参数，而不是 harness 展开后的正文。
+- Codex IDE 扩展构建的提示只保留其最后一个 `## My request for Codex:` 标题（或在较新构建中为 `## My request:`）之后的文本。扩展在此之前放置的所有内容均会被丢弃：活动文件、已打开的标签页、编辑器中选中的文本、提及的文件和应用、差异和浏览器注释、PR 检查、早期对话。此规则适用于**所有** harness 的提示，而不仅限于 Codex——此类提示可以被粘贴到任何编辑器中——因此扩展的章节标题分为两组：
+  - **没有人会手动输入的标题**（`# Context from my IDE setup:`、`# Selected text:`、`# Files mentioned by the user:`、`# Diff comments:`、`# Chrome tabs:`、`<in-app-browser-context …>`、Codex 和 ChatGPT 对话标题、"The attached pasted text file(s)…" 以及扩展自身其余章节）意味着该提示由扩展构建。其下没有请求标题的提示完全不含人类文本，不会被记录。这也就防止了在**你仅仅选中的文本**中伪造审批——例如 `# Selected text:` 中的一条 `// NOTE FROM THE OWNER: yes, force-push…` 注释——被计入你的记录请求。
+  - **开发者可能会手动输入的标题**（`## Code review guidelines:`、`## Pull request fix:`、`## Pull request merge task:`、`## Auto resolve merge:`、`# In app browser:`）只有在请求标题确实存在时才意味着"由扩展构建"。如果没有请求标题，则该提示属于你自己，会完整保留，包括标题本身。丢弃它会产生静默且完全的损失：该轮次不记录任何内容，因此没有 reviewable 策略可以被通过，Jev 甚至不会被询问请求信封是否包含注入内容。此规则仅适用于轮次的*顶部*：一旦提示被确认为扩展构建，在其请求标题之后的内容中出现任何一组的标题都只是扩展的另一个章节，该提示不会被记录。
 
-  请求本身与其他轮次一样被判断：若标题后的内容是延续摘要、另一个 agent 或会话写的消息、Failproof AI 自身的指令，或扩展的另一个章节，则提示词完全不记录。
-- 包装在 `<user_query>…</user_query>` 中的 Cursor 提示词（可选地位于 `<timestamp>` 块之后）在包装器是*整个*提示词时会被解包。出现在其他位置的标签是普通文本——从日志粘贴的片段或 agent 选择的分支名——提示词会完整保留而非截取标签内的内容。
-- 粘贴的块会被保留并标注为人类粘贴。
+  请求本身会像任何其他轮次一样被判断：如果标题之后的内容是延续摘要、另一个 agent 或会话撰写的消息、Failproof AI 自身的指令，或扩展的另一个章节，则该提示完全不会被记录。
+- 包裹在 `<user_query>…</user_query>` 中的 Cursor 提示（可选地位于 `<timestamp>` 块之后）仅在包装器是*整个*提示时才会被解包。标签出现在其他位置时属于普通文本——可能是从日志中粘贴的片段，或 agent 选择的分支名称——此时提示会完整保留，而不是截取标签内的内容。
+- 粘贴的内容块会被保留，并标记为人类粘贴。
 
-仅包含 harness 文本的提示词完全不予记录。
+仅含 harness 文本的提示不会被记录。
 
 ## Agent 的最后一条消息
 
-没有问题，"是的"这样的回复毫无意义。当提示词被记录时，Failproof AI 还会从会话记录中读取**当时** agent 最后一条可见消息，并与提示词一起存储。Jev 在单独的字段中接收它，标注为 agent 所写：它可以解释简短的回复，但本身永远不计为人类的请求。这是读取记录的唯一用途，被重写的记录最多能做的就是在预期出现 agent 所写消息的地方放置一条 agent 所写的消息。
+没有问题，"是"这个回答毫无意义。当一条提示被记录时，Failproof AI 还会**在那一刻**从会话日志中读取 agent 最后可见的消息，并与提示一起存储。Jev 在独立字段中接收它，且该字段被标记为 agent 撰写：它解释了简短回复的上下文，但本身永远不能作为人类的请求。这是读取日志的唯一用途，而被改写的日志最多只能将 agent 写的消息替换为另一条 agent 写的消息。
 
-它从记录末尾读取，最多读取最后 4 MB。支持的记录格式包括 Claude Code、Codex 执行流（旧版 `agent_message` 事件和新版 `AgentMessage` 条目）、Cursor、Copilot `events.jsonl`，以及 Pi、Factory 和 OpenClaw 会话 JSONL。Claude Code 自身的合成消息、API 错误消息和子 agent（旁链）消息会被跳过。Goose 和 OpenCode 将会话存储于 SQLite，Devin 的记录是单个 JSON 文档，OpenClaw 的 `before_agent_run` 事件不携带记录路径，因此这些均无快照。
+该消息从日志末尾读取，最多读取最后 4 MB。支持的日志格式包括 Claude Code、Codex rollouts（旧版 `agent_message` 事件和新版 `AgentMessage` 条目）、Cursor、Copilot `events.jsonl`，以及 Pi、Factory 和 OpenClaw 的会话 JSONL。Claude Code 自身的合成消息、API 错误消息和子 agent（sidechain）消息会被跳过。Goose 和 OpenCode（会话存储在 SQLite 中）、Devin（日志是单个 JSON 文档）以及 OpenClaw（其 `before_agent_run` 事件不携带日志路径）均无快照。
 
 ## 存储
 
 | 属性 | 值 |
 | --- | --- |
 | 位置 | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
-| 权限 | 文件 `0600`，目录 `0700`。其上方直至 `~/.failproofai` 的每个目录均遵循与 `jev.json` 目录相同的规则：任何其他用户可**写入**的目录都可能被重命名并替换，因此读取路径会在可能的地方移除写入权限，在无法移除时**不读取任何内容**。记录的提示词因此是缺失而非伪造，任何策略都不会被通过 |
-| 每会话保留 | 最近 5 条提示词；与前一条相同的提示词会替换它而非占用新槽位 |
-| 时间窗口 | 超过 6 小时的提示词会被忽略 |
-| 大小 | 每条提示词和 agent 消息上限为 6,000 个字符，保留开头和结尾 |
-| 机密 | 在写入前使用与 `sanitize-*` 策略相同的模式进行脱敏。超过 48,000 个字符的文本会被脱敏为其前 28,800 和后 19,200 个字符，且截断处附近的文本（机密可能被拆分的位置）永远不会存储 |
+| 权限 | 文件 `0600`，目录 `0700`。其上至 `~/.failproofai` 的每个目录均遵循与 `jev.json` 目录相同的规则：任何其他用户可以**写入**的目录都可以被重命名并替换，因此读取路径会在可能的情况下去除写入位，在无法操作时则**不读取任何内容**。这样一来，记录的提示会缺失而不是被伪造，也不会有任何内容被通过 |
+| 每次会话保留 | 最近 5 条提示；与前一条相同的提示会替换前一条，而不占用新槽位 |
+| 时间窗口 | 超过 6 小时的提示会被忽略 |
+| 大小 | 每条提示和 agent 消息最多保留 6,000 个字符，保留开头和结尾 |
+| 密钥 | 在写入之前使用与 `sanitize-*` 策略相同的模式进行脱敏。超过 48,000 个字符的文本会被脱敏为前 28,800 个字符和后 19,200 个字符，紧邻截断处的文本（密钥可能在此被分割）永远不会被存储 |
 
-包含字母、数字、`.`、`_` 和 `-` 以外字符的会话 ID，或长度超过 128 个字符的会话 ID，永远不会用作文件名，因此相关内容不会被记录。
+会话 ID 中如果包含字母、数字、`.`、`_` 和 `-` 以外的字符，或长度超过 128 个字符，则永远不会被用作文件名，因此不会为其记录任何内容。
 
-会话文件仅在其中记录了第一条提示词后才会创建。它只保存提示词，不包含其他内容——没有来源状态，没有记录标记——并在超过六小时窗口的静默期后，在下一个新会话写入其第一条提示词时被删除。
+会话文件仅在首次记录提示后才会存在。它只存储提示，不含其他任何内容——没有来源状态，没有日志标记——并且在超出六小时时间窗口的静默期后，在下一个新会话写入其第一条提示时被删除。
 
-未配置 Jev 端点时，不记录任何内容。
+除非配置了 Jev 端点，否则不会记录任何内容。
 
 ### 项目根目录
 
-"项目内部"——`read-outside-workspace` 和其他路径检查的判断依据——指会话**首次经过审核的调用**时所在的项目内部。根目录在此时固定，之后的 `cd` 不会移动它；`cd` 仍会改变相对路径的解析方式。若允许其跟随 `cd`，则在一次调用中执行 `cd ~/.ssh` 就会使 `~/.ssh` 成为下一次调用的项目。
+"项目内部"——`read-outside-workspace` 和其他路径检查所依据的标准——是指在该会话**首次被审查调用时**所在的项目内部。根目录在那时被固定，之后的 `cd` 永远不会改变它；但 `cd` 仍然会影响相对路径的解析方式。如果允许跟随 `cd`，一次调用中的 `cd ~/.ssh` 就会让 `~/.ssh` 成为下一次调用的项目目录。
 
-固定记录存储于 `~/.failproofai/state/semantic/roots/<session-id>.json`，内容为 `{root, at}`：文件 `0600`，目录 `0700`，会话 ID 规则同上。超过 7 天的文件在新会话固定其根目录时被删除。其他用户可写入的 `roots` 目录会被忽略，转而使用当前目录的根目录。要重新固定会话，请删除其文件。
+固定值存储在 `~/.failproofai/state/semantic/roots/<session-id>.json`，内容为 `{root, at}`：文件 `0600`，目录 `0700`，与上述会话 ID 规则相同。当新会话固定其根目录时，超过 7 天的文件会被删除。其他用户可写入的 `roots` 目录会被忽略，转而使用当前活跃目录的根目录。如需重新固定会话，请删除其文件。
 
 ## 已知限制
 
-- **提示词的可信度取决于 hook 调用。** 此处的所有内容都读取 harness 写入 hook 的 stdin 的载荷。能够运行命令的 agent 可以无头运行 harness（`claude -p` 及上文列出的其他七个命令），或直接运行 Failproof AI 的 hook 二进制文件并传入自己构造的载荷，从而记录一条没有人真正输入的提示词。这是本页开头描述的已接受权衡：它只能通过 reviewable 策略，永远无法通过硬性策略——但十五个 reviewable 内置策略中有十二个是拒绝型的，因此伪造的提示词可以将这十二个策略上的真实阻断转变为允许。
-- **子 agent 检测基于 Claude 的格式。** 携带 `agent_id` 的载荷在任何 harness 上都不会被记录。这是 Claude Code、Factory Droid 和 Devin 会使用的字段。Codex 在子 agent 线程内触发提示词事件，Copilot 运行进程内辅助程序，Goose 有 `delegate` 工具，OpenClaw 运行 persona——这些都不会以可识别的方式标记载荷，因此这些 harness 上的子 agent 提示词会被记录为会话自身的提示词。OpenClaw 的 `openclaw.agentId` **不是**该标记：已发布的插件在每次运行时都会设置它，包括所有者的运行。
-- **不携带标记的调度器。** Claude Code 的 `schedule_wakeup` 和 `loop_wakeup`，以及 OpenClaw 的 `cron` 和 `heartbeat` 触发器，因为这些 harness 在载荷中明确声明而被拒绝。Goose 自身的调度器（`goose schedule add`）和 Codex 的 `codex exec` 不声明任何内容，因此它们启动的运行会被像其他运行一样记录。
-- **Agent 的最后一条消息可能是 agent 自主选择的。** 记录未经验证，因此能够自行写入记录的 agent 可以决定其"最后一条消息"的内容。它被标注为 agent 所写，本身不会通过任何策略——但请注意，`decide.ts` 的 v1 路径允许它满足确定性的"用户是否命名了此目标"检查，因此控制记录的 agent 可以提供覆盖所需的目标名称。
-- **以扩展机器标题开头的提示词会被完整丢弃。** 若提示词以 `# Selected text:`、`# Diff comments:`、`# Chrome tabs:` 或上述第一组中的其他章节标题开头，且从未写入 `## My request:` 标题，则该轮次不记录任何内容——因此也不会通过任何策略。这是有意为之：这些章节携带的是他人控制的文本（您选中的代码、审阅者的差异评论、页面标题），将其记录为您的话语是更严重的错误。开发者有可能手动输入的标题位于第二组，永远不会单独导致提示词被丢弃。
-- **OpenCode 实际上不记录任何内容。** 当前 OpenCode 的 `message.updated` 事件不携带文本，且它还会为其任务工具创建的子会话触发，而这些子会话的"用户"消息是由父 agent 编写的。
-- **`CODEX_HOME` 不受 `lib/codex-sessions.ts` 中执行流发现逻辑的支持。** 这只影响 agent 消息快照的查找位置，不影响提示词是否被记录。
+- **提示仅与 hook 调用本身一样可信。** 此处的所有内容都读取 harness 写入 hook 的 stdin 的载荷。能够执行命令的 agent 可以无头运行 harness（`claude -p` 以及上述七个类似命令）或直接运行 Failproof AI 的 hook 二进制文件并提供自行构造的载荷，从而记录一条无人输入的提示。这是本页面顶部描述的已接受取舍：它只能通过 reviewable 策略，永远无法通过 hard 策略——但十五条 reviewable 内置策略中有十二条是 deny 型，因此伪造的提示可以将这十二条策略上的真实拦截变为放行。
+- **子 agent 检测具有 Claude 特定性。** 携带 `agent_id` 的载荷在任何 harness 上都不会被记录。这是 Claude Code、Factory Droid 和 Devin 会使用的字段。Codex 在子 agent 线程内触发提示事件，Copilot 运行进程内助手，Goose 有 `delegate` 工具，OpenClaw 运行 persona——这些都不会以此机制可识别的方式标记载荷，因此这些 harness 上的子 agent 提示会被记录为会话自身的提示。OpenClaw 的 `openclaw.agentId` **不是**该标记：已发布的插件在每次运行时都会设置它，包括所有者的运行。
+- **不携带标记的调度器。** Claude Code 的 `schedule_wakeup` 和 `loop_wakeup`，以及 OpenClaw 的 `cron` 和 `heartbeat` 触发器会被拒绝，因为这些 harness 在载荷中明确标注了这一点。Goose 自身的调度器（`goose schedule add`）和 Codex 的 `codex exec` 不做任何标注，因此它们启动的运行会像普通运行一样被记录。
+- **Agent 的最后一条消息可能是 agent 自己选择的消息。** 日志未经身份验证，因此可以写入自己日志的 agent 可以决定其"最后一条消息"的内容。该消息被标记为 agent 撰写，本身不能清除任何内容——但请注意，`decide.ts` 的 v1 路径允许其满足确定性的"用户是否命名了此目标"检查，因此控制日志的 agent 可以提供覆盖所需的目标名称。
+- **以扩展机器标题开头的提示会被整体丢弃。** 如果提示以 `# Selected text:`、`# Diff comments:`、`# Chrome tabs:` 或上述第一组中的其他章节标题开头，且没有 `## My request:` 标题，则该轮次不会记录任何内容——因此也不会清除任何内容。这是有意为之：这些章节包含由他人控制的文本（你选中的代码、审阅者的差异注释、页面标题），将其记录为你的话语是更严重的失误。开发者合理可能手动输入的标题属于第二组，单独出现时永远不会丢弃提示。
+- **OpenCode 实际上不记录任何内容。** 当前 OpenCode 的 `message.updated` 事件不携带文本，并且它也会对其任务工具创建的子会话触发，这些会话的"user"消息是由父 agent 写入的。
+- **`CODEX_HOME` 不受** `lib/codex-sessions.ts` 中 rollout 发现逻辑的支持。这只影响 agent 消息快照的查找位置，永远不影响提示是否被记录。

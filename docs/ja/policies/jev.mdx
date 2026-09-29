@@ -1,0 +1,45 @@
+---
+title: "Jev policies"
+description: "Jev のライブレビューをゲート付きツール呼び出しに追加し、判断を適用する前に内容を確認する。"
+icon: "shield-check"
+---
+
+Jev は、エージェントに対して人が依頼した内容に照らしてツール呼び出しを評価します。文字列マッチングポリシーが正当な作業をブロックしたり、コンテキストが必要なリスクのあるアクションを見逃したりする場合に活用してください。`PreToolUse` または `PermissionRequest` ゲートにおいて、既存のポリシーと並行して回答します。セッション終了**後**のスコアリングには [Jev evaluations](/ja/evaluations/jev) を使用してください。
+
+## オブザーブモードで開始する
+
+Failproof AI をインストールし、[対応ハーネス](/ja/reference/harnesses)にフックをアタッチします。failproofai 1.0.8-beta.0 以降を使用してください。
+
+Failproof AI には Jev チェックは同梱されていません。パックとしてインストールしてください。インストールしない場合、Jev は何も問い合わせず、呼び出されません。
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+次に、リクエストが Jev に到達するルートを選択します。
+
+| ルート | 最初のステップ |
+| --- | --- |
+| FailproofAI Cloud | `jev:evaluate` 権限を持つ **machine** キーで接続します。Jev 設定のないマシンでは、`failproofai config` を実行すると Jev がオブザーブモードで有効になります。 |
+| 独自プロバイダー | ローカルダッシュボードで **Settings → Jev** を開き、プロバイダーを選択してトークンを貼り付け、**observe** を選択します。または `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` を実行します。 |
+
+![ローカルダッシュボードの Jev 設定：プロバイダー、エンドポイント、トークン、Jev を有効にする前のオブザーブモード。](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`test` はエンドポイントを確認します。フックパスを確認するには、フック済みエージェントに `README.md` のファイル読み取りツールを使用するよう指示します。そのツール呼び出しがセッションに表示されていることを確認し、[ローカルダッシュボード](/ja/reference/local-dashboard#review-policy-activity)の **Policies → Activity** で内容を確認してください。`status` の Jev カウントが増加しているはずです。オブザーブモードでは、既存のポリシー結果が引き続き適用される一方で、Jev が下したであろう判断が記録されます。
+
+## 適用タイミングを決定する
+
+**ハード**ポリシーは常に最終決定権を持ちます。Jev が deny をクリアできるのは、明示的に **reviewable** とマークされたポリシーから発生した deny のみであり、かつそのポリシーの対象となる懸念事項を確認した場合に限られます。クリアランスに依存する前に [policy authority](/ja/policies/authority) を参照してください。Jev は独自に警告または deny を行うこともできます。回答できない場合は、ポリシー結果がその呼び出しの判断を決定します。
+
+オブザーブ結果が適切であることを確認したら、**Settings → Jev** でエンフォースモードに切り替えるか、次を実行します。
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+プロバイダー URL、Cloud キー、設定、フォールバック、各リクエストとともに送信されるデータについては、[Jev integration reference](/ja/reference/jev) を参照してください。

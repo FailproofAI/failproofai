@@ -1,50 +1,43 @@
 ---
-title: "Sentimento"
-description: "Veja como as pessoas que usam seus agentes se sentem, e se seus agentes estão acertando, mensagem por mensagem."
+title: "Análise de sentimento"
+description: "Encontre mensagens frustradas, confusas e corretivas com as pontuações de sentimento do Jev."
 icon: "smile"
 ---
 
-O Sentimento pontua cada mensagem enviada por uma pessoa aos seus agentes, de 0 a 100%, em quatro emoções — **raiva**, **frustração**, **felicidade** e **confusão** — e três sinais sobre o desempenho do agente:
+O Jev atribui a cada mensagem enviada por uma pessoa aos seus agentes uma pontuação de 0 a 100 para quatro emoções — **raiva**, **frustração**, **felicidade** e **confusão** — e três sinais sobre o desempenho do agente:
 
 - **Corrigindo**: a pessoa diz que o agente errou algo.
-- **Resolvido**: a pessoa confirma que o agente resolveu o problema dela.
-- **Duvidoso**: a pessoa questiona se a resposta do agente é verdadeira, ou se ele realmente fez o trabalho.
+- **Resolvido**: a pessoa confirma que o agente solucionou o problema.
+- **Duvidoso**: a pessoa questiona se a resposta do agente é verdadeira ou se ele realmente executou a tarefa.
 
-Use isso para encontrar as conversas em que as pessoas estão perdendo a paciência, os agentes que precisam ser corrigidos com frequência e as respostas que funcionam bem.
+Use a análise de sentimento para encontrar conversas em que as pessoas estão perdendo a paciência, agentes que continuam sendo corrigidos e respostas que funcionam bem. Isso é uma pontuação Jev integrada; você não precisa criar uma avaliação. Para sua própria pergunta de resposta fixa, [crie uma avaliação Jev](/pt-br/evaluations/jev).
 
 <Note>
-  O Sentimento fica desativado até que um administrador o ative para a organização. A pontuação usa o orçamento de LLM da sua organização — uma requisição de pontuação por mensagem — e envia cada mensagem, junto com a resposta do agente anterior a ela, para o modelo de pontuação.
+  O sentimento fica desativado até que um administrador o ative para a organização. O Jev faz uma solicitação de pontuação por mensagem e recebe essa mensagem junto com a resposta do agente anterior a ela. A pontuação utiliza o orçamento de modelo da sua organização.
 </Note>
 
-## Como ativar
+## Ativar o recurso
 
 1. Acesse **Administração → Configurações**.
 2. Em **Sentimento de entrada humana**, ative a opção e salve.
 
-As mensagens do último dia são pontuadas primeiro. Depois disso, as novas mensagens são pontuadas em um ou dois minutos após chegarem.
+As mensagens do último dia são pontuadas primeiro. Após isso, as novas mensagens são pontuadas em um ou dois minutos após chegarem.
+
+## Encontrar uma conversa para revisar
+
+Abra **Observar → Sentimento**. Filtre por período, ambiente, agente ou ID de sessão. O cabeçalho exibe a contagem de mensagens e sessões, mostra quantas mensagens estão **sinalizadas** e indica o principal sinal. Uma mensagem é sinalizada quando uma pontuação de raiva, frustração, correção, confusão ou dúvida atinge 35 de 100.
+
+![O painel de Sentimento exibindo contagens de mensagens e sessões, mensagens sinalizadas e pontuações Jev ao longo do tempo.](/images/dashboard/sentiment-overview.png)
+
+Use **Pontuação ao longo do tempo** para comparar sinais. Escolha as pontuações a exibir e selecione um ponto para ver as mensagens daquele intervalo de tempo. A tabela **Por agente** mostra onde um sinal está concentrado. Em **Mensagens**, ordene pela pontuação negativa mais forte ou selecione uma única pontuação. Abra uma mensagem em sua sessão para ler a conversa ao redor antes de decidir o que falhou.
+
+![A lista de mensagens de Sentimento ordenada pela pontuação negativa mais forte, com um link para cada sessão de origem.](/images/dashboard/sentiment-messages.png)
 
 ## Quais mensagens são pontuadas
 
-Apenas mensagens escritas por uma pessoa:
+Somente mensagens escritas por uma pessoa:
 
 - Mensagens que seus agentes personalizados registram como entrada humana com o SDK.
-- Prompts digitados no Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando transcrições de sessão são enviadas (o padrão). Jobs agendados, instruções injetadas, transferências entre sub-agentes e outros textos escritos pelo próprio runtime do agente não são pontuados. Também não são pontuadas execuções não interativas como `claude -p`, `codex exec` e `hermes -z`: esses prompts foram escritos por um script, não por uma pessoa.
+- Prompts digitados no Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando transcrições de sessão são enviadas (o padrão). Tarefas agendadas, instruções injetadas, transferências entre sub-agentes e outros textos escritos pelo próprio runtime do agente não são pontuados. Tampouco são pontuadas execuções não interativas como `claude -p`, `codex exec` e `hermes -z`: esses prompts foram escritos por um script, não por uma pessoa.
 
-A pontuação avalia as próprias palavras da pessoa. Uma instrução curta e direta como "conserte isso" não é contada como raiva, e fazer uma pergunta não é contado como confusão. Um novo pedido não é uma correção, e agradecimentos sozinhos não contam como resolvido.
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Acesse **Observe → Sentimento**.
-    2. Filtre por ambiente, agente ou ID de sessão.
-    3. O cabeçalho conta as mensagens **sinalizadas** — qualquer pontuação negativa (raiva, frustração, corrigindo, confusão ou duvidoso) de 35 ou mais de 100 — e exibe o principal sinal.
-    4. **Pontuação ao longo do tempo** exibe um gráfico com a média de cada pontuação. Escolha quais pontuações exibir e clique em um ponto para ler as mensagens por trás dele.
-    5. **Por agente** compara os agentes lado a lado.
-    6. **Mensagens** lista as mensagens sinalizadas, começando pelas mais intensas. Alterne para todas as mensagens, ou ordene pelas mais recentes ou por qualquer pontuação individual, e abra a sessão de uma mensagem para ler a conversa ao redor dela.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --event-type human_input --since 24h
-    fp --json events --full --session-id <session-id> --all
-    ```
-  </Tab>
-</Tabs>
+A pontuação avalia as próprias palavras da pessoa. Uma instrução curta e direta como "corrija isso" não é contabilizada como raiva, e fazer uma pergunta não é contabilizada como confusão. Um novo pedido não é uma correção, e agradecimentos isolados não contam como resolvido.

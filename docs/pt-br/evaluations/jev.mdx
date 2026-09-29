@@ -1,88 +1,28 @@
 ---
-title: "Avaliações com classificador"
-description: "Pontue sessões com base em respostas que você pode definir antecipadamente — isso é verdadeiro ou em que grau — usando um pequeno classificador calibrado em vez de um modelo de uso geral."
+title: "Avaliações Jev"
+description: "Use Jev para pontuar uma sessão finalizada em relação a uma pergunta com respostas conhecidas."
 icon: "list-checks"
 ---
 
-Algumas perguntas exigem que um modelo *leia* a conversa, mas não *escreva* sobre ela. "O cliente demonstrou urgência?" tem duas respostas. "Quão frustrado ele estava?" tem algumas, em ordem. Você conhece todas as respostas antes mesmo de perguntar.
+Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use quando a resposta é conhecida de antemão, como "O cliente expressou urgência?" ou "Quão frustrado estava o cliente?". Ela ajuda a identificar padrões entre execuções; não interrompe uma chamada de ferramenta. Para decisões tomadas **antes** de uma ferramenta ser executada, use [políticas Jev](/pt-br/policies/jev).
 
-Uma **avaliação com classificador** é exatamente para isso. Você escreve a pergunta e as possíveis respostas, e um modelo pequeno criado para classificação retorna um número calibrado — nunca texto livre.
+## Crie uma no dashboard
 
-<Note>
-Assim como um juiz, uma avaliação com classificador consome uma chamada de modelo por sessão. Diferente de um juiz, porém, é um modelo pequeno e de propósito único, não geral — portanto é mais rápido e barato — mas nunca irá se explicar. Se você precisar do raciocínio, use um [juiz](/pt-br/evaluations/judge).
-</Note>
+1. Abra **Analyze → eval authoring** e selecione **new eval**.
+2. Descreva uma pergunta e suas possíveis respostas. Por exemplo: "O agente prometeu reembolso antes de verificar a política de reembolso? Responda sim ou não." Selecione **draft** e verifique se o resultado é uma pontuação de classificador.
+3. [Teste-a](/pt-br/evaluations/test) em sessões recentes, depois [implante-a](/pt-br/evaluations/deploy). Novas sessões concluídas são pontuadas; use o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) se também precisar do histórico.
 
-## Qual devo usar?
+![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta de resposta fixa, revisa o rascunho e implanta após os testes. O exemplo mostrado é uma avaliação de código; uma pergunta Jev usa o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
 
-| Pergunta | Use |
-| --- | --- |
-| Quantas chamadas de ferramenta houve? | código |
-| A sessão durou menos de 30 segundos? | código |
-| O cliente demonstrou urgência? | **classificador** |
-| Qual equipe deve lidar com isso: cobrança, técnica ou vendas? | **classificador** |
-| Quão frustrado estava o cliente? | **classificador** |
-| A resposta estava realmente correta? | **juiz** |
-| Ela seguiu nossa política de escalonamento e por quê você acha isso? | **juiz** |
+O assistente pode escolher entre código, classificação Jev e um [juiz](/pt-br/evaluations/judge). Verifique a escolha dele antes de implantar. Jev fornece uma pontuação sem raciocínio em prosa; escolha um juiz quando precisar de uma explicação. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para tipos de perguntas e limites de pontuação.
 
-A regra geral: **contável → código, respostas que você pode listar → classificador, precisa de explicação → juiz.**
+## Leia as pontuações
 
-Você não precisa decidir antecipadamente. Descreva o que quer medir e o assistente escolhe, informa qual foi escolhido e por quê, e você pode alternar.
+Abra **Observe → Evaluations** para visualizar o resultado por agente e período. Em um terminal, a CLI Cloud pode ler os mesmos resultados:
 
-## Os dois tipos de pergunta
-
-### `noul` — isso é verdadeiro?
-
-Duas respostas, e você descreve ambas. O resultado é a probabilidade de a descrição "verdadeira" se aplicar:
-
-```json
-{
-  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
-  "criteria": {
-    "true":  "A refund was promised or issued with no prior policy check or approval",
-    "false": "No refund was promised, or every refund followed a policy check"
-  }
-}
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
 ```
 
-Descreva os dois lados. "Nenhuma urgência expressa" é uma resposta real, e dizê-la torna a outra mais precisa.
-
-### `score` — em que grau isso ocorre?
-
-Uma rubrica ordenada, **começando pelo pior**. O resultado é onde a sessão se encaixa nela, reescalonado para 0–1:
-
-```json
-{
-  "instructions": "How frustrated is the customer?",
-  "criteria": ["Calm", "Frustrated", "Very angry"]
-}
-```
-
-**Uma rubrica tem de três a cinco níveis, e todos devem ser diferentes.** Ambos os limites são medidos, não estilísticos:
-
-- **Dois níveis** colapsam no que `noul` já faz melhor, e **mais de cinco** faz o modelo tender para o meio em vez de se comprometer. A mesma pergunta sobre a mesma sessão pontuou 0,00 com dois níveis, 0,01 com três e 0,55 com dez.
-- **Níveis repetidos** dividem a resposta arbitrariamente entre eles. Uma sessão inequivocamente irritada pontuou 1,00 com `["Calm", "Frustrated", "Very angry"]` e 0,66 com `["Angry", "Angry", "Angry"]` — um número bem formado que não significa nada.
-
-Categorias sem ordem — "cobrança, técnica ou vendas" — não são uma rubrica. Pergunte-as como um `noul` por categoria, ou use um juiz.
-
-## Lendo os resultados
-
-Um classificador produz uma **pontuação** de 0 a 1, exatamente como um juiz, então ele gera gráficos, filtra e aciona alertas da mesma forma. Duas diferenças valem a pena conhecer:
-
-- **Não há raciocínio.** O campo fica vazio, propositalmente. Este modelo não se explica, e inventar uma explicação seria uma fabricação, não um recurso.
-- **A incerteza é rotulada.** Uma pergunta `score` reporta sua própria confiança, e um resultado sobre o qual o modelo estava inseguro é marcado como `low_confidence` — portanto, "quais desses um humano deveria analisar" é um filtro, não um chute. Uma pergunta `noul` não reporta confiança, portanto nunca é marcada.
-
-Sessões muito longas são lidas em trechos e combinadas. Quando uma sessão é longa demais para ser lida integralmente, o resultado indica quantos turnos foram omitidos — você nunca verá um julgamento feito sobre parte de uma sessão apresentado como se fosse sobre ela toda.
-
-## Limites
-
-- **De três a cinco níveis de rubrica, todos distintos.** Veja acima; ambos os limites são aplicados no momento da criação.
-- **Uma pergunta por avaliação.** Pergunte duas coisas e você obtém duas avaliações, que também é o que você quer em um gráfico.
-- **Editar a pergunta publica uma nova versão.** Pontuações antigas e novas não são comparáveis, portanto são mantidas separadas em vez de misturadas em uma única linha de tendência.
-- **Um classificador sempre produz uma pontuação**, nunca uma métrica ou asserção.
-- **Sem raciocínio**, como acima. Se um número vai fazer alguém perguntar "por quê?", escreva um juiz.
-
-## Teste e preenchimento retroativo
-
-Diferente de um juiz, uma avaliação com classificador **pode** ser testada antes de você implantá-la — [teste-a](/pt-br/evaluations/test) contra sessões reais da mesma forma que faria com uma avaliação de código, e leia as pontuações antes de qualquer coisa entrar em produção.
-
-Ela também pode ser [preenchida retroativamente](/pt-br/evaluations/deploy#score-sessions-you-already-have) em sessões que você já tem. Isso consome uma chamada de modelo por sessão, portanto defina a janela deliberadamente em vez de reprocessar tudo.
+A CLI Cloud lê resultados; a criação e a implantação acontecem no dashboard. Consulte a [referência da CLI Cloud](/pt-br/reference/cloud-cli#evaluations) para filtros.

@@ -1,17 +1,17 @@
 ---
 title: "Démarrage rapide"
-description: "Capturez une session d'agent, identifiez un échec et commencez à le prévenir."
+description: "Capturez une session d'agent, identifiez une défaillance et commencez à la prévenir."
 icon: "zap"
 ---
 
-Ce démarrage rapide vous permet de configurer une machine pour qu'elle remonte des sessions, d'effectuer un audit et de déployer une politique. Utilisez la compétence dédiée ou suivez les étapes manuelles.
+Ce guide de démarrage rapide vous permet de configurer une machine pour qu'elle remonte des sessions, d'effectuer un audit et de déployer une politique. Utilisez le skill pour configurer Failproof AI, ou suivez les étapes manuelles.
 
-**Quelle est votre situation ?** Si votre agent s'exécute dans l'un des 12 [harnais](/fr/reference/harnesses) pris en charge — un CLI de codage ou une passerelle comme Hermes ou OpenClaw — suivez les étapes ci-dessous ; vous aurez besoin de Node.js 20.9 ou d'une version ultérieure. Si votre agent ne dispose d'aucun harnais, instrumentez-le avec le [SDK Python](/fr/reference/custom-agents) pour le traçage et les audits, puis rejoignez la section [Effectuez votre premier contrôle d'échec](/fr/start/first-audit) ; l'application des politiques sur ce chemin nécessite un hook dans votre environnement d'exécution.
+**Quelle est votre situation ?** Si votre agent fonctionne avec l'un des 12 [harnais](/fr/reference/harnesses) pris en charge — un CLI de développement ou une passerelle comme Hermes ou OpenClaw — suivez les étapes ci-dessous ; vous avez besoin de Node.js 20.9 ou supérieur. Si votre agent n'a pas de harnais, instrumentez-le avec le [SDK Python](/fr/reference/custom-agents) pour le traçage et les audits, puis rejoignez la section [Lancer votre premier contrôle de défaillance](/fr/start/first-audit) ; l'application des politiques sur cette voie nécessite un hook dans votre runtime.
 
 <Tabs>
-  <Tab title="Utiliser la compétence">
+  <Tab title="Utiliser le skill">
     <Steps>
-      <Step title="Installer les compétences Failproof AI">
+      <Step title="Installer les skills Failproof AI">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -21,16 +21,16 @@ Ce démarrage rapide vous permet de configurer une machine pour qu'elle remonte 
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Votre agent inspecte le projet, choisit l'intégration pertinente, effectue la configuration et la vérifie. Consultez le [dépôt de compétences FailproofAI](https://github.com/FailproofAI/skills) pour les compétences individuelles et les options d'installation avancées.
+        Votre agent inspecte le projet, choisit l'intégration appropriée, effectue la configuration et vérifie le bon fonctionnement. Consultez le [dépôt de skills FailproofAI](https://github.com/FailproofAI/skills) pour les skills individuels et les options d'installation avancées.
       </Step>
     </Steps>
   </Tab>
   <Tab title="Configuration manuelle">
     ## Avant de commencer
 
-1. Ouvrez le [tableau de bord Failproof AI](https://app.befailproof.ai) et créez un compte ou connectez-vous avec votre adresse e-mail professionnelle.
-2. Accédez à **Administration → Clés** et créez une clé avec `events:add` et `policies:pull`.
-3. Copiez le secret à usage unique, puis lisez-le dans un shell sur la machine cible. `read -s` le lit via une invite qui n'affiche pas la saisie, de sorte qu'il n'apparaît jamais dans une commande :
+1. Ouvrez le [tableau de bord Failproof AI](https://app.befailproof.ai) et créez un compte ou connectez-vous avec votre adresse professionnelle.
+2. Accédez à **Administration → Keys** et créez une clé avec les permissions `events:add` et `policies:pull`. Si vous prévoyez d'utiliser [Jev via FailproofAI Cloud](/fr/reference/jev-cloud), choisissez le préréglage **machine**, qui accorde également `jev:evaluate`.
+3. Copiez le secret à usage unique, puis lisez-le dans un shell sur la machine cible. `read -s` le saisit via une invite qui n'affiche pas la saisie, de sorte qu'il n'apparaît jamais dans une commande :
 
 ```bash
 read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
@@ -45,12 +45,12 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
     FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    Cette seule commande constitue l'intégralité de la configuration : elle installe le démon local (une fois en tant que root), relie les hooks à chaque CLI d'agent détecté et connecte cette machine au Cloud. Passer la clé via l'environnement plutôt que via `--token` l'empêche d'apparaître dans `ps`, où tout utilisateur de la machine peut lire les arguments d'une commande. Cela ne l'empêche pas d'apparaître dans l'historique du shell — c'est la lecture avec `read -s` qui s'en charge. En CI, injectez-la en tant que secret masqué et désactivez le traçage shell (`set -x`), sinon la trace l'affichera.
+    Cette seule commande constitue l'intégralité de la configuration : elle installe le démon local (en root, une seule fois), connecte les hooks à chaque CLI d'agent détecté et connecte cette machine au Cloud. Passer la clé via l'environnement plutôt que par `--token` évite qu'elle apparaisse dans `ps`, où tous les utilisateurs de la machine peuvent lire les arguments d'une commande. Cela ne la protège pas de l'historique du shell — c'est la lecture avec `read -s` qui s'en charge. En CI, injectez-la en tant que secret masqué et désactivez le traçage du shell (`set -x`), sinon la trace l'affiche en clair.
 
-    Les transcriptions de sessions sont envoyées par défaut. Ajoutez `--no-transcripts` pour ne remonter que l'activité des hooks et les décisions de politique sans le contenu des transcriptions.
+    Les transcriptions de sessions sont envoyées par défaut. Ajoutez `--no-transcripts` pour remonter l'activité des hooks et les décisions de politique sans le contenu des transcriptions.
 
     <Warning>
-      N'utilisez pas `failproofai config --connect <url>` ici. Ce flag enrôle une machine **déjà** configurée et retourne immédiatement — sans démon ni hooks — ce qui ferait apparaître la machine dans le Cloud sans qu'elle ne collecte ni n'applique quoi que ce soit.
+      N'utilisez pas `failproofai config --connect <url>` ici. Ce flag enrôle une machine **déjà** configurée et revient immédiatement — sans démon ni hooks — si bien que la machine apparaîtrait dans le Cloud sans rien collecter ni appliquer.
     </Warning>
 
     Si cette machine possède déjà un historique d'agent, prévisualisez et importez les sept derniers jours, puis attendez la fin de la livraison. Ignorez cette étape sur une nouvelle machine.
@@ -63,39 +63,43 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 
     Ouvrez **Sessions** dans Failproof AI et sélectionnez une session importée.
   </Step>
-  <Step title="Attacher Failproof AI à un harnais">
-    L'étape précédente a déjà relié chaque CLI d'agent détecté. Réexécutez-la pour un harnais spécifique si nécessaire, ou pour ajouter un harnais installé ultérieurement. Chacun des 12 harnais est une valeur `--cli` valide — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+  <Step title="Connecter Failproof AI à un harnais">
+    L'étape précédente a déjà connecté tous les CLI d'agent détectés. Relancez-la pour un harnais spécifique si nécessaire, ou pour ajouter un harnais installé ultérieurement. Chacun des 12 harnais est une valeur `--cli` valide — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user     # un CLI de codage
+    failproofai policies --install --cli claude --scope user     # un CLI de développement
     failproofai policies --install --cli hermes --scope user     # une passerelle Slack/Telegram
     ```
 
-    Le blocage d'un appel d'outil avant son exécution est vérifié sur les 12 harnais. Les gates de fin de tour sont vérifiées sur 8 — consultez la [capacité d'application](/fr/reference/harnesses#enforcement-capability) pour la matrice par harnais.
+    Le blocage d'un appel d'outil avant son exécution est vérifié sur les 12 harnais. Les contrôles en fin de tour sont vérifiés sur 8 — consultez la [capacité d'application](/fr/reference/harnesses#enforcement-capability) pour la matrice par harnais.
   </Step>
-  <Step title="Choisir ce que vous souhaitez appliquer">
-    Le câblage des hooks n'active aucune politique. La configuration n'en choisit délibérément aucune — cette décision vous appartient — alors adoptez un pack :
+  <Step title="Choisir ce qu'il faut appliquer">
+    La connexion des hooks n'active aucune politique. La configuration n'en choisit délibérément aucune — cette décision vous appartient — alors adoptez un pack :
 
     ```bash
     failproofai policies add FailproofAI/policies
     ```
 
-    Le pack est récupéré depuis sa release GitHub, vérifié par somme de contrôle et épinglé au tag exact résolu. Il contient 39 politiques et active les 10 que son manifeste indique comme sûres à activer sans surveillance. Utilisez-les pour observer les décisions de politique locales et tester l'application avant que Failproof AI n'audite vos sessions et n'écrive des politiques pour vos agents.
+    Le pack est téléchargé depuis sa release GitHub, vérifié par somme de contrôle et épinglé au tag exact résolu. Il contient 39 politiques et active les 10 que son manifeste marque comme sûres à activer sans supervision. Utilisez-les pour observer les décisions de politique locales et tester l'application avant que Failproof AI n'audite vos sessions et n'écrive des politiques pour vos agents.
 
-    Lisez n'importe quel pack avant de l'adopter avec `failproofai policies show <owner>/<repo>`, et consultez [les packs de politiques](/fr/policies/packs) pour n'en prendre qu'une partie.
+    Lisez n'importe quel pack avant de l'adopter avec `failproofai policies show <owner>/<repo>`, et consultez [les packs de politiques](/fr/policies/packs) pour n'en adopter qu'une partie.
 
-    Jusqu'à ce que cette commande s'exécute, le seul élément appliqué est `block-failproofai-commands` — la garde toujours active qui empêche un agent de désactiver Failproof AI. `failproofai policies` liste ce qui est activé.
+    Jusqu'à l'exécution de cette commande, le seul mécanisme d'application actif est `block-failproofai-commands` — le garde permanent qui empêche un agent de désactiver Failproof AI. `failproofai policies` liste ce qui est activé.
   </Step>
   <Step title="Auditer le comportement">
-    Suivez [Effectuez votre premier contrôle d'échec](/fr/start/first-audit). Utilisez un objectif concret comme « trouver les sessions où l'agent a retenté un outil défaillant sans changer d'approche ».
+    Suivez [Lancer votre premier contrôle de défaillance](/fr/start/first-audit). Utilisez un objectif concret, par exemple : « trouver les sessions où l'agent a réessayé un outil en échec sans modifier son approche ».
   </Step>
-  <Step title="Prévenir l'échec">
-    Suivez [Prévenez votre premier échec avec une politique](/fr/start/first-policy). Commencez en mode observation, inspectez les correspondances, puis appliquez la version révisée.
+  <Step title="Prévenir la défaillance">
+    Suivez [Prévenir votre première défaillance avec une politique](/fr/start/first-policy). Commencez en mode observation, inspectez les correspondances, puis appliquez la version révisée.
   </Step>
 </Steps>
 
 <Check>
-  Exécutez `failproofai config --status`. Une configuration saine indique la connexion au Cloud, l'état du démon et si l'application des politiques est suspendue.
+  Exécutez `failproofai config --status`. Une configuration saine affiche l'état de la connexion au cloud, l'état du démon et indique si l'application des politiques est en pause.
 </Check>
   </Tab>
 </Tabs>
+
+## Configuration de Jev
+
+Utilisez [Jev](/fr/start/use-jev) pour évaluer des sessions terminées par rapport à une question avec des réponses connues, ou pour examiner les appels d'outils en contexte avant leur exécution. La page **Utiliser Jev** présente les deux chemins de configuration.

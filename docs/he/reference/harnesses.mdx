@@ -1,92 +1,94 @@
 ---
-title: "מנגנוני אג'נט"
-description: "תפסו הפעלות והטילו מדיניות על כל 12 מנגנוני אג'נט תומכים."
+title: "Harnesses של סוכנים"
+description: "Capture sessions and enforce policies across all 12 supported agent harnesses."
 icon: "plug-zap"
 ---
 
-מנגנון הוא כל סביבה שבה אג'נט שלך למעשה רץ. Failproof AI תומך בשנים עשר מהם, בשתי קטגוריות:
+Harness הוא הסביבה בה הסוכן שלך בעצם רץ. Failproof AI תומך בשנים עשר מהם, בשתי קטגוריות:
 
-- **CLI-ים לקידוד** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **שערי צ'אט והפניות** (2) — Hermes (Slack, Telegram, cron), OpenClaw (עוזר עצמי-מארח)
+- **Coding CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Chat and assistant gateways** (2) — Hermes (Slack, Telegram, cron), OpenClaw (self-hosted assistant)
 
-אותה מדיניות ואותו היסטוריון הפעלות חלים בכל מנגנון שבו אג'נט רץ. שכבת מתאם אחת ממפה את שמות האירועים המקוריים של כל מנגנון, שמות הכלים, ושדות קלט כלים ל-29 אירועים קנוניים לפני שמדיניות כלשהי בוצעת.
+אותן מדיניות (policies) והיסטוריית הסשן זהה חלים בכל אחד מ-12 ה-Harnesses. שכבת מתאם אחת ממפה את שמות האירועים, שמות הכלים ושדות קלט הכלים הנטיביים של כל harness על 29 אירועים קנוניים לפני שכל מדיניות פועלת.
 
-אג'נט שרץ ב**אף אחד** מחמשת עשר המנגנונים מכויל ישירות עם [Python SDK](/he/reference/custom-agents). זה חוזה שונה, וכדאי להציג זאת בבירור: ה-SDK מעניק תיקיעת מעקב, הפעלות, הערכות וביקורות — **הוא לא אוכף מדיניות בעצמו.** חסימת פעולה לא בטוחה לפני שהיא בוצעת דורשת hook אכיפה בגבול הכלי של הרנטיים שלך; [צור קשר איתנו](mailto:support@befailproof.ai) ואנחנו נממפה זאת.
+סוכן שרץ באף אחד משנים עשר הוא מאומתת ישירות עם [Python SDK](/he/reference/custom-agents). זו חוזה שונה, וכדאי לציין בבהירות: ה-SDK מספק tracing, sessions, evaluations ו-audits — **הוא לא אוכף מדיניות בעצמו.** חסימת פעולה לא בטוחה לפני ביצוע דורש hook אכיפה בגבול הכלי של ה-runtime שלך; [צור קשר אתנו](mailto:support@befailproof.ai) ואנחנו נמפה אותו.
 
-| מנגנון | טווחי hook נתמכים |
+| Harness | Supported hook scopes |
 | --- | --- |
-| Claude Code | משתמש, פרויקט, מקומי |
-| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | משתמש, פרויקט |
-| Factory Droid, Devin CLI, Antigravity CLI, Goose | משתמש, פרויקט |
-| Hermes, OpenClaw | משתמש |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
 
-כל אינטגרציה מנרמלת את שמות אירועי ה-hook המקוריים שלה, שמות כלים, ושדות קלט כלים לפני שמדיניות רצה. מדיניות יכולה לפעול רק על אירועים שהמנגנון חושף; בדקו התנהגות סיום תור והנחיה על המנגנון והגרסה הדקים שאתם משתמשים בהם.
+כל אינטגרציה מנרמלת את שמות אירועי hook הנטיביים, שמות כלים ושדות קלט כלים לפני שמדיניויות פועלות. מדיניות יכולה לפעול רק על אירועים שה-harness חושף; בחן התנהגות end-of-turn והוראה בדיוק ב-harness וגרסה שאתה פורס.
 
 ## יכולת אכיפה
 
-"חסום" פירושו שהקביעה שהוחזרה של המתאם הנוכחי נצרכת על ידי המנגנון שנקרא. חסימה אחרי כלי עשויה להחליף את התוצאה המוצגת למודל אך לא יכולה לבטל השפעה צד של כלי שכבר התרחשה.
+"Block" פירושו שהקביעה שהוחזרה של המתאם הנוכחי נצרכת על ידי ה-harness בשם. חסימה post-tool עשויה להחליף את התוצאה המוצגת למודל אך לא יכולה לבטל תופעת חוצץ של כלי שכבר התרחשה.
 
-| מנגנון | אירועי חסימה מאומתים | הערות ملاحظة בלבד או לא ממזערות |
+| Harness | Verified blocking events | Observe-only or non-blocking caveats |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, ואירועי משימה/תצורה נוספים | `PostToolUse`, מחזור חיים הפעלות, התראות, ואירועי לאחר כשל הם תצפיתיים. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה אחרי כלי מחליפה את התוצאה אחרי ביצוע; אירועי התחלת הפעלה וקומפקט הם תצפיתיים במתאם הנוכחי. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה אחרי כלי מחליפה את התוצאה אחרי ביצוע; אירועי הפעלות והתראות הם תצפיתיים. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ואירועי הפעלות הם תצפיתיים. |
-| OpenCode | `PreToolUse` | אירועי אחרי כלי ומחזור חיים הם תצפיתיים; טיפול עצירה נוכחי הוא הנחיה לתור מאוחר יותר ולא שער מאומת. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | אירועי אחרי כלי ומחזור חיים הם תצפיתיים; הנחיית עצירה חלה על תור מאוחר יותר. |
-| Hermes | `PreToolUse` | פלג-אין מקומי מעניק `instruct()` כהפסקה אחת מוגבלת וגלויה-מודל לפני שמאפשרים איטרציית API מאוחרת יותר. קביעות אחרי כלי, הפעלות וחסימת תת-אג'נט אינן שערים. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | אירועים אחרי כלי, הפעלות, עצירה תת-אג'נט, וקומפקט הם תצפיתיים. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | קביעות אחרי כלי וחסימת תת-אג'נט הן תצפיתיות. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` מותנה | hook-ות הרשאה לא רצות בכל מצב הרשאה; אירועים אחרי כלי והפעלות הם תצפיתיים. |
-| Antigravity CLI | `PreToolUse`, `Stop` | קביעות הנחיה-משתמש ואחרי כלי הן תצפיתיות; הנחיות הנחיה יכולות עדיין להיות הוזנו. |
-| Goose | `PreToolUse` | אירועי הנחיה-משתמש, אחרי כלי והפעלות הם תצפיתיים. hook עצירה חסימה מקומי קיים במפעל אך אינו מותקן על ידי המתאם הנוכחי. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, and several task/config events | `PostToolUse`, session lifecycle, notifications, and post-failure events are observational. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking replaces the result after execution; session-start and compact events are observational in the current adapter. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking replaces the result after execution; session and notification events are observational. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` and session events are observational. |
+| OpenCode | `PreToolUse` | Post-tool and lifecycle events are observational; current stop handling is guidance for a later turn rather than a verified gate. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool and lifecycle events are observational; stop guidance applies to a later turn. |
+| Hermes | `PreToolUse` | A native plugin delivers `instruct()` as one bounded, model-visible interruption before permitting a later API iteration. Post-tool, session, and subagent-stop verdicts are not gates. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, and compaction events are observational. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool and subagent-stop verdicts are observational. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks do not run in every permission mode; post-tool and session events are observational. |
+| Antigravity CLI | `PreToolUse`, `Stop` | User-prompt and post-tool verdicts are observational; prompt instructions can still be injected. |
+| Goose | `PreToolUse` | User-prompt, post-tool, and session events are observational. A native blocking stop hook exists upstream but is not installed by the current adapter. |
 
-יכולות רגישות לגרסה. בדקו מחדש לאחר שדרוג CLI של אג'נט, במיוחד כאשר מדיניות מסתמכת על התנהגות הנחיה, עצירה, הרשאה או אחרי כלי במקום שער הנחיה-טרום משותף.
+יכולות תלויות בגרסה. בדוק מחדש לאחר שדרוג agent CLI, במיוחד כאשר מדיניות מסתמכת על התנהגות prompt, stop, permission או post-tool ולא על השער pre-tool הנפוץ.
 
 ### Hermes native plugin
 
-Hermes משולב דרך פלג-אין מקומי מקומי-פרופיל במקום פקודת shell. ההתקנה מעתיקה את הפלג-אין לכל פרופיל Hermes ברירת מחדל ובשם, מאפשרת אותו בקובץ `config.yaml` של אותו פרופיל, ומהגרת רק ערכי hook shell FailproofAI מסוגיים. זה מונע ייצור תהליך בכל hook ומאפשר `instruct()` להגיע למודל דרך תוצאת כלי חסום מקומית של Hermes.
+Hermes משולבת דרך plugin native בהיקף פרופיל בודד ולא דרך פקודת shell. התקנה קושרת כל פרופיל Hermes ברירת מחדל ובשם `plugins/failproofai` לתוסף הנשלח בחבילת npm (עותק שבו לא ניתן ליצור סימל), מפעילה אותה בקובץ `config.yaml` של אותו פרופיל, ומהגרת רק ערכי hook shell ירושה של FailproofAI. מכיוון שה-plugin קשור, `npm install -g failproofai@latest` מעדכן אותו ללא התקנה חוזרת. זה הופך תשלום לביצוע תהליך בכל hook ומאפשר ל-`instruct()` להגיע למודל דרך התוצאה blocked-tool נטיבית של Hermes.
 
-ההנחיה ההתאמה הראשונה חוסמת את הקריאה הממתינה. אותו בקשת API נשארת חסומה; איטרציית מודל מאוחרת יותר עשויה לנסות שוב. קומץ קבע בטווח פרופיל וכובע לכל תור מונעים הנחיה יעוצה מלהיות לולאה בלתי מוגבלת. `deny()` נשאר חסימה קשה. הפעילו `failproofai config --status` כדי לגלות פרופיל מנוטרל, לא שלם, משוכפל או שנוצר מחדש.
+Shell hooks ירושה (מותקנים על ידי 1.0.5 ומוקדם יותר) עושים **לא** בדוק Hermes cron jobs: כל ריצת cron בונה היקף hook משלה, שה-plugin native משחזר ו-shell hooks של `config.yaml` לא. `failproofai update` מהגרת כל פרופיל שכבר משתמש ב-FailproofAI לתוסף קשור. אם ה-daemon הרץ לא יכול להשרת את ה-plugin, `update` משאיר את shell hooks במקום ויוצא non-zero; הפעל `failproofai config` כדי לעדכן את ה-daemon, ואז `failproofai update` שוב. Cron jobs טוענות את ה-plugin בריצתם הבאה; הפעל מחדש gateways רץ וסשנים אינטראקטיביים כדי לטעון אותו שם.
 
-## התקן capture וhook-ות מדיניות
+ההוראה התאמה הראשונה חוסמת את ההתקשרות הממתינה. אותו בקשת API נשארת חסומה; איטרציית מודל מאוחרת עשויה לנסות שוב. ספר מנצנץ בהיקף פרופיל קבוע וכובע לכל תור מונע הוראה יועצת מהפכה ללולאה בלתי מוגבלת. `deny()` נשאר חסימה קשה. הפעל `failproofai config --status` כדי לגלות פרופיל מנוטרל, לא שלם, משוכפל או זה שעדיין לא הוגדר או שעדיין על shell hooks ירושה (דווח כ-„Hermes cron jobs are not checked").
+
+## התקן capture and policy hooks
 
 <Tabs>
   <Tab title="Dashboard">
-    1. פתחו **Administration → Keys** וּיצרו מפתח עם `events:add` ו-`policies:pull`, בשם עבור המכונה או הסביבה.
-    2. במכונת היעד, חברו את ה-CLI המקומי עם המפתח המוצג והתקינו את hook-ות המנגנון.
-    3. התחילו הפעלה חדשה של אג'נט, ואז אשרו את ה-hook שלו ואירועי הפעלות תחת **Observe → Events**.
-    4. פתחו **Observe → policy** לאותו חלון זמן ואשרו שקביעת מדיניות מיוחסת למכונה.
+    1. פתח **Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`, בשם המכונה או הסביבה.
+    2. במכונת היעד, חבר את ה-CLI המקומי עם המפתח המוצג והתקן את ה-harness hooks.
+    3. התחל סשן סוכן חדש, ואז אשר את hook וסשן events שלו תחת **Observe → Events**.
+    4. פתח **Observe → policy** לאותה חלון זמן ואשר שהחלטת מדיניות מיוחסת למכונה.
 
-    החיבור מתחיל עם מפתח מכונה. אשרו שהוא כולל הן הרשאות ספיגה והן הרשאות אספקת מדיניות לפני העתקת הסוד שלו.
+    החיבור מתחיל עם מפתח מכונה. אשר שהוא כולל הן הרשאות הזרקה והן הרשאות משלוח מדיניות לפני העתקת הסוד שלו.
 
-    ![מגירת מפתח API חדשה המשמשת להענקת הרשאות ספיגה אירוע והעברת מדיניות.](/images/dashboard/key-create.png)
+    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
 
-    לאחר התקנת ה-hook-ות, זרימת האירועים צריכה להראות אירועים חדשים מהמכונה והסביבה שחברתם.
+    לאחר התקנת ה-hooks, זרם Events צריך להציג אירועים חדשים מהמכונה והסביבה שחיברת.
 
-    ![זרימת אירועים חיה המשמשת לאישור שמנגנון שהותקן לאחרונה מדווח.](/images/dashboard/events-stream.png)
+    ![The live Events stream used to confirm a newly installed harness is reporting.](/images/dashboard/events-stream.png)
 
-    לבסוף, אימתו שקביעות מדיניות מיוחסות לאותה מכונה. זה מאשר שהמנגנון מדווח פעילות מדיניות כמו גם אירועי עקבות.
+    לבסוף, אשר שהחלטות מדיניות מיוחסות לאותה מכונה. זה מאשר שה-harness מדווח על פעילות מדיניות כמו גם trace events.
 
-    ![דף מדיניות המשמש לאימות קביעות מדיניות מחיבור חדש.](/images/dashboard/policy-observe.png)
+    ![The Policy page used to verify policy decisions from a newly connected harness.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    קרא את מפתח המכונה לתוך ה-shell. `read -s` משיגה אותו בהנחיה שלא משקפת, כך שהוא לא מופיע בפקודה או בהיסטוריון shell:
+    קרא את מפתח המכונה לתוך shell. `read -s` לוקח אותו בהנמקה שלא הד, אז זה לעולם לא מופיע בפקודה או בהיסטוריית shell:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    ואז הגדרו את המכונה — זה חוטים hook-ות לכל מנגנון שנוגד, מתקין את ה-daemon, וקורא קשר לעננן:
+    לאחר מכן הגדר את המכונה — זה מחזור hooks לכל harness שנגלה, מתקין את daemon, ומתחבר ל-Cloud:
 
     ```bash
     failproofai config
     failproofai policies add FailproofAI/policies
     ```
 
-    ההגדרה אינה מאפשרת מדיניות בעצמה, שזו הסיבה לפקודה השנייה.
+    Setup מאפשר אין מדיניות בעצמה, שזה מה הפקודה השנייה בשביל.
 
-    או לתמרן מנגנונים בשם וטווח תצורה:
+    או harnesses שם מטרה ותחום הגדרה:
 
     ```bash
     failproofai policies --install \
@@ -94,9 +96,9 @@ Hermes משולב דרך פלג-אין מקומי מקומי-פרופיל במק
       --scope user
     ```
 
-    טווח פרויקט שומר תצורת hook עם מאגר. טווח משתמש מכסה עבודה על פני מאגרים. Claude Code תומך גם בטווח מקומי; התמיכה משתנה לפי מנגנון וה-CLI דוחה שילובים לא נתמכים.
+    Project scope שומר הגדרת hook עם מאגר. User scope מכסה עבודה בין מאגרים. Claude Code תומך גם בהיקף מקומי; תמיכה משתנה לפי harness ו-CLI דוחה שילובים שאינם נתמכים.
 
-    אימתו את המכונה ואת האירועים שלה:
+    אשר את המכונה וה-events שלה:
 
     ```bash
     failproofai config --status
@@ -106,16 +108,16 @@ Hermes משולב דרך פלג-אין מקומי מקומי-פרופיל במק
   </Tab>
 </Tabs>
 
-## הוסף נתיב הפעלות לא-ברירת מחדל
+## הוסף נתיב סשן לא ברירת מחדל
 
 <Tabs>
   <Tab title="Dashboard">
-    נתיבים נוספים רשומים במכונה, לא בעננן. לאחר הוספת אחד, פתחו **Observe → Sessions**, סננו לסביבת המכונה, והאשרו שהפעלות מהנתיב החדש מופיעות. פתחו הפעלה ובדקו את האג'נט, המנגנון וחותמות זמן אירוע לפני שתסתמכו עליו בביקורת.
+    נתיבים נוספים רשומים במכונה, לא ב-Cloud. לאחר הוספת אחד, פתח **Observe → Sessions**, סנן לסביבת המכונה, ואשר שסשנים מהנתיב החדש מופיעים. פתח סשן ובדוק את הסוכן, harness וחותמות זמן של אירועים לפני הסתמכות עליו בביקורת.
 
-    ![רשימת הפעלות סוננת לסביבה המקבלת נתונים מנתיב הלכידה הנוסף.](/images/dashboard/sessions-list.png)
+    ![The Sessions list filtered to the environment receiving data from the additional capture path.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    הוסף נתיב עם תווית אופציונלית, ואז בדוק את הנתיבים המוגדרים:
+    הוסף נתיב עם תווית אופציונלית, ואז בדוק את הנתיבים שהוגדרו:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -129,5 +131,5 @@ Hermes משולב דרך פלג-אין מקומי מקומי-פרופיל במק
 </Tabs>
 
 <Tip>
-  הפעילו הפעלה חדשה אחת לאחר ההתקנה. אימתו גם את זרימת האירוע החיה וגם קביעת מדיניות בפועל לפני הרחבת ההטלה.
+  הפעל סשן חדש אחד לאחר התקנה. אשר הן את זרם האירועים החי והן החלטת מדיניות בפועל לפני הרחבת ההפצה.
 </Tip>

@@ -1,0 +1,22 @@
+---
+title: "Tài liệu tham khảo tích hợp Jev"
+description: "Cấu hình, nhà cung cấp, khóa, dữ liệu yêu cầu và hành vi lỗi cho Jev."
+icon: "braces"
+---
+
+Jev có hai cách sử dụng trong Failproof AI:
+
+| Cách sử dụng | Khi nó chạy | Nó trả về | Bắt đầu từ đây |
+| --- | --- | --- | --- |
+| Đánh giá phiên | Sau khi phiên kết thúc | Điểm số cho một câu hỏi có câu trả lời cố định | [Đánh giá Jev](/vi/evaluations/jev) |
+| Xem xét chính sách gọi công cụ | Trước khi một lệnh gọi công cụ được bảo vệ chạy | Một quyết định cùng với các chính sách đã cài đặt | [Chính sách Jev](/vi/policies/jev) |
+
+## Trang tham khảo
+
+| Chủ đề | Chi tiết |
+| --- | --- |
+| [Câu hỏi đánh giá](/vi/reference/jev-evaluations) | Tiêu chí boolean và điểm số có thứ tự, kết quả, giới hạn và điền lại. |
+| [So sánh nhà cung cấp và cài đặt khóa riêng](/vi/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare và các điểm cuối tùy chỉnh; suy luận URL, ID mô hình, `jev.json`, chế độ và mã dự phòng. |
+| [Tuyến đường FailproofAI Cloud](/vi/reference/jev-cloud) | Quyền khóa máy, cài đặt quan sát tự động, giới hạn sử dụng, trạng thái kết nối và xử lý dữ liệu. |
+
+Các lệnh CLI cục bộ được liệt kê trong [Tài liệu tham khảo CLI Failproof AI](/vi/reference/failproof-cli). [Tài liệu tham khảo bảng điều khiển cục bộ](/vi/reference/local-dashboard#set-up-jev) mô tả các cài đặt Jev và chế độ xem hoạt động của nó.

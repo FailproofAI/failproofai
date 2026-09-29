@@ -1,88 +1,28 @@
 ---
-title: "Sınıflandırıcı değerlendirmeleri"
-description: "Oturumları önceden yazabileceğiniz yanıtlara karşı puanlayın — bu doğru mu, ya da bu ne kadar — genel amaçlı bir model yerine küçük kalibre edilmiş bir sınıflandırıcı kullanarak."
+title: "Jev evaluations"
+description: "Jev kullanarak tamamlanmış bir oturumu bilinen cevaplarla bir soruya karşı puanlandırın."
 icon: "list-checks"
 ---
 
-Bazı sorular bir modelden konuşmayı *okumasını* gerektirir, ama hakkında *yazmasını* değil. "Müşteri aciliyet ifade etti mi?" iki yanıta sahiptir. "Ne kadar hayal kırıklığına uğramışlardı?" birkaçı vardır, sıralı olarak. Her yanıtı sormadan önce bilirsiniz.
+Jev evaluations **tamamlanmış bir oturumu** okur ve 0 ile 1 arasında bir puan verir. Cevabın önceden bilindiği durumlarda kullanın; örneğin "Müşteri aciliyet göstermişim?" veya "Müşteri ne kadar hayal kırıklığına uğramıştı?" Çalışmalar arasında desenleri bulmanıza yardımcı olur; araç çağrısını durdurmaz. Araç çalıştırılmadan **önce** alınan kararlar için [Jev policies](/tr/policies/jev) kullanın.
 
-Bir **sınıflandırıcı değerlendirmesi** tam olarak bunlar için yapılmıştır. Soruyu ve verebileceği yanıtları yazırsınız, sınıflandırma için yerleşik küçük bir model kalibre edilmiş bir sayı döndürür — hiçbir zaman serbest metin değil.
+## Pano üzerinde bir tane oluşturun
 
-<Note>
-Bir hakim gibi, sınıflandırıcı değerlendirmesi oturum başına bir model çağrısına mal olur. Bir hakimden farklı olarak, genel amaçlı bir model yerine küçük, tek amaçlı bir model olduğu için daha hızlı ve daha ucuzdur — ama kendisini hiçbir zaman açıklamaz. Eğer akıl yürütmeye ihtiyacınız varsa, bir [hakim](/tr/evaluations/judge) kullanın.
-</Note>
+1. **Analyze → eval authoring** seçeneğini açın ve **new eval** seçeneğini seçin.
+2. Bir soruyu ve olası cevaplarını açıklayın. Örneğin: "Ajan geri ödeme politikasını kontrol etmeden önce geri ödeme sözü verdi mi? Evet veya hayır ile cevap verin." **draft** seçeneğini seçin ve sonucun bir sınıflandırıcı puan olduğunu gözden geçirin.
+3. [Test edin](/tr/evaluations/test) son oturumlar üzerinde, ardından [dağıtın](/tr/evaluations/deploy). Yeni tamamlanan oturumlar puanlandırılır; ayrıca geçmişe ihtiyacınız varsa [backfill](/tr/evaluations/deploy#score-sessions-you-already-have) yapın.
 
-## Hangisini istiyorum?
+![Sabit cevaplı bir soruyu açıkladığınız, taslağı gözden geçirdiğiniz ve test ettikten sonra dağıttığınız paylaşılan eval authoring formu. Gösterilen örnek bir kod evaluationdır; Jev sorusu aynı authoring akışını kullanır.](/images/dashboard/eval-authoring-draft.png)
 
-| Soru | Kullan |
-| --- | --- |
-| Kaç adet araç çağrısı vardı? | kod |
-| Oturum 30 saniyeden az mıydı? | kod |
-| Müşteri aciliyet ifade etti mi? | **sınıflandırıcı** |
-| Hangi ekip bunu ele almalı: faturalama, teknik, yoksa satış? | **sınıflandırıcı** |
-| Müşteri ne kadar hayal kırıklığına uğramıştı? | **sınıflandırıcı** |
-| Yanıt gerçekten doğru muydu? | **hakim** |
-| Escalation politikamızı takip etti mi, ve neden böyle düşünüyorsunuz? | **hakim** |
+Asistan kod, Jev sınıflandırması ve [judge](/tr/evaluations/judge) arasında seçim yapabilir. Dağıtmadan önce seçimini kontrol edin. Jev prose akıl yürütme olmaksızın bir puan verir; açıklamaya ihtiyacınız olduğunda bir judge seçin. Soru türleri ve puan sınırları için [Jev evaluation reference](/tr/reference/jev-evaluations) başlığına bakın.
 
-Pratik kuralı: **sayılabilir → kod, listeleyebileceğiniz yanıtlar → sınıflandırıcı, açıklama gerektiriyor → hakim.**
+## Puanları okuyun
 
-Önceden karar vermek zorunda değilsiniz. Neyi ölçmek istediğinizi açıklayın ve asistan seçer, hangisini seçtiğini ve neden seçtiğini söyler, siz de değiştirebilirsiniz.
+**Observe → Evaluations** seçeneğini açarak sonucu aracı ve zamana göre grafikleştirin. Terminal'den Cloud CLI aynı sonuçları okuyabilir:
 
-## İki soru türü
-
-### `noul` — bu doğru mu?
-
-İki yanıt ve her ikisini de siz tanımlarsınız. Sonuç "doğru" tanımlamının uygun olma olasılığıdır:
-
-```json
-{
-  "instructions": "Asistan önce iade politikasını kontrol etmeden bir iade vaat etti mi?",
-  "criteria": {
-    "true":  "Bir iade öncesinde politika kontrolü ya da onayı yapılmadan vaat edildi veya verildi",
-    "false": "Hiçbir iade vaat edilmedi, ya da her iade bir politika kontrolü takip etti"
-  }
-}
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
 ```
 
-Her iki tarafı da tanımlayın. "Aciliyet ifade edilmedi" gerçek bir yanıttır ve bunu söylemek diğerini daha keskin hale getirir.
-
-### `score` — bundan ne kadar?
-
-Sıralı bir rubrik, **en kötüsü ilk**. Sonuç oturumun bunda nereye düştüğüdür, 0–1'e yeniden ölçeklendirilmiştir:
-
-```json
-{
-  "instructions": "Müşteri ne kadar hayal kırıklığına uğramıştı?",
-  "criteria": ["Sakin", "Hayal kırıklığına uğramış", "Çok kızgın"]
-}
-```
-
-**Bir rubrik üç ila beş seviye alır ve hepsi farklı olmalıdır.** Her iki limit da stilistik değil, ölçülmüştür:
-
-- **İki seviye** `noul`un zaten daha iyi yaptığı şeye çöker ve **beşten fazla** model ortasına doğru bahis oynamaya zorlar. Aynı soru aynı oturum üzerinde iki seviye ile 0.00, üç seviye ile 0.01 ve on seviye ile 0.55 puanlandı.
-- **Tekrarlanan seviyeler** yanıtı keyfi olarak aralarında böler. Açıkça kızgın bir oturum `["Sakin", "Hayal kırıklığına uğramış", "Çok kızgın"]`a karşı 1.00 puan aldı ve `["Kızgın", "Kızgın", "Kızgın"]`a karşı 0.66 — hiçbir anlamı olmayan iyi biçimlenmiş bir sayı.
-
-Sırası olmayan kategoriler — "faturalama, teknik, ya da satış" — bir rubrik değildir. Bunları her kategori için `noul` olarak sorun, ya da bir hakim kullanın.
-
-## Sonuçları okuma
-
-Bir sınıflandırıcı tam olarak bir hakim gibi 0 ile 1 arasında bir **puan** üretir, bu yüzden aynı şekilde grafiklere dökülür, filtreler ve uyarıları tetikler. Bilmekte fayda olan iki fark vardır:
-
-- **Açıklama yoktur.** Alan kasıtlı olarak boştur. Bu model kendisini açıklamaz ve bir açıklama icat etmek bir özellik yerine sahtekarlık olurdu.
-- **Belirsizlik etiketlenir.** Bir `score` sorusu kendi güvenini bildirir ve modelin emin olmadığı bir sonuç `low_confidence` etiketlenir — bu yüzden "bir insan hangilere bakmalı" bir tahmin yerine bir filtredir. Bir `noul` sorusu güven bildirmez, bu yüzden asla etiketlenmez.
-
-Çok uzun oturumlar alıntılar halinde okunur ve birleştirilir. Bir oturum tam olarak okunmak için çok uzun olduğunda, sonuç kaç dönüşün dışarıda bırakıldığını söyler — bir oturum üzerinde yapılan bir değerlendirmeyi tamamı üzerinde yapılmış gibi sunulmuş olarak hiçbir zaman görmezsiniz.
-
-## Limitler
-
-- **Üç ila beş farklı rubrik seviyesi.** Yukarıya bakın; her iki limit de yazma zamanında uygulanır.
-- **Değerlendirme başına bir soru.** İki şey sorun ve iki değerlendirme alırsınız, bu da bir grafikte istediğiniz şeydir.
-- **Soruyu düzenlemek yeni bir sürümü yayınlar.** Eski ve yeni puanlar karşılaştırılamaz, bu yüzden bir trend çizgisine karıştırılmak yerine ayrı tutulurlar.
-- **Bir sınıflandırıcı her zaman bir puan üretir**, asla bir metrik ya da bir iddaa değil.
-- **Açıklama yoktur**, yukarıdaki gibi. Bir sayı birisinin "neden?" diye sormasını sağlayacaksa, yerine bir hakim yazın.
-
-## Test etme ve geriye doldurma
-
-Bir hakimden farklı olarak, bir sınıflandırıcı değerlendirmesi **yapılabilir** dağıtmadan önce test edilebilir — bir kod değerlendirmesi gibi gerçek oturumlar karşısında [test edin](/tr/evaluations/test) ve hiçbir şey canlıya gitmeden önce puanları okuyun.
-
-Ayrıca zaten sahip olduğunuz oturumlar üzerine [geriye doldurulabilir](/tr/evaluations/deploy#score-sessions-you-already-have). Oturum başına bir model çağrısına mal olur, bu yüzden her şeyi yeniden oynatmak yerine pencereyi kasıtlı olarak kapsamlandırın.
+Cloud CLI sonuçları okur; authoring ve dağıtma pano üzerinde gerçekleşir. Filtreler için [Cloud CLI reference](/tr/reference/cloud-cli#evaluations) başlığına bakın.

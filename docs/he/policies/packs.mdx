@@ -1,54 +1,54 @@
 ---
-title: "שימוש ב-Policy Pack"
-description: "חבר Failproof AI policy pack לצורך המקרה שלך, או pack קהילתי מ-policy hub, וקבע אילו מדיניות הוא יטיל."
+title: "השתמש בחבילת מדיניות"
+description: "חבר חבילת מדיניות Failproof AI לעבודתך, או חבילה קהילתית מ-policy hub, ובחר מה היא אוכפת."
 icon: "package"
 ---
 
-Pack הוא קבוצה של מדיניות שפורסמה כ-GitHub release. פקודה אחת מתקינה אותו: ה-checksums של ה-release מאומתים לפני הרצה של כל דבר, וה-digest שלו מתועד כך שה-pack לא יכול להשתנות על המכונה שלך אחרי כן.
+חבילה היא קבוצת מדיניויות שפורסמה כ-GitHub release. פקודה אחת מתקינה אותה: checksums של ה-release מאומתים לפני כל הרצה, והdigest שלו נרשם כך שהחבילה לא יכולה להשתנות במכונתך לאחר מכן.
 
-עיין בכל pack, ובכל מדיניות בכל אחד, ב-[policy hub](https://befailproof.ai/policy-hub/). יש שני סוגים:
+עיין בכל חבילה, וכל מדיניות בכל אחת, ב-[policy hub](https://befailproof.ai/policy-hub/). יש שני סוגים:
 
-- **Failproof AI policy packs** — packs מעוצבים מראש למקרי שימוש שהוגדרו: חבר אחד והוא עובד. ה-[coding agent policy pack](https://befailproof.ai/policy-hub/failproofai/policies/) זמין כעת, וקבוצות למקרי שימוש נוספים יגיעו בקרוב.
-- **Community policy packs** — מדיניויות שמפתחים כתבו לצורך מקרי השימוש שלהם ופרסמו לכולם.
+- **חבילות מדיניות Failproof AI** — חבילות מוכנות מראש לשימושים קבועים: חבר אחת והוא עובד. [חבילת מדיניות coding agent](https://befailproof.ai/policy-hub/failproofai/policies/) זמינה כעת, וחבילות לשימושים נוספים קרובות בדרך.
+- **חבילות מדיניות קהילתיות** — מדיניויות שמפתחים כתבו לשימושים שלהם וממחו לכל מי שרוצה להשתמש בהן.
 
-## Failproof AI policy packs
+## חבילות מדיניות Failproof AI
 
-### Coding agent policy pack
+### חבילת מדיניות coding agent
 
 ```bash
 failproofai policies add FailproofAI/policies
 ```
 
-ה-pack כולל 39 מדיניויות והפעיל 10 שהמניפסט שלו מסמן כבטוחות להפעלה ללא השגחה; השאר רשומים כדי שתוכל לבחור מהם. חלק מהשימושיים ביותר, וההחלטה אם `policies add` פשוט הופעל אותם:
+החבילה כוללת 38 מדיניויות והדלקה של 10 שלה manifest סימן כבטוחות להדלקה ללא השגחה; השאר מופיעות לבחירתך. חלק מהמשומשות ביותר, ואם `policies add` פשוט מדלקות אותן:
 
-| Policy | מה זה עושה | הופעל כברירת מחדל |
+| מדיניות | מה היא עושה | מדולקת כברירת מחדל |
 | --- | --- | --- |
-| `block-push-master` | חוסם דחיפות ישירות לענפים מוגנים | Yes |
-| `block-env-files` | חוסם קריאה וכתיבה של קבצי `.env` | Yes |
-| `protect-env-vars` | חוסם פקודות שמדפיסות משתני סביבה | Yes |
-| `block-sudo` | חוסם `sudo` אלא אם דפוס הרשאה תואם | Yes |
-| `block-curl-pipe-sh` | חוסם סקריפטים מורדים שמובילים ישירות לשרן | Yes |
-| `sanitize-*` (חמש מדיניויות) | דווח על API keys, bearer tokens, JWTs, מפתחות פרטיים, ומחרוזות חיבור שנמצאו בפלט הכלי | Yes |
-| `block-rm-rf` | חוסם מחיקות רקורסיביות קטסטרופליות | No |
-| `block-force-push` | חוסם דחיפות כפויות | No |
-| `block-secrets-write` | חוסם כתיבה לקבצי פעמונים ומפתחות סוד | No |
-| `warn-destructive-sql` | מזהיר על `DROP`, `TRUNCATE`, ו-`DELETE` ללא `WHERE` | No |
+| `block-push-master` | חוסמת דחיפות ישירות לענפים מוגנים | כן |
+| `block-env-files` | חוסמת קריאה וכתיבה של קובצי `.env` | כן |
+| `protect-env-vars` | חוסמת פקודות שמדפיסות משתני סביבה | כן |
+| `block-sudo` | חוסמת `sudo` אלא אם pattern של allow תואם | כן |
+| `block-curl-pipe-sh` | חוסמת סקריפטים שהורדו שחוביים ישירות לשל | כן |
+| `sanitize-*` (חמש מדיניויות) | דיווח על API keys, bearer tokens, JWTs, מפתחות פרטיים, וmigration strings שנמצאים בפלט של tool | כן |
+| `block-rm-rf` | חוסמת מחיקות רקורסיביות קטסטרופליות | לא |
+| `block-force-push` | חוסמת force-pushes | לא |
+| `block-secrets-write` | חוסמת כתיבה לקבצי credentials ו-secret-key | לא |
+| `warn-destructive-sql` | מתריעה על `DROP`, `TRUNCATE`, ו-`DELETE` בלי `WHERE` | לא |
 
-הפעל כל אחד שכבוי לפי שם — `failproofai policies add block-rm-rf` — או קח את כל ה-pack עם `--all`. ראה כל מדיניות בו, מקובצת לפי קטגוריה:
+הדלק כל אחד שהוא כבוי לפי שם — `failproofai policies add block-rm-rf` — או קח את כל החבילה עם `--all`. ראה כל מדיניות בה, מקובצת לפי קטגוריה:
 
 ```bash
 failproofai policies show FailproofAI/policies
 ```
 
-## Community policy packs
+## חבילות מדיניות קהילתיות
 
-מפתחים פורסמים packs למקרי השימוש שהם נתקלו בהם, ו-[policy hub](https://befailproof.ai/policy-hub/) רוכזם. Community pack פורסם על ידי המחבר שלו, לא בדוק על ידי Failproof AI, אז קרא מה הוא כולל לפני התקנה:
+מפתחים מפרסמים חבילות לשימושים שהם פגשו, וה-[policy hub](https://befailproof.ai/policy-hub/) מופיע בה. חבילה קהילתית פורסמה על ידי המחבר שלה, לא נסקרה על ידי Failproof AI, אז קרא מה היא כוללת לפני התקנה:
 
 ```bash
 failproofai policies show acme/support-agent
 ```
 
-זה רוכז כל מדיניות שהוא כולל, מקובצת לפי קטגוריה, ומסמן אילו המחבר מפעיל כברירת מחדל. זה קורא **רק את המניפסט** — הערך הם לא יורדים או מיובאים לעולם, אז הסתכלות בחבילת זר לא יכולה להפעיל קוד זר. עדיין המניפסט מאומת בעבור ה-`SHA256SUMS` של ה-release עצמו, אז מה שאתה קורא זה מה שהיה מתקין.
+זה מופיע בכל מדיניות בה, מקובצת לפי קטגוריה, וסימנים אילו המחבר מדלק כברירת מחדל. זה קורא **רק את ה-manifest** — artifact הכניסה לעולם לא הורד או ייובא, אז בחינת חבילה זרה לא יכולה להריץ קוד זר. ה-manifest עדיין בדוק כנגד `SHA256SUMS` של ה-release שלו, אז מה שאתה קורא הוא מה שהיה מתקין.
 
 ואז התקן אותו:
 
@@ -56,66 +56,64 @@ failproofai policies show acme/support-agent
 failproofai policies add acme/support-agent
 ```
 
-כל אלה עובדים — הדבק איזו שיש לך:
+כל אחד מאלה עובד — הדבק את מה שיש לך:
 
-| Source | Result |
+| מקור | תוצאה |
 | --- | --- |
-| `acme/support-agent` | ההוצאה החדשה ביותר, **נעוצה** לתג המדויק שהוא פתר |
-| `acme/support-agent@v2.1.0` | הוצאה זו |
+| `acme/support-agent` | ה-release החדש ביותר, **קבוע** ל-tag המדויק שאליו הוא התפזר |
+| `acme/support-agent@v2.1.0` | ה-release הזה |
 | `github:acme/support-agent@v2.1.0` | אותו דבר, כתוב במפורש |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | אותו דבר, הועתק מדפדפן |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | אותו דבר, מועתק מדפדפן |
 
-ללא שם תג מתקין את ההוצאה החדשה ביותר **ונוקט אותה**, ואז אומר לך איזה תג הוא בחר. מה מוקלט תמיד שם בדיוק הוצאה אחת, אז התקנה מחדש לא יכולה להסחוף.
+אי-שמות של tag מתקין את ה-release החדש ביותר **וקובע אותו**, ואז אומר לך איזה tag הוא בחר. מה שנרשם תמיד שומות בדיוק release אחד, אז התקנה חוזרת לא יכולה להסחף.
 
-## קח חלק מ-pack
+## קח חלק מחבילה
 
-כברירת מחדל אתה מקבל את **שלו** עצמו — המדיניויות שהמחבר שלו סימן כבטוחות להפעלה ללא השגחה — לא הכל שהוא כולל.
+כברירת מחדל אתה מקבל את **שלו** defaults — המדיניויות שהמחבר שלו סימן כבטוחות להדלקה ללא השגחה — לא הכל שהוא מכיל.
 
 ```bash
-failproofai policies add FailproofAI/policies --policy block-rm-rf          # אחד, או כמה מופרדים בפסיקים
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # אחד, או כמה מופרדים בפסיק
 failproofai policies add FailproofAI/policies --category dangerous-commands # קטגוריה שלמה
-failproofai policies add FailproofAI/policies --all                         # הכל בו
+failproofai policies add FailproofAI/policies --all                         # הכל בה
 ```
 
-`--category` ו-`--policy` משלבים כאיחוד (`--only` מקובל כנרדף עבור `--policy`), וכל אחד עשוי להיות חוזר: `--policy a --policy b` לוקח את שניהם. כאשר ה-pack כבר מותקן, הדגלים מוסיפים למה היה לך, והוספה מחדש ללא דגל וללא סוף - לשדרוג, תגיד - שומר על בחירתך כפי שהיא. בסוף עם אין דגל, `add` פותח את הבוחר במקום זאת, מסומן מראש עם ברירות המחדל של המחבר, ומה שאתה מסומן מחליף את הבחירה שלך.
+`--category` ו-`--policy` משלבים כחיבור (`--only` מקובל כמילון נרדף ל-`--policy`). כשהחבילה כבר מותקנת, הדגלים מוסיפים למה שהיה לך, והוספה חוזרת ללא דגל וללא terminal — לשדרוג, נגיד — שומרת על הבחירה שלך כפי שהיא. ב-terminal ללא דגל, `add` פותח את הbenerator במקום זאת, קדם-מסומן עם defaults של המחבר, ומה שאתה מסמן מחליף את הבחירה שלך.
 
-## נהל מה זה בתוך
+## נהל מה זה דלוק
 
 ```bash
-failproofai policies                                  # כל מקור בעמודה אחת, packs כלול
-failproofai policies add block-rm-rf                  # הפעל מדיניות אחת
-failproofai policies --uninstall block-refunds        # כבה מדיניות pack אחת
-failproofai policies --install block-refunds          # וחזור לאחור
-failproofai policies remove acme/support-agent        # הסר את ה-pack
+failproofai policies                                  # כל מקור ברשימה אחת, חבילות כלול
+failproofai policies add block-rm-rf                  # הדלק מדיניות אחת
+failproofai policies --uninstall block-refunds        # כבה מדיניות חבילה אחת
+failproofai policies --install block-refunds          # וחזור על
+failproofai policies remove acme/support-agent        # הסר התקנה של החבילה
 ```
 
-הפעלה או כיבוי של מדיניות pack מחול על כל המכונה: המתג מוקלט עם ה-pack המותקן, לא בתצורת הפרויקט, כל מה ש-`--scope` אומר.
+הדלקת מדיניות חבילה או כיבויה חל על כל המכונה: ההדלקה נרשמת עם החבילה המותקנת, לא בקונפיגורציה של פרויקט, לא משנה מה `--scope` אומר.
 
-שם ללא slash הוא מדיניות; כל דבר עם אחד הוא מקור pack. שם חשוף מופץ ל-pack המותקן שמצהיר עליו. כאשר שני packs מותקנים מצהירים על אותו שם, שם את זה שאתה מתכוון:
+שם ללא slash הוא מדיניות; כל דבר עם אחד הוא מקור חבילה. שם חשוף מתפזר לחבילה המותקנת שמצהירה עליו. כששתי חבילות מותקנות מצהירות על אותו שם, שמות זה שאתה מתכוון:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-Scopes, פרמטרים, וקבצים שפקודות אלה כותבות מכוסים ב-[local configuration](/he/policies/local-configuration).
+Scopes, פרמטרים, והקבצים שהפקודות האלה כותבות מכוסות ב-[local configuration](/he/policies/local-configuration).
 
-## מה integrity עושה ולא עושה קנה
+## מה אמתות עושה ולא עושה
 
-`SHA256SUMS` משלוח באותה הוצאה כמו הערך, אז זה **לא** חתימה ולא מוכיח שום דבר על מי פרסם אותה. מה זה כן מוכיח זה שהבייטים הם אלה שזה הוצאה פרסמה — וכיוון שה-digest מוקלט כאשר אתה מוסיף את ה-pack ו-re-verified לפני כל יבוא, לא יכול pack להשתנות תחת המכונה שלך אחר כך. מאגר שמחדש תגים או מחליף צו נעצרות בעומס במקום בשקט הורצה משהו אחר.
+`SHA256SUMS` משלח באותו release כמו artifact, אז זה **לא** חתימה וזה לא מוכיח כלום על מי פרסם אותו. מה שזה כן מוכיח הוא שהבתים הם אלה ש-release פרסם — וכי digest נרשם כשהוספת את החבילה ובדוק מחדש לפני כל import, חבילה לא יכולה להשתנות תחת המכונה שלך לאחר מכן. מאגר שretags או החלפת asset מפסיק לטעון במקום להריץ בשקט משהו אחר.
 
-בזמן ההתקנה ה-pack הוא גם **יובא פעם אחת** ובדוק כנגד המניפסט שלו. Pack שהערך שלו לא פרסם, או שרושם משהו אחר מכפי שהוא מצהיר, נדחה לפני כל דבר מופעל — במקום התקנה נקי וכשלון על הקריאה לכלים הבאה שלך. גם כן pack שה-id שלו טוען את `FailproofAI/` namespace אך שהוצאה שלו לא במאגר FailproofAI.
+בזמן ההתקנה החבילה גם **מיובאת פעם אחת** ונבדקת מול ה-manifest שלה. חבילה שה-artifact שלה לא עובר parse, או שרושמת משהו שונה ממה שהיא מצהירה עליו, נדחית לפני שמשהו מופעל — במקום להיות מותקנת בלי שגיאה ולהיכשל בקריאת הכלי הבאה שלך.
 
-## כאשר pack לא יטען
+## כשחבילה לא תטעון
 
-Pack שמכונה זו נאמרה להטיל ולא יכול להגיע **מכחיש** את האירועים כי מדיניויות החסרות כוסו, במקום לאפשר להם בשקט — כ-`pack/failproofai-pack-unavailable`, שחוקק על פני המדיניויות שכן טעון אז הכחשה מיוחסת לחבילה החסרה במקום לאיזה שומר הזדמן לעיר ראשון. החריג הוא `UserPromptSubmit`, אשר מדריך במקום: כחיוב שם יהיה נעילה אתך מחוכם הסוכן אתה צריך על מנת לתקן אותה. ראה [Failure behavior](/he/policies/failure-behavior).
+חבילה שהמכונה הזו הונחתה לאכוף ואינה יכולה להריץ **חוסמת** את האירועים שהמדיניות החסרה שלה הייתה אמורה לכסות, במקום לאשר אותם בשקט — בתור `pack/failproofai-pack-unavailable`, שקודמת למדיניות שכן נטענה, כך שהחסימה מיוחסת לחבילה החסרה ולא לשומר שבמקרה הופעל ראשון. החריג הוא `UserPromptSubmit`, שבו נשלחת הנחיה במקום זאת: חסימה שם הייתה נועלת אותך מחוץ לסוכן שאתה צריך כדי לתקן את הבעיה. ראה [Failure behavior](/he/policies/failure-behavior).
 
-Pack יכול שם את ה-oldest failproofai זה עובד עם (`minCliVersion`, הגדר על ידי publisher שלו). CLI קדום מסרב להוסיף אותו ודפוס את הפקודה שדרוג, `npm i -g "failproofai@>=<minCliVersion>" && failproofai update` (טווח, אז npm בוחר הוצאה שעומדת בו — `failproofai` הערוך מתקין `latest`, שיכול להיות יותר קדום מ-prerelease מינימום); אחד כבר מותקן שה-CLI הפועל זה קדום מדי עבור לא עומס, עם התוצאה לעיל. A `minCliVersion` CLI לא יכול קרוא תעלומה מתעלמת עם אזהרה במקום סירוב ה-pack.
+## אופליין ומראות
 
-## Offline ו-mirrors
-
-| Variable | Effect |
+| משתנה | אפקט |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | מסרב להביא; packs כבר מותקנים לשמור כוח |
-| `FAILPROOFAI_PACK_BASE_URL` | נקודות pack הביאה בראש mirror במקום `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | מסרב להביא; חבילות כבר מותקנות ממשיכות לאכוף |
+| `FAILPROOFAI_PACK_BASE_URL` | מצביע על הבאת חבילה במראה במקום `github.com` |
 
 כדי לשתף את המדיניויות שלך בדרך זו, ראה [Publish a policy pack](/he/policies/publish-a-pack).

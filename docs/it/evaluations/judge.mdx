@@ -1,55 +1,55 @@
 ---
 title: "Giudici LLM"
-description: "Valuta le sessioni su aspetti che il codice non può misurare — correttezza, tono, se l'agente ha seguito una policy — descrivendo come dovrebbe essere fatto bene e lasciando che un modello legga la conversazione."
+description: "Valuta le sessioni su aspetti che il codice non può misurare — correttezza, tono, se l'agente ha seguito una policy — descrivendo come dovrebbe essere fatto e lasciando che un modello legga la conversazione."
 icon: "scale"
 ---
 
-Una valutazione Python ospitata può contare e confrontare: quante chiamate a tool, quanti errori, quanto tempo ha richiesto una sessione. Non può dirvi se una risposta era *corretta*, se una risposta era scortese, o se l'agente ha controllato una policy prima di agire.
+Una valutazione Python ospitata può contare e confrontare: quante chiamate di tool, quanti errori, quanto tempo ha impiegato una sessione. Non può dirti se una risposta era *corretta*, se una risposta era scortese, o se l'agente ha verificato una policy prima di agire.
 
-Un **giudice LLM** può. Descrivete come dovrebbe essere fatto bene in linguaggio naturale, e un modello legge la sessione e restituisce un punteggio da 0 a 1 con il suo ragionamento.
+Un **giudice LLM** può farlo. Descrivi come dovrebbe essere fatto in linguaggio naturale, e un modello legge la sessione e restituisce un punteggio da 0 a 1 con il suo ragionamento.
 
 <Note>
-Un giudice costa una chiamata al modello per ogni sessione su cui viene eseguito, e una valutazione del codice non costa nulla. Usate un giudice solo per domande che necessitano che la conversazione venga *compresa* — e dategli una condizione, così viene eseguito sulle sessioni a cui la domanda si riferisce effettivamente.
+Un giudice costa una chiamata di modello per ogni sessione su cui viene eseguito, mentre una valutazione di codice non costa nulla. Usa un giudice solo per domande che richiedono che la conversazione sia *compresa* — e dagli una condizione, così da eseguirlo solo sulle sessioni a cui la domanda si riferisce realmente.
 </Note>
 
 ## Quale mi serve?
 
-| Domanda | Usate |
+| Domanda | Usa |
 | --- | --- |
 | Ha chiamato lo stesso tool due volte? | codice |
 | Quanti errori c'erano? | codice |
-| La sessione è durata meno di 30 secondi? | codice |
+| La sessione è stata inferiore a 30 secondi? | codice |
 | Il cliente ha espresso urgenza? | [classificatore](/it/evaluations/jev) |
-| Quanto era frustrato il cliente? | [classificatore](/it/evaluations/jev) |
+| Quanto frustrato era il cliente? | [classificatore](/it/evaluations/jev) |
 | La risposta era effettivamente corretta? | **giudice** |
 | La risposta era scortese o sprezzante? | **giudice** |
-| Ha controllato la policy di rimborso prima di promettere un rimborso? | **giudice** |
+| Ha verificato la policy di rimborso prima di promettere un rimborso? | **giudice** |
 
-La regola pratica: **contabile → codice, risposte che potete elencare in anticipo → [classificatore](/it/evaluations/jev), necessita una spiegazione → giudice.** Un giudice è quello che scrive in prosa su quello che ha visto; usatelo quando il numero farà domandare a qualcuno "perché?".
+La regola generale: **contabile → codice, risposte che puoi elencare in anticipo → [classificatore](/it/evaluations/jev), richiede una spiegazione → giudice.** Un giudice è quello che scrive prosa su quello che ha visto; usalo quando il numero farà domandare a qualcuno "perché?".
 
-Non dovete decidere in anticipo. Descrivete quello che volete misurare e l'assistente sceglie, poi vi dice quale ha scelto e perché. Potete cambiarlo.
+Non devi decidere in anticipo. Descrivi cosa vuoi misurato e l'assistente sceglie, poi ti dice quale ha scelto e perché. Puoi cambiarla.
 
-## Crearne uno
+## Scriverne uno
 
-1. Andate a **Analyze → eval authoring** e selezionate **new eval**.
-2. Descrivete quello che volete giudicato, e selezionate **draft**.
-3. Rivedete i **criteri**, la **soglia**, e la **condizione**, poi distribuite.
+1. Vai a **Analyze → eval authoring** e seleziona **new eval**.
+2. Descrivi cosa vuoi valutato, e seleziona **draft**.
+3. Rivedi i **criteria**, la **threshold**, e la **condition**, poi distribuisci.
 
-### Criteri
+### Criteria
 
-Una o due frasi, scritte come un requisito piuttosto che come una domanda:
+Una o due frasi, scritte come un requisito piuttosto che una domanda:
 
-> L'assistente non deve promettere o approvare un rimborso senza prima controllare la policy di rimborso.
+> L'assistente non deve promettere o approvare un rimborso senza prima verificare la policy di rimborso.
 
-Siate specifici su cosa comporterebbe un *fallimento*. "La risposta era buona?" vi dà un numero che non significa nulla; la frase di sopra vi dà uno su cui potete agire.
+Sii specifico su cosa lo farebbe *fallire*. "La risposta era buona?" ti dà un numero che non significa nulla; la frase sopra ti dà uno su cui puoi agire.
 
-### Soglia
+### Threshold
 
-Il punteggio a partire dal quale la sessione passa. `0.7` è un punto di partenza ragionevole. Il punteggio completo da 0 a 1 è sempre memorizzato, quindi la soglia decide solo pass/fail — potete vedere la distribuzione e regolare.
+Il punteggio al quale o al di sopra del quale la sessione passa. `0.7` è un buon punto di partenza. Il punteggio completo da 0 a 1 viene sempre archiviato, quindi la soglia decide solo pass/fail — puoi vedere la distribuzione e regolare.
 
-### Condizione
+### Condition
 
-La stessa condizione Python di qualsiasi altra valutazione, e importa molto di più qui. Senza una, il giudice viene eseguito su **ogni** sessione della vostra organizzazione, a una chiamata al modello ciascuna:
+La stessa condizione Python di qualsiasi altra valutazione, e qui è molto più importante. Senza una, il giudice viene eseguito su **ogni** sessione nella tua organizzazione, con una chiamata di modello ciascuna:
 
 ```python
 session.count("tool_use") > 0
@@ -59,7 +59,7 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Il dashboard vi avverte se distribuite un giudice senza una condizione. A volte è corretto — un agente a basso volume che volete completamente giudicato — ma dovrebbe essere una decisione, non un incidente.
+Il dashboard ti avverte se distribuisci un giudice senza una condizione. A volte è corretto — un agente a basso volume che vuoi completamente valutato — ma dovrebbe essere una decisione, non un incidente.
 
 ## Cosa vede il giudice
 
@@ -67,25 +67,25 @@ La conversazione, come turni, più recenti per primi se la sessione è lunga:
 
 - cosa ha detto l'utente
 - cosa ha risposto l'assistente
-- **ogni tool che l'agente ha chiamato, e cosa quella chiamata ha restituito, in ordine**
+- **ogni tool che l'agente ha chiamato, e cosa ha restituito quella chiamata, in ordine**
 
-Questa ultima parte è quello che rende "ha fatto X *prima di* Y" una domanda fair da porre. Una chiamata a tool fallita è mostrata come un fallimento, quindi "ha recuperato elegantemente da un errore" funziona anche.
+Questa ultima parte è quello che rende "ha fatto X *prima* di Y" una domanda equa da porre. Una chiamata di tool fallita è mostrata come un fallimento, così "ha recuperato elegantemente da un errore" funziona anche.
 
-Le sessioni molto lunghe sono troncate per stare nel contesto del modello. Quando accade il ragionamento lo dice esplicitamente — non vedrete mai un giudizio fatto su parte di una sessione presentato come fatto su tutta intera.
+Le sessioni molto lunghe vengono troncate per adattarsi al contesto del modello. Quando accade, il ragionamento lo dice esplicitamente — non vedrai mai un giudizio fatto su parte di una sessione presentato come fatto su tutta.
 
 ## Leggere i risultati
 
-Un giudice produce un **punteggio** come qualsiasi altra valutazione a punteggio, quindi traccia, filtra, e attiva avvisi nello stesso modo. Accanto al numero memorizza il **ragionamento** del giudice — il paragrafo che spiega quello che ha visto. Leggetelo prima quando un punteggio vi sorprende; è solitamente o una sessione genuinamente interessante o un segno che i criteri necessitano di affinamento.
+Un giudice produce un **punteggio** come qualsiasi altra valutazione con punteggio, quindi fa grafici, filtra e attiva avvisi allo stesso modo. Accanto al numero archivia il **ragionamento** del giudice — il paragrafo che spiega cosa ha visto. Leggi quello prima quando un punteggio ti sorprende; è solitamente o una sessione genuinamente interessante o un segno che i criteri hanno bisogno di essere affinati.
 
-I punteggi sono stabili per casi chiari ma non deterministici bit-per-bit. Trattate un singolo punteggio borderline come un invito ad andare a leggere la sessione, non come un verdetto.
+I punteggi sono stabili per i casi chiari ma non deterministici bit per bit. Considera un singolo punteggio borderline come un invito ad andare a leggere la sessione, non come un verdetto.
 
 ## Limiti
 
-- **Il test non è ancora disponibile.** Una prova non ha un'assegnazione di sessione dietro, e quell'assegnazione è quello che autorizza la spesa del vostro budget di modello — quindi non c'è nulla per cui una chiamata di test possa far pagare. Distribuite contro una condizione ristretta e leggete i primi risultati.
-- **Il backfill non è disponibile.** Fare il backfill di una valutazione del codice su mesi di cronologia è gratuito; farlo con un giudice sprecherebbe l'intero vostro budget in minuti.
-- **Modificare i criteri pubblica una nuova versione.** I punteggi vecchi e nuovi non sono confrontabili, quindi vengono tenuti separati piuttosto che mescolati in una linea di tendenza.
+- **Il testing non è ancora disponibile.** Una prova non ha un'assegnazione di sessione dietro di essa, e quella assegnazione è quello che autorizza la spesa del tuo budget di modello — quindi non c'è nulla per addebitare una chiamata di test. Distribuisci su una condizione ristretta e leggi i primi risultati.
+- **Il backfill non è disponibile.** Fare il backfill di una valutazione di codice su mesi di storia è gratuito; farlo con un giudice spenderrebbe tutto il tuo budget in minuti.
+- **Modificare i criteri pubblica una nuova versione.** I punteggi vecchi e nuovi non sono comparabili, quindi vengono tenuti separati piuttosto che mescolati in una linea di tendenza.
 - **Un giudice produce sempre un punteggio**, mai una metrica o un'asserzione.
 
-## Quando il vostro budget si esaurisce
+## Quando il tuo budget si esaurisce
 
-I giudici spendono il budget di modello della vostra organizzazione. Quando è esaurito, le valutazioni del giudice si fermano con una ragione chiara piuttosto che fallire silenziosamente, e **le valutazioni del codice continuano a funzionare normalmente**. Aumentate il budget e riprendono sulla prossima sessione.
+I giudici spendono il budget di modello della tua organizzazione. Quando è esaurito, le valutazioni giudice si interrompono con un motivo chiaro piuttosto che fallire silenziosamente, e **le valutazioni di codice continuano a funzionare normalmente**. Aumenta il budget e riprendono sulla sessione successiva.

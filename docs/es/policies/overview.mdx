@@ -1,6 +1,6 @@
 ---
 title: "Políticas"
-description: "Observa, guía o bloquea acciones del agente antes de que un fallo conocido vuelva a repetirse."
+description: "Observa, guía o bloquea acciones del agente antes de que un fallo conocido vuelva a ocurrir."
 icon: "shield-check"
 ---
 
@@ -12,17 +12,17 @@ Una política evalúa un evento de hook del agente y devuelve una de tres decisi
 
 ## Dónde viven las políticas
 
-| En el dashboard | Qué haces allí |
+| En el panel | Qué haces allí |
 | --- | --- |
 | **Observe → policy** | Revisa las decisiones de sesiones reales: qué política coincidió, en qué máquina y por qué |
-| **Admin → policy editor** | Escribe una política, pruébala contra tráfico pasado, publica una versión inmutable y compara versiones en **library** |
+| **Admin → policy editor** | Escribe una política, haz backtesting contra tráfico pasado, publica una versión inmutable y compara versiones en **library** |
 | **Admin → enforcement** | Asigna versiones a máquinas, en modo observe o enforce |
 
-El editor de políticas es donde un fallo se convierte en una regla. Describe el modo de fallo o pega el código fuente de la política en **compose**, prueba el borrador contra el tráfico que ya tienes y publica una versión:
+El editor de políticas es donde un fallo se convierte en una regla. Describe el modo de fallo o pega el código fuente de la política en **compose**, haz backtesting del borrador contra el tráfico que ya tienes y publica una versión:
 
-![La vista de composición del editor de políticas con identidad de política, redacción asistida por IA, validación del código fuente y controles de publicación.](/images/dashboard/policy-editor.png)
+![La vista de composición del editor de políticas con identidad de política, redacción asistida por IA, validación de código fuente y controles de publicación.](/images/dashboard/policy-editor.png)
 
-En una máquina, `failproofai policies` lista todo lo que se está aplicando. `fp policies` y `fp fleet` cubren el editor y la aplicación desde un terminal — consulta la [referencia de Cloud CLI](/es/reference/cloud-cli).
+En una máquina, `failproofai policies` lista todo lo que se aplica allí. `fp policies` y `fp fleet` cubren el editor y la aplicación de políticas desde un terminal — consulta la [referencia de Cloud CLI](/es/reference/cloud-cli).
 
 ## Obtener una política
 
@@ -32,23 +32,27 @@ Hay dos formas de conseguir una.
   <Card title="Escribe una política" icon="file-pen-line" href="/es/policies/editor">
     Deja que Failproof AI redacte una a partir de un hallazgo de auditoría, o escribe el código fuente tú mismo, luego revísala y publícala en el editor.
   </Card>
-  <Card title="Usa un pack de políticas" icon="package" href="/es/policies/packs">
-    Conecta un pack de políticas de Failproof AI para tu caso de uso, o un pack de la comunidad desde el hub de políticas, con un solo comando.
+  <Card title="Usa un paquete de políticas" icon="package" href="/es/policies/packs">
+    Integra un paquete de políticas de Failproof AI para tu caso de uso, o un paquete de la comunidad desde el hub de políticas, con un solo comando.
   </Card>
 </Columns>
 
-## Luego despliégala
+## Revisa llamadas a herramientas con Jev
+
+Jev lee una llamada a herramienta bloqueada en el contexto de tu solicitud. Puede señalar una preocupación que una política de coincidencia de cadenas no detectó, o limpiar un deny de una política marcada explícitamente como **reviewable**. Las políticas estrictas siguen siendo definitivas. [Empieza con las políticas de Jev](/es/policies/jev), luego consulta la [referencia de integración](/es/reference/jev) cuando necesites detalles de proveedor o configuración.
+
+## Luego despliégalo
 
 <Steps>
-  <Step title="Pruébala">
-    Prueba el borrador contra el tráfico que ya tienes, y ejecútala contra una acción que debe detener y otra que debe permitir — todo antes de publicar. Consulta [Probar una política](/es/policies/test).
+  <Step title="Pruébalo">
+    Haz backtesting del borrador contra el tráfico que ya tienes y ejecútalo contra una acción que debe detener y otra que debe permitir — todo antes de publicar. Consulta [Probar una política](/es/policies/test).
   </Step>
-  <Step title="Despliégala">
-    Asigna la versión a las máquinas en modo **observe**, lee sus decisiones y luego aplícala. Consulta [Desplegar una política](/es/policies/deploy).
+  <Step title="Despliégalo">
+    Coloca la versión en máquinas en modo **observe**, lee sus decisiones y luego aplica el enforce. Consulta [Desplegar una política](/es/policies/deploy).
   </Step>
-  <Step title="Versiona y revierte">
-    Cada publicación crea una versión nueva e inmutable, por lo que un despliegue que bloquea trabajo válido se deshace volviendo a desplegar la última versión correcta. Consulta [Versiones y rollback](/es/policies/rollback).
+  <Step title="Versiones y reversión">
+    Cada publicación es una versión nueva e inmutable, por lo que un despliegue que bloquea trabajo válido se deshace volviendo a desplegar la última versión correcta. Consulta [Versiones y reversión](/es/policies/rollback).
   </Step>
 </Steps>
 
-Para compartir tus políticas con otros equipos, [publícalas como un pack](/es/policies/publish-a-pack). Para saber qué ocurre cuando una política no puede evaluarse en absoluto, consulta [Comportamiento ante fallos](/es/policies/failure-behavior).
+Para compartir tus políticas con otros equipos, [publícalas como un paquete](/es/policies/publish-a-pack). Para saber qué ocurre cuando una política no puede evaluarse en absoluto, consulta [Comportamiento ante fallos](/es/policies/failure-behavior).

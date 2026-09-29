@@ -1,54 +1,58 @@
 ---
-title: "정책"
-description: "알려진 실패가 반복되기 전에 에이전트 작업을 관찰하고, 안내하거나, 차단하세요."
+title: "Policies"
+description: "알려진 장애가 반복되기 전에 에이전트 동작을 관찰하고 안내하거나 차단합니다."
 icon: "shield-check"
 ---
 
-정책은 에이전트 훅 이벤트를 평가하고 세 가지 결정 중 하나를 반환합니다:
+policy는 에이전트 훅 이벤트를 평가하여 세 가지 결정 중 하나를 반환합니다.
 
-- `allow`는 작업을 계속 진행하도록 허용합니다.
-- `instruct`는 에이전트에게 수정 안내를 제공합니다.
-- `deny`는 이유와 함께 작업을 차단합니다.
+- `allow`는 동작을 계속 진행시킵니다.
+- `instruct`는 에이전트에게 수정 지침을 제공합니다.
+- `deny`는 이유와 함께 동작을 차단합니다.
 
-## 정책이 위치하는 곳
+## Policy가 위치하는 곳
 
-| 대시보드 메뉴 | 수행 작업 |
+| 대시보드 위치 | 수행 작업 |
 | --- | --- |
-| **Observe → policy** | 실제 세션의 결정 검토: 어떤 정책이 어떤 머신에서, 왜 매칭되었는지 확인 |
-| **Admin → policy editor** | 정책 작성, 과거 트래픽 대상 백테스트, 변경 불가한 버전 게시, **library**에서 버전 비교 |
-| **Admin → enforcement** | 머신에 버전 배포, observe 또는 enforce 모드 설정 |
+| **Observe → policy** | 실제 세션의 결정 내역 검토: 어떤 policy가 어떤 머신에서, 왜 매칭되었는지 확인 |
+| **Admin → policy editor** | Policy 작성, 과거 트래픽 대상 백테스트, 불변 버전 게시, **library**에서 버전 비교 |
+| **Admin → enforcement** | 머신에 버전을 배포하고 observe 또는 enforce 모드로 운영 |
 
-정책 편집기는 실패를 규칙으로 만드는 곳입니다. **compose**에서 실패 패턴을 설명하거나 정책 소스를 붙여넣고, 이미 보유한 트래픽을 대상으로 초안을 백테스트한 후 버전을 게시하세요:
+Policy 에디터는 장애를 규칙으로 바꾸는 곳입니다. **compose**에서 장애 유형을 설명하거나 policy 소스를 붙여넣고, 이미 보유한 트래픽을 대상으로 초안을 백테스트한 후 버전을 게시합니다.
 
-![정책 ID, AI 보조 초안 작성, 소스 유효성 검사, 게시 컨트롤이 포함된 정책 편집기 compose 화면.](/images/dashboard/policy-editor.png)
+![Policy 에디터의 compose 뷰. Policy 식별 정보, AI 보조 초안 작성, 소스 유효성 검사, 게시 컨트롤이 포함되어 있습니다.](/images/dashboard/policy-editor.png)
 
-머신에서 `failproofai policies`를 실행하면 해당 머신에 적용 중인 모든 항목이 나열됩니다. `fp policies`와 `fp fleet`은 터미널에서 편집기와 시행을 다룹니다 — [Cloud CLI 참조](/ko/reference/cloud-cli)를 확인하세요.
+머신에서 `failproofai policies`를 실행하면 해당 머신에 적용 중인 모든 항목이 나열됩니다. `fp policies`와 `fp fleet`은 터미널에서 에디터와 enforcement를 관리합니다 — [Cloud CLI 레퍼런스](/ko/reference/cloud-cli)를 참고하세요.
 
-## 정책 가져오기
+## Policy 가져오기
 
 두 가지 방법이 있습니다.
 
 <Columns cols={2}>
-  <Card title="정책 직접 작성" icon="file-pen-line" href="/ko/policies/editor">
-    감사 결과를 바탕으로 Failproof AI가 초안을 작성하도록 하거나, 직접 소스를 작성한 후 편집기에서 검토하고 게시하세요.
+  <Card title="Policy 직접 작성" icon="file-pen-line" href="/ko/policies/editor">
+    Failproof AI가 감사 결과를 바탕으로 초안을 작성하도록 하거나, 직접 소스를 작성한 후 에디터에서 검토하고 게시하세요.
   </Card>
-  <Card title="정책 팩 사용" icon="package" href="/ko/policies/packs">
-    사용 사례에 맞는 Failproof AI 정책 팩이나 policy hub의 커뮤니티 팩을 한 번의 명령으로 적용하세요.
+  <Card title="Policy 팩 사용" icon="package" href="/ko/policies/packs">
+    사용 사례에 맞는 Failproof AI policy 팩이나 policy 허브의 커뮤니티 팩을 한 명령어로 적용하세요.
   </Card>
 </Columns>
+
+## Jev로 도구 호출 검토하기
+
+Jev는 요청 컨텍스트 내에서 게이트된 도구 호출을 읽습니다. 문자열 매칭 policy가 놓친 문제를 플래그하거나, **reviewable**로 명시적으로 표시된 policy의 deny를 해제할 수 있습니다. 강제 policy는 최종 결정으로 유지됩니다. [Jev policies 시작하기](/ko/policies/jev)를 먼저 참고하고, 제공자 또는 구성 세부 사항이 필요할 때는 [통합 레퍼런스](/ko/reference/jev)를 활용하세요.
 
 ## 배포하기
 
 <Steps>
   <Step title="테스트">
-    이미 보유한 트래픽을 대상으로 초안을 백테스트하고, 반드시 차단해야 하는 작업과 반드시 허용해야 하는 작업 모두에 대해 실행해 보세요 — 게시 전에 모두 완료합니다. [정책 테스트](/ko/policies/test)를 참조하세요.
+    게시 전에 보유한 트래픽을 대상으로 초안을 백테스트하고, 반드시 차단해야 하는 동작과 반드시 허용해야 하는 동작 모두에 대해 실행해 보세요. [Policy 테스트](/ko/policies/test)를 참고하세요.
   </Step>
   <Step title="배포">
-    **observe** 모드로 머신에 버전을 배포하고, 결정 사항을 확인한 후 enforce로 전환하세요. [정책 배포](/ko/policies/deploy)를 참조하세요.
+    **observe** 모드로 머신에 버전을 배포하고 결정 내역을 확인한 후 enforce로 전환하세요. [Policy 배포](/ko/policies/deploy)를 참고하세요.
   </Step>
   <Step title="버전 관리 및 롤백">
-    모든 게시는 새로운 변경 불가한 버전이므로, 유효한 작업을 차단하는 롤아웃이 발생하면 마지막 정상 버전을 재배포하여 되돌릴 수 있습니다. [버전 관리 및 롤백](/ko/policies/rollback)을 참조하세요.
+    게시할 때마다 새로운 불변 버전이 생성되므로, 유효한 작업을 차단하는 롤아웃이 발생하면 마지막으로 정상 동작하던 버전을 재배포하여 되돌릴 수 있습니다. [버전 관리 및 롤백](/ko/policies/rollback)을 참고하세요.
   </Step>
 </Steps>
 
-다른 팀과 정책을 공유하려면 [팩으로 게시](/ko/policies/publish-a-pack)하세요. 정책을 전혀 평가할 수 없는 경우 어떻게 되는지는 [실패 동작](/ko/policies/failure-behavior)을 참조하세요.
+다른 팀과 policy를 공유하려면 [팩으로 게시](/ko/policies/publish-a-pack)하세요. Policy를 전혀 평가할 수 없는 경우 발생하는 동작은 [장애 동작](/ko/policies/failure-behavior)을 참고하세요.

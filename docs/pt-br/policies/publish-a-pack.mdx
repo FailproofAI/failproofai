@@ -4,19 +4,19 @@ description: "Distribua suas próprias políticas como uma release do GitHub que
 icon: "upload"
 ---
 
-Um pacote consiste em três arquivos anexados a uma release do GitHub. O `failproofai publish` gera os três a partir dos arquivos de política fornecidos, cria a release e faz o upload deles.
+Um pacote é composto por três arquivos anexados a uma release do GitHub. O comando `failproofai publish` gera os três a partir dos arquivos de políticas fornecidos, cria a release e faz o upload deles.
 
-## 1. Escrever as políticas
+## 1. Escreva as políticas
 
-Comece a partir de algo que já funciona, em vez de um template com lacunas em branco:
+Comece por algo que já funcione em vez de um template em branco:
 
 ```bash
 failproofai publish --init
 ```
 
-Esse comando pergunta o nome do pacote, cria o arquivo `<name>.mjs` e encerra — sem rede, sem git, sem publicação. O arquivo gerado contém uma política que já bloqueia `git push --force`. Ele recusa sobrescrever um arquivo existente.
+Esse comando pergunta o nome do pacote, cria o arquivo `<name>.mjs` e encerra — sem rede, sem git, sem nada publicado. O arquivo gerado contém uma política que já bloqueia `git push --force`. Ele se recusa a sobrescrever um arquivo existente.
 
-As políticas usam a mesma API de qualquer política customizada. Dois campos extras são relevantes para um pacote:
+As políticas usam a mesma API de qualquer política personalizada. Dois campos extras são relevantes para um pacote:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -24,8 +24,8 @@ import { customPolicies, deny, allow } from "failproofai";
 customPolicies.add({
   name: "block-refunds",
   description: "Refunds above the approved limit need a human",
-  category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `policies add`
+  category: "Billing",        // agrupa a política; é o que --category seleciona
+  defaultEnabled: true,       // ativada por um `policies add` simples
   match: { events: ["PreToolUse"], tools: ["Bash"] },
   fn: async (ctx) =>
     String(ctx.toolInput?.command ?? "").includes("refund")
@@ -34,28 +34,28 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` assume o valor **false** quando omitido. Um `failproofai policies add` simples ativa apenas o que você marcou — instalar silenciosamente todas as políticas de um desconhecido não é uma decisão que o instalador deve tomar pelo usuário.
+`defaultEnabled` assume o valor **false** quando omitido. Um `failproofai policies add` simples ativa apenas o que você marcou — instalar todas as políticas de um desconhecido sem supervisão não é uma decisão que o instalador deve tomar pelo usuário.
 
-Uma política também pode declarar `authority: "reviewable"` com uma lista `reviewedBy`, o que permite ao avaliador semântico Jev validar seu veredicto em máquinas que configuram Jev. O `failproofai publish` copia ambos para o manifesto, e a máquina os lê de lá; ele recusa a compilação se uma declaração não puder ser honrada — como um nome de verificação com erro ortográfico ou, em um pacote que declara verificações Jev, uma verificação que ele não declarou. Omita-os e a política se torna rígida. Veja [Autoridade de política](/pt-br/policies/authority).
+Uma política também pode declarar `authority: "reviewable"` com uma lista `reviewedBy`, o que permite ao avaliador semântico Jev liberar seu veredicto em máquinas que configuram o Jev. O `failproofai publish` copia ambos no manifesto, e uma máquina os lê de lá; ele se recusa a fazer o build se uma declaração não puder ser honrada, como um nome de verificação com erro ortográfico ou, em um pacote que declara verificações Jev, uma verificação que ele não declara. Omita-os e a política será rígida. Consulte [Autoridade de política](/pt-br/policies/authority).
 
 ### Verificações Jev em um pacote
 
-Um pacote também pode incluir [verificações Jev](/pt-br/reference/policy-sdk#jev-checks) — `semanticPolicies.add()` — ao lado de suas políticas ou de forma independente. Um pacote é a única maneira de uma verificação Jev chegar a uma máquina: em um arquivo de política local, ela nunca é solicitada. O `publish` valida cada uma com as regras do loader e as escreve no array `semantic` do manifesto.
+Um pacote também pode conter [verificações Jev](/pt-br/reference/policy-sdk#jev-checks) — `semanticPolicies.add()` — junto com suas políticas ou de forma independente. Um pacote é a única maneira de uma verificação Jev chegar a uma máquina: em um arquivo de política local ela nunca é consultada. O `publish` valida cada uma com as regras do loader e as grava no array `semantic` do manifesto.
 
-- **Limites.** No máximo 24 verificações por pacote. Juntas, suas perguntas precisam caber no espaço de uma requisição Jev, descontando o que as 16 verificações embutidas que toda máquina solicita já ocupam (sobram cerca de 9.100 caracteres), a menos que o repositório seja da FailproofAI; o `publish` recusa um pacote que exceda esse orçamento e exibe os números. As verificações de outros pacotes compartilham o mesmo espaço, então uma verificação que não couber ao lado deles não será solicitada lá: o `policies add` a nomeia.
-- **Elas são adicionadas às verificações embutidas.** O Jev solicita as verificações do seu pacote além das 16 [verificações embutidas](/pt-br/policies/authority#semantic-policy-names), que continuam funcionando. Apenas um pacote instalado de um repositório FailproofAI (`FailproofAI/jev-policies`) substitui as verificações embutidas pelas suas próprias. Verificações de vários pacotes se acumulam; quando suas perguntas excedem o que uma requisição Jev comporta, as verificações da FailproofAI são mantidas primeiro e as demais são descartadas com um aviso. Um nome declarado de forma diferente por dois pacotes não é honrado por nenhum — toda política que o nomeia permanece rígida — enquanto declarações idênticas de um mesmo nome são permitidas. Os 16 nomes embutidos são reservados: se declarados por um pacote não instalado de um repositório FailproofAI, a versão do pacote nunca é solicitada, e o `publish` recusa tal declaração; escolha nomes próprios.
-- **`reviewedBy` nomeia as verificações do próprio pacote.** Quando o pacote declara alguma, o `publish` avalia cada `reviewedBy` apenas em relação a esses nomes, portanto um nome de verificação embutida que o pacote não declarou é recusado. Um pacote sem verificações próprias é avaliado em relação aos nomes embutidos.
-- **Configure `--min-cli-version`.** Uma CLI muito antiga para verificações Jev ignora o array `semantic` e instala o restante, então passe `--min-cli-version <version>` para um pacote que contenha verificações. Esse valor é escrito no manifesto como `minCliVersion`: uma CLI mais antiga recusa instalar o pacote e recusa carregá-lo se já estiver instalado — o que, para um pacote `enforce` com políticas, nega o que essas políticas cobrem (veja [Quando um pacote não carrega](/pt-br/policies/packs#when-a-pack-will-not-load)). O valor deve ser semver puro ou o `publish` o recusa; uma CLI que não consegue comparar um valor armazenado emite um aviso e o ignora. Para um pacote com verificações, o valor deve ser no mínimo `1.0.8-beta.0`, a primeira release que executa as verificações de um pacote como publicadas (a 1.0.7 as ignora, e a 1.0.7-beta.x as substitui pelas verificações embutidas): o `publish` recusa um valor inferior e escreve `1.0.8-beta.0` quando nenhum é fornecido.
+- **Limites.** No máximo 24 verificações por pacote. Juntas, suas perguntas devem caber no espaço de uma requisição Jev, menos o que as 16 verificações do `FailproofAI/jev-policies` ocupam primeiro quando ambos estão instalados (sobram cerca de 9.100 caracteres), a menos que o repositório seja do FailproofAI; o `publish` recusa um pacote acima desse limite e exibe os números. As verificações de outros pacotes compartilham o mesmo espaço, portanto uma verificação que não couber ao lado delas não será consultada: o `policies add` a identifica pelo nome.
+- **São as únicas verificações que o Jev consulta.** O Failproof AI não distribui verificações Jev, então uma máquina consulta exatamente o que seus pacotes instalados declaram — os seus, junto ao [`FailproofAI/jev-policies`](/pt-br/policies/authority#semantic-policy-names) quando estiver instalado. Verificações de vários pacotes se somam; quando suas perguntas ultrapassam o que uma requisição Jev suporta, as verificações do FailproofAI são mantidas primeiro e as demais são descartadas com um aviso. Um nome declarado de forma diferente por dois pacotes não é honrado por nenhum — toda política que o nomeia permanece rígida — enquanto declarações idênticas do mesmo nome são aceitas. Os 16 nomes do `FailproofAI/jev-policies` são reservados: declarados por um pacote não instalado de um repositório FailproofAI, a versão desse pacote nunca é consultada, então o `publish` recusa um pacote com esses nomes; use nomes próprios.
+- **`reviewedBy` nomeia as verificações do próprio pacote.** Quando o pacote declara alguma, o `publish` avalia cada `reviewedBy` apenas contra esses nomes, então um nome do `FailproofAI/jev-policies` que o pacote não declara por conta própria é recusado. Um pacote sem verificações próprias é avaliado contra esses dezesseis nomes.
+- **Defina `--min-cli-version`.** Uma CLI muito antiga para verificações Jev ignora o array `semantic` e instala o restante, portanto passe `--min-cli-version <version>` para um pacote que contenha verificações. Esse valor é gravado no manifesto como `minCliVersion`: uma CLI mais antiga recusa instalar o pacote e recusa carregá-lo se já estiver instalado — o que, para um pacote `enforce` com políticas, nega o que essas políticas cobrem (veja [Quando um pacote não carrega](/pt-br/policies/packs#when-a-pack-will-not-load)). O valor deve ser semver simples ou o `publish` o recusa; uma CLI que não consegue comparar um valor armazenado emite um aviso e o ignora. Para um pacote com verificações, deve ser pelo menos `1.0.8-beta.0`, a primeira release que executa as verificações de um pacote conforme publicado (1.0.7 as ignora, 1.0.7-beta.x as substitui pelas verificações integradas): o `publish` recusa um valor menor e grava `1.0.8-beta.0` quando nenhum é informado.
 
-Um pacote apenas de verificações Jev (sem `customPolicies.add`) é recusado por uma CLI muito antiga para verificações Jev ("pack manifest declares no policies") e ignorado se já estiver instalado. Se uma máquina recusar esse pacote ao carregá-lo (um `minCliVersion` não atendido, um artefato ausente ou alterado), ela reporta o motivo e não nega nada, pois o pacote não bloqueia nada sem o Jev. Builds mais antigos nem sempre concordam: a 1.0.7 carrega um como pacote vazio, mas nega toda chamada de ferramenta se seu artefato estiver ausente ou alterado; uma pré-release com capacidade Jev anterior a 1.0.8-beta.0 (como a 1.0.7-beta.2) nega toda chamada de ferramenta ao recusar qualquer uma, inclusive por um `minCliVersion` acima dela. Portanto, antes de fazer rollback de uma máquina, remova o pacote (`failproofai policies remove <id>`); o `publish` exibe este aviso para um pacote apenas de verificações Jev.
+Um pacote de verificações Jev sozinho (sem `customPolicies.add`) é recusado por uma CLI muito antiga para verificações Jev ("pack manifest declares no policies") e ignorado se já estiver instalado. Se uma máquina recusar tal pacote ao carregá-lo (um `minCliVersion` que não atende, um artefato ausente ou alterado), ela reporta o motivo e não nega nada, pois o pacote não bloqueia nada sem o Jev. Builds mais antigas não concordam em tudo: a 1.0.7 carrega um como pacote vazio, mas nega toda chamada de ferramenta se seu artefato estiver ausente ou alterado; e uma pré-release com suporte a Jev anterior à 1.0.8-beta.0 (como a 1.0.7-beta.2) nega toda chamada de ferramenta sempre que recusa uma, inclusive por um `minCliVersion` acima dela. Portanto, antes de reverter uma máquina, remova o pacote (`failproofai policies remove <id>`); o `publish` exibe esse lembrete para um pacote de verificações Jev somente.
 
-Escreva quantos arquivos quiser; um por categoria fica bem organizado. Todo arquivo no diretório que registra políticas é incluído no artefato único que um pacote precisa ter.
+Escreva quantos arquivos quiser; um por categoria fica bem organizado. Todo arquivo no diretório que registra políticas é empacotado no único artefato que um pacote deve ter.
 
 <Warning>
-  O bundling requer **bun**. Sem ele, mantenha um único arquivo autocontido. De qualquer forma, o entry publicado não deve importar arquivos locais em tempo de instalação: apenas o entry tem o digest fixado, portanto um pacote que tentasse acessar arquivos vizinhos não poderia afirmar honestamente que o digest cobre o que executa — e o `publish` recusa um em vez de fazer uma promessa que não pode cumprir.
+  O empacotamento requer **bun**. Sem ele, use apenas um arquivo autossuficiente. De qualquer forma, a entrada publicada não deve importar arquivos locais em tempo de instalação: apenas a entrada tem o digest fixado, então um pacote que tentasse referenciar arquivos vizinhos não poderia honestamente afirmar que o digest cobre o que executa — e o `publish` recusa esse cenário em vez de entregar uma promessa que não pode cumprir.
 </Warning>
 
-## 2. Testar localmente primeiro
+## 2. Teste aqui primeiro
 
 Antes que qualquer outra pessoa possa ver, aplique o arquivo nesta máquina:
 
@@ -65,30 +65,30 @@ failproofai policies -i -c ./<name>.mjs
 
 Qualquer caminho, qualquer nome de arquivo. Peça ao seu agente para fazer o que você bloqueou e observe a recusa. Nada é publicado e ninguém mais é afetado. [Testar uma política](/pt-br/policies/test) cobre o restante: o caso legítimo que deve ser permitido e as entradas que a quebram.
 
-## 3. Publicar
+## 3. Publique
 
 ```bash
 failproofai publish
 ```
 
-Ele descobre onde publicar, o que incluir no bundle, qual versão usar e só pergunta quando o repositório não fornece essa informação. Em ordem, interrompendo antes de criar uma release se algo estiver errado:
+Ele descobre onde publicar, o que empacotar, qual versão usar, e só pergunta quando nada no repositório informa. Em ordem, parando antes de criar uma release se algo estiver errado:
 
-1. Encontra os arquivos de política aqui pelo **conteúdo** — aqueles que importam `failproofai` e chamam `customPolicies.add` ou `semanticPolicies.add` — e não pelo nome do arquivo, portanto encontra `guards.mjs` e ignora um `policies.mjs` não relacionado. Não desce em subdiretórios, então um fixture de teste nunca é incluído por acidente.
+1. Encontra os arquivos de política pelo **conteúdo** — aqueles que importam `failproofai` e chamam `customPolicies.add` ou `semanticPolicies.add` — e não pelo nome do arquivo, então encontra `guards.mjs` e ignora um `policies.mjs` não relacionado. Não desce em subdiretórios, então um fixture de teste nunca é incluído por acidente.
 2. Lê o repositório via `git remote get-url origin`, no diretório do **arquivo** em vez do seu, e decide a versão.
-3. Encontra sua credencial: `GITHUB_TOKEN`, `GH_TOKEN` ou `gh auth login`. Precisa apenas de permissão de escrita em releases e nunca é exibida.
-4. Cria o repositório se ele não existir. Isso ocorre antes da compilação, portanto um pacote recusado na próxima etapa pode deixar um repositório novo sem nenhuma release.
-5. Compila os três assets, validando-os com as **próprias regras do loader** — o mesmo código que decide o que pode ser instalado na máquina de um desconhecido — para que um pacote que nunca poderia ser instalado falhe aqui, onde você ainda pode corrigir.
-6. Cria ou reutiliza a release e faz o upload, substituindo assets de mesmo nome.
+3. Encontra sua credencial: `GITHUB_TOKEN`, `GH_TOKEN` ou `gh auth login`. Ela precisa apenas de permissão de escrita em releases e nunca é exibida.
+4. Cria o repositório se ele não existir. Isso ocorre antes do build, então um pacote recusado na etapa seguinte pode deixar um novo repositório sem nenhuma release.
+5. Faz o build dos três assets, validando-os com as **próprias regras do loader** — o mesmo código que decide o que pode ser instalado na máquina de outra pessoa — para que um pacote que nunca poderia ser instalado falhe aqui, onde você ainda pode corrigir.
+6. Cria ou reutiliza a release e faz o upload, substituindo assets com o mesmo nome.
 
 | Arquivo | O que é |
 | --- | --- |
 | `failproofai-pack.json` | O manifesto: id, versão, efeito, uma entrada por política e — quando houver — as verificações Jev (`semantic`) e `minCliVersion` |
-| `failproofai-pack.mjs` | Seu entry com bundle |
+| `failproofai-pack.mjs` | Sua entrada empacotada |
 | `SHA256SUMS` | `<sha256>  <filename>` para os outros dois |
 
-Os nomes dos assets são fixos — são o que a CLI do consumidor usa para construir suas URLs, sem chamada de API nem descoberta.
+Os nomes dos assets são fixos — são o que a CLI do consumidor usa para construir as URLs, sem chamada de API e sem descoberta.
 
-Recusado em tempo de compilação: um id que não seja `publisher/name`, um nome de política contendo `/`, uma política declarando `alwaysOn`, uma `description`, `category` ou `match` ausente, um entry que não registra nada, um entry que importa arquivos locais e uma verificação Jev com nome de uma verificação embutida, a menos que o repositório seja da FailproofAI.
+Recusado em tempo de build: um id que não seja `publisher/name`, um nome de política contendo `/`, uma política declarando `alwaysOn`, uma `description`, `category` ou `match` ausente, uma entrada que não registra nada, uma entrada que importa arquivos locais e uma verificação Jev com o nome de uma verificação integrada, a menos que o repositório seja do FailproofAI.
 
 Substitua qualquer decisão tomada automaticamente:
 
@@ -100,41 +100,41 @@ failproofai publish \
   --dry-run
 ```
 
-`--id` define o id do pacote quando ele deve diferir do repositório, `--tag` define a tag da release, `--notes` substitui as notas de release geradas — que é de onde o `policies show --releases` lê as contagens e o commit de cada release — `--out` escolhe onde os assets são gravados (padrão `dist-pack`), `--min-cli-version` define a CLI mais antiga que pode instalar o pacote ([acima](#jev-checks-in-a-pack)), e `--dry-run` compila sem publicar e não requer credencial.
+`--id` define o id do pacote quando ele deve diferir do repositório, `--tag` define a tag da release, `--notes` substitui as notas de release geradas — que é de onde o `policies show --releases` lê as contagens e o commit de cada release — `--out` escolhe onde os assets são gravados (padrão `dist-pack`), `--min-cli-version` define a CLI mais antiga que pode instalar o pacote ([acima](#jev-checks-in-a-pack)), e `--dry-run` faz o build sem publicar e não requer credencial.
 
-Qualquer pessoa pode agora instalar com `failproofai policies add acme/support-agent`. Veja [pacotes de políticas](/pt-br/policies/packs) para fixar uma versão ou instalar apenas parte de um.
+Qualquer pessoa pode instalar o pacote com `failproofai policies add acme/support-agent`. Consulte [pacotes de políticas](/pt-br/policies/packs) para fixar uma versão ou instalar apenas parte de um.
 
-### Listar no hub de políticas
+### Liste no hub de políticas
 
-Adicione o tópico `failproofai-policies` ao repositório no GitHub. Não há formulário de submissão nem fila de aprovação: o crawler do [hub de políticas](https://befailproof.ai/policy-hub/) encontra o repositório na próxima varredura. O tópico apenas o coloca em consideração — o que o lista é uma release cujo manifesto é verificado contra seu próprio `SHA256SUMS` e parseado pelas mesmas regras que a CLI usa, que é exatamente o que o `failproofai publish` produz.
+Adicione o tópico `failproofai-policies` ao repositório no GitHub. Não há formulário de envio nem fila de aprovação: o crawler do [hub de políticas](https://befailproof.ai/policy-hub/) encontra o repositório na próxima varredura. O tópico apenas o coloca em consideração — o que o lista de fato é uma release cujo manifesto se verifica contra seu próprio `SHA256SUMS` e é analisado sob as mesmas regras que a CLI usa, que é exatamente o que o `failproofai publish` produz.
 
 ## Como a versão é decidida
 
-A versão é o **commit a partir do qual você está publicando** — seu sha curto, doze caracteres: `a1b2c3d4e5f6`. Não há nada para escolher nem incrementar, e a versão identifica exatamente de onde os bytes vieram, portanto publicar a mesma fonte duas vezes gera a mesma versão.
+A versão é o **commit do qual você está publicando** — seu sha curto, doze caracteres: `a1b2c3d4e5f6`. Não há nada a escolher nem a incrementar, e a versão nomeia exatamente de onde os bytes vieram, então publicar a mesma fonte duas vezes gera a mesma versão.
 
-Ela é lida da árvore à sua frente, nunca das releases do repositório, portanto um clone recente e uma máquina air-gapped calculam a mesma resposta sem perguntar ao GitHub o que ocorreu antes.
+Ela é lida da árvore à sua frente, nunca das releases do repositório, então um clone novo e uma máquina isolada computam a mesma resposta sem consultar o GitHub sobre o que aconteceu antes.
 
-Como a versão nomeia um commit, esse commit precisa existir. No terminal, o `publish` o cria para você: inicializa um repositório quando não há nenhum e faz commit dos arquivos de política alterados antes de compilar. Ele **recusa** — indicando `--version` como alternativa — quando executado sem terminal (um commit feito em um runner de CI não existiria em nenhum outro lugar), quando arquivos além das políticas estão sem commit, ou em um checkout sem commits. Uma tag em `HEAD` tem precedência sobre o sha — quem tagueou `v1.2.0` declarou o que essa release é.
+Como a versão nomeia um commit, esse commit precisa existir. Em um terminal, o `publish` o cria por você: inicializa um repositório quando não há nenhum e faz commit dos arquivos de política alterados antes de fazer o build. Ele **recusa** em vez disso — indicando `--version` como saída — quando executado sem terminal (um commit feito em um runner de CI não existiria em mais nenhum lugar), quando arquivos outros que não as políticas estão sem commit, ou em um checkout que ainda não tem commits. Uma tag em `HEAD` prevalece sobre o sha — quem marcou `v1.2.0` já declarou o que é esta release.
 
-Um sha não tem ordenação própria, então use `failproofai policies show <owner>/<repo> --releases` para ver qual release veio primeiro — a mais recente no topo.
+Um sha não carrega ordenação própria, então use `failproofai policies show <owner>/<repo> --releases` para ver qual release veio primeiro — a mais recente no topo.
 
-## Publicar uma nova versão
+## Distribuindo uma nova versão
 
-Faça commit da alteração e execute `failproofai publish` novamente — o novo commit é a nova versão. Os consumidores executam o mesmo `failproofai policies add`. Sem terminal, ou com uma flag de seleção, eles mantêm o subconjunto escolhido anteriormente e uma política desativada permanece desativada; no terminal sem flag, o seletor abre pré-marcado com seus padrões e a resposta deles substitui a seleção anterior.
+Faça o commit da mudança e execute `failproofai publish` novamente — o novo commit é a nova versão. Os consumidores executam o mesmo `failproofai policies add`. Sem terminal, ou com um flag de seleção, eles mantêm o subconjunto escolhido e uma política que desativaram permanece desativada; em um terminal sem flag, o seletor abre pré-marcado com seus padrões e a resposta deles substitui a seleção anterior.
 
-Alterar o **nome** de uma política é uma mudança incompatível: uma máquina que a havia desativado está desativando um nome que não existe mais, e o novo nome chega com o valor que `defaultEnabled` define.
+Alterar o **nome** de uma política é uma mudança incompatível: uma máquina que a havia desativado está desativando um nome que não existe mais, e o novo nome chega com o que `defaultEnabled` definir.
 
-## O que seus usuários estão confiando
+## No que seus usuários estão confiando
 
-O `SHA256SUMS` vive na mesma release que o artefato, portanto prova que os bytes são os que você publicou — não quem você é. Quem puder escrever no repositório pode escrever ambos os arquivos. A proteção dos seus usuários é que o digest é fixado no momento da instalação, então o que você enviou não pode mudar para eles depois.
+O `SHA256SUMS` fica na mesma release que o artefato, então prova que os bytes são os que você publicou — não quem você é. Quem puder escrever no repositório pode escrever ambos os arquivos. A proteção dos seus usuários é que o digest é fixado no momento da instalação, então o que você distribuiu não pode mudar para eles depois.
 
-Publique a partir de um repositório cujo acesso de escrita você controla, e trate uma release de pacote como a publicação de um pacote de software.
+Publique de um repositório cujo acesso de escrita você controla e trate uma release de pacote como a publicação de um pacote.
 
-O repositório também deve ser **público**. As instalações são HTTPS anônimo sem credencial disponível, portanto um repositório privado existente é recusado antes de qualquer compilação ou upload, e um que o `publish` cria é público pelo mesmo motivo. `--allow-private` substitui isso para quem entrega os três assets por outro meio, e deixa claro que nenhum `policies add` pode acessá-los. Apenas a release importa: as instalações leem `releases/download/<tag>/<asset>` e nunca tocam na sua árvore git.
+O repositório também deve ser **público**. As instalações são feitas via HTTPS anônimo sem credencial, então um repositório privado existente é recusado antes de qualquer build ou upload, e um que o `publish` cria é público pelo mesmo motivo. `--allow-private` substitui isso para quem entrega os três assets por outro meio e deixa claro que nenhum `policies add` pode alcançá-los. Apenas a release importa: as instalações leem `releases/download/<tag>/<asset>` e nunca tocam na sua árvore git.
 
-## Observar antes de aplicar
+## Observe antes de aplicar
 
-Um manifesto pode declarar `"effect": "observe"` — o que é definido por `failproofai publish --effect observe`. Essas políticas são executadas e seus veredictos são **registrados e descartados** — nada é bloqueado. As verificações Jev de um pacote observe não são solicitadas, assim como as de um pacote instalado com `--cli` para outros agentes. É a forma de medir uma nova regra contra tráfego real antes que ela possa interromper o trabalho de alguém.
+Um manifesto pode declarar `"effect": "observe"` — `failproofai publish --effect observe` é o que define isso. Essas políticas são executadas e seus veredictos são **registrados e descartados** — nada é bloqueado. As verificações Jev de um pacote observe não são consultadas, assim como as de um pacote instalado com `--cli` para outros agentes. É a forma de medir uma nova regra contra o tráfego real antes que ela possa interromper o trabalho de alguém.
 
 ```json
 { "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }

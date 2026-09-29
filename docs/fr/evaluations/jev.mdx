@@ -1,88 +1,28 @@
 ---
-title: "Évaluations par classifieur"
-description: "Notez les sessions en réponse à des questions dont vous connaissez les réponses à l'avance — vrai ou faux, ou dans quelle mesure — à l'aide d'un petit classifieur calibré plutôt que d'un modèle généraliste."
+title: "Évaluations Jev"
+description: "Utilisez Jev pour noter une session terminée en réponse à une question avec des réponses connues."
 icon: "list-checks"
 ---
 
-Certaines questions nécessitent qu'un modèle *lise* la conversation, sans pour autant *rédiger* de commentaire. « Le client a-t-il exprimé une urgence ? » n'appelle que deux réponses. « À quel point était-il frustré ? » en a quelques-unes, dans un ordre précis. Vous connaissez toutes les réponses possibles avant même de poser la question.
+Une évaluation Jev lit une **session terminée** et attribue un score de 0 à 1. Utilisez-la lorsque la réponse est connue à l'avance, par exemple « Le client a-t-il exprimé de l'urgence ? » ou « À quel point le client était-il frustré ? » Elle vous aide à identifier des tendances entre les exécutions ; elle n'interrompt pas un appel d'outil. Pour les décisions prises **avant** l'exécution d'un outil, utilisez les [politiques Jev](/fr/policies/jev).
 
-Une **évaluation par classifieur** est exactement conçue pour cela. Vous formulez la question et les réponses possibles, et un petit modèle dédié à la classification renvoie un nombre calibré — jamais du texte libre.
+## Créer une évaluation dans le tableau de bord
 
-<Note>
-Comme un juge, une évaluation par classifieur coûte un appel de modèle par session. Contrairement à un juge, il s'agit d'un modèle petit et à usage unique plutôt que généraliste : il est donc plus rapide et moins coûteux — mais il n'expliquera jamais son raisonnement. Si vous avez besoin d'une explication, utilisez un [juge](/fr/evaluations/judge).
-</Note>
+1. Ouvrez **Analyze → eval authoring** et sélectionnez **new eval**.
+2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de vérifier la politique de remboursement ? Répondre par oui ou non. » Sélectionnez **draft** et vérifiez que le résultat est bien un score de classification.
+3. [Testez-la](/fr/evaluations/test) sur des sessions récentes, puis [déployez-la](/fr/evaluations/deploy). Les nouvelles sessions terminées sont notées ; effectuez un [remplissage rétroactif](/fr/evaluations/deploy#score-sessions-you-already-have) si vous avez également besoin de l'historique.
 
-## Laquelle choisir ?
+![Le formulaire partagé de création d'évaluation, où vous décrivez une question à réponses fixes, examinez le brouillon et déployez après les tests. L'exemple présenté est une évaluation de code ; une question Jev utilise le même flux de création.](/images/dashboard/eval-authoring-draft.png)
 
-| Question | Utiliser |
-| --- | --- |
-| Combien d'appels d'outils y a-t-il eu ? | code |
-| La session a-t-elle duré moins de 30 secondes ? | code |
-| Le client a-t-il exprimé une urgence ? | **classifieur** |
-| Quelle équipe devrait traiter ceci : facturation, technique ou commercial ? | **classifieur** |
-| À quel point le client était-il frustré ? | **classifieur** |
-| La réponse était-elle réellement correcte ? | **juge** |
-| A-t-il suivi notre politique d'escalade, et pourquoi pensez-vous cela ? | **juge** |
+L'assistant peut choisir entre du code, la classification Jev et un [juge](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev fournit un score sans raisonnement en prose ; choisissez un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour les types de questions et les limites de score.
 
-La règle à retenir : **ce qui se compte → code, les réponses que vous pouvez lister → classifieur, ce qui nécessite une explication → juge.**
+## Lire les scores
 
-Vous n'avez pas à décider à l'avance. Décrivez ce que vous souhaitez mesurer et l'assistant choisit, vous indique ce qu'il a retenu et pourquoi, et vous pouvez changer d'option.
+Ouvrez **Observe → Evaluations** pour visualiser le résultat par agent et par période. Depuis un terminal, le Cloud CLI peut lire les mêmes résultats :
 
-## Les deux types de questions
-
-### `noul` — est-ce vrai ?
-
-Deux réponses, et vous décrivez les deux. Le résultat est la probabilité que la description « vraie » corresponde :
-
-```json
-{
-  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
-  "criteria": {
-    "true":  "A refund was promised or issued with no prior policy check or approval",
-    "false": "No refund was promised, or every refund followed a policy check"
-  }
-}
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
 ```
 
-Décrivez les deux côtés. « Aucune urgence exprimée » est une vraie réponse, et la formuler explicitement rend l'autre plus précise.
-
-### `score` — dans quelle mesure ?
-
-Un barème ordonné, **du pire au meilleur**. Le résultat indique où la session se situe sur ce barème, remis à l'échelle de 0 à 1 :
-
-```json
-{
-  "instructions": "How frustrated is the customer?",
-  "criteria": ["Calm", "Frustrated", "Very angry"]
-}
-```
-
-**Un barème comporte trois à cinq niveaux, tous distincts.** Ces deux limites sont mesurées, pas stylistiques :
-
-- **Deux niveaux** revient à faire ce que `noul` fait déjà mieux, et **plus de cinq** amène le modèle à se réfugier vers le milieu au lieu de trancher. La même question sur la même session a donné 0,00 avec deux niveaux, 0,01 avec trois et 0,55 avec dix.
-- **Des niveaux répétés** répartissent la réponse arbitrairement entre eux. Une session manifestement en colère a obtenu 1,00 avec `["Calm", "Frustrated", "Very angry"]` et 0,66 avec `["Angry", "Angry", "Angry"]` — un nombre bien formé qui ne signifie rien.
-
-Les catégories sans ordre — « facturation, technique ou commercial » — ne constituent pas un barème. Posez-les sous forme de `noul` par catégorie, ou utilisez un juge.
-
-## Interpréter les résultats
-
-Un classifieur produit un **score** de 0 à 1, exactement comme un juge : il se représente sur des graphiques, se filtre et déclenche des alertes de la même façon. Deux différences méritent d'être signalées :
-
-- **Il n'y a pas de raisonnement.** Le champ est intentionnellement vide. Ce modèle ne s'explique pas, et inventer une explication serait une fabrication plutôt qu'une fonctionnalité.
-- **L'incertitude est signalée.** Une question de type `score` indique son propre niveau de confiance, et un résultat sur lequel le modèle n'était pas sûr est tagué `low_confidence` — ainsi, « lesquels devraient être examinés par un humain » devient un filtre plutôt qu'une supposition. Une question de type `noul` ne signale pas le niveau de confiance et n'est donc jamais taguée.
-
-Les sessions très longues sont lues par extraits puis combinées. Lorsqu'une session est trop longue pour être lue en entier, le résultat indique combien de tours ont été omis — vous ne verrez jamais un jugement rendu sur une partie d'une session présenté comme s'il portait sur la totalité.
-
-## Limites
-
-- **Trois à cinq niveaux de barème, tous distincts.** Voir ci-dessus ; les deux bornes sont vérifiées à la création.
-- **Une question par évaluation.** Posez deux questions et vous obtenez deux évaluations, ce qui est aussi ce que vous souhaitez sur un graphique.
-- **Modifier la question publie une nouvelle version.** Les anciens et nouveaux scores ne sont pas comparables, ils sont donc séparés plutôt que mélangés dans une même tendance.
-- **Un classifieur produit toujours un score**, jamais une métrique ou une assertion.
-- **Pas de raisonnement**, comme indiqué ci-dessus. Si un nombre va amener quelqu'un à demander « pourquoi ? », écrivez plutôt un juge.
-
-## Tests et remplissage rétroactif
-
-Contrairement à un juge, une évaluation par classifieur **peut** être testée avant déploiement — [testez-la](/fr/evaluations/test) sur de vraies sessions de la même façon que vous le feriez pour une évaluation par code, et consultez les scores avant toute mise en production.
-
-Elle peut également être [appliquée rétroactivement](/fr/evaluations/deploy#score-sessions-you-already-have) sur des sessions existantes. Cela coûte un appel de modèle par session, alors délimitez la fenêtre temporelle délibérément plutôt que de tout rejouer.
+Le Cloud CLI lit les résultats ; la création et le déploiement s'effectuent dans le tableau de bord. Consultez la [référence du Cloud CLI](/fr/reference/cloud-cli#evaluations) pour les filtres.

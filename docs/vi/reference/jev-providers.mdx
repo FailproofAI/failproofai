@@ -1,0 +1,275 @@
+---
+title: "Nhà cung cấp Jev và thiết lập khóa riêng"
+description: "Điểm cuối nhà cung cấp, ID mô hình, cấu hình và hành vi lỗi để xem xét chính sách Jev trực tiếp với khóa riêng của bạn."
+icon: "key-round"
+---
+
+Đây là tài liệu tham khảo nhà cung cấp và cấu hình cho [chính sách Jev](/vi/policies/jev) với khóa riêng của bạn. Chính sách regex khớp với chuỗi. Chúng không thể phân biệt `rm -rf build/` mà bạn yêu cầu với `rm -rf ~` vô tình nằm trong kế hoạch, vì vậy chúng chặn quá nhiều ở một nơi và quá ít ở nơi khác. **Jev**, trình phân loại của TypeSafe, đọc lệnh gọi so với những gì bạn thực sự yêu cầu và trả lời một tập hợp các câu hỏi có/không về nó trong một yêu cầu nhanh chóng.
+
+Với điểm cuối Jev riêng của bạn và khóa được cấu hình, Failproof AI hỏi Jev về mỗi lệnh gọi công cụ **cùng với** các chính sách regex, chứ không phải thay vì:
+
+- Một chính sách **cứng** từ chối là cuối cùng. Jev không thể xóa nó. Mỗi chính sách đều cứng trừ khi nó được đánh dấu rõ ràng là có thể xem xét và đặt tên các kiểm tra Jev bao gồm nó, vì vậy một chính sách tùy chỉnh, gói hoặc Cloud không nói gì là cứng, và bảo vệ tự động luôn bật luôn cứng.
+- Một chính sách **có thể xem xét** có thể từ chối được xóa, nhưng chỉ khi Jev được hỏi về mối quan tâm chính xác mà chính sách đó bao gồm và trả lời "không có gì ở đây" hoặc "người dùng yêu cầu điều này". Một kiểm tra phát hiện mối quan tâm thực tế, khi người dùng không yêu cầu lệnh gọi, sẽ giữ lại từ chối — ngay cả khi phán quyết của nó chỉ là cảnh báo, bởi vì trước lệnh gọi công cụ, cảnh báo không dừng tác nhân. Và khi kiểm tra đó là kiểm tra có thể từ chối (lộ bí mật, rò rỉ thông tin xác thực, xóa tàn phá, …), không gì được xóa trên lệnh gọi đó.
+- Một khối vẫn có thể trở thành **cảnh báo** khi lệnh gọi là một bước của nhiệm vụ bạn đã cho và không đi xa hơn: Jev làm mềm từ chối của nó thành cảnh báo, và cảnh báo đó — đặt tên những gì thực sự sai với lệnh gọi — thay thế khối của chính sách.
+- Jev cũng có thể cảnh báo hoặc từ chối riêng, vì gây hại mà regex không mô tả.
+- Nếu Jev không thể trả lời (timeout, giới hạn tỷ lệ, lỗi máy chủ, không có khoản tín dụng, phiên bản mô hình không mong muốn), lệnh gọi đó nhận kết quả regex, giống như nếu không có Jev.
+- Jev không bao giờ làm cho lệnh gọi hoan phúc hơn chính sách của bạn trừ khi nó đọc toàn bộ lệnh gọi và được hỏi về mối quan tâm chính xác. Bất cứ điều gì ít hơn — một lệnh gọi quá lớn để gửi toàn bộ, một bị nghi là injection — rút lại các bộ phục vụ và giữ mỗi từ chối.
+
+<Note>
+Không có cấu hình Jev, không có gì thay đổi: các hook chạy chính sách regex chính xác như họ luôn làm. Cấu hình là toàn bộ tùy chọn tham gia.
+</Note>
+
+<Tip>
+Trên FailproofAI Cloud? Bạn không cần khóa riêng của mình: một máy được kết nối với khóa mang `jev:evaluate` có thể sử dụng Jev trên kế hoạch của tổ chức bạn. Xem [Jev thông qua FailproofAI Cloud](/vi/reference/jev-cloud).
+</Tip>
+
+## Trước khi bắt đầu
+
+Cài đặt **failproofai 1.0.8-beta.0 hoặc mới hơn** và gắn các hook của nó vào [harness được hỗ trợ](/vi/reference/harnesses) trên máy nơi tác nhân của bạn chạy. Làm theo [hướng dẫn nhanh](/vi/start/quickstart) nếu đây là máy mới, hoặc [thiết lập thực thi cục bộ](/vi/start/setup#enforce-locally) nếu bạn không sử dụng Cloud. Kiểm tra CLI đã cài đặt bằng `failproofai --version`.
+
+Lấy khóa API từ nhà cung cấp bên dưới, hoặc chuẩn bị sẵn điểm cuối tương thích và khóa của nó. Jev xem xét các lệnh gọi công cụ được đặt tên ở cổng `PreToolUse` hoặc `PermissionRequest`. Nó có thể đưa ra phán quyết riêng, nhưng xóa một từ chối chính sách hiện có cũng yêu cầu một chính sách đã cài đặt được đánh dấu [có thể xem xét](/vi/policies/authority). Từ chối chính sách cứng vẫn cuối cùng.
+
+## Chọn nhà cung cấp
+
+Jev có thể truy cập qua năm tuyến đường. Mang khóa cho bất kỳ tuyến nào.
+
+| Nhà cung cấp | `--provider` | Điểm cuối | Mô hình mặc định | Ghi chú |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | Ghim phiên bản chính xác. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Yêu cầu được định tuyến đến các điểm cuối chỉ không giữ dữ liệu, không có dự phòng cho nhà cung cấp khác. Báo cáo phiên bản có ngày hạn như `typesafe/jev-1.13-20260917`. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Chỉ đặt tên Jev bằng bí danh, vì vậy phiên bản trả lời được ghi lại là không xác minh. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Cần `--account-id`. Khoảng sáu lệnh gọi mỗi giây trên mỗi khóa được đo trước HTTP 429. |
+| Điểm cuối riêng của bạn | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Bất kỳ điểm cuối nào chấp nhận nội dung yêu cầu của TypeSafe và báo cáo mô hình nào đã trả lời. Chỉ `https`; `http://localhost` đơn giản được chấp nhận ở chế độ quan sát chỉ. |
+
+<Warning>
+Với tính năng mang khóa riêng của Vercel, một yêu cầu thất bại sẽ được thử lại một cách yên tĩnh với thông tin xác thực của Vercel. Nếu bạn cần mỗi lệnh gọi được tính phí cho và chỉ được nhìn thấy bởi tài khoản TypeSafe riêng của bạn, hãy sử dụng TypeSafe trực tiếp.
+</Warning>
+
+## Thiết lập nó
+
+Một lệnh, điểm cuối và khóa. Bắt đầu ở chế độ `observe` để bạn có thể kiểm tra phán quyết của Jev trong khi chính sách hiện có tiếp tục quyết định lệnh gọi:
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+```
+
+### URL chọn nhà cung cấp
+
+Bạn không phải đặt tên nhà cung cấp: **host** của URL là cái nào.
+
+| Host URL | Nhà cung cấp | Cũng cần |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32-hex-account-id>` |
+| bất kỳ host nào khác | `custom` | — URL bạn đưa ra là URL cơ sở |
+
+Ba điều xuất phát từ đó:
+
+- **URL của nhà cung cấp riêng không viết ghi đè.** `--url https://api.typesafe.ai/v1` tạo ra chính xác cấu hình mà `--provider typesafe` sẽ có. Đưa ra một đường dẫn hoặc host khác trên nhà cung cấp đã biết và nó được lưu trữ dưới dạng URL cơ sở, như `--base-url` sẽ lưu trữ nó.
+- **`--provider` vẫn ghi đè suy luận**, đó là cách bạn tiếp cận proxy nói API của nhà cung cấp từ host của riêng bạn: `--url https://jev-proxy.internal/v1 --provider typesafe`.
+- **`--provider` mâu thuẫn với host bị từ chối**, không phải đoán. `--provider openrouter --url https://api.typesafe.ai/v1` không viết gì và nói tại sao: hai cách viết không đồng ý về nơi khóa của bạn sắp được gửi. Cặp tương tự bị từ chối từ `jev setup --base-url` và từ bảng điều khiển Jev của dashboard. (`--provider custom` không phải là mâu thuẫn — nó có nghĩa là "coi URL này là chính nó" — ngoại trừ trên host của Cloudflare, mà một tuyến tùy chỉnh không thể tiếp cận điểm cuối cho mỗi tài khoản.)
+
+`--url` được xác thực chính xác như `baseUrl` trong tệp cấu hình, và bị từ chối với các từ tương tự: `https`, hoặc đơn giản `http://localhost` ở chế độ quan sát chỉ.
+
+### Khóa
+
+Ống nó bằng `--key-stdin`, hoặc chạy lệnh trong một thiết bị đầu cuối mà không và dán khóa tại lời nhắc được che. Dù bằng cách nào nó cũng đi thẳng vào tệp cấu hình và không bao giờ được in lại.
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --mode observe --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode observe \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32-hex-account-id> --mode observe --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --mode observe --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup` nhận các cờ tương tự và là từ dài cho tất cả nó: `setup --provider <kind>` nơi bạn sẽ thích đặt tên nhà cung cấp hơn URL.
+
+### `--token`, và nó có giá thành là gì
+
+`--token <token>` đưa khóa vào dòng lệnh, đây là cách nhanh nhất để cấu hình máy và chỉ là cách viết duy nhất để lưu khóa ở bất cứ nơi nào nhưng tệp cấu hình:
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+Một đối số dòng lệnh nằm trong tệp lịch sử shell của bạn sau đó, và trong khi lệnh chạy, nó nằm trong danh sách quy trình — có thể đọc được từ `/proc` bởi bất cứ thứ gì chạy như bạn. `setup` nói như vậy mỗi khi `--token` được sử dụng. Thích `--key-stdin` trên máy bạn chia sẻ, trong một phiên được ghi, hoặc bất cứ nơi nào tệp lịch sử được đồng bộ hóa; xoay khóa bạn đã vượt qua theo cách này nếu nó quan trọng.
+</Warning>
+
+`--token`, `--key-stdin` và `--key-from-env` là mutually exclusive: đưa ra cái này.
+
+Sau đó gửi một yêu cầu trực tiếp nhỏ để kiểm tra khóa, điểm cuối và Jev nào đã trả lời:
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+`jev test` thoát 1, và nói như vậy trong tiêu đề, khi câu trả lời đến sau timeout (mỗi hook sẽ quay lại regex như `timeout`) hoặc trả lời câu hỏi kiểm tra sai.
+
+Hook đọc cấu hình trên mỗi lệnh gọi công cụ, vì vậy nó áp dụng từ cái tiếp theo. Không có gì để khởi động lại, có hoặc không có daemon.
+
+## Kiểm tra nó đang làm gì
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` hiển thị nhà cung cấp, điểm cuối, mô hình, chế độ, tệp cấu hình và quyền của nó, và không bao giờ khóa. Dưới đó, nó tóm tắt hoạt động gần đây: Jev đã đánh giá bao nhiêu lệnh gọi, nó quay lại regex bao nhiêu lần và tại sao, độ trễ của nó, và chính sách có thể xem xét nào mà nó xóa.
+
+## Xác minh một cuộc gọi thực
+
+Bắt đầu một phiên mới trong tác nhân bị móc. Yêu cầu nó sử dụng công cụ đọc tập tin của nó trên `README.md` và báo cáo tiêu đề. Xác nhận rằng phiên chứa lệnh gọi công cụ đó, sau đó chạy `failproofai jev status` lần nữa: số lượng cuộc gọi được đánh giá gần đây của nó sẽ tăng. Mở **Policies → Activity** trong [bảng điều khiển cục bộ](/vi/reference/local-dashboard#review-policy-activity) để kiểm tra phán quyết Jev của cuộc gọi và chế độ. Ở chế độ quan sát, kết quả chính sách vẫn quyết định cuộc gọi. Một bộ phục vụ xuất hiện chỉ khi một chính sách có thể xem xét khớp và Jev xóa mỗi kiểm tra được đặt tên; một bài đọc thông thường có thể không có chính sách để xóa.
+
+## Chế độ Observe
+
+`enforce` là mặc định. Để xem Jev mà không cần để nó thay đổi bất kỳ quyết định nào, chuyển sang `observe`: Jev vẫn được hỏi và phán quyết của nó được ghi lại, nhưng kết quả regex là những gì được thực thi.
+
+```bash
+failproofai jev setup --mode observe
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off` giữ lại cấu hình — điểm cuối và khóa — và dừng yêu cầu Jev: hook chạy chính sách regex chính xác như nếu không có cấu hình, và `failproofai jev status` nói "off (switched off)". Chuyển trở lại bằng `--mode observe` hoặc `--mode enforce`.
+
+Chạy lại `setup` cho cùng một nhà cung cấp sẽ giữ khóa được lưu trữ, vì vậy một chế độ chuyển đổi là một cờ. Chuyển nhà cung cấp bắt đầu lại và hỏi khóa của nhà cung cấp đó. Vì vậy là `--base-url` di chuyển yêu cầu đến host khác: khóa được lưu trữ chỉ được gửi đến host nó được đưa ra hoặc API riêng của nhà cung cấp của nó.
+
+## Tệp cấu hình
+
+Mọi thứ nằm trong một tệp, `~/.failproofai/jev.json`, viết bởi `setup`:
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| Trường | Ý nghĩa |
+| --- | --- |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` hoặc `custom` — hoặc `failproofai`, có khóa đến từ kết nối FailproofAI Cloud thay vì tệp này (xem [Jev thông qua FailproofAI Cloud](/vi/reference/jev-cloud)). |
+| `apiKey` | Được gửi dưới dạng `Authorization: Bearer <key>`. |
+| `baseUrl` | Cần thiết cho `custom`; thay thế base API của nhà cung cấp. Phải là `https`. Đơn giản `http` đến `localhost` được chấp nhận chỉ với `mode: observe`: không có gì xác thực một cổng cục bộ, vì vậy trong khi proxy của bạn xuống bất kỳ quá trình nào trên máy, bao gồm tác nhân đang bị phán xét, có thể trả lời tại vị trí của nó. |
+| `accountId` | Chỉ Cloudflare: 32 ký tự hex chữ thường. |
+| `model` | Thay thế ID mô hình mặc định của nhà cung cấp. ID được phiên bản phải đặt tên Jev 1.13. Giá trị được định hình như khóa API bị từ chối (và không được lặp lại), vì vậy khóa dán vào `--model` không bao giờ được lưu trữ hoặc gửi dưới dạng mô hình. |
+| `timeoutMs` | Bao lâu một lệnh gọi công cụ chờ Jev trước khi sử dụng kết quả regex. 100–10000, mặc định 3000. |
+| `mode` | `enforce` (mặc định), `observe`, hoặc `off` (giữ cấu hình, không chạy Jev). |
+
+Ba quy tắc bảo vệ nó:
+
+- **Chỉ chủ sở hữu.** Nó được viết với quyền `0600`. Một bản sao mà bất kỳ người dùng hoặc nhóm khác có thể đọc hoặc viết bị **từ chối**, và hook quay lại regex cho đến khi bạn chạy `chmod 600 ~/.failproofai/jev.json` hoặc `setup` lần nữa. Thư mục cũng được kiểm tra: `~/.failproofai` không được **ghi** được bởi bất kỳ ai khác, bởi vì ai có thể viết ở đó có thể thay thế tệp bất kể quyền riêng của nó. `setup` lấy những bit viết đó nếu nó tìm thấy chúng. `failproofai jev status` nói khi cấu hình bị từ chối và hiển thị điểm cuối tệp đặt tên: ai đó khác có thể đã thay đổi nó, vì vậy hãy kiểm tra nó là của bạn trước khi bạn `chmod`. Chạy lại `setup` trên tệp như vậy mang khóa được lưu trữ của nó chỉ đến API riêng của nhà cung cấp; bất kỳ điểm cuối khác nào nó đặt tên cần khóa lại (`--key-stdin`), hoặc `--base-url default` để gửi yêu cầu trở lại nhà cung cấp.
+- **Chỉ toàn cầu.** Một kho lưu trữ không thể bật Jev, trỏ nó đến điểm cuối khác hoặc chọn mô hình của nó: `.failproofai/jev.json` bên trong một dự án bị bỏ qua, và nhà cung cấp, URL, mô hình và id tài khoản chỉ được đọc từ tệp đó — không bao giờ từ môi trường, mà cài đặt tác nhân của kho lưu trữ có thể đặt. (`FAILPROOFAI_HOME` không phải là cách tránh vòng: nó di chuyển toàn bộ thư mục failproofai, chính sách của bạn bao gồm, chứ không phải chuyển hướng Jev riêng của nó.)
+- **Chỉ khóa có thể đến từ môi trường.** Nếu tệp không có `apiKey`, `FAILPROOFAI_JEV_API_KEY` cung cấp nó cho phiên đó (`setup --key-from-env` viết tệp như vậy). Nó không bao giờ thay thế khóa tệp giữ, và nó không thể bật Jev mà không có tệp. Nơi biến không được đặt, Jev đơn giản bị tắt cho shell đó: `failproofai jev status` nói như vậy, thoát 0 và để cấu hình một mình (`status --json` báo cáo `"status": "key-missing"` với `"reason": "no-env-key"`). Daemon `failproofaid` không thấy môi trường shell của bạn, vì vậy trên máy được thiết lập bằng `failproofai config`, hãy giữ khóa trong tệp.
+
+## Jev nào trả lời
+
+Ngưỡng quyết định của Failproof AI được hiệu chỉnh trên Jev 1.13, vì vậy một câu trả lời được sử dụng chỉ khi nó đến từ gia đình đó: `jev-1.13.x`, hoặc `typesafe/jev-1.13-<date>` của OpenRouter. Nơi nhà cung cấp đặt tên Jev chỉ bằng bí danh và không báo cáo phiên bản (Vercel, và Cloudflare khi nó không), câu trả lời được sử dụng và ghi lại là không xác minh. Điểm cuối `custom` phải báo cáo mô hình đã trả lời; ngoại lệ duy nhất là tên `--model` không được phiên bản mà bạn cấu hình cho nó, mà khi được lặp lại, được ghi lại là không xác minh theo cách tương tự. Một câu trả lời báo cáo bất kỳ phiên bản nào khác, hoặc câu trả lời `custom` không báo cáo, không được sử dụng: lệnh gọi đó quay lại regex với lý do `model-mismatch`.
+
+## Khi Jev không thể trả lời
+
+Mỗi cái trong số này quay lại kết quả regex cho lệnh gọi đó và được ghi lại với lý do của nó, mà `failproofai jev status` tổng hợp:
+
+| Lý do | Nguyên nhân |
+| --- | --- |
+| `timeout` | Không có câu trả lời trong `timeoutMs`. |
+| `http-429` | Nhà cung cấp hạn chế tỷ lệ khóa. |
+| `rate-limited` | Bộ giới hạn riêng của Failproof AI giữ lệnh gọi lại trước khi gửi nó: 5 yêu cầu mỗi giây, trong burst lên đến 5, và không có gì trong một thời gian sau khi nhà cung cấp trả lời `429`. Không phải nhà cung cấp. |
+| `http-500`, `http-502`, `http-503`, … | Lỗi máy chủ tại nhà cung cấp. Trạng thái chính xác được ghi lại. |
+| `out-of-credits` | HTTP 402: tài khoản nhà cung cấp không còn khoản tín dụng. |
+| `provider-refused` | HTTP 402 từ Cloudflare đọc "Model execution failed (Payment error)": nhà cung cấp từ chối chạy mô hình trên yêu cầu này. Thường không tính phí, vì vậy topup sẽ không di chuyển nó. |
+| `http-401`, `http-403` | Khóa bị từ chối. |
+| `http-404` | Không có gì được phục vụ tại `<base>/systemone`, vì vậy URL cơ sở là sai — `/systemone` được thêm vào nó, và mỗi nhà cung cấp phục vụ nó ở gốc phiên bản. `failproofai jev models` hiển thị những gì điểm cuối phục vụ. |
+| `network` | Điểm cuối không thể tiếp cận được. |
+| `http-301`, `http-302`, `http-307`, `http-308` | Điểm cuối trả lời bằng chuyển hướng. Chuyển hướng không bao giờ được theo, vì vậy câu trả lời chỉ đến từ URL trong cấu hình của bạn; đặt `--base-url` thành URL cuối cùng. |
+| `malformed` | Điểm cuối trả lời, nhưng không phải bằng câu trả lời Jev — nội dung không phải JSON, hoặc một trong đó không có câu trả lời. |
+| `cloudflare-error`, `cloudflare-incomplete` | Phong bì của Cloudflare báo cáo lỗi, hoặc công việc chưa hoàn thành. |
+| `model-mismatch` | Phiên bản Jev khác 1.13 đã trả lời, hoặc điểm cuối `custom` không nói mô hình nào đã trả lời. |
+| `request-cut` | **Không phải mất điện.** Jev đã trả lời; nó chỉ được hiển thị một phần của cuộc gọi, vì vậy câu trả lời của nó xóa không gì. Xem [Khi Jev đã trả lời, nhưng không phải trên toàn bộ cuộc gọi](#when-jev-answered-but-not-on-the-whole-call). |
+
+`failproofai jev status` cũng có thể hiển thị một vài lý do hiếm hơn, chẳng hạn như `upstream-error` (câu trả lời mang lỗi riêng của nhà cung cấp) hoặc `config`, và tổng hợp bất kỳ lý do nào mà nó không thể đặt tên là `other`.
+
+`request-cut` trong bảng này là vì `failproofai jev status` tổng hợp nó với phần còn lại, và vì nó cũng để mỗi từ chối đứng. Đó là lý do duy nhất ở đây không nói gì về nhà cung cấp của bạn: yêu cầu đã đến và Jev trả lời nó. Không giống như mỗi hàng trên nó, câu trả lời đó vẫn được tính — Jev từ chối hoặc cảnh báo riêng của nó áp dụng trên kết quả regex chứ không bị loại bỏ. Vì vậy một lần chạy chúng có nghĩa là cuộc gọi tiếp cận người đánh giá quá lớn để gửi toàn bộ, không phải điểm cuối của bạn bị bệnh, và topup tín dụng hoặc thay đổi URL sẽ không di chuyển số đó.
+
+## Khi Jev đã trả lời, nhưng không phải trên toàn bộ cuộc gọi
+
+Hai điều khác có thể xảy ra, và không gì là Jev không trả lời. Cả hai đều là về bao nhiêu cuộc gọi, hoặc cuộc trò chuyện, phù hợp vào một yêu cầu.
+
+**Một phần cuộc gọi không phù hợp.** Một lệnh gọi công cụ được gửi bên trong ngân sách cố định, và một lệnh quá lớn — một `Write` rất lớn, nội dung MCP khổng lồ, lệnh đệm ra để nắn chặn — được gửi với những gì phù hợp. Jev vẫn trả lời, và câu trả lời của nó vẫn được tính: từ chối hoặc cảnh báo riêng của nó được áp dụng như bình thường. Những gì nó không thể làm là **xóa** bất cứ điều gì, bởi vì phán quyết được đưa ra trên một phần cuộc gọi không phải là phán quyết trên cuộc gọi. Vì vậy mỗi từ chối chính sách đứng, và cuộc gọi được ghi lại là fallback với lý do `request-cut`, mà `failproofai jev status` tổng hợp cùng với những lý do trên. Quy tắc này mang đến cho bạn: làm cho cuộc gọi lớn hơn có thể khiến nó mất bộ phục vụ, và có thể không bao giờ mua được.
+
+**Một tin nhắn không phù hợp.** Một lời nhắc dài bạn dán, tin nhắn cuối cùng của tác nhân, hoặc lời nhắc mà kho lưu trữ của chính người đánh giá này đã bao gồm. **Không có gì thay đổi**: cuộc gọi được phán xét, xóa và ghi lại chính xác như bất kỳ cái nào khác, và nó không được tính là fallback. Chiều dài của những gì bạn gõ không bao giờ quyết định phán quyết, và một bộ phận không thể tạo ra sự đồng ý: nơi lời nhắc đã đến được cắt sẵn, "bạn không yêu cầu điều này" ngừng trở thành kết luận có thể được rút ra từ nó cả, chứ không phải trở thành một.
+
+Ranh giới giữa hai bên là ai viết văn bản. Cuộc gọi là của tác nhân, và quy tắc cho phép chiều dài của nó trừ đi tính cần thiết sẽ là quy tắc tác nhân có thể sử dụng; lời nhắc của bạn là của bạn, và coi chiều dài của nó chỉ làm hại pasting thông số kỹ thuật hoặc dấu vết ngăn xếp.
+
+## Những gì rời khỏi máy
+
+Đối với mỗi lệnh gọi công cụ mà Jev đánh giá, một yêu cầu đi đến nhà cung cấp của bạn, mang:
+
+- bản thân lệnh gọi công cụ, với các bí mật chẳng hạn như khóa API, token Bearer và gán `KEY=` được chỉnh sửa;
+- các lời nhắc gần đây bạn gõ, với văn bản harness của tác nhân đã thêm bị xóa;
+- tin nhắn cuối cùng của tác nhân trước lời nhắc mới nhất của bạn, được gắn nhãn là được viết bởi tác nhân;
+- sự kiện được tính toán cục bộ, chẳng hạn như liệu đường dẫn có nằm bên trong dự án — cái tại phiên đó lần đầu tiên kiểm tra được xem xét, [ghim cho phiên](/vi/reference/jev-intent#the-project-root) — và nhánh git hiện tại.
+
+Nó chỉ đi đến điểm cuối trong cấu hình của bạn, dưới khóa của bạn.
+
+## Tắt nó
+
+```bash
+failproofai jev remove
+```
+
+Cái này xóa `~/.failproofai/jev.json`. Từ lệnh gọi công cụ tiếp theo, hook chạy chính sách regex chính xác như trước. Các cửa hàng mỗi phiên dưới `~/.failproofai/state/semantic/` (lời nhắc được ghi trong `sessions/`, gốc dự án trong `roots/`) được lưu lại và già đi. Để dừng yêu cầu Jev nhưng giữ cấu hình, hãy sử dụng `failproofai jev setup --mode off` thay thế.
+
+## Tham chiếu lệnh
+
+| Lệnh | Kết quả |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | Cấu hình nó trong một lệnh; nhà cung cấp đến từ host của URL |
+| `failproofai jev --url <url> --token <token>` | Giống nhau, với khóa trên dòng lệnh — lịch sử và danh sách quy trình của bạn thấy nó |
+| `failproofai jev setup --provider <kind> --key-stdin` | Viết cấu hình từ khóa được ống trên stdin |
+| `failproofai jev setup --provider <kind>` | Giống nhau, hỏi khóa tại lời nhắc được che |
+| `failproofai jev setup --key-from-env` | Không lưu trữ khóa; đọc `FAILPROOFAI_JEV_API_KEY` mỗi phiên |
+| `failproofai jev setup --mode observe` | Chế độ chuyển đổi (`enforce`, `observe` hoặc `off`), giữ khóa được lưu trữ |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | Ghi đè mô hình hoặc base API; `default` xóa ghi đè |
+| `failproofai jev setup --timeout-ms <n>` | Thay đổi ngân sách mỗi cuộc gọi |
+| `failproofai jev status [--json]` | Cấu hình, quyền và hoạt động gần đây; không bao giờ khóa |
+| `failproofai jev test [--json]` | Một yêu cầu trực tiếp: độ trễ và phiên bản đã trả lời |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | ID mô hình mà điểm cuối `/models` báo cáo, đánh dấu cái được cấu hình |
+| `failproofai jev remove` | Xóa cấu hình; Jev được tắt |

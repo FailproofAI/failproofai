@@ -1,29 +1,29 @@
 ---
-title: "Chiavi e permessi"
-description: "Crea chiavi API con ambito per macchine, automazione e operatori."
+title: "Chiavi e autorizzazioni"
+description: "Crea chiavi API scoped per macchine, automazione e operatori."
 icon: "key-round"
 ---
 
-Le chiavi API appartengono a un'organizzazione e portano con sé permessi espliciti. Usa chiavi separate per l'ingestion degli agenti, la distribuzione delle policy, i valutatori, l'automazione CI e gli script amministrativi.
+Le chiavi API appartengono a un'organizzazione e comportano autorizzazioni esplicite. Utilizza chiavi separate per l'ingestion degli agent, la distribuzione delle policy, gli evaluator, l'automazione CI e gli script amministrativi.
 
 ## Crea e ruota una chiave
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Administration → Keys**, seleziona **new key** e inserisci il nome del carico di lavoro.
-    2. Scegli un set di permessi e regola i permessi individuali solo quando il preset non è sufficiente.
-    3. Crea la chiave e copia il suo segreto monouso immediatamente.
-    4. Apri la chiave in seguito per aggiornare i grant, disabilitarla o rigenerare il segreto.
+    1. Vai su **Administration → Keys**, seleziona **new key** e inserisci un nome del carico di lavoro.
+    2. Scegli un set di autorizzazioni e regola le singole autorizzazioni solo quando il preset non è sufficiente.
+    3. Crea la chiave e copia il suo segreto una tantum immediatamente.
+    4. Apri la chiave successivamente per aggiornare i grant, disabilitarla o rigenerare il segreto.
 
     Il drawer di creazione è dove scegli i grant più ristretti richiesti dal carico di lavoro.
 
-    ![Il drawer della nuova chiave API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
+    ![Il drawer della nuova chiave API con i preset di autorizzazione e i grant individuali.](/images/dashboard/key-create.png)
 
-    Dopo la creazione, la pagina Keys mostra i metadati persistenti e le azioni di gestione. Il segreto monouso non viene più mostrato.
+    Dopo la creazione, la pagina Keys mostra i metadati persistenti e le azioni di gestione. Il segreto una tantum non viene più visualizzato.
 
-    ![La pagina API Keys che mostra i permessi della chiave, l'ora di creazione e le azioni di rigenerazione e disabilitazione.](/images/dashboard/api-keys.png)
+    ![La pagina API Keys che mostra le autorizzazioni della chiave, il tempo di creazione e le azioni di rigenerazione e disabilitazione.](/images/dashboard/api-keys.png)
 
-    Usa questo elenco per rivedere regolarmente i grant e disabilitare le chiavi che non corrispondono più a un carico di lavoro attivo.
+    Utilizza questo elenco per rivedere regolarmente i grant e disabilitare le chiavi che non corrispondono più a un carico di lavoro attivo.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,23 +36,25 @@ Le chiavi API appartengono a un'organizzazione e portano con sé permessi esplic
     fp keys disable production-agents
     ```
 
-    Reindirizza o cattura l'output di creazione/rigenerazione in modo sicuro; il segreto viene restituito una sola volta.
+    Reindirizza o cattura l'output di create/regenerate in modo sicuro; il segreto viene restituito una sola volta.
   </Tab>
 </Tabs>
 
-I due permessi richiesti da una macchina Failproof AI collegata sono indipendenti:
+Le due autorizzazioni richieste da una macchina Failproof AI connessa sono indipendenti:
 
-- `events:add` invia eventi e dati di sessione.
-- `policies:pull` recupera le distribuzioni di policy assegnate.
+- `events:add` invia eventi e dati della sessione.
+- `policies:pull` recupera i deployment delle policy assegnate.
 
-I segreti delle chiavi vengono mostrati quando creati o rigenerati. Archiviali in un gestore di segreti e ruotali senza riutilizzare le credenziali interattive di un operatore.
+Per eseguire [le policy Jev tramite FailproofAI Cloud](/it/policies/jev), seleziona il preset di chiave **machine**. Aggiunge `jev:evaluate` a entrambe le autorizzazioni di cui sopra. Cloud Jev non può essere eseguito con una chiave che ne manca.
 
-## Catalogo dei permessi
+I segreti delle chiavi vengono visualizzati quando creati o rigenerati. Conservali in un gestore di segreti e ruotali senza riutilizzare le credenziali interattive di un operatore.
 
-| Area | Permessi |
+## Catalogo delle autorizzazioni
+
+| Area | Autorizzazioni |
 | --- | --- |
 | Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` è solo per sessione interattiva |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` è solo per sessione umana |
 | Users | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Evaluations | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
@@ -64,11 +66,12 @@ I segreti delle chiavi vengono mostrati quando creati o rigenerati. Archiviali i
 | Audits | `audits:read`, `audits:write` |
 | Policies | `policies:read`, `policies:write`, `policies:pull` |
 | Usage | `usage:read` |
+| Jev | `jev:evaluate` (richiede `events:add` e `policies:pull`) |
 
-`orgs:admin` è riservato all'operatore dell'istanza e non può essere concesso a una chiave dell'organizzazione o a un membro ordinario. I token ritirati `incidents:*` e `alerts:ack` sono accettati per compatibilità e si normalizzano ai permessi `issues:*` attuali.
+`orgs:admin` è riservato all'operatore dell'istanza e non può essere concesso a una chiave dell'organizzazione o a un membro ordinario. I token ritirati `incidents:*` e `alerts:ack` sono accettati per compatibilità e vengono normalizzati alle autorizzazioni `issues:*` attuali.
 
-I set di permessi integrati sono `read-only`, `standard` e `admin`. `standard` aggiunge il triggering della valutazione, l'esecuzione delle query, la risposta ai problemi e l'uso dell'assistente ai permessi di lettura. La creazione della chiave rimuove i grant solo per l'interazione umana anche quando un set di permessi li contiene.
+I set di autorizzazioni built-in sono `read-only`, `standard` e `admin`. `standard` aggiunge il triggering della valutazione, l'esecuzione di query, la risposta ai problemi e l'uso dell'assistente alle autorizzazioni di lettura. La creazione di chiavi rimuove i grant solo per umani anche quando un set di autorizzazioni li contiene.
 
 <Warning>
-  Le chiavi con ambito dell'istanza possono selezionare un'organizzazione con l'intestazione `X-AgentEye-Org`. Impostala esplicitamente su distribuzioni multi-organizzazione; l'omissione potrebbe selezionare l'organizzazione predefinita.
+  Le chiavi scoped a livello di istanza possono selezionare un'organizzazione con l'header `X-AgentEye-Org`. Impostalo esplicitamente nelle distribuzioni multi-organizzazione; l'omissione potrebbe selezionare l'organizzazione predefinita.
 </Warning>

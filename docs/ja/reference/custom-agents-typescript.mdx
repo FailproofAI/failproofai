@@ -4,21 +4,21 @@ description: "@failproofai/sdk の設定、イベントカタログ、スコー�
 icon: "square-js"
 ---
 
-TypeScript SDK における各設定・メソッド・フィールドの説明です。初めてインストルメントする場合はガイドから始めてください。このページはリファレンス用です。
+TypeScript SDK の各設定・メソッド・フィールドの説明です。初めてインストルメント化する場合はガイドから始めてください。このページはリファレンス用です。
 
 <Columns cols={2}>
   <Card title="カスタムエージェントガイド" icon="code" href="/ja/start/integrations/custom-agents">
-    インストール、インストルメント、イベントメソッド、実例、よくある問題。
+    インストール、インストルメント化、イベントメソッド、具体的な例、よくある問題。
   </Card>
-  <Card title="Pythonをお使いですか？" icon="python" href="/ja/reference/custom-agents">
-    同じイベント、同じワイヤーフォーマット、同じスプール — Python 版。
+  <Card title="Python をお使いですか？" icon="python" href="/ja/reference/custom-agents">
+    同じイベント、同じワイヤーフォーマット、同じスプール — Python から。
   </Card>
 </Columns>
 
-Node 20.9 以上。ESM および CommonJS に対応。ランタイム依存なし。
+Node 20.9 以降。ESM および CommonJS 対応。ランタイム依存なし。
 
 <Note>
-  この SDK と Python SDK は**同じスプールに同じイベントを書き込みます**。Node エージェントと Python エージェントが混在するフリートでも、セッションのセットは 1 つであり、ダッシュボード上で区別されることはありません。会社単位ではなく、サービス単位で選んでください。
+  この SDK と Python SDK は**同じスプールに同じイベントを書き込みます**。Node エージェントと Python エージェントが混在するフリートでも、生成されるセッションのセットは一つであり、ダッシュボードで区別されることもありません。会社単位ではなく、サービス単位で選択してください。
 </Note>
 
 ## インストール
@@ -35,11 +35,11 @@ await failproofai.agent("planner", { goal: question }, async () => {
 });
 ```
 
-フレームワークアダプターはパッケージ本体に含まれています。フレームワーク自体は**任意のピア依存関係**として宣言されており、サポート対象のバージョン範囲が明示されていますが、自動的にインストールされることはなく、`instrument()` を呼び出したときにのみインポートされます。
+フレームワークアダプターはパッケージ自体に含まれています。フレームワークは**オプションのピア依存関係**です。サポートされているバージョン範囲を明示するために宣言されており、自動でインストールされることはなく、`instrument()` を呼び出したときにのみインポートされます。
 
 ## Failproof デーモンへの接続
 
-Python SDK と同じです。**Admin → Keys** で `events:add` キーを作成し、エージェントマシン上で[デーモンを接続](/ja/start/setup#connect-a-machine-to-cloud)してください。SDK はディスクに書き込み、デーモンが送信します。
+Python SDK と同様です。**Admin → Keys** で `events:add` キーを作成し、エージェントマシン上で[デーモンを接続](/ja/start/setup#connect-a-machine-to-cloud)します。SDK はディスクに書き込み、デーモンが送信します。
 
 ## 設定
 
@@ -53,38 +53,38 @@ failproofai.configure({
 
 | オプション | 説明 |
 | --- | --- |
-| `environment` | 全イベントに付与されるラベル（例: `production`, `staging`, `prod-eu`）。デフォルトは `dev`。 |
-| `flushInterval` | タイマーがディスクに書き込む頻度（秒単位）。デフォルトは `0.5`。 |
-| `baseDir` | 書き込み先。特別な理由がない限り、デーモンのスプールがデフォルトで使用されます。 |
+| `environment` | すべてのイベントに付与されるラベル。`production`、`staging`、`prod-eu` など。デフォルトは `dev`。 |
+| `flushInterval` | タイマーがディスクに書き込む間隔（秒）。デフォルトは `0.5`。 |
+| `baseDir` | 書き込み先。デフォルトはデーモンのスプール。特別な理由がない限りこのままにしてください。 |
 
-バリデーションが全項目で通過した場合のみ設定が適用されます。拒否された場合、新しい `baseDir` と古いインターバルが混在する状態になるのではなく、SDK は以前の状態をそのまま保ちます。
+すべての値が検証を通過した場合のみ設定が適用されます。バリデーションが失敗した場合、SDK は新しい `baseDir` と古いインターバルが混在した状態になるのではなく、変更前の状態を維持します。
 
-環境変数による設定:
+環境変数で設定することもできます：
 
 | 変数 | 説明 |
 | --- | --- |
 | `AGENTEYE_ENVIRONMENT` | コードを変更せずに `environment` を設定します。`configure()` オプションが優先されます。 |
 | `FAILPROOFAI_HOME` | スプールを保持する Failproof AI のルートディレクトリを変更します。 |
 | `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`、`info`、`warn`（デフォルト）、`error`、`silent`。 |
-| `FAILPROOFAI_SDK_STRICT` | `1` にするとインストルメントエラーがログではなく例外としてスローされます。 |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` にするとフレームワーク互換性の問題が警告を出して続行するのではなく例外としてスローされます。 |
+| `FAILPROOFAI_SDK_STRICT` | `1` にするとインストルメント化エラーがログに記録されるのではなく、例外としてスローされます。 |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` にするとフレームワークの互換性問題が警告を出して続行するのではなく、例外としてスローされます。 |
 
 <Warning>
-  **`environment` にカンマを含めないでください。** インジェストはそのフィールドをカンマで分割してフィルターを構築するため、ラベルにカンマが含まれるイベントはすべてスキップされ、実行全体がサイレントに消えてしまいます。`prod,eu` ではなく `prod-eu` と書いてください。
+  **`environment` にカンマを含めないでください。** インジェストはそのフィールドをカンマで分割してフィルターを構築するため、ラベルにカンマが含まれるイベントはすべてスキップされます。その結果、実行全体がサイレントに消えてしまいます。`prod,eu` ではなく `prod-eu` と記述してください。
 
-  `configure({ environment: "prod,eu" })` はすぐに気づけるよう例外をスローします。`AGENTEYE_ENVIRONMENT` は例外をスローできません（呼び出し元がいないため）。この場合、1 回だけ警告が出力され、`dev` にフォールバックします。
+  `configure({ environment: "prod,eu" })` はすぐに気づけるよう例外をスローします。`AGENTEYE_ENVIRONMENT` はスローできません — 呼び出し元がいないためです — そのため一度警告を出し、`dev` にフォールバックします。
 </Warning>
 
-SDK 自身のログ行を独自のロガーへ転送するには `failproofai.setLogger({ debug, info, warn, error })` を使用してください。
+`failproofai.setLogger({ debug, info, warn, error })` を使って、SDK 自身のログ行を独自のロガーにルーティングできます。
 
 ## シャットダウン
 
 バッファリングされたイベントは `process.on("exit")` でフラッシュされます。
 
-シグナルによってプロセスが終了した場合、この処理は実行されません。Node のデフォルトでは `SIGTERM` に対してエグジットハンドラーを実行せずに終了するため、コンテナ化されたエージェントでは最後のインターバルで未書き込みのイベントが失われます。
+シグナルによってプロセスが終了した場合はそこに到達しません。また Node のデフォルトでは、`SIGTERM` に対してエグジットハンドラーを実行せずに終了します。そのため、コンテナ化されたエージェントは最後のインターバルでまだ書き込まれていないデータを失う可能性があります。
 
 <Warning>
-  **この SDK はシグナルハンドラーを自動的に登録しません。** ハンドラーの登録はプロセスの動作を変更します。リスナーが存在すると Node のデフォルト終了動作が抑制されるため、ライブラリが勝手に登録すると Ctrl-C が機能しなくなります。以下のように独自に追加してください:
+  **この SDK はシグナルハンドラーを自動でインストールしません。** シグナルハンドラーを登録するとプロセスの動作が変わります。リスナーを追加すると Node のデフォルトの終了動作が抑制されるため、ライブラリが勝手に登録すると Ctrl-C が動作しなくなります。独自に追加してください：
 
   ```ts
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -96,11 +96,11 @@ SDK 自身のログ行を独自のロガーへ転送するには `failproofai.se
   ```
 </Warning>
 
-短命なスクリプトやサーバーレスハンドラーは、返却前に `await failproofai.flush()` を呼び出してください。インターバルだけでは配信が保証されません。
+短命なスクリプトやサーバーレスハンドラーは、返す前に `await failproofai.flush()` を呼び出してください。タイマーのみでは確実に配信されません。
 
-## ID 管理
+## アイデンティティ
 
-すべてのイベントはセッションとエージェントに属します。**スコープが両方を自動的に設定する**ため、通常は明示的に指定する必要はありません:
+すべてのイベントはセッションとエージェントに属します。**スコープが両方を自動で設定する**ため、通常は手動で渡す必要はありません：
 
 ```ts
 await failproofai.session(async () => {
@@ -110,41 +110,41 @@ await failproofai.session(async () => {
 });
 ```
 
-`sessionId` や `agentId` を明示的に渡すことも可能で、その場合は明示値が優先されます。どちらもバインドされておらず、かつ渡されない場合、Cloud が静かに破棄するイベントを発行する代わりに例外がスローされます。
+`sessionId` または `agentId` を明示的に渡すことも可能で、その場合は指定した値が優先されます。スコープにもバインドされておらず、引数としても渡されていない場合、Cloud がサイレントに破棄するようなイベントを送信するのではなく、例外がスローされます。
 
 <Note>
-  ID は `AsyncLocalStorage` で管理されます。`await`、`.then()`、タイマー、スコープ内で作成されたコールバックへは自動的に引き継がれます。ただし、あるスコープの実行中に保存され別の実行中に呼び出されるコールバックや、`worker_threads` をまたぐ処理には引き継がれません。それらは `failproofai.propagate()` でラップしないと、イベントが未関連として記録されます。
+  アイデンティティは `AsyncLocalStorage` 上で伝播します。`await`、`.then()`、タイマー、スコープ内で作成されたコールバックに引き継がれます。ただし、あるスコープで保存されて別のスコープで呼び出されるコールバックや、`worker_threads` をまたぐ作業には**引き継がれません**。そのような場合は `failproofai.propagate()` でラップしないと、イベントが紐付けられません。
 </Note>
 
 ### スコープ
 
-| スコープ | 発行するもの | 戻り値 |
+| スコープ | 発行するイベント | 戻り値 |
 | --- | --- | --- |
-| `session(body)` | なし（ID 管理のみ） | `body` の戻り値 |
+| `session(body)` | なし — アイデンティティのみ | `body` の戻り値 |
 | `agent(id, options?, body)` | `agent_start`、その後 `agent_end` | `body` の戻り値 |
 | `toolCall(name, options?, body)` | `tool_use`、その後 `tool_result` | `body` の戻り値 |
 
-同期ボディは同期のまま動作します: `agent("x", () => 1)` は Promise ではなく `1` を返します。
+同期的なボディは同期的なまま動作します。`agent("x", () => 1)` は Promise ではなく `1` を返します。
 
-`toolCall` はボディの解決値をツールの `output` として記録しますが、`call.output` を自分で設定した場合はそちらが使用されます。
+`toolCall` は、`call.output` を自分で設定しない限り、ボディの解決済みの値をツールの `output` として記録します。
 
 <Accordion title="終了時のセマンティクス" icon="arrow-right-from-bracket">
 
-| 状況 | 発行されるイベント | `outcome` |
+| 何が起きたか | イベント | `outcome` |
 | --- | --- | --- |
-| ブロックが正常に返却した | `agent_end` | `"success"`、または指定した `outcome` |
-| ブロックが例外をスローした | `error`、その後 `agent_end` | `"failed"` |
-| `AbortError` が発生した | `agent_end` のみ | `"cancelled"` |
+| ブロックが正常終了 | `agent_end` | `"success"`、または指定した `outcome` |
+| ブロックが例外をスロー | `error`、その後 `agent_end` | `"failed"` |
+| `AbortError` が発生 | `agent_end` のみ | `"cancelled"` |
 
 エラーは常に再スローされます。
 
-ツールの失敗はリーフに記録されます（`error` 文字列を持つ `tool_result`）が、実行レベルの `error` イベントは発行**されません**。エージェントループがキャッチしたエラーは実行の失敗ではなく、伝播したエラーは `agent()` が囲むスコープで 1 回だけ報告されます。
+ツールの失敗はリーフに記録されます — `error` 文字列を含む `tool_result` — ランレベルの `error` イベントは**発行されません**。エージェントループがキャッチしたものはランの失敗ではなく、伝播したものはそれを囲む `agent()` によって一度だけ報告されます。
 
 </Accordion>
 
 <Accordion title="`using` 形式" icon="brackets-curly">
 
-処理が単一の関数でない場合（コンストラクターでスコープを開いてティアダウンで閉じる、または既存の制御フローをまたぐ場合）:
+作業が単一の関数ではない場合 — コンストラクターで開いてティアダウンで閉じる、または既存の制御フローにまたがるスコープの場合：
 
 ```ts
 {
@@ -154,100 +154,100 @@ await failproofai.session(async () => {
 }  // tool_result, then agent_end
 ```
 
-どちらの形式もバイト単位で同一のイベントを発行します。コールバック形式を推奨します。コールバック形式は `AsyncLocalStorage.run()` 内で実行されるため、アンワインドが不要であり、「ここで開いてあちらで閉じる」といったバグが原理的に発生しません。
+両方の形式はバイト単位で同一のイベントを発行します。コールバック形式を優先してください。コールバック形式は `AsyncLocalStorage.run()` の内部で実行されるため、アンワインドが不要で「ここで開いて、あそこで閉じる」というバグのクラス全体が発生しません。
 
-独自のエラーをキャッチする `using` ブロックでは `span.fail(error)` で報告してください。ディスポーザー自体には例外チャネルがありません。
+自分自身の失敗をキャッチする `using` ブロックは、`span.fail(error)` でそれを報告します — ディスポーザー自体には例外チャンネルがありません。
 
 </Accordion>
 
 ## イベントカタログ
 
-Python SDK と同じ 15 のメソッドで、camelCase 形式です。ほとんどは**ペア**になっており、オープナーを呼び出してからクローザーを呼び出すと、SDK がその間の時間を計測します。
+Python SDK と同じ 15 個のメソッドが camelCase で提供されています。ほとんどは**ペア**になっており — オープナーを呼び出してからクローザーを呼び出すと、SDK が間の時間を計測します。
 
-| | 開始 | 終了 |
+| | 開く | 閉じる |
 | --- | --- | --- |
 | **エージェント** | `agentStart` | `agentEnd` |
 | | `agentPause` | `agentResume` |
 | **モデル** | `modelRequest` | `modelResponse` |
 | **ツール** | `toolUse` | `toolResult` |
 | **フック** | `hookTriggered` | `hookCompleted` |
-| **ヒューマン** | `humanWait` | `humanInput` |
+| **人間** | `humanWait` | `humanInput` |
 
-単独で使用するものが 3 つあります: `error`、`humanPause`、`humanInterrupt`。
+単独で使用する 3 つのメソッド: `error`、`humanPause`、`humanInterrupt`。
 
-<Accordion title="各メソッドの全フィールド" icon="table">
+<Accordion title="メソッドごとの全フィールド" icon="table">
 
-すべてのメソッドは `sessionId` と `agentId` も受け取りますが、スコープが自動的に設定します。省略されたフィールドは JSON `null` として送信されず、ドロップされます。
+すべてのメソッドは `sessionId` と `agentId` も受け付けますが、スコープが自動で設定します。省略したフィールドは JSON の `null` として送信されるのではなく、削除されます。
 
 | メソッド | 必須 | 任意 |
 | --- | --- | --- |
-| `agentStart` | — | `goal`, `parentId` |
-| `agentEnd` | — | `outcome`, `summary` |
-| `agentPause` | `pauseId` | `reason`, `userId` |
-| `agentResume` | `pauseId` | `reason`, `userId` |
-| `modelRequest` | — | `model`, `messages`, `system`, `tools`, `requestId` |
-| `modelResponse` | — | `model`, `stopReason`, `inputTokens`, `outputTokens`, `content`, `role`, `requestId` |
-| `toolUse` | `toolName`, `toolCallId` | `input` |
-| `toolResult` | `toolName`, `toolCallId` | `output`, `error` |
-| `hookTriggered` | `hookName`, `hookId` | `triggerEvent`, `input` |
-| `hookCompleted` | `hookName`, `hookId` | `outcome`, `output`, `error` |
-| `error` | `errorType`, `message` | `traceback` |
-| `humanWait` | `inputId` | `prompt`, `options`, `reason` |
+| `agentStart` | — | `goal`、`parentId` |
+| `agentEnd` | — | `outcome`、`summary` |
+| `agentPause` | `pauseId` | `reason`、`userId` |
+| `agentResume` | `pauseId` | `reason`、`userId` |
+| `modelRequest` | — | `model`、`messages`、`system`、`tools`、`requestId` |
+| `modelResponse` | — | `model`、`stopReason`、`inputTokens`、`outputTokens`、`content`、`role`、`requestId` |
+| `toolUse` | `toolName`、`toolCallId` | `input` |
+| `toolResult` | `toolName`、`toolCallId` | `output`、`error` |
+| `hookTriggered` | `hookName`、`hookId` | `triggerEvent`、`input` |
+| `hookCompleted` | `hookName`、`hookId` | `outcome`、`output`、`error` |
+| `error` | `errorType`、`message` | `traceback` |
+| `humanWait` | `inputId` | `prompt`、`options`、`reason` |
 | `humanInput` | `inputId` | `response` |
-| `humanPause` | — | `reason`, `userId` |
-| `humanInterrupt` | — | `reason`, `userId`, `atStep` |
+| `humanPause` | — | `reason`、`userId` |
+| `humanInterrupt` | — | `reason`、`userId`、`atStep` |
 
-追加したキーはカスタムペイロードフィールドになります。フレームワーク固有のものは `fw_*` で名前空間を切ってください。宣言済みフィールドと名前が衝突すると、昇格済みカラムへの無音上書きではなく、拒否されます。
+追加したその他のキーはカスタムペイロードフィールドになります。フレームワーク固有のものは `fw_*` という名前空間を使用してください。宣言済みフィールドと名前が衝突するキーは、昇格済みカラムをサイレントに上書きするのではなく、拒否されます。
 
 </Accordion>
 
 <Warning>
-  **`duration_ms` は計算値であり、受け付けません。** 4 つのクローズメソッドはオープナーからの経過時間を計測し、呼び出し元が `duration_ms` を指定しても拒否します。報告された所要時間は改ざん不可能であるべきです。
+  **`duration_ms` は計算値であり、入力値として受け付けません。** 4 つのクローザーメソッドはオープナーからの経過時間を計測し、呼び出し元が指定した `duration_ms` を拒否します — 報告された期間は改ざんできないことが保証されます。
 
-  ペアのマッチングは**セッション**と ID に基づいて行われ、エージェントは関係ありません。`planner` で開いたツールを `worker` で閉じてもペアが成立します。これはネストされたマルチエージェント実行が実際に行うことです。
+  ペアは**セッション**と ID でマッチングされ、エージェントによってはマッチングされません。`planner` の下で開かれ `worker` の下で閉じられたツールも正しくペアになります。これはネストされたマルチエージェント実行が実際に行うことです。
 </Warning>
 
 ## フレームワークアダプター
 
 ```ts
-await failproofai.instrument();              // 検出できるものすべて
-await failproofai.instrument("langchain");   // 1 つだけ指定
-failproofai.uninstrument();                  // すべてを元に戻す
+await failproofai.instrument();              // whatever it can find
+await failproofai.instrument("langchain");   // exactly one
+failproofai.uninstrument();                  // put everything back
 ```
 
-| フレームワーク | サポート | 適用方法 |
+| フレームワーク | サポート対象 | アタッチ方法 |
 | --- | --- | --- |
-| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 〜 1.x、LangGraph.js 0.4 〜 1.x | `CallbackManager.configure` を使用するため、`callbacks:` を渡すことなく `invoke`/`stream`/`batch` がすべてカバーされます。または `langchainHandler()` を自分で渡してパッチを当てない方法も使えます。 |
-| **Vercel AI SDK** | `ai` 4 〜 7 | 呼び出し箇所で `telemetry()` を使用、または `ai` 7 では `instrument("ai")` でプロセス全体に適用（4〜6 ではオプトイン — 以下参照）。 |
-| **Mastra** | `@mastra/core` 0.20 〜 1.x | `Agent.generate`/`.stream`、エージェントのモデルとツール解決、ワークフローの実行/ステップエンジン。 |
-| **LlamaIndex.TS** | `llamaindex` 0.11.4 〜 0.x | `Settings.callbackManager`（サブスクライブ）と `AgentWorkflow.runStream`。ワークフロー実行とそのステップに対応。 |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x、LangGraph.js 0.4 – 1.x | `CallbackManager.configure` を使用。`callbacks:` を渡さなくてもすべての `invoke`/`stream`/`batch` がカバーされます。`langchainHandler()` を自分で渡してパッチを当てないことも可能。 |
+| **Vercel AI SDK** | `ai` 4 – 7 | 呼び出し箇所で `telemetry()`、または `ai` 7 ではプロセス全体に `instrument("ai")`（4–6 はオプトイン — 下記参照）。 |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`、エージェントのモデルとツール解決、ワークフローのラン/ステップエンジン。 |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager`（サブスクライブ済み）と `AgentWorkflow.runStream`。ワークフローのランとそのステップに対応。 |
 
-すべての範囲は、実際のフレームワークリリースに対して両端で、ES モジュールと CommonJS の両方で、すべての CI 実行でテストされています。
+サポートされているバージョン範囲の両端で、ES モジュールおよび CommonJS として、実際のフレームワークリリースに対して毎回の CI で検証されています。
 
-マッピングは Python SDK と同じため、同じプログラムはどちらの言語でも同じツリーを描画します。構成要素が**エージェント**となるのは、LLM の決定ループを持つ場合のみです（グラフや連鎖の実行、AI SDK の `generateText`/`streamText` 呼び出し、Mastra エージェント、LlamaIndex エージェントの実行など）。LangGraph のノードやワークフローのステップは**フック**（`hook_triggered`/`hook_completed`）であり、ネストされたエージェントではありません。モデル呼び出しはトークン数付きの `model_request`/`model_response` ペアであり、ツール呼び出しにはモデル自身のツール呼び出し ID が付きます。失敗は発生したイベントに対して 1 回だけ記録されます。
+マッピングは Python SDK と同じなので、同じプログラムがどちらの言語でも同じツリーを描画します。**エージェント**になるのは LLM の意思決定ループを所有する構造体のみです — グラフまたはチェーンの実行、AI SDK の `generateText`/`streamText` 呼び出し、Mastra エージェント、LlamaIndex エージェントのランです。LangGraph ノードやワークフローのステップは**フック**（`hook_triggered`/`hook_completed`）であり、ネストされたエージェントではありません。モデル呼び出しはトークン数を含む `model_request`/`model_response` ペアです。ツール呼び出しにはモデル自身のツール呼び出し ID が含まれます。失敗は、それが発生したイベントで一度だけ記録されます。
 
-インストールに失敗したアダプターはログに記録されてスキップされ、他のアダプターは引き続きインストールされます。LlamaIndex の問題で LangGraph が影響を受けることはありません。
+インストールに失敗したアダプターはログに記録されてスキップされます。他のアダプターは引き続きインストールされます。LlamaIndex に問題があっても LangGraph は使えなくなりません。
 
 <Note>
-  引数なしの `instrument()` は、フレームワークがすでにインポートされているかどうかではなく、**解決できるかどうか**で検出します。Node には ES モジュール向けの Python の `sys.modules` に相当するものがありません。インストールされているが使用していないフレームワークはインポートされてパッチが当たります。それが問題になる場合は、使用するフレームワークを明示的に指定してください。
+  引数なしの `instrument()` は、フレームワークが**解決できるかどうか**によって検出します — すでにインポートされているかどうかではありません。ES モジュールに対して Python の `sys.modules` に相当するものが Node には存在しないためです。インストールしているが使用していないフレームワークはインポートされてパッチが当てられます。これが問題になる場合は、使用するものの名前を明示的に指定してください。
 </Note>
 
 <Note>
-  これらのフレームワークのほとんどは ES モジュールビルドと CommonJS ビルドの両方を提供しており、Node はそれらを 2 つの独立したコピーとして読み込みます。アダプターはアプリケーションが読み込むコピー（および `require` 済みの CommonJS コピー）にパッチを当てるため、どちらのモジュールシステムでも動作します。esbuild や webpack で**独自の出力にバンドルされた**フレームワークには到達できません。その場合は呼び出し箇所のヘルパーを使用してください: `langchainHandler()`、`telemetry()`、`wrapTool()`。
+  これらのフレームワークのほとんどは ES モジュールビルドと CommonJS ビルドを提供しており、Node はこれらを無関係な 2 つのコピーとして読み込みます。アダプターはアプリケーションが読み込んでいるコピー（そして何かがすでに `require` していた場合は CommonJS のコピーも）にパッチを当てるため、両方のモジュールシステムで動作します。esbuild や webpack によって**独自のビルド出力にバンドルされた**フレームワークには届きません — その場合は呼び出し箇所のヘルパー `langchainHandler()`、`telemetry()`、`wrapTool()` を使用してください。
 </Note>
 
-### パッチなしの LangChain
+### パッチなしで LangChain を使用する
 
 ```ts
 import { langchainHandler } from "@failproofai/sdk/langchain";
 await graph.invoke(input, { callbacks: [langchainHandler()] });
 ```
 
-このハンドラーは `instrument()` の有無にかかわらず動作し、二重記録は行いません。`instrument("langchain")` は Python アダプターと同様に `sessionId`、`captureContent`、`includeChains`、`graphCallbacks`、`captureLimit` を受け取ります。呼び出し時に `metadata: { failproofai_sdk_session_id }` を指定すると、その呼び出しのセッションを選択できます。
+ハンドラーは `instrument()` の有無にかかわらず動作し、二重記録はありません。`instrument("langchain")` は Python アダプターと同様に `sessionId`、`captureContent`、`includeChains`、`graphCallbacks`、`captureLimit` を受け付けます。呼び出し時に `metadata: { failproofai_sdk_session_id }` を設定すると、その呼び出しのセッションを指定できます。
 
 ### Vercel AI SDK
 
-AI SDK は ES モジュールからプレーン関数をエクスポートしており、ES モジュールの名前空間は仕様上イミュータブルです。パッチを当てる場所がないため、SDK 自身がドキュメントに記載している拡張ポイントを使用します:
+AI SDK は ES モジュールからプレーンな関数をエクスポートしており、ES モジュールの名前空間は仕様上イミュータブルです — パッチを当てる場所がありません。SDK 自体がドキュメントに記載している拡張ポイントを使用します：
 
 ```ts
 import { telemetry } from "@failproofai/sdk/ai";
@@ -256,30 +256,30 @@ const { text } = await generateText({
   model,
   prompt,
   experimental_telemetry: telemetry({ functionId: "answer-question" }),
-  // ai 7 では `telemetry: telemetry({ … })` — 同じオブジェクト、新しい名前
+  // on ai 7, `telemetry: telemetry({ … })` — the same object, the new name
 });
 ```
 
-これで統合は完了です。エージェントスパン、ステップごとにトークン数付きのモデルリクエスト/レスポンスペア、すべてのツール呼び出しが記録されます。1 つの呼び出し箇所がすべてのメジャーバージョンで機能します。`ai` 4〜6 はキャリーするトレーサーを読み取り、`ai` 7 はテレメトリ統合を使用します。
+これで統合は完了です。エージェントスパン、ステップごとのトークン数を含むモデルリクエスト/レスポンスのペア、そしてすべてのツール呼び出しが記録されます。一つの呼び出し箇所がすべてのメジャーバージョンで動作します — `ai` 4–6 は含まれるトレーサーを読み取り、`ai` 7 はテレメトリー統合を使用します。
 
-`instrument("ai")` は **`ai` 7 において**プロセス全体に同じことを行います。AI SDK のグローバルテレメトリ統合リストを通じて、加算的に動作し、他のものから何も奪いません。
+`instrument("ai")` は **`ai` 7 でプロセス全体**に同じことを行います。AI SDK のグローバルテレメトリー統合リストを通じて、すべての呼び出しに適用されます。これは加算的で、他の何者からも何も奪いません。
 
-**`ai` 4〜6 では `instrument("ai")` は単独では何も記録せず、その旨を 1 回警告します。** これらのメジャーバージョンが持つプロセス全体のフックはグローバル OpenTelemetry トレーサープロバイダーのみで、一度取得されると OpenTelemetry が手放さない単一スロットです。独自のものを登録すると、後から起動する `NodeSDK.start()` が静かに拒否され、HTTP/データベースのスパンが何もエクスポートしないトレーサーに送られてしまいます。呼び出し箇所で `telemetry()` を使用するか、`wrapModel` を使用してください。プロセスが独自の OpenTelemetry を実行しない場合は `instrument("ai", { registerGlobalTracer: true })` でオプトインできます。これにより `experimental_telemetry: { isEnabled: true }` を渡したすべての呼び出しが記録され、スロットが空の場合にのみ取得されます。`registerGlobalTracer: false` はデフォルトを維持して警告を抑制します。
+**`ai` 4–6 では、`instrument("ai")` は単独では何も記録せず、その旨の警告を一度ログに出力します。** これらのメジャーバージョンがプロセス全体にフックできるのは、グローバル OpenTelemetry トレーサープロバイダーのみです — これは一度取得されると OpenTelemetry が返さない単一スロットです。自分たちのものを登録すると、後続のスタートアップ時に行われる `NodeSDK.start()` がサイレントに拒否され、HTTP/データベースのスパンが何もエクスポートしないトレーサーに送られます。呼び出し箇所で `telemetry()` を使用するか、そこで `wrapModel` を使用してください。プロセス自体が OpenTelemetry を実行していない場合は、`instrument("ai", { registerGlobalTracer: true })` でオプトインできます。その場合、`experimental_telemetry: { isEnabled: true }` を渡したすべての呼び出しが記録され、スロットがまだ空の場合にのみ取得します。`registerGlobalTracer: false` はデフォルトを維持し、警告を抑制します。
 
-モデルを 1 回ラップする方がよい場合は `wrapModel` を使用できますが、ツール呼び出しはモデルレイヤーの上で発生するため、`wrapModel` はモデル呼び出しのみを見ます。周囲に何もない状態でラップされたモデルを呼び出すと、それ自体が独立した実行として記録されます。ストリーム呼び出しは、ストリームの終了方法に応じてクローズされます（コンシューマーがキャンセルした場合は `stop_reason: "cancelled"`、途中でエラーが発生した場合は `"error"`）:
+モデルを一度ラップしたい場合は `wrapModel` を使用できますが、これはモデルレイヤーよりも上で発生するツール呼び出しは記録されません。何もラップされていない状態でラップされたモデルが呼び出されると、それ自体が独立したランとして記録されます。ストリーミング呼び出しは、ストリームが停止した方法に応じてクローズされます — コンシューマーがキャンセルした場合は `stop_reason: "cancelled"`、途中でエラーが発生した場合は `"error"` とエラー内容：
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";
 const model = await wrapModel(openai("gpt-4o"));
 ```
 
-両方を併用しても問題ありません。ミドルウェアが呼び出しがすでに記録されていることを検知して処理を委ねるため、各呼び出しは 1 回だけ記録されます。
+両方を使用しても問題ありません。ミドルウェアは呼び出しがすでに記録されていることを検出してデファーするため、各呼び出しは一度だけ記録されます。
 
-`functionId` はエージェントスパンの名前となります。カーディナリティを低く保ってください。これはダッシュボードの主要ファセットである `agent_id` に入ります。
+`functionId` はエージェントスパンの名前になります。カーディナリティを低く保ってください — これは主要なダッシュボードファセットである `agent_id` に格納されます。
 
 ### Next.js
 
-`next build` はデフォルトでサーバーの依存関係をバンドルするため、ビルドにバンドルされたフレームワークは `instrument()` が到達できないコピーになります。設定を 1 回ラップし、Next のスタートアップフックから `instrument()` を呼び出してください:
+`next build` はデフォルトでサーバーの依存関係をバンドルするため、ビルドにバンドルされたフレームワークは `instrument()` が届かないコピーになります。設定を一度ラップして、Next のスタートアップフックから `instrument()` を呼び出してください：
 
 ```ts
 // next.config.ts
@@ -296,27 +296,27 @@ export async function register() {
 }
 ```
 
-`withFailproofai` は LangChain、Mastra、LlamaIndex、SDK 自体を `serverExternalPackages` に追加し、既存のリストを維持します。これを使用しない場合、`instrument()` は到達できないフレームワークごとに 1 回警告を出しますが、サイレントには失敗しません。パッケージを自分でリストアップした場合は `FAILPROOFAI_NEXT_EXTERNALS=1` を設定してください。Vercel AI SDK と呼び出し箇所のヘルパーはどちらの場合でも動作します。Edge ルートでは no-op ビルドが生成されます。SDK のインポートは安全で、何も記録しません。
+`withFailproofai` は LangChain、Mastra、LlamaIndex、および SDK 自体を `serverExternalPackages` に追加し、既存のリストを維持します。これを使用しない場合、`instrument()` は届かない各フレームワークに対して、サイレントに失敗するのではなく一度警告を出します。パッケージを自分でリストアップしている場合は `FAILPROOFAI_NEXT_EXTERNALS=1` を設定してください。Vercel AI SDK と呼び出し箇所のヘルパーはどちらの場合でも動作します。Edge ルートには no-op ビルドが提供されます。SDK をインポートしても安全で、何も記録されません。
 
-### ストリーム呼び出しでのトークン数
+### ストリーミング呼び出しのトークン数
 
-OpenAI 互換 API は、クライアントが要求した場合にのみストリームでの使用量を報告します。LangChain と Vercel AI SDK は要求します。LlamaIndex では `OpenAI` LLM に `additionalChatOptions: { stream_options: { include_usage: true } }` を渡し、Mastra では使用量を有効にしてモデルをビルドしてください（例: `createOpenAICompatible({ includeUsage: true })`）。これを行わないとストリームのモデル呼び出しにトークン数が含まれません。
+OpenAI 互換の API はクライアントがリクエストしたときのみストリーミング中の使用量を報告します。LangChain と Vercel AI SDK はリクエストします。LlamaIndex の場合は `OpenAI` LLM に `additionalChatOptions: { stream_options: { include_usage: true } }` を渡し、Mastra の場合は使用量を有効にしてモデルをビルドしてください（例：`createOpenAICompatible({ includeUsage: true })`）。そうしないと、ストリーミングされたモデル呼び出しにはトークン数が含まれません。
 
 ### ランタイム
 
-Node ≥ 20.9、Bun、Deno — すべてのフレームワークについて、ES モジュールと CommonJS の両方で、それぞれ Node のトレースに対してテストされています。SDK は `failproofaid` デーモンと並行して動作し、デーモンが書き込んだものを送信します。
+Node ≥ 20.9、Bun、Deno — すべてのフレームワークが、ES モジュールおよび CommonJS として、各ランタイム上で Node のトレースに対してテストされています。SDK は `failproofaid` デーモンと並行して実行され、デーモンが書き込んだものを送信します。
 
-## 独自エージェント — フレームワークなし
+## 独自のエージェント — フレームワークなし
 
-自分で書いたエージェントループ、またはアダプターのないフレームワーク向けです。アダプターが内部で使用しているのと同じ API でイベントを発行するため、トレースの形状と品質は同じになります。
+自分で書いたエージェントループ、またはアダプターがないフレームワークの場合。アダプターが内部で使用するのと同じ API でイベントを発行するため、トレースは同じ形状と品質になります。
 
-エージェントの構成を把握する必要はありません。手作りのエージェントには関数名がどうあれ必ず 3 つの場所があり、その 3 つが統合の全体です:
+エージェントがどのように構成されているかを知る必要はありません。手作りのエージェントには、関数の名前が何であれ、必ず 3 つの場所があります。この 3 つが統合の全体です：
 
 | 場所 | 追加するもの | 発行されるイベント |
 | --- | --- | --- |
-| **1 回の実行**が始まり終わる場所 | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
-| **モデルを呼び出す唯一の関数** | 前に `event.modelRequest`、後に `event.modelResponse` — 失敗時も両方 | モデルターンごとに 1 ペア |
-| **ツールを実行する唯一の関数** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+| **1 回の実行**の開始と終了 | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **モデルを呼び出す関数**（1 つ） | 前に `event.modelRequest`、後に `event.modelResponse` — 失敗時も両方 | モデルターンごとに 1 ペア |
+| **ツールを実行する関数**（1 つ） | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
 
 ```ts
 async function callModel(messages) {
@@ -353,13 +353,13 @@ await failproofai.agent("inventory", { goal: question }, async () => {
 });
 ```
 
-ID は暗黙的です。`agent()` 内のすべての処理は、ID を指定しなくてもそのスタートのセッションに属し、プログラムの他の部分は何も変更されません（エージェントが独自のデータベースに書き込んでいるものも含めて）。
+アイデンティティはアンビエントです。`agent()` の内部にあるすべてのものは、ID を受け取ることなくそのランのセッションに属します。プログラムの他の部分は何も変わりません — エージェントがすでに独自のデータベースに書き込んでいるものも含めて。
 
-- **サービスやワーカー:** 独自のリクエスト ID やジョブ ID を `sessionId` として渡すと、ダッシュボード上のセッションと独自のログやデータベースのレコードが同じ文字列になります。
-- **サブエージェント:** `agent()` 呼び出しをネストします。内側のものは外側を `parent_id` としてセッションに参加します。
-- **ペアを発行する。** `modelResponse` のない `modelRequest` は、ダッシュボードで永遠に実行中と表示されるスパンになります。`catch` が必要な理由はここにあります。
+- **サービスまたはワーカー：** 独自のリクエストまたはジョブ ID を `sessionId` として渡すと、ダッシュボード上のセッションと独自のログやデータベースのレコードが同じ文字列になります。
+- **サブエージェント：** `agent()` 呼び出しをネストします。内側のものは `parent_id` として外側を持つセッションに参加します。
+- **ペアを発行すること。** `modelResponse` のない `modelRequest` は、ダッシュボードで永遠に実行中として表示されるスパンになります — そのため `catch` が必要です。
 
-リポジトリの [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) は完全で実行可能なバージョンです。実際の OpenAI ツールループをこれとまったく同じようにインストルメントしており、変更のたびに CI で ES モジュールと CommonJS の両方として実行されます。
+リポジトリ内の [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) は完全な実行可能バージョンです。まさにこのようにインストルメント化された実際の OpenAI ツールループで、ES モジュールおよび CommonJS として変更のたびに CI で実行されます。
 
 ## 評価
 
@@ -383,19 +383,19 @@ FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
   npx failproofai-evaluator ./my-evals.js
 ```
 
-プロトコル、ワーカー設定、結果の型については [Evaluator SDK リファレンス](/ja/reference/evaluator-sdk) を参照してください。
+プロトコル、ワーカーの設定、結果の型については[Evaluator SDK リファレンス](/ja/reference/evaluator-sdk)を参照してください。
 
 <Warning>
-  **評価は yield する必要があります。** 返却しない同期関数は Node の唯一のスレッドをブロックするため、その間はタイムアウトも発火できません。評価は `async` 関数として書いてください。
+  **評価は必ず yield しなければなりません。** 戻り値のない同期関数は Node が持つ唯一のスレッドをブロックし、その間はタイムアウトも発火できません。`async` の評価を記述してください。
 </Warning>
 
-## プロセスへの影響について
+## プロセスに対して行わないこと
 
 | | |
 | --- | --- |
-| **エージェントループをブロックしない** | イベントはインメモリキューに入り、タイマーが書き込みます。タイマーは `unref` されているため、このパッケージをインポートしてもスクリプトの終了が妨げられることはありません。 |
-| **無制限に増大しない** | キューはカウントと計測バイト数の両方でキャップされています。どちらかの上限を超えると、最も古いイベントが破棄されて警告が出ます。テレメトリの障害が OOM キルに繋がることはありません。 |
-| **プロセスをクラッシュさせない** | エンコード不能なイベントは、そのイベント単独でドロップされ、周囲のバッチは影響を受けません。スローするゲッター、循環参照、`BigInt`、孤立サロゲートはいずれも伝播せず、適切に処理されます。 |
-| **バッチを半書き込み状態で放置しない** | コンテンツはアトミックなリネームの前に `fsync` され、ディレクトリはその後に `fsync` されます。書き込みが失敗した場合は一時ファイルがクリーンアップされます。 |
-| **トランスクリプトを読める状態で放置しない** | バッチは `0700` ディレクトリ内の `0600` パーミッションで保存されます。ゴール、プロンプト、ツールの引数と出力が含まれます。 |
-| **認証情報を送信しない** | API キー、トークン、JWT、Bearer ヘッダー、シークレットに見える代入はバイトがディスクに到達する前にリダクションされます。デーモンもアップロード前に再度リダクションします。 |
+| **エージェントループのブロック** | イベントはインメモリキューに入れられ、タイマーが書き込みます。タイマーは `unref` されているため、このパッケージをインポートしてもスクリプトの終了が妨げられることはありません。 |
+| **無制限の増大** | キューはカウントと計測されたバイト数の両方で上限が設けられています。どちらかを超えると、最も古いイベントが破棄され警告が出ます — テレメトリーの障害が OOM キルになってはなりません。 |
+| **プロセスのクラッシュ** | エンコードできないイベントはそれ単体で破棄され、周囲のバッチには影響しません。例外をスローするゲッター、循環参照、`BigInt`、孤立したサロゲート — それぞれが伝播されるのではなく処理されます。 |
+| **半端な書き込みの放置** | コンテンツはアトミックなリネームの前に `fsync` され、ディレクトリはその後に `fsync` され、書き込みに失敗した場合は一時ファイルがクリーンアップされます。 |
+| **トランスクリプトの読み取り可能な放置** | バッチは `0700` ディレクトリ内で `0600` のパーミッションが付与されます。ゴール、プロンプト、ツール引数、ツール出力が含まれます。 |
+| **認証情報の送信** | API キー、トークン、JWT、ベアラーヘッダー、シークレットに見える代入はすべて、バイトがディスクに到達する前に編集されます。デーモンはアップロード前に再度編集します。 |

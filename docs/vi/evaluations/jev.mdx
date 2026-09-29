@@ -1,88 +1,28 @@
 ---
-title: "Đánh giá bộ phân loại"
-description: "Đánh giá các phiên làm việc theo các câu trả lời mà bạn có thể viết trước — đúng hay sai, hoặc mức độ nào đó — bằng cách sử dụng một bộ phân loại nhỏ được hiệu chỉnh thay vì một mô hình đa năng."
+title: "Đánh giá Jev"
+description: "Sử dụng Jev để chấm điểm một phiên kết thúc dựa trên một câu hỏi có đáp án đã biết."
 icon: "list-checks"
 ---
 
-Một số câu hỏi cần một mô hình để *đọc* cuộc trò chuyện, nhưng không cần *viết* về nó. "Khách hàng có tỏ ra vội vàng không?" có hai câu trả lời. "Họ bực bội đến mức nào?" có một vài câu trả lời, theo thứ tự. Bạn biết trước mọi câu trả lời có thể.
+Một đánh giá Jev đọc một **phiên kết thúc** và cho điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn "Khách hàng có thể hiện tính khẩn cấp?" hay "Khách hàng bực bội như thế nào?" Nó giúp bạn tìm các mẫu trong các lần chạy; nó không dừng lệnh gọi công cụ. Đối với các quyết định được đưa ra **trước** khi một công cụ chạy, hãy sử dụng [các chính sách Jev](/vi/policies/jev).
 
-**Đánh giá bộ phân loại** được thiết kế đúng cho những trường hợp này. Bạn viết câu hỏi và các câu trả lời có thể có, và một mô hình nhỏ được xây dựng để phân loại sẽ trả về một con số được hiệu chỉnh — không bao giờ là văn bản tự do.
+## Tạo một cái trong bảng điều khiển
 
-<Note>
-Giống như một người phân xử, đánh giá bộ phân loại tốn một lệnh gọi mô hình cho mỗi phiên. Không giống như người phân xử, nó là một mô hình nhỏ, chuyên dụng duy nhất thay vì một mô hình đa năng, nên nó nhanh hơn và rẻ hơn — nhưng nó sẽ không bao giờ giải thích được chính nó. Nếu bạn cần lý do, sử dụng [judge](/vi/evaluations/judge).
-</Note>
+1. Mở **Analyze → eval authoring** và chọn **new eval**.
+2. Mô tả một câu hỏi và các câu trả lời có thể có của nó. Ví dụ: "Agent có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem lại rằng kết quả là điểm phân loại.
+3. [Kiểm tra nó](/vi/evaluations/test) trên các phiên gần đây, rồi [triển khai nó](/vi/evaluations/deploy). Các phiên kết thúc mới được chấm điểm; [điền lại](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
 
-## Tôi nên chọn cái nào?
+![Biểu mẫu chia sẻ tác giả đánh giá, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem lại bản nháp và triển khai sau khi kiểm tra. Ví dụ được hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng quy trình tác giả giống nhau.](/images/dashboard/eval-authoring-draft.png)
 
-| Câu hỏi | Sử dụng |
-| --- | --- |
-| Có bao nhiêu lệnh gọi công cụ? | code |
-| Phiên có dưới 30 giây không? | code |
-| Khách hàng có tỏ ra vội vàng không? | **bộ phân loại** |
-| Đội nào nên xử lý: hóa đơn, kỹ thuật hay bán hàng? | **bộ phân loại** |
-| Khách hàng bực bội đến mức nào? | **bộ phân loại** |
-| Câu trả lời có thực sự chính xác không? | **judge** |
-| Nó có tuân theo chính sách leo thang của chúng tôi không, và tại sao bạn nghĩ vậy? | **judge** |
+Trợ lý có thể chọn giữa mã, phân loại Jev và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho điểm mà không có lý do văn xuôi; chọn một judge khi bạn cần giải thích. Xem [tham chiếu đánh giá Jev](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
 
-Nguyên tắc chung: **có thể đếm được → code, những câu trả lời bạn có thể liệt kê → bộ phân loại, cần giải thích → judge.**
+## Đọc các điểm
 
-Bạn không phải quyết định trước. Mô tả điều bạn muốn đo lường và trợ lý sẽ chọn, cho bạn biết nó chọn cái nào và tại sao, và bạn có thể thay đổi nó.
+Mở **Observe → Evaluations** để biểu đồ kết quả theo agent và thời gian. Từ một terminal, Cloud CLI có thể đọc các kết quả tương tự:
 
-## Hai loại câu hỏi
-
-### `noul` — cái này có đúng không?
-
-Hai câu trả lời, và bạn mô tả cả hai. Kết quả là xác suất mà mô tả "đúng" phù hợp:
-
-```json
-{
-  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
-  "criteria": {
-    "true":  "A refund was promised or issued with no prior policy check or approval",
-    "false": "No refund was promised, or every refund followed a policy check"
-  }
-}
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
 ```
 
-Mô tả cả hai phía. "Không tỏ ra vội vàng" là một câu trả lời thực và nêu ra điều đó làm cho câu kia rõ ràng hơn.
-
-### `score` — mức độ bao nhiêu?
-
-Một bảng tiêu chí được sắp xếp, **tệ nhất trước tiên**. Kết quả là nơi phiên đáp ứng trên đó, được tái khích cỡ thành 0–1:
-
-```json
-{
-  "instructions": "How frustrated is the customer?",
-  "criteria": ["Calm", "Frustrated", "Very angry"]
-}
-```
-
-**Một bảng tiêu chí có từ ba đến năm cấp độ, và chúng phải tất cả khác nhau.** Cả hai giới hạn được đo lường, không phải là phong cách:
-
-- **Hai cấp độ** sụp đổ thành cái mà `noul` đã làm tốt hơn, và **nhiều hơn năm** làm cho mô hình vần vî về phía giữa thay vì cam kết. Câu hỏi tương tự trên cùng một phiên được ghi điểm 0,00 với hai cấp độ, 0,01 với ba, và 0,55 với mười.
-- **Các cấp độ lặp lại** chia câu trả lời một cách tùy ý giữa chúng. Một phiên rõ ràng là tức giận được ghi điểm 1,00 so với `["Calm", "Frustrated", "Very angry"]` và 0,66 so với `["Angry", "Angry", "Angry"]` — một con số được hình thành tốt mà không có ý nghĩa.
-
-Các danh mục không có thứ tự — "hóa đơn, kỹ thuật hoặc bán hàng" — không phải là một bảng tiêu chí. Hỏi chúng như một `noul` cho mỗi danh mục, hoặc sử dụng một judge.
-
-## Đọc kết quả
-
-Một bộ phân loại tạo ra một **điểm** từ 0 đến 1, hoàn toàn giống như một judge, nên nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Hai khác biệt đáng chú ý:
-
-- **Không có lý do.** Trường này trống rỗng, cố ý. Mô hình này không giải thích chính nó, và phát minh ra một lời giải thích sẽ là một sáng tác chứ không phải một tính năng.
-- **Không chắc chắn được gắn nhãn.** Một câu hỏi `score` báo cáo niềm tin của chính nó, và một kết quả mà mô hình không chắc chắn về được gắn thẻ `low_confidence` — vì vậy "cái nào trong số này nên một con người nhìn lại" là một bộ lọc chứ không phải một phỏng đoán. Một câu hỏi `noul` không báo cáo niềm tin, nên nó không bao giờ được gắn thẻ.
-
-Các phiên rất dài được đọc theo đoạn trích và kết hợp. Khi một phiên quá dài để đọc đầy đủ, kết quả cho biết có bao nhiêu lượt được bỏ qua — bạn sẽ không bao giờ thấy một phán quyết được đưa ra trên một phần của phiên được trình bày như được đưa ra trên tất cả nó.
-
-## Giới hạn
-
-- **Ba đến năm cấp độ bảng tiêu chí, tất cả khác biệt.** Xem ở trên; cả hai giới hạn được thực thi tại thời điểm tác giả.
-- **Một câu hỏi cho mỗi đánh giá.** Hỏi hai thứ và bạn nhận được hai đánh giá, đó cũng là những gì bạn muốn trên một biểu đồ.
-- **Chỉnh sửa câu hỏi xuất bản một phiên bản mới.** Điểm cũ và mới không thể so sánh được, nên chúng được giữ riêng biệt thay vì trộn lẫn thành một đường xu hướng.
-- **Một bộ phân loại luôn tạo ra một điểm**, không bao giờ là một số liệu hoặc một khẳng định.
-- **Không có lý do**, như ở trên. Nếu một con số sẽ làm cho ai đó hỏi "tại sao?", hãy viết một judge thay thế.
-
-## Kiểm tra và lấp đầy ngược
-
-Không giống như một judge, đánh giá bộ phân loại **có thể** được kiểm tra trước khi bạn triển khai nó — [kiểm tra nó](/vi/evaluations/test) dựa trên các phiên thực tế cùng cách bạn sẽ kiểm tra một đánh giá code, và đọc các điểm trước khi bất cứ điều gì chạy trực tiếp.
-
-Nó cũng có thể được [lấp đầy ngược](/vi/evaluations/deploy#score-sessions-you-already-have) trên các phiên bạn đã có. Nó tốn một lệnh gọi mô hình cho mỗi phiên, nên phạm vi cửa sổ cố ý thay vì phát lại tất cả mọi thứ.
+Cloud CLI đọc kết quả; tác giả và triển khai diễn ra trong bảng điều khiển. Xem [tham chiếu Cloud CLI](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.

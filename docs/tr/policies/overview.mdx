@@ -1,54 +1,58 @@
 ---
 title: "İlkeler"
-description: "Aracı eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
+description: "Aracı eylemlerini gözlemleyin, yönlendirin veya bilinen bir hatanın tekrarlanmasını engelleyin."
 icon: "shield-check"
 ---
 
-Bir ilke, bir aracı hook olayını değerlendirir ve üç karardan birini döndürür:
+Bir ilke, aracı kancası olayını değerlendirir ve üç karardan birini döndürür:
 
-- `allow` eyleme devam etmesine izin verir.
+- `allow` eylemin devam etmesine izin verir.
 - `instruct` aracıya düzeltici rehberlik sağlar.
-- `deny` eylemi bir neden ile engeller.
+- `deny` eylemi bir nedenle engeller.
 
-## İlkeler nerede yer alır
+## İlkeler nereye yerleştirilir
 
-| Panoda | Orada yapacağınız şey |
+| Panoda | Burada ne yaparsınız |
 | --- | --- |
-| **Gözlem → ilke** | Gerçek oturumlardan alınan kararları gözden geçirin: hangi ilke eşleşti, hangi makinede ve neden |
-| **Yönetim → ilke editörü** | Bir ilke yazın, geçmiş trafiğe karşı geri test edin, değişmez bir sürüm yayınlayın ve **kütüphanede** sürümleri karşılaştırın |
-| **Yönetim → zorlama** | Sürümleri makinelere, gözlem veya zorlama modunda yerleştirin |
+| **Observe → policy** | Gerçek oturumlardan kararları gözden geçirin: hangi ilke eşleşti, hangi makinede ve neden |
+| **Admin → policy editor** | Bir ilke yazın, geçmiş trafiğe karşı geriye dönük test edin, değişmez bir sürüm yayınlayın ve **library** içinde sürümleri karşılaştırın |
+| **Admin → enforcement** | Sürümleri makinelere yerleştirin, gözlem veya uygulama modunda |
 
-İlke editörü, bir hatanın kural haline geldiği yerdir. **Oluştur** kısmında hata modunu açıklayın veya ilke kaynağını yapıştırın, taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve bir sürüm yayınlayın:
+İlke düzenleyici, bir hatanın kural haline geldiği yerdir. Hata modunu açıklayın veya **compose** içinde ilke kaynağını yapıştırın, taslağı halihazırda sahip olduğunuz trafiğe karşı geriye dönük test edin ve bir sürüm yayınlayın:
 
-![İlke editörü oluştur görünümü - ilke kimliği, yapay zeka destekli taslak oluşturma, kaynak doğrulama ve yayınlama kontrolleri.](/images/dashboard/policy-editor.png)
+![İlke kimliği, yapay zeka destekli taslaklama, kaynak doğrulaması ve yayınlama denetimleriyle birlikte İlke düzenleyici oluşturma görünümü.](/images/dashboard/policy-editor.png)
 
-Bir makinede, `failproofai policies` orada uygulanan her şeyi listeler. `fp policies` ve `fp fleet` terminalden editörü ve uygulamayı kapsar — bkz. [Cloud CLI referansı](/tr/reference/cloud-cli).
+Bir makinede, `failproofai policies` orada uygulanan her şeyi listeler. `fp policies` ve `fp fleet` bir terminalden düzenleyici ve uygulamayı kapsar — [Cloud CLI referansına](/tr/reference/cloud-cli) bakın.
 
-## Bir ilke edinin
+## İlke alın
 
-İki yolu vardır.
+Bunun için iki yol vardır.
 
 <Columns cols={2}>
-  <Card title="Bir ilke yazın" icon="file-pen-line" href="/tr/policies/editor">
-    Failproof AI'ın bir denetim bulgusundan bir taslak oluşturmasına izin verin veya kaynağı kendiniz yazın, ardından editörde gözden geçirin ve yayınlayın.
+  <Card title="İlke yazın" icon="file-pen-line" href="/tr/policies/editor">
+    Failproof AI'nin bir denetim bulgusundan taslak oluşturmasına izin verin veya kaynağı kendiniz yazın, ardından düzenleyicide gözden geçirin ve yayınlayın.
   </Card>
   <Card title="İlke paketi kullanın" icon="package" href="/tr/policies/packs">
-    Kullanım durumunuz için bir Failproof AI ilke paketi ya da ilke hub'ından bir topluluk paketini tek bir komutla bağlayın.
+    Failproof AI ilke paketini kullanım durumunuz için veya ilke hub'ından bir topluluk paketini tek bir komutla takın.
   </Card>
 </Columns>
 
-## Ardından gönder
+## Jev ile araç çağrılarını gözden geçirin
+
+Jev, kapılı bir araç çağrısını talebinizin bağlamında okur. String eşleştirme ilkesinin kaçırdığı bir endişeyi işaretleyebilir veya açıkça **reviewable** olarak işaretlenmiş bir ilkeden bir reddi temizleyebilir. Sert ilkeler sonuç kalır. [Jev ilkeleriyle başlayın](/tr/policies/jev), ardından sağlayıcı veya yapılandırma ayrıntılarına ihtiyacınız olduğunda [entegrasyon referansını](/tr/reference/jev) kullanın.
+
+## Ardından gönderin
 
 <Steps>
-  <Step title="Test et">
-    Taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve durması gereken bir eylem ile izin vermesi gereken bir eyleme karşı çalıştırın — tümü yayınlamadan önce. Bkz. [İlkeyi test et](/tr/policies/test).
+  <Step title="Test edin">
+    Taslağı halihazırda sahip olduğunuz trafiğe karşı geriye dönük test edin ve durması gereken bir eylem ile izin vermesi gereken bir eyleme karşı çalıştırın — hepsi yayınlamadan önce. [İlke test etmeye](/tr/policies/test) bakın.
   </Step>
-  <Step title="Dağıt">
-    Sürümü makinelere **gözlem** modunda yerleştirin, kararlarını okuyun, ardından uygulayın. Bkz. [İlke dağıt](/tr/policies/deploy).
+  <Step title="Dağıtın">
+    Sürümü makinelere **observe** modunda yerleştirin, kararlarını okuyun, ardından uygulayın. [İlke dağıtmaya](/tr/policies/deploy) bakın.
   </Step>
-  <Step title="Sürüm ve geri al">
-    Her yayın yeni, değişmez bir sürümdür; bu nedenle geçerli çalışmayı engelleyen bir dağıtım, son iyi sürümü yeniden dağıtarak geri alınır. Bkz. [Sürümler ve geri alma](/tr/policies/rollback).
+  <Step title="Sürüm ve geri alın">
+    Her yayın yeni, değişmez bir sürümdür, bu nedenle geçerli işi engelleyen bir dağıtım son iyi olanı yeniden dağıtarak geri alınır. [Sürümler ve geri alma](/tr/policies/rollback) bölümüne bakın.
   </Step>
 </Steps>
 
-İlkelerinizi diğer ekiplerle paylaşmak için [bunları bir paket olarak yayınlayın](/tr/policies/publish-a-pack). Bir ilke hiç değerlendirilemediğinde ne olur öğrenmek için bkz. [Başarısızlık davranışı](/tr/policies/failure-behavior).
+İlkelerinizi diğer ekiplerle paylaşmak için [bunları bir paket olarak yayınlayın](/tr/policies/publish-a-pack). Bir ilke hiç değerlendirilemeyen durum için bkz. [Hata davranışı](/tr/policies/failure-behavior).

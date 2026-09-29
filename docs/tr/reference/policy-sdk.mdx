@@ -1,35 +1,35 @@
 ---
 title: "Özel politikalar"
-description: "Ajanlarınıza özgü hataları önlemek için JavaScript veya TypeScript politikaları yazın, test edin ve dağıtın."
+description: "Aracılarınıza özel hata kalıplarını engellemek için JavaScript veya TypeScript politikaları yazın, test edin ve dağıtın."
 icon: "shield-plus"
 ---
 
-Özel politikalar, izlerinizden veya denetimlerinizden bir hata desenini, bir ajan çalışırken çalışan bir karara dönüştürür. Bir politika bir işlemi izin verebilir, ajana rehberlik edebilir veya başka bir olay yaşanmadan önce işlemi reddedebilir.
+Özel politikalar, izlemelerizdeki veya denetimlerinizden bir hata kalıbını bir aracı çalışırken çalışan bir karara dönüştürür. Bir politika bir işleme izin verebilir, aracıya rehberlik sağlayabilir veya başka bir olay meydana gelmeden önce işlemi reddedebilir.
 
-Davranış araçlarınıza, yollara, komutlara, ortamlara veya işletme kurallarına bağlı olduğunda özel bir politika kullanın. Mevcut bir kontrolü yeniden oluşturmamak için önce [Failproof AI politika paketini](/tr/policies/packs) kontrol edin.
+Davranış araçlarınız, yollarınız, komutlarınız, ortamlarınız veya işletme kurallarınıza bağlı olduğunda özel bir politika kullanın. Mevcut bir kontrolü yeniden oluşturmamak için önce [Failproof AI politika paketini](/tr/policies/packs) kontrol edin.
 
 ## Özel politika yazın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → politika editörü**ne gidin, **Yeni politika**yı seçin ve önlemek istediğiniz hatayı açıklayın.
-    2. Politika kaynağını ekleyin, ardından editörde beklenen eşleşmeleri ve güvenli eşleşmeyenleri test edin. Her doğrulama hatasını çözün.
-    3. Taslağı kaydedin ve **Sürümü yayınla**yı seçerek değişmez bir sürüm oluşturun.
-    4. **Admin → zorlama**ya gidin, sürümü bir test makinesine **gözlemle** modunda dağıtın ve **Gözlemle → politika** altında kararlarını doğrulamadan önce zorlayın.
+    1. **Admin → policy editor** bölümüne gidin, **New policy** seçeneğini belirleyin ve önlemek istediğiniz hatayı açıklayın.
+    2. Politika kaynak kodunu ekleyin, ardından editörde beklenen eşleşmeleri ve güvenli eşleşmeyenleri test edin. Her doğrulama hatasını çözün.
+    3. taslağı kaydedin ve **Publish version** seçeneğini belirterek değişmez bir sürüm oluşturun.
+    4. **Admin → enforcement** bölümüne gidin, sürümü test makinasına **observe** modunda dağıtın ve uygulamadan önce kararlarını **Observe → policy** bölümünde doğrulayın.
 
-    ![Özel bir politika yazmak ve yayınlamak için kullanılan politika editörü.](/images/dashboard/policy-editor.png)
+    ![Özel bir politika yazıp yayınlamak için kullanılan politika editörü.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
     1. `.failproofai/policies/checkout-policies.ts` dosyasını oluşturun. Dosya adı `policies.js`, `policies.mjs` veya `policies.ts` ile bitmelidir.
     2. `customPolicies.add()` ile bir veya daha fazla politika kaydedin.
     3. Dosyayı `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` ile doğrulayın ve yükleyin.
-    4. Eşleşen bir işlemi ve güvenli bir işlemi tetikleyin. `failproofai policies` çalıştırın, ardından **Gözlemle → politika** altındaki ilişkili kararları inceleyin.
+    4. Eşleşen bir işlemi ve bir güvenli işlemi tetikleyin. `failproofai policies` komutunu çalıştırın, ardından **Observe → policy** bölümünde atfedilen kararları inceleyin.
   </Tab>
 </Tabs>
 
 ## Dar bir kuralla başlayın
 
-Bu politika, komut üretim ortamını hedeflediğinde yalnızca yıkıcı Kubernetes komutlarını engeller. Bu tam hata modunun dışında kalan her şey `allow()` döndürür.
+Bu politika, komut üretimi hedeflediğinde yalnızca yıkıcı Kubernetes komutlarını engeller. Bu tam hata modu dışındaki her şey `allow()` döndürür.
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,20 +55,20 @@ customPolicies.add({
 });
 ```
 
-İyi politikalar bir cümle ile açıklanacak kadar dardır. Observable eylemi eşleştirin—ajanın sahip olacağını umduğunuz niyet değil—ve kural uygulanmadığı anda `allow()` döndürün.
+İyi politikalar, bir cümle ile açıklanacak kadar dar olmalıdır. Gözlemlenebilen işlemi eşleştirin—aracının hangi niyeti olduğunu değil—ve kural uygulanmadığı anda `allow()` döndürün.
 
 ## Bir karar seçin
 
-| Yardımcı | Sonuç | Ne zaman kullanılır |
+| Yardımcı | Sonuç | Şu durumlarda kullanın |
 | --- | --- | --- |
-| `allow(reason?)` | İşlem devam eder. | Politika uygulanmıyorsa veya işlem güvenli ise. |
-| `instruct(reason)` | İşlem, harness desteklediğinde rehberlikle devam eder. | Ajantı uygulanmış bir kural olmaksızın daha iyi bir yaklaşıma yönlendirmek istiyorsanız. |
-| `deny(reason)` | Olay ve harness bloklama desteklediğinde işlem engellenir. | İşlem devam etmemelidir. |
+| `allow(reason?)` | İşlem devam eder. | Politika uygulanmaz veya işlem güvenlidir. |
+| `instruct(reason)` | İşlem, koşulu destekleyen yerlerde rehberlik ile devam eder. | Aracıyı bir değişkeni uygulamadan daha iyi bir yaklaşıma yönlendirmek istediğinizde. |
+| `deny(reason)` | Olay ve koşul engellemeyi desteklediğinde işlem engellenir. | İşlem devam etmemelidir. |
 
-Ajanın kurtarması gereken nedeni yazın. Neyin tespit edildiğini ve bunun yerine ne yapması gerektiğini açıklayın.
+Aracının kurtarması gereken nedeni yazın. Neyin tespit edildiğini ve bunun yerine ne yapması gerektiğini açıklayın.
 
 <Warning>
-  Güvenlik sınırı için `instruct()` kullanmayın. Rehberlik sunumu ajanın harnessine göre değişir. İşlem engellenmeli olduğunda `deny()` kullanın.
+  Güvenlik sınırı için `instruct()` kullanmayın. Rehberlik sunumu, aracı koşuluna göre değişir. İşlem engellenmelidir `deny()` kullanın.
 </Warning>
 
 ## Politika nesnesi
@@ -84,36 +84,34 @@ customPolicies.add({
 
 | Alan | Gerekli | Açıklama |
 | --- | --- | --- |
-| `name` | Evet | Politika için sabit tanımlayıcı. Dosyalar arasında adları benzersiz tutun. |
-| `description` | Hayır | Politika listelemeleri ve kararlarda gösterilen insanın okuyabileceği amaç. |
-| `match.events` | Hayır | Politikayı çağıran olay türleri. `match` atlandığında her kullanılabilir olay için çağırılır. |
-| `fn` | Evet | `allow`, `instruct` veya `deny` sonucu döndüren eşzamanlı veya asenkron işlev. |
-| `authority` | Hayır | `"hard"` (varsayılan) veya `"reviewable"`. Jev anlamsal değerlendirici bu politikanın kararını temizleyip temizleyemeyeceği. Bkz. [Politika yetkilendirmesi](/tr/policies/authority). |
-| `reviewedBy` | Hayır | Jev'in tümüne sorulması gereken anlamsal kontroller, hiçbiri kararı temizlemeden önce deny ile cevaplayamayanlar. Uyaran veren bir kontrol yine de temizler. `"reviewable"` için gerekli. |
+| `name` | Evet | Politika için sabit tanımlayıcı. Adları dosyalar arasında benzersiz tutun. |
+| `description` | Hayır | Politika listelerinde ve kararlarda gösterilen okunabilir amaç. |
+| `match.events` | Hayır | Politikayı çağıran olay türleri. `match` atlanırsa her kullanılabilir olay için çağrılır. |
+| `fn` | Evet | `allow`, `instruct` veya `deny` sonucu döndüren eşzamanlı veya eşzamansız işlev. |
 
-`fn` içinde araçları filtreleyin. `match.toolNames` genel özel politika türünün parçası değildir.
+Araçları `fn` içinde filtreleyin. `match.toolNames` özel politika türünün parçası değildir.
 
 ## Politika bağlamı
 
 Her politika bir `PolicyContext` alır.
 
-| Alan | Tür | Neleri içerir |
+| Alan | Tür | İçeriği |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | Değerlendirilen normalleştirilmiş olay. |
+| `eventType` | `HookEventType` | Şu anda değerlendirilen normalleştirilmiş olay. |
 | `toolName` | `string \| undefined` | `Bash`, `Read`, `Write` veya `Edit` gibi kanonik araç adı. |
-| `toolInput` | `Record<string, unknown> \| undefined` | Mevcut araç çağrısının kanonik girdisi. |
+| `toolInput` | `Record<string, unknown> \| undefined` | Mevcut araç çağrısı için kanonik giriş. |
 | `payload` | `Record<string, unknown>` | Tam normalleştirilmiş olay yükü. |
-| `session` | `SessionMetadata \| undefined` | Mevcut olduğunda oturum kimliği, çalışma dizini, transkript yolu, izin modu ve harness meta verileri. |
-| `cli` | `string \| undefined` | `claude`, `codex` veya `cursor` gibi kaynak ajan harnessi. |
-| `params` | `Record<string, unknown>` | Yerleşik politika parametreleri. Özel politikalar şu anda boş nesne alır. |
+| `session` | `SessionMetadata \| undefined` | Mevcut olduğunda oturum ID'si, çalışma dizini, transkript yolu, izin modu ve koşul meta verileri. |
+| `cli` | `string \| undefined` | `claude`, `codex` veya `cursor` gibi kaynak aracı koşulu. |
+| `params` | `Record<string, unknown>` | Yerleşik politika parametreleri. Özel politikalar şu anda boş bir nesne alır. |
 
-Her isteğe bağlı değeri gerçekten isteğe bağlı olarak değerlendirin. Ajan sürümleri ve olay türleri aynı alanları sağlamaz.
+Her isteğe bağlı değeri gerçekten isteğe bağlı olarak ele alın. Aracı sürümleri ve olay türleri aynı alanları sağlamaz.
 
-### Yaygın araç girdileri
+### Ortak araç girdileri
 
-Failproof AI, desteklenen harnessler arasında yaygın araçları normalleştirir, böylece bir politika genellikle tek bir giriş şeklini kullanabilir.
+Failproof AI, desteklenen koşullar arasında ortak araçları normalleştirir, böylece bir politika genellikle bir giriş şeklini kullanabilir.
 
-| Araç | Yaygın alanlar |
+| Araç | Ortak alanlar |
 | --- | --- |
 | `Bash` | `command` |
 | `Read` | `file_path` |
@@ -121,34 +119,34 @@ Failproof AI, desteklenen harnessler arasında yaygın araçları normalleştiri
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-Araç giriş değerleri `unknown` olarak yazıldığından savunmacı zorlama kullanın:
+Araç giriş değerleri `unknown` olarak yazıldığından koruyucu zorlama kullanın:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## Olayı seçin
+## Etkinliği seçin
 
 | Olay | Ne zaman çalışır | Tipik kullanım |
 | --- | --- | --- |
-| `PreToolUse` | Bir araç yürütülmeden önce. | Komutları, yazıları, okumaları ve dış işlemleri engelleyin veya yönlendirin. |
-| `PostToolUse` | Bir araç döndükten sonra. | Sonuçları ajana ulaşmadan önce inceleyin. Bir deny tüm sonucu engeller; seçilen alanları kısıtlamaz. |
-| `PermissionRequest` | Ajan izin istediğinde. | Kuruluşa özgü izin kuralları uygulayın. |
-| `UserPromptSubmit` | Gönderilen bir komut devam etmeden önce. | Yasaklanmış talimatları reddedin veya iş akışı rehberliği ekleyin. |
-| `Stop` | Ajan bitirmeye çalıştığında. | Yerel doğrulama adımı gibi ulaşılabilir bir tamamlama koşulunu gerekli kılın. |
-| `SubagentStop` | Bir alt ajan bitirmeye çalıştığında. | Delege edilen işi ana ajana dönmeden önce kapıla. |
-| `SessionStart` / `SessionEnd` | Oturum sınırlarında. | Oturum düzeyinde durumu kaydedin veya kontrol edin. |
+| `PreToolUse` | Bir araç yürütülmeden önce. | Komutları, yazıları, okumaları ve dış işlemleri engelle veya yönlendir. |
+| `PostToolUse` | Bir araç döndükten sonra. | Sonuçları aracıya ulaşmadan önce incele. Bir reddetme tüm sonucu engeller; seçilen alanları redakte etmez. |
+| `PermissionRequest` | Aracı izin istediğinde. | Kuruluşa özgü izin kurallarını uygula. |
+| `UserPromptSubmit` | Gönderilen bir istem devam etmeden önce. | Yasak talimatları reddet veya iş akışı rehberliği ekle. |
+| `Stop` | Aracı bitirmeye çalıştığında. | Yerel doğrulama adımı gibi ulaşılabilir bir tamamlama koşulu iste. |
+| `SubagentStop` | Bir alt aracı bitirmeye çalıştığında. | Devredilen çalışmayı ebeveyne dönmeden önce kontrol et. |
+| `SessionStart` / `SessionEnd` | Oturum sınırlarında. | Oturum düzeyi durumunu kaydet veya kontrol et. |
 
-Olay kullanılabilirliği ve engelleme davranışı ajan harnessine bağlıdır. Karışık bir filo arasında bir olaya güvenmeden önce [Ajan harnesslerine](/tr/reference/harnesses) bakın.
+Olay kullanılabilirliği ve engelleme davranışı aracı koşuluna bağlıdır. Karma bir filo arasında bir olaya güvenmeden önce [Aracı koşulları](/tr/reference/harnesses) bölümüne bakın.
 
 <Accordion title="Tüm politika olay adları">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` ve `Setup`.
 </Accordion>
 
-## Yaygın politika desenlerini yazın
+## Ortak politika kalıplarını yazın
 
-### Korunan yolların yazılmasını engelleyin
+### Korunan yollara yazmaları engelle
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -168,7 +166,7 @@ customPolicies.add({
 });
 ```
 
-### Engelleyici olmayan rehberlik verin
+### Bloke edilmeden rehberlik ver
 
 ```ts
 import { customPolicies, allow, instruct } from "failproofai";
@@ -188,7 +186,7 @@ customPolicies.add({
 });
 ```
 
-### Oturum tamamlamasını kapıla
+### Oturum tamamlanmasını kontrol et
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -217,10 +215,10 @@ customPolicies.add({
 ```
 
 <Warning>
-  Reddedilen bir `Stop` olayı ajanı yeniden denemeye yönlendirebilir. Yalnızca ajanın mevcut ortamda karşılayabileceği bir koşulu kapıla ve her alt işlemi veya ağ çağrısını sınırla.
+  Reddedilen `Stop` olayı aracının yeniden denemesini sağlayabilir. Yalnızca aracının mevcut ortamda yerine getirebileceği bir koşul üzerinde engelle ve her alt işlem veya ağ çağrısını sınırla.
 </Warning>
 
-## Politika dosyalarını yükleyin
+## Politika dosyalarını yükle
 
 ### Kural dosyaları
 
@@ -232,15 +230,15 @@ Kural dosyaları otomatik olarak yüklenir:
 ```
 
 - Proje ve kullanıcı politika dizinleri her ikisi de yüklenir.
-- Dosyalar her dizin içinde alfabetik sırayla yüklenir.
+- Dosyalar her dizin içinde alfabetik olarak yüklenir.
 - Bir dosya `policies.js`, `policies.mjs` veya `policies.ts` ile bitmelidir.
-- Bir dosyada birden çok `customPolicies.add()` çağrısı desteklenir.
-- Yerel modüllerden göreli içeri aktarımlar desteklenir.
-- Proje politikaları kaydedilebilir, böylece aynı kurallar depoyu takip eder.
+- Bir dosyada birden fazla `customPolicies.add()` çağrısı desteklenir.
+- Yerel modüllerden göreli içeri aktarmalar desteklenir.
+- Proje politikaları kaydedilebilir, böylece aynı kurallar depo takip eder.
 
 ### Açık dosyalar
 
-Doğrulama veya yapılandırma giriş dosyasını doğrudan adlandırması gerektiğinde açık yollar kullanın:
+Doğrulama veya yapılandırmanın giriş dosyasını doğrudan adlandırması gerektiğinde açık yollar kullanın:
 
 ```bash
 failproofai policies --install \
@@ -249,11 +247,11 @@ failproofai policies --install \
   --scope project
 ```
 
-Açık dosyalar önce yüklenir, ardından proje kural dosyaları ve sonra kullanıcı kural dosyaları gelir. Her iki yol aracılığıyla keşfedilen bir dosya bir kez yüklenir.
+Açık dosyalar önce yüklenir, ardından proje kural dosyaları ve sonra kullanıcı kural dosyaları gelir. Her iki yoldan da keşfedilen bir dosya bir kez yüklenir.
 
-## Doğrulayın ve test edin
+## Doğrula ve test et
 
-Doğrulama modülü üretim yükleyicisinden geçirir ve en az bir politika kaydettiğini doğrular.
+Doğrulama, modülü üretim yükleyicisinden geçirir ve en az bir politika kaydettiğini onaylar.
 
 ```bash
 failproofai policies --install \
@@ -262,104 +260,44 @@ failproofai policies --install \
 failproofai policies
 ```
 
-Doğrulama eksik dosyaları, sözdizimi hatalarını, çözülmemiş içeri aktarımları, üst düzey istisnaları ve modül yükleme zaman aşımlarını yakalar. Eşleştirme mantığınızın doğru olduğunu kanıtlamaz.
+Doğrulama, eksik dosyaları, söz dizimi hatalarını, çözülmemiş içeri aktarmaları, üst düzey istisnaları ve modül yükleme zaman aşımlarını yakalar. Bu, eşleşme mantığının doğru olduğunu kanıtlamaz.
 
 En az bu durumları test edin:
 
-- Eşleşmesi ve hedeflenen politika nedenini üretmesi gereken bir işlem.
-- Yakın ancak güvenli olan ve `allow()` döndürmesi gereken bir işlem.
-- Eksik veya yanlış biçimlendirilmiş araç alanları.
-- Alternatif komut sözdizimi, yollar, alıntılar, büyük/küçük harf ve boşluk.
+- Eşleşmesi gereken ve amaçlanan politika nedenini üretmesi gereken bir işlem.
+- Güvenli olması gereken, yakındaki ancak güvenli bir işlem `allow()` döndürmeli.
+- Eksik veya hatalı araç alanları.
+- Alternatif komut söz dizimi, yollar, tırnak işaretleri, büyük/küçük harf ve boşluk.
 - Kullanılamayan bir alt işlem veya ağ bağımlılığı.
 
-Sonucu **Gözlemle → politika** altında özel politikanıza atfettirin. Farklı bir yerleşik politika kararı verdiyse engellenen test yeterli değildir.
+Sonucu **Observe → policy** bölümünde özel politikaya atfet. Farklı bir yerleşik politika kararı aldıysa engellenen bir test yeterli değildir.
 
 ## Çalışma zamanı davranışı
 
 - Yerleşik politikalar özel politikalardan önce değerlendirilir.
 - İlk `deny` daha fazla politika değerlendirmesini durdurur.
-- Hiçbir politika olayı reddetmediğinde birden çok `instruct` sonucu birleştirilebilir.
-- Bir politika işlevinin 10 saniyelik yürütme sınırı vardır.
-- Atılan bir istisna veya zaman aşımı günlüğe kaydedilir ve `allow()` olarak işlenir.
-- Yüklenmeyen bir kural dosyası atlanır; diğer özel dosyalar ve yerleşik politikalar devam eder.
-- Üst düzey modül yüklemenin de 10 saniyelik sınırı vardır.
-- Bulut gözlemle modu politikayı çalıştırır ancak uygulamadan non-allow kararını kaydeder.
+- Politika olayı reddetmediğinde birden fazla `instruct` sonucu birleştirilebilir.
+- Bir politika işlevinin 10 saniyelik yürütme süresi limiti vardır.
+- Atılan bir istisna veya zaman aşımı kaydedilir ve `allow()` olarak değerlendirilir.
+- Yüklemeyi başarısız olan bir kural dosyası atlanır; diğer özel dosyalar ve yerleşik politikalar devam eder.
+- Üst düzey modül yüklemenin de 10 saniyelik süresi limiti vardır.
+- Bulut observe modu politikayı çalıştırır ancak uygulamadan bir non-allow kararını kaydeder.
 
-Politika modüllerini deterministik ve hızlı tutun. Üst düzey ağ çağrılarından veya sunucu başlatmadan kaçının. `fn` içindeki işi sınırla, bağımlılık başarısızlıklarını yakala ve bu başarısızlığın işleme izin verip veremeyeceğini kasıtlı olarak seç.
-
-## Jev kontrolleri
-
-Özel bir politika kodla karar verir. **Jev kontrolü** Jev anlamsal değerlendirici tarafından bir araç çağrısı hakkında bunun yerine sorulan evet/hayır sorularının bir setidir. `reviewable` politika `reviewedBy` içinde kontrolleri adlandırır ve Jev kararını yalnızca onlar aracılığıyla temizleyebilir — bkz. [Politika yetkilendirmesi](/tr/policies/authority). `semanticPolicies.add()` ile bir tane bildir:
-
-```js
-import { semanticPolicies } from "failproofai";
-
-semanticPolicies.add({
-  name: "prod-db-write",
-  title: "Wrote to the production database",
-  appliesTo: ["shell"],
-  mode: "deny",
-  userCanOverride: true,
-  probes: [
-    {
-      id: "writes_data",
-      instructions: "Does this command insert, update or delete rows, or change a schema?",
-      criteria: { true: "It changes data or schema.", false: "It only reads." },
-    },
-    {
-      id: "production_target",
-      instructions: "Is the database it targets a production one, rather than a local or test copy?",
-    },
-  ],
-  guidance: "Writes to the production database need a human. Ask before running this.",
-});
-```
-
-<Warning>
-  Jev kontrolü **yalnızca yayınlanan bir paket aracılığıyla** etkili olur. `failproofai publish` `semanticPolicies.add()` okuyan tek şeydir; yerel bir politika dosyasında (`.failproofai/policies/`, `--custom`) hiçbir hata olmadan yükler, hook günlüğü onu yoksayılan olarak adlandırır ve hiçbir zaman sorulmuş değildir ve `reviewedBy` onu adlandıran yerel politika sert kalır. Bkz. [Paketteki Jev kontrolleri](/tr/policies/publish-a-pack#jev-checks-in-a-pack).
-</Warning>
-
-| Alan | Gerekli | Açıklama |
-| --- | --- | --- |
-| `name` | Evet | Harfler, rakamlar, `.`, `_` ve `-`, en fazla 128 karakter, pakette benzersiz. Bir `reviewedBy` adlandırdığı şey; `semantic/<name>` olarak bildirilir. |
-| `title` | Evet | Yakalananlar için geçmiş zaman cümlesi. En fazla 120 karakter. |
-| `appliesTo` | Evet | Jev'in sorulduğu araç sınıfları: `shell`, `write`, `read`, `network`, `other` öğelerinden bir veya daha fazlası. |
-| `mode` | Evet | `"deny"` güçlü kanıtlarla engeller ve ılımlı kanıtlarla uyarır. `"instruct"` yalnızca uyarır, bu nedenle hiçbir zaman deny tutamaz — engelleme politikasıyla eşleştirin ve temiz kalan hiçbir şey deny olamaz. |
-| `userCanOverride` | Evet | İnsanın kendi açık isteğinin kontrolü temizleyip temizleyemeyeceği. İnsanın bir istekten kaçmasını konuşabileceğini karar verir, bu nedenle varsayılanı yoktur. |
-| `probes` | Evet | 1 ila 6 soru. **Her** sonda kontrolün ateşlenmesi için tutmalıdır. |
-| `probes[].id` | Evet | `^[a-z][a-z0-9_]{0,31}$` ile eşleşir, kontrol içinde benzersiz. `exempt` ve `user_asked` ayrılmıştır. |
-| `probes[].instructions` | Evet | Soru. En fazla 600 karakter. |
-| `probes[].criteria` | Hayır | `{ true, false }`: evet ve hayırın anlamı, her biri en fazla 300 karakter. Her iki yarı veya hiçbiri. |
-| `exempt` | Hayır | Sonda şeklinde bir soru daha (`id`'si yoksayılır). Bu tuttuğunda, kontrol ateşlenmez — belgelenmiş istisnalar. |
-| `precondition` | Hayır | Aşağıdaki tablodan bir ad. Belirtilmemişse, kontrol `appliesTo` öğelerinin kapsadığı her çağrı için sorulur. |
-| `guidance` | Evet | Kontrol ateşlendiğinde ajana gösterilen, ister engellerse ister uyarırsa — bir `"deny"` kontrolü yalnızca ılımlı kanıtlarla uyarır, bu nedenle çağrının engellendiğini söylemeyin. En fazla 600 karakter. |
-
-Ön koşul bir ad, hiçbir zaman kod değildir: bir bildirim bir işlevi taşıyamaz ve indirilen bir paket her araç çağrısında çalışanı kararlaştırmamalıdır.
-
-| Ön koşul | Kontrol yalnızca şu durumlarda sorulur |
-| --- | --- |
-| `always` | Her zaman — bunu ihmal etmekle aynı. |
-| `protected_branch` | Mevcut git dalı `main`, `master`, `production`, `prod`, `release` veya `trunk`'tır. |
-| `in_git_repo` | Çağrı bir git dalında çalışır. Detached `HEAD` bir depo dışında sayılır. |
-| `has_paths` | Çağrı en az bir yolu adlandırır. |
-| `paths_outside_project` | Adlandırdığı bazı yollar proje dışındadır. |
-| `system_or_root_paths` | Adlandırdığı bazı yollar bir sistem yolu veya dosya sistemi köküdür. |
+Politika modüllerini belirlenimci ve hızlı tutun. Üst düzey ağ çağrılarından veya sunucu başlatmadan kaçının. `fn` içinde çalışmayı sınırla, bağımlılık başarısızlıklarını yakala ve bu başarısızlığın işleme izin vermesi mi yoksa reddetmesi mi gerektiğine bilinçli olarak karar ver.
 
 ## API dışa aktarmaları
 
-| Dışa aktar | Amaç |
+| Dışa aktarma | Amaç |
 | --- | --- |
-| `customPolicies.add(policy)` | Modül yüklenirken özel politika kaydedin. |
-| `allow(reason?)` | İşleme izin verin. |
-| `instruct(reason)` | İşleme izin verin ve desteklerse rehberlik sağlayın. |
-| `deny(reason)` | İşlemi desteklenirse engelleyin. |
-| `semanticPolicies.add(check)` | `failproofai publish`'ın bir pakete koymak için [Jev kontrolü](#jev-kontrolleri) bildir. |
-| `getCustomHooks()` | Modül kayıt defterinde şu anda kayıtlı politikaları döndürün. |
-| `getSemanticRegistrations()` | Şu anda bildirilen Jev kontrollerini döndürün, öncelikle testler ve yükleyiciler için. |
-| `clearCustomHooks()` | Her iki kayıt defteri de temizleyin, öncelikle testler ve yükleyiciler için. |
+| `customPolicies.add(policy)` | Modül yüklendiğinde özel bir politika kaydet. |
+| `allow(reason?)` | İşleme izin ver. |
+| `instruct(reason)` | İşleme izin ver ve desteklenen yerlerde rehberlik sağla. |
+| `deny(reason)` | Desteklenen yerlerde işlemi engelle. |
+| `getCustomHooks()` | Modül kaydında şu anda kayıtlı olan politikaları döndür. |
+| `clearCustomHooks()` | Bu kayıt defteri temizle, öncelikle testler ve yükleyiciler için. |
 
-TypeScript, `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, `PolicyAuthority`, `SemanticPolicyDeclaration`, `SemanticProbeDeclaration` ve `SemanticToolClass` dışa aktarır.
+TypeScript, `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` ve `PolicyFunction` dışa aktarır.
 
-<Card title="Özel politikaları dağıtın" icon="server-cog" href="/tr/policies/deploy">
-  Bir sürümü yayınlayın, gözlemle modunda dağıtın, kararları doğrulayın ve uygulamaya taşıyın.
+<Card title="Özel politikaları dağıt" icon="server-cog" href="/tr/policies/deploy">
+  Bir sürüm yayınla, observe modunda dağıt, kararları doğrula ve uygulamaya taşı.
 </Card>

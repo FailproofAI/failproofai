@@ -206,12 +206,15 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   try {
     // A `both` policy is bound to its own Jev half, exactly as registration
     // binds it (CONTRACT C9.4): a pack's same-named check never makes it
-    // reviewable. One with no Jev half is judged as it always was.
+    // reviewable. So is an `observe` one whose half the server withheld
+    // (C9.3) — to no checks, so it is hard, as `handler.ts` registers it
+    // (review F2). One with no Jev half is judged as it always was.
     const cloudJev = readCloudJevPolicies();
     for (const assignment of readActiveCloudManagedPolicies()) {
       const declared = { authority: assignment.authority, reviewedBy: assignment.reviewedBy };
       const own = cloudOwnCheckNames(cloudJev, assignment.id);
-      records.push(own ? bindReviewedBy(declared, own).declaration : declared);
+      const withheld = own === null && assignment.effect === "observe" && declared.authority === "reviewable";
+      records.push(withheld ? { authority: "hard" } : own ? bindReviewedBy(declared, own).declaration : declared);
     }
   } catch {
     // Same fail-open as the handler's own read of this file.

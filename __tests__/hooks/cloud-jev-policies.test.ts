@@ -856,6 +856,34 @@ describe("C9.3: an observe both policy arrives with its Jev half withheld", () =
     expect(existsSync(errorsFile())).toBe(false);
   });
 
+  it("stays hard when an installed pack declares its reviewedBy name: registered, reported and counted (review F2)", async () => {
+    // A third-party pack declares the org's check name. The org's own Jev half
+    // was withheld, so the pack's check must not stand in for it (C9.4).
+    installPacks([{ id: "acme/lenient", semantic: [decl("acme-trial")] }]);
+    deploy({
+      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] }],
+    });
+    const registered = await registeredAfterOneEvent();
+    const { effectiveReviewerNames } = await import("@/src/hooks/effective-reviewers");
+    expect(effectiveReviewerNames().has("acme-trial")).toBe(true);
+    expect(registered.get("cloud/trial@2/trial-hook")?.authority).toBe("hard");
+    expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
+    expect(existsSync(errorsFile())).toBe(false);
+
+    // `jev status`'s coverage count judges it the same way: not reviewable. The
+    // same entry enforced has no Jev half of its own (D-FB-1: judged by the
+    // machine-wide set, as any assignment always was), so there it counts.
+    const { surveyReviewableCoverage } = await import("@/src/hooks/policy-reviewability");
+    const observed = surveyReviewableCoverage(project);
+    deploy({
+      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "enforce", authority: "reviewable", reviewedBy: ["acme-trial"] }],
+      deployment: 44,
+    });
+    const enforced = surveyReviewableCoverage(project);
+    expect(observed.enabled).toBe(enforced.enabled);
+    expect(observed.reviewable).toBe(enforced.reviewable - 1);
+  });
+
   it("an ENFORCE both with its Jev half missing is still reported", async () => {
     deploy({ policies: [{ id: "real", version: 1, authority: "reviewable", reviewedBy: ["acme-real"] }] });
     await registeredAfterOneEvent();

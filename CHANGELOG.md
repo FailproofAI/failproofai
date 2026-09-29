@@ -12,7 +12,7 @@
 
 ### Fixes
 
-- `failproofai config --disconnect` now sticks: the daemon's snapshot (`desired-state.json`) goes with `active.json`, the daemon no longer rebuilds `active.json` on a machine that is not enrolled, a poll in flight during the disconnect is discarded, and a machine put back on OSS has any leftover Cloud deployment removed. Before, the old org's policies, Jev checks and Jev mode came back within one maintenance interval.
+- `failproofai config --disconnect` now sticks: the daemon's snapshot (`desired-state.json`) goes with `active.json`, the daemon no longer rebuilds `active.json` on a machine that is not enrolled, a poll in flight during the disconnect is discarded, and a machine put back on OSS has any leftover Cloud deployment removed. Before, the old org's policies, Jev checks and Jev mode came back within one maintenance interval. That cleanup runs only in the default cloud policy directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.
 - A `both` policy is reviewed only by its own Jev checks: when they fail to load, an installed pack's check of the same name no longer clears its regex verdict, and the policy stays hard and is reported; an observed `both`, whose Jev half is withheld, is hard too, and `jev status` no longer counts it reviewable because a pack declares its check names.
 - The one Jev question budget gives FailproofAI Cloud's checks priority over installed packs', and every check it drops is reported (`jev_budget: dropped <name> (<n> chars over)`).
 - Policy error reports carry no local paths: the home directory becomes `~` and other absolute paths their last segment, on the CLI and again in the daemon, including a path after `:` such as `file:///tmp/x.mjs` (a URL's `//host` is left alone).

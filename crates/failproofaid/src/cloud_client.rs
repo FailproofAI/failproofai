@@ -396,6 +396,16 @@ fn disconnected_by_config() -> bool {
         == Some("oss")
 }
 
+/// Whether the idle tick removes a Cloud deployment left on disk: only on a
+/// machine put back on OSS ([`disconnected_by_config`]) whose cloud policy
+/// directory is the DEFAULT one. The cleanup deletes four fixed filenames, and
+/// `FAILPROOFAI_CLOUD_POLICY_DIR` can name any directory — a shared one with
+/// unrelated files of those names among them — so under an override nothing is
+/// removed (review F7).
+fn oss_cleanup_applies() -> bool {
+    !crate::paths::cloud_managed_policy_dir_overridden() && disconnected_by_config()
+}
+
 /// The `cloud` object of `credentials.json`. Snake_case keys, because that is
 /// what `fp-config.ts`'s `writeCredentials` emits.
 #[derive(serde::Deserialize)]
@@ -850,7 +860,7 @@ pub fn spawn_maintenance(
                 last_state = Some(enrolled);
             }
 
-            maintenance_tick(&store, cloud, &enrolment_withdrawn, &disconnected_by_config);
+            maintenance_tick(&store, cloud, &enrolment_withdrawn, &oss_cleanup_applies);
             wait_until_shutdown(
                 &shutdown,
                 if enrolled {
@@ -880,7 +890,8 @@ pub fn spawn_maintenance(
 ///   (`mode: "oss"`), any Cloud deployment still on disk — written by a poll
 ///   that was in flight during the disconnect, or left by an older CLI that did
 ///   not remove `desired-state.json` — is removed, so a disconnected machine is
-///   provably unmanaged rather than unmanaged by timing.
+///   provably unmanaged rather than unmanaged by timing. Not in a directory
+///   `FAILPROOFAI_CLOUD_POLICY_DIR` chose ([`oss_cleanup_applies`]).
 ///
 /// The two predicates are parameters so a test can drive every branch without
 /// touching the process's HOME.
@@ -2220,6 +2231,48 @@ mod tests {
             ("config.json", r#"{"mode":{"kind":"oss"}}"#),
         ]);
         assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    /// The OSS cleanup deletes four fixed filenames, so it runs only in the
+    /// DEFAULT cloud policy directory: an operator's `FAILPROOFAI_CLOUD_POLICY_DIR`
+    /// may be shared with unrelated files of those names (review F7).
+    #[test]
+    fn the_oss_cleanup_never_runs_in_an_overridden_policy_dir() {
+        struct DirOverride;
+        impl Drop for DirOverride {
+            fn drop(&mut self) {
+                unsafe { std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV) };
+            }
+        }
+        let _lock = lock_env();
+        let _guard = with_home(&[("config.json", r#"{"mode":{"kind":"oss"}}"#)]);
+        let _override = DirOverride;
+        let store = deployed_store("oss-cleanup-override");
+        let names = [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ];
+        fs::write(store.cli_errors_path(), r#"{"errors":[]}"#).unwrap();
+        fs::write(store.daemon_errors_path(), r#"{"errors":[]}"#).unwrap();
+        assert!(names.iter().all(|path| path.exists()));
+
+        unsafe { std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, store.root()) };
+        assert!(!oss_cleanup_applies());
+        maintenance_tick(&store, Ok(None), &|| true, &oss_cleanup_applies);
+        assert!(
+            names.iter().all(|path| path.exists()),
+            "nothing is removed from an overridden directory"
+        );
+
+        // The default directory: the cleanup applies, as before.
+        unsafe { std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV) };
+        assert!(oss_cleanup_applies());
+        maintenance_tick(&store, Ok(None), &|| true, &oss_cleanup_applies);
+        assert!(no_cloud_state(&store));
+        fs::remove_dir_all(store.root()).ok();
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
 

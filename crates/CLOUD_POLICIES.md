@@ -142,7 +142,8 @@ is not enrolled; a poll that was in flight when the disconnect landed is
 abandoned before it writes anything; and on a machine put back on OSS
 (`mode: "oss"` in `config.json`) the daemon removes any Cloud deployment it
 still finds, so none of the old organisation's policies, Jev checks or Jev mode
-return.
+return. That cleanup deletes four fixed filenames, so it runs only in the default
+directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.
 
 **The credential must not go in the service unit.** `daemon-service.ts` installs
 `/etc/systemd/system/failproofaid@<user>.service` at mode 0644 — root-owned and
@@ -202,7 +203,8 @@ nothing is rebuilt. There is one copy of each artifact, so a modified one
 cannot be repaired offline: the thread keeps the active manifest and reports
 that a cloud re-fetch is required, and the next successful poll re-fetches it.
 
-`FAILPROOFAI_CLOUD_POLICY_DIR` overrides the root for tests and development.
+`FAILPROOFAI_CLOUD_POLICY_DIR` overrides the root for tests and development
+(the daemon then never runs the OSS cleanup above in it).
 When cloud polling is disabled, `FAILPROOFAI_CLOUD_POLICY_RECONCILE_MS`
 overrides the standalone integrity interval, clamped to at least 100 ms. With
 cloud polling enabled, integrity repair runs on each poll.

@@ -108,6 +108,7 @@ import {
   inspectJevConfig,
   jevCloudBaseUrl,
   jevConfigPath,
+  loadJevConfigForCloudMode,
   providerForUrl,
   providerHostConflict,
   readJevConfigFileForUpdate,
@@ -144,6 +145,7 @@ import {
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
+import { readCloudJevPolicies, type CloudJevRead } from "./cloud-managed-policies";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
@@ -1388,7 +1390,174 @@ function safeCoverage(): ReviewableCoverage | null {
   }
 }
 
+// ── status: FailproofAI Cloud ────────────────────────────────────────────────
+//
+// A Cloud deployment can carry Jev checks (`jev` / `both` policies) and can SET
+// this machine's Jev mode, overriding `jev.json`'s — a local `off` included. So
+// `status` answers from Cloud first: with a Cloud mode the local mode is not
+// what runs, and saying "switched off in jev.json" would be false. Without one,
+// the local answer stands and the Cloud checks are listed beside it.
+
+/** Label for everything Cloud decided here. Customer-facing: never "AgentEye". */
+const MODE_SET_BY_CLOUD = "mode set by FailproofAI Cloud";
+
+function safeCloudJev(): CloudJevRead {
+  try {
+    return readCloudJevPolicies();
+  } catch {
+    return { sets: [], semanticIds: [], jevMode: null, errors: [] };
+  }
+}
+
+/** The Cloud checks, per policy, for `--json`. */
+function cloudChecksJson(cloud: CloudJevRead): Array<{ policy: string; version: number; kind: string; checks: string[] }> {
+  return cloud.sets.map((set) => ({
+    policy: set.policyId,
+    version: set.policyVersion,
+    kind: set.kind,
+    checks: set.semantic.map((entry) => entry.name),
+  }));
+}
+
+/** The Cloud checks, per policy, as rows. */
+function cloudChecksBlock(cloud: CloudJevRead, opts: RenderOpts): string[] {
+  if (cloud.sets.length === 0 && cloud.errors.length === 0) return [];
+  return stack(
+    rule("FailproofAI Cloud Jev checks", opts),
+    cloud.sets.length > 0
+      ? rows(
+          cloud.sets.map((set): [string, string] => [
+            `${set.policyId} v${set.policyVersion}`,
+            `${set.semantic.map((entry) => entry.name).join(", ") || "(no usable checks)"}${set.kind === "both" ? " · reviews its own regex policy" : ""}`,
+          ]),
+          opts,
+        )
+      : null,
+    cloud.errors.length > 0
+      ? warning(
+          cloud.errors.map((e) => `${e.id}${e.version === null ? "" : ` v${e.version}`}: ${e.message}`),
+          opts,
+        )
+      : null,
+  );
+}
+
 async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
+  const cloud = safeCloudJev();
+  if (cloud.jevMode === null && cloud.sets.length === 0 && cloud.errors.length === 0) return localStatus(argv, opts);
+  const parsed = parseFlags(argv, new Set(["--json"]));
+  if (typeof parsed === "string" || parsed.positionals.length > 0) return localStatus(argv, opts);
+  const asJson = parsed.bools.has("--json");
+
+  if (cloud.jevMode === null) {
+    // jev.json decides the mode; Cloud contributes checks. The local answer,
+    // with them added.
+    const local = await localStatus(argv, opts);
+    if (asJson && local.json !== undefined) {
+      const body = JSON.parse(local.json) as Record<string, unknown>;
+      body.cloud = { jevMode: null, modeSetBy: null, checks: cloudChecksJson(cloud), errors: cloud.errors };
+      return { ...local, json: JSON.stringify(body, null, 2) };
+    }
+    return { ...local, lines: [...local.lines, ...cloudChecksBlock(cloud, opts)] };
+  }
+
+  const mode = cloud.jevMode;
+  const resolved = loadJevConfigForCloudMode(mode);
+  let stats: JevStats | null = null;
+  try {
+    stats = await jevStats();
+  } catch {
+    stats = null;
+  }
+  const cfg = resolved.config;
+  const coverage = cfg ? safeCoverage() : null;
+  const route = cfg ? jevRoute(cfg) : null;
+  const running = cfg !== null;
+
+  if (asJson) {
+    const body: Record<string, unknown> = {
+      path: jevConfigPath(),
+      status: running ? "ok" : mode === "off" ? "off" : "unconfigured",
+      mode,
+      modeSetBy: "FailproofAI Cloud",
+      ...(cfg && route
+        ? {
+            provider: cfg.provider,
+            providerLabel: providerLabel(cfg.provider),
+            providerSource: resolved.provider,
+            endpoint: shownEndpoint(cfg.provider, route.endpoint),
+            model: route.model,
+            modelIsDefault: route.modelIsDefault,
+            timeoutMs: cfg.timeoutMs,
+          }
+        : {}),
+      ...(resolved.problem ? { problem: resolved.problem } : {}),
+      cloud: { jevMode: mode, modeSetBy: "FailproofAI Cloud", checks: cloudChecksJson(cloud), errors: cloud.errors },
+      ...(coverage
+        ? {
+            reviewablePolicies: {
+              enabled: coverage.enabled,
+              reviewable: coverage.reviewable,
+              customPolicyFiles: coverage.customFiles,
+              jevChecks: coverage.jevChecks,
+              problem: reviewableProblem(coverage),
+            },
+          }
+        : {}),
+      stats,
+    };
+    return ok([], JSON.stringify(body, null, 2));
+  }
+
+  const head =
+    mode === "off"
+      ? title("failproofai jev status", `off — ${MODE_SET_BY_CLOUD}`, opts)
+      : running
+        ? title("failproofai jev status", `on · ${mode} — ${MODE_SET_BY_CLOUD}`, opts)
+        : title("failproofai jev status", `off — FailproofAI Cloud set ${mode}, and nothing here can answer`, opts);
+  return ok(
+    stack(
+      head,
+      note(
+        `FailproofAI Cloud sets this machine's Jev mode, and it overrides the mode in ${jevConfigPath()} ` +
+          "(an \"off\" there included) for as long as this machine is connected.",
+        opts,
+      ),
+      cfg && route
+        ? rows(
+            [
+              ["provider", providerLabel(cfg.provider)],
+              ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
+              ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
+              ["mode", `${modeLine(mode)} (${MODE_SET_BY_CLOUD})`],
+              ["timeout", `${cfg.timeoutMs} ms`],
+              [
+                "config",
+                resolved.provider === "cloud-credential"
+                  ? `no ${jevConfigPath()} — this machine's FailproofAI Cloud connection answers`
+                  : jevConfigPath(),
+              ],
+            ],
+            opts,
+          )
+        : rows([["mode", mode === "off" ? `${modeLine("off")} (${MODE_SET_BY_CLOUD})` : `${mode} (${MODE_SET_BY_CLOUD}) — not running`]], opts),
+      resolved.problem
+        ? warning(
+            [
+              `Jev cannot run here: ${resolved.problem}.`,
+              "Connect with a key that carries jev:evaluate (failproofai config --token <key>), or configure your own provider (failproofai jev setup).",
+            ],
+            opts,
+          )
+        : null,
+      cloudChecksBlock(cloud, opts),
+      coverage ? note(reviewableSummary(coverage), opts) : null,
+      jevStatsLines(stats, opts),
+    ),
+  );
+}
+
+async function localStatus(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set(["--json"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);

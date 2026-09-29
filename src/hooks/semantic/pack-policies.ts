@@ -39,7 +39,8 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks } from "../effective-reviewers";
+import { readCloudJevPolicies } from "../cloud-managed-policies";
+import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks, withCloudSemantic } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import {
   packSemantic,
@@ -254,7 +255,8 @@ export function semanticPoliciesFromPacks(
 const warned = new Set<string>();
 
 /**
- * The live set, read from the installed packs.
+ * The live set, read from the installed packs and the FailproofAI Cloud Jev
+ * policies deployed to this machine (`active.json` `semanticPolicies`).
  *
  * Called from `prepareSemantic`, so only on a machine that has a Jev config and
  * is preparing a request. It re-reads the manifest rather than caching: the
@@ -277,10 +279,14 @@ export function resolveSemanticPolicies(cli?: string): ReadonlyArray<SemanticPol
   } catch {
     return [];
   }
-  const resolved = semanticPoliciesFromPacks(jevPacks(packs, cli));
+  // Installed packs ∪ FailproofAI Cloud Jev policies, Cloud winning a name
+  // clash (`withCloudSemantic`), through the one budget below. The Cloud read
+  // never throws; what it dropped it has already logged once and reported.
+  const merged = withCloudSemantic(jevPacks(packs, cli), readCloudJevPolicies().sets);
+  const resolved = semanticPoliciesFromPacks(merged.sources);
   // Once per process per message, like `warnAuthority`: this runs on every gate
   // event, and in the warm worker that is every tool call of every session.
-  for (const message of [...manifestErrors, ...resolved.errors]) {
+  for (const message of [...manifestErrors, ...merged.shadowed, ...resolved.errors]) {
     if (warned.has(message)) continue;
     warned.add(message);
     hookLogWarn(message);

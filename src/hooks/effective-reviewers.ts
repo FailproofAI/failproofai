@@ -1,12 +1,14 @@
 /**
  * The semantic checks a `reviewedBy` may name ON THIS MACHINE.
  *
- * ## Only what an installed pack declares
+ * ## Only what an installed pack — or FailproofAI Cloud — declares
  *
  * The npm package ships no Jev checks, so no name is a reviewer by default. A
  * `reviewedBy` is honoured only for checks some installed pack declares — in
  * practice `FailproofAI/jev-policies`, which the core pack's fifteen
- * `reviewable` policies name. With no such pack the set is EMPTY, every policy
+ * `reviewable` policies name — or a FailproofAI Cloud Jev policy deployed to
+ * this machine declares (a `both` policy's JS half names its own checks; see
+ * `withCloudSemantic`). With no such pack the set is EMPTY, every policy
  * registers `hard`, and nothing Jev says can clear a regex verdict. That is the
  * fail-safe direction, and it is also what keeps Jev inert on a machine that
  * never installed its checks: `jevChecksInstalled` below is the hook path's
@@ -36,9 +38,12 @@
  */
 import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { NO_REVIEWERS, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { readCloudJevPolicies, type CloudJevRead, type CloudSemanticPolicySet } from "./cloud-managed-policies";
 
 let cached: ReadonlySet<string> | null = null;
 let cachedContested: ReadonlyMap<string, string[]> = new Map();
+/** The Cloud Jev read behind `cached`, for the same registration pass. */
+let cachedCloud: CloudJevRead | null = null;
 /** The agent the current registration pass is for; see {@link forgetEffectiveReviewerNames}. */
 let reviewerCli: string | undefined;
 
@@ -174,14 +179,71 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   let names: ReadonlySet<string> = NO_REVIEWERS;
   cachedContested = new Map();
   try {
-    const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
-    names = reviewerNamesFor(packs);
-    cachedContested = contestedSemanticNames(packs);
+    const sources = withCloudSemantic(jevPacks(readInstalledPacks().packs, reviewerCli), cloudJevForPass().sets).sources;
+    names = reviewerNamesFor(sources);
+    cachedContested = contestedSemanticNames(sources);
   } catch {
     // See above: an unreadable manifest declares no checks.
   }
   cached = names;
   return names;
+}
+
+/**
+ * The FailproofAI Cloud Jev policies `active.json` names, read once per
+ * registration pass — the same lifetime as the reviewer set built from them, so
+ * the two cannot describe different deployments. Never throws.
+ */
+export function cloudJevForPass(): CloudJevRead {
+  if (!cachedCloud) cachedCloud = readCloudJevPolicies();
+  return cachedCloud;
+}
+
+/**
+ * Installed packs ∪ FailproofAI Cloud Jev policies, as ONE list of semantic
+ * sources for the reviewer set, the question set and the contest.
+ *
+ * ## Cloud wins a name clash
+ *
+ * A check name both a Cloud policy and an installed pack declare is the Cloud
+ * one's: the pack's same-named entry is dropped here (and `shadowed` says so,
+ * once per pack and name). Left in, the two declarations would CONTEST the name
+ * and it would be asked for nobody — so a pack could switch off an org's
+ * centrally deployed check by declaring its name, which is the same "local
+ * config cannot disable a central assignment" rule Cloud JS policies follow.
+ *
+ * A reserved name is the exception, in both directions: Cloud is never
+ * first-party, so its claim to one of FailproofAI's sixteen names is void
+ * (`isReservedClaim`) and shadows nothing — FailproofAI's own pack keeps it.
+ *
+ * Cloud sets come first in the list; `semanticPoliciesFromPacks` still spends
+ * the one question budget on first-party packs before anyone else. Pure.
+ */
+export function withCloudSemantic<T extends Pick<ResolvedPack, "id" | "semantic"> & { source?: string }>(
+  packs: ReadonlyArray<T>,
+  cloud: ReadonlyArray<CloudSemanticPolicySet>,
+): { sources: Array<T | CloudSemanticPolicySet>; shadowed: string[] } {
+  if (cloud.length === 0) return { sources: [...packs], shadowed: [] };
+  const cloudNames = new Map<string, string>();
+  for (const set of cloud) {
+    for (const entry of set.semantic) {
+      if (!isReservedClaim(set, entry.name) && !cloudNames.has(entry.name)) cloudNames.set(entry.name, set.source);
+    }
+  }
+  const shadowed: string[] = [];
+  const kept = packs.map((pack) => {
+    const semantic = pack.semantic ?? [];
+    const clashing = semantic.filter((entry) => cloudNames.has(entry.name));
+    if (clashing.length === 0) return pack;
+    for (const entry of clashing) {
+      shadowed.push(
+        `pack ${pack.id} declares Jev check ${entry.name}, which FailproofAI Cloud policy ` +
+          `${cloudNames.get(entry.name)} also declares — the Cloud one is asked, the pack's is not`,
+      );
+    }
+    return { ...pack, semantic: semantic.filter((entry) => !cloudNames.has(entry.name)) };
+  });
+  return { sources: [...cloud, ...kept], shadowed };
 }
 
 /** The contest behind {@link effectiveReviewerNames}' answer, so a refusal can name it. */
@@ -211,7 +273,7 @@ export function jevChecksInstalled(): boolean {
  */
 export function jevChecksDeclared(): boolean {
   try {
-    return reviewerNamesFor(jevPacks(readInstalledPacks().packs)).size > 0;
+    return reviewerNamesFor(withCloudSemantic(jevPacks(readInstalledPacks().packs), readCloudJevPolicies().sets).sources).size > 0;
   } catch {
     return false;
   }
@@ -246,5 +308,6 @@ export function reviewerNamesFor(
  */
 export function forgetEffectiveReviewerNames(cli?: string): void {
   cached = null;
+  cachedCloud = null;
   reviewerCli = cli;
 }

@@ -393,7 +393,8 @@ export function runDisconnectCommand(): CommandResult {
     "Disconnected from FailproofAI Cloud.",
     "",
     stoppedManaged
-      ? "  Cloud-managed policies stop being enforced and stop being refreshed.\n" +
+      ? "  Cloud-managed policies stop being enforced and stop being refreshed — their Jev checks\n" +
+        "  and any Jev mode FailproofAI Cloud set go with them.\n" +
         "  Local builtin, custom and convention policies are unaffected."
       : "  Local builtin, custom and convention policies are unaffected.",
     ...jevLines,

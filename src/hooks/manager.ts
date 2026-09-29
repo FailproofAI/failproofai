@@ -25,7 +25,7 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
@@ -1377,27 +1377,62 @@ export async function listHooks(cwd?: string): Promise<void> {
   // Read-only on purpose: these are owned by the deployment, not by local
   // config. `--uninstall <name>` cannot switch one off, and printing them
   // beside toggleable rows without saying so would imply it can.
+  //
+  // Each policy's KIND is shown — `regex` (JS), `jev` (Jev checks only) or
+  // `both` (JS reviewable by its own checks) — with the Jev check names, so a
+  // Jev-only policy, which registers no JS at all, is listed too.
   try {
-    const cloud = readActiveCloudManagedPolicies();
-    if (cloud.length > 0) {
-      groups.push(rule(`Cloud-managed — deployment ${cloud[0].deployment}`, opts));
+    let cloud: ReturnType<typeof readActiveCloudManagedPolicies> = [];
+    try {
+      cloud = readActiveCloudManagedPolicies();
+    } catch {
+      // The Jev half is read independently below; one bad half must not hide
+      // the other.
+    }
+    let jev: ReturnType<typeof readCloudJevPolicies> = { sets: [], semanticIds: [], jevMode: null, errors: [] };
+    try {
+      jev = readCloudJevPolicies();
+    } catch {
+      // Never throws by contract; guarded anyway, for the same reason as above.
+    }
+    const setFor = (id: string) => jev.sets.find((set) => set.policyId === id);
+    const jevOnly = jev.sets.filter((set) => set.kind === "jev");
+    if (cloud.length > 0 || jev.sets.length > 0 || jev.jevMode !== null) {
+      const deployment = cloud[0]?.deployment ?? jev.sets[0]?.deployment;
       groups.push(
-        table(
-          {
-            head: ["", "Policy", "Version"],
-            rows: cloud.map((artifact) => [
-              // `observe` is evaluated and then has its verdict discarded, so a
-              // row that read "ON" would claim enforcement this policy
-              // deliberately is not doing.
-              chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
-              artifact.id,
-              `v${artifact.version}`,
-            ]),
-            flex: 1,
-          },
-          opts,
-        ),
+        rule(`Cloud-managed${deployment !== undefined ? ` — deployment ${deployment}` : ""} · FailproofAI Cloud`, opts),
       );
+      const checksOf = (id: string): string => setFor(id)?.semantic.map((entry) => entry.name).join(", ") ?? "";
+      const rowsOut = [
+        ...cloud.map((artifact) => {
+          const both = jev.semanticIds.includes(artifact.id);
+          return [
+            // `observe` is evaluated and then has its verdict discarded, so a
+            // row that read "ON" would claim enforcement this policy
+            // deliberately is not doing.
+            chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
+            artifact.id,
+            `v${artifact.version}`,
+            both ? "both" : "regex",
+            both ? checksOf(artifact.id) || "(not loaded)" : "",
+          ];
+        }),
+        ...jevOnly.map((set) => [chip("cloud", opts), set.policyId, `v${set.policyVersion}`, "jev", checksOf(set.policyId)]),
+      ];
+      if (rowsOut.length > 0) {
+        groups.push(table({ head: ["", "Policy", "Version", "Kind", "Jev checks"], rows: rowsOut, flex: 4 }, opts));
+      }
+      if (jev.jevMode !== null) {
+        groups.push(note(`Jev mode: ${jev.jevMode} — mode set by FailproofAI Cloud (overrides jev.json).`, opts));
+      }
+      if (jev.errors.length > 0) {
+        groups.push(
+          warning(
+            jev.errors.map((e) => `${e.id}${e.version === null ? "" : ` v${e.version}`}: ${e.message}`),
+            opts,
+          ),
+        );
+      }
       groups.push(
         note("Managed from the dashboard — not switchable with `failproofai policies`.", opts),
       );

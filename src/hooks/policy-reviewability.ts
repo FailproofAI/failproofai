@@ -55,8 +55,8 @@
  * - **A session pause.** It suspends local policy for minutes, and a warning
  *   about a policy set that is coming back shortly would be noise.
  */
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { jevPacks } from "./effective-reviewers";
+import { readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
+import { jevPacks, withCloudSemantic } from "./effective-reviewers";
 import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
@@ -180,7 +180,9 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // contested name AND minus a check the question budget drops — which the
     // hook path's manifest-only `reviewerNamesFor` cannot see. Anything else and
     // the panel and `jev status` promise a clear that cannot happen.
-    const asked = semanticPoliciesFromPacks(jevPacks(packs));
+    // FailproofAI Cloud Jev policies take part exactly as the hook path takes
+    // them (`resolveSemanticPolicies`), Cloud winning a name clash.
+    const asked = semanticPoliciesFromPacks(withCloudSemantic(jevPacks(packs), readCloudJevPolicies().sets).sources);
     reviewers = new Set(asked.policies.map((p) => p.name));
   } catch {
     // An unreadable manifest enforces nothing and gives Jev nothing to ask;

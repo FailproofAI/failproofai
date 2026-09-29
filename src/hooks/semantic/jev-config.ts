@@ -89,7 +89,7 @@
  */
 import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { readJevCloudCredential, type JevCloudCredential } from "../fp-config";
+import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "../fp-config";
 import { jevConfigFile } from "../fp-home";
 
 export type { JevCloudCredential } from "../fp-config";
@@ -1088,6 +1088,113 @@ export function loadJevConfig(): JevConfig | null {
   } catch {
     return null;
   }
+}
+
+// ── FailproofAI Cloud sets the mode ──────────────────────────────────────────
+
+/** Where the config for a Cloud-set mode came from. */
+export type CloudModeProvider = "jev.json" | "cloud-credential";
+
+export interface CloudModeJevConfig {
+  /** The config to run with, its `mode` Cloud's — or null: Jev does not run. */
+  config: JevConfig | null;
+  /** Which provider answered, when one did. */
+  provider: CloudModeProvider | null;
+  /**
+   * Why nothing could answer, for `errors.json` — null when Jev runs, and null
+   * for `off`, which is not a problem. `jev_unconfigured` exactly when there is
+   * neither a `jev.json` nor a Cloud Jev credential; a `jev.json` that exists
+   * and cannot be used says why after the same prefix.
+   */
+  problem: string | null;
+}
+
+/**
+ * The config to run when FailproofAI Cloud sets this machine's Jev mode
+ * (`active.json` `jevMode`), which OVERRIDES the local mode — a local `off`
+ * included: an org that deploys Jev policies and sets their mode has decided,
+ * and a switch any process of this user can flip must not quietly undo that.
+ *
+ * The PROVIDER is still local, because a mode says how to act on answers, not
+ * where to ask:
+ *
+ * 1. `jev.json`'s provider when the file exists — including a file saying
+ *    `off`, whose routing and key are kept for exactly this. Every check the
+ *    loader applies still applies (owner-only file and directory, the Cloud
+ *    key's origin binding, and plain http refused in enforce), re-run with
+ *    Cloud's mode in place of the file's.
+ * 2. Otherwise the Cloud Jev credential (`credentials.json` `jev {url,key}`,
+ *    only while its connection is still on this machine) as provider
+ *    `failproofai`, at `<cloud base>/enforcement/v1/jev` — what `config --token`
+ *    would have written.
+ * 3. Neither: no Jev, and `problem` says `jev_unconfigured`.
+ *
+ * Never throws.
+ */
+export function loadJevConfigForCloudMode(mode: JevConfigMode): CloudModeJevConfig {
+  if (mode === "off") return { config: null, provider: null, problem: null };
+  try {
+    const inspected = inspectJevConfig();
+    if (inspected.status === "ok") {
+      const r = validateLoadedJevConfig({ ...inspected.config, mode });
+      return r.ok
+        ? { config: r.value, provider: "jev.json", problem: null }
+        : { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: jev.json cannot run in ${mode} mode — ${r.problem}` };
+    }
+    if (inspected.status === "off") {
+      // Sound and switched off locally; its routing (and a BYOK key) are on
+      // disk. Re-validated whole with Cloud's mode, the credential passed only
+      // for the Cloud provider, exactly as `inspectJevConfig` passes it.
+      const file = readJevConfigFileForUpdate();
+      if (!file || file.tooOpen) {
+        return { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: jev.json could not be re-read` };
+      }
+      const raw: Record<string, unknown> = { ...file.raw, mode };
+      let r: ValidationResult<JevConfig>;
+      if (raw.provider === JEV_CLOUD_PROVIDER) {
+        const credential = readJevCloudCredential();
+        r = validateJevConfig(raw, null, credential.status === "ok" ? credential.credential : null);
+      } else {
+        r = validateJevConfig(raw, readEnvKey());
+      }
+      return r.ok
+        ? { config: r.value, provider: "jev.json", problem: null }
+        : { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: jev.json — ${r.problem}` };
+    }
+    if (inspected.status === "absent") {
+      const credential = readJevCloudCredential();
+      if (credential.status !== "ok") return { config: null, provider: null, problem: JEV_UNCONFIGURED_PROBLEM };
+      const raw = { provider: JEV_CLOUD_PROVIDER, baseUrl: jevCloudBaseUrl(cloudBaseFor(credential.credential)), mode };
+      const r = validateJevConfig(raw, null, credential.credential);
+      return r.ok
+        ? { config: r.value, provider: "cloud-credential", problem: null }
+        : { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: the FailproofAI Cloud Jev credential — ${r.problem}` };
+    }
+    // The file exists and is unusable (not connected, key missing, refused).
+    // Its provider is the one the owner chose, so it is not swapped for another.
+    const detail = (inspected as { problem?: string }).problem ?? inspected.status;
+    return { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: jev.json is ${inspected.status} — ${detail}` };
+  } catch (err) {
+    return { config: null, provider: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/** The contract's message for "Cloud set a Jev mode and nothing can answer". */
+export const JEV_UNCONFIGURED_PROBLEM = "jev_unconfigured";
+
+/**
+ * The Cloud base URL the Jev route hangs off: the connection's own URL when it
+ * is on the credential's origin (so a Cloud served under a path prefix keeps
+ * it, as `config --token` writes it), else the credential's origin.
+ */
+function cloudBaseFor(credential: JevCloudCredential): string {
+  try {
+    const cloud = readCredentials().cloud;
+    if (cloud?.url && new URL(cloud.url).origin === new URL(credential.url).origin) return cloud.url;
+  } catch {
+    // Fall through to the origin.
+  }
+  return credential.url;
 }
 
 export interface JevConfigFileForUpdate {

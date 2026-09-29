@@ -738,8 +738,13 @@ export function semanticQuestions(
  * Per ENTRY, not per pack: one malformed question set must not take the rest of
  * a publisher's semantic policies with it, for the same reason one malformed
  * pack does not take the other packs with it.
+ *
+ * Exported because it is also THE parser for FailproofAI Cloud Jev policies
+ * (`readCloudJevPolicies` in `cloud-managed-policies.ts`): a Cloud declaration
+ * is exactly a manifest semantic entry, and a second parser would be a second
+ * set of rules to drift.
  */
-function parsePackSemantic(packId: string, value: unknown, warnings: string[]): SemanticManifestEntry[] {
+export function parsePackSemantic(packId: string, value: unknown, warnings: string[]): SemanticManifestEntry[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     warnings.push(`pack ${packId} semantic is not an array, so none of it was loaded`);

@@ -37,8 +37,16 @@ import type { TwoTierReview } from "./semantic/combine";
 import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
-import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
+import { loadAllCustomHooks, type LoadAllResult } from "./custom-hooks-loader";
+import {
+  cloudJevForPass,
+  contestedReviewerNames,
+  effectiveReviewerNames,
+  jevChecksInstalled,
+  jevPacks,
+  reviewerNamesFor,
+  withCloudSemantic,
+} from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -56,7 +64,8 @@ import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
-import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { readActiveCloudManagedPolicies, readCloudJevMode, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { cloudPolicyErrorsPath, collectCloudPolicyErrors, writeCloudPolicyErrors } from "./cloud-policy-errors";
 import { hasInstalledRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
@@ -284,9 +293,15 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
  */
 async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
   try {
-    if (!existsSync(jevConfigFile())) return null;
-    const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
-    const config = loadJevConfig();
+    // FailproofAI Cloud's mode, when its deployment sets one, OVERRIDES the
+    // local one — a local `off` included — and may run Jev with no `jev.json`
+    // at all, on this machine's Cloud Jev credential (`loadJevConfigForCloudMode`).
+    // Read off `active.json`, which is small and read on this path already.
+    const cloudMode = readCloudJevMode();
+    if (cloudMode === "off") return null;
+    if (cloudMode === null && !existsSync(jevConfigFile())) return null;
+    const { loadJevConfig, loadJevConfigForCloudMode, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
+    const config = cloudMode ? loadJevConfigForCloudMode(cloudMode).config : loadJevConfig();
     // `loadJevConfig` never returns a switched-off config; this says so again at
     // the one place it matters, because an `off` that got through would fall to
     // the default mode below — which is `enforce`.
@@ -296,6 +311,65 @@ async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTie
       `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,
     );
     return null;
+  }
+}
+
+/**
+ * Where a Jev decision's check came from, as activity-row fields. A FailproofAI
+ * Cloud Jev policy is pack-shaped on the way through the resolver
+ * (`cloud:<id>` / `<version>`, see `readCloudJevPolicies`), and is filed here
+ * under the Cloud attribution pair a Cloud JS policy's decision uses — so the
+ * Cloud policy page counts it against the policy that was deployed.
+ */
+function jevAttribution(
+  origin: { packId: string; packVersion?: string } | undefined,
+): { packId?: string; packVersion?: string; cloudPolicyId?: string; cloudVersion?: number } {
+  if (!origin) return {};
+  if (origin.packId.startsWith("cloud:")) {
+    const version = Number(origin.packVersion);
+    return {
+      cloudPolicyId: origin.packId.slice("cloud:".length),
+      ...(Number.isSafeInteger(version) ? { cloudVersion: version } : {}),
+    };
+  }
+  return origin;
+}
+
+/**
+ * Compute and write `cloud-policies/errors.json` for this machine's Cloud
+ * deployment. A no-op off a Cloud-managed machine (`writeCloudPolicyErrors`
+ * skips without an `active.json`) and when nothing changed. Never throws.
+ */
+async function recordCloudPolicyErrors(input: {
+  manifestError: string | null;
+  jsPolicies: CloudManagedPolicyArtifact[];
+  jsFailures: LoadAllResult["cloudFailures"] | undefined;
+  packs: ResolvedPack[];
+}): Promise<void> {
+  try {
+    const jev = cloudJevForPass();
+    const managed = input.manifestError !== null || input.jsPolicies.length > 0 || jev.semanticIds.length > 0 || jev.jevMode !== null;
+    // An unmanaged machine never reads further. A managed machine whose
+    // deployment just emptied still writes, so a stale report is cleared.
+    if (!managed && !existsSync(cloudPolicyErrorsPath())) return;
+    let jevUnconfigured: string | null = null;
+    if (jev.jevMode === "observe" || jev.jevMode === "enforce") {
+      const { loadJevConfigForCloudMode } = await import("./semantic/jev-config");
+      jevUnconfigured = loadJevConfigForCloudMode(jev.jevMode).problem;
+    }
+    writeCloudPolicyErrors(
+      collectCloudPolicyErrors({
+        manifestError: input.manifestError,
+        jsPolicies: input.jsPolicies,
+        jsFailures: input.jsFailures,
+        jev,
+        // Every agent's view, never this event's: see `CloudPolicyErrorInputs`.
+        reviewerNames: reviewerNamesFor(withCloudSemantic(jevPacks(input.packs), jev.sets).sources),
+        jevUnconfigured,
+      }),
+    );
+  } catch (err) {
+    hookLogInfo(`could not record Cloud policy errors: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -612,10 +686,13 @@ export async function evaluateHookEvent(
       // than the status quo, which already failed open on five of the twelve —
       // just accidentally, and without saying so.
       let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      /** Why the Cloud JS half did not load at all, for `errors.json`. */
+      let cloudManifestError: string | null = null;
       try {
         cloudManagedPolicies = readActiveCloudManagedPolicies();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        cloudManifestError = msg;
         hookLogWarn(
           `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
             `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
@@ -831,6 +908,17 @@ export async function evaluateHookEvent(
         );
       }
 
+      // What this machine could not load from its FailproofAI Cloud deployment,
+      // for the daemon to report on its next poll. Only on a managed machine,
+      // written only when it changes, and never able to cost this event its
+      // answer (see `cloud-policy-errors.ts`).
+      await recordCloudPolicyErrors({
+        manifestError: cloudManifestError,
+        jsPolicies: cloudManagedPolicies,
+        jsFailures: loadResult.cloudFailures,
+        packs: installedPacks,
+      });
+
       // Fail closed on enforcement this machine was told it had and does not.
       //
       // Additive, and deliberately NOT a clearPolicies() the way the
@@ -997,7 +1085,7 @@ export async function evaluateHookEvent(
       // would be false — so it is attributed to Jev itself. Leaving it out
       // instead filed every Jev block under "unattributed" on FailproofAI
       // Cloud's policy page, beside rows written before attribution existed.
-      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevOrigin } : {}),
+      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevAttribution(jevOrigin) } : {}),
       ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);

@@ -82,6 +82,7 @@
                   "start/first-policy",
                   "start/setup",
                   "start/concepts",
+                  "start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -111,7 +112,6 @@
                   "sessions/hooks",
                   "sessions/policy-decisions",
                   "sessions/tools",
-                  "sessions/sentiment",
                   "sessions/errors",
                   "sessions/metrics",
                   "sessions/dashboards",
@@ -150,6 +150,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "sessions/sentiment",
                   "audits/overview",
                   "audits/local-audit",
                   "audits/setup",
@@ -177,6 +178,7 @@
               {
                 "group": "Get a policy",
                 "pages": [
+                  "policies/authority",
                   "policies/editor",
                   "policies/packs"
                 ]
@@ -231,9 +233,7 @@
                   "reference/jev",
                   "reference/jev-evaluations",
                   "reference/jev-providers",
-                  "reference/jev-cloud",
-                  "reference/jev-intent",
-                  "policies/authority"
+                  "reference/jev-cloud"
                 ]
               },
               {

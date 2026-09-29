@@ -102,36 +102,4 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 
 ## Jev setup
 
-Jev is useful at two different moments. Use a [Jev evaluation](/evaluations/jev) to score a finished session when the answer is one of a few known choices. Use a [Jev policy](/policies/jev) to review a tool call before it runs when a string-matching policy needs the context of your request.
-
-### Score finished sessions
-
-In the Cloud dashboard, open **Analyze → eval authoring → new eval**. Describe one question with fixed answers, such as “Did the customer ask for a refund? Answer yes or no.” Select **draft**, check that it chose a classifier score, [test it](/evaluations/test) on real sessions, then deploy.
-
-![The shared eval authoring form where you describe a question, review the draft, and deploy it. This screenshot shows a code draft; use a fixed-answer question for Jev.](/images/dashboard/eval-authoring-draft.png)
-
-After a new session completes, open **Observe → Evaluations** or read the scores with the Cloud CLI:
-
-```bash
-fp evals --since 7d
-fp evals --aggregate --since 7d
-```
-
-The CLI reads scores; creating a Jev evaluation currently uses the dashboard. See [Jev evaluations](/evaluations/jev) for question types and examples.
-
-### Review tool calls before they run
-
-For Cloud Jev, choose the **machine** key preset in **Administration → Keys** and use that key with `failproofai config` in the manual setup above. On a machine without an existing Jev configuration, this turns Jev on in **shadow** mode: it records Jev's answer while your installed policies still decide the call.
-
-Open the local dashboard's **Settings → Jev** to see the connection and mode. For your own endpoint, choose its provider, paste the token, select **shadow**, and turn Jev on:
-
-![The local Jev settings panel with a provider, token field, and shadow mode selected.](/images/dashboard/jev-settings.png)
-
-For an own-key setup from a terminal, these two commands configure and test it:
-
-```bash
-failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
-failproofai jev test
-```
-
-For Cloud Jev, run `failproofai jev status` and `failproofai jev test` after connecting. Review a real tool call under **Policies → Activity** before switching to enforce mode. [Jev policies](/policies/jev) explains what it can clear; the [integration reference](/reference/jev) covers providers and configuration.
+Use [Jev](/start/use-jev) to score finished sessions against a question with known answers, or to review tool calls in context before they run. The **Use Jev** page has both setup paths.

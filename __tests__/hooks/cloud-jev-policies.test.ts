@@ -501,11 +501,15 @@ describe("errors.json", () => {
       ],
       jsFailures: new Map([["regex-one", { type: "syntax_error" as const, reason: "Unexpected token" }]]),
       jev: {
-        // Its own Jev half declares acme-x (CONTRACT C9.4 binds reviewedBy to it).
+        // Its own Jev half loaded acme-x (CONTRACT C9.4 binds reviewedBy to it);
+        // the parser dropped its acme-y, reported twice here to show the dedup.
         sets: [{ policyId: "both-one", semantic: [{ name: "acme-x" }] } as unknown as CloudSemanticPolicySet],
         semanticIds: ["both-one"],
         jevMode: "enforce",
-        errors: [{ id: "both-one", version: 2, kind: "both", message: "not loaded: bad" }, { id: "both-one", version: 2, kind: "both", message: "not loaded: bad" }],
+        errors: [
+          { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
+          { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
+        ],
       },
       reviewerNames: new Set(["acme-x"]),
       jevUnconfigured: JEV_UNCONFIGURED,
@@ -513,7 +517,7 @@ describe("errors.json", () => {
     expect(errors).toEqual([
       { id: "both-one", version: 2, kind: "both", message: "reviewedBy names acme-y, which is not a Jev check this machine can ask, so the policy stays hard" },
       { id: "regex-one", version: 1, kind: "regex", message: "policy did not load (syntax_error): Unexpected token" },
-      { id: "both-one", version: 2, kind: "both", message: "not loaded: bad" },
+      { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
       { id: "jevMode", version: null, kind: "daemon", message: "jev_unconfigured" },
     ]);
   });

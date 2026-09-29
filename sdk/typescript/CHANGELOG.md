@@ -59,10 +59,24 @@ section is missing or empty is refused before anything is built.
   plain `"@ai-sdk/provider-utils": "3.0.28"` would have forced both halves and
   broken the pin. The entry is **spec-scoped** instead — `"@ai-sdk/provider-utils@3"`,
   which npm applies only where the requested range already resolves inside 3.x —
-  so the nine collapse to one patched copy, the two `2.2.8` copies are untouched,
-  and `@mastra/core@0.24.9`, `@mastra/mcp@0.14.5`, `@mastra/memory@0.15.13` and
-  `ai@4.3.19` all resolve exactly as before. That dedupe is most of the ~110
-  deleted lockfile lines. Dependabot had reached the same two alerts by moving
+  so the 3.x copies collapse to one patched copy, the two `2.2.8` copies are
+  untouched, and `@mastra/core@0.24.9`, `@mastra/mcp@0.14.5`,
+  `@mastra/memory@0.15.13` and `ai@4.3.19` all resolve exactly as before. That
+  dedupe is most of the ~110 deleted lockfile lines.
+
+  **One of the nine hid behind an npm alias**, and that is the part worth
+  remembering. `@mastra/core@0.24.9` does not ask for `@ai-sdk/provider-utils`
+  by name — it asks for `"@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.12"`,
+  one of ten `-v5` aliases in that lockfile. npm keys `overrides` on the name the
+  **dependent requests**, not on the name that ends up installed, so
+  `"@ai-sdk/provider-utils@3"` never applied to it and an affected `3.0.12` stayed
+  in the tree looking, from every path-keyed check, exactly like a package that had
+  been patched. It needed its own alias-keyed entry,
+  `"@ai-sdk/provider-utils-v5": "npm:@ai-sdk/provider-utils@3.0.28"`. Verifying an
+  override by globbing lockfile paths for the real package name is what missed it;
+  `npm audit` names the alias directly. The other nine aliases are unaffected —
+  `ai-v5` resolves `5.0.60` and `5.0.97`, both above GHSA-rwvc-j5jr-mgvh's `5.0.52`
+  floor. Dependabot had reached the same two alerts by moving
   `ai-4` to `ai@5.0.52`, `ai-5` to `ai@7.0.122` and `mastra-0` to
   `@mastra/core@1.71.0` (#867) — the third time in as many days that its fix for a
   fixture advisory was the one `SECURITY.md` forbids, and it failed the same

@@ -90,10 +90,11 @@ pub fn encode_policy_errors(entries: &[PolicyErrorEntry]) -> String {
 /// the way out, so a report never carries a username whichever program wrote it.
 ///
 /// A path starts at a `/` that begins the text or follows whitespace, a quote,
-/// an opening bracket, `=` or `,` — never one following `:` or another
-/// character, so a URL (`https://host/path`) and a relative path (`a/b`) are
-/// left alone — and runs to the next whitespace, quote, closing bracket, `,` or
-/// `;`.
+/// an opening bracket, `=`, `,` or `:` — but not a URL's `//host` after `:`,
+/// and never a `/` following any other character, so a URL
+/// (`https://host/path`) and a relative path (`a/b`) are left alone while
+/// `file:///tmp/x` and `open:/etc/x` are not — and runs to the next whitespace,
+/// quote, closing bracket, `,` or `;`.
 pub fn redact_local_paths(message: &str, home: Option<&str>) -> String {
     let chars: Vec<char> = replace_home(message, home).chars().collect();
     let mut out = String::with_capacity(chars.len());
@@ -104,6 +105,9 @@ pub fn redact_local_paths(message: &str, home: Option<&str>) -> String {
                 let prev = chars[i - 1];
                 prev.is_whitespace()
                     || matches!(prev, '"' | '\'' | '`' | '(' | '[' | '<' | '{' | '=' | ',')
+                    // `scheme://host` is a URL; `file:///path` and `x:/path` are paths.
+                    || (prev == ':'
+                        && !(chars.get(i + 1) == Some(&'/') && chars.get(i + 2) != Some(&'/')))
             });
         if !starts_path {
             out.push(chars[i]);
@@ -2023,8 +2027,25 @@ mod tests {
                 "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
             ),
             ("the root / itself", "the root / itself"),
+            // After `:` too (review F6), but never a URL's `//host`.
+            (
+                "import failed: file:///tmp/fp-load-1/x.mjs not found",
+                "import failed: file:x.mjs not found",
+            ),
+            ("open:/etc/fp/x failed", "open:x failed"),
+            (
+                "at file:///home/alice/.failproofai/x.mjs:3",
+                "at file://~/.failproofai/x.mjs:3",
+            ),
+            (
+                "see http://localhost:8080/a/b and ssh://git@host/r",
+                "see http://localhost:8080/a/b and ssh://git@host/r",
+            ),
+            ("a bare scheme:// stays", "a bare scheme:// stays"),
         ] {
             assert_eq!(redact_local_paths(input, home), expected, "{input}");
+            // Applied twice (CLI, then daemon): the second pass changes nothing.
+            assert_eq!(redact_local_paths(expected, home), expected, "{input}");
         }
         assert_eq!(redact_local_paths("/home/alice/x", None), "x");
 

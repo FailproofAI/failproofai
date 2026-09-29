@@ -64,9 +64,11 @@ export const JEV_BUDGET = "jev_budget";
  * log, where it is useful and goes nowhere.
  *
  * A path starts at a `/` that begins the text or follows whitespace, a quote,
- * an opening bracket, `=` or `,` — never one following `:` or another
- * character, so a URL (`https://host/path`) and a relative path (`a/b`) are left
- * alone — and runs to the next whitespace, quote, closing bracket, `,` or `;`.
+ * an opening bracket, `=`, `,` or `:` — but not a URL's `//host` after `:`,
+ * and never a `/` following any other character, so a URL (`https://host/path`)
+ * and a relative path (`a/b`) are left alone while `file:///tmp/x` and
+ * `open:/etc/x` are not — and runs to the next whitespace, quote, closing
+ * bracket, `,` or `;`.
  */
 export function redactLocalPaths(message: string, home: string | null = safeHomedir()): string {
   let text = message;
@@ -83,7 +85,9 @@ export function redactLocalPaths(message: string, home: string | null = safeHome
     }
     text = out + rest;
   }
-  return text.replace(/(^|[\s"'`(\[<{=,])(\/[^\s"'`)\]>},;]*)/g, (_m, lead: string, path: string) => {
+  // `:(?!\/\/(?!\/))`: a `:` not followed by a URL's `//host` — `scheme://host`
+  // stays, while `file:///path` and `x:/path` are paths.
+  return text.replace(/(^|[\s"'`(\[<{=,]|:(?!\/\/(?!\/)))(\/[^\s"'`)\]>},;]*)/g, (_m, lead: string, path: string) => {
     const last = path.replace(/\/+$/, "").split("/").pop() ?? "";
     return lead + (last === "" ? "/" : last);
   });

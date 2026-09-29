@@ -1012,8 +1012,18 @@ describe("C9.5: reports carry no local paths", () => {
         "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
       ],
       ["the root / itself", "the root / itself"],
+      // After `:` too (review F6), but never a URL's `//host`.
+      ["import failed: file:///tmp/fp-load-1/x.mjs not found", "import failed: file:x.mjs not found"],
+      ["open:/etc/fp/x failed", "open:x failed"],
+      ["at file:///home/alice/.failproofai/x.mjs:3", "at file://~/.failproofai/x.mjs:3"],
+      ["see http://localhost:8080/a/b and ssh://git@host/r", "see http://localhost:8080/a/b and ssh://git@host/r"],
+      ["a bare scheme:// stays", "a bare scheme:// stays"],
     ];
-    for (const [input, expected] of cases) expect(redactLocalPaths(input, home)).toBe(expected);
+    for (const [input, expected] of cases) {
+      expect(redactLocalPaths(input, home)).toBe(expected);
+      // Applied twice (CLI, then daemon): the second pass changes nothing.
+      expect(redactLocalPaths(expected, home)).toBe(expected);
+    }
     expect(redactLocalPaths("/home/alice/x", null)).toBe("x");
   });
 

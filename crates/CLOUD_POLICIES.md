@@ -102,6 +102,14 @@ the JSON is never cut). It merges:
   `jev_unconfigured` (Cloud set a Jev mode and the machine has no provider, or
   Cloud Jev policies are deployed and nothing on the machine asks Jev).
 
+The CLI rewrites `errors.json` only when a hook runs, so the daemon sends only
+the entries of it that still describe the deployment in `active.json`: one
+policy's entry only while that policy is deployed at the version it names, and
+a `jev_unconfigured` or a pack check's `jev_budget` drop only while the
+deployment's Jev mode and checks could still produce it. A fix made in
+FailproofAI Cloud therefore clears at the next poll, not the next tool call.
+When `active.json` cannot be read, nothing is left out.
+
 Messages carry no local paths: the home directory becomes `~` and any other
 absolute path its last segment. The CLI applies that before writing
 `errors.json` and the daemon again on the way out, so a report never names a

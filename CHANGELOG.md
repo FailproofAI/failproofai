@@ -17,6 +17,7 @@
 - The one Jev question budget gives FailproofAI Cloud's checks priority over installed packs', and every check it drops is reported (`jev_budget: dropped <name> (<n> chars over)`).
 - Policy error reports carry no local paths: the home directory becomes `~` and other absolute paths their last segment, on the CLI and again in the daemon.
 - An artifact fetch that never got an HTTP answer no longer shows as a policy error for a poll or two.
+- A FailproofAI Cloud-side fix shows on the fleet page at the daemon's next poll, not the machine's next tool call: `policyErrors` leaves out `errors.json` entries about a policy no longer deployed (or deployed at another version), a Jev setup problem the deployment's Jev mode and checks can no longer cause, and a pack check's budget drop with no Cloud Jev checks left.
 - The hook path reads `active.json`, the Cloud Jev artifacts, `jev.json` and the Cloud Jev credential once per change of those files, not several times per tool call.
 - `failproofai policies` lists a Cloud Jev policy whose checks failed to load, and a `both` policy whose JavaScript could not be read; a Jev-only machine's activity rows carry its Cloud deployment.
 

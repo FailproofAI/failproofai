@@ -283,12 +283,14 @@ dependencies = [
 name = "fpai-collect"
 version = "1.0.10-beta.0"
 dependencies = [
+ "getrandom 0.3.4",
  "notify",
  "reqwest",
  "rusqlite",
  "ruzstd",
  "serde",
  "serde_json",
+ "sha2",
  "time",
  "tokio",
  "tokio-rustls",

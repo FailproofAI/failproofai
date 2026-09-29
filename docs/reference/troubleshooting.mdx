@@ -186,6 +186,22 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
+  <Accordion title="An error shows a ref">
+    <Tabs>
+      <Tab title="Dashboard">
+        Errors in the dashboard end with a short reference, for example `ref 4bf92f35`. It identifies that one request, and support can use it to find exactly what happened on the server. Copy it into your report as it appears.
+
+        If a whole page fails to load, the error page shows a `digest` instead. Include that.
+      </Tab>
+      <Tab title="CLI">
+        Human-readable `fp` errors end with the same `ref`. With `--json`, the error object carries the full `request_id`:
+
+        ```bash
+        fp --json sessions --since 24h
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
 </AccordionGroup>
 
-When contacting support, include the CLI version, harness, environment, relevant session or deployment ID, and the output of `failproofai config --status` with secrets removed.
+When contacting support, include the CLI version, harness, environment, relevant session or deployment ID, any `ref` or `request_id` from the error, and the output of `failproofai config --status` with secrets removed.

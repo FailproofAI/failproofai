@@ -757,3 +757,107 @@ async fn a_partially_skipped_batch_is_parked_not_deleted() {
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
 }
+
+/// Every attempt carries the three identity headers: a request id that is new
+/// per attempt, and a batch id that is the same across the retries of one batch
+/// AND across the `failed/` re-drive, which renames the file. Without the
+/// second property "this batch was tried N times" is not one server-log query.
+#[tokio::test]
+async fn every_attempt_carries_request_batch_and_machine_ids() {
+    let server = MockServer::start().await;
+    // Two 503s, then success: three attempts of one batch.
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("ids-spool");
+    let failed = tmpdir("ids-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 1);
+    let up = uploader(&server, &failed).with_machine_id(Some("m-123"));
+    up.upload_file(&batch).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    let get = |r: &wiremock::Request, h: &str| {
+        r.headers
+            .get(h)
+            .unwrap_or_else(|| panic!("{h} missing"))
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+    let request_ids: Vec<String> = requests.iter().map(|r| get(r, "x-request-id")).collect();
+    let batch_ids: Vec<String> = requests
+        .iter()
+        .map(|r| get(r, "x-failproofai-batch-id"))
+        .collect();
+
+    for id in &request_ids {
+        assert_eq!(id.len(), 32, "{id}");
+        assert!(
+            id.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')),
+            "{id}"
+        );
+    }
+    let mut distinct = request_ids.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "each attempt needs its own request id: {request_ids:?}"
+    );
+    assert!(
+        batch_ids.iter().all(|b| b == &batch_ids[0]),
+        "{batch_ids:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|r| get(r, "x-failproofai-machine-id") == "m-123")
+    );
+
+    // The same batch re-driven from `failed/` under its parked name keeps its id.
+    assert_eq!(
+        fpai_collect::uploader::batch_id(Path::new("/failed/hooks-s-1-0.a1.jsonl")),
+        batch_ids[0]
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn an_unset_machine_id_is_sent_as_unknown() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .and(header("x-failproofai-machine-id", "unknown"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("mid-spool");
+    let failed = tmpdir("mid-failed");
+    let batch = write_batch(&spool, "hooks-s-1-0.jsonl", 1);
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}

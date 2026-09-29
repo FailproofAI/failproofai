@@ -163,6 +163,10 @@ try:  # pragma: no cover - exercised via real command output, not unit assertion
         # exceptions (usage etc.) use their normal rendering.
         if isinstance(error, _FpCliError):
             message = error.message
+            # The ref is what a person pastes into a support ticket; the full id
+            # rides in the JSON envelope's `request_id` below.
+            if error.ref and not _wants_json():
+                message = f"{message} · ref {error.ref}"
         else:
             message = error.format_message() if hasattr(error, "format_message") else str(error)
         # Click/Typer sometimes doubles the suggestion ("Did you mean 'x'? Did you

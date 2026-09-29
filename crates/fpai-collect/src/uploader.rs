@@ -24,6 +24,14 @@
 //! with the attempt count encoded in the filename, and only ever parked as
 //! `.poison` — never deleted.
 //!
+//! **Every attempt says who it is.** Three headers go with each POST so a
+//! failure can be found in the server's logs: `x-request-id` (new per attempt,
+//! so the one that 503'd is distinguishable from the one that landed),
+//! `x-failproofai-batch-id` (the same for every attempt of one batch, across
+//! retries and the `failed/` re-drive) and `x-failproofai-machine-id`. All are
+//! headers, never payload fields, for the same reason as the version header:
+//! the server's dedup key hashes the payload.
+//!
 //! **Oversized batches are split in memory.** Writing the chunks to disk
 //! beside the original would create files the watcher had never seen, so it
 //! would pick them up and post them concurrently with this function — the same
@@ -53,6 +61,16 @@ pub const DEFAULT_RETRY_BASE: Duration = Duration::from_millis(1000);
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
 /// Attempts a parked batch gets before it is marked poison.
 pub const DEFAULT_FAILED_RETRIES_MAX: u32 = 3;
+/// Header names. The server validates the request id as a W3C trace id (32
+/// lowercase hex) and mints its own when it is not one.
+pub const REQUEST_ID_HEADER: &str = "x-request-id";
+pub const BATCH_ID_HEADER: &str = "x-failproofai-batch-id";
+pub const MACHINE_ID_HEADER: &str = "x-failproofai-machine-id";
+/// Sent when `collector.machine_id` is unset or not header-safe. Deliberately
+/// NOT the telemetry id: that one identifies a person to analytics, and has no
+/// business in a customer's server logs.
+pub const UNKNOWN_MACHINE_ID: &str = "unknown";
+const MAX_MACHINE_ID_LEN: usize = 128;
 /// Ceiling applied to a server-supplied `Retry-After`, so a misconfigured
 /// header cannot park the uploader for hours.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(300);
@@ -168,6 +186,7 @@ pub struct Uploader {
     retry_base: Duration,
     failed_retries_max: u32,
     redact: Redact,
+    machine_id: String,
     metrics: Arc<UploadMetrics>,
 }
 
@@ -201,12 +220,20 @@ impl Uploader {
             retry_base: DEFAULT_RETRY_BASE,
             failed_retries_max: DEFAULT_FAILED_RETRIES_MAX,
             redact: Redact::default(),
+            machine_id: UNKNOWN_MACHINE_ID.to_string(),
             metrics: Arc::new(UploadMetrics::default()),
         })
     }
 
     pub fn with_redact(mut self, redact: Redact) -> Self {
         self.redact = redact;
+        self
+    }
+
+    /// `collector.machine_id`, sent on every upload. Unset, empty or not safe
+    /// to put in a header (see `header_safe_machine_id`) becomes `unknown`.
+    pub fn with_machine_id(mut self, machine_id: Option<&str>) -> Self {
+        self.machine_id = header_safe_machine_id(machine_id);
         self
     }
 
@@ -257,8 +284,11 @@ impl Uploader {
     /// log context — this never deletes it.
     async fn post_batch(&self, path: &Path, bytes: Vec<u8>) -> Result<(), UploadError> {
         let mut attempt: u32 = 0;
+        let batch_id = batch_id(path);
 
         loop {
+            // New per attempt: one attempt is one server request.
+            let request_id = new_request_id();
             let result = self
                 .client
                 .post(&self.url)
@@ -268,6 +298,9 @@ impl Uploader {
                 // server's content-hash dedup key — otherwise every upgrade
                 // would make previously-shipped events look new.
                 .header("X-Failproofai-Collector-Version", env!("CARGO_PKG_VERSION"))
+                .header(REQUEST_ID_HEADER, &request_id)
+                .header(BATCH_ID_HEADER, &batch_id)
+                .header(MACHINE_ID_HEADER, &self.machine_id)
                 .body(bytes.clone())
                 .send()
                 .await;
@@ -277,6 +310,9 @@ impl Uploader {
             match result {
                 Ok(resp) => {
                     let status = resp.status();
+                    // The server's id for this request: its logs are keyed on
+                    // it. Normally ours echoed back; ours if it sent none.
+                    let request_id = response_request_id(&resp).unwrap_or(request_id);
                     if status.is_success() {
                         // A 2xx is necessary but NOT sufficient. Require the body
                         // to actually be an ingest ack (a numeric `accepted`);
@@ -301,8 +337,8 @@ impl Uploader {
                                 // attempt is encoded in the filename and becomes
                                 // `.poison` at `failed_retries_max`, after which it
                                 // is kept forever and never retried again.
-                                if self.record_ack(path, &ack, attempt) {
-                                    self.park(path, None, attempt).await;
+                                if self.record_ack(path, &ack, attempt, &request_id) {
+                                    self.park(path, None, &request_id).await;
                                     return Err(if ack.accepted == 0 {
                                         UploadError::StoredNothing {
                                             skipped: ack.skipped,
@@ -318,7 +354,7 @@ impl Uploader {
                             }
                             Err(_) => {
                                 let code = status.as_u16();
-                                self.park(path, Some(code), attempt).await;
+                                self.park(path, Some(code), &request_id).await;
                                 return Err(UploadError::Client { status: code });
                             }
                         }
@@ -330,27 +366,43 @@ impl Uploader {
                     // park a batch the server explicitly asked us to resend.
                     let retryable = status.is_server_error() || code == 408 || code == 429;
                     if !retryable {
-                        self.park(path, Some(code), attempt).await;
+                        self.park(path, Some(code), &request_id).await;
                         return Err(UploadError::Client { status: code });
                     }
                     if attempt >= self.max_retries {
-                        self.park(path, None, attempt).await;
+                        self.park(path, None, &request_id).await;
                         return Err(UploadError::Server {
                             status: code,
                             attempts: attempt,
                         });
                     }
                     let wait = retry_after(&resp).unwrap_or_else(|| self.backoff(attempt));
+                    tracing::debug!(
+                        file = %path.display(),
+                        request_id = %request_id,
+                        batch_id = %batch_id,
+                        attempt,
+                        status = code,
+                        "upload attempt failed; retrying"
+                    );
                     tokio::time::sleep(wait).await;
                 }
                 Err(err) => {
                     if attempt >= self.max_retries {
-                        self.park(path, None, attempt).await;
+                        self.park(path, None, &request_id).await;
                         return Err(UploadError::Network {
                             attempts: attempt,
                             detail: error_chain(&err),
                         });
                     }
+                    tracing::debug!(
+                        file = %path.display(),
+                        request_id = %request_id,
+                        batch_id = %batch_id,
+                        attempt,
+                        error = %error_chain(&err),
+                        "upload attempt failed; retrying"
+                    );
                     tokio::time::sleep(self.backoff(attempt)).await;
                 }
             }
@@ -366,7 +418,7 @@ impl Uploader {
     /// had it, and nothing anywhere recorded which event it was. That is the
     /// same permanent, silent loss the fully-skipped branch was added to close,
     /// reached through an ack that merely looks healthier.
-    fn record_ack(&self, path: &Path, ack: &IngestAck, attempt: u32) -> bool {
+    fn record_ack(&self, path: &Path, ack: &IngestAck, attempt: u32, request_id: &str) -> bool {
         let stored_nothing = ack.accepted == 0 && ack.skipped > 0;
 
         self.metrics
@@ -421,6 +473,7 @@ impl Uploader {
                 file = %path.display(),
                 skipped = ack.skipped,
                 attempt,
+                request_id,
                 "the server accepted the request but stored NONE of its events; \
                  every line was rejected as malformed"
             );
@@ -429,6 +482,7 @@ impl Uploader {
                 file = %path.display(),
                 accepted = ack.accepted,
                 skipped = ack.skipped,
+                request_id,
                 "the server skipped some events in this batch"
             );
         }
@@ -459,10 +513,18 @@ impl Uploader {
     /// Never deletes and never overwrites: a collision gets a numeric suffix,
     /// because the file being moved is the only copy of data the server does
     /// not have.
-    async fn park(&self, path: &Path, client_status: Option<u16>, _attempt: u32) {
-        if let Err(err) = self.park_inner(path, client_status).await {
+    ///
+    /// `request_id` is the last attempt's — the server's echo when it answered —
+    /// and goes on the park line, so a `.poison` file on a customer laptop can
+    /// be matched to the exact server log lines that refused it. It is logged,
+    /// not written beside the batch: the filename is this module's only
+    /// metadata store (see `ParkedName`), and a sidecar is exactly what that
+    /// design rejects.
+    async fn park(&self, path: &Path, client_status: Option<u16>, request_id: &str) {
+        if let Err(err) = self.park_inner(path, client_status, request_id).await {
             tracing::error!(
                 file = %path.display(),
+                request_id,
                 %err,
                 "could not park a failed batch; it stays in the spool and will be retried"
             );
@@ -473,6 +535,7 @@ impl Uploader {
         &self,
         path: &Path,
         client_status: Option<u16>,
+        request_id: &str,
     ) -> Result<(), std::io::Error> {
         tokio::fs::create_dir_all(&self.failed_dir).await?;
         let name = path
@@ -493,10 +556,83 @@ impl Uploader {
             dest = %dest.display(),
             attempt = parked.attempt,
             poison = parked.poison,
+            request_id,
+            batch_id = %batch_id(path),
             "parking an undelivered batch"
         );
         tokio::fs::rename(path, &dest).await
     }
+}
+
+/// A fresh request id: 32 lowercase hex, i.e. a W3C trace id — the shape the
+/// server accepts as-is. Falls back to a clock-derived id if the OS RNG is
+/// unavailable: an id only has to be distinct, and failing an upload over one
+/// would trade data for a log label.
+pub fn new_request_id() -> String {
+    let mut bytes = [0u8; 16];
+    if getrandom::fill(&mut bytes).is_err() {
+        bytes = nanos_now().to_le_bytes();
+    }
+    // Version-4 / variant bits, so it is also a valid UUID without dashes.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    lower_hex(&bytes)
+}
+
+/// The batch id for a spool or parked file: SHA-256 of its base name, as 32
+/// hex chars.
+///
+/// The BASE name, not the file name: parking renames `x.jsonl` to
+/// `x.a1.jsonl`, `x.a2.c503.jsonl`, `x.a3.jsonl.poison` (see `ParkedName`), and
+/// the id must stay the same across all of them so "this batch was tried 7
+/// times over 3 hours" is one query. Hashed rather than sent raw because the
+/// name carries a session tag. Chunks of one oversized file share the id —
+/// they are one batch.
+pub fn batch_id(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("batch.jsonl");
+    let base = ParkedName::parse(name).base;
+    let digest = Sha256::digest(base.as_bytes());
+    lower_hex(&digest[..16])
+}
+
+/// `collector.machine_id` if it is safe to send as a header value, else
+/// `unknown`: visible ASCII only (no spaces, controls or non-ASCII) and at most
+/// 128 chars. An unsendable header would fail every upload, so it is replaced,
+/// never rejected.
+pub fn header_safe_machine_id(machine_id: Option<&str>) -> String {
+    match machine_id.map(str::trim) {
+        Some(id)
+            if !id.is_empty()
+                && id.len() <= MAX_MACHINE_ID_LEN
+                && id.bytes().all(|b| b.is_ascii_graphic()) =>
+        {
+            id.to_string()
+        }
+        _ => UNKNOWN_MACHINE_ID.to_string(),
+    }
+}
+
+/// The server's `x-request-id`, when it sent a sane one.
+fn response_request_id(resp: &reqwest::Response) -> Option<String> {
+    let raw = resp.headers().get(REQUEST_ID_HEADER)?.to_str().ok()?.trim();
+    (!raw.is_empty()
+        && raw.len() <= 64
+        && raw.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+    .then(|| raw.to_string())
+}
+
+fn lower_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn redact_batch(bytes: &[u8], mode: Redact) -> Vec<u8> {
@@ -740,6 +876,68 @@ mod tests {
         }
         let rejoined: Vec<u8> = chunks.concat();
         assert_eq!(rejoined, body, "splitting must lose nothing");
+    }
+
+    #[test]
+    fn request_ids_are_distinct_trace_ids() {
+        let a = new_request_id();
+        let b = new_request_id();
+        assert_ne!(a, b);
+        for id in [&a, &b] {
+            assert_eq!(id.len(), 32);
+            assert!(
+                id.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_batch_id_survives_every_rename_parking_makes() {
+        let id = batch_id(Path::new(
+            "/spool/claude-3ee9c788-1785741108180149712-0.jsonl",
+        ));
+        assert_eq!(id.len(), 32);
+        for parked in [
+            "/failed/claude-3ee9c788-1785741108180149712-0.a1.jsonl",
+            "/failed/claude-3ee9c788-1785741108180149712-0.a2.c503.jsonl",
+            "/failed/claude-3ee9c788-1785741108180149712-0.a3.jsonl.poison",
+        ] {
+            assert_eq!(batch_id(Path::new(parked)), id, "{parked}");
+        }
+        assert_ne!(
+            batch_id(Path::new(
+                "/spool/claude-3ee9c788-1785741108180149712-1.jsonl"
+            )),
+            id,
+            "the next batch of the same run is a different batch"
+        );
+        // The raw name carries a session tag; the id must not.
+        assert!(!id.contains("3ee9c788"));
+    }
+
+    #[test]
+    fn an_unsendable_machine_id_becomes_unknown() {
+        assert_eq!(header_safe_machine_id(Some("m-123")), "m-123");
+        assert_eq!(header_safe_machine_id(Some("  m-123 ")), "m-123");
+        for bad in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("has space"),
+            Some("new\nline"),
+            Some("naïve"),
+        ] {
+            assert_eq!(header_safe_machine_id(bad), UNKNOWN_MACHINE_ID, "{bad:?}");
+        }
+        assert_eq!(
+            header_safe_machine_id(Some(&"m".repeat(129))),
+            UNKNOWN_MACHINE_ID
+        );
+        assert_eq!(
+            header_safe_machine_id(Some(&"m".repeat(128))),
+            "m".repeat(128)
+        );
     }
 
     #[test]

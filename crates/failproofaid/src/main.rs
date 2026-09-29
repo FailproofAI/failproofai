@@ -790,8 +790,10 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         ingest.key.clone(),
         cfg.failed_dir.clone(),
     )
-    .map(|u| u.with_redact(cfg.settings.redact))
-    {
+    .map(|u| {
+        u.with_redact(cfg.settings.redact)
+            .with_machine_id(cfg.settings.machine_id.as_deref())
+    }) {
         Ok(u) => std::sync::Arc::new(u),
         Err(err) => {
             eprintln!("[failproofaid] collector disabled: {err}");

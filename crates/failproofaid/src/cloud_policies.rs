@@ -310,6 +310,9 @@ pub enum ReconcileError {
     NoVerifiedCopy {
         policy_id: String,
     },
+    /// The machine stopped being enrolled while this reconcile was running
+    /// (`config --disconnect` during a poll). Nothing was persisted.
+    Withdrawn,
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -334,6 +337,10 @@ impl std::fmt::Display for ReconcileError {
             Self::NoVerifiedCopy { policy_id } => write!(
                 f,
                 "cloud policy {policy_id} has no verified artifact or deployment copy"
+            ),
+            Self::Withdrawn => write!(
+                f,
+                "this machine stopped being enrolled while the deployment was being applied; nothing was written"
             ),
         }
     }
@@ -540,6 +547,25 @@ impl PolicyStore {
         desired: &DesiredState,
         fetcher: &impl ArtifactFetcher,
     ) -> Result<ReconcileOutcome, ReconcileError> {
+        self.reconcile_unless(desired, fetcher, &|| false)
+    }
+
+    /// [`reconcile`](Self::reconcile), abandoned with
+    /// [`ReconcileError::Withdrawn`] — before `desired-state.json` or
+    /// `active.json` is written — when `withdrawn()` says the machine is no
+    /// longer enrolled.
+    ///
+    /// Asked after every artifact is fetched and verified, because that is the
+    /// slow part: a poll is a request and then one fetch per new artifact, and a
+    /// `config --disconnect` landing in that window used to be undone by this
+    /// function's own writes. Artifacts already written are content-addressed
+    /// and inert once nothing names them, so abandoning after them costs nothing.
+    pub fn reconcile_unless(
+        &self,
+        desired: &DesiredState,
+        fetcher: &impl ArtifactFetcher,
+        withdrawn: &dyn Fn() -> bool,
+    ) -> Result<ReconcileOutcome, ReconcileError> {
         validate_desired_state(desired)?;
         // active.json is a derived local pointer, not authority. If it was
         // truncated or otherwise corrupted, rebuild it from desired state
@@ -655,6 +681,10 @@ impl PolicyStore {
         // The per-deployment `manifest.json` is gone with `deployments/<n>/`. It
         // duplicated `active.json` for a directory that no longer exists, and a
         // second copy of the pointer is a second thing that can disagree.
+
+        if withdrawn() {
+            return Err(ReconcileError::Withdrawn);
+        }
 
         // Persist the cloud snapshot before switching active.json. A crash in
         // between is recoverable: the maintenance loop reconstructs the active
@@ -811,6 +841,31 @@ impl PolicyStore {
             }
         }
         Ok(repaired)
+    }
+
+    /// Removes this machine's Cloud deployment: `desired-state.json` FIRST,
+    /// then `active.json`, then both error reports. Returns how many files were
+    /// actually removed.
+    ///
+    /// For a machine that has been put back on OSS (see `maintenance_tick`), and
+    /// the same order `config --disconnect` uses: with the snapshot gone first,
+    /// nothing can rebuild the pointer from it in between. Artifacts stay — they
+    /// are content-addressed, verified on use and inert once nothing names them.
+    pub fn clear_deployment(&self) -> io::Result<usize> {
+        let mut removed = 0;
+        for path in [
+            self.desired_state_path(),
+            self.active_manifest_path(),
+            self.cli_errors_path(),
+            self.daemon_errors_path(),
+        ] {
+            match fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(removed)
     }
 
     fn artifact_path(&self, sha256: &str) -> PathBuf {
@@ -1469,12 +1524,13 @@ mod tests {
 }
 
 #[cfg(test)]
-mod cloud_jev_tests {
-    //! Cloud Jev / regex / both policies (CONTRACT C5).
+pub(crate) mod cloud_jev_tests {
+    //! Cloud Jev / regex / both policies (CONTRACT C5). The fixtures are
+    //! `pub(crate)` for the maintenance-lane tests in `cloud_client.rs`.
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn temp_store(name: &str) -> PolicyStore {
+    pub(crate) fn temp_store(name: &str) -> PolicyStore {
         let root = std::env::temp_dir().join(format!(
             "failproofaid-cloud-jev-{name}-{}-{}",
             std::process::id(),
@@ -1488,7 +1544,7 @@ mod cloud_jev_tests {
     const DECLS: &[u8] = br#"[{"name":"acme-prod-db","title":"Tried to write to the production database","appliesTo":["shell"],"mode":"deny","userCanOverride":true,"probes":[{"id":"writes","instructions":"It writes.","criteria":{"true":"yes","false":"no"}}],"guidance":"Ask first."}]"#;
 
     /// A `both` policy (JS reviewable by its own check) plus a `jev` one.
-    fn jev_state(deployment: u64) -> DesiredState {
+    pub(crate) fn jev_state(deployment: u64) -> DesiredState {
         DesiredState {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
             deployment,
@@ -1519,7 +1575,7 @@ mod cloud_jev_tests {
         }
     }
 
-    fn serve(request: &DesiredPolicy) -> Result<Vec<u8>, String> {
+    pub(crate) fn serve(request: &DesiredPolicy) -> Result<Vec<u8>, String> {
         for bytes in [JS, DECLS, b"[]".as_slice()] {
             if sha256_hex(bytes) == request.sha256 {
                 return Ok(bytes.to_vec());
@@ -1779,6 +1835,79 @@ mod cloud_jev_tests {
             store.repair_active_from_cache(),
             Err(ReconcileError::NoVerifiedCopy { ref policy_id }) if policy_id == "no-prod-db"
         ));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A disconnect that lands while a poll is in flight (review M2): the
+    /// reconcile is abandoned before it persists anything, so neither the
+    /// snapshot nor the pointer comes back, and a machine that had a deployment
+    /// keeps exactly the files it had.
+    #[test]
+    fn a_withdrawn_enrolment_persists_nothing() {
+        let store = temp_store("withdrawn");
+        assert!(matches!(
+            store.reconcile_unless(&jev_state(4), &serve, &|| true),
+            Err(ReconcileError::Withdrawn)
+        ));
+        assert!(!store.desired_state_path().exists());
+        assert!(!store.active_manifest_path().exists());
+
+        store.reconcile(&jev_state(4), &serve).unwrap();
+        let active = fs::read(store.active_manifest_path()).unwrap();
+        let snapshot = fs::read(store.desired_state_path()).unwrap();
+        let mut next = jev_state(5);
+        next.jev_mode = Some("enforce".into());
+        assert!(matches!(
+            store.reconcile_unless(&next, &serve, &|| true),
+            Err(ReconcileError::Withdrawn)
+        ));
+        assert_eq!(fs::read(store.active_manifest_path()).unwrap(), active);
+        assert_eq!(fs::read(store.desired_state_path()).unwrap(), snapshot);
+        // Still enrolled: the same state applies.
+        assert!(
+            store
+                .reconcile_unless(&next, &serve, &|| false)
+                .unwrap()
+                .activated
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// `clear_deployment` removes what `config --disconnect` removes, snapshot
+    /// first, and leaves nothing a repair could rebuild the pointer from.
+    #[test]
+    fn clear_deployment_leaves_nothing_to_rebuild_from() {
+        let store = temp_store("clear");
+        store.reconcile(&jev_state(4), &serve).unwrap();
+        store
+            .write_daemon_policy_errors(&[PolicyErrorEntry {
+                id: "desired-state".into(),
+                version: None,
+                kind: "daemon".into(),
+                message: "x".into(),
+            }])
+            .unwrap();
+        fs::write(store.cli_errors_path(), br#"{"errors":[]}"#).unwrap();
+
+        assert_eq!(store.clear_deployment().unwrap(), 4);
+        for path in [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ] {
+            assert!(!path.exists(), "{} survived", path.display());
+        }
+        // The content-addressed artifacts stay: inert, and a reconnect is cheap.
+        assert_eq!(
+            fs::read_dir(store.root().join("artifacts"))
+                .unwrap()
+                .count(),
+            3
+        );
+        assert_eq!(store.clear_deployment().unwrap(), 0);
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        assert!(!store.active_manifest_path().exists());
         fs::remove_dir_all(store.root()).ok();
     }
 

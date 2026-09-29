@@ -1,5 +1,6 @@
 use crate::cloud_policies::{
     DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyErrorEntry, PolicyStore,
+    ReconcileError,
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
@@ -54,14 +55,21 @@ impl PollFailure {
 /// Long messages are shortened first (by characters, so a multi-byte message is
 /// never cut mid-codepoint), then whole entries are dropped from the end until
 /// the encoded form fits. What is sent is always a complete JSON array.
+///
+/// Every message has its local paths redacted first ([`redact_local_paths`]):
+/// the report leaves the machine, and a path names the user.
 pub fn encode_policy_errors(entries: &[PolicyErrorEntry]) -> String {
+    let home = std::env::var("HOME").ok();
     let clipped: Vec<PolicyErrorEntry> = entries
         .iter()
         .map(|entry| PolicyErrorEntry {
             id: clip(&entry.id, MAX_POLICY_ERROR_ID_CHARS),
             version: entry.version,
             kind: entry.kind.clone(),
-            message: clip(&entry.message, MAX_POLICY_ERROR_MESSAGE_CHARS),
+            message: clip(
+                &redact_local_paths(&entry.message, home.as_deref()),
+                MAX_POLICY_ERROR_MESSAGE_CHARS,
+            ),
         })
         .collect();
     let mut keep = clipped.len();
@@ -72,6 +80,77 @@ pub fn encode_policy_errors(entries: &[PolicyErrorEntry]) -> String {
         }
         keep -= 1;
     }
+}
+
+/// A policy error message with no local path in it (CONTRACT C9.5): the home
+/// directory becomes `~`, and any other absolute path becomes its last segment.
+///
+/// The CLI applies the same rule before it writes `errors.json`
+/// (`redactLocalPaths` in `cloud-policy-errors.ts`); this is the second copy on
+/// the way out, so a report never carries a username whichever program wrote it.
+///
+/// A path starts at a `/` that begins the text or follows whitespace, a quote,
+/// an opening bracket, `=` or `,` — never one following `:` or another
+/// character, so a URL (`https://host/path`) and a relative path (`a/b`) are
+/// left alone — and runs to the next whitespace, quote, closing bracket, `,` or
+/// `;`.
+pub fn redact_local_paths(message: &str, home: Option<&str>) -> String {
+    let chars: Vec<char> = replace_home(message, home).chars().collect();
+    let mut out = String::with_capacity(chars.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let starts_path = chars[i] == '/'
+            && (i == 0 || {
+                let prev = chars[i - 1];
+                prev.is_whitespace()
+                    || matches!(prev, '"' | '\'' | '`' | '(' | '[' | '<' | '{' | '=' | ',')
+            });
+        if !starts_path {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let mut end = i;
+        while end < chars.len() && !ends_path(chars[end]) {
+            end += 1;
+        }
+        let path: String = chars[i..end].iter().collect();
+        match path.trim_end_matches('/').rsplit('/').next() {
+            Some(base) if !base.is_empty() => out.push_str(base),
+            _ => out.push('/'),
+        }
+        i = end;
+    }
+    out
+}
+
+fn ends_path(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ')' | ']' | '>' | '}' | ',' | ';')
+}
+
+/// `message` with every whole-segment occurrence of `home` replaced by `~`.
+fn replace_home(message: &str, home: Option<&str>) -> String {
+    let Some(home) = home
+        .map(|h| h.trim_end_matches('/'))
+        .filter(|h| h.len() > 1)
+    else {
+        return message.to_string();
+    };
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(at) = rest.find(home) {
+        let after = &rest[at + home.len()..];
+        // `/home/al` must not match inside `/home/alice`.
+        let whole = after
+            .chars()
+            .next()
+            .is_none_or(|c| c == '/' || ends_path(c) || c == ':');
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { "~" } else { home });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 fn clip(value: &str, max_chars: usize) -> String {
@@ -281,19 +360,63 @@ fn host_is_loopback(url: &Url) -> bool {
         .is_ok_and(|ip| ip.is_loopback())
 }
 
+/// Where this machine's enrolment resolved to, before any HTTP client is built
+/// from it.
+///
+/// Split from [`CloudClient`] so "is this machine still enrolled?" can be asked
+/// right before a poll writes anything (see [`enrolment_withdrawn`]) without
+/// building a second client — a blocking `reqwest` client starts its own
+/// runtime thread, and the answer needs none of it.
+struct Enrolment {
+    base_url: String,
+    token: String,
+    machine_id: String,
+}
+
 impl CloudClient {
     /// Environment first, then the credential file.
     ///
     /// Env wins so CI, containers and tests keep working unchanged, and so an
     /// operator who prefers env-only configuration loses nothing.
     pub fn from_env_or_file() -> Result<Option<Self>, String> {
-        if let Some(client) = Self::from_env()? {
-            return Ok(Some(client));
+        Self::build(Enrolment::resolve())
+    }
+
+    /// The credential-file half alone; see [`Enrolment::from_file`].
+    #[cfg(test)]
+    pub fn from_file() -> Result<Option<Self>, String> {
+        Self::build(Enrolment::from_file())
+    }
+
+    fn build(enrolment: Result<Option<Enrolment>, String>) -> Result<Option<Self>, String> {
+        enrolment?
+            .map(|e| Self::new(&e.base_url, e.token, e.machine_id))
+            .transpose()
+    }
+}
+
+/// True when this machine is no longer enrolled — `config --disconnect` ran, or
+/// the credential is simply gone — as opposed to enrolled (or enrolled with an
+/// unreadable credential, which keeps its last known-good deployment).
+///
+/// Asked right before a poll persists anything. A poll can be in flight for
+/// seconds (the request, then one fetch per new artifact), and a disconnect
+/// that lands in that window used to be undone by the poll's own writes:
+/// `desired-state.json` and `active.json` came back, carrying the old org's
+/// policies and Jev mode, moments after the CLI removed them.
+fn enrolment_withdrawn() -> bool {
+    matches!(Enrolment::resolve(), Ok(None))
+}
+
+impl Enrolment {
+    fn resolve() -> Result<Option<Self>, String> {
+        if let Some(enrolment) = Self::from_env()? {
+            return Ok(Some(enrolment));
         }
         Self::from_file()
     }
 
-    pub fn from_env() -> Result<Option<Self>, String> {
+    fn from_env() -> Result<Option<Self>, String> {
         let Some(base_url) = env_value("FAILPROOFAI_CLOUD_URL") else {
             return Ok(None);
         };
@@ -301,7 +424,11 @@ impl CloudClient {
             .ok_or("FAILPROOFAI_CLOUD_TOKEN is required when FAILPROOFAI_CLOUD_URL is set")?;
         let machine_id = env_value("FAILPROOFAI_MACHINE_ID")
             .ok_or("FAILPROOFAI_MACHINE_ID is required when FAILPROOFAI_CLOUD_URL is set")?;
-        Self::new(&base_url, token, machine_id).map(Some)
+        Ok(Some(Self {
+            base_url,
+            token,
+            machine_id,
+        }))
     }
 
     /// A missing file means "not enrolled" — not an error. A malformed one IS
@@ -322,7 +449,7 @@ impl CloudClient {
     /// arrival in layout 2 — `--connect` reported success, wrote a credential
     /// the daemon never looked at, and the daemon logged "cloud-managed policy
     /// polling disabled" as though the machine had simply never enrolled.
-    pub fn from_file() -> Result<Option<Self>, String> {
+    fn from_file() -> Result<Option<Self>, String> {
         // `mode: "oss"` outranks every credential file below it. Checked HERE
         // rather than at the call site because `from_file` has three exits (the
         // override, `credentials.json`, and the layout-1 fallback) and a veto
@@ -372,7 +499,11 @@ impl CloudClient {
         if cloud.token.is_empty() {
             return Err(format!("empty token in {}", path.display()));
         }
-        Self::new(&cloud.url, cloud.token, cloud.machine_id).map(Some)
+        Ok(Some(Self {
+            base_url: cloud.url,
+            token: cloud.token,
+            machine_id: cloud.machine_id,
+        }))
     }
 
     fn from_legacy_file() -> Result<Option<Self>, String> {
@@ -400,9 +531,15 @@ impl CloudClient {
         if stored.token.is_empty() {
             return Err(format!("empty token in {}", path.display()));
         }
-        Self::new(&stored.url, stored.token, stored.machine_id).map(Some)
+        Ok(Some(Self {
+            base_url: stored.url,
+            token: stored.token,
+            machine_id: stored.machine_id,
+        }))
     }
+}
 
+impl CloudClient {
     fn new(base_url: &str, token: String, machine_id: String) -> Result<Self, String> {
         let mut base_url =
             Url::parse(base_url).map_err(|err| format!("invalid FAILPROOFAI_CLOUD_URL: {err}"))?;
@@ -567,15 +704,38 @@ impl CloudClient {
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|err| {
-                format!(
-                    "artifact request failed: {}",
-                    fpai_collect::error_chain(&err)
-                )
+                // An HTTP answer (a 404, a 403) is the server's to see; a
+                // request that never got one is not — see
+                // `ARTIFACT_TRANSPORT_FAILURE`.
+                let chain = fpai_collect::error_chain(&err);
+                if err.status().is_some() {
+                    format!("artifact request failed: {chain}")
+                } else {
+                    format!("{ARTIFACT_TRANSPORT_FAILURE}: {chain}")
+                }
             })?
             .bytes()
             .map(|bytes| bytes.to_vec())
-            .map_err(|err| format!("failed to read artifact response: {err}"))
+            .map_err(|err| {
+                format!("{ARTIFACT_TRANSPORT_FAILURE}: failed to read the response: {err}")
+            })
     }
+}
+
+/// How an artifact fetch that never got an HTTP answer begins: a refused
+/// connection, a timeout, a body cut off mid-read.
+///
+/// Such a failure is not recorded in the daemon's error state, exactly like a
+/// transport failure of the poll itself. Recording it turned a network blip
+/// between the desired-state GET and an artifact GET into a policy error that
+/// rode the next poll and cleared on the one after — a fleet page flickering
+/// "error" for a minute over nothing anyone could act on. The previous
+/// deployment stays in force either way, and the next poll retries.
+const ARTIFACT_TRANSPORT_FAILURE: &str = "artifact request did not complete";
+
+/// Whether a reconcile error is a transport failure of an artifact fetch.
+fn transient_fetch_failure(err: &ReconcileError) -> bool {
+    matches!(err, ReconcileError::Fetch { message, .. } if message.starts_with(ARTIFACT_TRANSPORT_FAILURE))
 }
 
 /// One maintenance lane that re-resolves enrolment on every tick.
@@ -603,17 +763,11 @@ pub fn spawn_maintenance(
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
         while !shutdown.load(Ordering::Relaxed) {
-            let cloud = match CloudClient::from_env_or_file() {
-                Ok(client) => client,
-                Err(err) => {
-                    eprintln!("[failproofaid] cloud enrolment error: {err}");
-                    None
-                }
-            };
+            let cloud = CloudClient::from_env_or_file();
 
             // Log only on transition, so a disconnected machine does not print
             // a line every 30 seconds forever.
-            let enrolled = cloud.is_some();
+            let enrolled = matches!(cloud, Ok(Some(_)));
             if last_state != Some(enrolled) {
                 eprintln!(
                     "[failproofaid] cloud-managed policy polling {}",
@@ -622,16 +776,7 @@ pub fn spawn_maintenance(
                 last_state = Some(enrolled);
             }
 
-            if let Some(cloud) = cloud.as_ref() {
-                poll_once(&store, cloud);
-            }
-
-            // Runs whether or not cloud is reachable: poll failures never
-            // discard the last known-good deployment, and local tampering is
-            // still repaired while the cloud is offline or unconfigured.
-            if let Err(err) = store.repair_active_from_cache() {
-                eprintln!("[failproofaid] cloud policy integrity error: {err}");
-            }
+            maintenance_tick(&store, cloud, &enrolment_withdrawn, &disconnected_by_config);
             wait_until_shutdown(
                 &shutdown,
                 if enrolled {
@@ -644,7 +789,69 @@ pub fn spawn_maintenance(
     })
 }
 
-fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
+/// One pass of the maintenance lane, given what enrolment resolved to.
+///
+/// - **Enrolled:** poll, then repair from the cache. The repair runs whether or
+///   not the poll reached the server: a poll failure never discards the last
+///   known-good deployment, and local tampering is still repaired while the
+///   control plane is unreachable.
+/// - **Credential unreadable** (`Err`): repair only. The machine was enrolled
+///   and still is as far as anyone said; a broken file is not a disconnect.
+/// - **Not enrolled** (`Ok(None)`): NOTHING is rebuilt. `repair_active_from_cache`
+///   reconstructs `active.json` from `desired-state.json`, which is the right
+///   answer to a lost pointer on an enrolled machine and exactly the wrong one
+///   after `config --disconnect`: it put the old org's JS policies, Jev checks
+///   and Jev mode back within one interval, on a machine whose owner had left.
+///   And when the operator explicitly put the machine back on OSS
+///   (`mode: "oss"`), any Cloud deployment still on disk — written by a poll
+///   that was in flight during the disconnect, or left by an older CLI that did
+///   not remove `desired-state.json` — is removed, so a disconnected machine is
+///   provably unmanaged rather than unmanaged by timing.
+///
+/// The two predicates are parameters so a test can drive every branch without
+/// touching the process's HOME.
+fn maintenance_tick(
+    store: &PolicyStore,
+    cloud: Result<Option<CloudClient>, String>,
+    withdrawn: &dyn Fn() -> bool,
+    back_on_oss: &dyn Fn() -> bool,
+) {
+    match cloud {
+        Ok(Some(cloud)) => {
+            poll_once_guarded(store, &cloud, withdrawn);
+            repair(store);
+        }
+        Err(err) => {
+            eprintln!("[failproofaid] cloud enrolment error: {err}");
+            repair(store);
+        }
+        Ok(None) => {
+            if back_on_oss() {
+                match store.clear_deployment() {
+                    Ok(0) => {}
+                    Ok(removed) => eprintln!(
+                        "[failproofaid] this machine is disconnected from FailproofAI Cloud; \
+                         removed {removed} leftover cloud policy file(s)"
+                    ),
+                    Err(err) => eprintln!(
+                        "[failproofaid] could not remove the cloud policy files of a disconnected machine: {err}"
+                    ),
+                }
+            }
+        }
+    }
+}
+
+fn repair(store: &PolicyStore) {
+    if let Err(err) = store.repair_active_from_cache() {
+        eprintln!("[failproofaid] cloud policy integrity error: {err}");
+    }
+}
+
+/// One poll and its reconcile. `withdrawn` is asked right before anything is
+/// persisted — the reconcile's writes and the daemon's error state — so a
+/// disconnect that lands while the request is in flight is not undone by it.
+fn poll_once_guarded(store: &PolicyStore, cloud: &CloudClient, withdrawn: &dyn Fn() -> bool) {
     // Read BEFORE the request, so what we report is what was in force when we
     // asked. Reading after would race this poll's own reconcile and could claim
     // a deployment the server is about to be told about anyway — reporting the
@@ -666,7 +873,11 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
     let report = current_policy_errors(store).map(|errors| encode_policy_errors(&errors));
     match cloud.poll_desired_state(applied, report.as_deref()) {
         Ok(desired) => {
-            match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
+            match store.reconcile_unless(
+                &desired,
+                &|policy: &DesiredPolicy| cloud.artifact(policy),
+                withdrawn,
+            ) {
                 Ok(outcome) => {
                     if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
                         eprintln!(
@@ -676,16 +887,27 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
                     }
                     record_daemon_errors(store, Vec::new());
                 }
+                Err(ReconcileError::Withdrawn) => {
+                    // Nothing was written, and nothing is recorded either: an
+                    // error state would describe a deployment this machine no
+                    // longer has.
+                    eprintln!(
+                        "[failproofaid] this machine was disconnected while a poll was in flight; \
+                         its result was discarded"
+                    );
+                }
                 Err(err) => {
                     eprintln!("[failproofaid] cloud policy reconcile error: {err}");
-                    record_daemon_errors(
-                        store,
-                        vec![daemon_error(
-                            err.to_string(),
-                            err.policy_id(),
-                            Some(&desired),
-                        )],
-                    );
+                    if !transient_fetch_failure(&err) && !withdrawn() {
+                        record_daemon_errors(
+                            store,
+                            vec![daemon_error(
+                                err.to_string(),
+                                err.policy_id(),
+                                Some(&desired),
+                            )],
+                        );
+                    }
                 }
             }
         }
@@ -696,7 +918,7 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
             );
             // A payload this daemon refused is reported; a transport failure is
             // not, and leaves the recorded state as it was.
-            if failure.reportable {
+            if failure.reportable && !withdrawn() {
                 record_daemon_errors(store, vec![daemon_error(failure.message, None, None)]);
             }
         }
@@ -1261,6 +1483,260 @@ mod tests {
         );
         server.join().unwrap();
         fs::remove_dir_all(root).ok();
+    }
+
+    // ── Disconnect sticks (review M2) ────────────────────────────────────────
+
+    use crate::cloud_policies::cloud_jev_tests::{jev_state, serve, temp_store};
+
+    /// A store holding a `both` + `jev` deployment with `jevMode: observe`.
+    fn deployed_store(name: &str) -> PolicyStore {
+        let store = temp_store(name);
+        store.reconcile(&jev_state(12), &serve).unwrap();
+        store
+    }
+
+    /// Exactly what `config --disconnect` removes
+    /// (`clearActiveCloudManagedPolicies` in `cloud-managed-policies.ts`).
+    fn disconnect_like_the_cli(store: &PolicyStore) {
+        for path in [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// Enrolled, and nothing answers: a port that was bound and released.
+    fn offline_client() -> CloudClient {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        CloudClient::new(&format!("http://127.0.0.1:{port}"), "t".into(), "m".into()).unwrap()
+    }
+
+    fn no_cloud_state(store: &PolicyStore) -> bool {
+        [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ]
+        .iter()
+        .all(|path| !path.exists())
+    }
+
+    /// The review's M2 scenario: after `config --disconnect` the old org's
+    /// JS policies, Jev checks and Jev mode used to be rebuilt from the cache
+    /// within one interval. Now nothing reappears, tick after tick.
+    #[test]
+    fn a_disconnected_machine_stays_empty_across_maintenance_ticks() {
+        let store = deployed_store("disconnect-sticks");
+        disconnect_like_the_cli(&store);
+        for tick in 0..3 {
+            maintenance_tick(&store, Ok(None), &|| true, &|| true);
+            assert!(
+                no_cloud_state(&store),
+                "cloud state reappeared on tick {tick}"
+            );
+        }
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// An older CLI removed only `active.json`. Unenrolled, the daemon does not
+    /// rebuild it from the leftover snapshot; put back on OSS, it removes the
+    /// snapshot too, so nothing ever can.
+    #[test]
+    fn an_unenrolled_machine_never_rebuilds_from_a_leftover_snapshot() {
+        let store = deployed_store("leftover-snapshot");
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(&store, Ok(None), &|| true, &|| false);
+        assert!(!store.active_manifest_path().exists());
+        assert!(
+            store.desired_state_path().exists(),
+            "a credential that merely vanished is not an explicit disconnect; nothing is deleted"
+        );
+
+        maintenance_tick(&store, Ok(None), &|| true, &|| true);
+        assert!(no_cloud_state(&store));
+        maintenance_tick(&store, Ok(None), &|| true, &|| true);
+        assert!(no_cloud_state(&store));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The other half, which must not regress: an ENROLLED machine that cannot
+    /// reach the control plane still rebuilds a lost `active.json` — Jev mode
+    /// included — and a transport failure records no error state.
+    #[test]
+    fn a_connected_machine_that_is_offline_still_repairs() {
+        let store = deployed_store("offline-repairs");
+        let good = store.read_active().unwrap().unwrap();
+        assert_eq!(good.jev_mode.as_deref(), Some("observe"));
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(&store, Ok(Some(offline_client())), &|| false, &|| false);
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        assert!(!store.daemon_errors_path().exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A credential file that cannot be read is not a disconnect: the machine
+    /// keeps (and repairs) its last known-good deployment.
+    #[test]
+    fn an_unreadable_credential_still_repairs() {
+        let store = deployed_store("broken-credential");
+        let good = store.read_active().unwrap().unwrap();
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(
+            &store,
+            Err("invalid credentials in credentials.json".into()),
+            &|| false,
+            &|| true,
+        );
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A poll in flight when `config --disconnect` runs: the server answers,
+    /// every artifact is fetched, and then nothing is written — no snapshot, no
+    /// pointer, no error state.
+    #[test]
+    fn a_disconnect_during_a_poll_discards_its_result() {
+        let desired = jev_state(12);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let body_state = serde_json::to_vec(&desired).unwrap();
+        // Detached: it serves until the test process exits.
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                let body = if request.starts_with("GET /enforcement/v1/desired-state") {
+                    body_state.clone()
+                } else {
+                    let sha = request
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|path| path.rsplit('/').next())
+                        .unwrap_or_default()
+                        .to_string();
+                    let probe = DesiredPolicy {
+                        id: "x".into(),
+                        version: 1,
+                        sha256: sha,
+                        artifact_url: String::new(),
+                        effect: PolicyEffect::Enforce,
+                        authority: None,
+                        reviewed_by: None,
+                    };
+                    serve(&probe).unwrap_or_default()
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(&body);
+            }
+        });
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+
+        let store = temp_store("disconnect-mid-poll");
+        poll_once_guarded(&store, &cloud, &|| true);
+        assert!(no_cloud_state(&store));
+
+        // Still enrolled, the same poll applies it.
+        poll_once_guarded(&store, &cloud, &|| false);
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 12);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    // ── Review n1: a fetch that never got an answer is not an error state ───
+
+    #[test]
+    fn an_artifact_fetch_that_never_got_an_answer_is_not_recorded() {
+        let request = jev_state(1).policies[0].clone();
+        let message = offline_client().artifact(&request).unwrap_err();
+        assert!(message.starts_with(ARTIFACT_TRANSPORT_FAILURE), "{message}");
+        assert!(transient_fetch_failure(&ReconcileError::Fetch {
+            policy_id: "no-prod-db".into(),
+            message,
+        }));
+
+        // An HTTP answer is the server's to see, and stays reported.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+        let message = cloud.artifact(&request).unwrap_err();
+        server.join().unwrap();
+        assert!(message.starts_with("artifact request failed"), "{message}");
+        assert!(!transient_fetch_failure(&ReconcileError::Fetch {
+            policy_id: "no-prod-db".into(),
+            message,
+        }));
+        assert!(!transient_fetch_failure(&ReconcileError::NoVerifiedCopy {
+            policy_id: "no-prod-db".into(),
+        }));
+    }
+
+    // ── C9.5: no local paths on the wire ────────────────────────────────────
+
+    /// The same cases as `cloud-policy-errors` in the CLI's vitest suite
+    /// (`redactLocalPaths`), so the two copies of the rule cannot drift.
+    #[test]
+    fn policy_error_messages_carry_no_local_paths() {
+        let home = Some("/home/alice");
+        for (input, expected) in [
+            (
+                "path missing: /home/alice/.failproofai/policies/cloud-policies/artifacts/ab.mjs",
+                "path missing: ~/.failproofai/policies/cloud-policies/artifacts/ab.mjs",
+            ),
+            (
+                "Cannot find module '/tmp/fp-load-1/x.mjs' imported from /opt/app/y.mjs",
+                "Cannot find module 'x.mjs' imported from y.mjs",
+            ),
+            (
+                "jev.json is too open (chmod 600 /home/alice/.failproofai/jev.json)",
+                "jev.json is too open (chmod 600 ~/.failproofai/jev.json)",
+            ),
+            (
+                "/home/alice2/notes.txt is not home",
+                "notes.txt is not home",
+            ),
+            ("home is /home/alice", "home is ~"),
+            ("dir=/var/lib/fp/, done", "dir=fp, done"),
+            (
+                "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
+                "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
+            ),
+            ("the root / itself", "the root / itself"),
+        ] {
+            assert_eq!(redact_local_paths(input, home), expected, "{input}");
+        }
+        assert_eq!(redact_local_paths("/home/alice/x", None), "x");
+
+        let encoded =
+            encode_policy_errors(&[error("guard", "path missing: /var/lib/fp/artifacts/ab.mjs")]);
+        assert!(encoded.contains("path missing: ab.mjs"), "{encoded}");
+        assert!(!encoded.contains("/var/lib"), "{encoded}");
     }
 
     #[test]

@@ -25,6 +25,7 @@ import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
+import { writeConfigFileAtomic } from "./safe-config-write";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import {
@@ -65,32 +66,82 @@ import {
 
 // ── Generic helpers ─────────────────────────────────────────────────────────
 
+/**
+ * The error every config reader throws for a file it cannot read faithfully.
+ *
+ * These files belong to the user's agent. A config that exists but does not
+ * parse is never treated as empty: writing our entries into an "empty" document
+ * would replace every other setting in it, and the agent would come back without
+ * its model, keys or channels. Refusing leaves the file exactly as the user has
+ * it and says which file and why.
+ */
+export class UnreadableAgentConfigError extends Error {
+  constructor(readonly path: string, reason: string) {
+    super(
+      `Refusing to modify ${path}: ${reason}. ` +
+        `failproofai never rewrites a config it could not parse — fix or move the file, then retry.`,
+    );
+    this.name = "UnreadableAgentConfigError";
+  }
+}
+
 function readJsonFile(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const raw = readFileSync(path, "utf8");
-  return JSON.parse(raw) as Record<string, unknown>;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it could not be read (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (raw.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new UnreadableAgentConfigError(path, "its top level is not a JSON object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function writeJsonFile(path: string, data: Record<string, unknown>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");
+  writeConfigFileAtomic(path, JSON.stringify(data, null, 2) + "\n");
 }
 
 /** Read a YAML file as a `Document` so writes round-trip the user's other keys +
- *  comments (a plain parse→stringify would strip comments). Empty / missing /
- *  corrupt → an empty Document. Used by the Hermes integration, whose config
- *  lives in `~/.hermes/config.yaml`. */
+ *  comments (a plain parse→stringify would strip comments). Missing or empty →
+ *  an empty Document; unreadable or unparseable → {@link UnreadableAgentConfigError},
+ *  never an empty Document that the next write would put in the user's place.
+ *  Used by the Hermes integration, whose config lives in `~/.hermes/config.yaml`. */
 function readYamlDoc(path: string): Document {
+  if (!existsSync(path)) return parseDocument("");
+  let text: string;
   try {
-    return existsSync(path) ? parseDocument(readFileSync(path, "utf8")) : parseDocument("");
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it could not be read (${err instanceof Error ? err.message : String(err)})`);
+  }
+  const doc = parseDocument(text);
+  if (doc.errors.length > 0) {
+    const first = doc.errors[0]?.message.split("\n")[0] ?? "syntax error";
+    throw new UnreadableAgentConfigError(path, `it does not parse as YAML (${first})`);
+  }
+  return doc;
+}
+
+/** {@link readYamlDoc} for read-only callers (status, health): an unreadable file is `null`. */
+function inspectYamlDoc(path: string): Document | null {
+  try {
+    return readYamlDoc(path);
   } catch {
-    return parseDocument("");
+    return null;
   }
 }
 
 function writeYamlDoc(path: string, doc: Document): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, doc.toString(), "utf8");
+  writeConfigFileAtomic(path, doc.toString());
 }
 
 function isMarkedHook(hook: unknown): boolean {
@@ -1127,7 +1178,7 @@ export const opencode: Integration = {
     // (a) Write the shim file. mkdirSync is recursive so the plugins/ dir
     // is created on first install.
     mkdirSync(dirname(pluginPath), { recursive: true });
-    writeFileSync(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope), "utf8");
+    writeConfigFileAtomic(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope));
 
     // (b) Merge our entry into the plugin array idempotently. Replace any
     // existing failproofai-marked entry; otherwise append.
@@ -1699,11 +1750,13 @@ function removeLegacyHermesHooks(doc: Document): number {
 function hermesConfigState(settingsPath: string): {
   pluginEnabled: boolean;
   legacyShellHookPresent: boolean;
+  unreadable?: boolean;
 } {
   if (!existsSync(settingsPath)) {
     return { pluginEnabled: false, legacyShellHookPresent: false };
   }
-  const doc = readYamlDoc(settingsPath);
+  const doc = inspectYamlDoc(settingsPath);
+  if (!doc) return { pluginEnabled: false, legacyShellHookPresent: false, unreadable: true };
   const js = (doc.toJS() ?? {}) as {
     hooks?: Record<string, HermesHookEntry[]>;
     plugins?: HermesPluginsConfig;
@@ -1790,6 +1843,29 @@ export async function migrateHermesProfiles(opts: {
     const ours = plugin.kind === "link" || plugin.kind === "copy";
     const base = { name: profile.name, home: profile.home };
     const legacy = config.legacyShellHookPresent;
+
+    // A config.yaml that does not parse is never edited. Whether it is ours to
+    // report is read from the raw text: it cannot be parsed to find out.
+    if (config.unreadable) {
+      let raw = "";
+      try {
+        raw = readFileSync(settingsPath, "utf8");
+      } catch {
+        raw = "";
+      }
+      const mentionsUs = ours || raw.includes(FAILPROOFAI_HOOK_MARKER) || /failproofai/.test(raw);
+      results.push(
+        mentionsUs
+          ? {
+              ...base,
+              status: "failed",
+              detail: `${settingsPath} does not parse as YAML; left untouched`,
+              legacyShellHooksRemain: /--hook\s+\S+\s+--cli\s+hermes|__failproofai_hook__/.test(raw),
+            }
+          : { ...base, status: "untouched", detail: "no failproofai integration", legacyShellHooksRemain: false },
+      );
+      continue;
+    }
 
     if (!legacy && !ours && !config.pluginEnabled) {
       results.push({ ...base, status: "untouched", detail: "no failproofai integration", legacyShellHooksRemain: false });
@@ -1878,6 +1954,8 @@ export interface HermesProfileHealth {
    * with none of those, so their tool calls go unchecked.
    */
   cronUnchecked: boolean;
+  /** config.yaml exists but does not parse; failproofai will not touch it. */
+  configUnreadable: boolean;
   healthy: boolean;
 }
 
@@ -1898,7 +1976,8 @@ export function hermesProfileHealth(): HermesProfileHealth[] {
       pluginEnabled: config.pluginEnabled,
       legacyShellHookPresent: config.legacyShellHookPresent,
       cronUnchecked: config.legacyShellHookPresent && !pluginWorks,
-      healthy: pluginWorks && !config.legacyShellHookPresent,
+      configUnreadable: config.unreadable === true,
+      healthy: pluginWorks && !config.legacyShellHookPresent && config.unreadable !== true,
     };
   });
 }
@@ -1909,6 +1988,9 @@ export function hermesProfileStatusRows(): Array<[string, string]> {
     .filter((profile) => existsSync(profile.home))
     .map((profile) => {
       const label = "hermes/" + profile.name;
+      if (profile.configUnreadable) {
+        return [label, `UNHEALTHY — ${profile.settingsPath} does not parse; failproofai leaves it untouched until it is fixed`];
+      }
       if (profile.cronUnchecked) {
         // Not a cosmetic leftover: the shell-hook integration does not reach
         // cron jobs at all, so this profile has an unenforced path.

@@ -339,6 +339,16 @@ describe("failproofai update → Hermes migration", () => {
     expect(existsSync(pluginPath())).toBe(false);
   });
 
+  it("leaves a broken config.yaml it was never installed in alone, without failing update", async () => {
+    const broken = "model:\n  default: gpt-6-luna\n  bad: [unclosed\n";
+    writeConfig("default", broken);
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });
+    expect(result.ok).toBe(true);
+    expect(result.profiles[0].status).toBe("untouched");
+    expect(readFileSync(configPath(), "utf8")).toBe(broken);
+    expect(existsSync(pluginPath())).toBe(false);
+  });
+
   it("uses the copy fallback during migration when links are impossible", async () => {
     writeConfig("default", LEGACY_CONFIG);
     const symlink = () => {

@@ -16,6 +16,22 @@ vi.mock("node:fs", () => ({
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
+// Agent configs are written through the crash-safe writer (temp file, fsync,
+// rename). This suite mocks node:fs wholesale and asserts on writeFileSync, so
+// route that writer to the mocked writeFileSync: every assertion below is about
+// WHAT is written where, which is unchanged. The writer itself is covered by
+// safe-config-write.test.ts against a real filesystem.
+vi.mock("../../src/hooks/safe-config-write", async () => {
+  const fs = await import("node:fs");
+  const { dirname } = await import("node:path");
+  return {
+    writeConfigFileAtomic: (path: string, content: string) => {
+      fs.mkdirSync(dirname(path), { recursive: true });
+      fs.writeFileSync(path, content, "utf8");
+    },
+    configBackupPath: (path: string) => `${path}.failproofai-backup`,
+  };
+});
 
 vi.mock("../../src/hooks/install-prompt", () => ({
   promptPolicySelection: vi.fn(() =>

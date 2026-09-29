@@ -419,8 +419,19 @@ impl JevFacts {
             .as_deref()
             .filter(|d| matches!(*d, "allow" | "instruct" | "deny"))
             .map(str::to_string);
+        // A mode this side does not know (a row written before the log-only
+        // mode was named `observe`) cannot say whether its clears took effect.
+        // Dropping only the mode would ship them looking like enforce-mode
+        // clears, so they are dropped with it — as the TypeScript normalizer does.
+        let unknown_mode = row.jev_mode.is_some() && mode.is_none();
         let mut cleared: Vec<String> = Vec::new();
-        for name in row.jev_cleared.iter().flatten().filter_map(Value::as_str) {
+        for name in row
+            .jev_cleared
+            .iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|_| !unknown_mode)
+        {
             if cleared.len() >= JEV_CLEARED_MAX {
                 break;
             }

@@ -1515,6 +1515,8 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
                 enabled: coverage.enabled,
                 reviewable: coverage.reviewable,
                 customPolicyFiles: coverage.customFiles,
+                // Checks an installed pack gives Jev to ask; 0 means Jev is inert.
+                jevChecks: coverage.jevChecks,
                 problem: coverageProblem,
               },
             }

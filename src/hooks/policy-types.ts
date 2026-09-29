@@ -46,9 +46,9 @@ export interface RegisteredPolicy {
   /** Whether Jev may clear this policy's deny/instruct; see {@link effectiveAuthority}. */
   authority?: PolicyAuthority;
   /**
-   * The semantic policies (`src/hooks/semantic/policies.ts`) that must all be
-   * asked, and each clear (see {@link PolicyAuthority}), before Jev clears this
-   * policy.
+   * The Jev checks (declared by an installed pack — the package ships none)
+   * that must all be asked, and each clear (see {@link PolicyAuthority}),
+   * before Jev clears this policy.
    */
   reviewedBy?: string[];
 }
@@ -188,7 +188,7 @@ export interface SemanticProbeDeclaration {
 /**
  * A semantic (Jev) policy as its author DECLARES it — a question set, not code.
  *
- * The compiled-in equivalent is `SemanticPolicy` in `semantic/types.ts`, and
+ * The runtime form is `SemanticPolicy` in `semantic/types.ts`, and
  * the one difference is the whole reason both exist: there, `precondition` is a
  * function over the computed facts; here it is the NAME of one, because a
  * declaration has to survive a trip through a JSON manifest and because a

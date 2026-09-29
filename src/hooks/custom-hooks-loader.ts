@@ -535,7 +535,7 @@ export async function loadAllCustomHooks(
    * policy reviewable, which is the one thing a manifest may never do.
    *
    * `knownReviewers` is what makes that hold for a pack that ships BOTH tiers.
-   * Judged against the compiled-in set, a `reviewedBy` naming one of the pack's
+   * Judged against any other set, a `reviewedBy` naming one of the pack's
    * own checks is a name nothing here has, so the reviewable entry and its hard
    * peer resolved alike and the merge could not tell them apart — while
    * registration, which reads the manifest's own checks, honoured it. The set

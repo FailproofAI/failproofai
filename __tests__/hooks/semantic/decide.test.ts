@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { decide, decideV1, everyTargetNamed, scanTargets, targetNamedByUser, targetTokens, DEFAULT_THRESHOLDS } from "../../../src/hooks/semantic/decide";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { SemanticPolicy } from "../../../src/hooks/semantic/types";
 
 const byName = (name: string): SemanticPolicy => SEMANTIC_POLICIES.find((p) => p.name === name)!;

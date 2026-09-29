@@ -52,6 +52,7 @@ import {
   PERMISSION_POLICIES,
 } from "./cloud-introspect";
 import type { CloudJevConfigWrite } from "./jev-cloud-connection";
+import { jevChecksDeclared } from "./effective-reviewers";
 import {
   ingestPath,
   validateIngestKey,
@@ -439,6 +440,11 @@ function jevLines(outcome: ConnectOutcome): string[] {
     const plainHttp = config?.status === "written" && new URL(config.baseUrl).protocol === "http:";
     return [
       `  Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
+      // The package ships no Jev checks, so "on" asks nothing until a pack
+      // gives it some — said here, where the user just turned it on.
+      ...(jevChecksDeclared()
+        ? []
+        : ["            It has no checks installed yet, so it asks nothing. To enable it: `failproofai policies add FailproofAI/jev-policies`."]),
       plainHttp
         ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in observe mode."
         : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",

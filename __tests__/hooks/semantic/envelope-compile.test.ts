@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { buildEnvelope, capHeadTail, redactSecrets, MAX_STRING_CHARS } from "../../../src/hooks/semantic/envelope";
 import { compileRequest, selectPolicies, DEFAULT_JEV_MODEL } from "../../../src/hooks/semantic/compile";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { Facts } from "../../../src/hooks/semantic/types";
 
 const facts = (over: Partial<Facts> = {}): Facts => ({

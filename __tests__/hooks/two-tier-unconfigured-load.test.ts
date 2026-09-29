@@ -29,8 +29,9 @@ vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { _resetForTest } from "../../src/hooks/hook-activity-store";
+import { installJevPoliciesPack } from "../fixtures/jev-policies";
 
-const ENV = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_EVALUATOR", "CLAUDE_PROJECT_DIR"] as const;
+const ENV = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_PACK_DIR", "FAILPROOFAI_EVALUATOR", "CLAUDE_PROJECT_DIR"] as const;
 const saved: Record<string, string | undefined> = {};
 let root: string;
 let fpHome: string;
@@ -46,6 +47,8 @@ beforeEach(() => {
   writeFileSync(join(fpHome, "policies-config.json"), JSON.stringify({ enabledPolicies: ["block-sudo"] }));
   process.env.HOME = join(root, "home");
   process.env.FAILPROOFAI_HOME = fpHome;
+  process.env.FAILPROOFAI_PACK_DIR = join(root, "packs");
+  mkdirSync(join(root, "packs"), { recursive: true });
   delete process.env.FAILPROOFAI_EVALUATOR;
   delete process.env.CLAUDE_PROJECT_DIR;
   _resetForTest(join(root, "activity"));
@@ -66,7 +69,7 @@ const run = (event: string, payload: Record<string, unknown>) =>
   });
 
 describe("the unconfigured hot path never loads the Jev config module", () => {
-  it("loads it only once a jev.json is there", async () => {
+  it("loads it only once a jev.json is there AND a pack gives Jev checks", async () => {
     // Both callers: the gate event that would start a review, and the prompt
     // event that would record the human's intent for one.
     const gate = await run("PreToolUse", { tool_name: "Bash", tool_input: { command: "sudo rm -rf /" } });
@@ -80,6 +83,15 @@ describe("the unconfigured hot path never loads the Jev config module", () => {
     // changes is that the question is now worth asking, and asking it means
     // loading the module that knows how.
     writeFileSync(join(fpHome, "jev.json"), "{}");
+    await run("PreToolUse", { tool_name: "Bash", tool_input: { command: "sudo rm -rf /" } });
+    await run("UserPromptSubmit", { prompt: "clean the build" });
+    // Still not: the package ships no Jev checks, so with no pack declaring any
+    // there is nothing to ask and the config is never worth reading.
+    expect(seen.jevConfigModule).toBe(false);
+
+    // FailproofAI/jev-policies gives it its checks. (It is a pack, so the
+    // migration shim's builtins stop; the always-on guard is all that is left.)
+    installJevPoliciesPack(join(root, "packs"));
     await run("PreToolUse", { tool_name: "Bash", tool_input: { command: "sudo rm -rf /" } });
     expect(seen.jevConfigModule).toBe(true);
   });

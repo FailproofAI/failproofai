@@ -46,6 +46,11 @@ import { evaluateSemantic, prepareSemantic, type SemanticOptions, type SemanticO
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import type { JevReview } from "../../../src/hooks/semantic/combine";
 import type { JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+
+// The package ships no Jev checks; this file runs as a machine with
+// FailproofAI/jev-policies installed.
+useInstalledJevPoliciesPack();
 
 /** Every "does it do X" probe held; the human asked for none of it. Jev denies. */
 const alarmed = async (request: JevRequest): Promise<JevResponse> => ({

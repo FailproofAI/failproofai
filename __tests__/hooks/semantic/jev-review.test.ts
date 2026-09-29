@@ -93,6 +93,11 @@ const PAST_THE_CALL_BUDGET = "x".repeat(MAX_AGENT_REQUEST_CHARS + 1_000);
 /** Repeats needed to run past the per-message cap, whatever it is set to. */
 const OVER_CAP = Math.ceil((MAX_USER_MESSAGE_CHARS * 1.5) / "tidy the build folder and ".length);
 import { JEV_CONFIG_DEFAULT_TIMEOUT_MS, type JevConfig } from "../../../src/hooks/semantic/jev-config";
+import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+
+// The package ships no Jev checks; this file runs as a machine with
+// FailproofAI/jev-policies installed.
+useInstalledJevPoliciesPack();
 
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32) };
 const allLow = (request: JevRequest): JevResponse => ({

@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { selectPolicies } from "../../../src/hooks/semantic/compile";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { Facts, PathFact } from "../../../src/hooks/semantic/types";
 
 const PROJECT = "/home/dev/project";

@@ -1,12 +1,13 @@
 // @vitest-environment node
 /**
  * The one wiring point: `prepareSemantic` asks about the set an installed pack
- * declared, and about the compiled-in set when no pack declares one.
+ * declared — and about NOTHING when no pack declares one. The package ships no
+ * Jev checks of its own.
  *
  * Driven through the real reader with a real manifest and a real digest, because
  * the thing worth proving is not that the resolver returns the right array — the
  * unit tests beside this do that — but that the evaluator actually consults it,
- * and that a machine with no pack is unchanged.
+ * and that a machine with no pack asks nothing and sends nothing.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { createHash } from "node:crypto";
@@ -14,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareSemantic } from "@/src/hooks/semantic/evaluator";
-import { SEMANTIC_POLICIES } from "@/src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import { resolveSemanticPolicies, _resetSemanticWarningsForTest } from "@/src/hooks/semantic/pack-policies";
 import type { SemanticInput } from "@/src/hooks/semantic/types";
 
@@ -42,8 +43,7 @@ function writeManifest(over: Record<string, unknown> = {}): void {
       schemaVersion: 1,
       packs: [
         {
-          // A FailproofAI pack: its checks REPLACE the compiled-in set, which is
-          // the rule these tests pin. A third party's are added to it.
+          // A FailproofAI pack, so its check names are its own to declare.
           id: "FailproofAI/guards",
           version: "1.0.0",
           source: "github:FailproofAI/guards@v1.0.0",
@@ -83,16 +83,20 @@ afterEach(() => {
 });
 
 describe("resolveSemanticPolicies", () => {
-  it("is the compiled-in set with no manifest at all", () => {
-    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+  it("is empty with no manifest at all — the vanilla install asks nothing", () => {
+    expect(resolveSemanticPolicies()).toEqual([]);
   });
 
-  it("is the compiled-in set when the manifest is unreadable", () => {
-    // The same fail-open posture every other reader of this file takes — and here
-    // it also fails safe: a pack's `reviewedBy` will not match the builtin names,
-    // so nothing is cleared by a question nobody could read.
+  it("is empty when the manifest is unreadable, never a compiled-in fallback", () => {
+    // Fails safe: nothing is asked, so nothing is cleared by a question nobody
+    // could read, and every regex verdict stands.
     writeFileSync(join(root, "installed.json"), "{ not json");
-    expect(resolveSemanticPolicies()).toBe(SEMANTIC_POLICIES);
+    expect(resolveSemanticPolicies()).toEqual([]);
+  });
+
+  it("is empty when the installed packs declare no checks", () => {
+    writeManifest();
+    expect(resolveSemanticPolicies()).toEqual([]);
   });
 
   it("is the pack's set once it declares one", () => {
@@ -118,19 +122,19 @@ describe("resolveSemanticPolicies", () => {
 });
 
 describe("prepareSemantic consults the resolved set", () => {
-  it("asks the compiled-in questions when no pack declares any", () => {
+  it("asks nothing, and builds an empty request, when no pack declares any", () => {
     writeManifest();
     const prepared = prepareSemantic(input);
-    const names = prepared.selected.map((p) => p.name);
-    expect(names).toContain("destructive-deletion");
-    expect(names.every((n) => SEMANTIC_POLICIES.some((p) => p.name === n))).toBe(true);
+    expect(prepared.selected).toEqual([]);
+    // Not even the injection or task probes: they ride along with a check.
+    expect(Object.keys(prepared.compiled.request.questions)).toEqual([]);
   });
 
   it("asks the pack's questions instead once it declares any", () => {
     writeManifest({ semantic: [semanticEntry()] });
     const prepared = prepareSemantic(input);
     expect(prepared.selected.map((p) => p.name)).toEqual(["pack-destructive-deletion"]);
-    // Wholesale: the builtin question ids are not in the request either.
+    // Only the pack's: no compiled-in question ids are in the request.
     expect(Object.keys(prepared.compiled.request.questions)).toContain("pack-destructive-deletion.destroys");
     expect(Object.keys(prepared.compiled.request.questions)).not.toContain("destructive-deletion.destroys");
   });

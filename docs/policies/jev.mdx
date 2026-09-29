@@ -8,7 +8,15 @@ Jev reads a tool call against what the person asked the agent to do. Use it when
 
 ## Start in observe mode
 
-Install Failproof AI and attach hooks to a [supported harness](/reference/harnesses). Use failproofai 1.0.8-beta.0 or later. Then choose how requests reach Jev:
+Install Failproof AI and attach hooks to a [supported harness](/reference/harnesses). Use failproofai 1.0.8-beta.0 or later.
+
+Failproof AI ships no Jev checks. Install them as a pack, or Jev has nothing to ask and is never called:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+Then choose how requests reach Jev:
 
 | Route | First step |
 | --- | --- |

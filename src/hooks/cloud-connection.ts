@@ -177,7 +177,7 @@ export interface JevConnectOutcome {
    * alone like any existing file (never overwritten), but a connection that
    * asked for decisions only is told that Jev still sends more than that.
    */
-  stillOn?: "shadow" | "enforce";
+  stillOn?: "observe" | "enforce";
   /**
    * Introspect gave no answer about this key's permissions — the server could
    * not be asked (`unreachable`) or predates the endpoint (`unsupported`) — so
@@ -434,13 +434,13 @@ function jevLines(outcome: ConnectOutcome): string[] {
   }
   const config = jev.config;
   if (!config || config.status === "written") {
-    // Plain http (loopback only) is accepted in shadow mode and nowhere else, so
+    // Plain http (loopback only) is accepted in observe mode and nowhere else, so
     // the enforce command would be refused there, by the CLI and the dashboard.
     const plainHttp = config?.status === "written" && new URL(config.baseUrl).protocol === "http:";
     return [
-      `  Jev       on through FailproofAI Cloud, in shadow mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
+      `  Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
       plainHttp
-        ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in shadow mode."
+        ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in observe mode."
         : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
     ];
   }
@@ -449,7 +449,7 @@ function jevLines(outcome: ConnectOutcome): string[] {
     if (config.otherOrigin) {
       lines.push(
         config.jevOff?.why === "off"
-          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here and turn it on: \`failproofai jev setup --provider failproofai --mode shadow\`.`
+          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here and turn it on: \`failproofai jev setup --provider failproofai --mode observe\`.`
           : `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
       );
     } else if (config.jevOff?.why === "refused") {
@@ -457,7 +457,7 @@ function jevLines(outcome: ConnectOutcome): string[] {
         `            It was refused (${config.jevOff.problem}), so Jev is off. ${config.jevOff.fix ? `Fix: \`${config.jevOff.fix}\`.` : "Write a valid one: `failproofai jev setup --provider failproofai`."}`,
       );
     } else if (config.jevOff?.why === "off") {
-      lines.push("            It has Jev switched off (mode off), so Jev is off. To turn it on: `failproofai jev setup --mode shadow`.");
+      lines.push("            It has Jev switched off (mode off), so Jev is off. To turn it on: `failproofai jev setup --mode observe`.");
     }
     if (jev.stillOn) {
       lines.push(

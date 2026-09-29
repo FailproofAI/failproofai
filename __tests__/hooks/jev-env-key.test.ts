@@ -101,14 +101,14 @@ describe("a config whose key comes from the environment, in a shell without it",
   });
 
   it("status --json reports a configured machine, not an invalid one", async () => {
-    await setupFromEnv("--provider", "vercel", "--mode", "shadow");
+    await setupFromEnv("--provider", "vercel", "--mode", "observe");
     const r = await runJevCommand(["status", "--json"], RENDER);
     expect(r.exitCode).toBe(0);
     const j = JSON.parse(r.json as string) as Record<string, unknown>;
     expect(j.status).toBe("key-missing");
     expect(j.reason).toBe("no-env-key");
     expect(j.provider).toBe("vercel");
-    expect(j.mode).toBe("shadow");
+    expect(j.mode).toBe("observe");
     expect(j.keySource).toBe("env");
     expect(j.keyEnvVar).toBe(JEV_API_KEY_ENV);
     expect(String(j.endpoint)).toContain("vercel");

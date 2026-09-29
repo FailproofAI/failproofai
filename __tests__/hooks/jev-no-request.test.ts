@@ -56,7 +56,7 @@ function row(overrides: Partial<HookActivityEntry> = {}): HookActivityEntry {
 }
 
 /** Exactly what the two-tier path records for a TodoWrite call: nothing to ask, no request sent. */
-const noRequest = (mode: "shadow" | "enforce" = "enforce", ts = NOW - 1_000) =>
+const noRequest = (mode: "observe" | "enforce" = "enforce", ts = NOW - 1_000) =>
   row({ timestamp: ts, toolName: "TodoWrite", evaluator: "jev", jevDecision: "allow", jevMode: mode });
 const answered = (latency: number, extra: Partial<HookActivityEntry> = {}) =>
   row({ evaluator: "jev", jevDecision: "allow", jevLatencyMs: latency, jevModel: "jev-1.13.0", jevMode: "enforce", ...extra });
@@ -66,7 +66,7 @@ const hardDeny = () => row({ decision: "deny", policyName: "block-sudo", evaluat
 describe("jevOutcome: a call Jev sent no request for", () => {
   it("classifies the recorded no-request row as no-request, not answered", () => {
     expect(jevOutcome(noRequest("enforce"))).toBe("no-request");
-    expect(jevOutcome(noRequest("shadow"))).toBe("no-request");
+    expect(jevOutcome(noRequest("observe"))).toBe("no-request");
     expect(jevOutcome({ evaluator: "jev", jevDecision: "allow" })).toBe("no-request");
     for (const r of JEV_NO_REQUEST_ROWS) expect(jevOutcome(r), r.toolName ?? "").toBe("no-request");
   });
@@ -103,7 +103,7 @@ describe("jev status stats", () => {
     expect(s.notConsulted).toBe(0);
     expect(s.fallbackRate).toBeCloseTo(0.5);
     expect(s.decisions).toEqual({ allow: 1, instruct: 0, deny: 0 });
-    expect(s.modes).toEqual({ shadow: 0, enforce: 2 });
+    expect(s.modes).toEqual({ observe: 0, enforce: 2 });
   });
 
   it("prints the no-request calls on a line of their own", () => {
@@ -124,7 +124,7 @@ describe("jev status stats", () => {
   });
 
   it("reports no evaluations when Jev never had anything to ask", () => {
-    const s = computeJevStats([noRequest(), noRequest("shadow")], { now: NOW, windowMs: 3_600_000 });
+    const s = computeJevStats([noRequest(), noRequest("observe")], { now: NOW, windowMs: 3_600_000 });
     expect(s.total).toBe(0);
     expect(s.answered).toBe(0);
     expect(s.noRequest).toBe(2);
@@ -139,7 +139,7 @@ describe("jev status stats", () => {
 
 describe("the dashboard summary", () => {
   it("says no request was sent, and claims no verdict", () => {
-    for (const mode of ["enforce", "shadow"] as const) {
+    for (const mode of ["enforce", "observe"] as const) {
       expect(describeJevActivity(noRequest(mode))).toEqual([JEV_NO_REQUEST_FACT]);
     }
   });

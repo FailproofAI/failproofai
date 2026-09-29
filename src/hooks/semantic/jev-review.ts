@@ -114,7 +114,7 @@ function servedFromCache(response: unknown): boolean {
  * `jev.json`, and the request alone does not say who answered it: two
  * providers asked for the same model build byte-identical requests. Unscoped,
  * an answer one config got — from a plain-http loopback proxy T1 allows only in
- * shadow mode, say — would clear denies under the next config in enforce mode
+ * observe mode, say — would clear denies under the next config in enforce mode
  * without that provider ever being asked. The scope is only hashed into the
  * cache key, never stored, so a URL carrying a credential is safe here.
  */
@@ -152,7 +152,7 @@ export interface JevCallContext {
 }
 
 export function resolveMode(cfg: JevConfig): JevMode {
-  return cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : DEFAULT_JEV_MODE;
+  return cfg.mode === "observe" || cfg.mode === "enforce" ? cfg.mode : DEFAULT_JEV_MODE;
 }
 
 /**
@@ -359,7 +359,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
           sessionId: call.sessionId,
           cli: call.cli,
           eventType: call.eventType,
-          applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "shadow" ? "shadow" : "two-tier",
+          applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "observe" ? "observe" : "two-tier",
         });
         appendVerdictLog(hit ? { ...row, cached: true } : row);
       }

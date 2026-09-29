@@ -6,12 +6,12 @@ import { JEV_NOT_CONSULTED_FACT } from "@/src/hooks/jev-activity";
 // Exactly what the two-tier combine rules record for a hard deny: Jev was
 // aborted and its answer never read.
 const HARD_DENY = { decision: "deny", evaluator: "jev" as const, jevMode: "enforce" as const };
-const HARD_DENY_SHADOW = { decision: "deny", evaluator: "jev" as const, jevMode: "shadow" as const };
+const HARD_DENY_OBSERVE = { decision: "deny", evaluator: "jev" as const, jevMode: "observe" as const };
 
 describe("a hard deny Jev was not consulted on", () => {
   it("gets no pill: it is an ordinary regex deny", () => {
     expect(jevPillKind(HARD_DENY)).toBeNull();
-    expect(jevPillKind(HARD_DENY_SHADOW)).toBeNull();
+    expect(jevPillKind(HARD_DENY_OBSERVE)).toBeNull();
     const { container } = render(<JevPill item={HARD_DENY} />);
     expect(container).toBeEmptyDOMElement();
   });

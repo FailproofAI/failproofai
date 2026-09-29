@@ -7,7 +7,7 @@
  * Only the rows where Jev changed or could have changed something get a pill:
  * a clear (a regex deny Jev overruled), a fallback (Jev's answer was not used —
  * unavailable, truncated or mismatched — and the regex policies decided alone),
- * and a shadow-mode row where Jev disagreed with what was enforced. A fallback
+ * and an observe-mode row where Jev disagreed with what was enforced. A fallback
  * where Jev did answer (the call was truncated to fit the envelope) and its
  * unapplied verdict was stricter than what was enforced gets a louder fallback
  * pill; the collector ships that row on its own for the same reason.
@@ -26,16 +26,16 @@ const SEVERITY: Record<string, number> = { allow: 0, instruct: 1, deny: 2 };
 /** Which pill a row gets, if any. Exported for tests. */
 export function jevPillKind(
   item: JevRow,
-): "cleared" | "would-clear" | "fallback" | "fallback-stricter" | "shadow-stricter" | null {
+): "cleared" | "would-clear" | "fallback" | "fallback-stricter" | "observe-stricter" | null {
   const e = sanitizeJevActivity(item);
   const outcome = jevOutcome(e);
   if (outcome === null || outcome === "not-consulted" || outcome === "no-request") return null;
   const jevWasStricter = () => (SEVERITY[e.jevDecision ?? "allow"] ?? 0) > (SEVERITY[item.decision ?? "allow"] ?? 0);
   if (outcome === "fallback") return e.jevDecision !== undefined && jevWasStricter() ? "fallback-stricter" : "fallback";
   const cleared = (e.jevCleared ?? []).length > 0;
-  if (e.jevMode === "shadow") {
+  if (e.jevMode === "observe") {
     if (cleared) return "would-clear";
-    return jevWasStricter() ? "shadow-stricter" : null;
+    return jevWasStricter() ? "observe-stricter" : null;
   }
   return cleared ? "cleared" : null;
 }
@@ -47,13 +47,13 @@ const PILLS = {
     className: "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400",
   },
   "would-clear": {
-    label: "jev shadow",
-    title: "Shadow mode: Jev would have cleared a block here; the regex result was enforced",
+    label: "jev observe",
+    title: "Observe mode: Jev would have cleared a block here; the regex result was enforced",
     className: "border-sky-500/30 bg-sky-500/5 text-sky-600/80 dark:text-sky-400/80",
   },
-  "shadow-stricter": {
-    label: "jev shadow",
-    title: "Shadow mode: Jev would have been stricter here; the regex result was enforced",
+  "observe-stricter": {
+    label: "jev observe",
+    title: "Observe mode: Jev would have been stricter here; the regex result was enforced",
     className: "border-sky-500/30 bg-sky-500/5 text-sky-600/80 dark:text-sky-400/80",
   },
   "fallback-stricter": {
@@ -68,7 +68,7 @@ const PILLS = {
   },
 } as const;
 
-/** Marks a row where Jev cleared, fell back, or (in shadow mode) disagreed. */
+/** Marks a row where Jev cleared, fell back, or (in observe mode) disagreed. */
 export function JevPill({ item }: { item: JevRow }) {
   const kind = jevPillKind(item);
   if (!kind) return null;

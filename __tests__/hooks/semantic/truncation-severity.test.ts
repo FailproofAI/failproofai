@@ -125,9 +125,9 @@ describe("padding a command cannot take Jev's own deny away", () => {
     });
   });
 
-  it("shadow mode is unaffected: the regex result is enforced, cut or not", async () => {
+  it("observe mode is unaffected: the regex result is enforced, cut or not", async () => {
     const { review } = await judged(bash(`${DANGEROUS} ${PADDING}`));
-    const out = combineTwoTier([], review, "shadow");
+    const out = combineTwoTier([], review, "observe");
     expect(out.final).toEqual(regexOnly([]));
     expect(out.decidedByJev).toBe(false);
   });

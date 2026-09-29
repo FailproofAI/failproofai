@@ -53,7 +53,7 @@ function row(overrides: Partial<HookActivityEntry> = {}): HookActivityEntry {
 }
 
 /** Exactly what the combine rules record for a hard deny: Jev aborted, never read. */
-const notConsulted = (mode: "shadow" | "enforce" = "enforce", ts = NOW - 1_000) =>
+const notConsulted = (mode: "observe" | "enforce" = "enforce", ts = NOW - 1_000) =>
   row({
     timestamp: ts,
     decision: "deny",
@@ -69,7 +69,7 @@ const timedOut = () => row({ evaluator: "jev-fallback", jevFallbackReason: "time
 describe("jevOutcome", () => {
   it("classifies the combine rules' not-consulted row as not consulted", () => {
     expect(jevOutcome(notConsulted("enforce"))).toBe("not-consulted");
-    expect(jevOutcome(notConsulted("shadow"))).toBe("not-consulted");
+    expect(jevOutcome(notConsulted("observe"))).toBe("not-consulted");
     expect(jevOutcome({ evaluator: "jev" })).toBe("not-consulted");
     for (const r of JEV_NOT_CONSULTED_ROWS) expect(jevOutcome(r)).toBe("not-consulted");
   });
@@ -113,7 +113,7 @@ describe("jev status stats", () => {
     expect(s.fallbackRate).toBeCloseTo(0.5);
     expect(s.answered + s.fallbacks).toBe(s.total);
     expect(s.decisions.allow + s.decisions.instruct + s.decisions.deny).toBe(s.answered);
-    expect(s.modes).toEqual({ shadow: 0, enforce: 2 });
+    expect(s.modes).toEqual({ observe: 0, enforce: 2 });
     expect(s.latencyP50Ms).toBe(40);
   });
 
@@ -131,7 +131,7 @@ describe("jev status stats", () => {
   });
 
   it("reports no evaluations when every Jev row was a hard deny", () => {
-    const s = computeJevStats([notConsulted(), notConsulted("shadow")], { now: NOW, windowMs: 3_600_000 });
+    const s = computeJevStats([notConsulted(), notConsulted("observe")], { now: NOW, windowMs: 3_600_000 });
     expect(s.total).toBe(0);
     expect(s.answered).toBe(0);
     expect(s.fallbackRate).toBe(0);
@@ -144,7 +144,7 @@ describe("jev status stats", () => {
 
 describe("the dashboard summary", () => {
   it("says Jev was not consulted, rather than an empty summary", () => {
-    for (const mode of ["enforce", "shadow"] as const) {
+    for (const mode of ["enforce", "observe"] as const) {
       expect(describeJevActivity(notConsulted(mode))).toEqual([JEV_NOT_CONSULTED_FACT]);
     }
   });

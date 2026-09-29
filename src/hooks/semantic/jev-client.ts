@@ -469,7 +469,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
       body: JSON.stringify(body),
       signal,
       // Never followed. The configured URL is the one `validateBaseUrl` checked
-      // (https, or loopback http in shadow mode only); a redirect would hand the
+      // (https, or loopback http in observe mode only); a redirect would hand the
       // answer — the thing that can clear a deny — to an origin nobody checked,
       // plain http included. No provider redirects this POST.
       redirect: "manual",

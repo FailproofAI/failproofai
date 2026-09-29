@@ -39,7 +39,7 @@ Jev is reachable through five routes. Bring a key for any one of them.
 | OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Requests are routed to zero-data-retention endpoints only, with no fallback to another provider. Reports a dated version such as `typesafe/jev-1.13-20260917`. |
 | Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Names Jev only by an alias, so the answering version is recorded as unverified. |
 | Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Needs `--account-id`. About six calls a second per key were measured before HTTP 429. |
-| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http://localhost` is accepted in shadow mode only. |
+| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http://localhost` is accepted in observe mode only. |
 
 <Warning>
 With Vercel's own bring-your-own-key feature, a failed request is silently retried with Vercel's credentials. If you need every call billed to, and seen by, your own TypeSafe account only, use TypeSafe directly.
@@ -47,10 +47,10 @@ With Vercel's own bring-your-own-key feature, a failed request is silently retri
 
 ## Set it up
 
-One command, the endpoint and the key. Start in `shadow` mode so you can inspect Jev's verdicts while the existing policies keep deciding calls:
+One command, the endpoint and the key. Start in `observe` mode so you can inspect Jev's verdicts while the existing policies keep deciding calls:
 
 ```bash
-failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
+failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
 ```
 
 ### The URL picks the provider
@@ -71,7 +71,7 @@ Three things follow from that:
 - **`--provider` still overrides the inference**, which is how you reach a proxy that speaks a provider's API from a host of your own: `--url https://jev-proxy.internal/v1 --provider typesafe`.
 - **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. The same pair is refused from `jev setup --base-url` and from the dashboard's Jev settings. (`--provider custom` is not a contradiction — it means "treat this URL as itself" — except on Cloudflare's host, whose per-account endpoint a custom route cannot reach.)
 
-`--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http://localhost` in shadow mode only.
+`--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http://localhost` in observe mode only.
 
 ### The key
 
@@ -80,29 +80,29 @@ Pipe it in with `--key-stdin`, or run the command in a terminal without it and p
 <Tabs>
   <Tab title="TypeSafe">
     ```bash
-    failproofai jev --url https://api.typesafe.ai/v1 --mode shadow --key-stdin < ~/typesafe.key
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     ```
   </Tab>
   <Tab title="OpenRouter">
     ```bash
-    failproofai jev --url https://openrouter.ai/api/v1 --mode shadow --key-stdin < ~/openrouter.key
+    failproofai jev --url https://openrouter.ai/api/v1 --mode observe --key-stdin < ~/openrouter.key
     ```
   </Tab>
   <Tab title="Vercel">
     ```bash
-    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode shadow \
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode observe \
       --key-stdin < ~/vercel-gateway.key
     ```
   </Tab>
   <Tab title="Cloudflare">
     ```bash
     failproofai jev --url https://api.cloudflare.com/client/v4 \
-      --account-id <32-hex-account-id> --mode shadow --key-stdin < ~/cloudflare.token
+      --account-id <32-hex-account-id> --mode observe --key-stdin < ~/cloudflare.token
     ```
   </Tab>
   <Tab title="Custom">
     ```bash
-    failproofai jev --url https://jev.internal.example.com/v1 --mode shadow --key-stdin < ~/jev.key
+    failproofai jev --url https://jev.internal.example.com/v1 --mode observe --key-stdin < ~/jev.key
     ```
   </Tab>
 </Tabs>
@@ -153,19 +153,19 @@ failproofai jev status --json
 
 ## Verify a real call
 
-Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect the call's Jev verdict and mode. In shadow mode, the policy result still decides the call. A clearance appears only if a reviewable policy matched and Jev cleared every named check; an ordinary read may have no policy to clear.
+Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect the call's Jev verdict and mode. In observe mode, the policy result still decides the call. A clearance appears only if a reviewable policy matched and Jev cleared every named check; an ordinary read may have no policy to clear.
 
-## Shadow mode
+## Observe mode
 
-`enforce` is the default. To watch Jev without letting it change any decision, switch to `shadow`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced.
+`enforce` is the default. To watch Jev without letting it change any decision, switch to `observe`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced. Earlier releases called this mode `shadow`; `shadow` is still accepted everywhere a mode is read (`--mode shadow`, an existing `jev.json`) and is saved as `observe`.
 
 ```bash
-failproofai jev setup --mode shadow
+failproofai jev setup --mode observe
 failproofai jev setup --mode enforce
 failproofai jev setup --mode off
 ```
 
-`off` keeps the config — the endpoint and the key — and stops asking Jev: hooks run the regex policies exactly as without a config, and `failproofai jev status` says "off (switched off)". Switch back with `--mode shadow` or `--mode enforce`.
+`off` keeps the config — the endpoint and the key — and stops asking Jev: hooks run the regex policies exactly as without a config, and `failproofai jev status` says "off (switched off)". Switch back with `--mode observe` or `--mode enforce`.
 
 Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key. So does a `--base-url` that moves requests to a different host: a stored key is only sent to the host it was given for, or to its provider's own API.
 
@@ -187,11 +187,11 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 | --- | --- |
 | `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom` — or `failproofai`, whose key comes from the FailproofAI Cloud connection instead of this file (see [Jev through FailproofAI Cloud](/reference/jev-cloud)). |
 | `apiKey` | Sent as `Authorization: Bearer <key>`. |
-| `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
+| `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: observe`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
 | `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
 | `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 3000. |
-| `mode` | `enforce` (default), `shadow`, or `off` (keep the config, run no Jev). |
+| `mode` | `enforce` (default), `observe`, or `off` (keep the config, run no Jev). `shadow`, the earlier name for `observe`, is read as `observe`. |
 
 Three rules protect it:
 
@@ -266,7 +266,7 @@ This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the r
 | `failproofai jev setup --provider <kind> --key-stdin` | Write the config from a key piped on stdin |
 | `failproofai jev setup --provider <kind>` | Same, asking for the key at a masked prompt |
 | `failproofai jev setup --key-from-env` | Store no key; read `FAILPROOFAI_JEV_API_KEY` per session |
-| `failproofai jev setup --mode shadow` | Switch mode (`enforce`, `shadow` or `off`), keeping the stored key |
+| `failproofai jev setup --mode observe` | Switch mode (`enforce`, `observe` or `off`), keeping the stored key |
 | `failproofai jev setup --model <id>` / `--base-url <url>` | Override the model or API base; `default` clears the override |
 | `failproofai jev setup --timeout-ms <n>` | Change the per-call budget |
 | `failproofai jev status [--json]` | Configuration, permissions and recent activity; never the key |

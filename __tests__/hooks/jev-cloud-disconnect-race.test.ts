@@ -75,7 +75,7 @@ const { removeCloudJevConfig } = await import("../../src/hooks/jev-cloud-connect
 const { jevConfigPath } = await import("../../src/hooks/semantic/jev-config");
 const { runDisconnectCommand } = await import("../../src/hooks/cloud-enrollment-cli");
 
-const CLOUD = { provider: "failproofai", baseUrl: "https://app.befailproof.ai/enforcement/v1/jev", mode: "shadow" };
+const CLOUD = { provider: "failproofai", baseUrl: "https://app.befailproof.ai/enforcement/v1/jev", mode: "observe" };
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const BYOK_KEY = ["ts", "byok", "0123456789abcdef"].join("-");
 const BYOK = { provider: "typesafe", apiKey: BYOK_KEY, mode: "enforce" };
@@ -192,7 +192,7 @@ describe("disconnect never deletes a BYOK jev.json", () => {
       hook.after = step;
       hook.run = () => {
         const tmp = `${jevConfigPath()}.other.tmp`;
-        realFs.writeFileSync(tmp, JSON.stringify({ ...BYOK, mode: "shadow" }), { mode: 0o600 });
+        realFs.writeFileSync(tmp, JSON.stringify({ ...BYOK, mode: "observe" }), { mode: 0o600 });
         realFs.renameSync(tmp, jevConfigPath());
       };
       disconnect();
@@ -230,7 +230,7 @@ describe("putting a BYOK jev.json back where no hard link can be made", () => {
   it("…and the copy never lands over a file written meanwhile: both kept, the original set aside", () => {
     writeAtomically(BYOK);
     const original = readFileSync(jevConfigPath(), "utf8");
-    const other = { ...BYOK, mode: "shadow" };
+    const other = { ...BYOK, mode: "observe" };
     inject.linkSync = { ...EPERM, before: () => writeAtomically(other) };
     const r = removeCloudJevConfig();
     expect(r.status).toBe("set-aside");
@@ -282,7 +282,7 @@ describe("putting a BYOK jev.json back where no hard link can be made", () => {
 
   it("…and a set-aside one too", () => {
     writeAtomically(BYOK);
-    inject.linkSync = { ...EPERM, before: () => writeAtomically({ ...BYOK, mode: "shadow" }) };
+    inject.linkSync = { ...EPERM, before: () => writeAtomically({ ...BYOK, mode: "observe" }) };
     const text = runDisconnectCommand().lines.join("\n");
     expect(text).toContain("This machine is not connected to FailproofAI Cloud.");
     expect(text).toContain("another jev.json was written in its place");

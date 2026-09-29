@@ -89,7 +89,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     if (!current.ingest) writeCredentials({ ...current, ingest: { url: `${url}/v1/events`, key } });
     return writeJevCloudCredential({ url, key });
   };
-  const cloudFile = (over: Record<string, unknown> = {}) => ({ provider: "failproofai", baseUrl: BASE, mode: "shadow", ...over });
+  const cloudFile = (over: Record<string, unknown> = {}) => ({ provider: "failproofai", baseUrl: BASE, mode: "observe", ...over });
 
   describe("the credentials.json slot", () => {
     it("round-trips at 0600, beside every other credential, and clears alone", () => {
@@ -250,7 +250,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       const r = inspectJevConfig();
       expect(r.status).toBe("key-lacks-jev");
       if (r.status !== "key-lacks-jev") return;
-      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "shadow", timeoutMs: 3000 });
+      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
       expect(r.problem).toContain("no Jev key is stored");
       expect(r.problem).not.toMatch(/not connected/);
       expect(JSON.stringify(r)).not.toContain(KEY);
@@ -285,7 +285,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(r.status).toBe("ok");
       if (r.status !== "ok") return;
       expect(r.keySource).toBe("cloud");
-      expect(r.config).toMatchObject({ provider: "failproofai", apiKey: KEY, baseUrl: BASE, mode: "shadow", timeoutMs: 3000 });
+      expect(r.config).toMatchObject({ provider: "failproofai", apiKey: KEY, baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
       expect(loadJevConfig()?.apiKey).toBe(KEY);
       // The route the transport will POST to.
       expect(jevRoute(r.config).endpoint).toBe(`${BASE}/systemone`);
@@ -363,7 +363,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
 
     it("needs a baseUrl", () => {
       connect();
-      writeJev({ provider: "failproofai", mode: "shadow" });
+      writeJev({ provider: "failproofai", mode: "observe" });
       expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
     });
 
@@ -391,7 +391,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       const r = inspectJevConfig();
       expect(r.status).toBe("not-connected");
       if (r.status !== "not-connected") return;
-      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "shadow", timeoutMs: 3000 });
+      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
       expect(r.problem).toMatch(/not connected to FailproofAI Cloud/);
       expect(r.problem).toMatch(/config --token/);
       expect(loadJevConfig()).toBeNull();
@@ -431,7 +431,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
     it("keeps plain http to localhost out of enforce mode, as for every provider", () => {
       const local = "http://localhost:8080";
       connect(local);
-      writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "shadow" }));
+      writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "observe" }));
       expect(loadJevConfig()?.baseUrl).toBe(`${local}/enforcement/v1/jev`);
       writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "enforce" }));
       expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
@@ -477,8 +477,8 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
     });
 
-    it("validates as a mode, alongside shadow and enforce, and nothing else", () => {
-      for (const mode of ["off", "shadow", "enforce"]) {
+    it("validates as a mode, alongside observe and enforce, and nothing else", () => {
+      for (const mode of ["off", "observe", "enforce"]) {
         expect(validateJevConfig({ provider: "typesafe", apiKey: KEY, mode }).ok).toBe(true);
       }
       for (const mode of ["disabled", "OFF", "", 0, false, null]) {

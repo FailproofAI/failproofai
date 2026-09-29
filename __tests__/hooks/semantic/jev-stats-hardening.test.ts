@@ -43,14 +43,14 @@ describe("computeJevStats: names that collide with Object.prototype", () => {
       [
         answered({ jevCleared: PROTO_NAMES }),
         answered({ jevCleared: PROTO_NAMES }),
-        answered({ jevMode: "shadow", jevCleared: PROTO_NAMES }),
+        answered({ jevMode: "observe", jevCleared: PROTO_NAMES }),
         answered({ jevModel: "constructor" }),
       ],
       { now: NOW },
     );
     for (const name of PROTO_NAMES) {
       expect(Object.getOwnPropertyDescriptor(s.clearsByPolicy, name)?.value, name).toBe(2);
-      expect(Object.getOwnPropertyDescriptor(s.shadowClearsByPolicy, name)?.value, name).toBe(1);
+      expect(Object.getOwnPropertyDescriptor(s.observeClearsByPolicy, name)?.value, name).toBe(1);
     }
     expect(Object.entries(s.clearsByPolicy).sort()).toEqual(PROTO_NAMES.map((n) => [n, 2]).sort());
     expect(Object.getOwnPropertyDescriptor(s.models, "constructor")?.value).toBe(1);

@@ -394,16 +394,16 @@ async fn a_jev_clear_is_never_rolled_into_an_allow_count() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_shadow_allow_jev_would_have_blocked_is_shipped_on_its_own() {
+async fn an_observe_allow_jev_would_have_blocked_is_shipped_on_its_own() {
     let (store, state, spool) = (tmpdir("shd-s"), tmpdir("shd-st"), tmpdir("shd-sp"));
-    // Shadow mode enforced the regex allow; Jev said deny. Like an observe-mode
+    // Observe mode enforced the regex allow; Jev said deny. Like an observe-mode
     // verdict, that disagreement is the measurement.
-    let shadow = jev_row(
+    let observe = jev_row(
         1785740912000,
         "allow",
-        json!({ "jevMode": "shadow", "jevDecision": "deny" }),
+        json!({ "jevMode": "observe", "jevDecision": "deny" }),
     );
-    write_rows(&store, &[shadow]);
+    write_rows(&store, &[observe]);
     run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
 
     let events = spooled(&spool);
@@ -411,7 +411,30 @@ async fn a_shadow_allow_jev_would_have_blocked_is_shipped_on_its_own() {
     let end = completed(&events);
     assert_eq!(end["outcome"], "allow");
     assert_eq!(end["jev_decision"], "deny");
-    assert_eq!(end["jev_mode"], "shadow");
+    assert_eq!(end["jev_mode"], "observe");
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_row_an_older_build_wrote_with_jev_mode_shadow_ships_as_observe() {
+    let (store, state, spool) = (tmpdir("leg-s"), tmpdir("leg-st"), tmpdir("leg-sp"));
+    // `shadow` is what `observe` was called before the rename. An older worker
+    // may still write it, and the store is never rewritten; the Cloud is sent
+    // one spelling.
+    let legacy = jev_row(
+        1785740912000,
+        "allow",
+        json!({ "jevMode": "shadow", "jevDecision": "deny" }),
+    );
+    write_rows(&store, &[legacy]);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "still notable: a pair, not an aggregate");
+    let end = completed(&events);
+    assert_eq!(end["jev_decision"], "deny");
+    assert_eq!(end["jev_mode"], "observe");
 
     cleanup(&[&store, &state, &spool]);
 }
@@ -644,7 +667,7 @@ fn every_golden_row_parses_and_maps() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn golden_rows_ship_clears_and_shadow_disagreements_individually() {
+async fn golden_rows_ship_clears_and_observe_disagreements_individually() {
     let (store, state, spool) = (tmpdir("gold-s"), tmpdir("gold-st"), tmpdir("gold-sp"));
     fs::write(store.join("current.jsonl"), golden()).unwrap();
     run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
@@ -654,7 +677,7 @@ async fn golden_rows_ship_clears_and_shadow_disagreements_individually() {
         .iter()
         .filter(|e| e["type"] == "hook_completed")
         .collect();
-    // Two denies, the enforce-mode clear and the shadow disagreement ship as
+    // Two denies, the enforce-mode clear and the observe disagreement ship as
     // pairs; only the plain regex allow rolls up.
     assert_eq!(completions.len(), 5, "{events:#?}");
     let aggs: Vec<&&Value> = completions
@@ -671,7 +694,7 @@ async fn golden_rows_ship_clears_and_shadow_disagreements_individually() {
     assert!(
         completions
             .iter()
-            .any(|e| e["jev_mode"] == "shadow" && e["jev_decision"] == "deny")
+            .any(|e| e["jev_mode"] == "observe" && e["jev_decision"] == "deny")
     );
     assert!(!spooled_text(&spool).contains("zebra"));
 
@@ -733,7 +756,7 @@ fn a_call_jev_was_not_consulted_on_claims_no_answer() {
     );
     assert_eq!(
         completed(&transform::to_events(&rows[1], 1, "local"))["jev_mode"],
-        "shadow"
+        "observe"
     );
 }
 
@@ -956,7 +979,7 @@ fn a_call_jev_sent_no_request_for_claims_no_answer() {
     );
     assert_eq!(
         completed(&transform::to_events(&rows[1], 1, "local"))["jev_mode"],
-        "shadow"
+        "observe"
     );
 }
 
@@ -1101,18 +1124,18 @@ async fn a_rollup_keeps_every_jev_outcome_and_the_regex_apart() {
 }
 
 // ---------------------------------------------------------------------------
-// Shadow-mode and fallback verdicts stricter than the outcome
+// Observe-mode and fallback verdicts stricter than the outcome
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_shadow_allow_jev_would_have_instructed_on_is_shipped_on_its_own() {
+async fn an_observe_allow_jev_would_have_instructed_on_is_shipped_on_its_own() {
     let (store, state, spool) = (tmpdir("shi-s"), tmpdir("shi-st"), tmpdir("shi-sp"));
-    let shadow = jev_row(
+    let observe = jev_row(
         1785740912000,
         "allow",
-        json!({ "jevMode": "shadow", "jevDecision": "instruct" }),
+        json!({ "jevMode": "observe", "jevDecision": "instruct" }),
     );
-    write_rows(&store, &[shadow]);
+    write_rows(&store, &[observe]);
     run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
 
     let events = spooled(&spool);
@@ -1125,7 +1148,7 @@ async fn a_shadow_allow_jev_would_have_instructed_on_is_shipped_on_its_own() {
     let end = completed(&events);
     assert_eq!(end["outcome"], "allow");
     assert_eq!(end["jev_decision"], "instruct");
-    assert_eq!(end["jev_mode"], "shadow");
+    assert_eq!(end["jev_mode"], "observe");
 
     cleanup(&[&store, &state, &spool]);
 }
@@ -1436,7 +1459,7 @@ async fn a_rollups_latency_is_the_mean_and_max_of_valid_values_only() {
 // A. A call Jev's own verdict decided (enforce) is attributed
 //    `policySource: "jev"`, which must reach the server as `policy_source` —
 //    the chart's source bucket — rather than leaving the block "unattributed".
-// B. In shadow mode, Jev's own deny / instruct is a "would have" in the row's
+// B. In observe mode, Jev's own deny / instruct is a "would have" in the row's
 //    `observed` list, which must reach the server whole in the observed
 //    payload key. Those rows are ALLOWS, so an allow roll-up would fold them
 //    into a count and the "would have" would vanish.
@@ -1476,7 +1499,7 @@ fn a_jev_decided_row_ships_attributed_to_jev() {
 }
 
 #[test]
-fn a_shadow_would_have_ships_whole_in_observed() {
+fn an_observe_would_have_ships_whole_in_observed() {
     let rows: Vec<HookRow> = policy_page_golden()
         .lines()
         .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
@@ -1495,7 +1518,7 @@ fn a_shadow_would_have_ships_whole_in_observed() {
             end.get("policy_source").is_none(),
             "nothing decided: {end:#}"
         );
-        assert_eq!(end["jev_mode"], "shadow");
+        assert_eq!(end["jev_mode"], "observe");
         let observed = end[OBSERVED_KEY]
             .as_array()
             .expect("observed ships as an array");

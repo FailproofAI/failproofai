@@ -110,8 +110,8 @@ describe("what it says about the machine", () => {
     expect(screen.getByRole("button", { name: /turn jev on/i })).toBeInTheDocument();
   });
 
-  it("distinguishes enforce from shadow, because they are different guarantees", async () => {
-    renderPanel(configured({ mode: "shadow" }));
+  it("distinguishes enforce from observe, because they are different guarantees", async () => {
+    renderPanel(configured({ mode: "observe" }));
     expect(screen.getByText(/the regex result is what gets enforced/i)).toBeInTheDocument();
     cleanup();
     renderPanel(configured({ mode: "enforce" }));
@@ -267,13 +267,13 @@ describe("the token field is write-only", () => {
   });
 
   it("sends a blank token when nothing was typed, which the server reads as keep", async () => {
-    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "shadow" }) });
+    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "observe" }) });
     renderPanel(configured());
-    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "shadow" } });
+    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "observe" } });
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
     expect(saveMock).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "typesafe", mode: "shadow", token: "" }),
+      expect.objectContaining({ provider: "typesafe", mode: "observe", token: "" }),
     );
   });
 
@@ -293,9 +293,9 @@ describe("the token field is write-only", () => {
 
 describe("the form", () => {
   it("sends no model at all, so a save cannot clear the stored one", async () => {
-    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "shadow" }) });
+    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "observe" }) });
     renderPanel(configured({ model: { kind: "id", id: "typesafe/jev-1.13" } }));
-    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "shadow" } });
+    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "observe" } });
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
     // Not "sends an empty model": an empty string is what the server used to
@@ -419,7 +419,7 @@ function cloudView(over: Partial<JevSettingsView> = {}): JevSettingsView {
     baseUrl: "https://app.befailproof.ai/enforcement/v1/jev",
     endpoint: "https://app.befailproof.ai/enforcement/v1/jev/systemone",
     token: { source: "cloud" },
-    mode: "shadow",
+    mode: "observe",
     timeoutMs: 3000,
     cloud: CONNECTED,
     ...over,
@@ -455,21 +455,21 @@ describe("the FailproofAI Cloud route", () => {
     expect(screen.getByRole("button", { name: /turn jev on/i })).toBeInTheDocument();
   });
 
-  it("switches back on in shadow mode", async () => {
+  it("switches back on in observe mode", async () => {
     modeMock.mockResolvedValue({ ok: true, view: cloudView() });
     renderPanel(cloudView({ status: "off", on: false, mode: "off" }));
     // Nothing to pick while it is off.
     expect(screen.getByLabelText(/^mode$/i)).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /turn jev on/i }));
-    await waitFor(() => expect(modeMock).toHaveBeenCalledWith("shadow"));
+    await waitFor(() => expect(modeMock).toHaveBeenCalledWith("observe"));
   });
 
-  it("switches shadow to enforce with the mode control, and says a refusal", async () => {
-    modeMock.mockResolvedValue({ ok: false, problem: "plain http is accepted only with mode shadow" });
+  it("switches observe to enforce with the mode control, and says a refusal", async () => {
+    modeMock.mockResolvedValue({ ok: false, problem: "plain http is accepted only with mode observe" });
     renderPanel(cloudView());
     fireEvent.change(screen.getByLabelText(/^mode$/i), { target: { value: "enforce" } });
     await waitFor(() => expect(modeMock).toHaveBeenCalledWith("enforce"));
-    await waitFor(() => expect(screen.getByText(/plain http is accepted only with mode shadow/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/plain http is accepted only with mode observe/)).toBeInTheDocument());
   });
 
   it("not connected: says so, and what fixes it", async () => {

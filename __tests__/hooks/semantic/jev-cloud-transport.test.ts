@@ -119,12 +119,12 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  /** The config the loader produces for a connected machine (plain http to loopback: shadow only). */
+  /** The config the loader produces for a connected machine (plain http to loopback: observe only). */
   const cloud = (): JevConfig => ({
     provider: "failproofai",
     apiKey: KEY,
     baseUrl: `http://127.0.0.1:${port}/enforcement/v1/jev`,
-    mode: "shadow",
+    mode: "observe",
     timeoutMs: 3000,
     // The loader records the origin of the credential it validated against.
     credentialOrigin: `http://127.0.0.1:${port}`,
@@ -341,7 +341,7 @@ describe("the FailproofAI Cloud route, over a real socket", () => {
     });
 
     it("a BYOK route's 429 is exactly what it was: no cool-down", async () => {
-      const byok: JevConfig = { provider: "custom", apiKey: KEY, baseUrl: `http://127.0.0.1:${port}/v1`, mode: "shadow", timeoutMs: 3000 };
+      const byok: JevConfig = { provider: "custom", apiKey: KEY, baseUrl: `http://127.0.0.1:${port}/v1`, mode: "observe", timeoutMs: 3000 };
       const sendByok = () => transportForConfig(byok).transport(request, AbortSignal.timeout(5_000));
       reply = () => rateLimited("30");
       expect((await failure(sendByok())).code).toBe("http-429");

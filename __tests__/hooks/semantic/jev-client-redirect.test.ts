@@ -64,7 +64,7 @@ describe("the Jev client never follows a redirect", () => {
     b.close();
   });
 
-  const custom = (): JevConfig => ({ provider: "custom", apiKey: KEY, baseUrl: `http://localhost:${aPort}/v1`, mode: "shadow" });
+  const custom = (): JevConfig => ({ provider: "custom", apiKey: KEY, baseUrl: `http://localhost:${aPort}/v1`, mode: "observe" });
 
   it.each([307, 308, 302, 301, 303])("HTTP %s from the configured endpoint is an error, and the target is never contacted", async (s) => {
     status = s;
@@ -76,7 +76,7 @@ describe("the Jev client never follows a redirect", () => {
 
   it("the endpoint that does answer directly still works", async () => {
     hitsB.length = 0;
-    const cfg: JevConfig = { provider: "custom", apiKey: KEY, baseUrl: `http://127.0.0.1:${bPort}/v1`, mode: "shadow" };
+    const cfg: JevConfig = { provider: "custom", apiKey: KEY, baseUrl: `http://127.0.0.1:${bPort}/v1`, mode: "observe" };
     const res = await transportForConfig(cfg).transport(request, AbortSignal.timeout(5_000));
     expect(res.answers.a.noul).toBe(0.99);
     expect(hitsB).toHaveLength(1);

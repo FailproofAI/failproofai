@@ -11,18 +11,24 @@ describe("jevPillKind", () => {
     expect(jevPillKind({ decision: "allow", evaluator: "jev", jevDecision: "allow", jevCleared: [], jevMode: "enforce" })).toBeNull();
   });
 
-  it("marks a clear, a fallback and a shadow disagreement", () => {
+  it("marks a clear, a fallback and an observe disagreement", () => {
     expect(jevPillKind({ decision: "allow", evaluator: "jev", jevCleared: ["block-env-files"], jevMode: "enforce" })).toBe(
       "cleared",
     );
     expect(jevPillKind({ decision: "deny", evaluator: "jev-fallback", jevFallbackReason: "timeout" })).toBe("fallback");
     expect(
-      jevPillKind({ decision: "deny", evaluator: "jev", jevCleared: ["block-env-files"], jevMode: "shadow" }),
+      jevPillKind({ decision: "deny", evaluator: "jev", jevCleared: ["block-env-files"], jevMode: "observe" }),
     ).toBe("would-clear");
-    expect(jevPillKind({ decision: "allow", evaluator: "jev", jevDecision: "deny", jevMode: "shadow" })).toBe(
-      "shadow-stricter",
+    expect(jevPillKind({ decision: "allow", evaluator: "jev", jevDecision: "deny", jevMode: "observe" })).toBe(
+      "observe-stricter",
     );
-    expect(jevPillKind({ decision: "deny", evaluator: "jev", jevDecision: "deny", jevMode: "shadow" })).toBeNull();
+    expect(jevPillKind({ decision: "deny", evaluator: "jev", jevDecision: "deny", jevMode: "observe" })).toBeNull();
+  });
+
+  it("reads a row an older build wrote with jevMode `shadow` as observe", () => {
+    const legacy = "shadow" as never;
+    expect(jevPillKind({ decision: "deny", evaluator: "jev", jevCleared: ["block-env-files"], jevMode: legacy })).toBe("would-clear");
+    expect(jevPillKind({ decision: "allow", evaluator: "jev", jevDecision: "deny", jevMode: legacy })).toBe("observe-stricter");
   });
 });
 

@@ -10,6 +10,10 @@
 
 - Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support (#872)
 
+### Dependencies
+
+- Python SDK dev lockfile: oauthlib 3.3.1 → 4.0.0 and pyjwt 2.13.0 → 2.15.1, clearing three OSV advisories (#872)
+
 ## 1.0.9 — 2026-09-29
 
 Action needed if you use Jev: its log-only mode is now `observe`, a `jev.json` still set to `shadow` is refused (Jev stays off until `failproofai jev setup` is run again), and Jev's checks now come only from `failproofai policies add FailproofAI/jev-policies`. For Hermes, `failproofai update` moves every profile from the old shell hooks (never run for cron jobs) to the native plugin, and every agent config failproofai edits is written crash-safely with a `.failproofai-backup`. Collects 1.0.9-beta.0 to beta.2 below.

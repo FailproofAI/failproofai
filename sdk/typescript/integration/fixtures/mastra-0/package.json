@@ -19,6 +19,7 @@
     "@opentelemetry/propagator-jaeger": "2.11.0",
     "@opentelemetry/sdk-node": "0.222.0",
     "@opentelemetry/exporter-prometheus": "0.222.0",
-    "@opentelemetry/auto-instrumentations-node": "0.80.0"
+    "@opentelemetry/auto-instrumentations-node": "0.80.0",
+    "@ai-sdk/provider-utils@3": "3.0.28"
   }
 }

@@ -186,7 +186,7 @@ export const JEV_USAGE = [
   "Usage:",
   "  failproofai jev --url <url> [--key-stdin | --token <token>] [options]",
   "  failproofai jev setup --provider <kind> [--key-stdin | --key-from-env] [options]",
-  "  failproofai jev setup --provider failproofai [--mode off|shadow|enforce]   (FailproofAI Cloud: no key, no URL)",
+  "  failproofai jev setup --provider failproofai [--mode off|observe|enforce]   (FailproofAI Cloud: no key, no URL)",
   "  failproofai jev status [--json]",
   "  failproofai jev test [--json]",
   "  failproofai jev models [--provider <kind>] [--url <base>] [--json]",
@@ -269,7 +269,7 @@ function modeLine(mode: NonNullable<JevConfig["mode"]>): string {
   if (mode === "off") return "off — Jev is not asked at all; the regex policies decide alone";
   return mode === "enforce"
     ? "enforce — Jev's verdicts apply: it may clear a reviewable policy's deny and add its own"
-    : "shadow — Jev is asked and logged; the regex result is what is enforced";
+    : "observe — Jev is asked and logged; the regex result is what is enforced";
 }
 
 /**
@@ -458,12 +458,11 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
       .join(", ");
   const clears = byPolicy(stats.clearsByPolicy);
   // `clearsByPolicy` counts clears that CHANGED an outcome, which only enforce
-  // mode can do; in shadow mode every clear Jev would have made is in
-  // `shadowClearsByPolicy` instead and this one is empty. Printing the first
-  // alone would tell a shadow user "cleared nothing" — the one number they
-  // turned shadow mode on to watch. The field is optional because the stats
-  // module T1 builds against does not have it yet (T8 adds it).
-  const shadowClears = byPolicy((stats as { shadowClearsByPolicy?: Record<string, number> }).shadowClearsByPolicy);
+  // mode can do; in observe mode every clear Jev would have made is in
+  // `observeClearsByPolicy` instead and this one is empty. Printing the first
+  // alone would tell an observe-mode user "cleared nothing" — the one number
+  // they turned observe mode on to watch.
+  const observeClears = byPolicy(stats.observeClearsByPolicy);
   const ms = (v: number | null) => (v === null ? "—" : `${Math.round(v)} ms`);
   return stack(
     heading,
@@ -473,7 +472,7 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
         ["fell back to regex", `${pct(stats.fallbackRate)}${reasons ? ` (${reasons})` : ""}`],
         ["latency", `p50 ${ms(stats.latencyP50Ms)} · p95 ${ms(stats.latencyP95Ms)}`],
         ["cleared", clears || "nothing"],
-        ...(shadowClears ? ([["would have cleared (shadow)", shadowClears]] as Array<[string, string]>) : []),
+        ...(observeClears ? ([["would have cleared (observe)", observeClears]] as Array<[string, string]>) : []),
       ],
       opts,
     ),
@@ -1206,11 +1205,10 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
   delete next.apiKey;
   delete next.accountId;
   if (!sameProvider && existing?.raw.timeoutMs !== undefined) next.timeoutMs = existing.raw.timeoutMs;
-  // Shadow unless told otherwise, as `config --token` starts it: Jev on a new
+  // Observe unless told otherwise, as `config --token` starts it: Jev on a new
   // route is logged before it is allowed to clear anything. A mode already in a
   // Cloud file is kept.
-  const mode = values.get("--mode") ?? (sameProvider && typeof next.mode === "string" ? next.mode : "shadow");
-  next.mode = mode;
+  next.mode = values.get("--mode") ?? (sameProvider && typeof next.mode === "string" ? next.mode : "observe");
   if (values.has("--timeout-ms")) {
     const rawTimeout = values.get("--timeout-ms") as string;
     const n = Number(rawTimeout);
@@ -1247,7 +1245,7 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
           ]
         : [
             "Not saved: this machine is not connected to FailproofAI Cloud with a key that carries jev:evaluate.",
-            "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in shadow mode, when there is no jev.json yet:",
+            "Connect it with one that does (the \"machine\" preset) — that also turns Jev on, in observe mode, when there is no jev.json yet:",
           ]),
       "  failproofai config --token <key>",
       "",
@@ -1332,7 +1330,7 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
 /**
  * Where a file would send requests, for display, whether or not it loads. Only
  * the routing fields are used — the key and model do not decide where requests
- * go — and shadow mode lets a loopback http URL through validation. Null when
+ * go — and observe mode lets a loopback http URL through validation. Null when
  * it names nothing recognisable.
  */
 /**
@@ -1366,7 +1364,7 @@ function displayOnlyCloudOrigin(routing: { provider?: unknown; baseUrl?: unknown
 
 function namedEndpoint(raw: Record<string, unknown> | null): string | null {
   if (!raw || typeof raw.provider !== "string" || !(JEV_PROVIDER_KINDS as readonly string[]).includes(raw.provider)) return null;
-  const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "shadow", ...displayOnlyCloudOrigin(raw) };
+  const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "observe", ...displayOnlyCloudOrigin(raw) };
   if (raw.baseUrl !== undefined) routing.baseUrl = raw.baseUrl;
   if (raw.accountId !== undefined) routing.accountId = raw.accountId;
   try {
@@ -1499,6 +1497,8 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
                 enabled: coverage.enabled,
                 reviewable: coverage.reviewable,
                 customPolicyFiles: coverage.customFiles,
+                // Checks an installed pack gives Jev to ask; 0 means Jev is inert.
+                jevChecks: coverage.jevChecks,
                 problem: coverageProblem,
               },
             }
@@ -1599,7 +1599,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
           ],
           opts,
         ),
-        nextStep("failproofai jev setup --mode shadow", "Switch it back on (shadow logs Jev and keeps enforcing regex; enforce lets it clear), here or from the dashboard:", opts),
+        nextStep("failproofai jev setup --mode observe", "Switch it back on (observe logs Jev and keeps enforcing regex; enforce lets it clear), here or from the dashboard:", opts),
         legacyNote,
         jevStatsLines(stats, opts),
       ),
@@ -1786,7 +1786,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
       : inspection.status === "key-missing"
         ? "failproofai jev setup --key-stdin < key-file"
         : inspection.status === "off"
-          ? "failproofai jev setup --mode shadow"
+          ? "failproofai jev setup --mode observe"
           : inspection.status === "not-connected" || inspection.status === "key-lacks-jev"
             ? "failproofai config --token <key>"
             : "failproofai jev setup --provider <kind> --key-stdin";

@@ -55,7 +55,7 @@
  * The one provider whose key is NOT in this file. `failproofai config --token`
  * with a key carrying `jev:evaluate` stores that key in the `jev` slot of
  * `credentials.json` and, when there is no `jev.json` yet, writes one naming
- * this provider, the Cloud origin + `/enforcement/v1/jev` and `mode: "shadow"`.
+ * this provider, the Cloud origin + `/enforcement/v1/jev` and `mode: "observe"`.
  * So for this provider:
  *
  * - the key comes from `credentials.json` (`readJevCloudCredential`), read with
@@ -80,7 +80,7 @@
  *
  * # `mode: "off"`
  *
- * Every provider accepts `off | shadow | enforce`. `off` keeps the file — the
+ * Every provider accepts `off | observe | enforce`. `off` keeps the file — the
  * endpoint, and for BYOK the key — while Jev does not run at all:
  * `loadJevConfig` returns null exactly as for an absent file. It exists so the
  * dashboard can switch the Cloud route off without deleting the file that
@@ -96,8 +96,16 @@ export type { JevCloudCredential } from "../fp-config";
 
 export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare" | "custom" | "failproofai";
 
-/** `off` does not run Jev at all; `shadow` logs Jev and enforces regex; `enforce` applies the combine rules. */
-export type JevConfigMode = "off" | "shadow" | "enforce";
+/** `off` does not run Jev at all; `observe` logs Jev and enforces regex; `enforce` applies the combine rules. */
+export type JevConfigMode = "off" | "observe" | "enforce";
+
+/**
+ * A mode as read from a file, a flag or a request: `off`, `observe` or
+ * `enforce`. Null for anything else.
+ */
+export function parseJevMode(raw: unknown): JevConfigMode | null {
+  return raw === "off" || raw === "observe" || raw === "enforce" ? raw : null;
+}
 
 export interface JevConfig {
   provider: JevProviderKind;
@@ -130,7 +138,7 @@ export interface JevConfig {
   credentialOrigin?: string;
 }
 
-export const DEFAULT_JEV_MODE: "shadow" | "enforce" = "enforce";
+export const DEFAULT_JEV_MODE: "observe" | "enforce" = "enforce";
 
 export const JEV_PROVIDER_KINDS: readonly JevProviderKind[] = ["typesafe", "openrouter", "vercel", "cloudflare", "custom", "failproofai"];
 
@@ -311,7 +319,7 @@ function credentialQueryProblem(url: URL): string | null {
  * No credentials in the URL — not as userinfo, not as a query parameter — and no
  * fragment, because a key belongs in the key field, where it is sent as a bearer
  * and never printed. `validateJevConfig` further accepts the loopback http form
- * only in shadow mode.
+ * only in observe mode.
  */
 export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string" || raw.trim() === "") return { ok: false, problem: "baseUrl must be a non-empty string" };
@@ -667,25 +675,26 @@ export function validateJevConfig(
   }
 
   if (o.mode !== undefined) {
-    if (o.mode !== "off" && o.mode !== "shadow" && o.mode !== "enforce") return { ok: false, problem: 'mode must be "off", "shadow" or "enforce"' };
-    cfg.mode = o.mode;
+    const mode = parseJevMode(o.mode);
+    if (mode === null) return { ok: false, problem: 'mode must be "off", "observe" or "enforce"' };
+    cfg.mode = mode;
   }
 
   // Plain http reaches only a loopback host (`validateBaseUrl`), and nothing
   // authenticates the server there: while the local proxy is down, any process
   // of this user — the agent being judged included — can bind its port and
   // answer "none" to every question. In enforce mode that answer clears
-  // reviewable denies; in shadow mode it changes nothing, and `off` sends
+  // reviewable denies; in observe mode it changes nothing, and `off` sends
   // nothing at all, so enforce is the one mode it is refused in.
   if (cfg.baseUrl !== undefined && isPlainHttp(cfg.baseUrl) && cfg.mode === "enforce") {
     return {
       ok: false,
       problem:
-        "plain http (to localhost) is accepted only with mode shadow: in enforce mode Jev's answers can clear a deny, " +
+        "plain http (to localhost) is accepted only with mode observe: in enforce mode Jev's answers can clear a deny, " +
         "and while the local proxy is down any process on this machine could take its port and answer. " +
         (cfg.provider === JEV_CLOUD_PROVIDER
-          ? "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or keep mode shadow"
-          : "Use https, or mode shadow"),
+          ? "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or keep mode observe"
+          : "Use https, or mode observe"),
     };
   }
 

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The collector's golden rows for the policy page's Jev data (contract §5):
- * a Jev-decided enforce row attributed `policySource: "jev"`, and shadow rows
+ * a Jev-decided enforce row attributed `policySource: "jev"`, and observe rows
  * whose `observed` list carries Jev's "would have".
  *
  * `crates/fpai-collect/tests/hooks_jev.rs` reads the golden file this test
@@ -42,7 +42,7 @@ describe("the collector's policy-page golden rows", () => {
     for (const row of [wouldDeny, wouldWarn]) {
       expect(row.decision).toBe("allow");
       expect(row.policySource).toBeUndefined();
-      expect(row.jevMode).toBe("shadow");
+      expect(row.jevMode).toBe("observe");
       expect(row.observed).toHaveLength(1);
       const [o] = row.observed!;
       expect(o.policyId).toMatch(/^semantic\/[a-z0-9-]+$/);

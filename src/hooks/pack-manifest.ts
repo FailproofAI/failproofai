@@ -152,8 +152,8 @@ export interface InstalledPackRecord {
    *
    * `unknown` like `policies`, and optional like it is not: a pack published
    * before this field existed carries none, and every one of them must keep
-   * parsing. A pack that declares at least one REPLACES the compiled-in
-   * semantic set wholesale — see `semantic/pack-policies.ts`.
+   * parsing. The package ships no Jev checks, so these are the only ones a
+   * machine asks — see `semantic/pack-policies.ts`.
    */
   semantic?: unknown;
   /**
@@ -334,6 +334,29 @@ export function hasInstalledPacks(): boolean {
   try {
     const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
     return Array.isArray(raw.packs) && raw.packs.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether an installed pack carries regex policies — the question the
+ * migration shim and `policies add <name>` actually mean to ask.
+ *
+ * `hasInstalledPacks` is the wrong question for them since the package stopped
+ * shipping Jev's checks: `FailproofAI/jev-policies` is now the normal way to
+ * turn Jev on, and it carries no regex policies. Counting it as "a pack is
+ * installed" switched off a legacy machine's `enabledPolicies` and sent a later
+ * `policies add block-rm-rf` to a pack that cannot enable it — both silently.
+ */
+export function hasInstalledRegexPacks(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
+    if (!Array.isArray(raw.packs)) return false;
+    return raw.packs.some(
+      (p) => !!p && typeof p === "object" && Array.isArray((p as { policies?: unknown }).policies)
+        && ((p as { policies: unknown[] }).policies.length > 0),
+    );
   } catch {
     return false;
   }

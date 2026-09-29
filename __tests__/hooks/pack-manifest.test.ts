@@ -194,6 +194,42 @@ describe("readInstalledPacks", () => {
 // showed up later as a deny narrowed to the letters of that string — a guard
 // matching no event that exists. Refused here, where the publisher can still
 // fix it, rather than surviving on disk as metadata nothing can read.
+describe("hasInstalledRegexPacks — a Jev-only pack is not a regex pack", () => {
+  async function regexPacks() {
+    const mod = await import("../../src/hooks/pack-manifest");
+    return { regex: mod.hasInstalledRegexPacks(), any: mod.hasInstalledPacks() };
+  }
+
+  it("is false with no manifest at all", async () => {
+    expect(await regexPacks()).toEqual({ regex: false, any: false });
+  });
+
+  it("is true for a pack that carries regex policies", async () => {
+    writeManifest([pack()]);
+    expect(await regexPacks()).toEqual({ regex: true, any: true });
+  });
+
+  it("is false for a semantic-only pack like FailproofAI/jev-policies", async () => {
+    // The shim and `policies add <name>` must not treat this as "a pack now
+    // enforces the regex policies": it enforces none of them.
+    writeManifest([pack({ id: "FailproofAI/jev-policies", policies: [], semantic: [{ name: "destructive-deletion" }] })]);
+    expect(await regexPacks()).toEqual({ regex: false, any: true });
+  });
+
+  it("is true once a regex pack sits beside the Jev-only one", async () => {
+    writeManifest([
+      pack({ id: "FailproofAI/jev-policies", policies: [], semantic: [{ name: "destructive-deletion" }] }),
+      pack({ id: "FailproofAI/policies" }),
+    ]);
+    expect(await regexPacks()).toEqual({ regex: true, any: true });
+  });
+
+  it("is false for a malformed manifest rather than throwing", async () => {
+    writeFileSync(join(root, "installed.json"), "{not json");
+    expect(await regexPacks()).toEqual({ regex: false, any: false });
+  });
+});
+
 describe("parsePackPolicy — the shape of a match, not just its presence", () => {
   const good = {
     name: "block-refunds",

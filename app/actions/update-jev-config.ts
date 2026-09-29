@@ -10,7 +10,7 @@
  * `writeJsonAtomically` the CLI's `jev setup` calls, with the same
  * `{ mode: 0o600, dirMode: 0o700 }`, after the same `validateJevConfig` the
  * loader itself runs. Nothing here re-states a rule that lives in
- * `jev-config.ts`: not the URL scheme, not "plain http only in shadow mode",
+ * `jev-config.ts`: not the URL scheme, not "plain http only in observe mode",
  * not "cloudflare needs an account id". A second copy of those rules is how the
  * dashboard ends up writing a file the hooks then refuse — the exact failure
  * mode this module exists to avoid.
@@ -112,6 +112,7 @@ import {
   baseUrlWithoutQuery,
   endpointGivenAsBase,
   jevConfigPath,
+  parseJevMode,
   providerHostConflict,
   readJevConfigFileForUpdate,
   validateApiKey,
@@ -134,7 +135,7 @@ export interface JevConfigInput {
   baseUrl: string;
   /** Cloudflare only. */
   accountId: string;
-  /** "off" | "shadow" | "enforce". */
+  /** "off" | "observe" | "enforce". */
   mode: string;
   /** "" keeps the key where it is: the stored one, or the environment's. */
   token: string;
@@ -303,8 +304,9 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 
   // Refused, as `setJevModeAction` and `jev setup --mode` refuse it — not
   // skipped, which kept the old mode or wrote none (and none loads as enforce).
-  if (input.mode !== "off" && input.mode !== "shadow" && input.mode !== "enforce") {
-    return { ok: false, problem: 'mode must be "off", "shadow" or "enforce".' };
+  const mode = parseJevMode(input.mode);
+  if (mode === null) {
+    return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }
 
   const baseUrl = input.baseUrl.trim();
@@ -370,7 +372,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     delete next.accountId;
   }
 
-  next.mode = input.mode;
+  next.mode = mode;
 
   // Where the key may travel. Unchanged provider AND unchanged origin, from a
   // file only its owner could have written — anything else asks again.
@@ -459,7 +461,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 }
 
 /**
- * Switch Jev's mode — `off`, `shadow` or `enforce` — and change NOTHING else.
+ * Switch Jev's mode — `off`, `observe` or `enforce` — and change NOTHING else.
  *
  * This is the on/off switch for FailproofAI Cloud's Jev, whose `jev.json` the
  * page must not delete: its endpoint and key are not this page's to re-enter,
@@ -480,11 +482,12 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
  * the endpoint it names, and re-saving it at 0600 would start trusting that
  * endpoint. Jev is already off for such a file; the page shows why and how.
  */
-export async function setJevModeAction(mode: string): Promise<JevWriteResult> {
+export async function setJevModeAction(requested: string): Promise<JevWriteResult> {
   const refusal = await crossOriginRefusal();
   if (refusal) return { ok: false, problem: refusal };
-  if (mode !== "off" && mode !== "shadow" && mode !== "enforce") {
-    return { ok: false, problem: 'mode must be "off", "shadow" or "enforce".' };
+  const mode = parseJevMode(requested);
+  if (mode === null) {
+    return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }
 
   const existingFile = readJevConfigFileForUpdate();

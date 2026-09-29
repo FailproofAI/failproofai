@@ -965,7 +965,7 @@ async function runCli() {
               "",
               "FailproofAI Cloud needs no setup here: `failproofai config --token",
               "<key>` with a key that carries jev:evaluate (the \"machine\" preset)",
-              "turns it on in shadow mode when there is no jev.json yet — except",
+              "turns it on in observe mode when there is no jev.json yet — except",
               "with --no-transcripts, which only stores the key; then",
               "`failproofai jev setup --provider failproofai` switches it on. Its",
               "key stays in credentials.json; no --url ever selects it.",
@@ -982,7 +982,7 @@ async function runCli() {
               ["--account-id <id>", "Cloudflare account id (32 hex characters)."],
               ["--base-url <url>", "Override the API base; `default` clears it."],
               ["--model <id>", "Override the model id; `default` clears it."],
-              ["--mode <m>", "enforce (default), shadow (log Jev, enforce regex), or off."],
+              ["--mode <m>", "enforce (default), observe (log Jev, enforce regex), or off."],
               ["--timeout-ms <n>", "Per-call budget before falling back. Default 3000."],
             ],
           },
@@ -993,7 +993,7 @@ async function runCli() {
               "  else can read — or one in a directory anyone else can WRITE, who",
               "  could replace it — is refused; a repository can never set it.",
               "• Re-running setup for the same provider keeps the key, so",
-              "  `failproofai jev setup --mode shadow` just switches the mode.",
+              "  `failproofai jev setup --mode observe` just switches the mode.",
               "• The daemon does not see your shell's environment: keep the key in",
               "  the file on a machine set up with `failproofai config`.",
               "• --token is the fast path, not the safe one: your shell history keeps",
@@ -1007,7 +1007,7 @@ async function runCli() {
               "failproofai jev --url https://openrouter.ai/api/v1 --token <token>",
               "failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key",
               "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
-              "failproofai config --token <key>          (FailproofAI Cloud, shadow mode)",
+              "failproofai config --token <key>          (FailproofAI Cloud, observe mode)",
               "failproofai jev setup --mode enforce      (switch the configured route's mode)",
               "failproofai jev setup --mode off          (keep the config, stop asking Jev)",
               "failproofai jev test",
@@ -1180,6 +1180,9 @@ async function runCli() {
               "",
               "This does the rest of the upgrade: runs any pending layout migrations,",
               "puts the matching daemon binary in place, and restarts the service.",
+              "Hermes profiles already using failproofai are moved to the linked",
+              "native plugin (legacy shell hooks never checked Hermes cron jobs).",
+              "Exits non-zero when any half could not be brought current.",
             ],
           },
           {
@@ -1270,17 +1273,40 @@ async function runCli() {
       }
     }
 
+    // Hermes is migrated AFTER the daemon, and gated on what the daemon that is
+    // now running can do: the native plugin needs `policyEvaluation`, which
+    // ≤1.0.5 daemons lack, so when the swap above could not happen (a sudo
+    // system service with no sudo) the shell hooks stay and this fails loudly.
+    let hermesOk = true;
+    let hermesMigrated = 0;
+    try {
+      const { runHermesUpdateMigration } = await import("../src/hooks/hermes-update");
+      const svc = await import("../src/hooks/daemon-service");
+      const hermesResult = await runHermesUpdateMigration({
+        daemonSupportsPolicyEvaluation: () => svc.probeDaemonPolicyEvaluation(),
+      });
+      if (hermesResult.lines.length > 0) report.push("", ...hermesResult.lines);
+      hermesOk = hermesResult.ok;
+      hermesMigrated = hermesResult.profiles.filter((p) => p.status === "migrated").length;
+    } catch (err) {
+      report.push("", `Hermes migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      hermesOk = false;
+    }
+
+    const updateOk = daemonOk && !migrationFailed && hermesOk;
     await printReport("update", report, {
-      ok: daemonOk && !migrationFailed,
+      ok: updateOk,
       meta: `v${version}`,
     });
     await track("cli_update", {
-      ok: daemonOk && !migrationFailed,
+      ok: updateOk,
       migrations: migrationsRan,
       migration_failed: migrationFailed,
+      hermes_ok: hermesOk,
+      hermes_migrated: hermesMigrated,
     });
     lastSubcommand = null;
-    await exitAfterFlush(daemonOk && !migrationFailed ? 0 : 1);
+    await exitAfterFlush(updateOk ? 0 : 1);
     return;
   }
 

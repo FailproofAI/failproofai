@@ -29,8 +29,9 @@ import {
   contestedSemanticNames,
   effectiveReviewerNames,
   forgetEffectiveReviewerNames,
+  jevChecksDeclared,
+  jevChecksInstalled,
 } from "@/src/hooks/effective-reviewers";
-import { SEMANTIC_REVIEWER_NAMES } from "@/src/hooks/policy-authority";
 import { missingGuards } from "@/src/hooks/pack-failclosed";
 import { PACK_PRECONDITION_NAMES } from "@/src/hooks/semantic/precondition-names";
 import { version as packageVersion } from "../../package.json";
@@ -444,15 +445,24 @@ describe("readInstalledPacks with semantic entries", () => {
 });
 
 describe("effectiveReviewerNames", () => {
-  it("is this build's set when no pack is installed", () => {
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+  it("is empty when no pack is installed — the package ships no Jev checks", () => {
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksInstalled()).toBe(false);
   });
 
-  it("is this build's set when the installed packs declare no semantic entries", () => {
-    // A pack that carries only the regex floor leaves the compiled-in semantic
-    // set running, so its reviewer names are the live ones.
+  it("is empty when the installed packs declare no semantic entries", () => {
+    // A pack that carries only the regex floor gives Jev nothing to ask, so its
+    // `reviewedBy` names nothing that can be answered.
     writeManifest([record()]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksInstalled()).toBe(false);
+    expect(jevChecksDeclared()).toBe(false);
+  });
+
+  it("is empty, never a compiled-in set, when the manifest is unreadable", () => {
+    writeFileSync(join(root, "installed.json"), "{ not json");
+    expect(effectiveReviewerNames().size).toBe(0);
+    expect(jevChecksDeclared()).toBe(false);
   });
 
   it("is the pack's names once a FailproofAI pack declares any", () => {
@@ -464,14 +474,16 @@ describe("effectiveReviewerNames", () => {
     expect(names.has("destructive-deletion")).toBe(false);
   });
 
-  it("adds a third-party pack's names to this build's set", () => {
+  it("is a third-party pack's names alone, with nothing compiled in beside them", () => {
     writeManifest([record({ semantic: [entry({ name: "pack-only-check" })] })]);
-    expect([...effectiveReviewerNames()]).toEqual([...SEMANTIC_REVIEWER_NAMES, "pack-only-check"]);
+    expect([...effectiveReviewerNames()]).toEqual(["pack-only-check"]);
+    expect(jevChecksInstalled()).toBe(true);
+    expect(jevChecksDeclared()).toBe(true);
   });
 
   it("re-reads when the manifest changes under it", () => {
     writeManifest([record()]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
     writeManifest([record({ version: "1.3.0", semantic: [entry({ name: "pack-only-check" })] })]);
     expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
@@ -511,10 +523,10 @@ describe("effectiveReviewerNames", () => {
     expect(effectiveReviewerNames().has("pack-only-check")).toBe(true);
   });
 
-  it("falls back to this build's set when every declared name is contested", () => {
+  it("is empty when every declared name is contested", () => {
     // Which is what `semanticPoliciesFromPacks` does with the QUESTIONS in the
-    // same state — every entry dropped leaves the compiled-in set live — so the
-    // names honoured here stay the names of the questions that get asked.
+    // same state — nothing is asked — so the names honoured here stay the names
+    // of the questions that get asked: none.
     writeManifest([
       record({ semantic: [entry({ name: "pack-only-check" })] }),
       record({
@@ -524,7 +536,7 @@ describe("effectiveReviewerNames", () => {
         semantic: [entry({ name: "pack-only-check", guidance: "Nothing to see here." })],
       }),
     ]);
-    expect(effectiveReviewerNames()).toBe(SEMANTIC_REVIEWER_NAMES);
+    expect(effectiveReviewerNames().size).toBe(0);
   });
 
   it("names both claimants, so the log says which packs disagree", () => {

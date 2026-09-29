@@ -207,24 +207,24 @@ describe("failproofai jev — review hardening", () => {
     });
   });
 
-  describe("setup refuses plain-http loopback outside shadow mode", () => {
-    it("enforce (the default) is refused with the reason; shadow is saved", async () => {
+  describe("setup refuses plain-http loopback outside observe mode", () => {
+    it("enforce (the default) is refused with the reason; observe is saved", async () => {
       const enforce = await runJevCommand(["setup", "--provider", "custom", "--base-url", "http://localhost:8787/v1", "--key-stdin"], withKey(KEY));
       expect(enforce.exitCode).toBe(1);
-      expect(text(enforce)).toContain("shadow");
+      expect(text(enforce)).toContain("observe");
       expect(existsSync(jevConfigPath())).toBe(false);
 
-      const shadow = await runJevCommand(
-        ["setup", "--provider", "custom", "--base-url", "http://localhost:8787/v1", "--mode", "shadow", "--key-stdin"],
+      const observe = await runJevCommand(
+        ["setup", "--provider", "custom", "--base-url", "http://localhost:8787/v1", "--mode", "observe", "--key-stdin"],
         withKey(KEY),
       );
-      expect(shadow.exitCode).toBe(0);
-      expect(readFile()).toMatchObject({ baseUrl: "http://localhost:8787/v1", mode: "shadow" });
+      expect(observe.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ baseUrl: "http://localhost:8787/v1", mode: "observe" });
 
       // And the mode cannot then be switched to enforce underneath it.
       const flip = await runJevCommand(["setup", "--mode", "enforce"], noTty);
       expect(flip.exitCode).toBe(1);
-      expect(readFile().mode).toBe("shadow");
+      expect(readFile().mode).toBe("observe");
     });
   });
 

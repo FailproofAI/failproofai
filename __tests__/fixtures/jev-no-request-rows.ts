@@ -43,6 +43,6 @@ export const JEV_NO_REQUEST_ROWS: HookActivityEntry[] = [
     durationMs: 2,
     evaluator: "jev",
     jevDecision: "allow",
-    jevMode: "shadow",
+    jevMode: "observe",
   },
 ];

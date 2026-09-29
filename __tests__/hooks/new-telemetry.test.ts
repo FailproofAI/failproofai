@@ -13,6 +13,7 @@ import { execSync } from "node:child_process";
 vi.mock("../../src/hooks/pack-manifest", () => ({
   readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
   hasInstalledPacks: vi.fn(() => false),
+  hasInstalledRegexPacks: vi.fn(() => false),
 }));
 
 vi.mock("node:fs", () => ({

@@ -56,24 +56,24 @@ describe("failproofai jev (real binary)", () => {
   });
 
   it("setup → status → remove, with the key piped on stdin and never printed", () => {
-    const setup = cli(["jev", "setup", "--provider", "typesafe", "--mode", "shadow", "--key-stdin"], `${KEY}\n`);
+    const setup = cli(["jev", "setup", "--provider", "typesafe", "--mode", "observe", "--key-stdin"], `${KEY}\n`);
     expect(setup.exitCode).toBe(0);
     expect(setup.stdout + setup.stderr).not.toContain(KEY);
     expect(setup.stdout).toContain("jev.json");
     expect(existsSync(CONFIG)).toBe(true);
     if (process.platform !== "win32") expect(statSync(CONFIG).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(readFileSync(CONFIG, "utf8"))).toEqual({ provider: "typesafe", apiKey: KEY, mode: "shadow" });
+    expect(JSON.parse(readFileSync(CONFIG, "utf8"))).toEqual({ provider: "typesafe", apiKey: KEY, mode: "observe" });
 
     const status = cli(["jev", "status"]);
     expect(status.exitCode).toBe(0);
     expect(status.stdout + status.stderr).not.toContain(KEY);
     expect(status.stdout).toContain("typesafe");
-    expect(status.stdout).toContain("shadow");
+    expect(status.stdout).toContain("observe");
 
     const json = cli(["jev", "status", "--json"]);
     expect(json.exitCode).toBe(0);
     expect(json.stdout).not.toContain(KEY);
-    expect(JSON.parse(json.stdout)).toMatchObject({ status: "ok", provider: "typesafe", mode: "shadow", keySource: "file" });
+    expect(JSON.parse(json.stdout)).toMatchObject({ status: "ok", provider: "typesafe", mode: "observe", keySource: "file" });
 
     const removed = cli(["jev", "remove"]);
     expect(removed.exitCode).toBe(0);

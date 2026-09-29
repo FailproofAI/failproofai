@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The /settings Jev panel's FailproofAI Cloud controls, against the real
- * loader: `setJevModeAction` (the on/off switch and shadow/enforce) and the
+ * loader: `setJevModeAction` (the on/off switch and observe/enforce) and the
  * Cloud connection row in `getJevSettingsAction`.
  *
  *   1. **It rewrites `mode` and nothing else** — every other byte-level field
@@ -33,7 +33,7 @@ const INGEST_KEY = ["fp", "ingest", "0badc0ffee123456"].join("-");
 const POLICY_KEY = ["fp", "policy", "feedfacecafe7890"].join("-");
 const BYOK_KEY = ["ts", "byok", "0123456789abcdef"].join("-");
 const ORIGIN = "https://app.befailproof.ai";
-const CLOUD_FILE = { provider: "failproofai", baseUrl: `${ORIGIN}/enforcement/v1/jev`, mode: "shadow" };
+const CLOUD_FILE = { provider: "failproofai", baseUrl: `${ORIGIN}/enforcement/v1/jev`, mode: "observe" };
 
 let home: string;
 let prevHome: string | undefined;
@@ -93,7 +93,7 @@ describe("setJevModeAction", () => {
     connect();
     // A field this build does not know, and one it does not show: both must survive.
     seed({ ...CLOUD_FILE, timeoutMs: 2500, fromANewerBuild: { x: 1 } });
-    for (const mode of ["enforce", "off", "shadow"] as const) {
+    for (const mode of ["enforce", "off", "observe"] as const) {
       const res = await setJevModeAction(mode);
       expect(res.ok).toBe(true);
       expect(onDisk()).toEqual({ ...CLOUD_FILE, timeoutMs: 2500, fromANewerBuild: { x: 1 }, mode });
@@ -122,7 +122,7 @@ describe("setJevModeAction", () => {
     expect(res.ok).toBe(true);
     expect(onDisk()).toEqual({ provider: "typesafe", apiKey: BYOK_KEY, mode: "off" });
     secretFree(res);
-    expect((await setJevModeAction("shadow")).ok).toBe(true);
+    expect((await setJevModeAction("observe")).ok).toBe(true);
     expect(loadJevConfig()?.apiKey).toBe(BYOK_KEY);
   });
 

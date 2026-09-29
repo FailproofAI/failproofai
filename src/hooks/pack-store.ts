@@ -1103,8 +1103,8 @@ export async function addPack(
     // installed did nothing.
     //
     // Omitted when empty for the same reason the manifest omits it: an empty
-    // array reads as "this pack declares semantic entries", and the replacement
-    // rule would then have it replace the compiled-in set with nothing.
+    // array reads as "this pack declares semantic entries" — a pack giving Jev
+    // checks when it gives none.
     ...(fetched.semantic.length > 0 ? { semantic: fetched.semantic } : {}),
     // Recorded so the READER re-checks it. This CLI has already satisfied it or
     // refused the install, but the record outlives this CLI: a downgrade, or a

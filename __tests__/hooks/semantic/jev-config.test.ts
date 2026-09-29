@@ -13,6 +13,7 @@ import {
   jevConfigPath,
   jevModelVersion,
   loadJevConfig,
+  parseJevMode,
   validateBaseUrl,
   validateJevConfig,
 } from "../../../src/hooks/semantic/jev-config";
@@ -88,7 +89,7 @@ describe("semantic/jev-config", () => {
   });
 
   it.each([
-    ["typesafe", { provider: "typesafe", apiKey: KEY, model: "jev-1.13.0", mode: "shadow", timeoutMs: 900 }],
+    ["typesafe", { provider: "typesafe", apiKey: KEY, model: "jev-1.13.0", mode: "observe", timeoutMs: 900 }],
     ["openrouter", { provider: "openrouter", apiKey: KEY, model: "typesafe/jev-1.13" }],
     ["vercel", { provider: "vercel", apiKey: KEY }],
     ["cloudflare", { provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT }],
@@ -211,8 +212,13 @@ describe("semantic/jev-config", () => {
       expect(problem({ provider: "typesafe", apiKey: KEY, mode: "disabled" })).toMatch(/mode/);
       // `off` is a mode now: it keeps the file and runs no Jev (see jev-cloud-config.test.ts).
       expect(problem({ provider: "typesafe", apiKey: KEY, mode: "off" })).toBeNull();
-      const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "shadow", timeoutMs: 800 });
-      expect(r.ok && [r.value.mode, r.value.timeoutMs]).toEqual(["shadow", 800]);
+      const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "observe", timeoutMs: 800 });
+      expect(r.ok && [r.value.mode, r.value.timeoutMs]).toEqual(["observe", 800]);
+    });
+
+    it("parses exactly the three modes", () => {
+      for (const m of ["off", "observe", "enforce"]) expect(parseJevMode(m)).toBe(m);
+      for (const m of ["Observe", "observing", "", null, undefined, 1]) expect(parseJevMode(m)).toBeNull();
     });
 
     it("refuses a model naming a Jev family the thresholds were not calibrated for", () => {

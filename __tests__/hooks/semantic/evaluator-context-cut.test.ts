@@ -43,6 +43,11 @@ import { MAX_USER_MESSAGE_CHARS, capHeadTail } from "../../../src/hooks/semantic
 import { evaluateSemantic, prepareSemantic, type SemanticOptions } from "../../../src/hooks/semantic/evaluator";
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import type { JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+import { withInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+
+// The package ships no Jev checks; this file runs as a machine with
+// FailproofAI/jev-policies installed.
+withInstalledJevPoliciesPack();
 
 const mark = (omitted: number) => `\n…[${omitted} characters omitted]…\n`;
 

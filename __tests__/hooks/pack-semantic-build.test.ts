@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findEntry, runPackCommand } from "@/src/hooks/pack-cli";
 import { parsePackSemanticPolicy, readInstalledPacks } from "@/src/hooks/pack-manifest";
-import { BUILTIN_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS } from "@/src/hooks/semantic/pack-policies";
+import { JEV_POLICIES_QUESTION_CHARS, MAX_PACK_QUESTION_CHARS } from "@/src/hooks/semantic/pack-policies";
 import { version as packageVersion } from "../../package.json";
 
 /** A probe declaration, as an entry file writes it. */
@@ -165,8 +165,7 @@ describe("build emits the semantic array", () => {
 
   it("omits the key entirely when nothing declared one", async () => {
     // An EMPTY array would still read as "a pack that declares semantic
-    // entries", and the replacement rule turns that into "replaced the
-    // compiled-in set with nothing".
+    // entries" — a pack giving Jev checks when it gives none.
     const entry = write("policies.mjs", `
       import { customPolicies, deny } from "failproofai";
       customPolicies.add({ name: "block-x", description: "d", match: { events: ["PreToolUse"] }, fn: async () => deny("no") });
@@ -259,10 +258,10 @@ describe("build emits the semantic array", () => {
     expect(r.lines.join("\n")).toMatch(new RegExp(`over the ${MAX_PACK_QUESTION_CHARS} one Jev request has room for`));
   });
 
-  it("judges a pack from outside FailproofAI against what the built-in checks leave, not the whole request", async () => {
-    // Every machine spends BUILTIN_QUESTION_CHARS on the built-in checks before a
-    // third party's, so two ~7.7k checks published cleanly and the second was
-    // dropped on every install.
+  it("judges a pack from outside FailproofAI against what FailproofAI/jev-policies leaves, not the whole request", async () => {
+    // A machine with FailproofAI/jev-policies spends JEV_POLICIES_QUESTION_CHARS
+    // on its checks before a third party's, so two ~7.7k checks would publish
+    // cleanly and the second be dropped on every such install.
     const check = (name: string) => `
       semanticPolicies.add({
         name: "${name}", title: "t", appliesTo: ["shell"], mode: "deny", userCanOverride: false,
@@ -271,12 +270,12 @@ describe("build emits the semantic array", () => {
         guidance: "g",
       });`;
     const body = `import { semanticPolicies } from "failproofai";\n${check("xa-check-1")}\n${check("xa-check-2")}`;
-    const left = MAX_PACK_QUESTION_CHARS - BUILTIN_QUESTION_CHARS;
+    const left = MAX_PACK_QUESTION_CHARS - JEV_POLICIES_QUESTION_CHARS;
 
     const r = await build(write("policies.mjs", body));
     expect(r.exitCode, r.lines.join("\n")).toBe(1);
     expect(r.lines.join("\n")).toMatch(new RegExp(`over the ${left} `));
-    expect(r.lines.join("\n")).toMatch(/built-in checks/);
+    expect(r.lines.join("\n")).toMatch(/FailproofAI\/jev-policies' 16 checks/);
 
     const firstParty = await build(write("first-party-policies.mjs", body), ["--repo", "FailproofAI/jev-policies"]);
     expect(firstParty.exitCode, firstParty.lines.join("\n")).toBe(0);
@@ -285,10 +284,10 @@ describe("build emits the semantic array", () => {
 
 describe("authority against the pack's own semantic policies", () => {
   it("publishes a reviewedBy that names one of them", async () => {
-    // The load-bearing case: a pack carrying both tiers replaces the compiled-in
-    // semantic set where it installs, so its regex policies must be able to name
-    // its OWN checks. Judged against this build's sixteen, this would be
-    // "a check this build does not have" and silently downgraded to hard.
+    // The load-bearing case: a pack carrying both tiers brings the checks its
+    // regex policies name, so they must be able to name its OWN checks. Judged
+    // against FailproofAI's sixteen names, this would be "a check this build
+    // does not have" and silently downgraded to hard.
     const r = await build(write("policies.mjs", BOTH_ENTRY));
     expect(r.exitCode, r.lines.join("\n")).toBe(0);
     const entry = manifestOf(join(work, "out")).policies.find((p) => p.name === "block-big-refund");
@@ -313,9 +312,9 @@ describe("authority against the pack's own semantic policies", () => {
     expect(text).toMatch(/declares Jev checks of its own, so reviewedBy may name only those/);
   });
 
-  it("falls back to this build's names for a pack with no semantic entries", async () => {
-    // Those machines keep running the compiled-in set, so a builtin name is the
-    // right thing for such a pack to review by.
+  it("judges a pack with no semantic entries against FailproofAI's check names", async () => {
+    // Such a pack names checks that ship in FailproofAI/jev-policies (the core
+    // pack is exactly this), so those names are the right thing to review by.
     const entry = write("policies.mjs", `
       import { customPolicies, deny } from "failproofai";
       customPolicies.add({

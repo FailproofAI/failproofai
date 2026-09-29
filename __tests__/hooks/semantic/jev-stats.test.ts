@@ -91,19 +91,19 @@ describe("computeJevStats", () => {
     expect(s.latencyP95Ms).toBe(190);
   });
 
-  it("counts clears per policy, separating shadow-mode would-be clears", () => {
+  it("counts clears per policy, separating observe-mode would-be clears", () => {
     const s = computeJevStats(
       [
         answered(30, { jevCleared: ["block-read-outside-cwd"] }),
         answered(30, { jevCleared: ["block-read-outside-cwd", "protect-env-vars"] }),
         answered(30, { jevCleared: [] }),
-        answered(30, { jevMode: "shadow", jevCleared: ["block-env-files"] }),
+        answered(30, { jevMode: "observe", jevCleared: ["block-env-files"] }),
       ],
       { now: NOW },
     );
     expect(s.clearsByPolicy).toEqual({ "block-read-outside-cwd": 2, "protect-env-vars": 1 });
-    expect(s.shadowClearsByPolicy).toEqual({ "block-env-files": 1 });
-    expect(s.modes).toEqual({ shadow: 1, enforce: 3 });
+    expect(s.observeClearsByPolicy).toEqual({ "block-env-files": 1 });
+    expect(s.modes).toEqual({ observe: 1, enforce: 3 });
   });
 
   it("tallies Jev's own verdicts and the models that answered", () => {
@@ -211,7 +211,7 @@ describe("formatJevStats", () => {
         answered(30, { jevCleared: ["block-read-outside-cwd"] }),
         answered(50, { jevDecision: "deny" }),
         fellBack("timeout"),
-        answered(40, { jevMode: "shadow", jevCleared: ["block-env-files"] }),
+        answered(40, { jevMode: "observe", jevCleared: ["block-env-files"] }),
       ],
       { now: NOW, windowMs: 6 * HOUR },
     );
@@ -222,8 +222,8 @@ describe("formatJevStats", () => {
         "  Fell back:    1 (25.0%) — timeout 1",
         "  Latency:      p50 40 ms, p95 50 ms",
         "  Cleared:      block-read-outside-cwd 1",
-        "  Would clear:  block-env-files 1 (shadow mode)",
-        "  Modes:        enforce 3, shadow 1",
+        "  Would clear:  block-env-files 1 (observe mode)",
+        "  Modes:        enforce 3, observe 1",
       ].join("\n"),
     );
   });

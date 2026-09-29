@@ -1,10 +1,51 @@
 # Changelog
 
+## 1.0.9 — 2026-09-29
+
+Action needed if you use Jev: its log-only mode is now `observe`, a `jev.json` still set to `shadow` is refused (Jev stays off until `failproofai jev setup` is run again), and Jev's checks now come only from `failproofai policies add FailproofAI/jev-policies`. For Hermes, `failproofai update` moves every profile from the old shell hooks (never run for cron jobs) to the native plugin, and every agent config failproofai edits is written crash-safely with a `.failproofai-backup`. Collects 1.0.9-beta.0 to beta.2 below.
+
+### Fixes
+
+- **A planted link at `<config>.failproofai-backup` could redirect the backup into another file.** The previous version is now copied to an exclusively created temp file and renamed over the backup path, so a symlink there is replaced, never followed — for a project-scoped config in a cloned repository, the file it pointed at is untouched.
+- **A config that is a dangling symlink is refused instead of replaced.** Writing used to swap the link for a regular file (silently detaching a dotfiles checkout); it now stops with the link and its missing target named. Files failproofai generates and owns (the OpenCode plugin shim, the Hermes link record) replace a planted link rather than writing through it.
+- **A same-named Hermes plugin is only replaced when failproofai can prove it is its own.** A link counts as failproofai's when it matches the ownership record written beside it (`plugins/.failproofai-link`) or points into an npm `failproofai` package (links from the 1.0.9 betas are adopted and recorded); a look-alike directory named `hermes-plugin` with a `name: failproofai` manifest is left alone and `config --status` says another plugin occupies the name.
+- **One Hermes profile that cannot be inspected no longer stops `update` for the rest.** Each profile is handled on its own, the redundant second read of `config.yaml` is gone, and a failure is that profile's line in the report. Re-enabling a plugin listed in `plugins.disabled` now reads "plugin re-enabled".
+- **`failproofai update` exited 1 on a machine whose daemon was already current.** It reinstalled the service on every run, which needs root: interactively it asked for a password for nothing, and with no TTY (a fleet box, CI) it failed with "root privileges are required". When the service is running and `VERSION` records this CLI's version with its binary on disk, it now says the daemon is already current and asks root for nothing.
+
+### Dependencies
+
+- Routine dependency bumps: `next` and `eslint-config-next` 16.3.6, `posthog-node` 5.54.1, `vitest` 5.0.2, `jsdom` 30.1.1, `lucide-react` 1.48.0, `@types/node` 26.6.2, `@anthropic-ai/sdk` 0.128.0, the Rust and Python dependency groups, and the `actions/setup-node` 7 and `actions/create-github-app-token` 3 workflow actions (#853–#865).
+
+## 1.0.9-beta.2 — 2026-09-29
+
+### Fixes
+
+- **A Hermes plugin listed in `plugins.disabled` was reported healthy and skipped by `update`.** Hermes checks `plugins.disabled` before `plugins.enabled`, so a profile listing `failproofai` in both never loads it, but health, installed detection and `update`'s "already current" check only read `plugins.enabled`. They now require enabled and not disabled: `config --status` says "plugin disabled (listed in plugins.disabled)" and `update` removes the disabling entry.
+
+## 1.0.9-beta.1 — 2026-09-29
+
+### Fixes
+
+- **`jev status` and the dashboard under-counted a machine with only `FailproofAI/jev-policies`.** Their coverage survey still retired the `enabledPolicies` shim when any pack was installed, while hooks keep enforcing those builtins until a pack with regex policies arrives. The survey now uses the same `hasInstalledRegexPacks` check, so it counts what is really enforced and reviewable.
+- **Old Jev activity rows no longer inflate "cleared".** A row whose mode this build does not know (written as `shadow` before the rename) lost only its mode, so `jev status` and the dashboard counted its would-have clears as enforced clears. Such a row now drops its clears too.
+- The Hermes plugin's package path is found by walking up to the directory that holds `hermes-plugin/plugin.yaml` when `FAILPROOFAI_PACKAGE_ROOT` is unset, instead of a fixed three parents that overshoot from the bundled `dist/cli.mjs`. On Windows, replacing an existing plugin junction falls back to the move-aside swap when a direct rename fails.
+- **Agent configs are written crash-safely and never rewritten from a file that does not parse.** Every integration wrote the user's agent config (`~/.hermes/config.yaml`, `~/.claude/settings.json`, `~/.openclaw/openclaw.json`, …) in place, so an interruption mid-write left a truncated config and an agent that would not start; and an existing Hermes/YAML config that did not parse was read as empty, so the next install would have replaced every other setting in it. Writes now go to a temp file in the same directory, are fsynced, keep the previous version as `<name>.failproofai-backup`, and are atomically renamed into place, preserving the file's permissions and writing through a symlinked config. A config that exists but cannot be read or parsed is refused with the file and the reason, left byte-for-byte, and reported by `config --status`. The collector also stops shipping clears from rows whose Jev mode it does not know.
+
 ## 1.0.9-beta.0 — 2026-09-29
+
+### Features
+
+- Jev's log-only mode is now **`observe`**, the word already used for a policy rollout that is evaluated but not enforced; Jev's modes are `off`, `observe` and `enforce`. `failproofai jev setup --mode observe`, the dashboard's Jev settings, `jev status`, `config --token` (which now turns Jev on in observe mode) and the docs all say observe; `jev.json` takes `mode: "observe"`, hook-activity rows carry `jevMode: "observe"`, `verdicts.jsonl` carries `applied: "observe"`, and `jev status --json` stats report `observeClearsByPolicy` and `modes.observe`. The collector ships `jev_mode: "observe"` to FailproofAI Cloud. The dashboard's Jev pill reads "jev observe".
+
+### Fixes
+
+- **Hermes cron jobs ran unchecked after an upgrade.** Legacy Hermes shell hooks (≤1.0.5) are never run for cron jobs — each cron fire builds its own hook scope that only discovered plugins join — and `failproofai update` never touched Hermes, so upgraded machines stayed on them silently. `update` now moves every Hermes profile that already uses FailproofAI (shell hooks or a copied plugin) to the native plugin, prints a per-profile report, and leaves profiles without FailproofAI alone. When the running daemon cannot serve the plugin (no `policyEvaluation`, e.g. a sudo system daemon `update` could not replace) the shell hooks are kept and `update` exits 1 pointing at `failproofai config`; it also exits 1 whenever the daemon swap or a layout migration failed. The plugin is now **linked** into each profile (`plugins/failproofai` → the package's `hermes-plugin/`, a marked copy where symlinks are unavailable), so npm upgrades apply with no reinstall; uninstall removes only the link. `failproofai config --status` reports a profile still on shell hooks as unhealthy: "Hermes cron jobs are not checked".
+- **The npm package no longer ships Jev's checks; a machine asks them only after `failproofai policies add FailproofAI/jev-policies`.** The sixteen semantic checks were compiled in and used whenever no installed pack declared any, so configuring Jev — BYOK, or `failproofai config --token` with a Cloud machine key — started asking them without anyone opting in. Now the checks, and the names `reviewedBy` may use, come only from installed packs. With none declaring checks Jev is inert whether or not it is configured: no request is sent (not even the injection or task probes), no prompt is recorded for it, and every `reviewable` policy resolves `hard`, so nothing is cleared and hooks answer exactly as on a machine without Jev. An unreadable pack list asks nothing too, rather than falling back to a built-in set. `failproofai jev status` (and its `--json`, as `reviewablePolicies.jevChecks`), the dashboard's Jev settings and `config --token`'s output say "Jev has no checks installed" and name the command. `publish` still reserves the sixteen names and judges a regex-only pack's `reviewedBy` against them.
+- **Adding `FailproofAI/jev-policies` could switch off a machine's regex policies.** A machine that enforced built-in policies from `enabledPolicies` (upgraded, no core pack) stopped enforcing them as soon as ANY pack was installed, and `failproofai policies add <name>` then tried to enable the name on the installed packs instead of fetching `FailproofAI/policies`. Now that Jev's checks arrive only as the Jev-only `FailproofAI/jev-policies` pack, both steps count only packs that carry regex policies (`hasInstalledRegexPacks`).
 
 ### Docs
 
-- Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.
+- Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify observe-mode verification and the Cloud machine key's `jev:evaluate` permission.
 
 ### Dependencies
 

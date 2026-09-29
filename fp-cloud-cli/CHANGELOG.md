@@ -16,6 +16,8 @@
 
 ### Changed
 
+- `fp guardrails summary` shows how many machines run Jev in each mode, reading the summary's
+  `jev.machines.observe` and `jev.machines.enforce`.
 - `fp policies publish` (and `policies compose --publish`) refuses a source carrying Jev
   fields a cloud policy never reads — a `semanticPolicies.add(...)` call, or a registration
   declaring `authority: "reviewable"` — before anything is sent (exit 1, `--no-verify` does

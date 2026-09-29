@@ -18,6 +18,9 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
+  cpSync,
+  lstatSync,
+  readlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
@@ -571,6 +574,7 @@ describe("Hermes integration", () => {
   let origHome: string | undefined;
   let origHermesHome: string | undefined;
   let origPackageRoot: string | undefined;
+  let packageRoot: string;
   beforeEach(() => {
     origHome = process.env.HOME;
     process.env.HOME = tempDir;
@@ -578,8 +582,21 @@ describe("Hermes integration", () => {
     // with a profile-scoped shell doesn't get their real config.yaml touched.
     origHermesHome = process.env.HERMES_HOME;
     delete process.env.HERMES_HOME;
+    // Every test below writes under `homedir()`. A runtime that caches the home
+    // directory at startup (Bun does) would ignore the HOME override and point
+    // them at the developer's REAL ~/.hermes — refuse rather than touch it.
+    if (homedir() !== tempDir) {
+      throw new Error(
+        `HOME override not honoured (homedir() is ${homedir()}); refusing to run Hermes tests against a real home`,
+      );
+    }
+    // Install now LINKS profiles to the package's hermes-plugin/, so a test
+    // that edits files through the installed plugin would edit the package.
+    // Give every test its own throwaway package copy.
     origPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
-    process.env.FAILPROOFAI_PACKAGE_ROOT = ORIG_CWD;
+    packageRoot = resolve(tempDir, "failproofai-package");
+    cpSync(resolve(ORIG_CWD, "hermes-plugin"), resolve(packageRoot, "hermes-plugin"), { recursive: true });
+    process.env.FAILPROOFAI_PACKAGE_ROOT = packageRoot;
   });
   afterEach(() => {
     if (origHome === undefined) delete process.env.HOME;
@@ -608,6 +625,15 @@ describe("Hermes integration", () => {
 
   function pluginPath(settingsPath: string): string {
     return resolve(dirname(settingsPath), "plugins", "failproofai");
+  }
+
+  /** What a 1.0.6–1.0.8 install left behind: a marked COPY of the plugin. */
+  function makeManagedCopy(destination: string): void {
+    mkdirSync(destination, { recursive: true });
+    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
+      cpSync(resolve(ORIG_CWD, "hermes-plugin", file), resolve(destination, file));
+    }
+    writeFileSync(resolve(destination, ".failproofai-managed"), "Managed by failproofai.\n");
   }
 
   function installAt(settingsPath: string): void {
@@ -641,7 +667,7 @@ describe("Hermes integration", () => {
   it("buildHookEntry identifies the shipped native plugin", () => {
     const entry = hermes.buildHookEntry("/usr/bin/failproofai", "pre_tool_call", "user") as Record<string, unknown>;
     expect(entry[FAILPROOFAI_HOOK_MARKER]).toBe(true);
-    expect(entry._hermesPluginPath).toBe(resolve(ORIG_CWD, "hermes-plugin"));
+    expect(entry._hermesPluginPath).toBe(resolve(packageRoot, "hermes-plugin"));
   });
 
   it("installs the native plugin and enables it in config", () => {
@@ -654,10 +680,14 @@ describe("Hermes integration", () => {
     expect(parsed.plugins?.enabled).toEqual(["failproofai"]);
     expect(parsed.hooks).toBeUndefined();
 
+    // A symlink into the package, so npm upgrades apply with no reinstall.
     const installedPlugin = pluginPath(path);
-    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py", ".failproofai-managed"]) {
+    expect(lstatSync(installedPlugin).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(installedPlugin)).toBe(resolve(packageRoot, "hermes-plugin"));
+    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py"]) {
       expect(existsSync(resolve(installedPlugin, file))).toBe(true);
     }
+    expect(hermesProfileHealth()[0]).toMatchObject({ pluginMode: "link", healthy: true, cronUnchecked: false });
     expect(hermesProfileStatusRows()).toEqual([
       ["hermes/default", "native plugin enabled"],
     ]);
@@ -816,15 +846,16 @@ describe("Hermes integration", () => {
     ]);
   });
 
-  it("atomically refreshes a managed plugin directory", () => {
+  it("replaces a managed plugin copy (1.0.6–1.0.8 install) with a link, leaving no temp entries", () => {
     const path = hermes.getSettingsPath("user");
-    hermes.prepareInstall!(path);
     const destination = pluginPath(path);
+    makeManagedCopy(destination);
     writeFileSync(resolve(destination, "client.py"), "stale\n");
     writeFileSync(resolve(destination, "obsolete.py"), "remove me\n");
 
     hermes.prepareInstall!(path);
 
+    expect(lstatSync(destination).isSymbolicLink()).toBe(true);
     expect(readFileSync(resolve(destination, "client.py"), "utf8")).not.toBe("stale\n");
     expect(existsSync(resolve(destination, "obsolete.py"))).toBe(false);
     expect(

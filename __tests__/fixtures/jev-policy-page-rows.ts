@@ -5,7 +5,7 @@
  *   A. enforce mode, Jev's own verdict decided the call: `policyName` is
  *      `semantic/<check>` and `policySource` is `jev` (it used to be omitted,
  *      so the chart filed every Jev block under "unattributed");
- *   B. shadow mode, Jev's own verdict was deny / instruct while the regex
+ *   B. observe mode, Jev's own verdict was deny / instruct while the regex
  *      result (allow) was enforced: the verdict is a "would have" in
  *      `observed`, `{policyId, version, decision, reason}`, the list
  *      observe-mode cloud and pack policies already use.
@@ -55,7 +55,7 @@ export const JEV_POLICY_PAGE_ROWS: HookActivityEntry[] = [
     jevMode: "enforce",
     policySource: "jev",
   },
-  // B — shadow: Jev would have denied; the regex result (allow) was enforced.
+  // B — observe: Jev would have denied; the regex result (allow) was enforced.
   {
     ...base,
     timestamp: 1785740915100,
@@ -68,10 +68,10 @@ export const JEV_POLICY_PAGE_ROWS: HookActivityEntry[] = [
     jevDecision: "deny",
     jevLatencyMs: 761,
     jevModel: "jev-1.13.0",
-    jevMode: "shadow",
+    jevMode: "observe",
     observed: [{ policyId: "semantic/destructive-deletion", version: "jev-1.13.0", decision: "deny", reason: DELETION_REASON }],
   },
-  // B — shadow: Jev would have warned.
+  // B — observe: Jev would have warned.
   {
     ...base,
     timestamp: 1785740915200,
@@ -84,7 +84,7 @@ export const JEV_POLICY_PAGE_ROWS: HookActivityEntry[] = [
     jevDecision: "instruct",
     jevLatencyMs: 688,
     jevModel: "jev-1.13.0",
-    jevMode: "shadow",
+    jevMode: "observe",
     observed: [{ policyId: "semantic/system-modification", version: "jev-1.13.0", decision: "instruct", reason: SYSTEM_REASON }],
   },
 ];

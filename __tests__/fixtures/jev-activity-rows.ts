@@ -75,7 +75,7 @@ export const JEV_ACTIVITY_ROWS: HookActivityEntry[] = [
     jevCleared: [],
     jevLatencyMs: 44,
     jevModel: "typesafe/jev",
-    jevMode: "shadow",
+    jevMode: "observe",
   },
   {
     ...base,

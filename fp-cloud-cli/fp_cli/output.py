@@ -6217,6 +6217,22 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
     _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
 
 
+def jev_machine_counts(summary: dict) -> tuple:
+    """``(observe, enforce)`` machines running Jev, from the summary's ``jev.machines``.
+
+    ``(0, 0)`` when the server says nothing about Jev.
+    """
+    jev = summary.get("jev") if isinstance(summary, dict) else None
+    machines = jev.get("machines") if isinstance(jev, dict) else None
+    if not isinstance(machines, dict):
+        return 0, 0
+
+    def count(v) -> int:
+        return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+    return count(machines.get("observe")), count(machines.get("enforce"))
+
+
 def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
     """``fp guardrails`` — what actually happened, as opposed to what was intended."""
     totals = summary.get("totals") or {}
@@ -6229,6 +6245,16 @@ def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
                 style="bold white")
     stat.append(" machines enforcing", style=theme.LABEL)
     body = [stat]
+
+    observe, enforce = jev_machine_counts(summary)
+    if observe or enforce:
+        jev = Text()
+        jev.append("jev  ", style=theme.LABEL)
+        jev.append(str(observe), style="bold white")
+        jev.append(" observe   ", style=theme.LABEL)
+        jev.append(str(enforce), style="bold white")
+        jev.append(" enforce", style=theme.LABEL)
+        body.append(jev)
 
     if timeline:
         # Every source, summed — a sparkline drawn from series[0] alone sat

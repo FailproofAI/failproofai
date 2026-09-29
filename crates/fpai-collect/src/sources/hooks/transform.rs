@@ -114,7 +114,7 @@ pub struct HookRow {
     pub pause_expires_at: Option<i64>,
 
     /// Verdicts from observe-mode policies: evaluated, then discarded. The
-    /// whole measurement a trial exists to produce. Jev in shadow mode files
+    /// whole measurement a trial exists to produce. Jev in observe mode files
     /// its own deny/instruct here too (`policyId: "semantic/<check>"`, the Jev
     /// model id as `version`), and ships the same way: whole, un-rolled-up.
     pub observed: Option<Value>,
@@ -141,7 +141,7 @@ pub struct HookRow {
     pub jev_latency_ms: Option<f64>,
     #[serde(rename = "jevModel", default, deserialize_with = "lenient")]
     pub jev_model: Option<String>,
-    /// `shadow` | `enforce`.
+    /// `observe` | `enforce`.
     #[serde(rename = "jevMode", default, deserialize_with = "lenient")]
     pub jev_mode: Option<String>,
 }
@@ -411,7 +411,7 @@ impl JevFacts {
         let mode = row
             .jev_mode
             .as_deref()
-            .filter(|m| matches!(*m, "shadow" | "enforce"))
+            .filter(|m| matches!(*m, "observe" | "enforce"))
             .map(str::to_string);
         let fallback_reason = row.jev_fallback_reason.as_deref().and_then(jev_reason_code);
         let decision = row
@@ -419,8 +419,19 @@ impl JevFacts {
             .as_deref()
             .filter(|d| matches!(*d, "allow" | "instruct" | "deny"))
             .map(str::to_string);
+        // A mode this side does not know (a row written before the log-only
+        // mode was named `observe`) cannot say whether its clears took effect.
+        // Dropping only the mode would ship them looking like enforce-mode
+        // clears, so they are dropped with it — as the TypeScript normalizer does.
+        let unknown_mode = row.jev_mode.is_some() && mode.is_none();
         let mut cleared: Vec<String> = Vec::new();
-        for name in row.jev_cleared.iter().flatten().filter_map(Value::as_str) {
+        for name in row
+            .jev_cleared
+            .iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|_| !unknown_mode)
+        {
             if cleared.len() >= JEV_CLEARED_MAX {
                 break;
             }
@@ -472,7 +483,7 @@ impl JevFacts {
 
     /// True when this row must be shipped on its own rather than rolled into
     /// an allow aggregate: Jev overruled a regex deny/instruct (a clear), or
-    /// Jev's own verdict was stricter than the outcome (shadow mode, where the
+    /// Jev's own verdict was stricter than the outcome (observe mode, where the
     /// regex result was enforced). Either is a decision someone will want to
     /// find, and a count cannot show it.
     pub fn is_notable(&self, final_decision: &str) -> bool {

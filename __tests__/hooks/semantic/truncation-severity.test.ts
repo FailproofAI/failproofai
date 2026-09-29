@@ -46,6 +46,11 @@ import { evaluateSemantic, prepareSemantic, type SemanticOptions, type SemanticO
 import { toReview } from "../../../src/hooks/semantic/jev-review";
 import type { JevReview } from "../../../src/hooks/semantic/combine";
 import type { JevRequest, JevResponse, SemanticInput } from "../../../src/hooks/semantic/types";
+import { withInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+
+// The package ships no Jev checks; this file runs as a machine with
+// FailproofAI/jev-policies installed.
+withInstalledJevPoliciesPack();
 
 /** Every "does it do X" probe held; the human asked for none of it. Jev denies. */
 const alarmed = async (request: JevRequest): Promise<JevResponse> => ({
@@ -125,9 +130,9 @@ describe("padding a command cannot take Jev's own deny away", () => {
     });
   });
 
-  it("shadow mode is unaffected: the regex result is enforced, cut or not", async () => {
+  it("observe mode is unaffected: the regex result is enforced, cut or not", async () => {
     const { review } = await judged(bash(`${DANGEROUS} ${PADDING}`));
-    const out = combineTwoTier([], review, "shadow");
+    const out = combineTwoTier([], review, "observe");
     expect(out.final).toEqual(regexOnly([]));
     expect(out.decidedByJev).toBe(false);
   });

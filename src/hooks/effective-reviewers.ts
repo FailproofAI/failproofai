@@ -1,20 +1,16 @@
 /**
  * The semantic checks a `reviewedBy` may name ON THIS MACHINE.
  *
- * ## Why this is not simply `SEMANTIC_REVIEWER_NAMES`
+ * ## Only what an installed pack declares
  *
- * A pack that declares its own `semantic` entries replaces the compiled-in
- * `SEMANTIC_POLICIES` wholesale (`semantic/pack-policies.ts`). So on that
- * machine the sixteen builtin names are checks that will never be asked, and the
- * pack's own names are the only ones that will — while
- * `resolvePolicyAuthority`, judging against the builtin set, would read the
- * pack's `reviewedBy: ["its-own-check"]` as naming a check "this build does not
- * have" and downgrade the policy to `hard` with nothing but a warning in the
- * hook log. That is a rewritten policy set arriving with its reviewability
- * quietly removed: the deny half of the two-tier evaluator working exactly as
- * documented while the clearing half cannot fire once — the failure
- * `policy-reviewability.ts` was written to make audible, reintroduced one layer
- * down.
+ * The npm package ships no Jev checks, so no name is a reviewer by default. A
+ * `reviewedBy` is honoured only for checks some installed pack declares — in
+ * practice `FailproofAI/jev-policies`, which the core pack's fifteen
+ * `reviewable` policies name. With no such pack the set is EMPTY, every policy
+ * registers `hard`, and nothing Jev says can clear a regex verdict. That is the
+ * fail-safe direction, and it is also what keeps Jev inert on a machine that
+ * never installed its checks: `jevChecksInstalled` below is the hook path's
+ * gate for starting a review at all.
  *
  * The names come from the MANIFEST, which is already where `authority` and
  * `reviewedBy` themselves are read from, so this adds no new trust and imports
@@ -39,7 +35,7 @@
  * silently.
  */
 import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
-import { SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { NO_REVIEWERS, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 
 let cached: ReadonlySet<string> | null = null;
 let cachedContested: ReadonlyMap<string, string[]> = new Map();
@@ -148,8 +144,9 @@ export function isFirstPartyPack(pack: { source?: string }): boolean {
 }
 
 /**
- * A builtin check name declared by a pack that is not FailproofAI's. Core and
- * user policies name those checks in `reviewedBy`, so the third party's
+ * One of FailproofAI's sixteen check names (`SEMANTIC_REVIEWER_NAMES`) declared
+ * by a pack that is not FailproofAI's. Core and user policies name those checks
+ * in `reviewedBy`, so the third party's
  * question would become the reviewer that clears them — an `instruct`-mode
  * `destructive-deletion` beside the core pack turned `block-rm-rf` into a
  * warning. The claim is void: never asked, never a reviewer, and never a
@@ -162,33 +159,26 @@ export function isReservedClaim(pack: { source?: string }, name: string): boolea
 }
 
 /**
- * The installed packs' semantic policy names when any pack declares some, and
- * this build's compiled-in set otherwise.
+ * The semantic check names the installed packs declare — the only names a
+ * `reviewedBy` is honoured for on this machine. Empty when no pack declares any.
  *
  * A name two packs claim differently is left out — see
- * {@link contestedSemanticNames}. When that leaves nothing, the compiled-in set
- * stands, which is not a softening but the same rule
- * `semanticPoliciesFromPacks` applies to the QUESTIONS: a declaring pack whose
- * every entry was unusable leaves the compiled-in semantic set live, so the
- * names honoured here are the names of the questions that will actually be
- * asked, and each of those is one of ours.
+ * {@link contestedSemanticNames} — and so is one of FailproofAI's names claimed
+ * by anyone else ({@link isReservedClaim}).
  *
- * Never throws: an unreadable manifest declares nothing, and the builtin set
- * stands. That is the same fail-open posture every other reader of the pack
- * manifest takes, and here it also fails in the safe direction — a pack's
- * `reviewedBy` will not match a builtin name, so its policies stay `hard`
- * rather than being cleared by a question nobody could read.
+ * Never throws: an unreadable manifest declares nothing, so the set is empty and
+ * every policy stays `hard`. There is no compiled-in set to fall back to.
  */
 export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
-  let names: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES;
+  let names: ReadonlySet<string> = NO_REVIEWERS;
   cachedContested = new Map();
   try {
     const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
     names = reviewerNamesFor(packs);
     cachedContested = contestedSemanticNames(packs);
   } catch {
-    // See above: silence here is the builtin set, not an empty one.
+    // See above: an unreadable manifest declares no checks.
   }
   cached = names;
   return names;
@@ -201,17 +191,34 @@ export function contestedReviewerNames(): ReadonlyMap<string, string[]> {
 }
 
 /**
- * A first-party pack declares Jev checks, so they REPLACE the compiled-in set.
- * Anyone else's checks are ADDED to it: a stranger's one check must not switch
- * off `credential-exfiltration` and turn every core reviewable policy hard.
- * `semanticPoliciesFromPacks` applies the same rule to the questions.
+ * Whether any installed pack gives Jev something to ask. False on a machine
+ * with no pack declaring a `semantic` entry — the vanilla install — and then
+ * the hook path does not start a Jev review at all: no request, no intent
+ * capture, exactly as if Jev were unconfigured. `failproofai policies add
+ * FailproofAI/jev-policies` is what turns it true.
+ *
+ * Read off the same cached set registration just used, so it costs nothing on
+ * the hook path and cannot disagree with which policies registered reviewable.
  */
-export function replacesBuiltinChecks(packs: ReadonlyArray<Pick<ResolvedPack, "semantic"> & { source?: string }>): boolean {
-  return packs.some((p) => isFirstPartyPack(p) && (p.semantic ?? []).length > 0);
+export function jevChecksInstalled(): boolean {
+  return effectiveReviewerNames().size > 0;
 }
 
 /**
- * The reviewer set for the packs taking part: see {@link replacesBuiltinChecks}. Pure.
+ * The same question for a CLI command, read fresh rather than from the
+ * registration cache (which only the hook path fills): any agent, packs as
+ * `jevPacks` narrows them. Never throws; an unreadable manifest has none.
+ */
+export function jevChecksDeclared(): boolean {
+  try {
+    return reviewerNamesFor(jevPacks(readInstalledPacks().packs)).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The reviewer set for the packs taking part: every usable name they declare. Pure.
  *
  * Manifest-only: it cannot see a check `semanticPoliciesFromPacks` drops for the
  * question budget, because measuring questions means loading the semantic
@@ -226,9 +233,9 @@ export function reviewerNamesFor(
   const declared = packs
     .flatMap((p) => (p.semantic ?? []).filter((s) => !isReservedClaim(p, s.name)).map((s) => s.name))
     .filter((name) => !contested.has(name));
-  // Nothing usable declared: the compiled-in set is the one being asked.
-  if (declared.length === 0) return SEMANTIC_REVIEWER_NAMES;
-  return new Set(replacesBuiltinChecks(packs) ? declared : [...SEMANTIC_REVIEWER_NAMES, ...declared]);
+  // Nothing usable declared: nothing is asked, so nothing may clear.
+  if (declared.length === 0) return NO_REVIEWERS;
+  return new Set(declared);
 }
 
 /**

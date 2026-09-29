@@ -135,9 +135,9 @@ describe("a clear of a reviewable policy whose name has spaces", () => {
 
   it("is counted by jev status, shown on the dashboard and sent to PostHog", () => {
     const name = REGISTERED_WITH_SPACES[0];
-    const s = computeJevStats([cleared(name), cleared(name, { jevMode: "shadow" })], { now: 6_000, windowMs: 60_000 });
+    const s = computeJevStats([cleared(name), cleared(name, { jevMode: "observe" })], { now: 6_000, windowMs: 60_000 });
     expect(s.clearsByPolicy).toEqual({ [name]: 1 });
-    expect(s.shadowClearsByPolicy).toEqual({ [name]: 1 });
+    expect(s.observeClearsByPolicy).toEqual({ [name]: 1 });
     expect(describeJevActivity(cleared(name))).toContain(`cleared ${name}`);
     const props = jevTelemetryProperties(cleared(name));
     expect(props.jev_cleared).toEqual([name]);

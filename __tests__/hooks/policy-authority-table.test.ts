@@ -10,14 +10,15 @@
  * nothing checking it is the #337 drift class.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { BUILTIN_POLICIES, registerBuiltinPolicies } from "../../src/hooks/builtin-policies";
 import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
 import { clearPolicies, getAllPolicies } from "../../src/hooks/policy-registry";
 import { effectiveAuthority } from "../../src/hooks/policy-types";
 import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "../../src/hooks/policy-authority";
-import { SEMANTIC_POLICIES } from "../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, withInstalledJevPoliciesPack } from "../fixtures/jev-policies";
 
 /** D1: the only builtins Jev may clear, and the checks that must clear them. */
 const REVIEWABLE: Record<string, string[]> = {
@@ -135,7 +136,35 @@ describe("the builtin authority table (D1)", () => {
   });
 });
 
+describe("with no pack declaring Jev checks, every builtin registers hard", () => {
+  it("registers all of them hard, with no reviewedBy — nothing can clear", () => {
+    // The vanilla install: the package ships no Jev checks, so there are no
+    // reviewers, whatever the catalog marks.
+    const saved = process.env.FAILPROOFAI_PACK_DIR;
+    const empty = mkdtempSync(join(tmpdir(), "fpai-no-jev-pack-"));
+    process.env.FAILPROOFAI_PACK_DIR = empty;
+    clearPolicies();
+    try {
+      registerBuiltinPolicies(BUILTIN_POLICIES.map((p) => p.name));
+      const all = getAllPolicies();
+      expect(all.length).toBe(POLICY_CATALOG.length);
+      for (const r of all) {
+        expect(effectiveAuthority(r), r.name).toBe("hard");
+        expect("reviewedBy" in r, r.name).toBe(false);
+      }
+    } finally {
+      clearPolicies();
+      if (saved === undefined) delete process.env.FAILPROOFAI_PACK_DIR;
+      else process.env.FAILPROOFAI_PACK_DIR = saved;
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("builtin registration carries the table into the registry", () => {
+  // A machine with FailproofAI/jev-policies installed: the names the table uses are reviewers.
+  withInstalledJevPoliciesPack();
+
   it("registers every builtin with its resolved authority", () => {
     clearPolicies();
     try {

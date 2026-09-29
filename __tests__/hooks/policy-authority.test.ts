@@ -18,17 +18,22 @@ import {
   authorityFieldsOf,
   authorityProblem,
   manifestAuthority,
+  NO_REVIEWERS,
   type AuthorityFields,
   resolvePolicyAuthority,
   warnAuthority,
   withMergedAuthority,
 } from "../../src/hooks/policy-authority";
-import { SEMANTIC_POLICIES, INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "../../src/hooks/semantic/policies";
+import { INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, withInstalledJevPoliciesPack } from "../fixtures/jev-policies";
 import { clearPolicies, getAllPolicies, registerPolicy } from "../../src/hooks/policy-registry";
 import { parsePackPolicy } from "../../src/hooks/pack-manifest";
 import type { PolicyCatalogEntry } from "../../src/hooks/policy-types";
 
 const allow = () => ({ decision: "allow" as const });
+
+/** The reviewer set of a machine with FailproofAI/jev-policies installed. */
+const JEV = SEMANTIC_REVIEWER_NAMES;
 
 describe("effectiveAuthority — shape only", () => {
   it.each([
@@ -101,12 +106,25 @@ describe("SEMANTIC_REVIEWER_NAMES", () => {
 });
 
 describe("resolvePolicyAuthority", () => {
+  it("is hard, silently, with no reviewers — a machine with no pack declaring Jev checks", () => {
+    // The package ships no Jev checks, so this is the vanilla install. Not a
+    // declaration going wrong: no per-policy warning, just hard.
+    const decl = { authority: "reviewable", reviewedBy: ["destructive-deletion"] };
+    expect(resolvePolicyAuthority(decl)).toEqual({ authority: "hard" });
+    expect(resolvePolicyAuthority(decl, NO_REVIEWERS)).toEqual({ authority: "hard" });
+    // Malformed is still said: that is the author's mistake whatever is installed.
+    expect(resolvePolicyAuthority({ authority: "reviewable", reviewedBy: [7] }).downgraded).toMatch(/not a list/);
+  });
+
   it("resolves a complete declaration to reviewable, deduplicated in declared order", () => {
     expect(
-      resolvePolicyAuthority({
-        authority: "reviewable",
-        reviewedBy: ["secret-exposure", "env-secrets-dump", "secret-exposure"],
-      }),
+      resolvePolicyAuthority(
+        {
+          authority: "reviewable",
+          reviewedBy: ["secret-exposure", "env-secrets-dump", "secret-exposure"],
+        },
+        JEV,
+      ),
     ).toEqual({ authority: "reviewable", reviewedBy: ["secret-exposure", "env-secrets-dump"] });
   });
 
@@ -126,10 +144,13 @@ describe("resolvePolicyAuthority", () => {
   it("refuses a name that is not a semantic policy in this build — the whole declaration, not the name", () => {
     // reviewedBy is a conjunction. Dropping the unknown name would let Jev clear
     // the policy on fewer checks than its author asked for.
-    const r = resolvePolicyAuthority({
-      authority: "reviewable",
-      reviewedBy: ["secret-exposure", "secret-exposure-v2"],
-    });
+    const r = resolvePolicyAuthority(
+      {
+        authority: "reviewable",
+        reviewedBy: ["secret-exposure", "secret-exposure-v2"],
+      },
+      JEV,
+    );
     expect(r.authority).toBe("hard");
     expect(r.reviewedBy).toBeUndefined();
     expect(r.downgraded).toMatch(/"secret-exposure-v2"/);
@@ -154,7 +175,7 @@ describe("resolvePolicyAuthority", () => {
 
   it("escapes the name it quotes: a pack's reviewedBy reaches the hook's stderr", () => {
     const name = "x\u001b[2J\nWARN forged";
-    for (const known of [undefined, new Set(["own-check"])]) {
+    for (const known of [JEV, new Set(["own-check"])]) {
       const r = resolvePolicyAuthority({ authority: "reviewable", reviewedBy: [name] }, known);
       expect(r.downgraded).toContain(JSON.stringify(name));
       expect(r.downgraded).not.toMatch(/[\u0000-\u001f]/);
@@ -200,13 +221,15 @@ describe("resolvePolicyAuthority", () => {
 
   it("does not hand back the caller's own array", () => {
     const names = ["secret-exposure"];
-    const r = resolvePolicyAuthority({ authority: "reviewable", reviewedBy: names });
+    const r = resolvePolicyAuthority({ authority: "reviewable", reviewedBy: names }, JEV);
     names.push("read-outside-workspace");
     expect(r.reviewedBy).toEqual(["secret-exposure"]);
   });
 });
 
 describe("registerPolicy stores the RESOLVED authority", () => {
+  // A machine with FailproofAI/jev-policies installed, so its names are reviewers.
+  withInstalledJevPoliciesPack();
   beforeEach(() => clearPolicies());
 
   const only = () => {
@@ -388,7 +411,7 @@ describe("withMergedAuthority — several declarations, one registration", () =>
 
   it("is reviewable only when every declaration is, through the union of their checks", () => {
     const a: Rec = { id: "a", ...R("database-destruction") };
-    const { merged, overruled } = withMergedAuthority(a, [a, R("secret-exposure", "database-destruction")]);
+    const { merged, overruled } = withMergedAuthority(a, [a, R("secret-exposure", "database-destruction")], JEV);
     expect(merged).toEqual({ id: "a", authority: "reviewable", reviewedBy: ["database-destruction", "secret-exposure"] });
     expect(overruled).toBe(false);
   });
@@ -407,8 +430,8 @@ describe("withMergedAuthority — several declarations, one registration", () =>
       [otherRecord, [otherRecord, reviewable]],
     ];
     for (const [record, decls] of cases) {
-      const { merged } = withMergedAuthority(record, decls);
-      expect(resolvePolicyAuthority(merged).authority).toBe("hard");
+      const { merged } = withMergedAuthority(record, decls, JEV);
+      expect(resolvePolicyAuthority(merged, JEV).authority).toBe("hard");
       expect(merged.id).toBe(record.id);
     }
   });
@@ -421,12 +444,13 @@ describe("withMergedAuthority — several declarations, one registration", () =>
     // the pack's. The merged record now carries the resolution — `hard`, and no
     // `reviewedBy` for anything to re-read — and the reason comes back beside it.
     const typo = R("databse-destruction");
-    const { merged, overruled, refused } = withMergedAuthority<Rec>({ id: "x", ...R("database-destruction") }, [
-      R("database-destruction"),
-      typo,
-    ]);
+    const { merged, overruled, refused } = withMergedAuthority<Rec>(
+      { id: "x", ...R("database-destruction") },
+      [R("database-destruction"), typo],
+      JEV,
+    );
     expect(merged).toEqual({ id: "x", authority: "hard" });
-    expect(resolvePolicyAuthority(merged).authority).toBe("hard");
+    expect(resolvePolicyAuthority(merged, JEV).authority).toBe("hard");
     expect(refused).toMatch(/"databse-destruction"/);
     expect(overruled).toBe(true);
   });
@@ -454,10 +478,11 @@ describe("withMergedAuthority — several declarations, one registration", () =>
   });
 
   it("drops the fields entirely when the hard vote declared nothing", () => {
-    const { merged, overruled } = withMergedAuthority<Rec>({ id: "x", ...R("secret-exposure") }, [
-      R("secret-exposure"),
-      {},
-    ]);
+    const { merged, overruled } = withMergedAuthority<Rec>(
+      { id: "x", ...R("secret-exposure") },
+      [R("secret-exposure"), {}],
+      JEV,
+    );
     expect(merged).toEqual({ id: "x" });
     expect(overruled).toBe(true);
   });

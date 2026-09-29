@@ -323,10 +323,15 @@ we run in-repo. Hermes is a **dual-pillar** integration: an **audit** adapter
 
 Hermes enforcement uses the shipped **native Python plugin** under each profile's
 `plugins/failproofai/` directory. The profile's YAML config enables it through
-`plugins.enabled: [failproofai]`. `integrations.ts` copies the plugin atomically,
-marks the directory as FailproofAI-managed, refuses to overwrite an unmanaged
-directory with the same name, and uses the `yaml` package's comment-preserving
-`Document` API for config changes.
+`plugins.enabled: [failproofai]`. `integrations.ts` symlinks that directory to the
+package's `hermes-plugin/` (Hermes' scan follows symlinks, so npm upgrades apply
+with no reinstall — the OpenClaw `plugins.load.paths` model), falls back to an
+atomic copy marked `.failproofai-managed` where a link cannot be created, replaces
+only a marked copy or a link into a FailproofAI `hermes-plugin/`, refuses anything
+else with the same name, and uses the `yaml` package's comment-preserving
+`Document` API for config changes. `failproofai update` migrates profiles already
+using FailproofAI (legacy shell hooks or a copy) to the link, gated on the daemon
+answering `policyEvaluation`; legacy shell hooks never run for Hermes cron jobs.
 
 Settings file paths:
 
@@ -335,7 +340,7 @@ Settings file paths:
 | user    | `~/.hermes/config.yaml`     |
 
 Hermes is **user-scope only** — there is no project config, so `getSettingsPath`
-ignores scope/cwd. Every default and named profile receives its own plugin copy and
+ignores scope/cwd. Every default and named profile receives its own plugin link and
 enablement entry. Installed-state detection requires both the complete managed plugin
 directory and the config entry; a missing file, disabled plugin, newly-created profile,
 or leftover legacy shell hook is reported as unhealthy.

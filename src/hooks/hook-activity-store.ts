@@ -105,8 +105,8 @@ export interface HookActivityEntry {
   jevFallbackReason?: string;
   jevLatencyMs?: number;
   jevModel?: string;
-  /** `shadow` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
-  jevMode?: "shadow" | "enforce";
+  /** `observe` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
+  jevMode?: "observe" | "enforce";
   durationMs: number;
   sessionId?: string;
   transcriptPath?: string;
@@ -159,7 +159,7 @@ export interface HookActivityEntry {
    * indistinguishable from one where the policy never matched, and the rollout
    * being trialled is unmeasurable.
    *
-   * Jev in shadow mode files its own deny/instruct here too, as
+   * Jev in observe mode files its own deny/instruct here too, as
    * `{policyId: "semantic/<check>", version: <Jev model id or "jev">}`: the
    * same question — what would this have done — for the same reader.
    */

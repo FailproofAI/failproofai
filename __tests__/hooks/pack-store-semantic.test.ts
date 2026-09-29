@@ -25,7 +25,6 @@ import type { AddressInfo } from "node:net";
 import { addPack, fetchPackPreview } from "@/src/hooks/pack-store";
 import { MAX_SEMANTIC_POLICIES_PER_PACK, packSemantic, readInstalledPacks } from "@/src/hooks/pack-manifest";
 import { semanticPoliciesFromPacks } from "@/src/hooks/semantic/pack-policies";
-import { SEMANTIC_POLICIES } from "@/src/hooks/semantic/policies";
 import { forgetEffectiveReviewerNames } from "@/src/hooks/effective-reviewers";
 import { version as packageVersion } from "../../package.json";
 
@@ -134,11 +133,11 @@ describe("installing a pack that declares semantic policies", () => {
     expect(errors).toEqual([]);
     expect(warnings).toBeUndefined();
     expect(packSemantic(packs[0]).map((s) => s.name)).toEqual(["pack-destructive-deletion"]);
-    // And the whole point: the machine now asks the PACK's question too —
-    // beside the compiled-in set, since acme is not a FailproofAI pack.
+    // And the whole point: the machine now asks the PACK's question — and only
+    // it, since the package ships no Jev checks of its own.
     const resolved = semanticPoliciesFromPacks(packs);
     expect(resolved.fromPack).toBe(true);
-    expect(resolved.policies.map((p) => p.name)).toEqual([...SEMANTIC_POLICIES.map((p) => p.name), "pack-destructive-deletion"]);
+    expect(resolved.policies.map((p) => p.name)).toEqual(["pack-destructive-deletion"]);
     expect(resolved.policies.at(-1)?.precondition).toBeTypeOf("function");
   });
 
@@ -152,15 +151,15 @@ describe("installing a pack that declares semantic policies", () => {
   it("omits the key when the pack declares none, so it cannot read as an empty set", async () => {
     await add();
     // On DISK: no key at all. An empty array would still read as "this pack
-    // declares semantic entries", and the replacement rule would then have it
-    // replace this build's set with nothing. (The READER normalizes absence to
-    // `[]`, which is why this asserts the record rather than the parsed pack.)
+    // declares semantic entries" to a careless reader. (The READER normalizes
+    // absence to `[]`, which is why this asserts the record rather than the
+    // parsed pack.)
     const record = JSON.parse(readFileSync(join(root, "installed.json"), "utf8")) as {
       packs: Array<Record<string, unknown>>;
     };
     expect("semantic" in record.packs[0]).toBe(false);
-    // And this build's own question set stays in play.
-    expect(semanticPoliciesFromPacks(readInstalledPacks().packs).policies).toBe(SEMANTIC_POLICIES);
+    // And Jev has nothing to ask: no pack declares a check.
+    expect(semanticPoliciesFromPacks(readInstalledPacks().packs).policies).toEqual([]);
   });
 
   it("refuses a malformed semantic entry before writing anything", async () => {

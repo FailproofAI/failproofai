@@ -23,6 +23,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegisteredPolicy } from "@/src/hooks/policy-types";
+import { installJevPoliciesPack, jevPoliciesPackRecord } from "../fixtures/jev-policies";
 
 const ENV_KEYS = ["FAILPROOFAI_HOME", "FAILPROOFAI_PACK_DIR", "FAILPROOFAI_CLOUD_POLICY_DIR"] as const;
 
@@ -43,6 +44,9 @@ beforeEach(() => {
   process.env.FAILPROOFAI_PACK_DIR = packRoot;
   process.env.FAILPROOFAI_CLOUD_POLICY_DIR = cloudRoot;
   writeFileSync(join(home, "policies-config.json"), JSON.stringify({ enabledPolicies: [] }));
+  // The checks every `reviewedBy` below names ship in FailproofAI/jev-policies,
+  // not in the package, so this machine has it installed.
+  installJevPoliciesPack(packRoot);
   stderr = [];
   vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
     stderr.push(String(chunk));
@@ -178,9 +182,13 @@ describe("two installed packs sharing one artifact", () => {
       join(packRoot, "installed.json"),
       JSON.stringify({
         schemaVersion: 1,
-        packs: packs.map((p) => ({
-          ...p, source: `github:${p.id}@v${p.version}`, entry: `artifacts/${digest}.mjs`, sha256: digest,
-        })),
+        packs: [
+          ...packs.map((p) => ({
+            ...p, source: `github:${p.id}@v${p.version}`, entry: `artifacts/${digest}.mjs`, sha256: digest,
+          })),
+          // Its own artifact, so it is not one of the packs sharing this one.
+          jevPoliciesPackRecord(packRoot),
+        ],
       }),
     );
   }

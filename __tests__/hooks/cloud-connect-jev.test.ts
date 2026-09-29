@@ -5,7 +5,7 @@
  *   - A key whose introspect lists `jev:evaluate` stores itself in the `jev`
  *     slot of credentials.json, under the origin it was verified against, and —
  *     only when there is NO jev.json — writes one that turns Jev on through
- *     FailproofAI Cloud in shadow mode.
+ *     FailproofAI Cloud in observe mode.
  *   - An existing jev.json is never overwritten, whatever it names.
  *   - A key introspect says lacks `jev:evaluate` writes no Jev state at all,
  *     and drops the Jev key a previous connection left. An introspect that
@@ -82,14 +82,14 @@ function seedJev(obj: unknown, mode = 0o600): string {
 }
 
 describe("connecting with a key that carries jev:evaluate", () => {
-  it("stores the key under the verified origin and turns Jev on in shadow mode", async () => {
+  it("stores the key under the verified origin and turns Jev on in observe mode", async () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     expect(outcome.jev?.ok).toBe(true);
     expect(outcome.jev?.config?.status).toBe("written");
 
     expect(readCredentials().jev).toEqual({ url: URL_, key: TOKEN });
     const onDisk = JSON.parse(readFileSync(jevConfigFile(), "utf8"));
-    expect(onDisk).toEqual({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "shadow" });
+    expect(onDisk).toEqual({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "observe" });
     // No key in jev.json: the Cloud key has one home.
     expect(readFileSync(jevConfigFile(), "utf8")).not.toContain(TOKEN);
     if (posix) {
@@ -100,12 +100,12 @@ describe("connecting with a key that carries jev:evaluate", () => {
 
     // What the hooks will now read.
     const cfg = loadJevConfig();
-    expect(cfg).toMatchObject({ provider: "failproofai", apiKey: TOKEN, mode: "shadow" });
+    expect(cfg).toMatchObject({ provider: "failproofai", apiKey: TOKEN, mode: "observe" });
     const r = inspectJevConfig();
     expect(r.status === "ok" && r.keySource).toBe("cloud");
 
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
-    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in shadow mode/);
+    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in observe mode/);
     expect(text).toContain("--mode enforce");
     expect(text).not.toContain(TOKEN);
     expect(configuredPaths(outcome)).toContain(credentialsFile());
@@ -115,12 +115,12 @@ describe("connecting with a key that carries jev:evaluate", () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET), "http://localhost:8080/fp");
     expect(readCredentials().jev?.url).toBe("http://localhost:8080");
     expect(JSON.parse(readFileSync(jevConfigFile(), "utf8")).baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
-    // Plain http to loopback is fine in the shadow mode connect writes.
+    // Plain http to loopback is fine in the observe mode connect writes.
     expect(loadJevConfig()?.baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
     // …and only there: `jev setup --mode enforce` (and the dashboard switch)
     // refuses plain http, so the output must not name it as the next step.
     const text = describeOutcome(outcome, "machine-1", "http://localhost:8080/fp").join("\n");
-    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in shadow mode/);
+    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in observe mode/);
     expect(text).not.toContain("--mode enforce");
     expect(text).toContain("Enforce needs an https FailproofAI Cloud URL");
     // The command it would have named really is refused, and the refusal names the step that works.
@@ -169,11 +169,11 @@ describe("connecting with a key that carries jev:evaluate", () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
     expect(text).toContain("switched off");
-    expect(text).toContain("jev setup --mode shadow");
+    expect(text).toContain("jev setup --mode observe");
   });
 
   it("names the other origin when the Cloud jev.json on disk points somewhere else", async () => {
-    seedJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "shadow" });
+    seedJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "observe" });
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     expect(outcome.jev?.config).toMatchObject({ status: "kept", otherOrigin: "https://staging.befailproof.ai" });
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
@@ -193,11 +193,11 @@ describe("connecting with a key that carries jev:evaluate", () => {
     expect(text).toContain("https://staging.befailproof.ai");
     expect(text).toContain("switched off");
     const cmds = [...text.matchAll(/`failproofai (jev setup[^`]*)`/g)].map((m) => m[1]);
-    expect(cmds).toEqual(["jev setup --provider failproofai --mode shadow"]);
+    expect(cmds).toEqual(["jev setup --provider failproofai --mode observe"]);
 
     const r = await runJevCommand(cmds[0].split(" ").slice(1), { render: { cols: 120, color: false } });
     expect(r.exitCode).toBe(0);
-    expect(inspectJevConfig()).toMatchObject({ status: "ok", config: { mode: "shadow", baseUrl: `${URL_}/enforcement/v1/jev` } });
+    expect(inspectJevConfig()).toMatchObject({ status: "ok", config: { mode: "observe", baseUrl: `${URL_}/enforcement/v1/jev` } });
   });
 
   it("the no-clobber write loses to a file that appears first", () => {
@@ -242,7 +242,7 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
       expect(jevLines[0]).toContain("`failproofai jev setup --provider failproofai`");
       const text = lines.join("\n");
       expect(text).not.toMatch(/Jev\s+on\b/);
-      expect(text).not.toContain("shadow mode");
+      expect(text).not.toContain("observe mode");
       expect(text).not.toContain(TOKEN);
       // The key file is named in the closing note: a key WAS stored.
       expect(configuredPaths(outcome)).toContain(credentialsFile());
@@ -259,8 +259,8 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
     expect(text).not.toContain("available on this key");
   });
 
-  it("a Cloud jev.json already on (shadow or enforce) is left alone — and the output says Jev still sends, and how to stop it", async () => {
-    for (const mode of ["shadow", "enforce"] as const) {
+  it("a Cloud jev.json already on (observe or enforce) is left alone — and the output says Jev still sends, and how to stop it", async () => {
+    for (const mode of ["observe", "enforce"] as const) {
       const before = seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode });
       const outcome = await decisionsOnly();
       // Never overwritten (decision 16, invariant 7)…
@@ -279,7 +279,7 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
   });
 
   it("…the same line on the --connect path, above \"Decisions only.\"", async () => {
-    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "shadow" });
+    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "observe" });
     const r = await runConnectCommand({
       url: URL_,
       token: TOKEN,
@@ -291,7 +291,7 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
       daemonStatus: () => "running",
     });
     const text = r.lines.join("\n");
-    expect(text).toContain("Jev is still on through FailproofAI Cloud (shadow mode)");
+    expect(text).toContain("Jev is still on through FailproofAI Cloud (observe mode)");
     expect(text).toContain("Decisions only.");
     expect(text.indexOf("still on through")).toBeLessThan(text.indexOf("Decisions only."));
   });
@@ -299,7 +299,7 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
   it("no such line when the Cloud jev.json does not send: switched off, or pointing at another Cloud", async () => {
     for (const file of [
       { provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "off" },
-      { provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "shadow" },
+      { provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "observe" },
     ]) {
       seedJev(file);
       const outcome = await decisionsOnly();
@@ -333,7 +333,7 @@ describe("connecting with --no-transcripts (sessions !== true)", () => {
     const { runJevCommand } = await import("../../src/hooks/jev-cli");
     const r = await runJevCommand(["setup", "--provider", "failproofai"], { render: { cols: 120, color: false } });
     expect(r.exitCode).toBe(0);
-    expect(loadJevConfig()).toMatchObject({ provider: "failproofai", apiKey: TOKEN, mode: "shadow" });
+    expect(loadJevConfig()).toMatchObject({ provider: "failproofai", apiKey: TOKEN, mode: "observe" });
   });
 });
 
@@ -463,7 +463,7 @@ describe("disconnecting", () => {
   });
 
   it("keeps a BYOK jev.json exactly as it was, and says whose it is", async () => {
-    const before = seedJev({ provider: "openrouter", apiKey: BYOK_KEY, mode: "shadow" });
+    const before = seedJev({ provider: "openrouter", apiKey: BYOK_KEY, mode: "observe" });
     await connect(withPermissions(...MACHINE_PRESET));
     const r = runDisconnectCommand();
     expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
@@ -476,7 +476,7 @@ describe("disconnecting", () => {
   });
 
   // `--mode off` is "the switch that lasts" (jev-cloud.mdx): deleting it here
-  // made the next connect write a fresh shadow file, and Jev came back on.
+  // made the next connect write a fresh observe file, and Jev came back on.
   it("keeps a Cloud jev.json switched off, so reconnecting leaves Jev off", async () => {
     await connect(withPermissions(...MACHINE_PRESET));
     const before = seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "off" });
@@ -496,7 +496,7 @@ describe("disconnecting", () => {
 
   it("removes a Cloud jev.json even with no key left to clear", () => {
     mkdirSync(home, { recursive: true });
-    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "shadow" });
+    seedJev({ provider: "failproofai", baseUrl: `${URL_}/enforcement/v1/jev`, mode: "observe" });
     const r = runDisconnectCommand();
     expect(existsSync(jevConfigFile())).toBe(false);
     expect(r.lines[0]).toBe("Disconnected from FailproofAI Cloud.");

@@ -109,6 +109,20 @@ describe("sanitizeJevActivity", () => {
     expect(out.decision).toBe("allow");
   });
 
+  it("drops the clears of a row whose mode it does not know, rather than filing them as enforced", () => {
+    // A row written before the mode was named `observe` says "shadow": its
+    // clears never took effect, and without a mode they would read as enforce.
+    const out = sanitizeJevActivity(
+      entry({ evaluator: "jev", jevMode: "shadow" as never, jevCleared: ["protect-env-vars"] }),
+    );
+    expect(out).not.toHaveProperty("jevMode");
+    expect(out).not.toHaveProperty("jevCleared");
+    expect(out.evaluator).toBe("jev");
+    // A known mode keeps its clears.
+    const kept = sanitizeJevActivity(entry({ evaluator: "jev", jevMode: "observe", jevCleared: ["protect-env-vars"] }));
+    expect(kept.jevCleared).toEqual(["protect-env-vars"]);
+  });
+
   it("rounds latency and rejects negatives", () => {
     expect(sanitizeJevActivity(entry({ evaluator: "jev", jevLatencyMs: 37.6 })).jevLatencyMs).toBe(38);
     expect(sanitizeJevActivity(entry({ evaluator: "jev", jevLatencyMs: -1 }))).not.toHaveProperty("jevLatencyMs");
@@ -185,14 +199,14 @@ describe("describeJevActivity", () => {
     ).toEqual(["Jev verdict: allow", "cleared block-read-outside-cwd", "38 ms", "jev-1.13.0"]);
   });
 
-  it("says shadow mode enforced the regex result", () => {
+  it("says observe mode enforced the regex result", () => {
     const facts = describeJevActivity(
-      entry({ evaluator: "jev", jevMode: "shadow", jevDecision: "allow", jevCleared: ["block-env-files"] }),
+      entry({ evaluator: "jev", jevMode: "observe", jevDecision: "allow", jevCleared: ["block-env-files"] }),
     );
     expect(facts).toEqual([
       "Jev verdict: allow",
       "would have cleared block-env-files",
-      "shadow mode: the regex result was enforced",
+      "observe mode: the regex result was enforced",
     ]);
   });
 

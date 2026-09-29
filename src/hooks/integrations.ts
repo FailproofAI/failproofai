@@ -14,14 +14,18 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
+import { writeConfigFileAtomic } from "./safe-config-write";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import {
@@ -62,32 +66,82 @@ import {
 
 // ── Generic helpers ─────────────────────────────────────────────────────────
 
+/**
+ * The error every config reader throws for a file it cannot read faithfully.
+ *
+ * These files belong to the user's agent. A config that exists but does not
+ * parse is never treated as empty: writing our entries into an "empty" document
+ * would replace every other setting in it, and the agent would come back without
+ * its model, keys or channels. Refusing leaves the file exactly as the user has
+ * it and says which file and why.
+ */
+export class UnreadableAgentConfigError extends Error {
+  constructor(readonly path: string, reason: string) {
+    super(
+      `Refusing to modify ${path}: ${reason}. ` +
+        `failproofai never rewrites a config it could not parse — fix or move the file, then retry.`,
+    );
+    this.name = "UnreadableAgentConfigError";
+  }
+}
+
 function readJsonFile(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const raw = readFileSync(path, "utf8");
-  return JSON.parse(raw) as Record<string, unknown>;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it could not be read (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (raw.trim() === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new UnreadableAgentConfigError(path, "its top level is not a JSON object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function writeJsonFile(path: string, data: Record<string, unknown>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");
+  writeConfigFileAtomic(path, JSON.stringify(data, null, 2) + "\n");
 }
 
 /** Read a YAML file as a `Document` so writes round-trip the user's other keys +
- *  comments (a plain parse→stringify would strip comments). Empty / missing /
- *  corrupt → an empty Document. Used by the Hermes integration, whose config
- *  lives in `~/.hermes/config.yaml`. */
+ *  comments (a plain parse→stringify would strip comments). Missing or empty →
+ *  an empty Document; unreadable or unparseable → {@link UnreadableAgentConfigError},
+ *  never an empty Document that the next write would put in the user's place.
+ *  Used by the Hermes integration, whose config lives in `~/.hermes/config.yaml`. */
 function readYamlDoc(path: string): Document {
+  if (!existsSync(path)) return parseDocument("");
+  let text: string;
   try {
-    return existsSync(path) ? parseDocument(readFileSync(path, "utf8")) : parseDocument("");
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    throw new UnreadableAgentConfigError(path, `it could not be read (${err instanceof Error ? err.message : String(err)})`);
+  }
+  const doc = parseDocument(text);
+  if (doc.errors.length > 0) {
+    const first = doc.errors[0]?.message.split("\n")[0] ?? "syntax error";
+    throw new UnreadableAgentConfigError(path, `it does not parse as YAML (${first})`);
+  }
+  return doc;
+}
+
+/** {@link readYamlDoc} for read-only callers (status, health): an unreadable file is `null`. */
+function inspectYamlDoc(path: string): Document | null {
+  try {
+    return readYamlDoc(path);
   } catch {
-    return parseDocument("");
+    return null;
   }
 }
 
 function writeYamlDoc(path: string, doc: Document): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, doc.toString(), "utf8");
+  writeConfigFileAtomic(path, doc.toString());
 }
 
 function isMarkedHook(hook: unknown): boolean {
@@ -1124,7 +1178,7 @@ export const opencode: Integration = {
     // (a) Write the shim file. mkdirSync is recursive so the plugins/ dir
     // is created on first install.
     mkdirSync(dirname(pluginPath), { recursive: true });
-    writeFileSync(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope), "utf8");
+    writeConfigFileAtomic(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope), { symlinks: "replace" });
 
     // (b) Merge our entry into the plugin array idempotently. Replace any
     // existing failproofai-marked entry; otherwise append.
@@ -1388,9 +1442,13 @@ function makePiProjectRelativeEntry(extPath: string): string {
 // Hermes loads trusted Python plugins from `<HERMES_HOME>/plugins/<name>/`.
 // The shipped plugin registers Hermes-native hooks and talks directly to the
 // local failproofaid socket, avoiding a fresh CLI process per event. Config is
-// YAML and profile-scoped; install copies the plugin into every profile and
+// YAML and profile-scoped; install LINKS every profile's `plugins/failproofai`
+// to the package's `hermes-plugin/` (so npm upgrades apply with no reinstall,
+// like OpenClaw's `plugins.load.paths`), falling back to a marked copy, and
 // adds `failproofai` to `plugins.enabled`. Legacy shell-hook entries are removed
-// during migration so one tool call is never evaluated twice.
+// during migration so one tool call is never evaluated twice — and because
+// config.yaml shell hooks never reach Hermes cron jobs: each cron fire builds
+// its own hook scope, which discovered plugins join and config hooks do not.
 
 /** One hook entry as stored under a `hooks:` event key in config.yaml. */
 interface HermesHookEntry {
@@ -1409,38 +1467,204 @@ interface HermesPluginsConfig {
 const HERMES_PLUGIN_ID = "failproofai";
 const HERMES_PLUGIN_MARKER = ".failproofai-managed";
 const HERMES_PLUGIN_FILES = ["plugin.yaml", "__init__.py", "client.py", "ledger.py"] as const;
+/** Basename of the plugin directory inside the npm package. */
+const HERMES_PLUGIN_SOURCE_DIR = "hermes-plugin";
 
 function getHermesPluginSourcePath(): string {
   const fromEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
-  if (fromEnv) return resolve(fromEnv, "hermes-plugin");
-  return resolve(fileURLToPath(import.meta.url), "..", "..", "..", "hermes-plugin");
+  if (fromEnv) return resolve(fromEnv, HERMES_PLUGIN_SOURCE_DIR);
+  return findHermesPluginSourcePath(dirname(fileURLToPath(import.meta.url)));
+}
+
+/**
+ * The package's `hermes-plugin/`, found by walking up from `startDir`.
+ *
+ * The CLI entry point sets `FAILPROOFAI_PACKAGE_ROOT`, so this is only the
+ * fallback — but a fixed number of parents is right for exactly one layout:
+ * three from `src/hooks/` is the package root, three from the bundled
+ * `dist/cli.mjs` is the package's PARENT. Walking up to the first directory
+ * that really holds the plugin's manifest works from source, from `dist/`, and
+ * from the dashboard's standalone build alike. When none is found the old
+ * answer is returned, so the install still fails loudly on a missing asset.
+ */
+export function findHermesPluginSourcePath(startDir: string): string {
+  let dir = resolve(startDir);
+  for (let i = 0; i < 8; i++) {
+    const candidate = resolve(dir, HERMES_PLUGIN_SOURCE_DIR);
+    if (existsSync(resolve(candidate, "plugin.yaml"))) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return resolve(startDir, "..", "..", HERMES_PLUGIN_SOURCE_DIR);
 }
 
 export function hermesPluginPathForSettings(settingsPath: string): string {
   return resolve(dirname(settingsPath), "plugins", HERMES_PLUGIN_ID);
 }
 
+/** `existsSync` follows symlinks, so a dangling link reads as absent. This does not. */
+function pathPresent(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasAllHermesPluginFiles(dir: string): boolean {
+  return HERMES_PLUGIN_FILES.every((file) => existsSync(resolve(dir, file)));
+}
+
+/**
+ * The record FailproofAI keeps beside a link it created:
+ * `<profile>/plugins/.failproofai-link`, holding the link's target. It lives
+ * OUTSIDE the linked directory on purpose — anything inside the target is
+ * content whoever owns that directory controls. Hermes' plugin scan skips it
+ * (a file, not a directory).
+ */
+const HERMES_LINK_RECORD = ".failproofai-link";
+
+function hermesLinkRecordPath(pluginPath: string): string {
+  return resolve(dirname(pluginPath), HERMES_LINK_RECORD);
+}
+
+function readHermesLinkRecord(pluginPath: string): string | null {
+  try {
+    const recorded = readFileSync(hermesLinkRecordPath(pluginPath), "utf8").trim();
+    return recorded === "" ? null : resolve(recorded);
+  } catch {
+    return null;
+  }
+}
+
+function writeHermesLinkRecord(pluginPath: string, target: string): void {
+  writeConfigFileAtomic(hermesLinkRecordPath(pluginPath), resolve(target) + "\n", { backup: false, symlinks: "replace" });
+}
+
+function removeHermesLinkRecord(pluginPath: string): void {
+  rmSync(hermesLinkRecordPath(pluginPath), { force: true });
+}
+
+/**
+ * Whether a link at `pluginPath` pointing at `target` is FailproofAI's.
+ *
+ * A directory name and a manifest `name:` are things any plugin can copy, so
+ * neither proves anything. Ownership is one of two verifiable facts:
+ *
+ *   1. our record: the link target equals what `.failproofai-link` says we
+ *      linked (every link this build creates is recorded), or
+ *   2. provenance, for links created before the record existed (the 1.0.9
+ *      betas): the target IS this package's `hermes-plugin/`, or it is
+ *      `…/node_modules/failproofai/hermes-plugin` inside a directory whose
+ *      `package.json` names the package `failproofai`.
+ *
+ * Anything else — including a same-named, same-manifest plugin somewhere
+ * else, or a dangling link with no record — is foreign and never touched.
+ */
+function isOwnedHermesPluginLink(pluginPath: string, target: string): boolean {
+  const recorded = readHermesLinkRecord(pluginPath);
+  if (recorded && resolve(target) === recorded) return true;
+  if (samePath(target, getHermesPluginSourcePath())) return true;
+  const pkgRoot = dirname(resolve(target));
+  if (basename(resolve(target)) !== HERMES_PLUGIN_SOURCE_DIR) return false;
+  if (basename(pkgRoot) !== "failproofai" || basename(dirname(pkgRoot)) !== "node_modules") return false;
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(pkgRoot, "package.json"), "utf8")) as { name?: unknown };
+    return pkg.name === "failproofai";
+  } catch {
+    return false;
+  }
+}
+
+function samePath(a: string, b: string): boolean {
+  if (resolve(a) === resolve(b)) return true;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What occupies `<profile>/plugins/failproofai`, and whether FailproofAI owns it.
+ *
+ *   • `link`     — a symlink into a FailproofAI package's `hermes-plugin/` (the
+ *                  current install shape: npm upgrades apply with no reinstall).
+ *   • `copy`     — a copied directory carrying the `.failproofai-managed`
+ *                  marker (1.0.6–1.0.8 installs, and the fallback where a
+ *                  symlink cannot be created).
+ *   • `foreign`  — anything else: an unmarked directory, a file, or a symlink
+ *                  somewhere that is not a FailproofAI plugin. Never touched.
+ */
+type HermesPluginState =
+  | { kind: "absent" }
+  | { kind: "link"; target: string; complete: boolean; current: boolean }
+  | { kind: "copy"; complete: boolean }
+  | { kind: "foreign" };
+
+function hermesPluginState(settingsPath: string): HermesPluginState {
+  const pluginPath = hermesPluginPathForSettings(settingsPath);
+  let isLink: boolean;
+  let isDirectory: boolean;
+  try {
+    const stat = lstatSync(pluginPath);
+    isLink = stat.isSymbolicLink();
+    isDirectory = stat.isDirectory();
+  } catch {
+    return { kind: "absent" };
+  }
+  if (isLink) {
+    let target: string;
+    try {
+      target = resolve(dirname(pluginPath), readlinkSync(pluginPath));
+    } catch {
+      return { kind: "foreign" };
+    }
+    if (!isOwnedHermesPluginLink(pluginPath, target)) return { kind: "foreign" };
+    return {
+      kind: "link",
+      target,
+      complete: hasAllHermesPluginFiles(target),
+      current: samePath(target, getHermesPluginSourcePath()),
+    };
+  }
+  if (isDirectory && existsSync(resolve(pluginPath, HERMES_PLUGIN_MARKER))) {
+    return { kind: "copy", complete: hasAllHermesPluginFiles(pluginPath) };
+  }
+  return { kind: "foreign" };
+}
+
 function hasManagedHermesPlugin(settingsPath: string): boolean {
-  const pluginPath = hermesPluginPathForSettings(settingsPath);
-  try {
-    if (lstatSync(pluginPath).isSymbolicLink()) return false;
-    if (!existsSync(resolve(pluginPath, HERMES_PLUGIN_MARKER))) return false;
-    return HERMES_PLUGIN_FILES.every((file) => existsSync(resolve(pluginPath, file)));
-  } catch {
-    return false;
-  }
+  const state = hermesPluginState(settingsPath);
+  return (state.kind === "link" || state.kind === "copy") && state.complete;
 }
 
-function hasHermesPluginMarker(settingsPath: string): boolean {
-  const pluginPath = hermesPluginPathForSettings(settingsPath);
-  try {
-    return !lstatSync(pluginPath).isSymbolicLink() && existsSync(resolve(pluginPath, HERMES_PLUGIN_MARKER));
-  } catch {
-    return false;
-  }
+/** Test seam: lets a test make symlink creation fail to exercise the copy fallback. */
+export interface HermesPluginInstallDeps {
+  symlink?: (target: string, path: string) => void;
 }
 
-function installHermesPlugin(settingsPath: string): void {
+function defaultHermesSymlink(target: string, path: string): void {
+  // A junction needs no privilege on Windows; the type is ignored elsewhere.
+  symlinkSync(target, path, process.platform === "win32" ? "junction" : "dir");
+}
+
+/**
+ * Put the plugin at `<profile>/plugins/failproofai`, preferring a symlink to
+ * the package's own `hermes-plugin/` so every npm upgrade updates it in place —
+ * the same reason OpenClaw's config points into the package. Hermes' plugin
+ * scan uses `Path.is_dir()`, which follows symlinks, so the link is discovered
+ * like a directory. Falls back to a marked copy when a link cannot be created.
+ *
+ * Only a path FailproofAI owns (a marked copy, or a link into a FailproofAI
+ * `hermes-plugin/`) is ever replaced; anything else throws.
+ */
+export function installHermesPlugin(
+  settingsPath: string,
+  deps: HermesPluginInstallDeps = {},
+): "linked" | "copied" | "unchanged" {
   const source = getHermesPluginSourcePath();
   for (const file of HERMES_PLUGIN_FILES) {
     if (!existsSync(resolve(source, file))) {
@@ -1449,50 +1673,108 @@ function installHermesPlugin(settingsPath: string): void {
   }
 
   const destination = hermesPluginPathForSettings(settingsPath);
-  if (existsSync(destination)) {
-    if (lstatSync(destination).isSymbolicLink() || !existsSync(resolve(destination, HERMES_PLUGIN_MARKER))) {
-      throw new Error(
-        `Refusing to overwrite an unmanaged Hermes plugin at ${destination}. ` +
-          `Move it aside or install FailproofAI under a different Hermes profile.`,
-      );
+  const existing = hermesPluginState(settingsPath);
+  if (existing.kind === "foreign") {
+    throw new Error(
+      `Refusing to overwrite an unmanaged Hermes plugin at ${destination}. ` +
+        `Move it aside or install FailproofAI under a different Hermes profile.`,
+    );
+  }
+  if (existing.kind === "link" && existing.current) {
+    // A link from a 1.0.9 beta was proven ours by provenance; record it now so
+    // ownership no longer depends on where npm keeps the package.
+    if (readHermesLinkRecord(destination) !== resolve(existing.target)) {
+      try {
+        writeHermesLinkRecord(destination, existing.target);
+      } catch {
+        // Provenance still proves it on the next run; not worth failing over.
+      }
     }
+    return "unchanged";
   }
 
   mkdirSync(dirname(destination), { recursive: true });
   const suffix = `${process.pid}-${Date.now()}`;
   const temporary = `${destination}.install-${suffix}`;
+
+  let linked = false;
+  try {
+    (deps.symlink ?? defaultHermesSymlink)(source, temporary);
+    linked = true;
+  } catch {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+
+  if (!linked) {
+    mkdirSync(temporary, { recursive: true });
+    try {
+      for (const file of HERMES_PLUGIN_FILES) {
+        cpSync(resolve(source, file), resolve(temporary, file));
+      }
+      writeFileSync(
+        resolve(temporary, HERMES_PLUGIN_MARKER),
+        "Managed by failproofai. Remove with `failproofai policies --uninstall --cli hermes`.\n",
+        { encoding: "utf8", mode: 0o600 },
+      );
+    } catch (err) {
+      rmSync(temporary, { recursive: true, force: true });
+      throw err;
+    }
+  }
+
+  // A link replacing a link is one atomic rename. Anything replacing a
+  // directory (or a link replaced by a directory) cannot rename over it, so
+  // the old entry is moved aside first and restored if the swap fails.
+  if (linked && (existing.kind === "absent" || existing.kind === "link")) {
+    try {
+      renameSync(temporary, destination);
+      writeHermesLinkRecord(destination, source);
+      return "linked";
+    } catch (err) {
+      // Windows cannot always rename a junction over another junction; the
+      // backup swap below moves the old link aside first, so try that before
+      // giving up. With nothing there to move aside, the rename is the error.
+      if (existing.kind !== "link") {
+        rmSync(temporary, { force: true });
+        throw err;
+      }
+    }
+  }
+
   const backup = `${destination}.backup-${suffix}`;
   let movedExisting = false;
   try {
-    mkdirSync(temporary, { recursive: true });
-    for (const file of HERMES_PLUGIN_FILES) {
-      cpSync(resolve(source, file), resolve(temporary, file));
-    }
-    writeFileSync(
-      resolve(temporary, HERMES_PLUGIN_MARKER),
-      "Managed by failproofai. Remove with `failproofai policies --uninstall --cli hermes`.\n",
-      { encoding: "utf8", mode: 0o600 },
-    );
-    if (existsSync(destination)) {
+    if (pathPresent(destination)) {
       renameSync(destination, backup);
       movedExisting = true;
     }
     renameSync(temporary, destination);
+    // fs.rm never follows a symlink, so a backed-up link removes only itself.
     if (movedExisting) rmSync(backup, { recursive: true, force: true });
+    if (linked) writeHermesLinkRecord(destination, source);
+    else removeHermesLinkRecord(destination);
   } catch (err) {
     rmSync(temporary, { recursive: true, force: true });
-    if (movedExisting && !existsSync(destination) && existsSync(backup)) {
+    if (movedExisting && !pathPresent(destination) && pathPresent(backup)) {
       renameSync(backup, destination);
     }
     throw err;
   }
+  return linked ? "linked" : "copied";
 }
 
 function removeManagedHermesPlugin(settingsPath: string): boolean {
   const pluginPath = hermesPluginPathForSettings(settingsPath);
+  const state = hermesPluginState(settingsPath);
+  if (state.kind === "link") {
+    // Only the link goes; the package directory it points at is npm's.
+    unlinkSync(pluginPath);
+    removeHermesLinkRecord(pluginPath);
+    return true;
+  }
   // The marker is the ownership boundary. Remove even an incomplete managed
-  // install so an interrupted copy can always be repaired or uninstalled.
-  if (!hasHermesPluginMarker(settingsPath)) return false;
+  // copy so an interrupted install can always be repaired or uninstalled.
+  if (state.kind !== "copy") return false;
   rmSync(pluginPath, { recursive: true, force: true });
   return true;
 }
@@ -1525,28 +1807,226 @@ function removeLegacyHermesHooks(doc: Document): number {
 }
 
 function hermesConfigState(settingsPath: string): {
+  /** Hermes will load it: listed in `plugins.enabled` AND not in `plugins.disabled`. */
   pluginEnabled: boolean;
+  /** Listed in `plugins.enabled`, whatever `plugins.disabled` says. */
+  pluginListed: boolean;
+  /** Listed in `plugins.disabled`, which Hermes checks first and which wins. */
+  pluginDisabled: boolean;
   legacyShellHookPresent: boolean;
+  unreadable?: boolean;
 } {
   if (!existsSync(settingsPath)) {
-    return { pluginEnabled: false, legacyShellHookPresent: false };
+    return { pluginEnabled: false, pluginListed: false, pluginDisabled: false, legacyShellHookPresent: false };
   }
-  const doc = readYamlDoc(settingsPath);
+  const doc = inspectYamlDoc(settingsPath);
+  if (!doc) {
+    return { pluginEnabled: false, pluginListed: false, pluginDisabled: false, legacyShellHookPresent: false, unreadable: true };
+  }
   const js = (doc.toJS() ?? {}) as {
     hooks?: Record<string, HermesHookEntry[]>;
     plugins?: HermesPluginsConfig;
   };
   const enabled = js.plugins?.enabled;
+  const disabled = js.plugins?.disabled;
   const legacyShellHookPresent =
     !!js.hooks &&
     typeof js.hooks === "object" &&
     Object.values(js.hooks).some(
       (entries) => Array.isArray(entries) && entries.some((entry) => isMarkedHook(entry)),
     );
+  // Hermes gates `plugins.disabled` before `plugins.enabled`
+  // (hermes_cli/plugins_discovery.py `gate_manifest`), so a plugin in both
+  // lists never loads. Treating that as enabled reported a switched-off plugin
+  // healthy and let `update` skip it as "already current".
+  const pluginListed = Array.isArray(enabled) && enabled.includes(HERMES_PLUGIN_ID);
+  const pluginDisabled = Array.isArray(disabled) && disabled.includes(HERMES_PLUGIN_ID);
   return {
-    pluginEnabled: Array.isArray(enabled) && enabled.includes(HERMES_PLUGIN_ID),
+    pluginEnabled: pluginListed && !pluginDisabled,
+    pluginListed,
+    pluginDisabled,
     legacyShellHookPresent,
   };
+}
+
+/**
+ * Enable the native plugin in one profile's config and drop FailproofAI's
+ * legacy shell hooks. A native plugin and the legacy shell bridge running
+ * together would evaluate every event twice. Only failproofai-owned shell
+ * entries are removed; unrelated operator hooks remain intact.
+ */
+function enableHermesPluginInDoc(doc: Document): void {
+  removeLegacyHermesHooks(doc);
+
+  const js = (doc.toJS() ?? {}) as { plugins?: HermesPluginsConfig };
+  const plugins: HermesPluginsConfig =
+    js.plugins && typeof js.plugins === "object" ? js.plugins : {};
+  const enabled = Array.isArray(plugins.enabled) ? [...plugins.enabled] : [];
+  if (!enabled.includes(HERMES_PLUGIN_ID)) enabled.push(HERMES_PLUGIN_ID);
+  plugins.enabled = enabled;
+  if (Array.isArray(plugins.disabled)) {
+    plugins.disabled = plugins.disabled.filter((name) => name !== HERMES_PLUGIN_ID);
+    if (plugins.disabled.length === 0) delete plugins.disabled;
+  }
+  doc.set("plugins", plugins);
+}
+
+export type HermesMigrationStatus =
+  /** Brought to the linked-plugin state by this run. */
+  | "migrated"
+  /** Already linked to this package, enabled, and free of shell hooks. */
+  | "current"
+  /** No FailproofAI integration in this profile — left alone. */
+  | "untouched"
+  /** Needs migrating, but the daemon cannot serve the native plugin. Nothing changed. */
+  | "blocked"
+  /** Could not be migrated (unmanaged plugin in the way, unreadable config, I/O error). */
+  | "failed";
+
+export interface HermesProfileMigration {
+  name: string;
+  home: string;
+  status: HermesMigrationStatus;
+  detail: string;
+  /** Legacy config.yaml shell hooks are still in place after this run. */
+  legacyShellHooksRemain: boolean;
+}
+
+/**
+ * The upgrade half `failproofai update` owes Hermes: bring every profile that
+ * already uses FailproofAI (legacy shell hooks, a copied plugin, or a link) to
+ * the linked-plugin state. Profiles with no FailproofAI integration are never
+ * touched — an update must not opt a profile in.
+ *
+ * `daemonSupportsPolicyEvaluation` is asked at most once, and only when some
+ * profile needs changing. When it says no, NOTHING is changed: removing the
+ * shell hooks in favour of a plugin whose daemon cannot answer would fail every
+ * tool call closed (the same gate `policies --install` applies).
+ */
+export async function migrateHermesProfiles(opts: {
+  daemonSupportsPolicyEvaluation: () => Promise<boolean>;
+  installDeps?: HermesPluginInstallDeps;
+}): Promise<HermesProfileMigration[]> {
+  const results: HermesProfileMigration[] = [];
+  let daemonOk: boolean | undefined;
+  for (const profile of listHermesProfiles()) {
+    // One profile's surprise (a file removed mid-run, a permission change) is
+    // that profile's failed line — never the end of the report for the rest.
+    try {
+    if (!existsSync(profile.home)) continue;
+    const settingsPath = resolve(profile.home, "config.yaml");
+    const pluginPath = hermesPluginPathForSettings(settingsPath);
+    const config = hermesConfigState(settingsPath);
+    const plugin = hermesPluginState(settingsPath);
+    const ours = plugin.kind === "link" || plugin.kind === "copy";
+    const base = { name: profile.name, home: profile.home };
+    const legacy = config.legacyShellHookPresent;
+
+    // A config.yaml that does not parse is never edited. Whether it is ours to
+    // report is read from the raw text: it cannot be parsed to find out.
+    if (config.unreadable) {
+      let raw = "";
+      try {
+        raw = readFileSync(settingsPath, "utf8");
+      } catch {
+        raw = "";
+      }
+      const mentionsUs = ours || raw.includes(FAILPROOFAI_HOOK_MARKER) || /failproofai/.test(raw);
+      results.push(
+        mentionsUs
+          ? {
+              ...base,
+              status: "failed",
+              detail: `${settingsPath} does not parse as YAML; left untouched`,
+              legacyShellHooksRemain: /--hook\s+\S+\s+--cli\s+hermes|__failproofai_hook__/.test(raw),
+            }
+          : { ...base, status: "untouched", detail: "no failproofai integration", legacyShellHooksRemain: false },
+      );
+      continue;
+    }
+
+    if (!legacy && !ours && !config.pluginListed && !config.pluginDisabled) {
+      results.push({ ...base, status: "untouched", detail: "no failproofai integration", legacyShellHooksRemain: false });
+      continue;
+    }
+    if (plugin.kind === "link" && plugin.current && plugin.complete && config.pluginEnabled && !legacy) {
+      // A link a 1.0.9 beta created was proven ours by provenance; record it
+      // so ownership stops depending on where npm keeps the package.
+      if (readHermesLinkRecord(pluginPath) !== resolve(plugin.target)) {
+        try {
+          writeHermesLinkRecord(pluginPath, plugin.target);
+        } catch {
+          // Provenance still proves it on the next run.
+        }
+      }
+      results.push({ ...base, status: "current", detail: "already linked", legacyShellHooksRemain: false });
+      continue;
+    }
+    if (plugin.kind === "foreign") {
+      results.push({
+        ...base,
+        status: "failed",
+        detail:
+          `an unmanaged plugin occupies ${pluginPath}` +
+          (legacy ? "; shell hooks left in place (cron jobs are not checked)" : ""),
+        legacyShellHooksRemain: legacy,
+      });
+      continue;
+    }
+    if (daemonOk === undefined) daemonOk = await opts.daemonSupportsPolicyEvaluation();
+    if (!daemonOk) {
+      results.push({
+        ...base,
+        status: "blocked",
+        detail: legacy
+          ? "daemon lacks native policy evaluation; shell hooks left in place (cron jobs are not checked)"
+          : "daemon lacks native policy evaluation; the plugin here cannot get verdicts",
+        legacyShellHooksRemain: legacy,
+      });
+      continue;
+    }
+
+    try {
+      // Plugin first, config second: the shell hooks are only removed once the
+      // plugin that replaces them is on disk.
+      const mode = installHermesPlugin(settingsPath, opts.installDeps);
+      const doc = readYamlDoc(settingsPath);
+      enableHermesPluginInDoc(doc);
+      writeYamlDoc(settingsPath, doc);
+      const reenabledOnly = !legacy && plugin.kind === "link" && plugin.current && mode === "unchanged";
+      const from = legacy
+        ? "shell hooks"
+        : plugin.kind === "copy"
+          ? "copied plugin"
+          : plugin.kind === "link"
+            ? "old plugin link"
+            : "enabled but missing plugin";
+      const to = mode === "copied" ? "plugin copy (symlink not possible here)" : "linked plugin";
+      const detail = reenabledOnly
+        ? config.pluginDisabled
+          ? "plugin re-enabled (was listed in plugins.disabled)"
+          : "plugin enabled in config.yaml"
+        : `${from} → ${to}`;
+      results.push({ ...base, status: "migrated", detail, legacyShellHooksRemain: false });
+    } catch (err) {
+      results.push({
+        ...base,
+        status: "failed",
+        detail: err instanceof Error ? err.message : String(err),
+        legacyShellHooksRemain: hermesConfigState(settingsPath).legacyShellHookPresent,
+      });
+    }
+    } catch (err) {
+      results.push({
+        name: profile.name,
+        home: profile.home,
+        status: "failed",
+        detail: `could not inspect this profile (${err instanceof Error ? err.message : String(err)}); left untouched`,
+        legacyShellHooksRemain: false,
+      });
+    }
+  }
+  return results;
 }
 
 export interface HermesProfileHealth {
@@ -1554,8 +2034,21 @@ export interface HermesProfileHealth {
   home: string;
   settingsPath: string;
   pluginInstalled: boolean;
+  /** How the plugin is installed: a link into the package, a copy, or neither. */
+  pluginMode: "link" | "copy" | null;
   pluginEnabled: boolean;
+  /** failproofai is listed in `plugins.disabled`, so Hermes will not load it. */
+  pluginDisabled: boolean;
   legacyShellHookPresent: boolean;
+  /**
+   * Still enforced only by legacy config.yaml shell hooks. Hermes cron jobs run
+   * with none of those, so their tool calls go unchecked.
+   */
+  cronUnchecked: boolean;
+  /** config.yaml exists but does not parse; failproofai will not touch it. */
+  configUnreadable: boolean;
+  /** Another plugin (not provably FailproofAI's) occupies plugins/failproofai. */
+  pluginForeign: boolean;
   healthy: boolean;
 }
 
@@ -1564,15 +2057,22 @@ export function hermesProfileHealth(): HermesProfileHealth[] {
   return listHermesProfiles().map((profile) => {
     const settingsPath = resolve(profile.home, "config.yaml");
     const config = hermesConfigState(settingsPath);
-    const pluginInstalled = hasManagedHermesPlugin(settingsPath);
+    const plugin = hermesPluginState(settingsPath);
+    const pluginInstalled = (plugin.kind === "link" || plugin.kind === "copy") && plugin.complete;
+    const pluginWorks = pluginInstalled && config.pluginEnabled;
     return {
       name: profile.name,
       home: profile.home,
       settingsPath,
       pluginInstalled,
+      pluginMode: plugin.kind === "link" || plugin.kind === "copy" ? plugin.kind : null,
       pluginEnabled: config.pluginEnabled,
+      pluginDisabled: config.pluginDisabled,
       legacyShellHookPresent: config.legacyShellHookPresent,
-      healthy: pluginInstalled && config.pluginEnabled && !config.legacyShellHookPresent,
+      cronUnchecked: config.legacyShellHookPresent && !pluginWorks,
+      configUnreadable: config.unreadable === true,
+      pluginForeign: plugin.kind === "foreign",
+      healthy: pluginWorks && !config.legacyShellHookPresent && config.unreadable !== true,
     };
   });
 }
@@ -1582,13 +2082,35 @@ export function hermesProfileStatusRows(): Array<[string, string]> {
   return hermesProfileHealth()
     .filter((profile) => existsSync(profile.home))
     .map((profile) => {
+      const label = "hermes/" + profile.name;
+      if (profile.pluginForeign) {
+        return [
+          label,
+          `UNHEALTHY — another plugin occupies ${resolve(profile.home, "plugins", "failproofai")}; failproofai will not replace it. Move it aside, then run update`,
+        ];
+      }
+      if (profile.configUnreadable) {
+        return [label, `UNHEALTHY — ${profile.settingsPath} does not parse; failproofai leaves it untouched until it is fixed`];
+      }
+      if (profile.cronUnchecked) {
+        // Not a cosmetic leftover: the shell-hook integration does not reach
+        // cron jobs at all, so this profile has an unenforced path.
+        return [
+          label,
+          "UNHEALTHY — legacy shell hooks: Hermes cron jobs are not checked. Run `failproofai update`",
+        ];
+      }
       const problems: string[] = [];
       if (!profile.pluginInstalled) problems.push("plugin files missing or incomplete");
-      if (!profile.pluginEnabled) problems.push("plugin not enabled");
+      if (profile.pluginDisabled) problems.push("plugin disabled (listed in plugins.disabled)");
+      else if (!profile.pluginEnabled) problems.push("plugin not enabled");
       if (profile.legacyShellHookPresent) problems.push("legacy shell hook also present");
+      if (problems.length > 0) return [label, "UNHEALTHY — " + problems.join("; ")];
       return [
-        "hermes/" + profile.name,
-        problems.length === 0 ? "native plugin enabled" : "UNHEALTHY — " + problems.join("; "),
+        label,
+        profile.pluginMode === "copy"
+          ? "native plugin enabled (copied — `failproofai update` links it so upgrades apply)"
+          : "native plugin enabled",
       ];
     });
 }
@@ -1641,23 +2163,7 @@ export const hermes: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings) {
-    const doc = settings as unknown as Document;
-    // A native plugin and the legacy shell bridge running together would
-    // evaluate every event twice. Remove only failproofai-owned shell entries;
-    // unrelated operator hooks remain intact.
-    removeLegacyHermesHooks(doc);
-
-    const js = (doc.toJS() ?? {}) as { plugins?: HermesPluginsConfig };
-    const plugins: HermesPluginsConfig =
-      js.plugins && typeof js.plugins === "object" ? js.plugins : {};
-    const enabled = Array.isArray(plugins.enabled) ? [...plugins.enabled] : [];
-    if (!enabled.includes(HERMES_PLUGIN_ID)) enabled.push(HERMES_PLUGIN_ID);
-    plugins.enabled = enabled;
-    if (Array.isArray(plugins.disabled)) {
-      plugins.disabled = plugins.disabled.filter((name) => name !== HERMES_PLUGIN_ID);
-      if (plugins.disabled.length === 0) delete plugins.disabled;
-    }
-    doc.set("plugins", plugins);
+    enableHermesPluginInDoc(settings as unknown as Document);
   },
 
   removeHooksFromFile(settingsPath) {

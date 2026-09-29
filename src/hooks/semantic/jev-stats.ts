@@ -31,9 +31,9 @@ export interface JevStats {
   latencyP95Ms: number | null;
   /**
    * Reviewable policies Jev cleared, by name — enforce mode only, where a
-   * clear changed the outcome. Shadow mode's would-be clears are in
-   * {@link JevStats.shadowClearsByPolicy}, so a renderer that prints only this
-   * field says "nothing cleared" on a shadow-mode machine: print both.
+   * clear changed the outcome. Observe mode's would-be clears are in
+   * {@link JevStats.observeClearsByPolicy}, so a renderer that prints only this
+   * field says "nothing cleared" on an observe-mode machine: print both.
    */
   clearsByPolicy: Record<string, number>;
   // The fields below are optional in the TYPE only so that a caller written
@@ -62,9 +62,9 @@ export interface JevStats {
    */
   decisions?: { allow: number; instruct: number; deny: number };
   /** Consulted calls (`total`) per rollout mode; a row written without a mode is counted in neither. */
-  modes?: { shadow: number; enforce: number };
-  /** What Jev would have cleared in shadow mode, where the regex result was enforced instead. */
-  shadowClearsByPolicy?: Record<string, number>;
+  modes?: { observe: number; enforce: number };
+  /** What Jev would have cleared in observe mode, where the regex result was enforced instead. */
+  observeClearsByPolicy?: Record<string, number>;
   /** Model ids that answered, by count. */
   models?: Record<string, number>;
 }
@@ -160,14 +160,14 @@ export function computeJevStats(
     notConsulted: 0,
     noRequest: 0,
     decisions: { allow: 0, instruct: 0, deny: 0 },
-    modes: { shadow: 0, enforce: 0 },
-    shadowClearsByPolicy: {},
+    modes: { observe: 0, enforce: 0 },
+    observeClearsByPolicy: {},
     models: {},
   };
   const latencies: number[] = [];
   const fallbackReasons = new Counter();
   const clearsByPolicy = new Counter();
-  const shadowClearsByPolicy = new Counter();
+  const observeClearsByPolicy = new Counter();
   const models = new Counter();
 
   for (const raw of entries) {
@@ -197,13 +197,13 @@ export function computeJevStats(
     if (e.jevDecision) stats.decisions[e.jevDecision] += 1;
     if (e.jevLatencyMs !== undefined) latencies.push(e.jevLatencyMs);
     if (e.jevModel) models.bump(e.jevModel);
-    const clears = e.jevMode === "shadow" ? shadowClearsByPolicy : clearsByPolicy;
+    const clears = e.jevMode === "observe" ? observeClearsByPolicy : clearsByPolicy;
     for (const name of e.jevCleared ?? []) clears.bump(name);
   }
 
   stats.fallbackReasons = fallbackReasons.toRecord();
   stats.clearsByPolicy = clearsByPolicy.toRecord();
-  stats.shadowClearsByPolicy = shadowClearsByPolicy.toRecord();
+  stats.observeClearsByPolicy = observeClearsByPolicy.toRecord();
   stats.models = models.toRecord();
   stats.fallbackRate = stats.total > 0 ? stats.fallbacks / stats.total : 0;
   latencies.sort((a, b) => a - b);
@@ -217,8 +217,8 @@ export function computeJevStats(
  * {@link clampJevStatsWindow}), read from the hook activity store. Never
  * throws: an unreadable store reads as no activity.
  *
- * A renderer must show {@link JevStats.shadowClearsByPolicy} as well as
- * `clearsByPolicy`: in shadow mode every clear Jev would have made is in the
+ * A renderer must show {@link JevStats.observeClearsByPolicy} as well as
+ * `clearsByPolicy`: in observe mode every clear Jev would have made is in the
  * former, and the latter is empty. {@link formatJevStats} prints both.
  */
 export async function jevStats(opts: { windowMs?: number; now?: number } = {}): Promise<JevStatsDetail> {
@@ -279,11 +279,11 @@ export function formatJevStats(s: JevStats): string {
   lines.push(...notAsked);
   if (s.latencyP50Ms !== null) lines.push(`  Latency:      p50 ${s.latencyP50Ms} ms, p95 ${s.latencyP95Ms} ms`);
   if (Object.keys(s.clearsByPolicy).length > 0) lines.push(`  Cleared:      ${topCounts(s.clearsByPolicy)}`);
-  if (s.shadowClearsByPolicy && Object.keys(s.shadowClearsByPolicy).length > 0) {
-    lines.push(`  Would clear:  ${topCounts(s.shadowClearsByPolicy)} (shadow mode)`);
+  if (s.observeClearsByPolicy && Object.keys(s.observeClearsByPolicy).length > 0) {
+    lines.push(`  Would clear:  ${topCounts(s.observeClearsByPolicy)} (observe mode)`);
   }
-  if (s.modes && s.modes.shadow > 0 && s.modes.enforce > 0) {
-    lines.push(`  Modes:        enforce ${s.modes.enforce}, shadow ${s.modes.shadow}`);
+  if (s.modes && s.modes.observe > 0 && s.modes.enforce > 0) {
+    lines.push(`  Modes:        enforce ${s.modes.enforce}, observe ${s.modes.observe}`);
   }
   return lines.join("\n");
 }

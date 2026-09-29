@@ -73,11 +73,11 @@ describe("jev CLI: FailproofAI Cloud", () => {
   describe("status", () => {
     it("on: FailproofAI Cloud, host only, key from the connection", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       const human = await runJevCommand(["status"], RENDER);
       expect(human.exitCode).toBe(0);
       const t = text(human);
-      expect(t).toContain("on · shadow");
+      expect(t).toContain("on · observe");
       expect(t).toContain("FailproofAI Cloud");
       expect(t).toContain("app.befailproof.ai");
       expect(t).not.toContain("/enforcement/v1/jev");
@@ -91,7 +91,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
         providerLabel: "FailproofAI Cloud",
         endpoint: "app.befailproof.ai",
         model: "jev-1.13.0",
-        mode: "shadow",
+        mode: "observe",
         keySource: "cloud",
         keySourceLabel: "FailproofAI Cloud connection",
         cloudConnected: true,
@@ -120,7 +120,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("connected with a key that has no Jev: says so, never \"not connected\"", async () => {
       writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       const human = await runJevCommand(["status"], RENDER);
       expect(human.exitCode).toBe(0);
       expect(text(human)).toContain("off — no Jev key is stored for this machine's FailproofAI Cloud connection");
@@ -131,7 +131,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
         status: "key-lacks-jev",
         provider: "failproofai",
         endpoint: "app.befailproof.ai",
-        mode: "shadow",
+        mode: "observe",
         keySource: "cloud",
         cloudConnected: true,
         keyCarriesJev: false,
@@ -162,7 +162,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       ["not-connected", () => undefined, "failproofai jev remove"],
     ])("%s: the reconnect and the off switch are separate steps", async (_state, arrange, offCmd) => {
       arrange();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       const lines = (await runJevCommand(["status"], RENDER)).lines;
       const i = lines.findIndex((l) => l.trim() === "failproofai config --token <key>");
       expect(i).toBeGreaterThan(0);
@@ -194,7 +194,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("a loose credentials.json: refused, with the chmod that fixes it", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       chmodSync(join(fpHome, "credentials.json"), 0o644);
       const human = await runJevCommand(["status"], RENDER);
       expect(human.exitCode).toBe(1);
@@ -206,7 +206,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
     // budget), not tampering: the note must name the bits that are set.
     it.each([["0644", 0o644], ["0640", 0o640], ["0604", 0o604]])("credentials.json at %s: says others can read it, not change it", async (_octal, mode) => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       chmodSync(join(fpHome, "credentials.json"), mode);
       const t = text(await runJevCommand(["status"], RENDER));
       expect(t).toMatch(/can read it/);
@@ -216,9 +216,9 @@ describe("jev CLI: FailproofAI Cloud", () => {
     // A Cloud jev.json has no key (it is in credentials.json), and neither has a
     // --key-from-env one: refused as firmly, but not for disclosing a key.
     it.each([
-      ["Cloud", { provider: "failproofai", baseUrl: BASE, mode: "shadow" }, false],
-      ["BYOK key-from-env", { provider: "typesafe", mode: "shadow" }, false],
-      ["BYOK with a stored key", { provider: "typesafe", apiKey: BYOK_KEY, mode: "shadow" }, true],
+      ["Cloud", { provider: "failproofai", baseUrl: BASE, mode: "observe" }, false],
+      ["BYOK key-from-env", { provider: "typesafe", mode: "observe" }, false],
+      ["BYOK with a stored key", { provider: "typesafe", apiKey: BYOK_KEY, mode: "observe" }, true],
     ])("%s jev.json at 0644: says it holds a key only when it does", async (_kind, file, holdsKey) => {
       connect();
       writeJev(file);
@@ -234,14 +234,14 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("credentials.json group-writable: says others could change it", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       chmodSync(join(fpHome, "credentials.json"), 0o620);
       expect(text(await runJevCommand(["status"], RENDER))).toContain("could change it");
     });
 
     it("credentials.json that is not JSON: no permissions claim, reconnect instead", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       writeFileSync(join(fpHome, "credentials.json"), "{not json", { mode: 0o600 });
       const human = await runJevCommand(["status"], RENDER);
       expect(human.exitCode).toBe(1);
@@ -293,7 +293,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("refused credentials.json --json: the Cloud facts, and which file's permissions are which", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       chmodSync(join(fpHome, "credentials.json"), 0o640);
       const machine = await runJevCommand(["status", "--json"], RENDER);
       expect(machine.exitCode).toBe(1);
@@ -320,14 +320,14 @@ describe("jev CLI: FailproofAI Cloud", () => {
   });
 
   describe("setup --provider failproofai", () => {
-    it("builds the file from the connection: shadow, no key, 0600", async () => {
+    it("builds the file from the connection: observe, no key, 0600", async () => {
       connect();
       const r = await runJevCommand(["setup", "--provider", "failproofai"], RENDER);
       expect(r.exitCode, text(r)).toBe(0);
-      expect(onDisk()).toEqual({ provider: "failproofai", mode: "shadow", baseUrl: BASE });
+      expect(onDisk()).toEqual({ provider: "failproofai", mode: "observe", baseUrl: BASE });
       if (process.platform !== "win32") expect(statSync(jevConfigPath()).mode & 0o777).toBe(0o600);
       expect(loadJevConfig()).toMatchObject({ provider: "failproofai", apiKey: KEY });
-      expect(text(r)).toContain("saved · FailproofAI Cloud · shadow");
+      expect(text(r)).toContain("saved · FailproofAI Cloud · observe");
       noKey(r);
     });
 
@@ -373,7 +373,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
     });
 
     it("a mode switch over a Cloud file rewrites the mode and keeps the rest — connected or not", async () => {
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow", timeoutMs: 2500 });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 2500 });
       const r = await runJevCommand(["setup", "--mode", "enforce"], RENDER);
       expect(r.exitCode, text(r)).toBe(0);
       expect(onDisk()).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "enforce", timeoutMs: 2500 });
@@ -386,7 +386,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
       // Connected, with a key that has no Jev: said so — never "not connected".
       writeCredentials({ ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
-      const lacks = await runJevCommand(["setup", "--mode", "shadow"], RENDER);
+      const lacks = await runJevCommand(["setup", "--mode", "observe"], RENDER);
       expect(lacks.exitCode, text(lacks)).toBe(0);
       expect(text(lacks)).toContain("connected, no Jev key stored for it");
       expect(text(lacks)).not.toContain("not connected");
@@ -404,7 +404,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
       // Connected with a Jev key: the live check is the next step.
       connect();
-      const on = await runJevCommand(["setup", "--mode", "shadow"], RENDER);
+      const on = await runJevCommand(["setup", "--mode", "observe"], RENDER);
       expect(on.exitCode, text(on)).toBe(0);
       expect(text(on)).toContain("failproofai jev test");
       expect(text(on)).not.toContain("config --token <key>");
@@ -412,7 +412,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("drops a key someone put in a Cloud file, which is what makes it valid again", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow", apiKey: BYOK_KEY });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe", apiKey: BYOK_KEY });
       expect(loadJevConfig()).toBeNull();
       const r = await runJevCommand(["setup", "--provider", "failproofai"], RENDER);
       expect(r.exitCode).toBe(0);
@@ -430,12 +430,12 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(loadJevConfig()?.baseUrl).toBe(BASE);
     });
 
-    it("switching from BYOK is explicit, starts in shadow, and carries no BYOK key over", async () => {
+    it("switching from BYOK is explicit, starts in observe, and carries no BYOK key over", async () => {
       connect();
       writeJev({ provider: "typesafe", apiKey: BYOK_KEY, mode: "enforce" });
       const r = await runJevCommand(["setup", "--provider", "failproofai"], RENDER);
       expect(r.exitCode).toBe(0);
-      expect(onDisk()).toEqual({ provider: "failproofai", mode: "shadow", baseUrl: BASE });
+      expect(onDisk()).toEqual({ provider: "failproofai", mode: "observe", baseUrl: BASE });
       expect(readFileSync(jevConfigPath(), "utf8")).not.toContain(BYOK_KEY);
     });
   });
@@ -450,7 +450,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
 
     it("jev models has nothing to read for it", async () => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       const r = await runJevCommand(["models"], RENDER);
       expect(r.exitCode).toBe(1);
       expect(text(r)).toContain("FailproofAI Cloud serves no model list");
@@ -469,12 +469,12 @@ describe("jev CLI: FailproofAI Cloud", () => {
       ["a group-writable directory", () => chmodSync(fpHome, 0o770), () => `chmod 700 ${fpHome}`],
       [
         "a Cloud file on another origin",
-        () => writeJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "shadow" }),
+        () => writeJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "observe" }),
         () => "failproofai jev setup --provider failproofai",
       ],
     ])("refused (%s): the same fix as status", async (_label, breakIt, fix) => {
       connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       breakIt();
       const t = text(await runJevCommand(["test"], RENDER));
       chmodSync(fpHome, 0o700);
@@ -483,7 +483,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
     });
 
     it("not connected / switched off: not run, with a code for each", async () => {
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
       const nc = await runJevCommand(["test", "--json"], RENDER);
       expect(nc.exitCode).toBe(1);
       expect(json(nc)).toMatchObject({ ok: false, error: { code: "not-connected" } });
@@ -514,7 +514,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       it("says what to do in FailproofAI Cloud's terms", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);
-        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "observe" });
         status = 403;
         body = { error: "forbidden", message: "this key does not carry jev:evaluate" };
         const refused = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
@@ -534,7 +534,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       it("a 429 names the daily limit when the body says so, and the per-minute one otherwise", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);
-        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "observe" });
         status = 429;
 
         body = { error: "daily_limit_reached" };
@@ -555,7 +555,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       it("a 503 names who fixes it, not a wait", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);
-        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "observe" });
         status = 503;
         body = { error: "jev_unavailable" };
         const r = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
@@ -568,7 +568,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       it("a 422 request_rejected is that call's own, never an outage to wait out", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);
-        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "observe" });
         status = 422;
         body = { error: "request_rejected" };
         const rejected = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });
@@ -583,7 +583,7 @@ describe("jev CLI: FailproofAI Cloud", () => {
       it("a redirect is advice about the connection, never a --base-url this route refuses", async () => {
         const origin = `http://127.0.0.1:${port}`;
         connect(origin);
-        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "shadow" });
+        writeJev({ provider: "failproofai", baseUrl: `${origin}/enforcement/v1/jev`, mode: "observe" });
         status = 302;
         body = {};
         const redirected = await runJevCommand(["test"], { ...RENDER, testTimeoutMs: 5_000 });

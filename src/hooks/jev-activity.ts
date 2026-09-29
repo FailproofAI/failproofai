@@ -57,7 +57,7 @@ export const JEV_ACTIVITY_KEYS = [
 
 const EVALUATORS = new Set(["jev", "jev-fallback"]);
 const DECISIONS = new Set(["allow", "instruct", "deny"]);
-const MODES = new Set(["shadow", "enforce"]);
+const MODES = new Set(["observe", "enforce"]);
 
 /**
  * A reason's leading code — lowercase kebab-case — either alone or followed by
@@ -236,7 +236,12 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
 
   if (!(typeof out.evaluator === "string" && EVALUATORS.has(out.evaluator))) drop("evaluator");
   if (!(typeof out.jevDecision === "string" && DECISIONS.has(out.jevDecision))) drop("jevDecision");
+  // A mode this build does not know (a row written before the mode was named
+  // `observe`) cannot say whether its clears were enforced, so they are not
+  // counted as anything: dropping only the mode would file them as enforced.
+  const unknownMode = out.jevMode !== undefined && !(typeof out.jevMode === "string" && MODES.has(out.jevMode));
   if (!(typeof out.jevMode === "string" && MODES.has(out.jevMode))) drop("jevMode");
+  if (unknownMode) drop("jevCleared");
 
   if (Array.isArray(out.jevCleared)) {
     const names = [
@@ -374,9 +379,9 @@ export function describeJevActivity(raw: JevActivityFields): string[] | null {
   if (e.jevDecision) facts.push(`Jev verdict: ${e.jevDecision}`);
   const cleared = e.jevCleared ?? [];
   if (cleared.length > 0) {
-    facts.push(`${e.jevMode === "shadow" ? "would have cleared" : "cleared"} ${cleared.join(", ")}`);
+    facts.push(`${e.jevMode === "observe" ? "would have cleared" : "cleared"} ${cleared.join(", ")}`);
   }
-  if (e.jevMode === "shadow") facts.push("shadow mode: the regex result was enforced");
+  if (e.jevMode === "observe") facts.push("observe mode: the regex result was enforced");
   if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
   if (e.jevModel) facts.push(e.jevModel);
   // Answered, but nothing this build can show (a verdict in a shape it cannot read).

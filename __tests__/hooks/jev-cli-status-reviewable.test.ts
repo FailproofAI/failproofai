@@ -20,7 +20,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runJevCommand, type JevCliDeps, type JevCliResult } from "../../src/hooks/jev-cli";
 import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
-import { RETAKE_PACK_COMMAND } from "../../src/hooks/policy-reviewability";
+import { JEV_POLICIES_ADD_COMMAND, NO_JEV_CHECKS_PROBLEM, RETAKE_PACK_COMMAND } from "../../src/hooks/policy-reviewability";
+import { JEV_PACK_SEMANTIC_ENTRIES } from "../fixtures/jev-policies";
 import { JEV_API_KEY_ENV } from "../../src/hooks/semantic/jev-config";
 
 const KEY = ["cli", "reviewable", "0123456789abcdef"].join("-");
@@ -73,8 +74,12 @@ function writeConfig(config: Record<string, unknown>): void {
   writeFileSync(join(process.env.FAILPROOFAI_HOME as string, "policies-config.json"), JSON.stringify(config));
 }
 
-/** An installed pack, written the way the loader verifies it. */
-function installPack(policies: Array<Record<string, unknown>>): void {
+/**
+ * An installed pack, written the way the loader verifies it — beside
+ * FailproofAI/jev-policies unless `withJev` is false, because the checks the
+ * core pack's `reviewedBy` names live there.
+ */
+function installPack(policies: Array<Record<string, unknown>>, withJev = true): void {
   const artifact = "// a pack artifact this test never executes\n";
   const digest = createHash("sha256").update(artifact).digest("hex");
   mkdirSync(join(packRoot, "artifacts"), { recursive: true });
@@ -92,6 +97,19 @@ function installPack(policies: Array<Record<string, unknown>>): void {
           sha256: digest,
           policies,
         },
+        ...(withJev
+          ? [
+              {
+                id: "FailproofAI/jev-policies",
+                version: "0.2.0",
+                source: "github:FailproofAI/jev-policies@v0.2.0",
+                entry: `artifacts/${digest}.mjs`,
+                sha256: digest,
+                policies: [],
+                semantic: JEV_PACK_SEMANTIC_ENTRIES,
+              },
+            ]
+          : []),
       ],
     }),
   );
@@ -154,27 +172,52 @@ describe("failproofai jev status — what Jev may clear", () => {
       enabled: PACKABLE.length + 1,
       reviewable: 0,
       customPolicyFiles: 0,
+      jevChecks: 16,
     });
     expect(j.reviewablePolicies.problem).toContain(RETAKE_PACK_COMMAND);
   });
 
-  it("reports the seven Jev may clear, and complains about nothing, on this build's builtins", async () => {
-    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+  it("reports the fifteen Jev may clear, and complains about nothing, with the core pack and its Jev checks", async () => {
+    writeConfig({ enabledPolicies: [] });
+    installPack(PACKABLE as unknown as Array<Record<string, unknown>>);
     await turnJevOn();
 
     const r = await runJevCommand(["status"], RENDER);
     const out = text(r);
-    expect(out).toContain(`15 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+    expect(out).toContain(`15 of ${PACKABLE.length + 1} enabled policies are reviewable`);
     expect(out).toContain("Jev may clear a deny or an instruction from those, and from no others.");
     expect(out).not.toContain(RETAKE_PACK_COMMAND);
+    expect(out).not.toContain(JEV_POLICIES_ADD_COMMAND);
 
     const j = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
     expect(j.reviewablePolicies).toEqual({
-      enabled: POLICY_CATALOG.length,
+      enabled: PACKABLE.length + 1,
       reviewable: 15,
       customPolicyFiles: 0,
+      jevChecks: 16,
       problem: null,
     });
+  });
+
+  it("says Jev has no checks installed, and how to add them, when no pack declares any", async () => {
+    // The vanilla install: the package ships no Jev checks, so configuring Jev
+    // alone asks nothing. Status has to say so plainly, with the one command.
+    writeConfig({ enabledPolicies: POLICY_CATALOG.map((p) => p.name) });
+    await turnJevOn();
+
+    const r = await runJevCommand(["status"], RENDER);
+    expect(r.exitCode).toBe(0);
+    const out = text(r);
+    expect(out).toContain("Jev has no checks installed");
+    expect(out).toContain(JEV_POLICIES_ADD_COMMAND);
+    expect(out).toContain(`0 of ${POLICY_CATALOG.length} enabled policies are reviewable`);
+
+    const j = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
+    expect(j.reviewablePolicies).toMatchObject({ reviewable: 0, jevChecks: 0, problem: NO_JEV_CHECKS_PROBLEM });
+
+    // The core pack alone is the same: its reviewedBy names checks that live elsewhere.
+    installPack(PACKABLE as unknown as Array<Record<string, unknown>>, false);
+    expect(text(await runJevCommand(["status"], RENDER))).toContain(JEV_POLICIES_ADD_COMMAND);
   });
 
   it("says nothing about authority for a config the loader refused", async () => {

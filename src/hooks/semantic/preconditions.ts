@@ -7,7 +7,7 @@
  * VALIDATES a name imports `precondition-names.ts` instead, and the header
  * there says why that separation is load-bearing.
  *
- * Every body reuses the helper the builtin semantic policies use rather than
+ * Every body reuses the helper FailproofAI's own checks were written with rather than
  * restating the rule. A pack's `paths_outside_project` and the builtin
  * `read-outside-workspace` have to mean the same thing: the whole point of the
  * precondition is to decide whether the paired regex deny gets a question at

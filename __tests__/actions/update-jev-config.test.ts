@@ -150,9 +150,9 @@ describe("saving writes the file the hooks read", () => {
 
   it("carries the stored token across a mode change, without it being re-typed", async () => {
     await saveJevConfigAction(input());
-    const res = await saveJevConfigAction(input({ mode: "shadow", token: "" }));
+    const res = await saveJevConfigAction(input({ mode: "observe", token: "" }));
     expect(res.ok).toBe(true);
-    expect(loadJevConfig()?.mode).toBe("shadow");
+    expect(loadJevConfig()?.mode).toBe("observe");
     expect(loadJevConfig()?.apiKey).toBe(TOKEN);
   });
 
@@ -367,23 +367,23 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(loadJevConfig()).toBeNull();
   });
 
-  it("refuses plain http in enforce mode, and accepts loopback http in shadow", async () => {
+  it("refuses plain http in enforce mode, and accepts loopback http in observe", async () => {
     const enforced = await saveJevConfigAction(
       input({ provider: "custom", baseUrl: "http://localhost:9999", mode: "enforce" }),
     );
     expect(enforced.ok).toBe(false);
     expect(loadJevConfig()).toBeNull();
 
-    const shadowed = await saveJevConfigAction(
-      input({ provider: "custom", baseUrl: "http://localhost:9999", mode: "shadow" }),
+    const observed = await saveJevConfigAction(
+      input({ provider: "custom", baseUrl: "http://localhost:9999", mode: "observe" }),
     );
-    expect(shadowed.ok).toBe(true);
-    expect(loadJevConfig()?.mode).toBe("shadow");
+    expect(observed.ok).toBe(true);
+    expect(loadJevConfig()?.mode).toBe("observe");
   });
 
   it("refuses plain http to anywhere but loopback, in either mode", async () => {
     const res = await saveJevConfigAction(
-      input({ provider: "custom", baseUrl: "http://jev.example", mode: "shadow" }),
+      input({ provider: "custom", baseUrl: "http://jev.example", mode: "observe" }),
     );
     expect(res.ok).toBe(false);
     expect(loadJevConfig()).toBeNull();
@@ -443,10 +443,10 @@ describe("validation is the loader's, not a second copy of it", () => {
   it("still re-saves an older mismatched file untouched, to switch its mode", async () => {
     seedConfig({ provider: "openrouter", apiKey: TOKEN, baseUrl: "https://ai-gateway.vercel.sh/v1" });
     const res = await saveJevConfigAction(
-      input({ provider: "openrouter", baseUrl: "https://ai-gateway.vercel.sh/v1", mode: "shadow", token: "" }),
+      input({ provider: "openrouter", baseUrl: "https://ai-gateway.vercel.sh/v1", mode: "observe", token: "" }),
     );
     expect(res.ok).toBe(true);
-    expect(onDisk().mode).toBe("shadow");
+    expect(onDisk().mode).toBe("observe");
   });
 
   // The client never appends a second /systemone, so "adds /systemone to the
@@ -472,21 +472,21 @@ describe("validation is the loader's, not a second copy of it", () => {
     // CLI likewise checks only a --base-url it was given.
     seedConfig({ provider: "custom", apiKey: TOKEN, baseUrl: "https://proxy.example/v1/systemone" });
     const res = await saveJevConfigAction(
-      input({ provider: "custom", baseUrl: "https://proxy.example/v1/systemone", mode: "shadow", token: "" }),
+      input({ provider: "custom", baseUrl: "https://proxy.example/v1/systemone", mode: "observe", token: "" }),
     );
     expect(res.ok).toBe(true);
     expect(onDisk().baseUrl).toBe("https://proxy.example/v1/systemone");
-    expect(onDisk().mode).toBe("shadow");
+    expect(onDisk().mode).toBe("observe");
   });
 
   // `setJevModeAction` and `jev setup --mode` refuse these; the save skipped
   // them, keeping the old mode — or, on a fresh machine, writing a file with no
   // mode, which loads as enforce.
   it.each(["yolo", "ENFORCE", "", null])("refuses mode %j and writes nothing", async (mode) => {
-    await saveJevConfigAction(input({ mode: "shadow" }));
+    await saveJevConfigAction(input({ mode: "observe" }));
     const before = readFileSync(configPath(), "utf8");
     const res = await saveJevConfigAction(input({ mode: mode as string, token: "" }));
-    expect(res).toEqual({ ok: false, problem: 'mode must be "off", "shadow" or "enforce".' });
+    expect(res).toEqual({ ok: false, problem: 'mode must be "off", "observe" or "enforce".' });
     expect(readFileSync(configPath(), "utf8")).toBe(before);
   });
 
@@ -601,13 +601,13 @@ describe("a save keeps the fields the form does not show", () => {
       accountId: CLOUDFLARE_ACCOUNT,
       model: "typesafe/jev-1.13",
       timeoutMs: 4500,
-      mode: "shadow",
+      mode: "observe",
     });
 
     // Exactly what the panel sends for that file with nothing touched: the form
     // holds the four values the view gave it, and a blank token.
     const res = await saveJevConfigAction(
-      input({ provider: "cloudflare", accountId: CLOUDFLARE_ACCOUNT, mode: "shadow", token: "" }),
+      input({ provider: "cloudflare", accountId: CLOUDFLARE_ACCOUNT, mode: "observe", token: "" }),
     );
     expect(res.ok).toBe(true);
 
@@ -615,7 +615,7 @@ describe("a save keeps the fields the form does not show", () => {
     expect(loaded?.model).toBe("typesafe/jev-1.13");
     expect(loaded?.accountId).toBe(CLOUDFLARE_ACCOUNT);
     expect(loaded?.timeoutMs).toBe(4500);
-    expect(loaded?.mode).toBe("shadow");
+    expect(loaded?.mode).toBe("observe");
     expect(loaded?.apiKey).toBe(TOKEN);
   });
 
@@ -625,7 +625,7 @@ describe("a save keeps the fields the form does not show", () => {
       apiKey: TOKEN,
       model: "typesafe/jev-1.13",
       timeoutMs: 4500,
-      mode: "shadow",
+      mode: "observe",
     });
 
     const res = await saveJevConfigAction(input({ mode: "enforce", token: "" }));
@@ -640,7 +640,7 @@ describe("a save keeps the fields the form does not show", () => {
   it("keeps a field a newer failproofai wrote, which this form has never heard of", async () => {
     seedConfig({ provider: "typesafe", apiKey: TOKEN, futureField: { weights: [1, 2] } });
 
-    expect((await saveJevConfigAction(input({ mode: "shadow", token: "" }))).ok).toBe(true);
+    expect((await saveJevConfigAction(input({ mode: "observe", token: "" }))).ok).toBe(true);
     expect(onDisk().futureField).toEqual({ weights: [1, 2] });
   });
 
@@ -658,14 +658,14 @@ describe("a save keeps the fields the form does not show", () => {
     };
 
     seedConfig(seed);
-    expect((await saveJevConfigAction(input({ mode: "shadow", token: "" }))).ok).toBe(true);
+    expect((await saveJevConfigAction(input({ mode: "observe", token: "" }))).ok).toBe(true);
     const viaPanel = onDisk();
 
     seedConfig(seed);
     const { runJevCommand } = await import("../../src/hooks/jev-cli");
-    // `jev setup --mode shadow`: the same change, named the same way, with no
+    // `jev setup --mode observe`: the same change, named the same way, with no
     // terminal to prompt on — the key is kept from the existing config.
-    const cli = await runJevCommand(["setup", "--mode", "shadow"], {
+    const cli = await runJevCommand(["setup", "--mode", "observe"], {
       stdinIsTTY: false,
       // No provider is reached from a unit test; see jev-cli-contracts.test.ts.
       readModelList: async () => ({ ok: false, reason: "no list read in tests" }),
@@ -697,18 +697,18 @@ describe("a config whose key lives in the environment", () => {
   });
 
   it("takes a provider change too, and stays keyless", async () => {
-    seedConfig({ provider: "typesafe", mode: "shadow" });
+    seedConfig({ provider: "typesafe", mode: "observe" });
 
-    const res = await saveJevConfigAction(input({ provider: "openrouter", mode: "shadow", token: "" }));
+    const res = await saveJevConfigAction(input({ provider: "openrouter", mode: "observe", token: "" }));
     expect(res.ok).toBe(true);
-    expect(onDisk()).toEqual({ provider: "openrouter", mode: "shadow" });
+    expect(onDisk()).toEqual({ provider: "openrouter", mode: "observe" });
   });
 
   it("is still on after such a save, with the key read from the environment", async () => {
     process.env.FAILPROOFAI_JEV_API_KEY = TOKEN;
     seedConfig({ provider: "typesafe" });
 
-    const res = await saveJevConfigAction(input({ mode: "shadow", token: "" }));
+    const res = await saveJevConfigAction(input({ mode: "observe", token: "" }));
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.view.on).toBe(true);
@@ -733,7 +733,7 @@ describe("a config whose key lives in the environment", () => {
     seedConfig({ provider: "typesafe" });
     chmodSync(configPath(), 0o644);
 
-    const res = await saveJevConfigAction(input({ mode: "shadow", token: "" }));
+    const res = await saveJevConfigAction(input({ mode: "observe", token: "" }));
     expect(res.ok).toBe(true);
     expect(statSync(configPath()).mode & 0o777).toBe(0o600);
     expect(onDisk().apiKey).toBeUndefined();
@@ -807,7 +807,7 @@ describe("the stored model, which the panel shows but does not offer", () => {
 
   it("survives a save, which is the whole point of not offering the field", async () => {
     seedConfig({ provider: "typesafe", apiKey: TOKEN, model: "typesafe/jev-1.13" });
-    const res = await saveJevConfigAction(input({ mode: "shadow", token: "" }));
+    const res = await saveJevConfigAction(input({ mode: "observe", token: "" }));
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.view.model).toEqual({ kind: "id", id: "typesafe/jev-1.13" });

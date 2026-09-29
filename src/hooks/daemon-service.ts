@@ -1556,8 +1556,21 @@ export async function refreshDaemonToCliVersion(
   const prime = deps.prime ?? primeElevation;
   const interactive =
     deps.interactive ?? (() => Boolean(process.stdin.isTTY && process.stdout.isTTY));
-  if (status() === "not-installed") {
+  const current = status();
+  if (current === "not-installed") {
     return { ok: true, lines: ["No failproofaid service on this machine; nothing to update."] };
+  }
+
+  // Already this version: nothing to install, so nothing to ask root for. The
+  // reinstall below is idempotent, but it needs sudo, so without this every
+  // `update` after the daemon was brought current either prompted for a password
+  // for no reason or — with no TTY to prompt on (a fleet box, CI) — failed with
+  // "root privileges are required" and exited 1 on a machine that was fine.
+  // `VERSION.daemon` is written only after an install succeeds, and the binary
+  // it names must still be on disk.
+  const recorded = readVersionFile()?.daemon;
+  if (current === "running" && recorded === version && existsSync(installedBinaryPath(version))) {
+    return { ok: true, lines: [`failproofaid ${version} is already installed and running; nothing to update.`] };
   }
 
   // `installDaemonService()`, not a binary fetch plus a restart.

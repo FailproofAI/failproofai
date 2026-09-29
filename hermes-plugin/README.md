@@ -21,11 +21,20 @@ Then run:
 failproofai policies --install --cli hermes --scope user
 ```
 
-FailproofAI copies this directory to every discovered profile at
-`<HERMES_HOME>/plugins/failproofai/` and adds `failproofai` to
-`plugins.enabled` in that profile's `config.yaml`. Reinstall replaces only a
-directory carrying `.failproofai-managed`; an unrelated plugin with the same
-directory name is never overwritten.
+The installer symlinks `<HERMES_HOME>/plugins/failproofai` in every discovered
+profile to this directory and adds `failproofai` to `plugins.enabled` in that
+profile's `config.yaml`. Hermes' plugin scan follows the link, so an npm
+upgrade updates the plugin with no reinstall. Where a symlink cannot be
+created, the files are copied instead and marked `.failproofai-managed`.
+Reinstall replaces only such a marked copy or a link into a FailproofAI
+`hermes-plugin/`; an unrelated plugin with the same name is never overwritten.
+Python may write `__pycache__/` here when the package directory is writable;
+it goes with the package on upgrade and is skipped when it cannot be written.
+
+`failproofai update` moves profiles that already use FailproofAI (legacy shell
+hooks or a copied plugin) to the link. Legacy shell hooks never ran for Hermes
+cron jobs, so `update` exits non-zero and keeps the shell hooks when the
+running daemon cannot serve the plugin.
 
 Legacy FailproofAI shell hooks are removed during migration. Operator-owned
 hooks and unrelated plugin settings are preserved. No dashboard deployment or
@@ -118,7 +127,8 @@ untrusted evaluation failures.
 ## Diagnostics and rollback
 
 `failproofai config --status` reports each existing Hermes profile as healthy,
-disabled, incomplete, or duplicated with a legacy shell hook. Hermes-side load
+disabled, incomplete, duplicated with a legacy shell hook, or still on legacy
+shell hooks alone (Hermes cron jobs are not checked). Hermes-side load
 errors are available through:
 
 ```bash
@@ -134,5 +144,5 @@ the integration with:
 failproofai policies --uninstall --cli hermes --scope user
 ```
 
-Uninstall removes the config registration and only the plugin directory marked
-as FailproofAI-managed.
+Uninstall removes the config registration and the profile's link (or marked
+copy); it never removes this package directory.

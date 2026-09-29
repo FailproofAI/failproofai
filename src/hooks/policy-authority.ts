@@ -10,7 +10,9 @@
  *
  * - `hard` is the default and the answer to anything unclear. Absent, a value
  *   that is not one of the two, a `reviewedBy` that is empty or malformed or
- *   names a check this build does not have, or an `alwaysOn` policy: all hard.
+ *   names a check no installed pack declares, or an `alwaysOn` policy: all hard.
+ *   With no pack declaring Jev checks there are no reviewers at all, and every
+ *   policy is hard.
  * - `reviewable` means Jev may clear the policy's verdict — and only through the
  *   semantic policies it names, every one of which must have been asked.
  *
@@ -55,16 +57,23 @@ export interface ResolvedAuthority {
 }
 
 /**
- * The names `reviewedBy` may use: the semantic policies in
- * `src/hooks/semantic/policies.ts`. Not the probes (`INJECTION_PROBE`,
+ * The names of the sixteen Jev checks FailproofAI publishes in the
+ * `FailproofAI/jev-policies` pack. Not the probes (`INJECTION_PROBE`,
  * `SCOPE_PROBE`, the task probes) — those are inputs to Jev's decision, not
  * checks a regex verdict can be cleared by.
  *
- * Written out rather than read off `SEMANTIC_POLICIES`, and pinned to it by
- * `policy-authority.test.ts`. The registry imports this module, so a runtime
- * import of the semantic policies would load all sixteen of Jev's prompts on
- * every hook event of a machine that never configured Jev, and bundle them into
- * every pack artifact that registers a policy.
+ * Names only: the package ships none of the checks themselves, and this list is
+ * NOT a set of reviewers any machine has. It is used for two things:
+ *
+ * - **Reserved names.** Declared by a pack not installed from a FailproofAI
+ *   repository, one of these is void (`isReservedClaim`), so a third party
+ *   cannot become the question that clears the core pack's policies.
+ * - **Build-time vocabulary.** The core pack (`scripts/build-policy-pack.mjs`)
+ *   and a regex-only pack being published name these checks in `reviewedBy`
+ *   while carrying none of them; they live in `FailproofAI/jev-policies`.
+ *
+ * Pinned to the reference copy of that pack (`__tests__/fixtures/jev-policies.ts`)
+ * by `policy-authority.test.ts`.
  */
 export const SEMANTIC_POLICY_NAMES = [
   "destructive-deletion",
@@ -85,17 +94,16 @@ export const SEMANTIC_POLICY_NAMES = [
   "external-data-egress",
 ] as const;
 
-/**
- * The compiled-in reviewer set, and the DEFAULT rather than the only one.
- *
- * A pack that declares its own `semantic` entries replaces
- * `SEMANTIC_POLICIES` wholesale on the machine that installed it, so the names
- * a `reviewedBy` may use there are the pack's. Callers that know which set is
- * live pass it (`effectiveReviewerNames()` in `effective-reviewers.ts`, which reads
- * the manifest and imports nothing from `semantic/`); everyone else gets this
- * one, which is what a machine with no pack runs.
- */
+/** {@link SEMANTIC_POLICY_NAMES} as a set. Reserved names and build-time vocabulary — never a machine's live reviewers. */
 export const SEMANTIC_REVIEWER_NAMES: ReadonlySet<string> = new Set(SEMANTIC_POLICY_NAMES);
+
+/**
+ * The reviewer set of a machine with no installed pack declaring Jev checks —
+ * the vanilla install — and the default wherever a caller does not say which
+ * set is live. Empty: with nothing to ask, nothing can clear, and every
+ * `reviewable` declaration registers `hard`.
+ */
+export const NO_REVIEWERS: ReadonlySet<string> = new Set<string>();
 
 const isName = (n: unknown): n is string => typeof n === "string" && n.length > 0;
 
@@ -103,7 +111,7 @@ const isName = (n: unknown): n is string => typeof n === "string" && n.length > 
  * Judge one declaration.
  *
  * Stricter than `effectiveAuthority`, which is the §7 contract and needs only
- * one usable name: here EVERY entry must be a semantic policy this build has,
+ * one usable name: here EVERY entry must be a check this machine can ask,
  * and anything else makes the whole declaration hard rather than being dropped.
  * `reviewedBy` is a conjunction, so dropping a name the author wrote — a typo, a
  * stray `7` — would let Jev clear the policy on fewer checks than they asked
@@ -114,16 +122,23 @@ const isName = (n: unknown): n is string => typeof n === "string" && n.length > 
  * What this returns is what `registerPolicy` stores, so a registered policy's
  * `reviewedBy` is always clean and the two functions agree on it.
  *
+ * With NO known reviewers — no installed pack declares a Jev check — a
+ * well-formed `reviewable` resolves `hard` WITHOUT a `downgraded` reason
+ * (unless a name it uses is contested between packs, which is still said). It is
+ * not a declaration going wrong but the machine having no Jev checks, which
+ * `jev status` and the dashboard say once; a warning per policy per hook event
+ * would say it fifteen times on every tool call of a core-pack machine.
+ *
  * @param knownReviewers - the semantic policies that CAN be asked on this
- *   machine. Defaults to the compiled-in set, which is what runs until a pack
- *   ships its own; see {@link SEMANTIC_REVIEWER_NAMES}. It is a parameter rather
- *   than a lookup because this module is imported by the registry, and reading
- *   which set is live means reading a file — a cost registration is willing to
- *   pay once and this judgement must not pay per call.
+ *   machine (`effectiveReviewerNames()` on the hook path). Defaults to
+ *   {@link NO_REVIEWERS}, so a caller that does not say is fail-safe. It is a
+ *   parameter rather than a lookup because this module is imported by the
+ *   registry, and reading which set is live means reading a file — a cost
+ *   registration is willing to pay once and this judgement must not pay per call.
  */
 export function resolvePolicyAuthority(
   decl: AuthorityDeclaration | undefined,
-  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+  knownReviewers: ReadonlySet<string> = NO_REVIEWERS,
   /** Names left out of `knownReviewers` because packs declare them differently, with those packs. */
   contested?: ReadonlyMap<string, string[]>,
 ): ResolvedAuthority {
@@ -137,6 +152,8 @@ export function resolvePolicyAuthority(
     return { authority: "hard", downgraded: "reviewedBy is not a list of semantic policy names" };
   }
   const unknown = names.filter((n) => !knownReviewers.has(n));
+  // No checks at all, and no contest to explain: quietly hard (see above).
+  if (knownReviewers.size === 0 && !unknown.some((n) => contested?.has(n))) return { authority: "hard" };
   if (unknown.length > 0) {
     return { authority: "hard", downgraded: `reviewedBy names ${unknown.map((n) => whyUnknown(n, knownReviewers, contested)).join("; ")}` };
   }
@@ -144,8 +161,8 @@ export function resolvePolicyAuthority(
 }
 
 /**
- * The rule that kept one name out. "Not in this build" is only true of the
- * compiled-in set: a pack's own checks, or a name two packs disagree on, is a
+ * The rule that kept one name out. "Not in this build" is only true of
+ * FailproofAI's own names, judged at build or publish time: a pack's own checks, or a name two packs disagree on, is a
  * different reason, and the author reading it has a different fix.
  */
 function whyUnknown(name: string, known: ReadonlySet<string>, contested?: ReadonlyMap<string, string[]>): string {
@@ -205,9 +222,11 @@ export function authorityProblem(
   decl: AuthorityDeclaration,
   /**
    * The reviewers the pack being built will SHIP WITH — its own `semantic`
-   * entries when it declares any, this build's set otherwise. A pack that
-   * carries both halves of the two-tier set names its own checks, and refusing
-   * that would make the feature unpublishable by the tool that implements it.
+   * entries when it declares any, FailproofAI's sixteen names otherwise (a
+   * regex-only pack names checks that ship in `FailproofAI/jev-policies`). A
+   * pack that carries both halves of the two-tier set names its own checks, and
+   * refusing that would make the feature unpublishable by the tool that
+   * implements it.
    */
   knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
 ): string | undefined {
@@ -283,13 +302,13 @@ export function manifestAuthority(
  *
  * @param knownReviewers - the checks that can be asked on this machine. Callers
  *   that merge what will be REGISTERED must pass `effectiveReviewerNames()`;
- *   the default is this build's compiled-in set, which is what a machine with no
- *   pack runs.
+ *   the default is {@link NO_REVIEWERS}, which is what a machine with no pack
+ *   declaring Jev checks has.
  */
 export function withMergedAuthority<T extends AuthorityFields>(
   record: T,
   declarations: ReadonlyArray<AuthorityFields>,
-  knownReviewers: ReadonlySet<string> = SEMANTIC_REVIEWER_NAMES,
+  knownReviewers: ReadonlySet<string> = NO_REVIEWERS,
 ): { merged: T; overruled: boolean; refused?: string } {
   const resolved = declarations.map((d) => resolvePolicyAuthority(d, knownReviewers));
   const allReviewable = resolved.length > 0 && resolved.every((r) => r.authority === "reviewable");

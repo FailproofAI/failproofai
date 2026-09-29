@@ -38,7 +38,7 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames } from "./effective-reviewers";
+import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -57,7 +57,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
-import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
+import { hasInstalledRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
@@ -217,6 +217,10 @@ async function runObserved(
 // alone — exactly as it did before two tiers existed — otherwise:
 //
 // - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
+// - an installed pack gives Jev checks to ask (`jevChecksInstalled`). The npm
+//   package ships none: until `failproofai policies add FailproofAI/jev-policies`
+//   (or another pack declaring `semantic` checks) Jev is inert — no request, no
+//   intent capture — whether the config is BYOK or FailproofAI Cloud's;
 // - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
 // - this is not the fail-closed `forceDecision` path and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
@@ -230,7 +234,7 @@ async function runObserved(
 // Turning Jev off. The switch that works everywhere is the config file itself:
 // it is read on every event, here, in whichever process evaluates — the
 // daemon's warm worker included — so `failproofai jev remove` (or a `mode:
-// "shadow"` config, which keeps enforcing the regex result) applies from the
+// "observe"` config, which keeps enforcing the regex result) applies from the
 // next tool call, with no restart. `FAILPROOFAI_EVALUATOR=legacy` is the dev
 // escape hatch, read from the EVALUATING process's environment: it covers a
 // one-shot hook (no daemon) and a worker whose own environment sets it, but
@@ -311,6 +315,8 @@ async function startTwoTier(
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
   if (jevForcedOff(opts) || activePause) return null;
+  // Read off the reviewer set registration just cached, so it is free.
+  if (!jevChecksInstalled()) return null;
   const loaded = await readJevConfig();
   if (!loaded) return null;
   const cfg = loaded.config;
@@ -334,7 +340,7 @@ async function startTwoTier(
     // carries the fallback.
     hookLogInfo(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
-      mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
+      mode: cfg.mode === "observe" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
       review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null }),
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
@@ -398,6 +404,7 @@ async function captureJevIntent(
 ): Promise<void> {
   if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
   try {
+    if (!jevChecksInstalled()) return;
     if (!(await readJevConfig())) return;
     if (decision === "deny") {
       const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");
@@ -561,7 +568,9 @@ export async function evaluateHookEvent(
       // yet, and it must not lose enforcement in the gap before `failproofai
       // update` runs. It disappears for that machine the moment a pack is
       // installed, and never fires for a machine set up by this version.
-      const packsInstalledHere = hasInstalledPacks();
+      // Only a pack with regex policies retires the shim: a Jev-only pack
+      // (FailproofAI/jev-policies) replaces none of them.
+      const packsInstalledHere = hasInstalledRegexPacks();
       const legacyNames =
         activePause || packsInstalledHere ? [] : config.enabledPolicies;
       // `alwaysOn` policies bypass the enabled set inside `registerBuiltinPolicies`,
@@ -738,8 +747,8 @@ export async function evaluateHookEvent(
         const observeOnly = cloudManaged?.effect === "observe" || pack?.effect === "observe";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
           if (observeOnly) {
-            const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
-            if (shadow.decision !== "allow") {
+            const observed = await runObserved(hook, ctx, hookName, eventType, cli);
+            if (observed.decision !== "allow") {
               // Sourced from whichever layer asked to observe. This read
               // `cloudManaged!.id` — a non-null assertion that is simply false
               // for a pack, so an observe-mode PACK threw on its first non-allow
@@ -751,8 +760,8 @@ export async function evaluateHookEvent(
               observedResults.push({
                 policyId: observer!.id,
                 version: observer!.version,
-                decision: shadow.decision,
-                reason: shadow.reason ?? null,
+                decision: observed.decision,
+                reason: observed.reason ?? null,
               });
             }
             return { decision: "allow" };
@@ -928,19 +937,19 @@ export async function evaluateHookEvent(
           releaseRegistry: opts?.releaseRegistry,
         })
       : await evaluatePolicies(canonicalEventType, parsed, session, config);
-    // Shadow mode: what Jev WOULD have done, filed where observe-mode policies
+    // Jev's observe mode: what Jev WOULD have done, filed where observe-mode policies
     // file theirs, so the "would have" view counts it with no second channel.
     // `semantic/<check>` cannot be mistaken for a cloud policy — cloud ids
     // carry no `/` (`POLICY_ID_RE` in cloud-managed-policies.ts) — and the
     // version is a Jev model id or `jev`, never a deployment number. Only on
     // the two-tier path, so an unconfigured row is untouched.
-    const shadowVerdict = result.twoTier?.shadowVerdict;
-    if (shadowVerdict) {
+    const observeVerdict = result.twoTier?.observeVerdict;
+    if (observeVerdict) {
       observedResults.push({
-        policyId: shadowVerdict.policyName,
-        version: shadowVerdict.version,
-        decision: shadowVerdict.decision,
-        reason: shadowVerdict.reason,
+        policyId: observeVerdict.policyName,
+        version: observeVerdict.version,
+        decision: observeVerdict.decision,
+        reason: observeVerdict.reason,
       });
     }
     const durationMs = Math.round(performance.now() - startTime);

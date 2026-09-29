@@ -98,7 +98,7 @@ export interface SemanticOptions {
    */
   signal?: AbortSignal;
   model?: string;
-  /** Overrides the resolved set (an installed pack's, else the compiled-in one). */
+  /** Overrides the resolved set (the installed packs' checks; empty with none). */
   policies?: ReadonlyArray<SemanticPolicy>;
   /** The agent the call is for: a pack scoped to other agents contributes no checks. */
   cli?: string;
@@ -306,8 +306,8 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
     scanned,
     input.projectRoot ?? null,
   );
-  // The set an installed pack declared, or the compiled-in one when no pack
-  // declares any — see `pack-policies.ts` for the replacement rule. Resolved
+  // The checks the installed packs declare — none when no pack declares any,
+  // and then nothing is asked (see `pack-policies.ts`). Resolved
   // here rather than by the caller because this is the one place the policy set
   // is read, and a second resolution site is a second answer to "what does this
   // machine ask Jev". A caller that supplies `policies` (a replay, an ablation,
@@ -496,7 +496,7 @@ export interface VerdictLogMeta {
   eventType: string;
   /**
    * What the handler did with the outcome: combined it with the regex results
-   * (`two-tier`), logged it while enforcing the regex result (`shadow`), or
+   * (`two-tier`), logged it while enforcing the regex result (`observe`), or
    * kept the regex result because Jev never answered (`legacy-fallback`).
    *
    * A TRUNCATED call is `two-tier`, not `legacy-fallback`: its clears were
@@ -504,7 +504,7 @@ export interface VerdictLogMeta {
    * `combine.ts`). `truncated` on the same row is what says the clearing half
    * was off for it; the activity row records `jev-fallback` / `truncated`.
    */
-  applied: "two-tier" | "shadow" | "legacy-fallback";
+  applied: "two-tier" | "observe" | "legacy-fallback";
 }
 
 export function verdictLogRow(input: SemanticInput, outcome: SemanticOutcome, meta: VerdictLogMeta): Record<string, unknown> {

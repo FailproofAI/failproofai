@@ -244,7 +244,7 @@ async fn poll_once(
             // and erase the would-be verdict, which is the entire measurement
             // a trial exists to produce. Emit those exactly. The same holds
             // for an allow Jev produced by clearing a regex deny, and for a
-            // shadow-mode allow Jev would have blocked.
+            // observe-mode allow Jev would have blocked.
             let aggregate = verbosity == HooksVerbosity::Decisions
                 && row.is_allow()
                 && !row.has_observation()

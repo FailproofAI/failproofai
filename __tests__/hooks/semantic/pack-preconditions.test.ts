@@ -19,7 +19,7 @@ import {
   preconditionFor,
 } from "../../../src/hooks/semantic/preconditions";
 import { PACK_PRECONDITION_NAMES, isPackPreconditionName } from "../../../src/hooks/semantic/precondition-names";
-import { SEMANTIC_POLICIES } from "../../../src/hooks/semantic/policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES } from "../../fixtures/jev-policies";
 import type { Facts, PathFact, SemanticPolicy } from "../../../src/hooks/semantic/types";
 
 const PROJECT = "/home/dev/project";

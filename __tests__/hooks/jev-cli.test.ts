@@ -72,20 +72,20 @@ describe("failproofai jev", () => {
       expect(text(off)).toContain("off — Jev is not asked at all");
       expect(text(off)).not.toContain("jev test");
       // Switched back on, the step is back.
-      const on = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      const on = await runJevCommand(["setup", "--mode", "observe"], noTty);
       expect(on.exitCode, text(on)).toBe(0);
       expect(text(on)).toContain("failproofai jev test");
     });
 
     it("writes every option it is given", async () => {
       const r = await runJevCommand(
-        ["setup", "--provider=cloudflare", "--account-id", ACCOUNT, "--model", "typesafe/jev", "--mode", "shadow", "--timeout-ms", "900", "--key-stdin"],
+        ["setup", "--provider=cloudflare", "--account-id", ACCOUNT, "--model", "typesafe/jev", "--mode", "observe", "--timeout-ms", "900", "--key-stdin"],
         withKey(KEY),
       );
       expect(r.exitCode).toBe(0);
-      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, model: "typesafe/jev", mode: "shadow", timeoutMs: 900 });
+      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, model: "typesafe/jev", mode: "observe", timeoutMs: 900 });
       expect(text(r)).toContain(`accounts/${ACCOUNT}/ai/run`);
-      expect(text(r)).toContain("shadow");
+      expect(text(r)).toContain("observe");
     });
 
     it("needs --provider the first time, and a real one", async () => {
@@ -159,21 +159,21 @@ describe("failproofai jev", () => {
 
     it("re-running for the same provider keeps the key, so a mode switch is one flag", async () => {
       await runJevCommand(["setup", "--provider", "cloudflare", "--account-id", ACCOUNT, "--key-stdin"], withKey(KEY));
-      const r = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      const r = await runJevCommand(["setup", "--mode", "observe"], noTty);
       expect(r.exitCode).toBe(0);
       expect(text(r)).toContain("kept from the existing config");
-      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, mode: "shadow" });
+      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, mode: "observe" });
     });
 
     it("switching provider starts over: no key, model or URL carries across, mode does", async () => {
-      await runJevCommand(["setup", "--provider", "custom", "--base-url", "https://jev.example.com/v1", "--mode", "shadow", "--key-stdin"], withKey(KEY));
+      await runJevCommand(["setup", "--provider", "custom", "--base-url", "https://jev.example.com/v1", "--mode", "observe", "--key-stdin"], withKey(KEY));
       const noKey = await runJevCommand(["setup", "--provider", "vercel"], noTty);
       expect(noKey.exitCode).toBe(1);
       expect(readFile().provider).toBe("custom");
 
       const r = await runJevCommand(["setup", "--provider", "vercel", "--key-stdin"], withKey(OTHER_KEY));
       expect(r.exitCode).toBe(0);
-      expect(readFile()).toEqual({ provider: "vercel", apiKey: OTHER_KEY, mode: "shadow" });
+      expect(readFile()).toEqual({ provider: "vercel", apiKey: OTHER_KEY, mode: "observe" });
     });
 
     it("`default` clears a model or base URL override", async () => {
@@ -208,9 +208,9 @@ describe("failproofai jev", () => {
       expect(readFile()).toEqual({ provider: "typesafe" });
       expect(loadJevConfig()?.apiKey).toBe(KEY);
       // A re-run for the same provider keeps it an environment-key config.
-      const again = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      const again = await runJevCommand(["setup", "--mode", "observe"], noTty);
       expect(again.exitCode).toBe(0);
-      expect(readFile()).toEqual({ provider: "typesafe", mode: "shadow" });
+      expect(readFile()).toEqual({ provider: "typesafe", mode: "observe" });
       // A variable that is set but malformed is refused, not stored around.
       process.env[JEV_API_KEY_ENV] = "two words";
       expect((await runJevCommand(["setup", "--provider", "typesafe", "--key-from-env"], noTty)).exitCode).toBe(1);
@@ -238,7 +238,7 @@ describe("failproofai jev", () => {
     });
 
     it("shows provider, endpoint, model, mode, path and permissions — never the key", async () => {
-      await runJevCommand(["setup", "--provider", "openrouter", "--mode", "shadow", "--key-stdin"], withKey(KEY));
+      await runJevCommand(["setup", "--provider", "openrouter", "--mode", "observe", "--key-stdin"], withKey(KEY));
       const r = await runJevCommand(["status"], RENDER);
       expect(r.exitCode).toBe(0);
       const out = text(r);
@@ -246,7 +246,7 @@ describe("failproofai jev", () => {
       expect(out).toContain("openrouter");
       expect(out).toContain("https://openrouter.ai/api/v1/systemone");
       expect(out).toContain("typesafe/jev-1.13 (provider default)");
-      expect(out).toContain("shadow");
+      expect(out).toContain("observe");
       expect(out).toContain(jevConfigPath());
       if (posix) expect(out).toContain("0600 (owner-only)");
       expect(out).toContain("set in the config file");
@@ -322,6 +322,13 @@ describe("failproofai jev", () => {
       expect(lines).toContain("p50 41 ms · p95 213 ms");
       expect(lines).toContain("block-read-outside-cwd ×12, protect-env-vars ×3");
       expect(jevStatsLines(null).join("\n")).toContain("could not be read");
+    });
+
+    it("prints observe-mode would-be clears", () => {
+      const base = { windowMs: 24 * 3_600_000, total: 3, fallbackRate: 0, fallbackReasons: {}, latencyP50Ms: 40, latencyP95Ms: 90, clearsByPolicy: {} };
+      const now = jevStatsLines({ ...base, observeClearsByPolicy: { "block-env-files": 2 } }, { cols: 100 }).join("\n");
+      expect(now).toContain("would have cleared (observe)");
+      expect(now).toContain("block-env-files ×2");
     });
   });
 

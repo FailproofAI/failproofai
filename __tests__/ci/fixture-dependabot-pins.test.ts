@@ -30,6 +30,7 @@ const FIXTURES_ABS = join(ROOT, FIXTURES_REL);
 interface IgnoreEntry {
   "dependency-name"?: string;
   "update-types"?: string[];
+  versions?: string[];
 }
 
 interface Update {
@@ -81,7 +82,9 @@ function findFixtures(dir: string, prefix = ""): string[] {
     if (!isDir) continue;
     const rel = prefix ? `${prefix}/${name}` : name;
     if (isFile(join(abs, "package-lock.json"))) found.push(rel);
-    else found.push(...findFixtures(abs, rel));
+    // Recurse either way. A fixture nested INSIDE another fixture is still a
+    // fixture the glob does not cover, and stopping at the parent would hide it.
+    found.push(...findFixtures(abs, rel));
   }
   return found;
 }
@@ -128,14 +131,45 @@ describe("dependabot config for the integration fixtures", () => {
     expect(entry()["open-pull-requests-limit"]).toBe(0);
   });
 
-  it("ignores every major bump, for every dependency", () => {
+  /**
+   * The trap this entry was first written into, and the reason this assertion is
+   * about `versions` rather than `update-types`.
+   *
+   * `update-types: ["version-update:semver-major"]` reads like "never bump a
+   * major here" and is inert against security updates, which is what #838 and
+   * #867 both were. dependabot-core's `Config::IgnoreCondition#ignored_versions`
+   * opens with `return versions if security_updates_only`, so on a security
+   * update only the explicit `versions:` list is consulted; `update_types` is
+   * never read, and an ignore without `versions:` returns an empty list and
+   * blocks nothing.
+   */
+  it("ignores via `versions`, the only key security updates honor", () => {
     const ignores = entry().ignore ?? [];
-    const wildcardMajor = ignores.find(
-      (i) =>
-        i["dependency-name"] === "*" &&
-        (i["update-types"] ?? []).includes("version-update:semver-major"),
+    const wildcard = ignores.filter((i) => i["dependency-name"] === "*");
+    expect(wildcard.length).toBeGreaterThan(0);
+
+    const withVersions = wildcard.filter((i) => (i.versions ?? []).length > 0);
+    expect(
+      withVersions,
+      "a wildcard ignore with no `versions` blocks nothing on a security update",
+    ).not.toEqual([]);
+
+    // `>= 0` is dependabot's own ALL_VERSIONS constant.
+    const blocksEverything = withVersions.some((i) =>
+      (i.versions ?? []).some((v) => v.replace(/\s+/g, "") === ">=0"),
     );
-    expect(wildcardMajor).toBeDefined();
+    expect(blocksEverything).toBe(true);
+  });
+
+  it("does not rely on update-types alone, which security updates ignore", () => {
+    for (const ignore of entry().ignore ?? []) {
+      if ((ignore["update-types"] ?? []).length === 0) continue;
+      expect(
+        (ignore.versions ?? []).length,
+        `ignore for "${ignore["dependency-name"]}" sets update-types but no versions, ` +
+          "so it does not apply to security updates",
+      ).toBeGreaterThan(0);
+    }
   });
 
   it("still carries a schedule, which dependabot requires per entry", () => {

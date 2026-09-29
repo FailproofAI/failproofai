@@ -114,7 +114,7 @@ pub struct HookRow {
     pub pause_expires_at: Option<i64>,
 
     /// Verdicts from observe-mode policies: evaluated, then discarded. The
-    /// whole measurement a trial exists to produce. Jev in shadow mode files
+    /// whole measurement a trial exists to produce. Jev in observe mode files
     /// its own deny/instruct here too (`policyId: "semantic/<check>"`, the Jev
     /// model id as `version`), and ships the same way: whole, un-rolled-up.
     pub observed: Option<Value>,
@@ -141,7 +141,8 @@ pub struct HookRow {
     pub jev_latency_ms: Option<f64>,
     #[serde(rename = "jevModel", default, deserialize_with = "lenient")]
     pub jev_model: Option<String>,
-    /// `shadow` | `enforce`.
+    /// `observe` | `enforce` — or `shadow`, what builds before the rename
+    /// wrote for `observe`. [`JevFacts::of`] emits `observe` for both.
     #[serde(rename = "jevMode", default, deserialize_with = "lenient")]
     pub jev_mode: Option<String>,
 }
@@ -408,10 +409,18 @@ impl JevFacts {
             .as_deref()
             .filter(|e| matches!(*e, "jev" | "jev-fallback"))?
             .to_string();
+        // `shadow` is `observe` under the name it had before the rename. A
+        // worker or daemon from an older build still writes it, and the store
+        // is never rewritten, so both are read — and one value, `observe`, is
+        // emitted, so the Cloud sees a single spelling per mode.
         let mode = row
             .jev_mode
             .as_deref()
-            .filter(|m| matches!(*m, "shadow" | "enforce"))
+            .and_then(|m| match m {
+                "observe" | "shadow" => Some("observe"),
+                "enforce" => Some("enforce"),
+                _ => None,
+            })
             .map(str::to_string);
         let fallback_reason = row.jev_fallback_reason.as_deref().and_then(jev_reason_code);
         let decision = row
@@ -472,7 +481,7 @@ impl JevFacts {
 
     /// True when this row must be shipped on its own rather than rolled into
     /// an allow aggregate: Jev overruled a regex deny/instruct (a clear), or
-    /// Jev's own verdict was stricter than the outcome (shadow mode, where the
+    /// Jev's own verdict was stricter than the outcome (observe mode, where the
     /// regex result was enforced). Either is a decision someone will want to
     /// find, and a count cannot show it.
     pub fn is_notable(&self, final_decision: &str) -> bool {

@@ -47,7 +47,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # OpenClaw 2026.9.6+ stores a large transcript event zstd-compressed in
 # `event_zstd` and leaves `event_json` NULL. A pure-Rust decoder, for the same
 # reason rustls is chosen above: no C toolchain on the four cross-compiled legs.
-ruzstd = "0.8"
+ruzstd = "0.9"
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]

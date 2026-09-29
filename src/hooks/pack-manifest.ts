@@ -339,6 +339,29 @@ export function hasInstalledPacks(): boolean {
   }
 }
 
+/**
+ * Whether an installed pack carries regex policies — the question the
+ * migration shim and `policies add <name>` actually mean to ask.
+ *
+ * `hasInstalledPacks` is the wrong question for them since the package stopped
+ * shipping Jev's checks: `FailproofAI/jev-policies` is now the normal way to
+ * turn Jev on, and it carries no regex policies. Counting it as "a pack is
+ * installed" switched off a legacy machine's `enabledPolicies` and sent a later
+ * `policies add block-rm-rf` to a pack that cannot enable it — both silently.
+ */
+export function hasInstalledRegexPacks(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
+    if (!Array.isArray(raw.packs)) return false;
+    return raw.packs.some(
+      (p) => !!p && typeof p === "object" && Array.isArray((p as { policies?: unknown }).policies)
+        && ((p as { policies: unknown[] }).policies.length > 0),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function installedFilePath(): string {
   return process.env.FAILPROOFAI_PACK_DIR
     ? resolve(process.env.FAILPROOFAI_PACK_DIR, "installed.json")

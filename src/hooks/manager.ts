@@ -28,7 +28,7 @@ import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
-import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import {
@@ -654,7 +654,8 @@ async function installHooksImpl(
     //
     // With a pack already installed the names are switched on individually
     // instead, which is additive and touches nothing else.
-    if (!hasInstalledPacks()) {
+    // A Jev-only pack has no policy to switch on, so it does not count here.
+    if (!hasInstalledRegexPacks()) {
       // Fetched, not unpacked from this package: there is no copy in here any
       // more. That makes this the one path in `policies --install` that needs
       // the network, so its failure is reported rather than thrown — the names

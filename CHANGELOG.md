@@ -1,10 +1,15 @@
 # Changelog
 
-## 1.0.9-beta.1 — 2026-09-29
+## 1.0.9-beta.2 — 2026-09-29
 
 ### Fixes
 
 - **A Hermes plugin listed in `plugins.disabled` was reported healthy and skipped by `update`.** Hermes checks `plugins.disabled` before `plugins.enabled`, so a profile listing `failproofai` in both never loads it, but health, installed detection and `update`'s "already current" check only read `plugins.enabled`. They now require enabled and not disabled: `config --status` says "plugin disabled (listed in plugins.disabled)" and `update` removes the disabling entry.
+
+## 1.0.9-beta.1 — 2026-09-29
+
+### Fixes
+
 - **`jev status` and the dashboard under-counted a machine with only `FailproofAI/jev-policies`.** Their coverage survey still retired the `enabledPolicies` shim when any pack was installed, while hooks keep enforcing those builtins until a pack with regex policies arrives. The survey now uses the same `hasInstalledRegexPacks` check, so it counts what is really enforced and reviewable.
 - **Old Jev activity rows no longer inflate "cleared".** A row whose mode this build does not know (written as `shadow` before the rename) lost only its mode, so `jev status` and the dashboard counted its would-have clears as enforced clears. Such a row now drops its clears too.
 - The Hermes plugin's package path is found by walking up to the directory that holds `hermes-plugin/plugin.yaml` when `FAILPROOFAI_PACKAGE_ROOT` is unset, instead of a fixed three parents that overshoot from the bundled `dist/cli.mjs`. On Windows, replacing an existing plugin junction falls back to the move-aside swap when a direct rename fails.

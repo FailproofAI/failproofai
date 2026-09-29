@@ -10,6 +10,8 @@
 
 - Update the pinned `undici` override to 7.29.1 to address GHSA-3wwx-pv8p-q78v found by the lockfile scanner.
 
+- **Clear the two TypeScript-SDK fixture advisories that have a reachable fix, and reject the Dependabot PR that reached them by moving three pins.** `ai-5`'s own `undici` override was left at `7.29.0` when the root `package.json`'s moved to `7.29.1` above, so GHSA-3wwx-pv8p-q78v stayed open against a lockfile nothing had revisited; and `mastra-0` carried eleven copies of `@ai-sdk/provider-utils`, nine of them exact `3.0.10`–`3.0.17` pins on that fixture's 5.x side, all below the `3.0.28` that fixes GHSA-866g-f22w-33x8. A plain override would have forced the other two copies as well — the `2.2.8` that ships *inside* `ai@4.3.19` — and broken the pinned major, so the entry is spec-scoped (`"@ai-sdk/provider-utils@3"`), which npm applies only where the requested range already resolves inside 3.x: the nine dedupe to one patched copy and the two stay exactly where they were. Dependabot's own fix for the same alerts (#867) moved `ai-4` to `ai@5.0.52`, `ai-5` to `ai@7.0.122` and `mastra-0` to `@mastra/core@1.71.0` — the move `SECURITY.md` names as never the answer, and the one #838 rejected for these same fixtures — and then failed to install at all, `@mastra/mcp@0.14.5` peering on `@mastra/core@">=0.20.1-0 <0.25.0-0"`, which took down the `frameworks` and `runtimes` shards whole because the global setup installs every fixture before any test runs. `ai-4` needed no change: both advisories still open against it are the accepted kind, already in `SECURITY.md`'s table with the reason each stays. (#869)
+
 ## 1.0.8-beta.0 — 2026-09-26
 
 ### Added

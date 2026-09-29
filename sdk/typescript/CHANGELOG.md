@@ -45,6 +45,31 @@ section is missing or empty is refused before anything is built.
   `ai` stays at `7.0.111` in `nextjs` so the fixture still matches the `ai-7` twin
   whose trace `nextjs.test.ts` compares each route against. (#838)
 
+- **Two more fixture advisories clear, and again no fixture leaves its pinned
+  major.** Both were reachable the whole time; nothing had looked. `ai-5` pinned
+  `undici` at `7.29.0` through the override added in #837, and GHSA-3wwx-pv8p-q78v
+  (medium) is fixed in `7.29.1` — the root `package.json`'s own `undici` override
+  moved there, the fixture's did not. `mastra-0` carried **eleven** copies of
+  `@ai-sdk/provider-utils`, which split in two: nine parents on that fixture's 5.x
+  side (`ai-v5`, `@ai-sdk/gateway`, `@ai-sdk/openai-v5` and six siblings) pinned
+  exact `3.0.10`–`3.0.17`, every one below the `3.0.28` that fixes
+  GHSA-866g-f22w-33x8, while the other two are the `2.2.8` that ships *inside*
+  `ai@4.3.19` under `@mastra/core` and `@mastra/memory`. The accepted row above
+  describes only that second pair, so the 3.x half was never covered by it — a
+  plain `"@ai-sdk/provider-utils": "3.0.28"` would have forced both halves and
+  broken the pin. The entry is **spec-scoped** instead — `"@ai-sdk/provider-utils@3"`,
+  which npm applies only where the requested range already resolves inside 3.x —
+  so the nine collapse to one patched copy, the two `2.2.8` copies are untouched,
+  and `@mastra/core@0.24.9`, `@mastra/mcp@0.14.5`, `@mastra/memory@0.15.13` and
+  `ai@4.3.19` all resolve exactly as before. That dedupe is most of the ~110
+  deleted lockfile lines. Dependabot had reached the same two alerts by moving
+  `ai-4` to `ai@5.0.52`, `ai-5` to `ai@7.0.122` and `mastra-0` to
+  `@mastra/core@1.71.0` (#867) — the third time in as many days that its fix for a
+  fixture advisory was the one `SECURITY.md` forbids, and it failed the same
+  `ERESOLVE` on the same `@mastra/mcp` peer as #838. `ai-4` needed no change: both
+  advisories still open against it are the accepted kind, and the table above
+  already carries them. (#869)
+
 ## 0.0.1-beta.0 — 2026-09-23
 
 ### Added

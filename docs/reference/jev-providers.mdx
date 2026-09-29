@@ -157,7 +157,7 @@ Start a new session in the hooked agent. Ask it to use its file-reading tool on 
 
 ## Observe mode
 
-`enforce` is the default. To watch Jev without letting it change any decision, switch to `observe`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced. Earlier releases called this mode `shadow`; `shadow` is still accepted everywhere a mode is read (`--mode shadow`, an existing `jev.json`) and is saved as `observe`.
+`enforce` is the default. To watch Jev without letting it change any decision, switch to `observe`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced.
 
 ```bash
 failproofai jev setup --mode observe
@@ -191,7 +191,7 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
 | `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
 | `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 3000. |
-| `mode` | `enforce` (default), `observe`, or `off` (keep the config, run no Jev). `shadow`, the earlier name for `observe`, is read as `observe`. |
+| `mode` | `enforce` (default), `observe`, or `off` (keep the config, run no Jev). |
 
 Three rules protect it:
 

@@ -747,8 +747,8 @@ export async function evaluateHookEvent(
         const observeOnly = cloudManaged?.effect === "observe" || pack?.effect === "observe";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
           if (observeOnly) {
-            const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
-            if (shadow.decision !== "allow") {
+            const observed = await runObserved(hook, ctx, hookName, eventType, cli);
+            if (observed.decision !== "allow") {
               // Sourced from whichever layer asked to observe. This read
               // `cloudManaged!.id` — a non-null assertion that is simply false
               // for a pack, so an observe-mode PACK threw on its first non-allow
@@ -760,8 +760,8 @@ export async function evaluateHookEvent(
               observedResults.push({
                 policyId: observer!.id,
                 version: observer!.version,
-                decision: shadow.decision,
-                reason: shadow.reason ?? null,
+                decision: observed.decision,
+                reason: observed.reason ?? null,
               });
             }
             return { decision: "allow" };

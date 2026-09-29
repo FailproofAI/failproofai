@@ -112,7 +112,7 @@ import {
   baseUrlWithoutQuery,
   endpointGivenAsBase,
   jevConfigPath,
-  normalizeJevMode,
+  parseJevMode,
   providerHostConflict,
   readJevConfigFileForUpdate,
   validateApiKey,
@@ -135,7 +135,7 @@ export interface JevConfigInput {
   baseUrl: string;
   /** Cloudflare only. */
   accountId: string;
-  /** "off" | "observe" | "enforce" — and "shadow", the old name, read as "observe". */
+  /** "off" | "observe" | "enforce". */
   mode: string;
   /** "" keeps the key where it is: the stored one, or the environment's. */
   token: string;
@@ -304,8 +304,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 
   // Refused, as `setJevModeAction` and `jev setup --mode` refuse it — not
   // skipped, which kept the old mode or wrote none (and none loads as enforce).
-  // `shadow` (the old name, from a page an older build served) is `observe`.
-  const mode = normalizeJevMode(input.mode);
+  const mode = parseJevMode(input.mode);
   if (mode === null) {
     return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }
@@ -462,8 +461,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 }
 
 /**
- * Switch Jev's mode — `off`, `observe` or `enforce` (the old name `shadow` is
- * read as `observe`) — and change NOTHING else.
+ * Switch Jev's mode — `off`, `observe` or `enforce` — and change NOTHING else.
  *
  * This is the on/off switch for FailproofAI Cloud's Jev, whose `jev.json` the
  * page must not delete: its endpoint and key are not this page's to re-enter,
@@ -487,7 +485,7 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
 export async function setJevModeAction(requested: string): Promise<JevWriteResult> {
   const refusal = await crossOriginRefusal();
   if (refusal) return { ok: false, problem: refusal };
-  const mode = normalizeJevMode(requested);
+  const mode = parseJevMode(requested);
   if (mode === null) {
     return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }

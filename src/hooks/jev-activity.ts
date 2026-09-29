@@ -58,13 +58,6 @@ export const JEV_ACTIVITY_KEYS = [
 const EVALUATORS = new Set(["jev", "jev-fallback"]);
 const DECISIONS = new Set(["allow", "instruct", "deny"]);
 const MODES = new Set(["observe", "enforce"]);
-/**
- * What builds before the rename wrote for `observe`. A row carrying it — the
- * store is never rewritten, and an older worker may still be writing — is read
- * as `observe`, so every reader (stats, the dashboard, telemetry) sees one
- * value.
- */
-const LEGACY_OBSERVE_MODE = "shadow";
 
 /**
  * A reason's leading code — lowercase kebab-case — either alone or followed by
@@ -243,7 +236,6 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
 
   if (!(typeof out.evaluator === "string" && EVALUATORS.has(out.evaluator))) drop("evaluator");
   if (!(typeof out.jevDecision === "string" && DECISIONS.has(out.jevDecision))) drop("jevDecision");
-  if ((out.jevMode as unknown) === LEGACY_OBSERVE_MODE) out.jevMode = "observe";
   if (!(typeof out.jevMode === "string" && MODES.has(out.jevMode))) drop("jevMode");
 
   if (Array.isArray(out.jevCleared)) {

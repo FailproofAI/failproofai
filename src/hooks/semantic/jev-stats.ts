@@ -63,11 +63,7 @@ export interface JevStats {
   decisions?: { allow: number; instruct: number; deny: number };
   /** Consulted calls (`total`) per rollout mode; a row written without a mode is counted in neither. */
   modes?: { observe: number; enforce: number };
-  /**
-   * What Jev would have cleared in observe mode, where the regex result was
-   * enforced instead. Named `shadowClearsByPolicy` (and `modes.shadow`) before
-   * the rename; a renderer reads either.
-   */
+  /** What Jev would have cleared in observe mode, where the regex result was enforced instead. */
   observeClearsByPolicy?: Record<string, number>;
   /** Model ids that answered, by count. */
   models?: Record<string, number>;
@@ -237,20 +233,6 @@ export async function jevStats(opts: { windowMs?: number; now?: number } = {}): 
   return computeJevStats(entries, { windowMs, now });
 }
 
-/**
- * {@link JevStats.observeClearsByPolicy}, or the `shadowClearsByPolicy` a
- * build from before the rename returned (a stats object handed over as JSON).
- */
-export function observeClearsOf(s: JevStats): Record<string, number> | undefined {
-  return s.observeClearsByPolicy ?? (s as { shadowClearsByPolicy?: Record<string, number> }).shadowClearsByPolicy;
-}
-
-/** `modes.observe`, or the `modes.shadow` of a build from before the rename. */
-export function observeCountOf(s: JevStats): number {
-  const modes = s.modes as { observe?: number; shadow?: number } | undefined;
-  return modes?.observe ?? modes?.shadow ?? 0;
-}
-
 function formatWindow(ms: number): string {
   const h = ms / 3_600_000;
   if (Number.isInteger(h) && h >= 1) return h % 24 === 0 ? `${h / 24}d` : `${h}h`;
@@ -297,13 +279,11 @@ export function formatJevStats(s: JevStats): string {
   lines.push(...notAsked);
   if (s.latencyP50Ms !== null) lines.push(`  Latency:      p50 ${s.latencyP50Ms} ms, p95 ${s.latencyP95Ms} ms`);
   if (Object.keys(s.clearsByPolicy).length > 0) lines.push(`  Cleared:      ${topCounts(s.clearsByPolicy)}`);
-  const observeClears = observeClearsOf(s);
-  if (observeClears && Object.keys(observeClears).length > 0) {
-    lines.push(`  Would clear:  ${topCounts(observeClears)} (observe mode)`);
+  if (s.observeClearsByPolicy && Object.keys(s.observeClearsByPolicy).length > 0) {
+    lines.push(`  Would clear:  ${topCounts(s.observeClearsByPolicy)} (observe mode)`);
   }
-  const observed = observeCountOf(s);
-  if (s.modes && observed > 0 && s.modes.enforce > 0) {
-    lines.push(`  Modes:        enforce ${s.modes.enforce}, observe ${observed}`);
+  if (s.modes && s.modes.observe > 0 && s.modes.enforce > 0) {
+    lines.push(`  Modes:        enforce ${s.modes.enforce}, observe ${s.modes.observe}`);
   }
   return lines.join("\n");
 }

@@ -24,12 +24,6 @@ describe("jevPillKind", () => {
     );
     expect(jevPillKind({ decision: "deny", evaluator: "jev", jevDecision: "deny", jevMode: "observe" })).toBeNull();
   });
-
-  it("reads a row an older build wrote with jevMode `shadow` as observe", () => {
-    const legacy = "shadow" as never;
-    expect(jevPillKind({ decision: "deny", evaluator: "jev", jevCleared: ["block-env-files"], jevMode: legacy })).toBe("would-clear");
-    expect(jevPillKind({ decision: "allow", evaluator: "jev", jevDecision: "deny", jevMode: legacy })).toBe("observe-stricter");
-  });
 });
 
 describe("JevPill", () => {

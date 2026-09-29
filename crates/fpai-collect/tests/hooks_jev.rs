@@ -417,29 +417,6 @@ async fn an_observe_allow_jev_would_have_blocked_is_shipped_on_its_own() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_row_an_older_build_wrote_with_jev_mode_shadow_ships_as_observe() {
-    let (store, state, spool) = (tmpdir("leg-s"), tmpdir("leg-st"), tmpdir("leg-sp"));
-    // `shadow` is what `observe` was called before the rename. An older worker
-    // may still write it, and the store is never rewritten; the Cloud is sent
-    // one spelling.
-    let legacy = jev_row(
-        1785740912000,
-        "allow",
-        json!({ "jevMode": "shadow", "jevDecision": "deny" }),
-    );
-    write_rows(&store, &[legacy]);
-    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
-
-    let events = spooled(&spool);
-    assert_eq!(events.len(), 2, "still notable: a pair, not an aggregate");
-    let end = completed(&events);
-    assert_eq!(end["jev_decision"], "deny");
-    assert_eq!(end["jev_mode"], "observe");
-
-    cleanup(&[&store, &state, &spool]);
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn jev_allows_roll_up_with_their_evaluator_and_latency() {
     let (store, state, spool) = (tmpdir("agg-s"), tmpdir("agg-st"), tmpdir("agg-sp"));
     let rows: Vec<Value> = [20, 40, 90]

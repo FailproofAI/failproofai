@@ -381,19 +381,6 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(onDisk().mode).toBe("off");
     });
 
-    it("reads a Cloud file's old mode name `shadow` as observe, and writes observe", async () => {
-      connect();
-      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "shadow" });
-      expect(loadJevConfig()?.mode).toBe("observe");
-      const status = await runJevCommand(["status"], RENDER);
-      expect(text(status)).toContain("on · observe");
-      // `--mode shadow` is taken too, and saved under the new name.
-      const r = await runJevCommand(["setup", "--provider", "failproofai", "--mode", "shadow"], RENDER);
-      expect(r.exitCode, text(r)).toBe(0);
-      expect(onDisk().mode).toBe("observe");
-      expect(text(r)).toContain('"shadow" is now called "observe"');
-    });
-
     it("a mode switch says which key state the machine is in, and offers `jev test` only when there is a key to test", async () => {
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "off" });
 

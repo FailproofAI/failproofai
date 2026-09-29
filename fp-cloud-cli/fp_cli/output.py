@@ -6220,10 +6220,7 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
 def jev_machine_counts(summary: dict) -> tuple:
     """``(observe, enforce)`` machines running Jev, from the summary's ``jev.machines``.
 
-    Jev's log-only mode was called ``shadow`` before it was renamed ``observe``. A server
-    from before the rename reports only ``shadow``; a newer one reports ``observe`` and
-    keeps ``shadow`` as a deprecated duplicate — so ``observe`` wins and ``shadow`` is
-    the fallback, never added to it. ``(0, 0)`` when the server says nothing about Jev.
+    ``(0, 0)`` when the server says nothing about Jev.
     """
     jev = summary.get("jev") if isinstance(summary, dict) else None
     machines = jev.get("machines") if isinstance(jev, dict) else None
@@ -6233,10 +6230,7 @@ def jev_machine_counts(summary: dict) -> tuple:
     def count(v) -> int:
         return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
 
-    observe = machines.get("observe")
-    if observe is None:
-        observe = machines.get("shadow")
-    return count(observe), count(machines.get("enforce"))
+    return count(machines.get("observe")), count(machines.get("enforce"))
 
 
 def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:

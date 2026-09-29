@@ -141,8 +141,7 @@ pub struct HookRow {
     pub jev_latency_ms: Option<f64>,
     #[serde(rename = "jevModel", default, deserialize_with = "lenient")]
     pub jev_model: Option<String>,
-    /// `observe` | `enforce` — or `shadow`, what builds before the rename
-    /// wrote for `observe`. [`JevFacts::of`] emits `observe` for both.
+    /// `observe` | `enforce`.
     #[serde(rename = "jevMode", default, deserialize_with = "lenient")]
     pub jev_mode: Option<String>,
 }
@@ -409,18 +408,10 @@ impl JevFacts {
             .as_deref()
             .filter(|e| matches!(*e, "jev" | "jev-fallback"))?
             .to_string();
-        // `shadow` is `observe` under the name it had before the rename. A
-        // worker or daemon from an older build still writes it, and the store
-        // is never rewritten, so both are read — and one value, `observe`, is
-        // emitted, so the Cloud sees a single spelling per mode.
         let mode = row
             .jev_mode
             .as_deref()
-            .and_then(|m| match m {
-                "observe" | "shadow" => Some("observe"),
-                "enforce" => Some("enforce"),
-                _ => None,
-            })
+            .filter(|m| matches!(*m, "observe" | "enforce"))
             .map(str::to_string);
         let fallback_reason = row.jev_fallback_reason.as_deref().and_then(jev_reason_code);
         let decision = row

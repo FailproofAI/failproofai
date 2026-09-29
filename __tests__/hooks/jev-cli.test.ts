@@ -165,26 +165,6 @@ describe("failproofai jev", () => {
       expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, mode: "observe" });
     });
 
-    it("takes --mode shadow, the old name, and saves it as observe with a note", async () => {
-      await runJevCommand(["setup", "--provider", "cloudflare", "--account-id", ACCOUNT, "--key-stdin"], withKey(KEY));
-      const r = await runJevCommand(["setup", "--mode", "shadow"], noTty);
-      expect(r.exitCode, text(r)).toBe(0);
-      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT, mode: "observe" });
-      expect(text(r)).toContain('"shadow" is now called "observe"');
-      // Said only for the old name.
-      const again = await runJevCommand(["setup", "--mode", "observe"], noTty);
-      expect(text(again)).not.toContain("now called");
-    });
-
-    it("rewrites an older file's mode `shadow` as observe on the next save", async () => {
-      await runJevCommand(["setup", "--provider", "cloudflare", "--account-id", ACCOUNT, "--key-stdin"], withKey(KEY));
-      writeFileSync(jevConfigPath(), JSON.stringify({ ...readFile(), mode: "shadow" }), { mode: 0o600 });
-      expect(loadJevConfig()?.mode).toBe("observe");
-      const r = await runJevCommand(["setup", "--timeout-ms", "900"], noTty);
-      expect(r.exitCode, text(r)).toBe(0);
-      expect(readFile()).toMatchObject({ mode: "observe", timeoutMs: 900 });
-    });
-
     it("switching provider starts over: no key, model or URL carries across, mode does", async () => {
       await runJevCommand(["setup", "--provider", "custom", "--base-url", "https://jev.example.com/v1", "--mode", "observe", "--key-stdin"], withKey(KEY));
       const noKey = await runJevCommand(["setup", "--provider", "vercel"], noTty);
@@ -344,13 +324,11 @@ describe("failproofai jev", () => {
       expect(jevStatsLines(null).join("\n")).toContain("could not be read");
     });
 
-    it("prints observe-mode would-be clears, from the current key or the pre-rename one", () => {
+    it("prints observe-mode would-be clears", () => {
       const base = { windowMs: 24 * 3_600_000, total: 3, fallbackRate: 0, fallbackReasons: {}, latencyP50Ms: 40, latencyP95Ms: 90, clearsByPolicy: {} };
       const now = jevStatsLines({ ...base, observeClearsByPolicy: { "block-env-files": 2 } }, { cols: 100 }).join("\n");
       expect(now).toContain("would have cleared (observe)");
-      const legacy = jevStatsLines({ ...base, shadowClearsByPolicy: { "block-env-files": 2 } } as never, { cols: 100 }).join("\n");
-      expect(legacy).toContain("would have cleared (observe)");
-      expect(legacy).toContain("block-env-files ×2");
+      expect(now).toContain("block-env-files ×2");
     });
   });
 

@@ -1732,33 +1732,28 @@ def test_guardrails_sparkline_uses_every_source(capsys):
     assert merged_spark in out, f"sparkline is not drawn from every source: {out!r}"
 
 
-def test_jev_machine_counts_prefer_observe_and_fall_back_to_shadow():
-    """`shadow` is Jev's log-only mode under its old name: a server from before the
-    rename reports only it, a newer one reports `observe` plus `shadow` as a deprecated
-    duplicate. `observe` wins; the two are never summed."""
+def test_jev_machine_counts_reads_observe_and_enforce():
     from fp_cli.output import jev_machine_counts
 
-    assert jev_machine_counts({"jev": {"machines": {"observe": 3, "shadow": 3, "enforce": 2}}}) == (3, 2)
-    assert jev_machine_counts({"jev": {"machines": {"shadow": 4, "enforce": 1}}}) == (4, 1)
-    assert jev_machine_counts({"jev": {"machines": {"observe": 0, "shadow": 5}}}) == (0, 0)
+    assert jev_machine_counts({"jev": {"machines": {"observe": 3, "enforce": 2}}}) == (3, 2)
+    assert jev_machine_counts({"jev": {"machines": {"enforce": 1}}}) == (0, 1)
     assert jev_machine_counts({}) == (0, 0)
     assert jev_machine_counts({"jev": None}) == (0, 0)
     assert jev_machine_counts({"jev": {"machines": {"observe": "x", "enforce": True}}}) == (0, 0)
 
 
-def test_guardrails_names_jev_observe_mode_never_shadow(capsys):
+def test_guardrails_shows_jev_machines_per_mode(capsys):
     from fp_cli.output import render_guardrails
 
     summary = {
         "hours": 24,
         "policies": [],
         "totals": {"evaluated": 1, "blocked": 0, "enforcingMachines": 1, "reportingMachines": 1},
-        "jev": {"machines": {"shadow": 2, "enforce": 1}},
+        "jev": {"machines": {"observe": 2, "enforce": 1}},
     }
     render_guardrails(summary)
     out = capsys.readouterr().out
     assert "2 observe" in out and "1 enforce" in out
-    assert "shadow" not in out
 
     render_guardrails({**summary, "jev": {"machines": {"observe": 0, "enforce": 0}}})
     assert "jev" not in capsys.readouterr().out

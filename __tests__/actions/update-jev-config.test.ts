@@ -381,12 +381,6 @@ describe("validation is the loader's, not a second copy of it", () => {
     expect(loadJevConfig()?.mode).toBe("observe");
   });
 
-  it("takes `shadow`, the old name for observe, and writes observe", async () => {
-    const res = await saveJevConfigAction(input({ mode: "shadow" }));
-    expect(res.ok && res.view.mode).toBe("observe");
-    expect(JSON.parse(readFileSync(configPath(), "utf8")).mode).toBe("observe");
-  });
-
   it("refuses plain http to anywhere but loopback, in either mode", async () => {
     const res = await saveJevConfigAction(
       input({ provider: "custom", baseUrl: "http://jev.example", mode: "observe" }),

@@ -103,7 +103,6 @@ import {
   JEV_CLOUD_PROVIDER,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
   JEV_PROVIDER_KINDS,
-  LEGACY_OBSERVE_MODE,
   MAX_JEV_TIMEOUT_MS,
   endpointGivenAsBase,
   inspectJevConfig,
@@ -265,13 +264,6 @@ function parseFlags(argv: string[], allowed: Set<string>): Parsed | string {
 }
 
 // ── Rendering helpers ────────────────────────────────────────────────────────
-
-/** Said when `--mode shadow` was given: it still works, under its new name. */
-function legacyModeNote(values: Map<string, string>, opts: RenderOpts): string[] | null {
-  return values.get("--mode") === LEGACY_OBSERVE_MODE
-    ? note('"shadow" is now called "observe"; saved as observe. Use --mode observe from now on.', opts)
-    : null;
-}
 
 function modeLine(mode: NonNullable<JevConfig["mode"]>): string {
   if (mode === "off") return "off — Jev is not asked at all; the regex policies decide alone";
@@ -469,12 +461,8 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
   // mode can do; in observe mode every clear Jev would have made is in
   // `observeClearsByPolicy` instead and this one is empty. Printing the first
   // alone would tell an observe-mode user "cleared nothing" — the one number
-  // they turned observe mode on to watch. A stats object from before the
-  // rename carries the same counts as `shadowClearsByPolicy`, so that is read
-  // too. (Not through jev-stats' `observeClearsOf`: this module takes only
-  // `jevStats` from there, and the tests replace that module whole.)
-  const legacy = stats as { observeClearsByPolicy?: Record<string, number>; shadowClearsByPolicy?: Record<string, number> };
-  const observeClears = byPolicy(legacy.observeClearsByPolicy ?? legacy.shadowClearsByPolicy);
+  // they turned observe mode on to watch.
+  const observeClears = byPolicy(stats.observeClearsByPolicy);
   const ms = (v: number | null) => (v === null ? "—" : `${Math.round(v)} ms`);
   return stack(
     heading,
@@ -871,9 +859,6 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
     next.accountId = values.get("--account-id");
   }
   if (values.has("--mode")) next.mode = values.get("--mode");
-  // `shadow`, the old name for `observe` — from the flag or carried over from
-  // an older file — is written as `observe`.
-  if (next.mode === LEGACY_OBSERVE_MODE) next.mode = "observe";
   if (values.has("--timeout-ms")) {
     const raw = values.get("--timeout-ms") as string;
     const n = Number(raw);
@@ -1121,7 +1106,6 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
       // was readable from /proc by anything running as this user while the
       // process lived.
       tokenOnCommandLine ? warning(TOKEN_HISTORY_WARNING, opts) : null,
-      legacyModeNote(values, opts),
       note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
       // Switched off, `jev test` only answers "not run — switched off": a next
       // step that leads nowhere is worse than none.
@@ -1223,9 +1207,8 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
   if (!sameProvider && existing?.raw.timeoutMs !== undefined) next.timeoutMs = existing.raw.timeoutMs;
   // Observe unless told otherwise, as `config --token` starts it: Jev on a new
   // route is logged before it is allowed to clear anything. A mode already in a
-  // Cloud file is kept — and the old name `shadow` is written as `observe`.
-  const mode = values.get("--mode") ?? (sameProvider && typeof next.mode === "string" ? next.mode : "observe");
-  next.mode = mode === LEGACY_OBSERVE_MODE ? "observe" : mode;
+  // Cloud file is kept.
+  next.mode = values.get("--mode") ?? (sameProvider && typeof next.mode === "string" ? next.mode : "observe");
   if (values.has("--timeout-ms")) {
     const rawTimeout = values.get("--timeout-ms") as string;
     const n = Number(rawTimeout);
@@ -1326,7 +1309,6 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
         ],
         opts,
       ),
-      legacyModeNote(values, opts),
       note("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
       // With no usable key, `jev test` only answers "not run": the step that
       // helps is the connection. Switched off, there is no step to take.

@@ -91,14 +91,6 @@ describe("sanitizeJevActivity", () => {
     expect(sanitizeJevActivity(e)).toEqual(e);
   });
 
-  it("reads jevMode `shadow`, what builds before the rename wrote, as observe", () => {
-    const out = sanitizeJevActivity(entry({ evaluator: "jev", jevMode: "shadow" as never, jevCleared: ["block-env-files"] }));
-    expect(out.jevMode).toBe("observe");
-    expect(describeJevActivity(entry({ evaluator: "jev", jevMode: "shadow" as never, jevDecision: "allow", jevLatencyMs: 38 }))).toContain(
-      "observe mode: the regex result was enforced",
-    );
-  });
-
   it("drops values outside each field's closed set, field by field", () => {
     const out = sanitizeJevActivity(
       entry({

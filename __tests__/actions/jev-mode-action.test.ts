@@ -134,16 +134,6 @@ describe("setJevModeAction", () => {
     expect(readFileSync(jevConfigFile(), "utf8")).toBe(before);
   });
 
-  it("takes `shadow`, the old name, as observe — and shows an older file's `shadow` as observe", async () => {
-    connect();
-    seed({ ...CLOUD_FILE, mode: "shadow" });
-    expect((await getJevSettingsAction()).mode).toBe("observe");
-    await setJevModeAction("enforce");
-    const res = await setJevModeAction("shadow");
-    expect(res.ok && res.view).toMatchObject({ on: true, mode: "observe" });
-    expect(onDisk().mode).toBe("observe");
-  });
-
   it("refuses anything that is not a mode, and a missing file", async () => {
     connect();
     expect((await setJevModeAction("disabled")).ok).toBe(false);

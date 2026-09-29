@@ -17,9 +17,7 @@
 ### Changed
 
 - `fp guardrails summary` shows how many machines run Jev in each mode, reading the summary's
-  `jev.machines.observe` and falling back to `jev.machines.shadow` — Jev's log-only mode under
-  its earlier name, all a server from before the rename reports. It is printed as "observe",
-  and the two are never summed (a newer server sends `shadow` as a deprecated duplicate).
+  `jev.machines.observe` and `jev.machines.enforce`.
 - `fp policies publish` (and `policies compose --publish`) refuses a source carrying Jev
   fields a cloud policy never reads — a `semanticPolicies.add(...)` call, or a registration
   declaring `authority: "reviewable"` — before anything is sent (exit 1, `--no-verify` does

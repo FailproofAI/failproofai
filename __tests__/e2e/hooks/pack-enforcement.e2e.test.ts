@@ -178,7 +178,7 @@ describe("pack enforcement, end to end", () => {
     // The allow is not enough on its own, and this test proved it: the first
     // version of this passed against a real bug. The observe path read
     // `cloudManaged!.id`, which is undefined for a pack, so every non-allow
-    // shadow verdict threw — the throw was swallowed by the evaluator, nothing
+    // observed verdict threw — the throw was swallowed by the evaluator, nothing
     // was recorded, and the net result was an allow. Exactly what this asserted.
     // A clean stderr is what separates "observed" from "crashed into an allow".
     const env = createFixtureEnv();

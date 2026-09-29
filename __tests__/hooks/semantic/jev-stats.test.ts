@@ -106,31 +106,6 @@ describe("computeJevStats", () => {
     expect(s.modes).toEqual({ observe: 1, enforce: 3 });
   });
 
-  it("counts rows an older build wrote with jevMode `shadow` as observe", () => {
-    const s = computeJevStats(
-      [
-        answered(30, { jevMode: "shadow" as never, jevCleared: ["block-env-files"] }),
-        answered(30, { jevMode: "observe", jevCleared: ["block-env-files"] }),
-      ],
-      { now: NOW },
-    );
-    expect(s.observeClearsByPolicy).toEqual({ "block-env-files": 2 });
-    expect(s.clearsByPolicy).toEqual({});
-    expect(s.modes).toEqual({ observe: 2, enforce: 0 });
-  });
-
-  it("formats a stats object an older build returned under the pre-rename keys", () => {
-    const legacy = {
-      ...computeJevStats([answered(30), answered(30)], { now: NOW }),
-      modes: { shadow: 1, enforce: 1 },
-      shadowClearsByPolicy: { "block-env-files": 1 },
-      observeClearsByPolicy: undefined,
-    } as unknown as Parameters<typeof formatJevStats>[0];
-    const out = formatJevStats(legacy);
-    expect(out).toContain("Would clear:  block-env-files 1 (observe mode)");
-    expect(out).toContain("Modes:        enforce 1, observe 1");
-  });
-
   it("tallies Jev's own verdicts and the models that answered", () => {
     const s = computeJevStats(
       [

@@ -80,8 +80,7 @@
  *
  * # `mode: "off"`
  *
- * Every provider accepts `off | observe | enforce` (and reads the old name
- * `shadow` as `observe`). `off` keeps the file — the
+ * Every provider accepts `off | observe | enforce`. `off` keeps the file — the
  * endpoint, and for BYOK the key — while Jev does not run at all:
  * `loadJevConfig` returns null exactly as for an absent file. It exists so the
  * dashboard can switch the Cloud route off without deleting the file that
@@ -101,20 +100,10 @@ export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare
 export type JevConfigMode = "off" | "observe" | "enforce";
 
 /**
- * The name `observe` had before it was renamed. Still READ everywhere a mode is
- * parsed — a `jev.json` written by an older build, `--mode shadow`, a request
- * from an older dashboard, a mode FailproofAI Cloud reports — and treated
- * exactly as `observe`. Never written: every writer emits `observe`.
- */
-export const LEGACY_OBSERVE_MODE = "shadow" as const;
-
-/**
  * A mode as read from a file, a flag or a request: `off`, `observe` or
- * `enforce`, with the legacy `shadow` read as `observe`. Null for anything
- * else.
+ * `enforce`. Null for anything else.
  */
-export function normalizeJevMode(raw: unknown): JevConfigMode | null {
-  if (raw === LEGACY_OBSERVE_MODE) return "observe";
+export function parseJevMode(raw: unknown): JevConfigMode | null {
   return raw === "off" || raw === "observe" || raw === "enforce" ? raw : null;
 }
 
@@ -686,8 +675,7 @@ export function validateJevConfig(
   }
 
   if (o.mode !== undefined) {
-    // `shadow`, the old name, is read as `observe`.
-    const mode = normalizeJevMode(o.mode);
+    const mode = parseJevMode(o.mode);
     if (mode === null) return { ok: false, problem: 'mode must be "off", "observe" or "enforce"' };
     cfg.mode = mode;
   }

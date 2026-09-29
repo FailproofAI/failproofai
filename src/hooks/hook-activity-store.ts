@@ -105,11 +105,7 @@ export interface HookActivityEntry {
   jevFallbackReason?: string;
   jevLatencyMs?: number;
   jevModel?: string;
-  /**
-   * `observe` logs Jev but enforces the regex result; `enforce` applies the
-   * combine rules. Rows written before the rename say `shadow` for `observe`;
-   * `sanitizeJevActivity` reads them as `observe`.
-   */
+  /** `observe` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
   jevMode?: "observe" | "enforce";
   durationMs: number;
   sessionId?: string;

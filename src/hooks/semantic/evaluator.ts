@@ -496,8 +496,7 @@ export interface VerdictLogMeta {
   eventType: string;
   /**
    * What the handler did with the outcome: combined it with the regex results
-   * (`two-tier`), logged it while enforcing the regex result (`observe`; builds before the
-   * rename wrote `shadow`), or
+   * (`two-tier`), logged it while enforcing the regex result (`observe`), or
    * kept the regex result because Jev never answered (`legacy-fallback`).
    *
    * A TRUNCATED call is `two-tier`, not `legacy-fallback`: its clears were

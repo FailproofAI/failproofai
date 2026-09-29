@@ -55,7 +55,7 @@ import {
   baseUrlWithoutQuery,
   inspectJevConfig,
   looksLikeCredential,
-  normalizeJevMode,
+  parseJevMode,
   readJevConfigForUpdate,
   type JevConfig,
   type JevProviderKind,
@@ -315,8 +315,7 @@ function routingFromRaw(raw: Record<string, unknown> | null): {
     // refused file may be a pasted key, and is not shown.
     accountId: CLOUDFLARE_ACCOUNT_ID_RE.test(asString(raw?.accountId)) ? asString(raw?.accountId) : "",
     model: asString(raw?.model),
-    // `shadow`, the old name, is shown as `observe`.
-    mode: normalizeJevMode(raw?.mode) ?? DEFAULT_JEV_MODE,
+    mode: parseJevMode(raw?.mode) ?? DEFAULT_JEV_MODE,
   };
 }
 

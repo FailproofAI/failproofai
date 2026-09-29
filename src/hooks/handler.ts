@@ -230,7 +230,7 @@ async function runObserved(
 // Turning Jev off. The switch that works everywhere is the config file itself:
 // it is read on every event, here, in whichever process evaluates — the
 // daemon's warm worker included — so `failproofai jev remove` (or a `mode:
-// "shadow"` config, which keeps enforcing the regex result) applies from the
+// "observe"` config, which keeps enforcing the regex result) applies from the
 // next tool call, with no restart. `FAILPROOFAI_EVALUATOR=legacy` is the dev
 // escape hatch, read from the EVALUATING process's environment: it covers a
 // one-shot hook (no daemon) and a worker whose own environment sets it, but
@@ -334,7 +334,7 @@ async function startTwoTier(
     // carries the fallback.
     hookLogInfo(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
-      mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
+      mode: cfg.mode === "observe" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
       review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null }),
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
@@ -928,19 +928,19 @@ export async function evaluateHookEvent(
           releaseRegistry: opts?.releaseRegistry,
         })
       : await evaluatePolicies(canonicalEventType, parsed, session, config);
-    // Shadow mode: what Jev WOULD have done, filed where observe-mode policies
+    // Jev's observe mode: what Jev WOULD have done, filed where observe-mode policies
     // file theirs, so the "would have" view counts it with no second channel.
     // `semantic/<check>` cannot be mistaken for a cloud policy — cloud ids
     // carry no `/` (`POLICY_ID_RE` in cloud-managed-policies.ts) — and the
     // version is a Jev model id or `jev`, never a deployment number. Only on
     // the two-tier path, so an unconfigured row is untouched.
-    const shadowVerdict = result.twoTier?.shadowVerdict;
-    if (shadowVerdict) {
+    const observeVerdict = result.twoTier?.observeVerdict;
+    if (observeVerdict) {
       observedResults.push({
-        policyId: shadowVerdict.policyName,
-        version: shadowVerdict.version,
-        decision: shadowVerdict.decision,
-        reason: shadowVerdict.reason,
+        policyId: observeVerdict.policyName,
+        version: observeVerdict.version,
+        decision: observeVerdict.decision,
+        reason: observeVerdict.reason,
       });
     }
     const durationMs = Math.round(performance.now() - startTime);

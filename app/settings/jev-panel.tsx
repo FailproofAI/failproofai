@@ -45,7 +45,7 @@
  * and a save leaves whatever is stored alone.
  *
  * Client-side validation here is a convenience only. Every rule — the URL
- * scheme, plain http being refused outside shadow mode, cloudflare's account id
+ * scheme, plain http being refused outside observe mode, cloudflare's account id
  * — is enforced server-side by the same `validateJevConfig` the loader runs.
  *
  * ## FailproofAI Cloud
@@ -53,7 +53,7 @@
  * When `jev.json` names the FailproofAI Cloud provider, the endpoint and the
  * key are not this page's to edit: both come from the machine's connection
  * (`config --token`). So the form is replaced by the two controls that are
- * the owner's — an on/off switch and shadow/enforce — both through
+ * the owner's — an on/off switch and observe/enforce — both through
  * `setJevModeAction`, which rewrites `mode` and nothing else. "Off" there keeps
  * the file (`mode: "off"`): deleting it would leave nothing on this page to
  * switch back on — the only way to get the file back would be re-running
@@ -87,7 +87,7 @@ const PROVIDERS = [
 
 const MODES = [
   { value: "enforce", label: "enforce — jev's verdict counts" },
-  { value: "shadow", label: "shadow — log only, regex decides" },
+  { value: "observe", label: "observe — log only, regex decides" },
   { value: "off", label: "off — keep this config, don't ask jev" },
 ] as const;
 
@@ -279,10 +279,10 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
   }, [form, token]);
 
   /**
-   * The FailproofAI Cloud switch: `off`, `shadow` or `enforce`, and nothing
+   * The FailproofAI Cloud switch: `off`, `observe` or `enforce`, and nothing
    * else about the file changes (see `setJevModeAction`).
    */
-  const onMode = useCallback(async (mode: "off" | "shadow" | "enforce") => {
+  const onMode = useCallback(async (mode: "off" | "observe" | "enforce") => {
     setBusy(true);
     setProblem(null);
     try {
@@ -372,8 +372,8 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
           </span>
           <span className="set-dim">
             {view?.on
-              ? view.mode === "shadow"
-                ? "shadow: jev's answers are logged, the regex result is what gets enforced."
+              ? view.mode === "observe"
+                ? "observe: jev's answers are logged, the regex result is what gets enforced."
                 : "enforce: jev's answers can clear a reviewable deny."
               : cloudRoute
                 ? "through FailproofAI Cloud, on your org's plan — no endpoint or token of your own."
@@ -483,9 +483,9 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
               <select
                 id="jev-cloud-mode"
                 className="set-select"
-                value={view?.mode === "enforce" ? "enforce" : "shadow"}
+                value={view?.mode === "enforce" ? "enforce" : "observe"}
                 disabled={busy || view?.mode === "off"}
-                onChange={(e) => void onMode(e.target.value === "enforce" ? "enforce" : "shadow")}
+                onChange={(e) => void onMode(e.target.value === "enforce" ? "enforce" : "observe")}
               >
                 {MODES.filter((m) => m.value !== "off").map((m) => (
                   <option key={m.value} value={m.value}>
@@ -503,7 +503,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
               type="button"
               className="btn btn-press"
               disabled={busy}
-              onClick={() => void onMode(view?.mode === "off" ? "shadow" : "off")}
+              onClick={() => void onMode(view?.mode === "off" ? "observe" : "off")}
             >
               {busy ? "[ switching… ]" : view?.mode === "off" ? "[ turn jev on ]" : "[ turn jev off ]"}
             </button>
@@ -533,7 +533,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
           label="endpoint url"
           hint={[
             form.provider === "custom"
-              ? "required — https, or http to localhost in shadow mode"
+              ? "required — https, or http to localhost in observe mode"
               : "leave blank for the provider's own api",
             // The stored query string is not sent to this page (see
             // `baseUrlView` in `get-jev-config.ts`), so the field holds the URL

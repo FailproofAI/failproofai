@@ -39,11 +39,11 @@ describe("jevTelemetryProperties", () => {
         evaluator: "jev-fallback",
         jevFallbackReason: "error: connect ECONNREFUSED",
         jevLatencyMs: 3,
-        jevMode: "shadow",
+        jevMode: "observe",
       }),
     ).toEqual({
       jev_evaluator: "jev-fallback",
-      jev_mode: "shadow",
+      jev_mode: "observe",
       jev_fallback_reason: "error",
       jev_latency_ms: 3,
     });

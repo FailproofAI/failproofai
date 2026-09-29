@@ -22,7 +22,7 @@
  * | Jev answered                                  | reviewable denies/instructs Jev covered are cleared; final =|
  * |                                               | the most severe of {remaining regex results, Jev's verdict} |
  *
- * `shadow` mode computes and records all of it, and still returns the regex
+ * `observe` mode computes and records all of it, and still returns the regex
  * result.
  *
  * ## Where this departs from plan §4
@@ -232,14 +232,14 @@ import type { PolicyAuthority } from "../policy-types";
 // The only value imports, and deliberately from the activity vocabulary rather
 // than local literals: the fallback reason this module writes itself has to
 // be a code the activity store's closed list names, or it is stored and
-// shipped as `other`, and a shadow verdict's model id has to pass the same
+// shipped as `other`, and an observe-mode verdict's model id has to pass the same
 // shape check the row's own `jevModel` does. Importing them makes a rename a
 // compile error here. `jev-activity.ts` is pure (no node imports, no semantic
 // modules), so this costs the hook path nothing.
 import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT } from "../jev-activity";
 
 export type Decision = "allow" | "deny" | "instruct";
-export type JevMode = "shadow" | "enforce";
+export type JevMode = "observe" | "enforce";
 
 /** One regex policy's verdict, in evaluation order. */
 export interface RegexVerdict {
@@ -383,13 +383,13 @@ export interface JevActivityFields {
 }
 
 /**
- * Jev's own deny or instruct in SHADOW mode — the verdict enforce mode would
+ * Jev's own deny or instruct in OBSERVE mode — the verdict enforce mode would
  * have applied, recorded rather than applied. The handler files it in the
  * activity row's `observed` list, the "would have" record observe-mode cloud
  * and pack policies already use, so FailproofAI Cloud's policy page counts it
  * with no change on its side.
  */
-export interface ShadowVerdict {
+export interface ObserveVerdict {
   /** `semantic/<check>` — the name enforce mode would have attributed it to. */
   policyName: string;
   decision: "deny" | "instruct";
@@ -401,7 +401,7 @@ export interface ShadowVerdict {
 
 export interface CombineOutcome {
   final: FinalVerdict;
-  /** Reviewable regex policies Jev cleared (in shadow: would have cleared). */
+  /** Reviewable regex policies Jev cleared (in observe mode: would have cleared). */
   cleared: string[];
   /**
    * True when the first entry of `final` came from THIS TIER rather than from
@@ -414,11 +414,11 @@ export interface CombineOutcome {
   decidedByJev: boolean;
   activity: JevActivityFields;
   /**
-   * Shadow mode only, and only when Jev's own verdict was deny or instruct.
+   * Observe mode only, and only when Jev's own verdict was deny or instruct.
    * Absent otherwise — including every enforce outcome, where the verdict was
    * APPLIED and `decidedByJev` / the final entries already say so.
    */
-  shadowVerdict?: ShadowVerdict;
+  observeVerdict?: ObserveVerdict;
 }
 
 /**
@@ -495,7 +495,7 @@ export function combineTwoTier(
   const notDenied = new Set(review.notDenied);
   const cleared = wholePicture && !review.unclearableWarned ? verdicts.filter((v) => clears(v, asked, notDenied)).map((v) => v.policyName) : [];
 
-  // Built once, for both modes: enforce applies it, shadow records it, and the
+  // Built once, for both modes: enforce applies it, observe records it, and the
   // two must never disagree about what the verdict WAS.
   const jevEntry = { policyName: review.policyName, reason: review.reason ?? `Flagged by semantic review (${review.policyName})` };
   const enforced = resolveEnforce(verdicts, cleared, review.decision, jevEntry);
@@ -510,7 +510,7 @@ export function combineTwoTier(
     evaluator: review.requestCut ? "jev-fallback" : "jev",
     ...(review.requestCut ? { jevFallbackReason: JEV_REASON_REQUEST_CUT } : {}),
     jevDecision: review.decision,
-    // Only a clear that SOFTENED the call (in shadow: would have). One that
+    // Only a clear that SOFTENED the call (in observe mode: would have). One that
     // Jev's own deny, or another regex deny, still decided over changed
     // nothing — and `jev status` and the policy page's "Cleared by Jev" both
     // read `jevCleared` as calls Jev let through.
@@ -520,11 +520,11 @@ export function combineTwoTier(
     jevMode: mode,
   };
 
-  if (mode === "shadow") {
+  if (mode === "observe") {
     // Jev's own deny or instruct, exactly as enforce mode would have applied it
     // (upward only: a cut or injected call keeps it, as the enforce branch
     // below does). A clear is recorded in `jevCleared`, not here.
-    const shadowVerdict: ShadowVerdict | undefined =
+    const observeVerdict: ObserveVerdict | undefined =
       review.decision === "deny" || review.decision === "instruct"
         ? {
             policyName: jevEntry.policyName,
@@ -535,7 +535,7 @@ export function combineTwoTier(
             version: review.model && JEV_MODEL_RE.test(review.model) ? review.model : "jev",
           }
         : undefined;
-    return { final: legacy, cleared, decidedByJev: false, activity, ...(shadowVerdict ? { shadowVerdict } : {}) };
+    return { final: legacy, cleared, decidedByJev: false, activity, ...(observeVerdict ? { observeVerdict } : {}) };
   }
 
   return { ...enforced, cleared, activity };

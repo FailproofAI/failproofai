@@ -7,12 +7,14 @@ import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
   JEV_CONFIG_DEFAULT_TIMEOUT_MS,
+  LEGACY_OBSERVE_MODE,
   baseUrlWithoutQuery,
   inspectJevConfig,
   isCalibratedJevModel,
   jevConfigPath,
   jevModelVersion,
   loadJevConfig,
+  normalizeJevMode,
   validateBaseUrl,
   validateJevConfig,
 } from "../../../src/hooks/semantic/jev-config";
@@ -88,7 +90,7 @@ describe("semantic/jev-config", () => {
   });
 
   it.each([
-    ["typesafe", { provider: "typesafe", apiKey: KEY, model: "jev-1.13.0", mode: "shadow", timeoutMs: 900 }],
+    ["typesafe", { provider: "typesafe", apiKey: KEY, model: "jev-1.13.0", mode: "observe", timeoutMs: 900 }],
     ["openrouter", { provider: "openrouter", apiKey: KEY, model: "typesafe/jev-1.13" }],
     ["vercel", { provider: "vercel", apiKey: KEY }],
     ["cloudflare", { provider: "cloudflare", apiKey: KEY, accountId: ACCOUNT }],
@@ -211,8 +213,26 @@ describe("semantic/jev-config", () => {
       expect(problem({ provider: "typesafe", apiKey: KEY, mode: "disabled" })).toMatch(/mode/);
       // `off` is a mode now: it keeps the file and runs no Jev (see jev-cloud-config.test.ts).
       expect(problem({ provider: "typesafe", apiKey: KEY, mode: "off" })).toBeNull();
-      const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "shadow", timeoutMs: 800 });
-      expect(r.ok && [r.value.mode, r.value.timeoutMs]).toEqual(["shadow", 800]);
+      const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "observe", timeoutMs: 800 });
+      expect(r.ok && [r.value.mode, r.value.timeoutMs]).toEqual(["observe", 800]);
+    });
+
+    it("reads the old mode name `shadow` as `observe`", () => {
+      expect(normalizeJevMode("shadow")).toBe("observe");
+      expect(normalizeJevMode(LEGACY_OBSERVE_MODE)).toBe("observe");
+      for (const m of ["off", "observe", "enforce"]) expect(normalizeJevMode(m)).toBe(m);
+      for (const m of ["Shadow", "observing", "", null, undefined, 1]) expect(normalizeJevMode(m)).toBeNull();
+      const r = validateJevConfig({ provider: "typesafe", apiKey: KEY, mode: "shadow" });
+      expect(r.ok && r.value.mode).toBe("observe");
+      // Plain http to loopback is accepted in observe mode under either name.
+      expect(problem({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1", mode: "shadow" })).toBeNull();
+    });
+
+    it("loads a jev.json an older build wrote with mode `shadow` as observe", () => {
+      write({ provider: "typesafe", apiKey: KEY, mode: "shadow" });
+      expect(loadJevConfig()?.mode).toBe("observe");
+      const inspected = inspectJevConfig();
+      expect(inspected.status === "ok" && inspected.config.mode).toBe("observe");
     });
 
     it("refuses a model naming a Jev family the thresholds were not calibrated for", () => {

@@ -4,7 +4,7 @@
  * `config --token` with a key that carries `jev:evaluate` stores the key in the
  * `jev` slot of `credentials.json` (`cloud-connection.ts`) and then, ONLY when
  * this machine has no `jev.json` at all, writes one that turns Jev on through
- * FailproofAI Cloud in shadow mode — logged, never enforced, until its owner
+ * FailproofAI Cloud in observe mode — logged, never enforced, until its owner
  * says otherwise. Never under `--no-transcripts`: that connection asked for
  * decisions only, so it stores the key and says Jev is available, and
  * `jev setup --provider failproofai` is the opt-in. `config --disconnect`
@@ -29,7 +29,7 @@
  * status screen. A BYOK file keeps working without the Cloud and is not the
  * Cloud's to delete, so it stays; so does a file this build cannot read, and a
  * Cloud file switched off — `--mode off` is the owner's opt-out, and deleting
- * it would let the next connect write a fresh shadow file. The
+ * it would let the next connect write a fresh observe-mode file. The
  * file is moved aside before it is judged, so the file judged is the file
  * deleted — see `removeCloudJevConfig`.
  *
@@ -67,7 +67,7 @@ import {
 } from "./semantic/jev-config";
 
 /** The mode a Cloud `jev.json` starts in (the user's decision: log first, enforce later). */
-export const CLOUD_JEV_INITIAL_MODE = "shadow" as const;
+export const CLOUD_JEV_INITIAL_MODE = "observe" as const;
 
 export type CloudJevConfigWrite =
   | { status: "written"; path: string; mode: typeof CLOUD_JEV_INITIAL_MODE; baseUrl: string }
@@ -145,7 +145,7 @@ export function existingJevConfig(cloudBase: string): CloudJevConfigWrite | null
  * Asked the way a hook asks (`inspectJevConfig`), so "on" here means a tool
  * call's next Jev request really goes to FailproofAI Cloud.
  */
-export function cloudJevRunningMode(): "shadow" | "enforce" | null {
+export function cloudJevRunningMode(): "observe" | "enforce" | null {
   try {
     const r = inspectJevConfig();
     if (r.status !== "ok" || r.config.provider !== JEV_CLOUD_PROVIDER) return null;

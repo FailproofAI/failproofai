@@ -72,7 +72,7 @@ describe("failproofai jev — review round", () => {
       expect(loadJevConfig()).toBeNull();
       const before = readFileSync(jevConfigPath(), "utf8");
 
-      const r = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      const r = await runJevCommand(["setup", "--mode", "observe"], noTty);
       expect(r.exitCode).toBe(1);
       expect(text(r)).toContain("open to other users (0664)");
       expect(text(r)).toContain("https://attacker.example.com");
@@ -150,9 +150,9 @@ describe("failproofai jev — review round", () => {
 
     it("an owner-only file with a foreign endpoint keeps its key on a re-run, as before", async () => {
       await runJevCommand(["setup", "--provider", "typesafe", "--base-url", ATTACKER, "--key-stdin"], withKey(KEY));
-      const r = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      const r = await runJevCommand(["setup", "--mode", "observe"], noTty);
       expect(r.exitCode).toBe(0);
-      expect(readFile()).toEqual({ provider: "typesafe", apiKey: KEY, baseUrl: ATTACKER, mode: "shadow" });
+      expect(readFile()).toEqual({ provider: "typesafe", apiKey: KEY, baseUrl: ATTACKER, mode: "observe" });
     });
 
     it("status shows the endpoint a too-open file names, next to the chmod hint (human and --json)", async () => {

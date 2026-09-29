@@ -56,7 +56,7 @@ const answering =
   });
 
 /** Record an outcome the way the handler does — greedily (see the header). */
-function record(outcome: SemanticOutcome, mode: "shadow" | "enforce"): HookActivityEntry {
+function record(outcome: SemanticOutcome, mode: "observe" | "enforce"): HookActivityEntry {
   const base: HookActivityEntry = {
     timestamp: Date.now(),
     eventType: "PreToolUse",
@@ -161,7 +161,7 @@ describe("Jev telemetry privacy", () => {
   for (const [name, run] of cases) {
     it(`${name}: nothing identifying reaches the row, PostHog, the dashboard or the stats`, async () => {
       const outcome = await run();
-      for (const mode of ["enforce", "shadow"] as const) {
+      for (const mode of ["enforce", "observe"] as const) {
         const entry = record(outcome, mode);
         persistHookActivity(entry);
 
@@ -207,7 +207,7 @@ describe("Jev telemetry privacy", () => {
       `git push origin failproofai/zebra-archive && ${COMMAND}`,
       `mv pack/tangerine-ledger.csv cloud/marmalade review`,
     ];
-    const poisonedRow = (mode: "shadow" | "enforce", overrides: Partial<HookActivityEntry> = {}): HookActivityEntry => ({
+    const poisonedRow = (mode: "observe" | "enforce", overrides: Partial<HookActivityEntry> = {}): HookActivityEntry => ({
       timestamp: Date.now(),
       eventType: "PreToolUse",
       integration: "claude",
@@ -226,7 +226,7 @@ describe("Jev telemetry privacy", () => {
       jevMode: mode,
       ...overrides,
     });
-    const rows: Array<[string, (mode: "shadow" | "enforce") => HookActivityEntry]> = [
+    const rows: Array<[string, (mode: "observe" | "enforce") => HookActivityEntry]> = [
       ["answered", (mode) => poisonedRow(mode)],
       [
         "fell back",
@@ -242,7 +242,7 @@ describe("Jev telemetry privacy", () => {
     for (const [name, make] of rows) {
       it(`${name}: none of it reaches the row, PostHog, the dashboard or the stats`, async () => {
         const entries: HookActivityEntry[] = [];
-        for (const mode of ["enforce", "shadow"] as const) {
+        for (const mode of ["enforce", "observe"] as const) {
           const entry = make(mode);
           entries.push(entry);
           persistHookActivity(entry);

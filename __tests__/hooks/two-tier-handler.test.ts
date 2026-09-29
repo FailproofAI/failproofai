@@ -35,7 +35,7 @@ import type { JevConfig } from "../../src/hooks/semantic/jev-config";
 
 let jevConfig: JevConfig | null = null;
 /** Overrides the build's DEFAULT_JEV_MODE (D2) for one test; undefined → the real one. */
-let defaultModeOverride: "shadow" | "enforce" | undefined;
+let defaultModeOverride: "observe" | "enforce" | undefined;
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-config")>();
   return {
@@ -523,8 +523,8 @@ describe("a reviewable deny", () => {
     expect(typeof row.jevLatencyMs).toBe("number");
   });
 
-  it("in shadow mode: the regex deny is enforced and the would-be clear recorded", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+  it("in observe mode: the regex deny is enforced and the would-be clear recorded", async () => {
+    jevConfig = { ...CFG, mode: "observe" };
     const enforced = await outsideRead();
     expect(enforced.outcome.evaluation?.decision).toBe("deny");
     expect(enforced.outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
@@ -532,9 +532,9 @@ describe("a reviewable deny", () => {
       evaluator: "jev",
       jevDecision: "allow",
       jevCleared: ["failproofai/block-read-outside-cwd"],
-      jevMode: "shadow",
+      jevMode: "observe",
     });
-    // …and what shadow enforces is byte-identical to the unconfigured answer.
+    // …and what observe enforces is byte-identical to the unconfigured answer.
     jevConfig = null;
     const plain = await outsideRead();
     expect(enforced.outcome.stdout).toBe(plain.outcome.stdout);
@@ -1042,24 +1042,24 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     expect(row.jevFallbackReason).toBeUndefined();
   });
 
-  it("shadow mode still enforces the regex result for both spellings", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+  it("observe mode still enforces the regex result for both spellings", async () => {
+    jevConfig = { ...CFG, mode: "observe" };
     respond = answers({ "destructive-deletion": 0.97 });
 
     const field = await bash(padField());
     expect(field.outcome.evaluation?.decision).toBe("allow");
-    expect(field.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "shadow" });
+    expect(field.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "observe" });
 
     const budget = await run("PreToolUse", { tool_name: "Bash", tool_input: padBudget() });
     expect(budget.outcome.evaluation?.decision).toBe("allow");
-    expect(budget.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "shadow" });
+    expect(budget.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "observe" });
 
-    // And a call the envelope had to cut: shadow enforces the regex result
+    // And a call the envelope had to cut: observe enforces the regex result
     // either way.
     respond = seeingTransport as typeof respond;
     const hidden = await bash(`echo ${overflow("x")} ; ${DELETE} ; echo ${overflow("y")}`);
     expect(hidden.outcome.evaluation?.decision).toBe("allow");
-    expect(hidden.row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevMode: "shadow" });
+    expect(hidden.row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevMode: "observe" });
   });
 
   it("control: unpadded, the very same deny is a plain `jev` row", async () => {
@@ -1331,21 +1331,21 @@ describe("a Jev review that cannot start", () => {
 
   it("follows DEFAULT_JEV_MODE rather than restating it", async () => {
     jevConfig = CFG;
-    defaultModeOverride = "shadow";
+    defaultModeOverride = "observe";
     vi.mocked(startJevReview).mockImplementationOnce(() => {
       throw new Error("module failed to initialise");
     });
     const { row } = await bash("ls -la");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "error", jevMode: "shadow" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "error", jevMode: "observe" });
   });
 
   it("an explicit mode in the config wins", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+    jevConfig = { ...CFG, mode: "observe" };
     vi.mocked(startJevReview).mockImplementationOnce(() => {
       throw new Error("module failed to initialise");
     });
     const { row } = await bash("ls -la");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevMode: "shadow" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevMode: "observe" });
   });
 });
 
@@ -1397,20 +1397,20 @@ describe("captureIntent and a prompt a policy acted on", () => {
 
 describe("the throttle's cache across a jev.json change", () => {
   const outsideRead = () => readFile(join(home, "other", "notes.txt"));
-  // T1 accepts plain http to a loopback proxy only in shadow mode: its answers
+  // T1 accepts plain http to a loopback proxy only in observe mode: its answers
   // must never clear a deny. Both routes ask for the same model, so their
   // requests are byte-identical.
-  const LOOPBACK_SHADOW: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "shadow" };
+  const LOOPBACK_OBSERVE: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "observe" };
   const TYPESAFE_ENFORCE: JevConfig = { provider: "typesafe", apiKey: "not-a-real-key", baseUrl: "https://jev.invalid", mode: "enforce" };
 
   it("never serves one provider's answer under another: switching providers asks the new one", async () => {
     const { JevError } = await import("../../src/hooks/semantic/jev-client");
     fakeCache.on = true;
 
-    jevConfig = LOOPBACK_SHADOW;
-    const shadow = await outsideRead();
-    expect(shadow.outcome.evaluation?.decision).toBe("deny");
-    expect(shadow.row).toMatchObject({ evaluator: "jev", jevMode: "shadow", jevCleared: ["failproofai/block-read-outside-cwd"] });
+    jevConfig = LOOPBACK_OBSERVE;
+    const observe = await outsideRead();
+    expect(observe.outcome.evaluation?.decision).toBe("deny");
+    expect(observe.row).toMatchObject({ evaluator: "jev", jevMode: "observe", jevCleared: ["failproofai/block-read-outside-cwd"] });
     expect(jevCalls).toHaveLength(1);
 
     jevConfig = TYPESAFE_ENFORCE;
@@ -1831,7 +1831,7 @@ describe("FAILPROOFAI_EVALUATOR=legacy (§4 row 1) under every configured mode: 
 
   it.each<[string, JevConfig["mode"]]>([
     ["no mode (the build's default)", undefined],
-    ["shadow", "shadow"],
+    ["observe", "observe"],
     ["enforce", "enforce"],
   ])("%s", async (_label, mode) => {
     respond = answers({ "destructive-deletion": 0.97 });
@@ -1949,19 +1949,19 @@ describe("what the policy page reads", () => {
     expect(row).toMatchObject({ policyName: "failproofai/block-sudo", policySource: "builtin" });
   });
 
-  it("B: in shadow mode, Jev's deny is a 'would have' in observed — and the regex result is enforced", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+  it("B: in observe mode, Jev's deny is a 'would have' in observed — and the regex result is enforced", async () => {
+    jevConfig = { ...CFG, mode: "observe" };
     respond = answers({ "destructive-deletion": 0.97 });
-    const shadow = await bash(DELETE_ALL);
-    expect(shadow.outcome.evaluation?.decision).toBe("allow");
-    expect(shadow.row.policySource).toBeUndefined();
-    expect(shadow.row).toMatchObject({ evaluator: "jev", jevDecision: "deny", jevMode: "shadow" });
+    const observe = await bash(DELETE_ALL);
+    expect(observe.outcome.evaluation?.decision).toBe("allow");
+    expect(observe.row.policySource).toBeUndefined();
+    expect(observe.row).toMatchObject({ evaluator: "jev", jevDecision: "deny", jevMode: "observe" });
 
     // The reason is the one enforce mode shows for the same answer.
     jevConfig = CFG;
     store._resetForTest(join(root, "activity-enforce"));
     const enforce = await bash(DELETE_ALL);
-    expect(shadow.row.observed).toEqual([
+    expect(observe.row.observed).toEqual([
       {
         policyId: "semantic/destructive-deletion",
         version: "jev-1.13.0",
@@ -1971,8 +1971,8 @@ describe("what the policy page reads", () => {
     ]);
   });
 
-  it("B: a shadow instruct is recorded as an instruct", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+  it("B: an observe instruct is recorded as an instruct", async () => {
+    jevConfig = { ...CFG, mode: "observe" };
     // An instruct-mode check firing: a warning, not a block.
     respond = answers({ "system-modification": 0.9 });
     const { row } = await bash("sysctl -w vm.swappiness=10");
@@ -1985,7 +1985,7 @@ describe("what the policy page reads", () => {
   });
 
   it("B: nothing is recorded when Jev allowed, or fell back", async () => {
-    jevConfig = { ...CFG, mode: "shadow" };
+    jevConfig = { ...CFG, mode: "observe" };
     respond = answers();
     expect((await bash("ls -la")).row.observed).toBeUndefined();
     respond = async () => {

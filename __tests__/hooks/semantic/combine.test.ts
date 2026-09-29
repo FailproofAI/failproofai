@@ -1,12 +1,12 @@
 /**
- * The §4 combine table, exhaustively: every row × {shadow, enforce} ×
+ * The §4 combine table, exhaustively: every row × {observe, enforce} ×
  * {whole, request-cut}. Each row is driven from a SemanticOutcome — what
  * `evaluateSemantic` actually returns — through `toReview` (how the handler
  * reads it) and `combineTwoTier` (what it enforces), so the cut → fallback
  * step is covered by the same table rather than beside it.
  *
  * The expected result is written out for `enforce` + whole. The other columns
- * follow from rules the table asserts on every row: shadow enforces the regex
+ * follow from rules the table asserts on every row: observe enforces the regex
  * result, and a call part of which was never shown to Jev — the tool input, a
  * computed fact, a redacted span — withdraws every clear, so every regex deny
  * counts (§4) and the call is recorded `jev-fallback` / `request-cut`. A cut
@@ -380,7 +380,7 @@ const ROWS: Row[] = [
   },
 ];
 
-const MODES: JevMode[] = ["enforce", "shadow"];
+const MODES: JevMode[] = ["enforce", "observe"];
 const CUTS: Cut[] = ["whole", "request-cut"];
 /** allow < instruct < deny, for the "never more permissive" invariant. */
 const SEVERITY: Record<"allow" | "instruct" | "deny", number> = { allow: 0, instruct: 1, deny: 2 };
@@ -390,7 +390,7 @@ function reviewFor(row: Row, cut: Cut): JevReview {
   return toReview(withCut(row.outcome, cut));
 }
 
-describe("combine table (§4) — every row × shadow/enforce × whole/request-cut", () => {
+describe("combine table (§4) — every row × observe/enforce × whole/request-cut", () => {
   for (const row of ROWS) {
     for (const mode of MODES) {
       for (const cut of CUTS) {
@@ -412,8 +412,8 @@ describe("combine table (§4) — every row × shadow/enforce × whole/request-c
           const wholeAnswer = !hardDecided && !degraded && !cutAnswer;
 
           // What is ENFORCED.
-          if (mode === "shadow" || hardDecided || degraded) {
-            // shadow, a degraded Jev and a hard deny all enforce exactly what
+          if (mode === "observe" || hardDecided || degraded) {
+            // observe, a degraded Jev and a hard deny all enforce exactly what
             // the regex engine says alone.
             expect(out.final).toEqual(legacy);
             expect(out.decidedByJev).toBe(false);
@@ -464,7 +464,7 @@ describe("combine table (§4) — every row × shadow/enforce × whole/request-c
             expect(out.activity.evaluator).toBe("jev");
             expect(out.activity.jevFallbackReason).toBeUndefined();
             expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
-            // Shadow records what enforce WOULD have cleared.
+            // Observe records what enforce WOULD have cleared.
             expect(out.cleared).toEqual(row.enforce.cleared);
             const recorded = row.enforce.recorded ?? row.enforce.cleared;
             expect(out.activity.jevCleared).toEqual(recorded.length > 0 ? recorded : undefined);
@@ -721,9 +721,9 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.decidedByJev).toBe(true);
   });
 
-  it("shadow still enforces the regex result for a cut answer", () => {
+  it("observe still enforces the regex result for a cut answer", () => {
     const review = answered({ requestCut: true, truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
-    const out = combineTwoTier([], review, "shadow");
+    const out = combineTwoTier([], review, "observe");
     expect(out.final).toEqual(regexOnly([]));
     expect(out.decidedByJev).toBe(false);
   });
@@ -783,8 +783,8 @@ describe("the clear rule, on hand-built reviews", () => {
       expect(out.final.decision).toBe("instruct");
     });
 
-    it("shadow mode is unchanged, and still records the reason", () => {
-      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "shadow");
+    it("observe mode is unchanged, and still records the reason", () => {
+      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "observe");
       expect(out.final).toEqual(regexOnly([]));
       expect(out.activity.jevFallbackReason).toBe("request-cut");
     });

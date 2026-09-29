@@ -91,6 +91,14 @@ describe("sanitizeJevActivity", () => {
     expect(sanitizeJevActivity(e)).toEqual(e);
   });
 
+  it("reads jevMode `shadow`, what builds before the rename wrote, as observe", () => {
+    const out = sanitizeJevActivity(entry({ evaluator: "jev", jevMode: "shadow" as never, jevCleared: ["block-env-files"] }));
+    expect(out.jevMode).toBe("observe");
+    expect(describeJevActivity(entry({ evaluator: "jev", jevMode: "shadow" as never, jevDecision: "allow", jevLatencyMs: 38 }))).toContain(
+      "observe mode: the regex result was enforced",
+    );
+  });
+
   it("drops values outside each field's closed set, field by field", () => {
     const out = sanitizeJevActivity(
       entry({
@@ -185,14 +193,14 @@ describe("describeJevActivity", () => {
     ).toEqual(["Jev verdict: allow", "cleared block-read-outside-cwd", "38 ms", "jev-1.13.0"]);
   });
 
-  it("says shadow mode enforced the regex result", () => {
+  it("says observe mode enforced the regex result", () => {
     const facts = describeJevActivity(
-      entry({ evaluator: "jev", jevMode: "shadow", jevDecision: "allow", jevCleared: ["block-env-files"] }),
+      entry({ evaluator: "jev", jevMode: "observe", jevDecision: "allow", jevCleared: ["block-env-files"] }),
     );
     expect(facts).toEqual([
       "Jev verdict: allow",
       "would have cleared block-env-files",
-      "shadow mode: the regex result was enforced",
+      "observe mode: the regex result was enforced",
     ]);
   });
 

@@ -4,7 +4,7 @@
 // error message by any route (Cloudflare's 200 {success:false} envelope, a job
 // state, a reported model id, a network error), a configured Cloudflare model
 // reaches the wire, a custom endpoint must say which Jev answered, plain-http
-// loopback is shadow-only, and the 64 KiB config cap holds.
+// loopback is observe-only, and the 64 KiB config cap holds.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -207,7 +207,7 @@ describe("config hardening", () => {
     chmodSync(jevConfigPath(), 0o600);
   };
 
-  describe("plain http to loopback is accepted in shadow mode only", () => {
+  describe("plain http to loopback is accepted in observe mode only", () => {
     const problem = (obj: unknown) => {
       const r = validateJevConfig(obj);
       return r.ok ? null : r.problem;
@@ -215,11 +215,11 @@ describe("config hardening", () => {
 
     it.each(["http://localhost:8787/v1", "http://127.0.0.1:8787", "http://[::1]:8787"])("%s", (baseUrl) => {
       // enforce, explicit or by default: refused, and the reason says what to do.
-      expect(problem({ provider: "custom", apiKey: KEY, baseUrl })).toMatch(/shadow/);
+      expect(problem({ provider: "custom", apiKey: KEY, baseUrl })).toMatch(/observe/);
       expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "enforce" })).toMatch(/https/);
-      expect(problem({ provider: "typesafe", apiKey: KEY, baseUrl })).toMatch(/shadow/);
-      // shadow: accepted; a forged answer there changes no decision.
-      expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "shadow" })).toBeNull();
+      expect(problem({ provider: "typesafe", apiKey: KEY, baseUrl })).toMatch(/observe/);
+      // observe: accepted; a forged answer there changes no decision.
+      expect(problem({ provider: "custom", apiKey: KEY, baseUrl, mode: "observe" })).toBeNull();
     });
 
     it("https to loopback is fine in enforce mode: the agent cannot present a trusted certificate", () => {
@@ -231,8 +231,8 @@ describe("config hardening", () => {
       expect(loadJevConfig()).toBeNull();
       const r = inspectJevConfig();
       expect(r.status === "refused" && r.reason).toBe("invalid");
-      write(JSON.stringify({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1", mode: "shadow" }));
-      expect(loadJevConfig()).toMatchObject({ provider: "custom", mode: "shadow", baseUrl: "http://localhost:8787/v1" });
+      write(JSON.stringify({ provider: "custom", apiKey: KEY, baseUrl: "http://localhost:8787/v1", mode: "observe" }));
+      expect(loadJevConfig()).toMatchObject({ provider: "custom", mode: "observe", baseUrl: "http://localhost:8787/v1" });
     });
   });
 

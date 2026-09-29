@@ -38,6 +38,6 @@ export const JEV_NOT_CONSULTED_ROWS: HookActivityEntry[] = [
     reason: "Recursive force deletes are blocked",
     durationMs: 3,
     evaluator: "jev",
-    jevMode: "shadow",
+    jevMode: "observe",
   },
 ];

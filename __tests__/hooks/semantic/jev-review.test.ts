@@ -385,12 +385,12 @@ describe("the local verdict log", () => {
 
   it("records what the handler did with each outcome", async () => {
     await startJevReview(CFG, bash("ls")).review;
-    await startJevReview({ ...CFG, mode: "shadow" }, bash("ls")).review;
+    await startJevReview({ ...CFG, mode: "observe" }, bash("ls")).review;
     respond = async () => {
       throw new JevError("http-429", "slow down");
     };
     await startJevReview(CFG, bash("ls")).review;
-    expect(rows().map((r) => r.applied)).toEqual(["two-tier", "shadow", "legacy-fallback"]);
+    expect(rows().map((r) => r.applied)).toEqual(["two-tier", "observe", "legacy-fallback"]);
     expect(rows()[2]).toMatchObject({ status: "degraded", reason: "http-429" });
   });
 
@@ -406,7 +406,7 @@ describe("the local verdict log", () => {
 describe("mode", () => {
   it("defaults to enforce (D2)", () => {
     expect(resolveMode(CFG)).toBe("enforce");
-    expect(resolveMode({ ...CFG, mode: "shadow" })).toBe("shadow");
+    expect(resolveMode({ ...CFG, mode: "observe" })).toBe("observe");
     expect(resolveMode({ ...CFG, mode: "loud" as never })).toBe("enforce");
   });
 });
@@ -570,7 +570,7 @@ describe("how long a call may wait for Jev", () => {
 // ── Round-2 review findings ──────────────────────────────────────────────────
 
 describe("the throttle's cache is scoped to where answers come from", () => {
-  const LOOPBACK_SHADOW: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "shadow" };
+  const LOOPBACK_OBSERVE: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "observe" };
   const TYPESAFE_ENFORCE: JevConfig = { provider: "typesafe", apiKey: "not-a-real-key", baseUrl: "https://jev.invalid", mode: "enforce" };
 
   it("passes a scope naming the provider, endpoint, account and model", async () => {
@@ -580,8 +580,8 @@ describe("the throttle's cache is scoped to where answers come from", () => {
       { ...CFG, model: "typesafe/jev" },
       { provider: "typesafe", apiKey: "not-a-real-key" },
       TYPESAFE_ENFORCE,
-      LOOPBACK_SHADOW,
-      { ...LOOPBACK_SHADOW, baseUrl: "http://127.0.0.1:10" },
+      LOOPBACK_OBSERVE,
+      { ...LOOPBACK_OBSERVE, baseUrl: "http://127.0.0.1:10" },
       { provider: "openrouter", apiKey: "not-a-real-key" },
     ];
     for (const cfg of configs) await startJevReview(cfg, bash("ls")).review;
@@ -591,14 +591,14 @@ describe("the throttle's cache is scoped to where answers come from", () => {
     expect(new Set(scopes).size).toBe(configs.length);
     // The same config always gets the same scope (the cache still works),
     // whatever its key or mode — neither changes who answers.
-    expect(throttleScope({ ...CFG, apiKey: "another" , mode: "shadow" }, { via: "cloudflare", model: "jev-1.13.0" })).toBe(scopes[0]);
+    expect(throttleScope({ ...CFG, apiKey: "another" , mode: "observe" }, { via: "cloudflare", model: "jev-1.13.0" })).toBe(scopes[0]);
   });
 
   it("an answer cached under one provider is never served under another", async () => {
     fakeCache.on = true;
     intent = { userSaid: ["show me my notes"], agentLastMessage: null };
     // Both routes ask for the same model, so the requests are byte-identical.
-    const first = await startJevReview(LOOPBACK_SHADOW, bash("cat ~/other/notes.txt")).review;
+    const first = await startJevReview(LOOPBACK_OBSERVE, bash("cat ~/other/notes.txt")).review;
     expect(first).toMatchObject({ kind: "answered" });
     expect(transportCalls).toHaveLength(1);
 

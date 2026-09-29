@@ -268,15 +268,15 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(existsSync(jevConfigPath())).toBe(false);
     });
 
-    it("refuses plain http to localhost in enforce mode, and takes it in shadow", async () => {
+    it("refuses plain http to localhost in enforce mode, and takes it in observe", async () => {
       const enforced = await runJevCommand(["--url", "http://127.0.0.1:8088/v1", "--token", TOKEN], RENDER);
       expect(enforced.exitCode).toBe(1);
-      expect(text(enforced)).toContain("accepted only with mode shadow");
+      expect(text(enforced)).toContain("accepted only with mode observe");
       expect(existsSync(jevConfigPath())).toBe(false);
 
-      const shadow = await runJevCommand(["--url", "http://127.0.0.1:8088/v1", "--mode", "shadow", "--token", TOKEN], RENDER);
-      expect(shadow.exitCode).toBe(0);
-      expect(readFile()).toMatchObject({ provider: "custom", baseUrl: "http://127.0.0.1:8088/v1", mode: "shadow" });
+      const observe = await runJevCommand(["--url", "http://127.0.0.1:8088/v1", "--mode", "observe", "--token", TOKEN], RENDER);
+      expect(observe.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "custom", baseUrl: "http://127.0.0.1:8088/v1", mode: "observe" });
     });
 
     it("refuses a URL carrying credentials, in the loader's words", async () => {

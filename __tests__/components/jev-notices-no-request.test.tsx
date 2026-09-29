@@ -10,7 +10,7 @@ const NO_REQUEST = { decision: "allow", evaluator: "jev" as const, jevDecision: 
 describe("a call Jev sent no request for", () => {
   it("gets no pill", () => {
     expect(jevPillKind(NO_REQUEST)).toBeNull();
-    expect(jevPillKind({ ...NO_REQUEST, jevMode: "shadow" })).toBeNull();
+    expect(jevPillKind({ ...NO_REQUEST, jevMode: "observe" })).toBeNull();
     const { container } = render(<JevPill item={NO_REQUEST} />);
     expect(container).toBeEmptyDOMElement();
   });

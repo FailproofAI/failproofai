@@ -24,7 +24,7 @@ import {
   type JevActivityFields,
   type JevReview,
   type RegexVerdict,
-  type ShadowVerdict,
+  type ObserveVerdict,
   type TwoTierReview,
 } from "./semantic/combine";
 // The code, not a copy of the string: the log line below turns on it, and a
@@ -62,8 +62,8 @@ export interface EvaluationResult {
     decidedByJev: boolean;
     /** The pack a deciding Jev check came from; only with `decidedByJev`. */
     jevOrigin?: { packId: string; packVersion?: string };
-    /** Shadow mode: Jev's own deny/instruct, recorded as a "would have" (see `ShadowVerdict`). */
-    shadowVerdict?: ShadowVerdict;
+    /** Observe mode: Jev's own deny/instruct, recorded as a "would have" (see `ObserveVerdict`). */
+    observeVerdict?: ObserveVerdict;
   };
 }
 
@@ -219,7 +219,7 @@ export async function evaluatePolicies(
   }
   const combined = combineTwoTier(collected.verdicts, review, twoTier.mode);
   if (combined.cleared.length > 0) {
-    hookLogInfo(`jev ${twoTier.mode === "shadow" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);
+    hookLogInfo(`jev ${twoTier.mode === "observe" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);
   }
   if (combined.activity.evaluator === "jev-fallback") {
     // Info, not warn: during an outage this is every gated call, and warn-level
@@ -251,7 +251,7 @@ export async function evaluatePolicies(
       activity: combined.activity,
       decidedByJev: combined.decidedByJev,
       ...(combined.decidedByJev && review.kind === "answered" && review.origin ? { jevOrigin: review.origin } : {}),
-      ...(combined.shadowVerdict ? { shadowVerdict: combined.shadowVerdict } : {}),
+      ...(combined.observeVerdict ? { observeVerdict: combined.observeVerdict } : {}),
     },
   };
 }

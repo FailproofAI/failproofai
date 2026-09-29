@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9-beta.0 — 2026-09-29
+
+### Docs
+
+- Add a first-run path for Jev through FailproofAI Cloud or a user's own key, including prerequisites, shadow-mode setup, a real tool-call verification step, and links from the policy overview and quickstart. Clarify the Cloud machine key's `jev:evaluate` permission.
+
 ## 1.0.8-beta.0 — 2026-09-26
 
 ### Added

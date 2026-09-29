@@ -29,7 +29,7 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
     ## Before you start
 
 1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
-2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
+2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`. If you plan to use [Jev through FailproofAI Cloud](/policies/jev-cloud), choose the **machine** preset, which also grants `jev:evaluate`.
 3. Copy the one-time secret, then read it into a shell on the target machine. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
 
 ```bash
@@ -81,6 +81,8 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
     ```
 
     The pack is fetched from its GitHub release, checksum-verified, and pinned to the exact tag it resolved. It carries 39 policies and switches on the 10 its manifest marks as safe to enable unattended. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
+
+    To add model-based review of gated tool calls, set up [Jev through FailproofAI Cloud](/policies/jev-cloud) with a machine key that includes `jev:evaluate`, or [use your own Jev key](/policies/jev-byok). Jev can clear a policy's deny only when that policy is marked reviewable; a hard policy stays final.
 
     Read any pack before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
 

@@ -45,6 +45,8 @@ The two permissions required by a connected Failproof AI machine are independent
 - `events:add` sends events and session data.
 - `policies:pull` retrieves assigned policy deployments.
 
+To run [Jev through FailproofAI Cloud](/policies/jev-cloud), select the **machine** key preset. It adds `jev:evaluate` to both permissions above. Cloud Jev cannot run with a key that lacks it.
+
 Key secrets are shown when created or regenerated. Store them in a secret manager and rotate them without reusing an operator's interactive credentials.
 
 ## Permission catalog
@@ -64,6 +66,7 @@ Key secrets are shown when created or regenerated. Store them in a secret manage
 | Audits | `audits:read`, `audits:write` |
 | Policies | `policies:read`, `policies:write`, `policies:pull` |
 | Usage | `usage:read` |
+| Jev | `jev:evaluate` (requires `events:add` and `policies:pull`) |
 
 `orgs:admin` is reserved for the instance operator and cannot be granted to an organization key or ordinary member. Retired `incidents:*` and `alerts:ack` tokens are accepted for compatibility and normalize to current `issues:*` permissions.
 

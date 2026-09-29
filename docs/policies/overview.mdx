@@ -37,6 +37,19 @@ There are two ways to get one.
   </Card>
 </Columns>
 
+## Add Jev to tool-call decisions
+
+Jev reads a gated tool call in the context of your request. It can flag a concern that a string-matching policy missed or clear a deny from a policy explicitly marked **reviewable**. Hard policies remain final. Start with one of these setup paths after [installing Failproof AI and its hooks](/start/quickstart):
+
+<Columns cols={2}>
+  <Card title="Use FailproofAI Cloud" icon="cloud" href="/policies/jev-cloud">
+    Connect with a machine key that includes Jev. Start in shadow mode and review real calls before enforcing its verdicts.
+  </Card>
+  <Card title="Use your own Jev key" icon="key-round" href="/policies/jev-byok">
+    Connect directly through TypeSafe, OpenRouter, Vercel, Cloudflare, or your own compatible endpoint.
+  </Card>
+</Columns>
+
 ## Then ship it
 
 <Steps>

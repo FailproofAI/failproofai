@@ -195,7 +195,15 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
  * the two cannot describe different deployments. Never throws.
  */
 export function cloudJevForPass(): CloudJevRead {
-  if (!cachedCloud) cachedCloud = readCloudJevPolicies();
+  if (!cachedCloud) {
+    try {
+      cachedCloud = readCloudJevPolicies();
+    } catch {
+      // It never throws by contract; this is for the hook path's callers
+      // outside any `try`, where a throw would cost the event its answer.
+      cachedCloud = { sets: [], semanticIds: [], jevMode: null, errors: [] };
+    }
+  }
   return cachedCloud;
 }
 

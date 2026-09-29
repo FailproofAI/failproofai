@@ -90,7 +90,7 @@
 import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "../fp-config";
-import { jevConfigFile } from "../fp-home";
+import { credentialsFile, jevConfigFile } from "../fp-home";
 
 export type { JevCloudCredential } from "../fp-config";
 
@@ -1129,10 +1129,93 @@ export interface CloudModeJevConfig {
  *    would have written.
  * 3. Neither: no Jev, and `problem` says `jev_unconfigured`.
  *
+ * Asked twice per gate event on a machine whose Cloud sets a mode — once for
+ * the review, once for `errors.json` — and on every event in the warm worker,
+ * so the answer is kept until an input changes (see `jevInputsVersion`).
+ *
  * Never throws.
  */
 export function loadJevConfigForCloudMode(mode: JevConfigMode): CloudModeJevConfig {
   if (mode === "off") return { config: null, provider: null, problem: null };
+  const key = `${mode}\u0000${jevInputsVersion()}`;
+  if (cloudModeMemo?.key === key) return cloudModeMemo.value;
+  const value = computeCloudModeConfig(mode);
+  cloudModeMemo = { key, value };
+  return value;
+}
+
+let cloudModeMemo: { key: string; value: CloudModeJevConfig } | null = null;
+let localProblemMemo: { key: string; value: string | null } | null = null;
+
+/** Forget the memoised answers. Tests only. */
+export function _resetJevConfigMemoForTest(): void {
+  cloudModeMemo = null;
+  localProblemMemo = null;
+}
+
+/**
+ * Everything a Jev config load reads, as one version string: `jev.json`, the
+ * credentials file, their directories (whose modes the loaders check), where
+ * those paths point, and the key variable. A file's version is its device,
+ * inode, mode, size and modification and change times to the nanosecond — an
+ * edit, a chmod and a replace-by-rename all move it, and the change time cannot
+ * be set back by the user.
+ */
+function jevInputsVersion(): string {
+  const jev = jevConfigFile();
+  const credentials = credentialsFile();
+  return [
+    process.platform,
+    jev,
+    statVersion(jev),
+    statVersion(dirname(jev)),
+    credentials,
+    statVersion(credentials),
+    statVersion(dirname(credentials)),
+    process.env[JEV_API_KEY_ENV] ?? "",
+  ].join("\u0000");
+}
+
+function statVersion(path: string): string {
+  try {
+    const st = statSync(path, { bigint: true });
+    return `${st.dev}:${st.ino}:${st.mode}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
+  } catch (err) {
+    return `-${(err as NodeJS.ErrnoException).code ?? "error"}`;
+  }
+}
+
+/**
+ * Why this machine's OWN Jev setup does not run, for a machine that has
+ * FailproofAI Cloud Jev policies deployed and no mode from Cloud — where the
+ * local setup is the only thing that could ask them (review m5). Null when it
+ * runs. Starts with `jev_unconfigured`, like every "nothing asks Jev" entry.
+ * Kept until an input changes, like `loadJevConfigForCloudMode`. Never throws.
+ */
+export function localJevProblem(): string | null {
+  const key = jevInputsVersion();
+  if (localProblemMemo?.key === key) return localProblemMemo.value;
+  let value: string | null;
+  try {
+    const inspected = inspectJevConfig();
+    value =
+      inspected.status === "ok"
+        ? null
+        : inspected.status === "absent"
+          ? `${JEV_UNCONFIGURED_PROBLEM}: FailproofAI Cloud sets no Jev mode for this machine and it has no jev.json, ` +
+            `so its FailproofAI Cloud Jev checks are never asked`
+          : inspected.status === "off"
+            ? `${JEV_UNCONFIGURED_PROBLEM}: Jev is off on this machine (jev.json mode off) and FailproofAI Cloud sets no ` +
+              `Jev mode, so its FailproofAI Cloud Jev checks are never asked`
+            : `${JEV_UNCONFIGURED_PROBLEM}: jev.json is ${inspected.status} — ${(inspected as { problem?: string }).problem ?? inspected.status}`;
+  } catch (err) {
+    value = `${JEV_UNCONFIGURED_PROBLEM}: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  localProblemMemo = { key, value };
+  return value;
+}
+
+function computeCloudModeConfig(mode: JevConfigMode): CloudModeJevConfig {
   try {
     const inspected = inspectJevConfig();
     if (inspected.status === "ok") {

@@ -49,6 +49,7 @@ import {
 } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
+  bindReviewedBy,
   refusedAuthorityWarning,
   resolvePolicyAuthority,
   warnAuthority,
@@ -64,7 +65,13 @@ import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
-import { readActiveCloudManagedPolicies, readCloudJevMode, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import {
+  cloudOwnCheckNames,
+  readActiveCloudManagedPolicies,
+  readCloudJevMode,
+  type CloudManagedPolicyArtifact,
+  type CloudPolicyError,
+} from "./cloud-managed-policies";
 import { cloudPolicyErrorsPath, collectCloudPolicyErrors, writeCloudPolicyErrors } from "./cloud-policy-errors";
 import { hasInstalledRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
@@ -352,10 +359,28 @@ async function recordCloudPolicyErrors(input: {
     // An unmanaged machine never reads further. A managed machine whose
     // deployment just emptied still writes, so a stale report is cleared.
     if (!managed && !existsSync(cloudPolicyErrorsPath())) return;
+    // Both answers below are kept by their modules until an input changes, so
+    // the second ask of a gate event (the review already asked) reads no file.
     let jevUnconfigured: string | null = null;
     if (jev.jevMode === "observe" || jev.jevMode === "enforce") {
       const { loadJevConfigForCloudMode } = await import("./semantic/jev-config");
       jevUnconfigured = loadJevConfigForCloudMode(jev.jevMode).problem;
+    } else if (jev.jevMode === null && jev.semanticIds.length > 0) {
+      // Cloud Jev checks deployed and no mode from Cloud: the machine's own
+      // setup is the only thing that could ask them. Without one they are never
+      // asked — every `both` regex half stays hard and every `jev` policy does
+      // nothing — which the fleet page must not read as healthy.
+      const { localJevProblem } = await import("./semantic/jev-config");
+      jevUnconfigured = localJevProblem();
+    }
+    // Every check the one question budget drops, Cloud's and installed packs'
+    // (CONTRACT C9.2). Only where Cloud Jev checks are deployed and Cloud has
+    // not switched Jev off: that is where the combined set can overrun, and
+    // measuring it means loading the semantic modules.
+    let budgetDrops: CloudPolicyError[] = [];
+    if (jev.sets.length > 0 && jev.jevMode !== "off") {
+      const { jevBudgetErrors } = await import("./semantic/pack-policies");
+      budgetDrops = jevBudgetErrors(input.packs, jev.sets);
     }
     writeCloudPolicyErrors(
       collectCloudPolicyErrors({
@@ -366,6 +391,7 @@ async function recordCloudPolicyErrors(input: {
         // Every agent's view, never this event's: see `CloudPolicyErrorInputs`.
         reviewerNames: reviewerNamesFor(withCloudSemantic(jevPacks(input.packs), jev.sets).sources),
         jevUnconfigured,
+        budgetDrops,
       }),
     );
   } catch (err) {
@@ -706,7 +732,8 @@ export async function evaluateHookEvent(
       // policy decided this event: "what was deployed here at the time" is a
       // separate question from "what decided", and only the former can tell a
       // rollout that changed nothing from one that never reached the machine.
-      cloudDeployment = cloudManagedPolicies[0]?.deployment;
+      // A machine whose deployment is Jev-only has no JS policy to read it off.
+      cloudDeployment = cloudManagedPolicies[0]?.deployment ?? cloudJevForPass().sets[0]?.deployment;
       // Installed packs. `readInstalledPacks` never throws: a bad manifest or a
       // tampered artifact yields zero packs and a recorded reason, which is
       // sound ONLY because the builtins still ship compiled in and keep
@@ -885,7 +912,34 @@ export async function evaluateHookEvent(
         // for the user's own files; anything unclear registers as hard. Said
         // aloud when a `reviewable` claim is refused and Jev is configured, so
         // an author is not left wondering why Jev never clears it.
-        const authority = authorityDeclarationFor(hook, { cloudManaged, pack });
+        let authority = authorityDeclarationFor(hook, { cloudManaged, pack });
+        if (cloudManaged) {
+          // A Cloud policy's `reviewedBy` is honoured only for checks ITS OWN
+          // Jev half loaded here (CONTRACT C9.4): the machine-wide reviewer set
+          // below also holds installed packs' checks, and when the Cloud half
+          // failed to load, a pack's same-named check would otherwise become
+          // the question that clears an org's regex verdict.
+          // A policy with no Jev half deployed (`null`) is judged by the
+          // machine-wide set, as any assignment always was. Fail-safe if its
+          // own checks cannot be told: none, so it is hard.
+          let own: ReadonlySet<string> | null = new Set<string>();
+          try {
+            own = cloudOwnCheckNames(cloudJevForPass(), cloudManaged.id);
+          } catch {
+            // Nothing of its own to be reviewed by.
+          }
+          const bound = own ? bindReviewedBy(authority, own) : { declaration: authority, unowned: [] };
+          authority = bound.declaration;
+          if (bound.unowned.length > 0) {
+            warnAuthority(
+              refusedAuthorityWarning(
+                registeredName,
+                `reviewedBy names ${bound.unowned.map((n) => JSON.stringify(n)).join(", ")}, which its own ` +
+                  `FailproofAI Cloud Jev half does not provide on this machine`,
+              ),
+            );
+          }
+        }
         // Against the same set `registerPolicy` judges it by, or this warning
         // describes a different machine than the registry does: a pack that
         // ships its own semantic checks registers reviewable and was told, on

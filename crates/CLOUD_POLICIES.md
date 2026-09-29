@@ -91,13 +91,21 @@ URL-encoded, at most 4 KiB encoded (whole entries are dropped from the end;
 the JSON is never cut). It merges:
 
 - `daemon-errors.json` — the daemon's own reconcile errors (`kind: "daemon"`):
-  a refused payload, a failed fetch, a digest mismatch. Transport failures are
-  not reported.
+  a refused payload, a fetch the server answered with an error, a digest
+  mismatch. Transport failures — of the poll or of an artifact fetch that never
+  got an HTTP answer — are not reported.
 - `errors.json` — written by the CLI, atomically and only when its content
   changes, as `{"errors": [...]}`: a Cloud JS policy that failed to load, a
   semantic artifact that failed its digest or parse, a declaration its parser
-  dropped, a `reviewedBy` naming a check that is not present, and
-  `jev_unconfigured` (Cloud set a Jev mode and the machine has no provider).
+  dropped, a `reviewedBy` naming a check its own policy's Jev half does not
+  provide, a check the Jev question budget dropped (`jev_budget: …`), and
+  `jev_unconfigured` (Cloud set a Jev mode and the machine has no provider, or
+  Cloud Jev policies are deployed and nothing on the machine asks Jev).
+
+Messages carry no local paths: the home directory becomes `~` and any other
+absolute path its last segment. The CLI applies that before writing
+`errors.json` and the daemon again on the way out, so a report never names a
+user whichever side wrote it.
 
 The parameter is sent on every poll once either file exists (`[]` once the
 problems are fixed, which clears them on the server) and omitted while neither
@@ -117,8 +125,16 @@ failproofai config --connect https://be.failproof.ai \
 That verifies the credentials against the server before storing anything, then
 writes the `cloud` object of `~/.failproofai/credentials.json` (mode 0600; the
 layout-1 `cloud.json` is still read when `credentials.json` is absent).
-`--disconnect` removes it together with `active.json` and the two error files,
-and `--status` reports the connection with the token masked.
+`--disconnect` removes it together with `desired-state.json` (first, so nothing
+can rebuild the pointer from it), `active.json` and the two error files, and
+`--status` reports the connection with the token masked.
+
+A disconnect sticks. The daemon never rebuilds `active.json` on a machine that
+is not enrolled; a poll that was in flight when the disconnect landed is
+abandoned before it writes anything; and on a machine put back on OSS
+(`mode: "oss"` in `config.json`) the daemon removes any Cloud deployment it
+still finds, so none of the old organisation's policies, Jev checks or Jev mode
+return.
 
 **The credential must not go in the service unit.** `daemon-service.ts` installs
 `/etc/systemd/system/failproofaid@<user>.service` at mode 0644 — root-owned and
@@ -171,8 +187,10 @@ or parsing a semantic artifact.
 
 `failproofaid` runs a maintenance thread outside the hook path. It hashes the
 active deployment's artifacts — JS and semantic — periodically (30 seconds by
-default). A lost or corrupt `active.json` is rebuilt from `desired-state.json`
-and the verified cache. There is one copy of each artifact, so a modified one
+default). On an enrolled machine — reachable or not, and with a readable
+credential or not — a lost or corrupt `active.json` is rebuilt from
+`desired-state.json` and the verified cache. On a machine that is not enrolled
+nothing is rebuilt. There is one copy of each artifact, so a modified one
 cannot be repaired offline: the thread keeps the active manifest and reports
 that a cloud re-fetch is required, and the next successful poll re-fetches it.
 

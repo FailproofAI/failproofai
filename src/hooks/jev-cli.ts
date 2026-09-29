@@ -1519,8 +1519,9 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     stack(
       head,
       note(
-        `FailproofAI Cloud sets this machine's Jev mode, and it overrides the mode in ${jevConfigPath()} ` +
-          "(an \"off\" there included) for as long as this machine is connected.",
+        `FailproofAI Cloud sets this machine's Jev mode — for its own Jev checks and every installed pack's — and it ` +
+          `overrides the mode in ${jevConfigPath()} (an "off" there included) for as long as this machine is connected. ` +
+          "In enforce, Jev's own deny checks block calls as well as clearing the regex policies they review.",
         opts,
       ),
       cfg && route

@@ -5,7 +5,7 @@
  * before import so the worker never knowingly executes modified bytes.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
 import { hookLogWarn } from "./hook-logger";
@@ -155,10 +155,17 @@ export function resolveManagedPath(root: string, candidate: string): string {
 /**
  * Stop enforcing cloud-managed policies on this machine.
  *
- * Removes `active.json` only — the manifest that says which deployment is
- * live. The deployment directories and content-addressed artifacts are left
- * alone: they are large, hash-verified on use, and inert once nothing points
- * at them, so keeping them makes a reconnect cheap and offline-safe.
+ * Removes `desired-state.json` FIRST, then `active.json` — the manifest that
+ * says which deployment is live — and both error reports. The content-addressed
+ * artifacts are left alone: they are large, hash-verified on use, and inert
+ * once nothing points at them, so keeping them makes a reconnect cheap.
+ *
+ * The snapshot has to go, and before the pointer. It is what the daemon's
+ * maintenance lane rebuilds a lost `active.json` from, and it used to be left
+ * behind: within one interval of `--disconnect` the old org's JS policies, Jev
+ * checks and Jev mode were back, on a machine whose owner had left (the daemon
+ * also refuses to rebuild on a machine that is not enrolled now, so neither
+ * half alone decides it).
  *
  * Called by `--disconnect`, which without it did not disconnect. Clearing the
  * credential stops the daemon REFRESHING policy; every artifact already on disk
@@ -171,11 +178,12 @@ export function resolveManagedPath(root: string, candidate: string): string {
  */
 export function clearActiveCloudManagedPolicies(): boolean {
   const root = cloudManagedPolicyRoot();
-  // The error reports go with it: they describe a deployment this machine no
+  // The snapshot first, so nothing can rebuild the pointer from it in between.
+  // The error reports go too: they describe a deployment this machine no
   // longer has, and a reconnect (possibly to another organisation) must not
   // open by reporting the old one's problems. Cloud Jev policies and the Cloud
   // Jev mode live IN active.json, so removing it clears them too.
-  for (const name of [CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE]) {
+  for (const name of [DESIRED_STATE_FILE, CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE]) {
     try {
       rmSync(resolve(root, name), { force: true });
     } catch {
@@ -194,6 +202,8 @@ export function clearActiveCloudManagedPolicies(): boolean {
   }
 }
 
+/** The daemon's snapshot of the last desired state (`PolicyStore::desired_state_path`). */
+export const DESIRED_STATE_FILE = "desired-state.json";
 /** The CLI's error report, beside `active.json`. See `cloud-policy-errors.ts`. */
 export const CLOUD_POLICY_ERRORS_FILE = "errors.json";
 /** The daemon's own reconcile error state (`PolicyStore::daemon_errors_path`). */
@@ -282,11 +292,66 @@ function parseCloudJevMode(raw: unknown): CloudJevMode | null {
   return raw === "off" || raw === "observe" || raw === "enforce" ? raw : null;
 }
 
+// ── Read once per change ─────────────────────────────────────────────────────
+//
+// The hook path asks about this deployment several times per event — the JS
+// reader, the Jev reader for the reviewer set, the question resolver, the Jev
+// mode — and the warm worker does that on every tool call of every session. So
+// `active.json` is parsed, and each Jev artifact read, hashed and parsed, once
+// per CHANGE of the file, keyed on its identity and version: device, inode,
+// mode, size, and modification and change times to the nanosecond.
+//
+// Sound for these files in particular. The daemon writes both by rename, so a
+// new deployment is a new inode; an artifact is content-addressed, so the
+// right bytes never change; and an edit in place moves the change time, which
+// nothing short of the system clock can set back. A key that still matches is
+// a file that still holds the bytes that were verified — so what the cache
+// serves is always content that passed its digest, and never content that did
+// not (a failed read is not what makes the entry; only the whole read is).
+
+/** A file's identity and version, or null when it does not exist. Throws on anything else. */
+function fileVersion(path: string): string | null {
+  try {
+    const s = statSync(path, { bigint: true });
+    return `${s.dev}:${s.ino}:${s.mode}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
+    throw err;
+  }
+}
+
+let activeJsonCache: { path: string; version: string; value: unknown } | null = null;
+
+/**
+ * `active.json` parsed, once per change of the file — or `undefined` when
+ * there is none (a file holding `null` is a bad manifest, not an absent one).
+ * Throws on a file that cannot be read or is not JSON (not cached: the next
+ * call tries again). Callers must not mutate what it returns.
+ */
+function readActiveJson(): unknown {
+  const path = resolve(cloudManagedPolicyRoot(), "active.json");
+  const version = fileVersion(path);
+  if (version === null) {
+    activeJsonCache = null;
+    return undefined;
+  }
+  if (activeJsonCache && activeJsonCache.path === path && activeJsonCache.version === version) return activeJsonCache.value;
+  const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+  activeJsonCache = { path, version, value };
+  return value;
+}
+
+/** Forget every cached read. Tests only: a test that rewrites a file in place can beat the clock's granularity. */
+export function _resetCloudManagedCachesForTest(): void {
+  activeJsonCache = null;
+  cloudJevCache = null;
+}
+
 /** `active.json` as untyped JSON, schema-checked, or null when there is none. Throws on a bad one. */
 function readActiveRaw(): Record<string, unknown> | null {
-  const activePath = resolve(cloudManagedPolicyRoot(), "active.json");
-  if (!existsSync(activePath)) return null;
-  const raw: unknown = JSON.parse(readFileSync(activePath, "utf8"));
+  const raw = readActiveJson();
+  if (raw === undefined) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("active manifest is not an object");
   const record = raw as Record<string, unknown>;
   if (!ACCEPTED_ACTIVE_SCHEMA_VERSIONS.includes(record.schemaVersion as number)) {
@@ -325,6 +390,74 @@ export function readCloudJevPolicies(): CloudJevRead {
   }
   if (!active) return EMPTY_CLOUD_JEV;
 
+  // Once per change of `active.json` or of any artifact it names (see "Read
+  // once per change" above). The key costs one stat per artifact; a miss costs
+  // the read, the digest and the parse the key exists to skip.
+  let key: string | null = null;
+  try {
+    key = cloudJevCacheKey(active);
+  } catch {
+    key = null; // A stat that failed for a reason other than absence: read uncached.
+  }
+  if (key !== null && cloudJevCache?.key === key) return cloudJevCache.value;
+  const value = computeCloudJevPolicies(active);
+  cloudJevCache = key === null ? null : { key, value };
+  return value;
+}
+
+let cloudJevCache: { key: string; value: CloudJevRead } | null = null;
+
+/**
+ * The Jev checks a `both` policy's `reviewedBy` may name on this machine: the
+ * ones ITS OWN Jev half declares and this machine loaded (CONTRACT C9.4) — or
+ * null for a Cloud JS policy with no Jev half deployed, whose `reviewedBy` the
+ * machine-wide reviewer set judges as it always has.
+ *
+ * The server derives a `both` policy's `reviewedBy` from its own declarations,
+ * so this is exactly the set it meant. Anything outside it is refused even when
+ * some other source offers a check of that name — in particular an installed
+ * pack, whose same-named check is shadowed while the Cloud half loads (Cloud
+ * wins a clash) and used to step in the moment it did not: a digest mismatch, a
+ * declaration the parser dropped, and the org's regex deny could be cleared by
+ * a question the org never wrote. A reserved name is never in the set (a Cloud
+ * source is never first-party, so its claim to one is void).
+ *
+ * "Has a Jev half" is read off `semanticIds` — what the deployment NAMES,
+ * loaded or not — which is exactly what keeps a failed half bound.
+ */
+export function cloudOwnCheckNames(
+  read: Pick<CloudJevRead, "sets" | "semanticIds">,
+  policyId: string,
+): ReadonlySet<string> | null {
+  if (!read.semanticIds.includes(policyId)) return null;
+  const own = new Set<string>();
+  for (const set of read.sets) {
+    if (set.policyId !== policyId) continue;
+    for (const entry of set.semantic) if (!SEMANTIC_REVIEWER_NAMES.has(entry.name)) own.add(entry.name);
+  }
+  return own;
+}
+
+function cloudJevCacheKey(active: Record<string, unknown>): string {
+  const root = cloudManagedPolicyRoot();
+  const parts = [root, activeJsonCache?.version ?? "?"];
+  // `activeJsonCache` is what `active` came from; a mismatch means it was read
+  // some other way, and then nothing is cached.
+  if (activeJsonCache?.value !== active) throw new Error("uncached manifest");
+  if (Array.isArray(active.semanticPolicies)) {
+    for (const entry of active.semanticPolicies) {
+      const path = entry && typeof entry === "object" ? (entry as { path?: unknown }).path : undefined;
+      if (typeof path !== "string" || path === "" || isAbsolute(path)) {
+        parts.push("!");
+        continue;
+      }
+      parts.push(path, fileVersion(resolve(root, path)) ?? "-");
+    }
+  }
+  return parts.join("\u0000");
+}
+
+function computeCloudJevPolicies(active: Record<string, unknown>): CloudJevRead {
   const errors: CloudPolicyError[] = [];
   const rawMode = active.jevMode;
   const jevMode = parseCloudJevMode(rawMode);
@@ -416,15 +549,17 @@ export function readCloudJevPolicies(): CloudJevRead {
 
 export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
   const root = cloudManagedPolicyRoot();
-  const activePath = resolve(root, "active.json");
-  if (!existsSync(activePath)) return [];
 
+  // Parsed once per change of the file (`readActiveJson`). Each JS artifact is
+  // still read and hashed HERE, on every call: the loader imports what this
+  // returns, and the digest check is kept immediately before that import.
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(activePath, "utf8"));
+    raw = readActiveJson();
   } catch (err) {
     throw new Error(`failed to read cloud-managed active manifest: ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (raw === undefined) return [];
   const manifest = parseManifest(raw);
   const seen = new Set<string>();
 

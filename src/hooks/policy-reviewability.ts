@@ -55,14 +55,14 @@
  * - **A session pause.** It suspends local policy for minutes, and a warning
  *   about a policy set that is coming back shortly would be noise.
  */
-import { readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
+import { cloudOwnCheckNames, readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
 import { jevPacks, withCloudSemantic } from "./effective-reviewers";
 import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
-import { resolvePolicyAuthority } from "./policy-authority";
+import { bindReviewedBy, resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
 import type { HooksConfig } from "./policy-types";
@@ -204,8 +204,14 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   }
 
   try {
+    // A `both` policy is bound to its own Jev half, exactly as registration
+    // binds it (CONTRACT C9.4): a pack's same-named check never makes it
+    // reviewable. One with no Jev half is judged as it always was.
+    const cloudJev = readCloudJevPolicies();
     for (const assignment of readActiveCloudManagedPolicies()) {
-      records.push({ authority: assignment.authority, reviewedBy: assignment.reviewedBy });
+      const declared = { authority: assignment.authority, reviewedBy: assignment.reviewedBy };
+      const own = cloudOwnCheckNames(cloudJev, assignment.id);
+      records.push(own ? bindReviewedBy(declared, own).declaration : declared);
     }
   } catch {
     // Same fail-open as the handler's own read of this file.

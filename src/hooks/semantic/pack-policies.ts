@@ -39,7 +39,7 @@
  * regex policies cover — a machine locked out over a typo in the half of the
  * system whose job is to let more real work through.
  */
-import { readCloudJevPolicies } from "../cloud-managed-policies";
+import { readCloudJevPolicies, type CloudPolicyError, type CloudSemanticPolicySet } from "../cloud-managed-policies";
 import { contestedSemanticNames, isFirstPartyPack, isReservedClaim, jevPacks, withCloudSemantic } from "../effective-reviewers";
 import { hookLogWarn } from "../hook-logger";
 import {
@@ -97,8 +97,13 @@ const GLOBAL_QUESTION_CHARS = Math.max(
  * unreachable from ordinary work becomes routine.
  *
  * `FailproofAI/jev-policies` uses `JEV_POLICIES_QUESTION_CHARS` of it, so this
- * is not a constraint on the set we ship. FailproofAI's packs spend the budget
- * first, so a stranger's pack installed beside that one gets what it leaves.
+ * is not a constraint on the set we ship. FailproofAI Cloud's checks spend the
+ * budget first, then FailproofAI's packs, so a stranger's pack installed beside
+ * those gets what they leave (see `semanticPoliciesFromPacks`).
+ *
+ * FailproofAI Cloud measures a version's questions with a mirror of
+ * `questionChars` and refuses one that cannot fit (CONTRACT C9.2); the machine's
+ * count is the authoritative one.
  */
 export const MAX_PACK_QUESTION_CHARS = MAX_REQUEST_CHARS - MAX_STATE_CHARS - GLOBAL_QUESTION_CHARS;
 
@@ -140,6 +145,17 @@ export interface ResolvedSemanticPolicies {
   fromPack: boolean;
   /** One line per dropped policy. Diagnostics; nothing here changes a verdict. */
   errors: string[];
+  /**
+   * The checks the question budget dropped, structured, for FailproofAI Cloud's
+   * report (`jevBudgetErrors`). `over` is how many characters past the budget
+   * asking it as well would have been.
+   */
+  budgetDropped: Array<{ source: { id: string; policyId?: string; policyVersion?: number }; name: string; over: number }>;
+}
+
+/** A FailproofAI Cloud Jev policy in the resolver's input. Pack ids cannot contain `:`. */
+function isCloudSet(p: { id: string }): boolean {
+  return p.id.startsWith("cloud:");
 }
 
 /** Turn one validated manifest entry into a policy the compiler can use. */
@@ -184,12 +200,21 @@ export function semanticPoliciesFromPacks(
   packs: ReadonlyArray<Pick<ResolvedPack, "id" | "semantic"> & { source?: string; version?: string }>,
 ): ResolvedSemanticPolicies {
   const declared = packs.filter((p) => packSemantic(p).length > 0);
-  if (declared.length === 0) return { policies: [], fromPack: false, errors: [] };
+  if (declared.length === 0) return { policies: [], fromPack: false, errors: [], budgetDropped: [] };
 
-  // First-party packs spend the budget first, so install order cannot starve them.
-  const ordered = [...declared.filter((p) => isFirstPartyPack(p)), ...declared.filter((p) => !isFirstPartyPack(p))];
+  // Who spends the budget first (CONTRACT C9.2): FailproofAI Cloud's checks —
+  // an org's central assignment, and the only ones a deployment's `both`
+  // policies can be reviewed by — then first-party packs, so install order
+  // cannot starve them, then everyone else. Installed-pack checks are therefore
+  // what an over-budget machine drops first.
+  const ordered = [
+    ...declared.filter((p) => isCloudSet(p)),
+    ...declared.filter((p) => !isCloudSet(p) && isFirstPartyPack(p)),
+    ...declared.filter((p) => !isCloudSet(p) && !isFirstPartyPack(p)),
+  ];
   const policies: SemanticPolicy[] = [];
   const errors: string[] = [];
+  const budgetDropped: ResolvedSemanticPolicies["budgetDropped"] = [];
   const seen = new Set<string>();
   // A name two packs declare DIFFERENTLY is asked for nobody. Keeping the first
   // was the escalation: the question that decides another pack's policies came
@@ -232,6 +257,16 @@ export function semanticPoliciesFromPacks(
             `only ${Math.max(0, MAX_PACK_QUESTION_CHARS - spent)} of the ${MAX_PACK_QUESTION_CHARS}-character ` +
             `question budget one Jev request has are left`,
         );
+        const cloud = pack as { policyId?: unknown; policyVersion?: unknown };
+        budgetDropped.push({
+          source: {
+            id: pack.id,
+            ...(typeof cloud.policyId === "string" ? { policyId: cloud.policyId } : {}),
+            ...(typeof cloud.policyVersion === "number" ? { policyVersion: cloud.policyVersion } : {}),
+          },
+          name: entry.name,
+          over: spent + cost - MAX_PACK_QUESTION_CHARS,
+        });
         continue;
       }
       try {
@@ -249,8 +284,44 @@ export function semanticPoliciesFromPacks(
   // `fromPack` says no pack supplied anything. There is no compiled-in set to
   // fall back to, and that is the safe direction — nothing is asked, so nothing
   // a `reviewedBy` names is ever answered, and those policies stay hard.
-  return { policies, fromPack: policies.length > 0, errors };
+  return { policies, fromPack: policies.length > 0, errors, budgetDropped };
 }
+
+/**
+ * Every check the one Jev question budget drops on this machine, as
+ * `errors.json` entries (CONTRACT C9.2): a Cloud check as `kind: "jev"` under
+ * its policy's id and version, an installed pack's as `kind: "daemon"` under
+ * `pack:<packId>`, each with `jev_budget: dropped <name> (<n> chars over)`.
+ *
+ * Measured over every agent's view — `jevPacks(packs)` with no agent, as the
+ * rest of the report is — so it does not flip with each event's agent.
+ *
+ * Once per change of what it is measured over: the Cloud sets (by digest) and
+ * the packs (by id, version, digest, effect and agents). The answer is a pure
+ * function of those, and the question set is otherwise re-measured on every
+ * event of every session in the warm worker.
+ */
+export function jevBudgetErrors(
+  packs: ReadonlyArray<ResolvedPack>,
+  cloud: ReadonlyArray<CloudSemanticPolicySet>,
+): CloudPolicyError[] {
+  const key = JSON.stringify([
+    cloud.map((c) => [c.id, c.version, c.sha256]),
+    packs.map((p) => [p.id, p.version, p.sha256, p.effect, p.clis]),
+  ]);
+  if (budgetMemo?.key === key) return budgetMemo.value;
+  const resolved = semanticPoliciesFromPacks(withCloudSemantic(jevPacks(packs), cloud).sources);
+  const value = resolved.budgetDropped.map(({ source, name, over }): CloudPolicyError => {
+    const message = `jev_budget: dropped ${name} (${over} chars over)`;
+    return source.policyId !== undefined
+      ? { id: source.policyId, version: source.policyVersion ?? null, kind: "jev", message }
+      : { id: `pack:${source.id}`, version: null, kind: "daemon", message };
+  });
+  budgetMemo = { key, value };
+  return value;
+}
+
+let budgetMemo: { key: string; value: CloudPolicyError[] } | null = null;
 
 const warned = new Set<string>();
 

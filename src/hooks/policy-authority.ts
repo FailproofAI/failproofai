@@ -38,6 +38,25 @@ export interface AuthorityDeclaration {
   alwaysOn?: boolean;
 }
 
+/**
+ * A `reviewable` declaration whose `reviewedBy` must come from `allowed` alone,
+ * or `hard` — with the names that did not. Pure.
+ *
+ * For a FailproofAI Cloud policy, `allowed` is what ITS OWN Jev half loaded
+ * (`cloudOwnCheckNames`, CONTRACT C9.4): the machine-wide reviewer set also
+ * holds installed packs' checks, and a pack's check of the same name must never
+ * be what clears an org's regex verdict. A name that is not a string is left
+ * for `resolvePolicyAuthority`, which refuses the whole list over it.
+ */
+export function bindReviewedBy(
+  decl: AuthorityDeclaration,
+  allowed: ReadonlySet<string>,
+): { declaration: AuthorityDeclaration; unowned: string[] } {
+  if (decl.authority !== "reviewable" || !Array.isArray(decl.reviewedBy)) return { declaration: decl, unowned: [] };
+  const unowned = (decl.reviewedBy as unknown[]).filter((n): n is string => typeof n === "string" && !allowed.has(n));
+  return unowned.length === 0 ? { declaration: decl, unowned } : { declaration: { authority: "hard" }, unowned };
+}
+
 /** The shape-valid authority fields a parsed record (a pack entry, a cloud assignment) carries. */
 export interface AuthorityFields {
   authority?: PolicyAuthority;

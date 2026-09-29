@@ -1,0 +1,227 @@
+{
+  "about": "Jev question characters per declaration, measured ONCE by the CLI's own code: questionChars() in src/hooks/semantic/pack-policies.ts over parsePackSemantic() in src/hooks/pack-manifest.ts (failproofai worktree, branch feat/cloud-jev-policies). `budget` is MAX_PACK_QUESTION_CHARS from the same file. Cloud (agenteye server, dashboard, agent) and the CLI must all reproduce these numbers.",
+  "measuredAt": "2026-09-29",
+  "budget": 27591,
+  "jevPoliciesQuestionChars": 18490,
+  "declarations": [
+    {
+      "name": "acme-destructive-deletion",
+      "chars": 1779
+    },
+    {
+      "name": "acme-production-infra-change",
+      "chars": 1665
+    },
+    {
+      "name": "acme-git-history-rewrite",
+      "chars": 1145
+    },
+    {
+      "name": "acme-push-to-protected-branch",
+      "chars": 1084
+    },
+    {
+      "name": "acme-commit-on-protected-branch",
+      "chars": 986
+    },
+    {
+      "name": "acme-secret-exposure",
+      "chars": 1215
+    },
+    {
+      "name": "acme-credential-exfiltration",
+      "chars": 861
+    },
+    {
+      "name": "acme-remote-code-execution",
+      "chars": 1440
+    },
+    {
+      "name": "acme-privilege-escalation",
+      "chars": 992
+    },
+    {
+      "name": "acme-database-destruction",
+      "chars": 1571
+    },
+    {
+      "name": "acme-read-outside-workspace",
+      "chars": 1008
+    },
+    {
+      "name": "acme-agent-config-tampering",
+      "chars": 581
+    },
+    {
+      "name": "acme-system-modification",
+      "chars": 1099
+    },
+    {
+      "name": "acme-env-secrets-dump",
+      "chars": 1044
+    },
+    {
+      "name": "acme-external-destructive-action",
+      "chars": 1252
+    },
+    {
+      "name": "acme-external-data-egress",
+      "chars": 931
+    }
+  ],
+  "total": 18653,
+  "edge": [
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-tried",
+        "title": "Tried to Delete the prod database",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "does_it",
+            "instructions": "Does it?",
+            "criteria": {
+              "true": "yes",
+              "false": "no"
+            }
+          }
+        ]
+      },
+      "chars": 644
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-tried-case",
+        "title": "TRIED TO do it",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "does_it",
+            "instructions": "Does it?"
+          }
+        ]
+      },
+      "chars": 596
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-escapes",
+        "title": "Quotes \"and\" back\\slash",
+        "userCanOverride": false,
+        "probes": [
+          {
+            "id": "p_one",
+            "instructions": "Line one\nline two\ttabbed \"quoted\" \\ and \u0001 control"
+          },
+          {
+            "id": "p_two",
+            "instructions": "x",
+            "criteria": {
+              "true": "a/b <c> & 'd'",
+              "false": "\r\n"
+            }
+          }
+        ],
+        "exempt": {
+          "instructions": "Exempt when \"safe\"",
+          "criteria": {
+            "true": "t",
+            "false": "f"
+          }
+        }
+      },
+      "chars": 349
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-unicode",
+        "title": "Écrire un fichier 😀 ünïcödé",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "p",
+            "instructions": "Ça va? 😀😀 — “smart” quotes, 中文,   separator"
+          }
+        ]
+      },
+      "chars": 644
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-emoji-first",
+        "title": "😀 starts with an emoji",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "p",
+            "instructions": "i"
+          }
+        ]
+      },
+      "chars": 603
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-dotted-i",
+        "title": "İstanbul office",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "p",
+            "instructions": "i"
+          }
+        ]
+      },
+      "chars": 590
+    },
+    {
+      "decl": {
+        "appliesTo": [
+          "shell"
+        ],
+        "mode": "deny",
+        "guidance": "Ask first.",
+        "name": "acme-edge-tried-only",
+        "title": "Tried ",
+        "userCanOverride": true,
+        "probes": [
+          {
+            "id": "p",
+            "instructions": "i"
+          }
+        ]
+      },
+      "chars": 578
+    }
+  ]
+}

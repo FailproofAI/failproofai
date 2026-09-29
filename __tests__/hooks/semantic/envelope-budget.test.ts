@@ -58,11 +58,11 @@ import type { Facts, JevRequest, JevResponse, SemanticInput } from "../../../src
 // The PEM armour, joined at runtime — see `redaction-fixtures.ts` and this
 // file's "Fixtures are assembled at runtime and never written as literals".
 import { pemBegin, pemEnd } from "./redaction-fixtures";
-import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+import { withInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
 
 // The package ships no Jev checks; this file runs as a machine with
 // FailproofAI/jev-policies installed.
-useInstalledJevPoliciesPack();
+withInstalledJevPoliciesPack();
 
 const DANGEROUS = "rm -rf / --no-preserve-root";
 

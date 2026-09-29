@@ -54,6 +54,7 @@ vi.mock("../../src/hooks/pack-store", () => ({
 
 vi.mock("../../src/hooks/pack-manifest", () => ({
   hasInstalledPacks: vi.fn(() => false),
+  hasInstalledRegexPacks: vi.fn(() => false),
   readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
 }));
 

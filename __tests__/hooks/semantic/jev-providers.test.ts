@@ -22,11 +22,11 @@ import {
 import { evaluateSemantic } from "../../../src/hooks/semantic/evaluator";
 import { JEV_REASON_PROVIDER_REFUSED, normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest, JevResponse } from "../../../src/hooks/semantic/types";
-import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+import { withInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
 
 // The package ships no Jev checks; this file runs as a machine with
 // FailproofAI/jev-policies installed.
-useInstalledJevPoliciesPack();
+withInstalledJevPoliciesPack();
 
 const KEY = ["prov", "test", "abcdef0123456789"].join("-");
 const ACCOUNT = "0123456789abcdef0123456789abcdef";

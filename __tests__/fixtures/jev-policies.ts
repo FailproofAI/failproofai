@@ -499,7 +499,7 @@ export function installJevPoliciesPack(packDir: string): string {
  * evaluator through the path a hook takes — with no `policies` override —
  * needs the pack, exactly as a real machine does.
  */
-export function useInstalledJevPoliciesPack(): void {
+export function withInstalledJevPoliciesPack(): void {
   let dir: string | undefined;
   let saved: string | undefined;
   beforeAll(() => {

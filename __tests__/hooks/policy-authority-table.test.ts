@@ -18,7 +18,7 @@ import { POLICY_CATALOG } from "../../src/hooks/policy-catalog";
 import { clearPolicies, getAllPolicies } from "../../src/hooks/policy-registry";
 import { effectiveAuthority } from "../../src/hooks/policy-types";
 import { SEMANTIC_REVIEWER_NAMES, resolvePolicyAuthority } from "../../src/hooks/policy-authority";
-import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, useInstalledJevPoliciesPack } from "../fixtures/jev-policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, withInstalledJevPoliciesPack } from "../fixtures/jev-policies";
 
 /** D1: the only builtins Jev may clear, and the checks that must clear them. */
 const REVIEWABLE: Record<string, string[]> = {
@@ -163,7 +163,7 @@ describe("with no pack declaring Jev checks, every builtin registers hard", () =
 
 describe("builtin registration carries the table into the registry", () => {
   // A machine with FailproofAI/jev-policies installed: the names the table uses are reviewers.
-  useInstalledJevPoliciesPack();
+  withInstalledJevPoliciesPack();
 
   it("registers every builtin with its resolved authority", () => {
     clearPolicies();

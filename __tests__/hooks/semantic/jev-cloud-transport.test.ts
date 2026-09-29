@@ -40,11 +40,11 @@ import { startJevReview } from "../../../src/hooks/semantic/jev-review";
 import { resetJevThrottle } from "../../../src/hooks/semantic/jev-throttle";
 import { normalizeJevFallbackReason } from "../../../src/hooks/jev-activity";
 import type { JevRequest } from "../../../src/hooks/semantic/types";
-import { useInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
+import { withInstalledJevPoliciesPack } from "../../fixtures/jev-policies";
 
 // The package ships no Jev checks; this file runs as a machine with
 // FailproofAI/jev-policies installed.
-useInstalledJevPoliciesPack();
+withInstalledJevPoliciesPack();
 
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const KEY = ["fp", "machine", "c10ud0123456789ab"].join("-");

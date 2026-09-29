@@ -29,11 +29,11 @@ import { _resetForTest, persistHookActivity, type HookActivityEntry } from "../.
 import { jevTelemetryProperties, trackHookEvent } from "../../src/hooks/hook-telemetry";
 import { describeJevActivity } from "../../src/hooks/jev-activity";
 import { computeJevStats, formatJevStats } from "../../src/hooks/semantic/jev-stats";
-import { useInstalledJevPoliciesPack } from "../fixtures/jev-policies";
+import { withInstalledJevPoliciesPack } from "../fixtures/jev-policies";
 
 // The package ships no Jev checks; this file runs as a machine with
 // FailproofAI/jev-policies installed.
-useInstalledJevPoliciesPack();
+withInstalledJevPoliciesPack();
 
 // Marker words that appear in the command, the prompt and the agent message,
 // and in nothing a policy or the evaluator writes on its own.

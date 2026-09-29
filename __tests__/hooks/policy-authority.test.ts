@@ -25,7 +25,7 @@ import {
   withMergedAuthority,
 } from "../../src/hooks/policy-authority";
 import { INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "../../src/hooks/semantic/policies";
-import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, useInstalledJevPoliciesPack } from "../fixtures/jev-policies";
+import { JEV_PACK_POLICIES as SEMANTIC_POLICIES, withInstalledJevPoliciesPack } from "../fixtures/jev-policies";
 import { clearPolicies, getAllPolicies, registerPolicy } from "../../src/hooks/policy-registry";
 import { parsePackPolicy } from "../../src/hooks/pack-manifest";
 import type { PolicyCatalogEntry } from "../../src/hooks/policy-types";
@@ -229,7 +229,7 @@ describe("resolvePolicyAuthority", () => {
 
 describe("registerPolicy stores the RESOLVED authority", () => {
   // A machine with FailproofAI/jev-policies installed, so its names are reviewers.
-  useInstalledJevPoliciesPack();
+  withInstalledJevPoliciesPack();
   beforeEach(() => clearPolicies());
 
   const only = () => {

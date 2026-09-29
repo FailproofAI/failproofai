@@ -49,7 +49,15 @@ vi.mock("../../src/hooks/effective-reviewers", async (importOriginal) => {
 vi.mock("../../src/hooks/semantic/pack-policies", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../src/hooks/semantic/pack-policies")>();
   const { JEV_PACK_POLICIES } = await import("../fixtures/jev-policies");
-  return { ...real, resolveSemanticPolicies: () => JEV_PACK_POLICIES };
+  // A test that installs its own pack gets that pack's checks, as a machine
+  // would; every other test stands in for FailproofAI/jev-policies.
+  return {
+    ...real,
+    resolveSemanticPolicies: (cli?: string) => {
+      const installed = real.resolveSemanticPolicies(cli);
+      return installed.length > 0 ? installed : JEV_PACK_POLICIES;
+    },
+  };
 });
 
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
@@ -748,11 +756,12 @@ describe("Jev's own verdict", () => {
     expect(outcome.evaluation?.policyName).toBe("semantic/acme-prod-deploy");
     expect(row).toMatchObject({ policySource: "jev", packId: "acme/deploys", packVersion: "2.0.0" });
 
-    // A compiled-in check stays unattributed to any pack.
+    // The package ships no checks of its own, so with only this pack installed
+    // a check it does not declare is never asked and decides nothing.
     respond = answers({ "destructive-deletion": 0.97 });
-    const builtin = await bash("find . -name '*.sqlite' -delete");
-    expect(builtin.row.policySource).toBe("jev");
-    expect(builtin.row.packId).toBeUndefined();
+    const undeclared = await bash("find . -name '*.sqlite' -delete");
+    expect(undeclared.outcome.evaluation?.policyName ?? null).not.toBe("semantic/destructive-deletion");
+    expect(undeclared.row.jevDecision).not.toBe("deny");
   });
 
   it("the most severe wins: a regex instruct and a Jev deny → deny", async () => {

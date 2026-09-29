@@ -2,6 +2,10 @@
 
 ## 1.0.9-beta.0 — 2026-09-29
 
+### Fixes
+
+- **Hermes cron jobs ran unchecked after an upgrade.** Legacy Hermes shell hooks (≤1.0.5) are never run for cron jobs — each cron fire builds its own hook scope that only discovered plugins join — and `failproofai update` never touched Hermes, so upgraded machines stayed on them silently. `update` now moves every Hermes profile that already uses FailproofAI (shell hooks or a copied plugin) to the native plugin, prints a per-profile report, and leaves profiles without FailproofAI alone. When the running daemon cannot serve the plugin (no `policyEvaluation`, e.g. a sudo system daemon `update` could not replace) the shell hooks are kept and `update` exits 1 pointing at `failproofai config`; it also exits 1 whenever the daemon swap or a layout migration failed. The plugin is now **linked** into each profile (`plugins/failproofai` → the package's `hermes-plugin/`, a marked copy where symlinks are unavailable), so npm upgrades apply with no reinstall; uninstall removes only the link. `failproofai config --status` reports a profile still on shell hooks as unhealthy: "Hermes cron jobs are not checked".
+
 ### Docs
 
 - Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.

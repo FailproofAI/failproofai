@@ -1,5 +1,5 @@
 use crate::cloud_policies::{
-    DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyStore,
+    DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyErrorEntry, PolicyStore,
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
@@ -10,6 +10,146 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_POLL_MS: u64 = 30_000;
 const MINIMUM_POLL_MS: u64 = 100;
+
+/// The `policyErrors` parameter's ceiling, measured URL-ENCODED — the form it
+/// actually travels in. Over it, whole entries are dropped from the end: the
+/// list is truncated, never the JSON.
+pub const MAX_POLICY_ERRORS_ENCODED_BYTES: usize = 4096;
+/// One message's ceiling, so a single pathological message cannot push every
+/// other entry out of the report.
+const MAX_POLICY_ERROR_MESSAGE_CHARS: usize = 500;
+const MAX_POLICY_ERROR_ID_CHARS: usize = 128;
+
+/// Why a poll produced no usable desired state.
+///
+/// Split because only one half is worth REPORTING back: a payload this daemon
+/// could not accept (an unknown `effect`, an unreadable body, a schema skew) is
+/// the server's to see and fix, while a refused connection or a 502 is gone by
+/// the time any report could reach anyone.
+#[derive(Debug)]
+struct PollFailure {
+    message: String,
+    reportable: bool,
+}
+
+impl PollFailure {
+    fn transport(message: String) -> Self {
+        Self {
+            message,
+            reportable: false,
+        }
+    }
+
+    fn payload(message: String) -> Self {
+        Self {
+            message,
+            reportable: true,
+        }
+    }
+}
+
+/// Compact JSON for the `policyErrors` parameter, within
+/// [`MAX_POLICY_ERRORS_ENCODED_BYTES`] once URL-encoded.
+///
+/// Long messages are shortened first (by characters, so a multi-byte message is
+/// never cut mid-codepoint), then whole entries are dropped from the end until
+/// the encoded form fits. What is sent is always a complete JSON array.
+pub fn encode_policy_errors(entries: &[PolicyErrorEntry]) -> String {
+    let clipped: Vec<PolicyErrorEntry> = entries
+        .iter()
+        .map(|entry| PolicyErrorEntry {
+            id: clip(&entry.id, MAX_POLICY_ERROR_ID_CHARS),
+            version: entry.version,
+            kind: entry.kind.clone(),
+            message: clip(&entry.message, MAX_POLICY_ERROR_MESSAGE_CHARS),
+        })
+        .collect();
+    let mut keep = clipped.len();
+    loop {
+        let json = serde_json::to_string(&clipped[..keep]).unwrap_or_else(|_| "[]".to_string());
+        if keep == 0 || encoded_len(&json) <= MAX_POLICY_ERRORS_ENCODED_BYTES {
+            return json;
+        }
+        keep -= 1;
+    }
+}
+
+fn clip(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut out: String = value.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// The length `value` takes as a query-parameter value, encoded exactly the
+/// way the poll encodes it.
+fn encoded_len(value: &str) -> usize {
+    let mut url = Url::parse("http://x.invalid/").expect("static URL parses");
+    url.query_pairs_mut().append_pair("v", value);
+    url.query()
+        .map_or(0, |query| query.len().saturating_sub("v=".len()))
+}
+
+/// The machine's current report: the daemon's own reconcile errors first, then
+/// the CLI's. `None` — parameter omitted — only while NEITHER has ever written
+/// an error state, so a machine that never had a problem sends nothing new,
+/// and one that had a problem sends `[]` once it is fixed (which is what
+/// clears it on the server).
+fn current_policy_errors(store: &PolicyStore) -> Option<Vec<PolicyErrorEntry>> {
+    let daemon = store.read_daemon_policy_errors();
+    let cli = store.read_cli_policy_errors();
+    if daemon.is_none() && cli.is_none() {
+        return None;
+    }
+    let mut all = daemon.unwrap_or_default();
+    all.extend(cli.unwrap_or_default());
+    Some(all)
+}
+
+/// A daemon error entry for a failed poll or reconcile. The version is looked
+/// up in the desired state when the error names a policy it carries.
+fn daemon_error(
+    message: String,
+    policy_id: Option<&str>,
+    desired: Option<&DesiredState>,
+) -> PolicyErrorEntry {
+    let version = policy_id.and_then(|id| {
+        desired.and_then(|d| {
+            d.policies
+                .iter()
+                .find(|p| p.id == id)
+                .map(|p| p.version)
+                .or_else(|| {
+                    d.semantic_policies
+                        .iter()
+                        .find(|p| p.id == id)
+                        .map(|p| p.version)
+                })
+        })
+    });
+    PolicyErrorEntry {
+        // A state-level error names no policy; `desired-state` says which
+        // document was refused.
+        id: policy_id.unwrap_or("desired-state").to_string(),
+        version,
+        kind: "daemon".to_string(),
+        message,
+    }
+}
+
+/// Records the daemon's error state after a poll. Errors always overwrite; a
+/// clean poll clears an EXISTING state to `[]` but never creates one, so the
+/// report stays absent on a machine that never had a problem.
+fn record_daemon_errors(store: &PolicyStore, errors: Vec<PolicyErrorEntry>) {
+    if errors.is_empty() && store.read_daemon_policy_errors().is_none() {
+        return;
+    }
+    if let Err(err) = store.write_daemon_policy_errors(&errors) {
+        eprintln!("[failproofaid] could not record the cloud policy error state: {err}");
+    }
+}
 
 #[derive(Clone)]
 pub struct CloudClient {
@@ -339,16 +479,31 @@ impl CloudClient {
     /// as 0: a machine that cannot say what it is enforcing must not be recorded
     /// as enforcing deployment zero, and absent has to stay distinguishable from
     /// "reported nothing" on the far side.
-    pub fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
+    ///
+    /// `policy_errors` is the machine's error report, already encoded as the
+    /// compact JSON list (see [`encode_policy_errors`]); `None` omits the
+    /// parameter, which the server reads as "leave what you have stored".
+    fn poll_desired_state(
+        &self,
+        applied: Option<u64>,
+        policy_errors: Option<&str>,
+    ) -> Result<DesiredState, PollFailure> {
         let mut url = self
             .base_url
             .join("enforcement/v1/desired-state")
-            .map_err(|err| format!("failed to build desired-state URL: {err}"))?;
+            .map_err(|err| {
+                PollFailure::transport(format!("failed to build desired-state URL: {err}"))
+            })?;
         url.query_pairs_mut()
             .append_pair("machineId", &self.machine_id);
         if let Some(deployment) = applied {
             url.query_pairs_mut()
                 .append_pair("appliedDeployment", &deployment.to_string());
+        }
+        // Additive, like `appliedDeployment`: `DesiredQuery` on the server is
+        // not `deny_unknown_fields`, so a server that predates it ignores it.
+        if let Some(errors) = policy_errors {
+            url.query_pairs_mut().append_pair("policyErrors", errors);
         }
         self.client
             .get(url)
@@ -356,13 +511,13 @@ impl CloudClient {
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|err| {
-                format!(
+                PollFailure::transport(format!(
                     "desired-state request failed: {}",
                     fpai_collect::error_chain(&err)
-                )
+                ))
             })?
             .json::<serde_json::Value>()
-            .map_err(|err| format!("invalid desired-state response: {err}"))
+            .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))
             .and_then(|raw| {
                 // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
                 // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
@@ -381,19 +536,20 @@ impl CloudClient {
                 match version {
                     Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION) => {}
                     Some(v) => {
-                        return Err(format!(
+                        return Err(PollFailure::payload(format!(
                             "server sent desired-state schemaVersion {v} but this daemon \
                              speaks {DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
-                        ));
+                        )));
                     }
                     None => {
-                        return Err(
-                            "desired-state response has no schemaVersion field".to_string()
-                        );
+                        return Err(PollFailure::payload(
+                            "desired-state response has no schemaVersion field".to_string(),
+                        ));
                     }
                 }
-                serde_json::from_value::<DesiredState>(raw)
-                    .map_err(|err| format!("invalid desired-state response: {err}"))
+                serde_json::from_value::<DesiredState>(raw).map_err(|err| {
+                    PollFailure::payload(format!("invalid desired-state response: {err}"))
+                })
             })
     }
 
@@ -505,22 +661,45 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
             None
         }
     };
-    match cloud.desired_state(applied) {
+    // Every poll carries the current report once there is one to carry — the
+    // previous poll's reconcile outcome plus whatever the CLI last wrote.
+    let report = current_policy_errors(store).map(|errors| encode_policy_errors(&errors));
+    match cloud.poll_desired_state(applied, report.as_deref()) {
         Ok(desired) => {
             match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
-                Ok(outcome)
-                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 =>
-                {
-                    eprintln!(
-                        "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
-                        outcome.deployment, outcome.downloaded, outcome.repaired
+                Ok(outcome) => {
+                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
+                        eprintln!(
+                            "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
+                            outcome.deployment, outcome.downloaded, outcome.repaired
+                        );
+                    }
+                    record_daemon_errors(store, Vec::new());
+                }
+                Err(err) => {
+                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    record_daemon_errors(
+                        store,
+                        vec![daemon_error(
+                            err.to_string(),
+                            err.policy_id(),
+                            Some(&desired),
+                        )],
                     );
                 }
-                Ok(_) => {}
-                Err(err) => eprintln!("[failproofaid] cloud policy reconcile error: {err}"),
             }
         }
-        Err(err) => eprintln!("[failproofaid] cloud policy poll error: {err}"),
+        Err(failure) => {
+            eprintln!(
+                "[failproofaid] cloud policy poll error: {}",
+                failure.message
+            );
+            // A payload this daemon refused is reported; a transport failure is
+            // not, and leaves the recorded state as it was.
+            if failure.reportable {
+                record_daemon_errors(store, vec![daemon_error(failure.message, None, None)]);
+            }
+        }
     }
 }
 
@@ -552,6 +731,14 @@ mod tests {
     use super::*;
     // Only the fixtures construct an effect explicitly.
     use crate::cloud_policies::PolicyEffect;
+
+    impl CloudClient {
+        /// The poll without an error report, for the tests that predate it.
+        fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
+            self.poll_desired_state(applied, None)
+                .map_err(|failure| failure.message)
+        }
+    }
 
     // std::env::set_var is process-global, so these must not interleave with
     // each other or with anything else reading the same variables — including
@@ -872,6 +1059,210 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    // ── Cloud Jev policies + the policyErrors report (CONTRACT C4/C5) ───────
+
+    fn error(id: &str, message: &str) -> PolicyErrorEntry {
+        PolicyErrorEntry {
+            id: id.into(),
+            version: Some(1),
+            kind: "jev".into(),
+            message: message.into(),
+        }
+    }
+
+    #[test]
+    fn the_report_is_compact_json_under_four_kib_encoded_and_truncates_the_list() {
+        assert_eq!(encode_policy_errors(&[]), "[]");
+        let one = encode_policy_errors(&[error("p", "bad sha")]);
+        assert_eq!(
+            one,
+            r#"[{"id":"p","version":1,"kind":"jev","message":"bad sha"}]"#
+        );
+
+        // Far more than fits: the list is cut, the JSON never is.
+        let many: Vec<_> = (0..200)
+            .map(|i| {
+                error(
+                    &format!("policy-{i}"),
+                    &"é needs encoding & more ".repeat(20),
+                )
+            })
+            .collect();
+        let encoded = encode_policy_errors(&many);
+        assert!(encoded_len(&encoded) <= MAX_POLICY_ERRORS_ENCODED_BYTES);
+        let parsed: Vec<PolicyErrorEntry> =
+            serde_json::from_str(&encoded).expect("still a complete JSON array");
+        assert!(!parsed.is_empty() && parsed.len() < many.len());
+        assert_eq!(parsed[0].id, "policy-0", "truncated from the END");
+        assert!(
+            parsed[0].message.chars().count() <= MAX_POLICY_ERROR_MESSAGE_CHARS,
+            "one long message cannot crowd out the rest"
+        );
+    }
+
+    #[test]
+    fn the_report_is_omitted_until_either_side_has_an_error_state() {
+        let root = std::env::temp_dir().join(format!("failproofaid-report-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+
+        assert_eq!(current_policy_errors(&store), None, "never had one: omit");
+        // A clean poll on such a machine does not create a state either.
+        record_daemon_errors(&store, Vec::new());
+        assert!(!store.daemon_errors_path().exists());
+        assert_eq!(current_policy_errors(&store), None);
+
+        record_daemon_errors(&store, vec![daemon_error("bad".into(), Some("p"), None)]);
+        assert_eq!(current_policy_errors(&store).unwrap().len(), 1);
+        // Fixed: the state is now `[]`, which is what clears the server.
+        record_daemon_errors(&store, Vec::new());
+        assert_eq!(current_policy_errors(&store), Some(vec![]));
+
+        fs::write(
+            store.cli_errors_path(),
+            r#"{"errors":[{"id":"q","version":2,"kind":"both","message":"m"}]}"#,
+        )
+        .unwrap();
+        let merged = current_policy_errors(&store).unwrap();
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "q");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn daemon_errors_name_the_policy_and_its_version_when_they_can() {
+        let desired: DesiredState = serde_json::from_str(
+            r#"{"schemaVersion":2,"deployment":1,"policies":[],
+                "semanticPolicies":[{"id":"j","version":4,"sha256":"aa","artifactUrl":"/a"}]}"#,
+        )
+        .unwrap();
+        let named = daemon_error("m".into(), Some("j"), Some(&desired));
+        assert_eq!((named.id.as_str(), named.version), ("j", Some(4)));
+        assert_eq!(named.kind, "daemon");
+        let state = daemon_error("m".into(), None, None);
+        assert_eq!((state.id.as_str(), state.version), ("desired-state", None));
+    }
+
+    /// The report reaches the wire as the `policyErrors` parameter, and is
+    /// absent when there is nothing to say.
+    #[test]
+    fn the_poll_carries_policy_errors_when_given() {
+        for report in [
+            Some(r#"[{"id":"p","version":1,"kind":"jev","message":"x y"}]"#),
+            None,
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let captured = Arc::new(std::sync::Mutex::new(String::new()));
+            let sink = captured.clone();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 8192];
+                let read = stream.read(&mut request).unwrap();
+                *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+                let body = br#"{"schemaVersion":2,"deployment":7,"policies":[]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+            });
+            let cloud =
+                CloudClient::new(&format!("http://{address}"), "t".into(), "machine-1".into())
+                    .unwrap();
+            cloud.poll_desired_state(Some(7), report).unwrap();
+            server.join().unwrap();
+            let request = captured.lock().unwrap().clone();
+            let first_line = request.lines().next().unwrap_or_default().to_string();
+            if report.is_some() {
+                assert!(
+                    first_line.contains("policyErrors=%5B%7B%22id%22%3A%22p%22"),
+                    "URL-encoded compact JSON expected: {first_line}"
+                );
+                assert!(first_line.contains("appliedDeployment=7"));
+            } else {
+                assert!(!first_line.contains("policyErrors"), "{first_line}");
+            }
+        }
+    }
+
+    /// A payload the daemon refuses is reportable; a transport failure is not.
+    #[test]
+    fn only_payload_failures_are_reportable() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let cloud =
+            CloudClient::new(&format!("http://127.0.0.1:{port}"), "t".into(), "m".into()).unwrap();
+        assert!(!cloud.poll_desired_state(None, None).unwrap_err().reportable);
+        assert!(PollFailure::payload("x".into()).reportable);
+    }
+
+    /// End to end over HTTP: a `jev` artifact is fetched through the same
+    /// same-origin, bearer-authenticated path and lands as `artifacts/<sha>.json`.
+    #[test]
+    fn fetches_a_semantic_artifact_into_the_store() {
+        let decls = br#"[{"name":"acme-x"}]"#.to_vec();
+        let sha = Sha256::digest(&decls)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let expected_sha = sha.clone();
+        let body_decls = decls.clone();
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains("authorization: bearer tok")
+                );
+                let body = if request.contains("desired-state") {
+                    format!(r#"{{"schemaVersion":2,"deployment":3,"policies":[],"semanticPolicies":[{{"id":"j","version":1,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}],"jevMode":"enforce"}}"#).into_bytes()
+                } else {
+                    assert!(
+                        request
+                            .starts_with(&format!("GET /enforcement/v1/artifacts/{expected_sha}"))
+                    );
+                    body_decls.clone()
+                };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+                stream.write_all(&body).unwrap();
+            }
+        });
+        let cloud =
+            CloudClient::new(&format!("http://{address}"), "tok".into(), "m".into()).unwrap();
+        let desired = cloud.desired_state(None).unwrap();
+        let root =
+            std::env::temp_dir().join(format!("failproofaid-jev-http-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+        store
+            .reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy))
+            .unwrap();
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.jev_mode.as_deref(), Some("enforce"));
+        assert_eq!(
+            active.semantic_policies[0].path,
+            format!("artifacts/{sha}.json")
+        );
+        assert_eq!(
+            fs::read(root.join(&active.semantic_policies[0].path)).unwrap(),
+            decls
+        );
+        server.join().unwrap();
+        fs::remove_dir_all(root).ok();
+    }
+
     #[test]
     fn rejects_cross_origin_artifacts_before_sending_the_token() {
         let cloud =
@@ -882,6 +1273,8 @@ mod tests {
             sha256: "0".repeat(64),
             artifact_url: "https://evil.example/artifact".into(),
             effect: PolicyEffect::Enforce,
+            authority: None,
+            reviewed_by: None,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }

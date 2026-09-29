@@ -5,6 +5,7 @@
 ### Docs
 
 - Split Jev documentation into session evaluations under Find failures, live policy review under Prevent failures, and provider/configuration detail under Reference. Add a Use Jev page after Core concepts in Start with eval and policy setup tabs, plus a short quickstart link, dashboard screenshots, and CLI steps. Move sentiment analysis into Find failures and show its Jev-scored dashboard flow. Clarify shadow-mode verification and the Cloud machine key's `jev:evaluate` permission.
+- Drop the trailing harness list ("coding CLIs, chat gateways, self-hosted assistants, and your own instrumented agents") from the English and Hindi landing-page descriptions.
 
 ### Dependencies
 

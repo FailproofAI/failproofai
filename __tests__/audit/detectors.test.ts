@@ -108,6 +108,9 @@ describe("sleep-polling-loop", () => {
       sleepPollingLoop.detect(bash("while true; do echo x; sleep 5; done"), {}),
     ).not.toBeNull();
   });
+  it("matches `sleep 30s`", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 30s"), {})).not.toBeNull();
+  });
   it("does not match `sleep 1`", () => {
     expect(sleepPollingLoop.detect(bash("sleep 1"), {})).toBeNull();
   });

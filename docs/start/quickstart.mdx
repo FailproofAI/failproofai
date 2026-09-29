@@ -100,7 +100,7 @@ read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
   </Tab>
 </Tabs>
 
-## Use Jev
+## Jev setup
 
 Jev is useful at two different moments. Use a [Jev evaluation](/evaluations/jev) to score a finished session when the answer is one of a few known choices. Use a [Jev policy](/policies/jev) to review a tool call before it runs when a string-matching policy needs the context of your request.
 
@@ -121,7 +121,9 @@ The CLI reads scores; creating a Jev evaluation currently uses the dashboard. Se
 
 ### Review tool calls before they run
 
-If you connected with the **machine** key preset above, Cloud Jev is already on in **shadow** mode. It records Jev's answer while your installed policies still decide the call. Open the local dashboard's **Settings → Jev** to see the connection and mode. For your own endpoint, choose its provider, paste the token, select **shadow**, and turn Jev on:
+For Cloud Jev, choose the **machine** key preset in **Administration → Keys** and use that key with `failproofai config` in the manual setup above. On a machine without an existing Jev configuration, this turns Jev on in **shadow** mode: it records Jev's answer while your installed policies still decide the call.
+
+Open the local dashboard's **Settings → Jev** to see the connection and mode. For your own endpoint, choose its provider, paste the token, select **shadow**, and turn Jev on:
 
 ![The local Jev settings panel with a provider, token field, and shadow mode selected.](/images/dashboard/jev-settings.png)
 

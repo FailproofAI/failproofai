@@ -309,17 +309,21 @@ def _fleet_routes(current_policies, jev_mode=None, errors=None):
 
 
 @respx.mock
-def test_fleet_deploy_jev_mode_alone_writes_the_same_set_with_the_mode(logged_in, runner):
+def test_fleet_deploy_jev_mode_alone_changes_only_the_mode_through_its_own_route(logged_in, runner):
+    # CONTRACT C9.1: a mode change sent as a deploy rewrote the set the CLI had
+    # read — which leaves out disabled policies' assignments, so they were lost.
     _fleet_routes([{"id": "no-force-push", "version": 2, "effect": "enforce"}])
-    put = respx.put(f"{BASE}/api/enforcement/deployments/m1").mock(return_value=httpx.Response(
-        200, json={"machineId": "m1", "deployment": 6, "jevMode": "observe",
+    deploy = respx.put(f"{BASE}/api/enforcement/deployments/m1")
+    mode = respx.put(f"{BASE}/api/enforcement/deployments/m1/jev-mode").mock(return_value=httpx.Response(
+        200, json={"machineId": "m1", "deployment": 6, "jevMode": "observe", "changed": True,
                    "policies": [{"id": "no-force-push", "version": 2, "effect": "enforce"}]}))
     result = runner.invoke(app, ["--json", "fleet", "deploy", "m1", "--jev-mode", "observe", "--yes"])
     assert result.exit_code == 0, result.output
-    body = json.loads(put.calls.last.request.content)
-    assert body == {"policies": [{"id": "no-force-push", "version": 2, "effect": "enforce"}], "jevMode": "observe"}
+    assert not deploy.called
+    assert json.loads(mode.calls.last.request.content) == {"jevMode": "observe"}
     out = json.loads(result.stdout)
-    assert out["applied"] is True and out["plan"]["jevMode"]["to"] == "observe"
+    assert out["applied"] is True and out["jevModeOnly"] is True
+    assert out["plan"]["jevMode"]["to"] == "observe" and out["deployment"]["deployment"] == 6
 
 
 @respx.mock
@@ -362,3 +366,195 @@ def test_fleet_show_and_list_show_the_jev_mode_and_the_reported_errors(logged_in
     js = json.loads(runner.invoke(app, ["--json", "fleet", "show", "m1"]).stdout)
     assert js["machine"]["policyErrors"] == errors and js["machine"]["jevMode"] == "observe"
     assert js["deployment"]["jevMode"] == "observe"
+
+
+# ── Review fixes: the Jev mode route (C9.1), rollback and history (m6), help (m7) ──
+
+
+def _fleet_many(deployments, machines=None):
+    """`deployments`: {machine_id: jev_mode or None}; machines default to the same ids."""
+    ids = machines if machines is not None else list(deployments)
+    respx.get(f"{BASE}/api/enforcement/machines").mock(return_value=httpx.Response(200, json=[
+        {"machineId": m, "deployment": 5, "appliedDeployment": 5, "deployed": m in deployments} for m in ids]))
+    deps = []
+    for m, mode in deployments.items():
+        d = {"machineId": m, "deployment": 5, "policies": [{"id": "no-force-push", "version": 2, "effect": "enforce"}]}
+        if mode:
+            d["jevMode"] = mode
+        deps.append(d)
+    respx.get(f"{BASE}/api/enforcement/deployments").mock(return_value=httpx.Response(200, json=deps))
+    respx.get(f"{BASE}/api/enforcement/policies").mock(
+        return_value=httpx.Response(200, json=[SERVER_BOTH, SERVER_JEV, SERVER_REGEX_OLD]))
+
+
+def _mode_route(machine_id, mode, deployment=6, status=200):
+    body = ({"machineId": machine_id, "deployment": deployment, "jevMode": None if mode == "local" else mode,
+             "changed": True, "policies": []} if status == 200
+            else {"error": f"machine {machine_id} has no deployment", "code": "no_deployment"})
+    return respx.put(f"{BASE}/api/enforcement/deployments/{machine_id}/jev-mode").mock(
+        return_value=httpx.Response(status, json=body))
+
+
+def test_set_jev_mode_sends_only_the_mode(monkeypatch):
+    seen = {}
+
+    def fake(ctx, method, path, json_body=None, **kw):
+        seen.update(method=method, path=path, body=json_body)
+        return {"machineId": "m1", "deployment": 9, "jevMode": "enforce", "changed": False, "policies": []}
+
+    monkeypatch.setattr(client, "_request_json", fake)
+    dep, changed = client.set_jev_mode(object(), "m1", "enforce")
+    assert seen == {"method": "PUT", "path": "/api/enforcement/deployments/m1/jev-mode", "body": {"jevMode": "enforce"}}
+    assert (dep.deployment, dep.jev_mode, changed) == (9, "enforce", False)
+
+
+@respx.mock
+def test_fleet_deploy_jev_mode_on_a_machine_with_no_deployment_deploys_its_first(logged_in, runner):
+    respx.get(f"{BASE}/api/enforcement/machines").mock(return_value=httpx.Response(
+        200, json=[{"machineId": "m1", "deployment": None, "deployed": False}]))
+    respx.get(f"{BASE}/api/enforcement/deployments").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{BASE}/api/enforcement/policies").mock(return_value=httpx.Response(200, json=[SERVER_JEV]))
+    mode = respx.put(f"{BASE}/api/enforcement/deployments/m1/jev-mode")
+    deploy = respx.put(f"{BASE}/api/enforcement/deployments/m1").mock(return_value=httpx.Response(
+        200, json={"machineId": "m1", "deployment": 1, "jevMode": "observe", "policies": []}))
+    result = runner.invoke(app, ["--json", "fleet", "deploy", "m1", "--jev-mode", "observe", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not mode.called
+    assert json.loads(deploy.calls.last.request.content) == {"policies": [], "jevMode": "observe"}
+
+
+@respx.mock
+def test_fleet_deploy_with_a_set_change_and_a_mode_still_deploys_both_together(logged_in, runner):
+    _fleet_routes([{"id": "no-force-push", "version": 2, "effect": "enforce"}])
+    mode = respx.put(f"{BASE}/api/enforcement/deployments/m1/jev-mode")
+    deploy = respx.put(f"{BASE}/api/enforcement/deployments/m1").mock(return_value=httpx.Response(
+        200, json={"machineId": "m1", "deployment": 6, "jevMode": "enforce", "policies": []}))
+    result = runner.invoke(app, ["fleet", "deploy", "m1", "--add", "secrets", "--jev-mode", "enforce", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not mode.called
+    assert json.loads(deploy.calls.last.request.content)["jevMode"] == "enforce"
+
+
+@respx.mock
+def test_fleet_jev_mode_sets_named_machines_and_skips_one_already_there(logged_in, runner):
+    _fleet_many({"m1": None, "m2": "enforce", "m3": "observe"})
+    r1, r2, r3 = _mode_route("m1", "enforce"), _mode_route("m2", "enforce"), _mode_route("m3", "enforce", 7)
+    deploy = respx.put(f"{BASE}/api/enforcement/deployments/m1")
+    result = runner.invoke(app, ["--json", "fleet", "jev-mode", "m1", "m2", "m3", "enforce"])
+    assert result.exit_code == 0, result.output
+    assert r1.called and r3.called and not r2.called and not deploy.called
+    assert json.loads(r1.calls.last.request.content) == {"jevMode": "enforce"}
+    out = json.loads(result.stdout)
+    assert out["mode"] == "enforce" and out["applied"] is True
+    rows = {r["machineId"]: r for r in out["machines"]}
+    assert rows["m1"]["from"] == "local" and rows["m1"]["to"] == "enforce" and rows["m1"]["deployment"] == 6
+    assert rows["m2"]["changed"] is False
+    assert rows["m3"]["from"] == "observe" and rows["m3"]["deployment"] == 7
+
+
+@respx.mock
+def test_fleet_jev_mode_all_covers_every_machine_with_a_deployment_only(logged_in, runner):
+    _fleet_many({"m1": "enforce", "m2": "off"}, machines=["m1", "m2", "m-new"])
+    r1, r2 = _mode_route("m1", "local"), _mode_route("m2", "local")
+    fresh = respx.put(f"{BASE}/api/enforcement/deployments/m-new/jev-mode")
+    result = runner.invoke(app, ["fleet", "jev-mode", "--all", "local"])
+    assert result.exit_code == 0, result.output
+    assert r1.called and r2.called and not fresh.called
+    assert json.loads(r1.calls.last.request.content) == {"jevMode": "local"}
+    assert "enforce → local" in result.stdout and "off → local" in result.stdout
+
+
+@respx.mock
+def test_fleet_jev_mode_when_nothing_changes_writes_nothing(logged_in, runner):
+    _fleet_many({"m1": "observe"})
+    route = _mode_route("m1", "observe")
+    result = runner.invoke(app, ["fleet", "jev-mode", "m1", "observe"])
+    assert result.exit_code == 0, result.output
+    assert not route.called
+    assert "already has jev mode observe" in result.output + (result.stderr or "")
+
+
+@pytest.mark.parametrize("argv, needle", [
+    (["fleet", "jev-mode"], "pass the mode"),
+    (["fleet", "jev-mode", "m1", "shadow"], "is not a Jev mode"),
+    (["fleet", "jev-mode", "observe"], "name at least one machine"),
+    (["fleet", "jev-mode", "--all", "m1", "observe"], "do not name machines"),
+])
+def test_fleet_jev_mode_usage_errors_exit_2_before_any_request(logged_in, runner, argv, needle):
+    with respx.mock(assert_all_called=False) as mock:
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 2, result.output
+        assert needle in result.output + (result.stderr or "")
+        assert not mock.calls
+
+
+@respx.mock
+def test_fleet_jev_mode_refuses_a_named_machine_with_no_deployment_before_writing(logged_in, runner):
+    _fleet_many({"m1": None}, machines=["m1", "m2"])
+    r1 = _mode_route("m1", "observe")
+    result = runner.invoke(app, ["fleet", "jev-mode", "m1", "m2", "observe"])
+    assert result.exit_code == 1, result.output
+    text = result.output + (result.stderr or "")
+    assert "m2 has no deployment" in text and "fp fleet deploy <machine> --jev-mode observe" in text
+    assert not r1.called
+
+
+@respx.mock
+def test_fleet_jev_mode_goes_on_past_a_machine_that_fails_and_names_it(logged_in, runner):
+    _fleet_many({"m1": None, "m2": None})
+    _mode_route("m1", "observe", status=404)
+    r2 = _mode_route("m2", "observe")
+    result = runner.invoke(app, ["--json", "fleet", "jev-mode", "m1", "m2", "observe"])
+    assert result.exit_code == 1, result.output
+    assert r2.called
+    # The result document, then the error document the exit code comes with.
+    out, end = json.JSONDecoder().raw_decode(result.stdout)
+    rows = {r["machineId"]: r for r in out["machines"]}
+    assert "error" in rows["m1"] and rows["m2"]["deployment"] == 6 and out["applied"] is False
+    assert "could not be changed on m1" in result.stdout[end:] + (result.stderr or "")
+
+
+@respx.mock
+def test_fleet_rollback_says_which_jev_mode_it_restores(logged_in, runner):
+    _fleet_many({"m1": "off"})
+    respx.get(f"{BASE}/api/enforcement/deployments/m1/history").mock(return_value=httpx.Response(200, json=[
+        {"deployment": 5, "policies": [], "updatedAt": "2026-09-30T02:00:00Z", "jevMode": "off"},
+        {"deployment": 3, "policies": [], "updatedAt": "2026-09-29T02:00:00Z", "jevMode": "enforce"},
+    ]))
+    respx.post(f"{BASE}/api/enforcement/deployments/m1/rollback").mock(return_value=httpx.Response(
+        200, json={"machineId": "m1", "deployment": 6, "rolledBackFrom": 3, "policies": [], "jevMode": "enforce"}))
+    human = runner.invoke(app, ["fleet", "rollback", "m1", "3", "--yes"])
+    assert human.exit_code == 0, human.output
+    text = human.output + (human.stderr or "")
+    assert "jev mode" in text and "off → enforce" in text
+
+    js = runner.invoke(app, ["--json", "fleet", "rollback", "m1", "3", "--yes"])
+    assert js.exit_code == 0, js.output
+    out = json.loads(js.stdout)
+    assert out["jevMode"] == "enforce" and out["jevModeBefore"] == "off"
+
+
+@respx.mock
+def test_fleet_history_shows_each_generations_jev_mode_and_a_mode_only_change(logged_in, runner):
+    _fleet_many({"m1": "observe"})
+    pols = [{"id": "no-force-push", "version": 2, "effect": "enforce"}]
+    respx.get(f"{BASE}/api/enforcement/deployments/m1/history").mock(return_value=httpx.Response(200, json=[
+        {"deployment": 6, "policies": pols, "updatedAt": "2026-09-30T02:00:00Z", "jevMode": "observe"},
+        {"deployment": 5, "policies": pols, "updatedAt": "2026-09-30T01:00:00Z"},
+    ]))
+    result = runner.invoke(app, ["fleet", "history", "m1"])
+    assert result.exit_code == 0, result.output
+    assert "jev" in result.stdout
+    assert "local→observe" in result.stdout
+    lines = [ln for ln in result.stdout.splitlines() if "#6" in ln or "#5" in ln]
+    assert any("observe" in ln for ln in lines if "#6" in ln)
+    assert any("local" in ln for ln in lines if "#5" in ln)
+
+
+def test_the_help_says_enforce_blocks_and_that_the_mode_is_machine_wide(runner):
+    for argv in (["fleet", "deploy", "--help"], ["fleet", "jev-mode", "--help"]):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.stdout.split())
+        assert "BLOCK" in flat, argv
+        assert "installed" in flat and "pack" in flat, argv

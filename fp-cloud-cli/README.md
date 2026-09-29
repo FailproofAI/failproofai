@@ -144,12 +144,16 @@ earlier version is), `jev` (Jev checks only, from a JSON file of declarations â€
 each exactly a failproofai pack manifest's semantic entry), or `both`
 (JavaScript whose verdict its own Jev checks may clear, deployed as one).
 `--jev-mode` sets a machine's Jev mode from FailproofAI Cloud, overriding the
-machine's own; omit it and the mode is left alone.
+machine's own; omit it and the mode is left alone. The mode is the machine's, so
+it covers installed packs' checks too, and in `enforce` Jev's checks **block**
+calls as well as clearing the regex verdicts they review. `fp fleet jev-mode`
+changes only the mode, and never rewrites a machine's policy set.
 
 ```bash
 fp policies publish prod-db-intent --kind jev --semantic ./checks.json
 fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json
 fp fleet deploy ci-runner-01 --add prod-db-intent --jev-mode observe
+fp fleet jev-mode --all enforce   # the mode alone, every machine with a deployment
 fp fleet show ci-runner-01    # its Jev mode, and any policy errors it reported
 ```
 

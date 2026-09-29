@@ -23,7 +23,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import httpx
 
@@ -1746,6 +1746,26 @@ def deploy_policies(
     if jev_mode is not None:
         body["jevMode"] = jev_mode
     return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
+
+
+def set_jev_mode(ctx: ClientContext, machine_id: str, jev_mode: str) -> Tuple[Deployment, bool]:
+    """PUT /api/enforcement/deployments/{id}/jev-mode — change ONLY the Jev mode.
+
+    ``jev_mode`` is ``off|observe|enforce|local`` (``local`` stops FailproofAI
+    Cloud overriding the machine's own mode). Unlike a deploy, this never
+    touches the machine's policy set: a deploy is a full replace of the set, and
+    the set a client can read leaves out disabled policies' assignments, so a
+    mode change sent as a deploy deleted them — and reverted any edit made since
+    the set was read. It still mints a new generation, which is how the machine
+    picks the mode up.
+
+    Returns the deployment and whether anything changed: setting the mode the
+    machine already has changes nothing and mints nothing (``changed: false``).
+    A machine with no deployment is a 404 — a deploy is how it gets its first.
+    """
+    path = f"/api/enforcement/deployments/{machine_id}/jev-mode"
+    data = _request_json(ctx, "PUT", path, json_body={"jevMode": jev_mode}) or {}
+    return Deployment.from_dict(data), bool(data.get("changed", True))
 
 
 def deployment_history(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:

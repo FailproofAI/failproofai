@@ -68,7 +68,11 @@ failproofai jev setup --mode off       # keep the config, stop asking Jev
 
 The same switch is in the local dashboard: **Settings → Jev** has an on/off switch and observe/enforce. It rewrites the mode and nothing else. Hooks read the config on every tool call, so a change applies from the next one, with no restart.
 
-FailproofAI Cloud can also set a machine's mode, per machine, from the fleet page or with `fp fleet deploy <machine> --jev-mode observe|enforce|off`. A mode set there **overrides the one in `jev.json`, including `off`**, for as long as the machine stays connected; `--jev-mode local` hands the choice back to the machine. The machine asks through its own `jev.json` provider when it has one, and otherwise through its FailproofAI Cloud connection. `failproofai jev status` says `mode set by FailproofAI Cloud`, and a machine with no way to ask reports `jev_unconfigured` to the fleet page.
+FailproofAI Cloud can also set a machine's mode, per machine, from the fleet page or with `fp fleet jev-mode <machine> observe|enforce|off`. A mode set there **overrides the one in `jev.json`, including `off`**, for as long as the machine stays connected. `failproofai config --disconnect` removes it together with the Cloud policies. `local` hands the choice back to the machine.
+
+The mode is the machine's. It governs FailproofAI Cloud's Jev checks and the checks of every pack installed on the machine. In `enforce`, Jev's own deny checks block calls, as well as clearing the regex verdicts they review.
+
+The machine asks through its own `jev.json` provider when it has one, and otherwise through its FailproofAI Cloud connection. `failproofai jev status` says `mode set by FailproofAI Cloud`. The fleet page shows `jev_unconfigured` for a machine that cannot ask, and for a machine that has FailproofAI Cloud Jev checks but no mode from Cloud and no working `jev.json`, because those checks are never asked.
 
 ## Check what it is doing
 

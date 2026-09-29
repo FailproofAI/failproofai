@@ -132,8 +132,13 @@ class DeployPlan:
         return self.jev_mode is not None and self.jev_mode_after != self.jev_mode_before
 
     @property
+    def set_changes(self) -> bool:
+        """Whether the POLICY SET changes — anything added, removed or moved."""
+        return bool(self.added or self.removed or self.changed)
+
+    @property
     def is_noop(self) -> bool:
-        return not (self.added or self.removed or self.changed or self.jev_mode_changes)
+        return not (self.set_changes or self.jev_mode_changes)
 
     def to_dict(self) -> Dict[str, object]:
         out: Dict[str, object] = {
@@ -301,6 +306,11 @@ def plan_deploy(
         jev_mode=jev_mode,
         jev_mode_before=current_jev_mode,
     )
+
+
+def jev_mode_after(mode: str) -> Optional[str]:
+    """What a `--jev-mode`/`jev-mode` word leaves stored: `local` is None (Cloud stops overriding)."""
+    return None if mode == "local" else mode
 
 
 def version_kinds(policies: Iterable[PolicyVersion]) -> Dict[Tuple[str, int], str]:

@@ -79,7 +79,11 @@ fp policies publish prod-db-intent --kind jev --semantic ./checks.json
 fp fleet deploy <machine-id> --add prod-db-intent --jev-mode observe
 ```
 
-An effect applies to JavaScript only. To trial Jev checks without them deciding anything, set the machine's Jev mode to `observe`, then to `enforce` once the policy page shows what they would have done. A check that fails on a machine is dropped there and nothing else changes; the machine reports it, and `fp fleet show <machine-id>` lists it under policy errors.
+An effect applies to JavaScript only. To trial Jev checks without them deciding anything, set the machine's Jev mode to `observe`, then to `enforce` once the policy page shows what they would have done. In `enforce`, Jev's checks **block** calls as well as clearing the JavaScript verdicts they review. The mode is the machine's: it also governs the checks of any pack installed there. To change only the mode, run `fp fleet jev-mode <machine-id> observe`. The policy set is left exactly as it is.
+
+A `both` policy deployed with `:observe` sends only its JavaScript, which is observed. Its Jev checks are not asked while it is observed, as with an observe pack.
+
+A check that fails on a machine is dropped there, and the machine reports it: `fp fleet show <machine-id>` lists it under policy errors. A `both` policy whose checks did not load stays **hard**: every deny of its JavaScript stands, and no installed pack's check of the same name can clear it. One Jev request carries a limited amount of question text. FailproofAI Cloud's checks come before installed packs' checks. A check that does not fit is dropped and reported as `jev_budget`.
 
 ## Check coverage
 

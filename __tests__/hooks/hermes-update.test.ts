@@ -84,7 +84,7 @@ function writeConfig(profile: string, body: string): void {
 }
 interface HermesConfig {
   model?: string;
-  plugins?: { enabled?: string[] };
+  plugins?: { enabled?: string[]; disabled?: string[] };
   hooks?: Record<string, Array<{ command: string }> | undefined>;
 }
 function readConfig(profile = "default"): HermesConfig {
@@ -290,6 +290,33 @@ describe("failproofai update → Hermes migration", () => {
     expect(result.profiles[0].status).toBe("current");
     expect(probe).not.toHaveBeenCalled();
     expect(result.lines.join("\n")).toMatch(/hermes\/default\s+already current/);
+  });
+
+  it("a linked plugin also listed in plugins.disabled is unhealthy, and update re-enables it", async () => {
+    // Hermes checks plugins.disabled before plugins.enabled, so this plugin
+    // never loads: it must not read as healthy, nor be skipped as current.
+    writeConfig("default", "model: gpt-5\n");
+    hermes.prepareInstall!(configPath());
+    const settings = hermes.readSettings(configPath());
+    hermes.writeHookEntries(settings, "/usr/bin/failproofai", "user");
+    hermes.writeSettings(configPath(), settings);
+    writeFileSync(configPath(), readFileSync(configPath(), "utf8") + "  disabled:\n    - failproofai\n");
+    expect(readConfig().plugins?.enabled).toContain("failproofai");
+    expect(readConfig().plugins?.disabled).toContain("failproofai");
+
+    const [before] = hermesProfileHealth();
+    expect(before.healthy).toBe(false);
+    expect(before.pluginEnabled).toBe(false);
+    expect(before.pluginDisabled).toBe(true);
+    expect(hermesProfileStatusRows()[0][1]).toMatch(/plugin disabled \(listed in plugins\.disabled\)/);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+
+    const result = await runHermesUpdateMigration({ daemonSupportsPolicyEvaluation: daemonYes() });
+    expect(result.ok).toBe(true);
+    expect(result.profiles[0].status).not.toBe("current");
+    expect(readConfig().plugins?.disabled ?? []).not.toContain("failproofai");
+    expect(readConfig().plugins?.enabled).toContain("failproofai");
+    expect(hermesProfileHealth()[0].healthy).toBe(true);
   });
 
   it("keeps the shell hooks and fails when the daemon cannot do policyEvaluation", async () => {

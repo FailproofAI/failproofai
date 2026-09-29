@@ -1748,28 +1748,44 @@ function removeLegacyHermesHooks(doc: Document): number {
 }
 
 function hermesConfigState(settingsPath: string): {
+  /** Hermes will load it: listed in `plugins.enabled` AND not in `plugins.disabled`. */
   pluginEnabled: boolean;
+  /** Listed in `plugins.enabled`, whatever `plugins.disabled` says. */
+  pluginListed: boolean;
+  /** Listed in `plugins.disabled`, which Hermes checks first and which wins. */
+  pluginDisabled: boolean;
   legacyShellHookPresent: boolean;
   unreadable?: boolean;
 } {
   if (!existsSync(settingsPath)) {
-    return { pluginEnabled: false, legacyShellHookPresent: false };
+    return { pluginEnabled: false, pluginListed: false, pluginDisabled: false, legacyShellHookPresent: false };
   }
   const doc = inspectYamlDoc(settingsPath);
-  if (!doc) return { pluginEnabled: false, legacyShellHookPresent: false, unreadable: true };
+  if (!doc) {
+    return { pluginEnabled: false, pluginListed: false, pluginDisabled: false, legacyShellHookPresent: false, unreadable: true };
+  }
   const js = (doc.toJS() ?? {}) as {
     hooks?: Record<string, HermesHookEntry[]>;
     plugins?: HermesPluginsConfig;
   };
   const enabled = js.plugins?.enabled;
+  const disabled = js.plugins?.disabled;
   const legacyShellHookPresent =
     !!js.hooks &&
     typeof js.hooks === "object" &&
     Object.values(js.hooks).some(
       (entries) => Array.isArray(entries) && entries.some((entry) => isMarkedHook(entry)),
     );
+  // Hermes gates `plugins.disabled` before `plugins.enabled`
+  // (hermes_cli/plugins_discovery.py `gate_manifest`), so a plugin in both
+  // lists never loads. Treating that as enabled reported a switched-off plugin
+  // healthy and let `update` skip it as "already current".
+  const pluginListed = Array.isArray(enabled) && enabled.includes(HERMES_PLUGIN_ID);
+  const pluginDisabled = Array.isArray(disabled) && disabled.includes(HERMES_PLUGIN_ID);
   return {
-    pluginEnabled: Array.isArray(enabled) && enabled.includes(HERMES_PLUGIN_ID),
+    pluginEnabled: pluginListed && !pluginDisabled,
+    pluginListed,
+    pluginDisabled,
     legacyShellHookPresent,
   };
 }
@@ -1867,7 +1883,7 @@ export async function migrateHermesProfiles(opts: {
       continue;
     }
 
-    if (!legacy && !ours && !config.pluginEnabled) {
+    if (!legacy && !ours && !config.pluginListed && !config.pluginDisabled) {
       results.push({ ...base, status: "untouched", detail: "no failproofai integration", legacyShellHooksRemain: false });
       continue;
     }
@@ -1948,6 +1964,8 @@ export interface HermesProfileHealth {
   /** How the plugin is installed: a link into the package, a copy, or neither. */
   pluginMode: "link" | "copy" | null;
   pluginEnabled: boolean;
+  /** failproofai is listed in `plugins.disabled`, so Hermes will not load it. */
+  pluginDisabled: boolean;
   legacyShellHookPresent: boolean;
   /**
    * Still enforced only by legacy config.yaml shell hooks. Hermes cron jobs run
@@ -1974,6 +1992,7 @@ export function hermesProfileHealth(): HermesProfileHealth[] {
       pluginInstalled,
       pluginMode: plugin.kind === "link" || plugin.kind === "copy" ? plugin.kind : null,
       pluginEnabled: config.pluginEnabled,
+      pluginDisabled: config.pluginDisabled,
       legacyShellHookPresent: config.legacyShellHookPresent,
       cronUnchecked: config.legacyShellHookPresent && !pluginWorks,
       configUnreadable: config.unreadable === true,
@@ -2001,7 +2020,8 @@ export function hermesProfileStatusRows(): Array<[string, string]> {
       }
       const problems: string[] = [];
       if (!profile.pluginInstalled) problems.push("plugin files missing or incomplete");
-      if (!profile.pluginEnabled) problems.push("plugin not enabled");
+      if (profile.pluginDisabled) problems.push("plugin disabled (listed in plugins.disabled)");
+      else if (!profile.pluginEnabled) problems.push("plugin not enabled");
       if (profile.legacyShellHookPresent) problems.push("legacy shell hook also present");
       if (problems.length > 0) return [label, "UNHEALTHY — " + problems.join("; ")];
       return [

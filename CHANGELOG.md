@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9-beta.3 — 2026-09-29
+
+### Fixes
+
+- **`failproofai update` exited 1 on a machine whose daemon was already current.** It reinstalled the service on every run, which needs root: interactively it asked for a password for nothing, and with no TTY (a fleet box, CI) it failed with "root privileges are required". When the service is running and `VERSION` records this CLI's version with its binary on disk, it now says the daemon is already current and asks root for nothing.
+
 ## 1.0.9-beta.2 — 2026-09-29
 
 ### Fixes

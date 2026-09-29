@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
 import { startedAtFromMonotonic, waitForDaemonRunning } from "../../src/hooks/daemon-service";
 import * as svc from "../../src/hooks/daemon-service";
@@ -1008,6 +1008,55 @@ describe("refreshDaemonToCliVersion", () => {
     // The point: it did not try. Asserting only the message would pass on a
     // machine that genuinely has no service, whatever the code did.
     expect(installed).toBe(false);
+  });
+
+  it("does nothing, and asks root for nothing, when the daemon already runs this version", async () => {
+    // Every update after the daemon was brought current used to reinstall it:
+    // idempotent, but it needs sudo, so with no TTY it failed "root privileges
+    // are required" and exited 1 on a machine that was already fine.
+    const { writeVersionFile } = await import("../../src/hooks/fp-config");
+    const { version } = await import("../../package.json");
+    const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+    writeVersionFile({ daemon: version });
+    mkdirSync(dirname(installedBinaryPath(version)), { recursive: true });
+    writeFileSync(installedBinaryPath(version), "#!/bin/sh\n");
+    let installed = false;
+    let primed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+      prime: () => {
+        primed = true;
+        return true;
+      },
+      interactive: () => true,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.lines.join("\n")).toContain("already installed and running");
+    expect(installed).toBe(false);
+    expect(primed).toBe(false);
+  });
+
+  it("still reinstalls when the recorded version matches but the service is not running", async () => {
+    const { writeVersionFile } = await import("../../src/hooks/fp-config");
+    const { version } = await import("../../package.json");
+    const { installedBinaryPath } = await import("../../src/hooks/daemon-download");
+    writeVersionFile({ daemon: version });
+    mkdirSync(dirname(installedBinaryPath(version)), { recursive: true });
+    writeFileSync(installedBinaryPath(version), "#!/bin/sh\n");
+    let installed = false;
+    await svc.refreshDaemonToCliVersion({
+      status: () => "stopped",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+      interactive: () => false,
+    });
+    expect(installed).toBe(true);
   });
 
   it("goes through the INSTALL, not a bare restart", async () => {

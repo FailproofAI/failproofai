@@ -82,7 +82,7 @@ The dashboard's **Settings → Jev** panel also shows the **FailproofAI Cloud co
 
 ## Verify a real call
 
-Start a new session in the hooked agent and ask it to read this project's README and report its title. Then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect that call's Jev verdict and mode. In Cloud, the organization's **Policies** page shows Jev outcomes for delivered activity. In shadow mode, the verdict is recorded as a **would-have** and the policy result still decides the call. A clearance appears only when a reviewable policy matched and Jev cleared its named checks.
+Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect that call's Jev verdict and mode. In Cloud, the organization's **Policies** page shows Jev outcomes for delivered activity. In shadow mode, the verdict is recorded as a **would-have** and the policy result still decides the call. A clearance appears only when a reviewable policy matched and Jev cleared its named checks.
 
 ## What reaches the policy page
 

@@ -22,7 +22,7 @@ failproofai jev status
 failproofai jev test
 ```
 
-`test` checks the endpoint. To check the hook path, ask a hooked agent to read this project's README, then inspect **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity). The Jev count in `status` should increase. Shadow mode records what Jev would have decided while your existing policy result still applies.
+`test` checks the endpoint. To check the hook path, ask a hooked agent to use its file-reading tool on `README.md`. Confirm that tool call appears in the session, then inspect **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity). The Jev count in `status` should increase. Shadow mode records what Jev would have decided while your existing policy result still applies.
 
 ## Decide when to enforce
 

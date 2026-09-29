@@ -153,7 +153,7 @@ failproofai jev status --json
 
 ## Verify a real call
 
-Start a new session in the hooked agent and ask it to read this project's README and report its title. Run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect the call's Jev verdict and mode. In shadow mode, the policy result still decides the call. A clearance appears only if a reviewable policy matched and Jev cleared every named check; an ordinary read may have no policy to clear.
+Start a new session in the hooked agent. Ask it to use its file-reading tool on `README.md` and report the title. Confirm that the session contains that tool call, then run `failproofai jev status` again: its recent evaluated-call count should increase. Open **Policies → Activity** in the [local dashboard](/reference/local-dashboard#review-policy-activity) to inspect the call's Jev verdict and mode. In shadow mode, the policy result still decides the call. A clearance appears only if a reviewable policy matched and Jev cleared every named check; an ordinary read may have no policy to clear.
 
 ## Shadow mode
 

@@ -724,7 +724,15 @@ class AuditFinding:
 
 @dataclass
 class PolicyVersion:
-    """One published version of a policy. Versions are minted, never edited."""
+    """One published version of a policy. Versions are minted, never edited.
+
+    ``kind`` is what the version carries: ``regex`` (JavaScript only — every
+    version published before kinds existed), ``jev`` (Jev checks only, no
+    JavaScript) or ``both`` (JavaScript whose verdict its own Jev checks may
+    clear). ``semantic`` is the list of Jev declarations for ``jev``/``both``.
+    ``authority``/``reviewed_by`` are DERIVED by the server from the kind and
+    never sent by a client.
+    """
 
     id: str
     version: int
@@ -735,9 +743,16 @@ class PolicyVersion:
     created_by: Optional[str]
     disabled: bool
     archived: bool
+    kind: str = "regex"
+    semantic: Optional[List[Any]] = None
+    semantic_sha256: Optional[str] = None
+    authority: Optional[str] = None
+    reviewed_by: Optional[List[str]] = None
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "PolicyVersion":
+        semantic = d.get("semantic")
+        reviewed = d.get("reviewedBy", d.get("reviewed_by"))
         return cls(
             id=str(d.get("id", "")),
             version=_as_int(d.get("version"), 0),
@@ -748,18 +763,43 @@ class PolicyVersion:
             created_by=d.get("createdBy", d.get("created_by")),
             disabled=bool(d.get("disabled", False)),
             archived=bool(d.get("archived", False)),
+            # A server that predates kinds sends none, and everything it has is
+            # JavaScript — `regex` is not a guess, it is the only thing it had.
+            kind=str(d.get("kind") or "regex"),
+            semantic=semantic if isinstance(semantic, list) else None,
+            semantic_sha256=d.get("semanticSha256", d.get("semantic_sha256")),
+            authority=d.get("authority"),
+            reviewed_by=[str(n) for n in reviewed] if isinstance(reviewed, list) else None,
         )
+
+    @property
+    def jev_names(self) -> List[str]:
+        """The names of this version's Jev checks, in declared order."""
+        return [
+            str(entry["name"])
+            for entry in (self.semantic or [])
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+        ]
 
     def to_dict(self) -> Dict[str, Any]:
         """The server's own shape. `vars()` would leak Python snake_case into a
         contract that is camelCase everywhere else, which is a difference a
         harness discovers at runtime rather than in review."""
-        return {
+        out: Dict[str, Any] = {
             "id": self.id, "version": self.version, "description": self.description,
             "sha256": self.sha256, "source": self.source, "createdAt": self.created_at,
             "createdBy": self.created_by, "disabled": self.disabled,
-            "archived": self.archived,
+            "archived": self.archived, "kind": self.kind,
         }
+        if self.semantic is not None:
+            out["semantic"] = self.semantic
+        if self.semantic_sha256:
+            out["semanticSha256"] = self.semantic_sha256
+        if self.authority:
+            out["authority"] = self.authority
+        if self.reviewed_by is not None:
+            out["reviewedBy"] = self.reviewed_by
+        return out
 
 
 @dataclass
@@ -806,6 +846,9 @@ class Deployment:
     policies: List[PolicyRef]
     updated_at: str
     updated_by: Optional[str]
+    #: The Jev mode FailproofAI Cloud sets on this machine (`off|observe|enforce`),
+    #: or None when Cloud does not override the machine's own (`local`).
+    jev_mode: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Deployment":
@@ -815,14 +858,18 @@ class Deployment:
             policies=[PolicyRef.from_dict(p) for p in (d.get("policies") or [])],
             updated_at=str(d.get("updatedAt", d.get("updated_at", "")) or ""),
             updated_by=d.get("updatedBy", d.get("updated_by")),
+            jev_mode=d.get("jevMode", d.get("jev_mode")) or None,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out: Dict[str, Any] = {
             "machineId": self.machine_id, "deployment": self.deployment,
             "policies": [p.to_dict() for p in self.policies],
             "updatedAt": self.updated_at, "updatedBy": self.updated_by,
         }
+        if self.jev_mode:
+            out["jevMode"] = self.jev_mode
+        return out
 
 
 @dataclass
@@ -851,12 +898,21 @@ class Machine:
     deployed: bool
     policy_count: int
     event_count: int
+    #: What the machine last reported it could not apply — `[{id, version, kind,
+    #: message}]` — or None when it has never reported (an empty list means it
+    #: reported and all is well).
+    policy_errors: Optional[List[Dict[str, Any]]] = None
+    policy_errors_at: Optional[Any] = None
+    #: The Jev mode FailproofAI Cloud sets on this machine, or None (`local`).
+    jev_mode: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Machine":
         def _num(key: str) -> Optional[int]:
             v = d.get(key)
             return int(v) if isinstance(v, (int, float)) else None
+
+        errors = d.get("policyErrors", d.get("policy_errors"))
 
         return cls(
             machine_id=str(d.get("machineId", d.get("machine_id", "")) or ""),
@@ -870,6 +926,9 @@ class Machine:
             deployed=bool(d.get("deployed", False)),
             policy_count=_as_int(d.get("policyCount"), 0),
             event_count=_as_int(d.get("eventCount"), 0),
+            policy_errors=[e for e in errors if isinstance(e, dict)] if isinstance(errors, list) else None,
+            policy_errors_at=d.get("policyErrorsAt", d.get("policy_errors_at")),
+            jev_mode=d.get("jevMode", d.get("jev_mode")) or None,
         )
 
     @property
@@ -892,6 +951,11 @@ class Machine:
             "appliedAt": self.applied_at, "deployed": self.deployed,
             "policyCount": self.policy_count, "eventCount": self.event_count,
             "drifted": self.drifted,
+            # Emitted only when the server sent them, so a server that predates
+            # them reads exactly as it always did.
+            **({"policyErrors": self.policy_errors} if self.policy_errors is not None else {}),
+            **({"policyErrorsAt": self.policy_errors_at} if self.policy_errors_at is not None else {}),
+            **({"jevMode": self.jev_mode} if self.jev_mode else {}),
         }
 
     @property

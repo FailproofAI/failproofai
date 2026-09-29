@@ -1643,22 +1643,43 @@ def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
 
 
 def publish_policy(
-    ctx: ClientContext, policy_id: str, source: str, description: str = ""
+    ctx: ClientContext,
+    policy_id: str,
+    source: Optional[str],
+    description: str = "",
+    *,
+    kind: Optional[str] = None,
+    semantic: Optional[List[Any]] = None,
 ) -> PolicyVersion:
     """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place.
 
-    Refuses Jev fields a cloud policy never reads before anything is sent, here
-    because `policies publish` and `policies compose --publish` both route through
-    it — and regardless of `--no-verify`, which only skips the syntax check.
+    ``kind`` is ``regex`` (JavaScript ``source`` only — what an omitted kind
+    means to the server), ``jev`` (Jev declarations in ``semantic``, no
+    ``source``) or ``both`` (the two together: the JavaScript is reviewable by
+    exactly its own checks). ``authority``/``reviewedBy`` are derived by the
+    server from the kind and are never sent.
+
+    Refuses Jev fields in the JAVASCRIPT before anything is sent, here because
+    `policies publish` and `policies compose --publish` both route through it —
+    and regardless of `--no-verify`, which only skips the syntax check. Jev
+    checks belong in ``semantic``, where they take effect.
     """
-    problem = cloud_publish_problem(source)
+    problem = cloud_publish_problem(source or "")
     if problem:
         raise ApiError(
             f"{policy_id} cannot be published as a cloud policy: {problem}",
-            hint=("Jev checks ship in a failproofai pack — `failproofai publish` — where "
-                  "semanticPolicies.add and authority: \"reviewable\" take effect"),
+            hint=("put Jev checks in the policy's Jev declarations — `--kind both --semantic "
+                  "checks.json` — or ship them in a failproofai pack with `failproofai publish`"),
         )
-    body = {"id": policy_id, "source": source, "description": description}
+    body: Dict[str, Any] = {"id": policy_id, "description": description}
+    # `source` is omitted for a Jev-only policy: the server takes absent (or
+    # empty) as "no JavaScript", which is what a `jev` version is.
+    if source:
+        body["source"] = source
+    if kind is not None:
+        body["kind"] = kind
+    if semantic is not None:
+        body["semantic"] = semantic
     return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
 
 
@@ -1708,11 +1729,22 @@ def get_deployment(ctx: ClientContext, machine_id: str) -> Optional[Deployment]:
 
 
 def deploy_policies(
-    ctx: ClientContext, machine_id: str, policies: Sequence[PolicyRef]
+    ctx: ClientContext,
+    machine_id: str,
+    policies: Sequence[PolicyRef],
+    jev_mode: Optional[str] = None,
 ) -> Deployment:
-    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set."""
+    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set.
+
+    ``jev_mode`` (``off|observe|enforce|local``) is sent only when given: the
+    server reads an ABSENT ``jevMode`` as "keep the machine's current one", so a
+    deploy that says nothing about Jev never changes it. ``local`` stops
+    FailproofAI Cloud overriding the machine's own mode.
+    """
     path = f"/api/enforcement/deployments/{machine_id}"
-    body = {"policies": [p.to_dict() for p in policies]}
+    body: Dict[str, Any] = {"policies": [p.to_dict() for p in policies]}
+    if jev_mode is not None:
+        body["jevMode"] = jev_mode
     return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
 
 

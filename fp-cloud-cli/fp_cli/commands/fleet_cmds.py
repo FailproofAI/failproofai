@@ -32,6 +32,7 @@ from ..enforcement import (
     disabled_ids,
     latest_versions,
     plan_deploy,
+    version_kinds,
 )
 from ..errors import ApiError, NotFoundError
 from . import _write
@@ -62,6 +63,8 @@ def fleet_list(ctx: typer.Context) -> None:
     `intended` is the generation deployed, `applied` is the one the machine last
     collected, and `seen` is when it last reported anything — a machine can be
     in sync and dead, or alive and behind, and those are different problems.
+    `state` reads `N errors` when the machine reported policies it could not
+    apply (`fp fleet show <machine>` lists them).
 
     A machine appears from its very first check-in, including the poll that
     finds nothing deployed — that is exactly the machine you are usually looking
@@ -101,10 +104,17 @@ def fleet_show(
     machine can be told to run a policy and not yet have it; the policy list
     alone cannot tell you which, and that is usually the question.
 
+    Shows the Jev mode FailproofAI Cloud sets on the machine (`local` when it
+    sets none) and the policy errors the machine last reported: a policy it
+    could not load, a Jev check it could not parse, a Jev mode it has no
+    provider for. Anything listed there is not enforcing, whatever the
+    deployment says.
+
     Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
-    record (including `appliedDeployment`, `drifted`, `lastSeen` and both label
-    fields, with raw timestamps) and the deployment, or `deployment: null` when
-    nothing is deployed.
+    record (including `appliedDeployment`, `drifted`, `lastSeen`, both label
+    fields, `jevMode` and `policyErrors`/`policyErrorsAt` when reported, with raw
+    timestamps) and the deployment, or `deployment: null` when nothing is
+    deployed.
 
     Example:
 
@@ -148,6 +158,11 @@ def fleet_deploy(
         False, "--create",
         help="Allow deploying to a machine id that has not checked in yet (pre-staging).",
     ),
+    jev_mode: Optional[str] = typer.Option(
+        None, "--jev-mode",
+        help="Set the machine's Jev mode from FailproofAI Cloud: off, observe, enforce — or local "
+             "to stop overriding the machine's own. Omitted: unchanged.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Change what a machine enforces, showing the full resulting set first.
@@ -158,6 +173,15 @@ def fleet_deploy(
     upgrading; pass `id@version` to move it.
 
     `--set` replaces everything — the only way to drop policies you do not name.
+
+    Any kind deploys the same way: a `jev` policy puts its Jev checks on the
+    machine, a `both` policy its JavaScript and its checks together. An effect
+    applies to JavaScript only — a `jev` policy is watched through the Jev MODE
+    instead: `--jev-mode observe` asks Jev and logs what it says while the regex
+    policies decide, `enforce` lets Jev clear what its checks review, `off` stops
+    Jev on the machine, and `local` hands the choice back to the machine. The
+    mode set here overrides the machine's own, a local `off` included; without
+    `--jev-mode` it is left as it is. `--jev-mode` alone is a valid deploy.
 
     **Concurrency.** The write is a full replace with no server-side lock, so the
     CLI records the generation it read and refuses if the result is not exactly
@@ -170,17 +194,19 @@ def fleet_deploy(
     * `fp fleet deploy ci-runner-01 --add no-force-push`
     * `fp fleet deploy ci-runner-01 --add prod-guard@1:observe --remove old-rule`
     * `fp fleet deploy ci-runner-01 --set no-force-push --set no-secret-echo`
+    * `fp fleet deploy ci-runner-01 --add prod-db-intent --jev-mode observe`
+    * `fp fleet deploy ci-runner-01 --jev-mode local`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet deploy", _KEY_MODE_REASON)
     cctx = require_auth(state)
 
-    if not add and not remove and replace is None:
+    if not add and not remove and replace is None and jev_mode is None:
         # Exit 2 for the same reason `--set` with `--add` is: no flag
         # combination was given that this command can act on. Both are the
         # caller's command line, not the server's answer.
         raise click.UsageError(
-            "nothing to do — pass --add, --remove, or --set. "
+            "nothing to do — pass --add, --remove, --set, or --jev-mode. "
             "`fp fleet show <machine>` prints the current set."
         )
 
@@ -212,6 +238,9 @@ def fleet_deploy(
             replace=replace,
             latest=latest,
             disabled=disabled_ids(published),
+            jev_mode=jev_mode,
+            current_jev_mode=current.jev_mode if current else None,
+            kinds=version_kinds(published),
         )
     except RefUsageError as exc:
         # Exit 2, like every other bad flag value in this CLI (`--since`,
@@ -252,7 +281,7 @@ def fleet_deploy(
             output.print_cancelled()
         return
 
-    result = api.deploy_policies(cctx, machine_id, plan.result)
+    result = api.deploy_policies(cctx, machine_id, plan.result, jev_mode=jev_mode)
     check_race(plan.base, result.deployment)
 
     if output.is_json():

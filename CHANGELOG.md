@@ -5,6 +5,10 @@
 ### Features
 
 - Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#872)
+- **Jev policies deploy from FailproofAI Cloud, individually, like Cloud JS policies.** A Cloud policy has a kind — `regex` (JavaScript, as before), `jev` (Jev checks only) or `both` (JavaScript reviewable by its own checks, deployed as one). The daemon verifies each policy's Jev declarations like a JS artifact and activates both halves in one atomic `active.json` write; the CLI parses them with the pack manifest's own parser and asks them beside installed packs' checks, with FailproofAI Cloud winning a name clash and one shared question budget. `failproofai policies` lists them under a FailproofAI Cloud label.
+- **FailproofAI Cloud can set a machine's Jev mode**, overriding `jev.json` (a local `off` included) for as long as the machine is connected. With no `jev.json`, the machine asks through its FailproofAI Cloud Jev credential; `failproofai jev status` shows the Cloud checks and "mode set by FailproofAI Cloud".
+- **Machines report the Cloud policies they could not apply.** A Cloud JS policy that fails to load, a Jev artifact that fails its digest or parse, a dropped declaration, a `reviewedBy` naming a check that is not there, or a Jev mode with no provider is written to `cloud-policies/errors.json` and sent on the daemon's next poll (`policyErrors`), so the fleet page and `fp fleet show` list it. Everything else on the machine is unchanged, and `config --disconnect` clears the reports with the deployment.
+- `fp policies publish --kind regex|jev|both [--source] [--semantic]`, `fp fleet deploy --jev-mode off|observe|enforce|local`; `fp policies list/show` print the kind and Jev check names, and `fp fleet list/show` the machine's Jev mode and reported policy errors.
 
 ### Fixes
 
@@ -14,6 +18,7 @@
 ### Docs
 
 - Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support, and where the daemon logs them (#872)
+- `crates/CLOUD_POLICIES.md` documents the Jev fields of desired-state and `active.json` and the `policyErrors` report, and its stale `cloud-managed/`, `deployments/` and `cloud.json` names are fixed; the Cloud CLI reference, the deploy guide and the FailproofAI Cloud Jev page cover Jev policies and the Cloud-set Jev mode.
 
 ### Dependencies
 

@@ -70,6 +70,17 @@ A machine appears under **Admin → enforcement** once it is connected to Cloud.
   </Step>
 </Steps>
 
+## Deploy Jev checks
+
+A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy: a `both` policy's JavaScript and its checks always reach a machine together.
+
+```bash
+fp policies publish prod-db-intent --kind jev --semantic ./checks.json
+fp fleet deploy <machine-id> --add prod-db-intent --jev-mode observe
+```
+
+An effect applies to JavaScript only. To trial Jev checks without them deciding anything, set the machine's Jev mode to `observe`, then to `enforce` once the policy page shows what they would have done. A check that fails on a machine is dropped there and nothing else changes; the machine reports it, and `fp fleet show <machine-id>` lists it under policy errors.
+
 ## Check coverage
 
 Coverage answers whether a policy is running where the risk is.

@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.0.9-beta.3 — 2026-09-29
+## 1.0.9 — 2026-09-29
+
+Action needed if you use Jev: its log-only mode is now `observe`, a `jev.json` still set to `shadow` is refused (Jev stays off until `failproofai jev setup` is run again), and Jev's checks now come only from `failproofai policies add FailproofAI/jev-policies`. For Hermes, `failproofai update` moves every profile from the old shell hooks (never run for cron jobs) to the native plugin, and every agent config failproofai edits is written crash-safely with a `.failproofai-backup`. Collects 1.0.9-beta.0 to beta.2 below.
 
 ### Fixes
 
@@ -9,6 +11,10 @@
 - **A same-named Hermes plugin is only replaced when failproofai can prove it is its own.** A link counts as failproofai's when it matches the ownership record written beside it (`plugins/.failproofai-link`) or points into an npm `failproofai` package (links from the 1.0.9 betas are adopted and recorded); a look-alike directory named `hermes-plugin` with a `name: failproofai` manifest is left alone and `config --status` says another plugin occupies the name.
 - **One Hermes profile that cannot be inspected no longer stops `update` for the rest.** Each profile is handled on its own, the redundant second read of `config.yaml` is gone, and a failure is that profile's line in the report. Re-enabling a plugin listed in `plugins.disabled` now reads "plugin re-enabled".
 - **`failproofai update` exited 1 on a machine whose daemon was already current.** It reinstalled the service on every run, which needs root: interactively it asked for a password for nothing, and with no TTY (a fleet box, CI) it failed with "root privileges are required". When the service is running and `VERSION` records this CLI's version with its binary on disk, it now says the daemon is already current and asks root for nothing.
+
+### Dependencies
+
+- Routine dependency bumps: `next` and `eslint-config-next` 16.3.6, `posthog-node` 5.54.1, `vitest` 5.0.2, `jsdom` 30.1.1, `lucide-react` 1.48.0, `@types/node` 26.6.2, `@anthropic-ai/sdk` 0.128.0, the Rust and Python dependency groups, and the `actions/setup-node` 7 and `actions/create-github-app-token` 3 workflow actions (#853–#865).
 
 ## 1.0.9-beta.2 — 2026-09-29
 

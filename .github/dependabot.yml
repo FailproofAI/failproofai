@@ -71,3 +71,45 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+
+  # The TypeScript SDK's integration fixtures — the first `npm` entry in this
+  # file, and it exists to turn things OFF. Fifteen real consumer projects, each
+  # pinning every direct dependency exactly, each holding one framework major on
+  # purpose: the major is in the directory name (`ai-4`, `mastra-0`,
+  # `langchain-0.3`), and even the current-major ones are paired, `nextjs`
+  # holding `ai@7.0.111` to stay the twin of `ai-7` whose trace
+  # `nextjs.test.ts` compares every route against. A major bump here does not
+  # update a fixture; it deletes the release the fixture exists to hold and
+  # drops a supported version from the matrix silently.
+  #
+  # `open-pull-requests-limit: 0` switches off VERSION updates and nothing else.
+  # Security-update PRs are explicitly not subject to that limit and do not
+  # count toward it, so a transitive advisory still opens one — the half worth
+  # keeping, and how `undici` in `ai-5` (#869) and the five overrides in #837
+  # were found.
+  #
+  # The `ignore` is the half that stops #838 and #867, which were the same PR
+  # twice. Dependabot's only route to those advisories was `ai@4.3.19` ->
+  # `ai@5.0.52` and `@mastra/core@0.24.9` -> `1.71.0` — the move `SECURITY.md`
+  # names as never the answer. #867 did not even install:
+  # `@mastra/mcp@0.14.5` peers on `@mastra/core@">=0.20.1-0 <0.25.0-0"`, so
+  # `npm ci` failed `ERESOLVE`, and because the global setup installs every
+  # fixture before any test runs, that one fixture took down three shards whole.
+  #
+  # The cost, stated plainly: an advisory whose ONLY fix is a major on a pinned
+  # framework now opens no PR at all. That is already this repo's standing
+  # answer for that exact case — `SECURITY.md`'s "Triaging a Dependabot alert in
+  # an integration fixture", case 2 — where the alert stays open, visible in the
+  # security tab, with a row in the accepted table as the compensating control.
+  # Dependabot offering the forbidden fix was never what kept us informed; it
+  # cost two rejected PRs and a red CI run to learn nothing new.
+  - package-ecosystem: npm
+    directories:
+      - "/sdk/typescript/integration/fixtures/*"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

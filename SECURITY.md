@@ -118,6 +118,20 @@ That splits an alert in one of these lockfiles into two cases:
    the scanner does not read these lockfiles, so an `[[IgnoredVulns]]` entry for one
    would filter nothing and be reported as an unused ignore.
 
+Case 1 is now the only kind of fixture PR Dependabot can open. It proposed the
+case-2 move twice anyway — #838 and #867, the same three pins both times — so
+[`.github/dependabot.yml`](.github/dependabot.yml) carries an `npm` entry for
+`/sdk/typescript/integration/fixtures/*` that sets `open-pull-requests-limit: 0`
+(version updates off; security-update PRs are not subject to that limit and still
+arrive) and ignores `version-update:semver-major` for every dependency. A
+transitive advisory fixable in place still opens a PR, which is how `undici` in
+`ai-5` was caught; one whose only fix is a major on a pinned framework now opens
+none, and lands here instead. That is the same answer case 2 already gave — the
+alert stays open and visible in the security tab, with a row below as the
+compensating control — reached without two rejected PRs and a red CI run first.
+`__tests__/ci/fixture-dependabot-pins.test.ts` is the tripwire, including for a
+fixture added at a path the glob does not cover.
+
 ### Accepted, with no fix available
 
 | Advisory | Package | Fixtures | Why it stays |

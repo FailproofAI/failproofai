@@ -731,7 +731,9 @@ class PolicyVersion:
     JavaScript) or ``both`` (JavaScript whose verdict its own Jev checks may
     clear). ``semantic`` is the list of Jev declarations for ``jev``/``both``.
     ``authority``/``reviewed_by`` are DERIVED by the server from the kind and
-    never sent by a client.
+    never sent by a client. ``jev_chars`` is what its Jev checks take of a
+    machine's Jev question budget, measured by the server the way the machine
+    measures it; ``None`` for ``regex``.
     """
 
     id: str
@@ -748,11 +750,13 @@ class PolicyVersion:
     semantic_sha256: Optional[str] = None
     authority: Optional[str] = None
     reviewed_by: Optional[List[str]] = None
+    jev_chars: Optional[int] = None
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "PolicyVersion":
         semantic = d.get("semantic")
         reviewed = d.get("reviewedBy", d.get("reviewed_by"))
+        chars = d.get("jevChars", d.get("jev_chars"))
         return cls(
             id=str(d.get("id", "")),
             version=_as_int(d.get("version"), 0),
@@ -770,6 +774,7 @@ class PolicyVersion:
             semantic_sha256=d.get("semanticSha256", d.get("semantic_sha256")),
             authority=d.get("authority"),
             reviewed_by=[str(n) for n in reviewed] if isinstance(reviewed, list) else None,
+            jev_chars=chars if isinstance(chars, int) and not isinstance(chars, bool) else None,
         )
 
     @property
@@ -799,6 +804,8 @@ class PolicyVersion:
             out["authority"] = self.authority
         if self.reviewed_by is not None:
             out["reviewedBy"] = self.reviewed_by
+        if self.jev_chars is not None:
+            out["jevChars"] = self.jev_chars
         return out
 
 

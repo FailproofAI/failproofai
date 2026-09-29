@@ -487,7 +487,37 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
         message or f"Request failed with status {response.status_code}.",
         status=response.status_code,
         request_id=request_id,
+        hint=_jev_budget_breakdown(response),
     )
+
+
+def _jev_budget_breakdown(response: httpx.Response) -> Optional[str]:
+    """The per-policy breakdown of a deploy's ``jev_budget_exceeded`` refusal.
+
+    The message carries only the total (``used``/``budget``); the body also lists
+    every Jev policy version the machine would carry with its question
+    characters (``policies: [{id, version, chars}]``), which is what tells an
+    operator WHICH policy to leave off. Largest first. ``None`` for any other
+    error, and for a publish refusal, which names no other policies.
+    """
+    try:
+        data = response.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("code") != "jev_budget_exceeded":
+        return None
+    rows = [
+        (str(p.get("id", "")), p.get("version"), p["chars"])
+        for p in data.get("policies") or []
+        if isinstance(p, dict) and isinstance(p.get("chars"), int)
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda row: -row[2])
+    parts = [f"{pid}@{version} {chars:,}" if version is not None else f"{pid} {chars:,}"
+             for pid, version, chars in rows]
+    return ("Jev question characters per policy: " + " · ".join(parts)
+            + " — deploy fewer of these Jev policies to this machine")
 
 
 def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = None) -> Any:

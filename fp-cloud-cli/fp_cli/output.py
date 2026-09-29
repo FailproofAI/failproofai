@@ -5949,6 +5949,9 @@ def render_policies(items: Sequence[Any]) -> None:
             # The checks first: for a `jev` policy they ARE the policy, and a
             # long description would otherwise push them off the ellipsis.
             desc.append(", ".join(names), style=theme.ACCENT)
+            chars = getattr(p, "jev_chars", None)
+            if chars is not None:
+                desc.append(f"  {chars:,} chars", style=theme.LABEL)
             if p.description:
                 desc.append("  ·  ", style=theme.FAINT)
         desc.append(p.description or "", style=theme.TEXT_DIM)
@@ -5998,6 +6001,12 @@ def render_policy_published(p: Any, *, carriers: Optional[dict] = None,
     if names:
         checks = Text("jev checks  ", style=theme.LABEL)
         checks.append(", ".join(names), style=theme.ACCENT)
+        chars = getattr(p, "jev_chars", None)
+        if chars is not None:
+            # What these checks take of the ONE Jev question budget a machine
+            # has for every check it asks — Cloud's and its installed packs'.
+            checks.append("  ·  ", style=theme.FAINT)
+            checks.append(f"{chars:,} question chars", style=theme.LABEL)
         body.append(checks)
     if kind == "both":
         # Derived by the server from the kind, never sent: said so the author

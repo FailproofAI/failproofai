@@ -44,7 +44,7 @@ def policies_list(ctx: typer.Context) -> None:
 
     `kind` is `regex` (JavaScript), `jev` (Jev checks only) or `both`
     (JavaScript its own Jev checks may clear); a `jev`/`both` row names its
-    checks.
+    checks and the characters they take of a machine's Jev question budget.
 
     `state` is active, disabled (kept but not enforced) or archived (deleted;
     machines already carrying it keep it until redeployed). Needs

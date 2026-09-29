@@ -293,6 +293,62 @@ def test_list_and_show_print_the_kind_and_the_jev_names(logged_in, runner):
     assert js["kind"] == "both" and js["reviewedBy"] == ["acme-prod-db"] and js["semantic"] == [DECL]
 
 
+def test_a_version_carries_its_jev_question_chars_and_regex_has_none():
+    jev = PolicyVersion.from_dict(dict(SERVER_JEV, jevChars=412))
+    assert jev.jev_chars == 412 and jev.to_dict()["jevChars"] == 412
+    regex = PolicyVersion.from_dict(dict(SERVER_REGEX_OLD, jevChars=None))
+    assert regex.jev_chars is None and "jevChars" not in regex.to_dict()
+
+
+@respx.mock
+def test_list_and_show_print_the_jev_question_chars(logged_in, runner):
+    respx.get(f"{BASE}/api/enforcement/policies").mock(return_value=httpx.Response(
+        200, json=[dict(SERVER_JEV, jevChars=18653), dict(SERVER_REGEX_OLD, jevChars=None)]))
+    respx.get(f"{BASE}/api/enforcement/deployments").mock(return_value=httpx.Response(200, json=[]))
+    listed = runner.invoke(app, ["policies", "list"], env={"COLUMNS": "200"})
+    assert listed.exit_code == 0, listed.output
+    rows = {c.split()[0]: c for c in (ln.strip().strip("│").strip() for ln in listed.stdout.splitlines())
+            if c[:1].isalpha()}
+    assert "18,653 chars" in rows["secrets"]
+    assert "chars" not in rows["no-force-push"]
+
+    shown = runner.invoke(app, ["policies", "show", "secrets"], env={"COLUMNS": "200"})
+    assert shown.exit_code == 0, shown.output
+    assert "18,653 question chars" in shown.stdout
+
+
+@respx.mock
+def test_a_jev_budget_refusal_names_each_policys_share_largest_first(logged_in, runner):
+    # The server's deploy 422 (CONTRACT C9.2): the message has the total, the
+    # body lists every contributing version — which is what says what to drop.
+    _fleet_routes([])
+    refusal = {
+        "error": "the Jev checks of this deployment are over the machine's question budget "
+                 "(37756 of 27591 characters)",
+        "code": "jev_budget_exceeded", "used": 37756, "budget": 27591,
+        "policies": [{"id": "e2e-prod-db", "version": 1, "chars": 415},
+                     {"id": "e2e-big", "version": 1, "chars": 18653},
+                     {"id": "e2e-big2", "version": 1, "chars": 18688}],
+    }
+    respx.put(f"{BASE}/api/enforcement/deployments/m1").mock(return_value=httpx.Response(422, json=refusal))
+    human = runner.invoke(app, ["fleet", "deploy", "m1", "--add", "secrets", "--yes"], env={"COLUMNS": "400"})
+    assert human.exit_code == 1
+    text = " ".join((human.output + (human.stderr or "")).split())
+    assert "37756 of 27591" in text
+    assert "e2e-big2@1 18,688 · e2e-big@1 18,653 · e2e-prod-db@1 415" in text
+
+    js = runner.invoke(app, ["--json", "fleet", "deploy", "m1", "--add", "secrets", "--yes"])
+    out = json.loads(js.stdout)
+    assert out["status"] == 422
+    assert out["hint"].startswith("Jev question characters per policy: e2e-big2@1 18,688")
+
+    # Any other refusal carries no such line.
+    respx.put(f"{BASE}/api/enforcement/deployments/m1").mock(return_value=httpx.Response(
+        422, json={"error": "bad", "code": "jev_effect_unsupported"}))
+    other = json.loads(runner.invoke(app, ["--json", "fleet", "deploy", "m1", "--add", "secrets", "--yes"]).stdout)
+    assert "hint" not in other
+
+
 def _fleet_routes(current_policies, jev_mode=None, errors=None):
     machine = {"machineId": "m1", "deployment": 5, "appliedDeployment": 5, "deployed": True}
     if errors is not None:

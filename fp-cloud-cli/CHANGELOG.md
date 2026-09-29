@@ -38,6 +38,10 @@
   (`events:add` + `policies:pull` + `jev:evaluate`), for an enrolled machine using Jev through
   FailproofAI Cloud. `fp keys` also refuses `jev:evaluate` without both prerequisites itself
   (exit 2, naming what is missing) instead of sending the key for the server's 422. (#833)
+- `fp policies list` and `fp policies show` print what a `jev`/`both` version's checks take of a
+  machine's Jev question budget (`jevChars`), and a deploy refused with `jev_budget_exceeded`
+  lists each Jev policy's share, largest first (the `hint` under `--json`), so the refusal says
+  which policy to leave off.
 
 ### Changed
 

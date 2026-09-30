@@ -142,7 +142,8 @@ export interface ResolvedSemanticPolicies {
 }
 
 /** Turn one validated manifest entry into a policy the compiler can use. */
-function toSemanticPolicy(entry: SemanticManifestEntry, pack: { id: string; version?: string }): SemanticPolicy {
+/** Exported for the FailproofAI Cloud Jev parity replay (`__tests__/hooks/cloud-jev-parity.test.ts`). */
+export function toSemanticPolicy(entry: SemanticManifestEntry, pack: { id: string; version?: string }): SemanticPolicy {
   // An unknown precondition name DROPS the policy (the caller catches this),
   // rather than compiling it with no gate at all. Ungating would be the wider
   // direction, not the weaker one, but it is not what the author asked for: a

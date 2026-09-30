@@ -24,7 +24,7 @@
  * result for that call (a `both` policy's regex half stays hard).
  */
 import { MAX_REQUEST_CHARS } from "./compile";
-import { DEFAULT_THRESHOLDS, decide, decideV1, scanTargets } from "./decide";
+import { DEFAULT_THRESHOLDS, decide, decideV1, everyTargetNamed, partlyNamed, scanTargets, type TargetScan } from "./decide";
 import { redactSecrets } from "./envelope";
 import { DEFAULT_JEV_TIMEOUT_MS, prepareSemantic, type PreparedCall, type SemanticOptions, type SemanticOutcome } from "./evaluator";
 import { JevError, readAnswers, type JevTransport } from "./jev-client";
@@ -187,8 +187,7 @@ function secretWords(toolInput: Record<string, unknown>): string[] {
  * - Past {@link MAX_TARGET_SCAN_CHARS}, a prefix of the groups with
  *   `complete: false`: an incomplete scan clears nothing.
  */
-export function cloudTargetScan(toolInput: Record<string, unknown>): CloudJevBlock["targetScan"] {
-  const scan = scanTargets(toolInput);
+export function cloudTargetScan(toolInput: Record<string, unknown>, scan: TargetScan = scanTargets(toolInput)): CloudJevBlock["targetScan"] {
   const secrets = scan.groups.length > 0 ? secretWords(toolInput) : [];
   const hidden = (word: string): boolean =>
     secrets.some((s) => s === word || (word.length >= 8 && s.includes(word)) || (s.length >= 8 && word.includes(s)));
@@ -231,35 +230,85 @@ function cloudFacts(facts: Facts): Facts {
  * - `targetScan`: {@link cloudTargetScan}.
  * - `userSaid`: the human turns the envelope CARRIES, uncut (`prepared.userSaid`,
  *   cleaned in v1), each with secrets redacted by the rules the envelope uses
- *   for everything that leaves the machine (`blunt`). A secret the human typed
- *   is then simply not matchable — stricter, never looser.
+ *   for everything that leaves the machine (`blunt`), and each redaction marker
+ *   then replaced by {@link REDACTED_SAID}, which has no letters: a marker's
+ *   label ("GitHub personal access token", "assigned secret") would otherwise
+ *   NAME a target the human never named.
  * - `agentLastMessage`: the string the envelope SENT (v1), null in v0.
  * - `userSaidCut`, `intentMode`: as the local decider takes them.
  * - `localPolicies`: the names of this call's own per-policy question groups.
+ *
+ * Redaction changes the words Cloud's target checks compare, and a substring
+ * check can flip either way (a hidden target word no longer matches; a hidden
+ * human word no longer names one). So the checks Cloud runs on the block are
+ * run here on both the block and the unredacted data ({@link namingReadings});
+ * where they differ, the scan is sent `complete: false`, which withholds every
+ * clear and every softening of an overridable check — Cloud is then stricter
+ * than the local decider, never laxer.
  */
 export function buildCloudBlock(prepared: PreparedCall, input: SemanticInput, machineId: string): CloudJevBlock {
+  const scan = scanTargets(input.toolInput);
   const block: CloudJevBlock = {
     v: CLOUD_BLOCK_VERSION,
     machineId,
     intentMode: prepared.intent,
     facts: cloudFacts(prepared.facts),
-    targetScan: cloudTargetScan(input.toolInput),
-    userSaid: prepared.userSaid.map((turn) => redactSecrets(turn, { blunt: true }).text),
+    targetScan: cloudTargetScan(input.toolInput, scan),
+    userSaid: prepared.userSaid.map((turn) => redactSecrets(turn, { blunt: true }).text.replace(REDACTION_MARKER, REDACTED_SAID)),
     agentLastMessage: prepared.agentLastMessage,
     userSaidCut: prepared.userSaidCut,
     localPolicies: prepared.selected.map((p) => p.name),
   };
   // Bounded by the caps above in practice; this is the floor under them. The
-  // human's turns go first (no consent can be read, which clears nothing),
-  // then the target scan (incomplete, which clears nothing either).
+  // human's turns go first, then the target scan; each time the scan is marked
+  // incomplete, which clears nothing. `[""]`, not `[]`: it names nothing, but
+  // it still says a human spoke, so Cloud's beyond-the-task flag (which needs
+  // one) is not switched off by the size of the call.
   if (blockBytes(block) > MAX_CLOUD_BLOCK_BYTES) {
-    block.userSaid = [];
+    block.userSaid = prepared.userSaid.length > 0 ? [""] : [];
     block.userSaidCut = false;
+    block.targetScan = { ...block.targetScan, complete: false };
   }
   if (blockBytes(block) > MAX_CLOUD_BLOCK_BYTES) {
     block.targetScan = { groups: [], complete: false };
   }
+  if (
+    block.targetScan.complete &&
+    namingReadings(block.intentMode, scan.groups, prepared.userSaid, prepared.agentLastMessage) !==
+      namingReadings(
+        block.intentMode,
+        block.targetScan.groups.map((g) => new Set(g)),
+        block.userSaid,
+        block.agentLastMessage,
+      )
+  ) {
+    block.targetScan = { ...block.targetScan, complete: false };
+  }
   return block;
+}
+
+/** A redaction marker (`<redacted:label>`, `redact.ts`) in the human's words. */
+const REDACTION_MARKER = /<redacted:[^>]*>/g;
+
+/** What a redaction marker in `userSaid` becomes: no letters, so it names no target. */
+export const REDACTED_SAID = "\u0000";
+
+/**
+ * Everything Cloud's port of `decide` / `decideV1` reads from the target groups
+ * and the human's words, as one comparable string: the group count, whether a
+ * human spoke, `everyTargetNamed`, and (v1) `partlyNamed` — over the human's
+ * words plus, in v1, the agent message they replied to, exactly as the deciders
+ * build their evidence.
+ */
+function namingReadings(
+  intent: IntentMode,
+  groups: Set<string>[],
+  userSaid: ReadonlyArray<string>,
+  agentLastMessage: string | null,
+): string {
+  const scan: TargetScan = { targets: new Set(), groups, complete: true };
+  const said = intent === "v1" && agentLastMessage ? [...userSaid, agentLastMessage] : userSaid;
+  return [groups.length, userSaid.length > 0, everyTargetNamed(scan, said), intent === "v1" && partlyNamed(scan, said)].join();
 }
 
 /** The request sent to FailproofAI Cloud: today's, the global questions always, and the block. */

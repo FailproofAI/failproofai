@@ -587,6 +587,76 @@ describe("C10.3 the cloud block", () => {
     // As many targets as the call names: the secret's group is kept, just unmatchable.
     const { scanTargets } = await import("@/src/hooks/semantic/decide");
     expect(block.targetScan.groups.length).toBe(scanTargets(full.toolInput).groups.length);
+    // The human's redacted secret is a letter-free placeholder, not a marker whose label could name a target.
+    const { REDACTED_SAID } = await import("@/src/hooks/semantic/cloud-jev");
+    expect(block.userSaid[0]).toContain(REDACTED_SAID);
+    expect(block.userSaid.join("\n")).not.toMatch(/redacted/i);
+  });
+
+  // Review M1: the local decider reads the UNREDACTED turns and scan; Cloud reads the
+  // block. A substring check over redacted words can flip either way, so wherever Cloud's
+  // target checks would read the block differently, the scan goes incomplete (no clear, no
+  // softening): Cloud is then never laxer than the machine's own decider would be.
+  describe("redaction never makes Cloud's target checks laxer (review M1)", () => {
+    const ghp = ["ghp", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"].join("_");
+    async function readings(intent: "v0" | "v1", groups: Iterable<Iterable<string>>, said: string[], agent: string | null) {
+      const { everyTargetNamed, partlyNamed } = await import("@/src/hooks/semantic/decide");
+      const scan = { targets: new Set<string>(), groups: [...groups].map((g) => new Set(g)), complete: true };
+      const evidence = intent === "v1" && agent ? [...said, agent] : said;
+      // v0's decide reads no partlyNamed; v1's reads both, over the human's words plus the agent message.
+      return { every: everyTargetNamed(scan, evidence), partly: intent === "v1" && partlyNamed(scan, evidence) };
+    }
+    async function both(command: string, said: string[], intent: "v0" | "v1" = "v1") {
+      const { buildCloudBlock } = await import("@/src/hooks/semantic/cloud-jev");
+      const { scanTargets } = await import("@/src/hooks/semantic/decide");
+      const { full, prep } = await prepared({ toolInput: { command }, userSaid: said }, intent);
+      const block = buildCloudBlock(prep, full, MACHINE);
+      const local = await readings(intent, scanTargets(full.toolInput).groups, prep.userSaid, prep.agentLastMessage);
+      const cloud = await readings(intent, block.targetScan.groups, block.userSaid, block.agentLastMessage);
+      return { block, local, cloud };
+    }
+
+    it.each([
+      // The reviewer's four probe rows (c10-review.md M1).
+      ["a marker's label names the target", "rm -rf ~/.config/github", `here is my key ${ghp}, now clean up the old cache`],
+      ["a password prompt names ./secret", "rm -rf ./secret", "run it with --password hunter2 and then tidy up"],
+      ["a secret-shaped target hides the partly-named guard", `rm -rf ./${ghp} ./important`, `remove the ${ghp} folder`],
+      ["a token both typed and passed", "git push --token abc123 origin release-v2", "push release-v2 using --token abc123 please"],
+    ])("%s: Cloud reads the block as the machine reads the call, or the scan is incomplete", async (_why, command, said) => {
+      for (const intent of ["v0", "v1"] as const) {
+        const { block, local, cloud } = await both(command, [said], intent);
+        if (block.targetScan.complete) expect(cloud, intent).toEqual(local);
+        // A clear Cloud could give on the block that the machine would not give on the call never goes out whole.
+        expect(block.targetScan.complete && cloud.every && !local.every, intent).toBe(false);
+      }
+    });
+
+    it("`rm -rf ./secret` after a password prompt: the marker no longer names the target", async () => {
+      const { block, local, cloud } = await both("rm -rf ./secret", ["run it with --password hunter2 and then tidy up"]);
+      expect(local.every).toBe(false);
+      // Before the fix the marker `<redacted:assigned secret>` named `secret` for Cloud alone.
+      expect(cloud.every).toBe(false);
+      expect(block.userSaid[0]).not.toContain("secret");
+      expect(block.targetScan.complete).toBe(true);
+    });
+
+    it("a secret-shaped target that hid the partly-named guard sends the scan incomplete", async () => {
+      const { block, local, cloud } = await both(`rm -rf ./${ghp} ./important`, [`remove the ${ghp} folder`]);
+      // The machine sees the human draw a line (one of two targets named); Cloud's copy cannot.
+      expect(local.partly).toBe(true);
+      expect(cloud.partly).toBe(false);
+      expect(block.targetScan.complete).toBe(false);
+      // The groups themselves still go, as many as the call names.
+      expect(block.targetScan.groups).toHaveLength(2);
+      expect(JSON.stringify(block)).not.toContain(ghp);
+    });
+
+    it("no secret anywhere: the scan stays complete and the words go as they are", async () => {
+      const { block, local, cloud } = await both("rm -rf build/ ~/important", ["clean the build"]);
+      expect(block.targetScan).toEqual({ groups: [["build"], ["important"]], complete: true });
+      expect(cloud).toEqual(local);
+      expect(local).toEqual({ every: false, partly: true });
+    });
   });
 
   it("the block never passes Cloud's size cap, counted in UTF-8 bytes: the human's turns go first", async () => {
@@ -597,8 +667,12 @@ describe("C10.3 the cloud block", () => {
     expect(JSON.stringify(padded.userSaid).length).toBeLessThan(MAX_CLOUD_BLOCK_BYTES);
     const block = buildCloudBlock(padded, full, MACHINE);
     expect(Buffer.byteLength(JSON.stringify(block), "utf8")).toBeLessThanOrEqual(MAX_CLOUD_BLOCK_BYTES);
-    expect(block.userSaid).toEqual([]);
+    // Review M1: `[""]` names nothing but still says a human spoke, so Cloud's
+    // beyond-the-task flag is not switched off by the call's size; and with the
+    // words gone the scan is incomplete, so nothing is cleared on them.
+    expect(block.userSaid).toEqual([""]);
     expect(block.userSaidCut).toBe(false);
+    expect(block.targetScan.complete).toBe(false);
     // A block that fits is left whole.
     const fits = buildCloudBlock({ ...prep, userSaid: ["clean the build"] }, full, MACHINE);
     expect(fits.userSaid).toEqual(["clean the build"]);

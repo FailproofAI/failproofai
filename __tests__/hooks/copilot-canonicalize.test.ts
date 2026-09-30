@@ -66,3 +66,17 @@ describe("Copilot tool-input canonicalization (verified 1.0.71 captures)", () =>
     expect(Object.keys(COPILOT_TOOL_INPUT_MAP).sort()).toEqual(["Edit", "Read", "Write"]);
   });
 });
+
+describe("Copilot tool-name canonicalization", () => {
+  it("maps `task` to Task so sub-agent policies fire on Copilot sessions", () => {
+    expect(canonicalizeToolName("task", "copilot")).toBe("Task");
+  });
+
+  it("maps `Agent` to Task - the PascalCase PreToolUse payload reports the Claude name", () => {
+    expect(canonicalizeToolName("Agent", "copilot")).toBe("Task");
+  });
+
+  it("maps `web_search` to WebSearch", () => {
+    expect(canonicalizeToolName("web_search", "copilot")).toBe("WebSearch");
+  });
+});

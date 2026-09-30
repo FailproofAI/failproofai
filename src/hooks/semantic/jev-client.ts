@@ -536,6 +536,14 @@ export interface NativeTransportOptions {
   allowUnreported?: boolean;
   /** The base URL came from a connection, not from the person (FailproofAI Cloud). */
   derivedBase?: boolean;
+  /**
+   * FailproofAI Cloud: the reply's `cloud` block (its verdict for the Cloud
+   * checks deployed to this machine, CONTRACT C10.4) is carried through as
+   * `JevResponse.cloud`, unvalidated — `parseCloudReply` in `cloud-jev.ts`
+   * validates it field by field. A reply that carries one may come without
+   * `answers` (Cloud's short-circuit asked nothing), which reads as none.
+   */
+  cloudReply?: boolean;
 }
 
 /**
@@ -545,7 +553,12 @@ export interface NativeTransportOptions {
  */
 function normalizeNative(body: unknown, sentModel: string, opts: NativeTransportOptions): JevResponse {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new JevError("malformed", "Jev returned no object");
-  const b = body as { model?: unknown; answers?: unknown; usage?: unknown; error?: unknown };
+  const b = body as { model?: unknown; answers?: unknown; usage?: unknown; error?: unknown; cloud?: unknown };
+  const cloud = opts.cloudReply && b.cloud !== undefined ? { cloud: b.cloud } : {};
+  if ((typeof b.answers !== "object" || b.answers === null) && "cloud" in cloud && b.error === undefined) {
+    // Cloud's short-circuit: nothing was asked, so there is nothing to answer.
+    return { model: typeof b.model === "string" ? scrubSecret(b.model, opts.apiKey) : "", answers: {}, ...cloud };
+  }
   if (typeof b.answers !== "object" || b.answers === null) {
     // Gateways sometimes report an upstream failure inside a 200.
     if (b.error !== undefined) {
@@ -576,6 +589,7 @@ function normalizeNative(body: unknown, sentModel: string, opts: NativeTransport
     answers: b.answers as JevResponse["answers"],
     ...(usage ? { usage } : {}),
     ...(unverified ? { modelUnverified: true } : {}),
+    ...cloud,
   };
 }
 
@@ -1146,6 +1160,9 @@ export function transportForConfig(input: JevConfig): { transport: JevTransport;
             // `readAnswers` then holds the reported id to the 1.13 family.
             allowUnreported: false,
             derivedBase: true,
+            // Cloud's verdict for its own checks, when the request asked for
+            // it (a `cloud` block, CONTRACT C10.3).
+            cloudReply: true,
           }),
         ),
         via: "failproofai",

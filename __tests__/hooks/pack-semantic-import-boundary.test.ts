@@ -113,18 +113,6 @@ describe("the pack→policy resolver", () => {
     }
     expect(importers).toEqual(["semantic/evaluator.ts"]);
     expect(specifiers(join(HOOKS, "pack-cli.ts")).some((s) => s.includes("semantic/pack-policies"))).toBe(true);
-
-    // The handler names it in exactly one place, and never statically: a
-    // DYNAMIC import that measures the one Jev question budget for FailproofAI
-    // Cloud's report (CONTRACT C9.2), reached only on a machine Cloud has
-    // deployed Jev checks to and has not switched Jev off on. A machine with
-    // no Cloud Jev checks never loads it.
-    const handler = readFileSync(join(HOOKS, "handler.ts"), "utf8");
-    const statics = [...handler.matchAll(/(?:^|\n)\s*(?:import|export)[^;\n]*?from\s*["']([^"'\n]+)["']/g)].map((m) => m[1]);
-    expect(statics.some((s) => s.includes("pack-policies"))).toBe(false);
-    const dynamic = [...handler.matchAll(/\bimport\s*\(\s*["'][^"'\n]*pack-policies["']\s*\)/g)];
-    expect(dynamic).toHaveLength(1);
-    const before = handler.slice(Math.max(0, dynamic[0].index! - 200), dynamic[0].index);
-    expect(before).toMatch(/if \(jev\.sets\.length > 0 && jev\.jevMode !== "off"\) \{\s*const \{ jevBudgetErrors \} = await $/);
+    expect(specifiers(join(HOOKS, "handler.ts")).some((s) => s.includes("pack-policies"))).toBe(false);
   });
 });

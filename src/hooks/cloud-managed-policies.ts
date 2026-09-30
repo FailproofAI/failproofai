@@ -8,15 +8,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir } from "./fp-home";
-import { hookLogWarn } from "./hook-logger";
-import { authorityFieldsOf, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { authorityFieldsOf } from "./policy-authority";
 import type { PolicyAuthority } from "./policy-types";
-// A cycle (pack-manifest imports `resolveManagedPath` from here), and a safe
-// one: neither module touches the other's exports while it is being evaluated,
-// only inside functions. It is the price of the contract's one rule for this
-// file — a Cloud Jev declaration is parsed by THE SAME function a pack manifest's
-// semantic entries are, never by a second parser that could drift from it.
-import { parsePackSemantic, type SemanticManifestEntry } from "./pack-manifest";
 
 /**
  * Active-manifest schema versions this reader accepts.
@@ -156,14 +149,15 @@ export function resolveManagedPath(root: string, candidate: string): string {
  * Stop enforcing cloud-managed policies on this machine.
  *
  * Removes `desired-state.json` FIRST, then `active.json` — the manifest that
- * says which deployment is live — and both error reports. The content-addressed
- * artifacts are left alone: they are large, hash-verified on use, and inert
- * once nothing points at them, so keeping them makes a reconnect cheap.
+ * says which deployment is live — both error reports and the Jev budget record.
+ * The content-addressed artifacts are left alone: they are large, hash-verified
+ * on use, and inert once nothing points at them, so keeping them makes a
+ * reconnect cheap.
  *
  * The snapshot has to go, and before the pointer. It is what the daemon's
  * maintenance lane rebuilds a lost `active.json` from, and it used to be left
- * behind: within one interval of `--disconnect` the old org's JS policies, Jev
- * checks and Jev mode were back, on a machine whose owner had left (the daemon
+ * behind: within one interval of `--disconnect` the old org's JS policies and
+ * Jev mode were back, on a machine whose owner had left (the daemon
  * also refuses to rebuild on a machine that is not enrolled now, so neither
  * half alone decides it).
  *
@@ -181,9 +175,9 @@ export function clearActiveCloudManagedPolicies(): boolean {
   // The snapshot first, so nothing can rebuild the pointer from it in between.
   // The error reports go too: they describe a deployment this machine no
   // longer has, and a reconnect (possibly to another organisation) must not
-  // open by reporting the old one's problems. Cloud Jev policies and the Cloud
-  // Jev mode live IN active.json, so removing it clears them too.
-  for (const name of [DESIRED_STATE_FILE, CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE]) {
+  // open by reporting the old one's problems. The Cloud Jev mode lives IN
+  // active.json, so removing it clears that too.
+  for (const name of [DESIRED_STATE_FILE, CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE, JEV_BUDGET_FILE]) {
     try {
       rmSync(resolve(root, name), { force: true });
     } catch {
@@ -208,20 +202,22 @@ export const DESIRED_STATE_FILE = "desired-state.json";
 export const CLOUD_POLICY_ERRORS_FILE = "errors.json";
 /** The daemon's own reconcile error state (`PolicyStore::daemon_errors_path`). */
 export const DAEMON_POLICY_ERRORS_FILE = "daemon-errors.json";
+/**
+ * Installed packs' Jev checks FailproofAI Cloud dropped from a request for the
+ * question budget, kept for the deployment they happened under so the report
+ * does not flap with each tool call's selection. See `cloud-policy-errors.ts`.
+ */
+export const JEV_BUDGET_FILE = "jev-budget.json";
 
-// ── FailproofAI Cloud Jev policies ───────────────────────────────────────────
+// ── FailproofAI Cloud Jev (CONTRACT C10) ─────────────────────────────────────
 //
-// A Cloud policy of kind `jev` or `both` carries Jev checks: a JSON array of
-// pack-manifest semantic declarations, which the daemon places at
-// `artifacts/<sha>.json` and names in `active.json` `semanticPolicies`. They
-// arrive in the same atomic write as the JS policies, so a `both` policy's
-// regex half and the checks that review it are live together or not at all.
-//
-// Read FAIL-OPEN, per entry, like a pack's semantic entries and unlike the JS
-// reader above: a Jev check is what CLEARS a reviewable regex verdict, so losing
-// one leaves the regex deny standing — noisier, never weaker — and one bad
-// artifact must not take the rest of the deployment's checks with it. Every
-// drop is logged once and returned as an error for `errors.json`.
+// Jev policies, and the Jev half of `both` policies, live ONLY on FailproofAI
+// Cloud: nothing but the MODE reaches this machine. `active.json` carries
+// `jevMode` (`off | observe | enforce`, or absent), and a `both` policy's JS
+// half carries `authority: "reviewable"` with `reviewedBy` = the names of its
+// own Cloud checks. With `observe`/`enforce` the hook path sends every gated
+// tool call to FailproofAI Cloud, which asks the checks deployed to this
+// machine and returns their verdict (`semantic/cloud-jev.ts`).
 
 /** The Jev modes Cloud may set. `local` never reaches a machine (stored NULL). */
 export type CloudJevMode = "off" | "observe" | "enforce";
@@ -235,79 +231,38 @@ export interface CloudPolicyError {
   message: string;
 }
 
-/**
- * One deployed Cloud Jev policy, shaped like a pack so everything that consumes
- * packs' semantic sets — the reviewer set, the question set, the contest, the
- * budget — takes it unchanged.
- */
-export interface CloudSemanticPolicySet {
-  /** `cloud:<id>`: pack-shaped, and never a valid pack id, so the two cannot collide. */
-  id: string;
-  /** Pack-shaped: the Cloud version as a string. */
-  version: string;
-  /**
-   * `cloud:<id>@<version>`. NOT first-party (`isFirstPartyPack` wants
-   * `github:FailproofAI/`), so FailproofAI's sixteen reserved check names are
-   * void here exactly as for any other pack.
-   */
-  source: string;
-  /** Always `enforce`: an observe rollout of Jev is the Jev MODE, not an effect. */
-  effect: "enforce";
-  /** Every agent. */
-  clis: null;
-  semantic: SemanticManifestEntry[];
-  /** The Cloud policy id and version, for attribution and error reports. */
-  policyId: string;
-  policyVersion: number;
-  /** `both` when the same id also deployed a JS half, else `jev`. */
-  kind: "jev" | "both";
-  sha256: string;
-  deployment: number;
-}
-
-export interface CloudJevRead {
-  sets: CloudSemanticPolicySet[];
-  /** Every policy id `semanticPolicies` names, loaded or not — what makes a JS policy `both`. */
-  semanticIds: string[];
-  /** Cloud's Jev mode override, or null when Cloud does not set one. */
+/** What this machine knows about FailproofAI Cloud's Jev: the mode, and nothing else. */
+export interface CloudJevState {
+  /** Cloud's Jev mode, or null when Cloud does not set one (or there is no deployment). */
   jevMode: CloudJevMode | null;
+  /** The deployment `active.json` names, or null without one. */
+  deployment: number | null;
+  /** A `jevMode` this build cannot read, reported rather than guessed at. */
   errors: CloudPolicyError[];
 }
 
-const EMPTY_CLOUD_JEV: CloudJevRead = { sets: [], semanticIds: [], jevMode: null, errors: [] };
-const warnedCloudJev = new Set<string>();
-
-function warnCloudJevOnce(message: string): void {
-  if (warnedCloudJev.has(message)) return;
-  warnedCloudJev.add(message);
-  hookLogWarn(message);
-}
-
-/** Forget which warnings were already said. Tests only. */
-export function _resetCloudJevWarningsForTest(): void {
-  warnedCloudJev.clear();
-}
+const noCloudJev = (): CloudJevState => ({ jevMode: null, deployment: null, errors: [] });
 
 function parseCloudJevMode(raw: unknown): CloudJevMode | null {
   return raw === "off" || raw === "observe" || raw === "enforce" ? raw : null;
 }
 
+/** Whether Cloud's mode sends this machine's gated tool calls to FailproofAI Cloud Jev. */
+export function cloudJevAsks(mode: CloudJevMode | null): mode is "observe" | "enforce" {
+  return mode === "observe" || mode === "enforce";
+}
+
 // ── Read once per change ─────────────────────────────────────────────────────
 //
 // The hook path asks about this deployment several times per event — the JS
-// reader, the Jev reader for the reviewer set, the question resolver, the Jev
-// mode — and the warm worker does that on every tool call of every session. So
-// `active.json` is parsed, and each Jev artifact read, hashed and parsed, once
-// per CHANGE of the file, keyed on its identity and version: device, inode,
-// mode, size, and modification and change times to the nanosecond.
+// reader, the reviewer set, the Jev mode — and the warm worker does that on
+// every tool call of every session. So `active.json` is parsed once per CHANGE
+// of the file, keyed on its identity and version: device, inode, mode, size,
+// and modification and change times to the nanosecond.
 //
-// Sound for these files in particular. The daemon writes both by rename, so a
-// new deployment is a new inode; an artifact is content-addressed, so the
-// right bytes never change; and an edit in place moves the change time, which
-// nothing short of the system clock can set back. A key that still matches is
-// a file that still holds the bytes that were verified — so what the cache
-// serves is always content that passed its digest, and never content that did
-// not (a failed read is not what makes the entry; only the whole read is).
+// Sound for this file in particular. The daemon writes it by rename, so a new
+// deployment is a new inode, and an edit in place moves the change time, which
+// nothing short of the system clock can set back.
 
 /** A file's identity and version, or null when it does not exist. Throws on anything else. */
 function fileVersion(path: string): string | null {
@@ -345,7 +300,6 @@ function readActiveJson(): unknown {
 /** Forget every cached read. Tests only: a test that rewrites a file in place can beat the clock's granularity. */
 export function _resetCloudManagedCachesForTest(): void {
   activeJsonCache = null;
-  cloudJevCache = null;
 }
 
 /** `active.json` as untyped JSON, schema-checked, or null when there is none. Throws on a bad one. */
@@ -361,10 +315,10 @@ function readActiveRaw(): Record<string, unknown> | null {
 }
 
 /**
- * Cloud's Jev mode override from `active.json`, or null — no deployment, no
- * override, or a file that cannot be read (which is then simply not an
- * override: the local `jev.json` decides, as it does on a machine Cloud never
- * touched). Cheap and never throws: `readJevConfig` asks on every gate event.
+ * Cloud's Jev mode from `active.json`, or null — no deployment, no mode, or a
+ * file that cannot be read (which is then simply not a mode: the local
+ * `jev.json` decides, as it does on a machine Cloud never touched). Cheap and
+ * never throws: the hook path asks on every gate event.
  */
 export function readCloudJevMode(): CloudJevMode | null {
   try {
@@ -375,176 +329,135 @@ export function readCloudJevMode(): CloudJevMode | null {
 }
 
 /**
- * The Cloud Jev policies `active.json` names, each artifact read, SHA-256
- * verified and parsed with the pack manifest's own semantic parser. Never
- * throws; see the section note for what a failure costs.
+ * The Cloud Jev state `active.json` carries: the mode, the deployment it came
+ * with, and a report of a mode this build cannot read. Never throws; an
+ * unreadable manifest is reported by the JS reader (and the handler files it),
+ * so it is not reported twice here.
  */
-export function readCloudJevPolicies(): CloudJevRead {
+export function readCloudJevState(): CloudJevState {
   let active: Record<string, unknown> | null;
   try {
     active = readActiveRaw();
   } catch {
-    // The JS reader reports an unreadable manifest itself (and the handler files
-    // it); saying it twice would be one problem reported as two.
-    return EMPTY_CLOUD_JEV;
+    return noCloudJev();
   }
-  if (!active) return EMPTY_CLOUD_JEV;
-
-  // Once per change of `active.json` or of any artifact it names (see "Read
-  // once per change" above). The key costs one stat per artifact; a miss costs
-  // the read, the digest and the parse the key exists to skip.
-  let key: string | null = null;
-  try {
-    key = cloudJevCacheKey(active);
-  } catch {
-    key = null; // A stat that failed for a reason other than absence: read uncached.
-  }
-  if (key !== null && cloudJevCache?.key === key) return cloudJevCache.value;
-  const value = computeCloudJevPolicies(active);
-  cloudJevCache = key === null ? null : { key, value };
-  return value;
-}
-
-let cloudJevCache: { key: string; value: CloudJevRead } | null = null;
-
-/**
- * The Jev checks a `both` policy's `reviewedBy` may name on this machine: the
- * ones ITS OWN Jev half declares and this machine loaded (CONTRACT C9.4) — or
- * null for a Cloud JS policy with no Jev half deployed, whose `reviewedBy` the
- * machine-wide reviewer set judges as it always has.
- *
- * The server derives a `both` policy's `reviewedBy` from its own declarations,
- * so this is exactly the set it meant. Anything outside it is refused even when
- * some other source offers a check of that name — in particular an installed
- * pack, whose same-named check is shadowed while the Cloud half loads (Cloud
- * wins a clash) and used to step in the moment it did not: a digest mismatch, a
- * declaration the parser dropped, and the org's regex deny could be cleared by
- * a question the org never wrote. A reserved name is never in the set (a Cloud
- * source is never first-party, so its claim to one is void).
- *
- * "Has a Jev half" is read off `semanticIds` — what the deployment NAMES,
- * loaded or not — which is exactly what keeps a failed half bound.
- */
-export function cloudOwnCheckNames(
-  read: Pick<CloudJevRead, "sets" | "semanticIds">,
-  policyId: string,
-): ReadonlySet<string> | null {
-  if (!read.semanticIds.includes(policyId)) return null;
-  const own = new Set<string>();
-  for (const set of read.sets) {
-    if (set.policyId !== policyId) continue;
-    for (const entry of set.semantic) if (!SEMANTIC_REVIEWER_NAMES.has(entry.name)) own.add(entry.name);
-  }
-  return own;
-}
-
-function cloudJevCacheKey(active: Record<string, unknown>): string {
-  const root = cloudManagedPolicyRoot();
-  const parts = [root, activeJsonCache?.version ?? "?"];
-  // `activeJsonCache` is what `active` came from; a mismatch means it was read
-  // some other way, and then nothing is cached.
-  if (activeJsonCache?.value !== active) throw new Error("uncached manifest");
-  if (Array.isArray(active.semanticPolicies)) {
-    for (const entry of active.semanticPolicies) {
-      const path = entry && typeof entry === "object" ? (entry as { path?: unknown }).path : undefined;
-      if (typeof path !== "string" || path === "" || isAbsolute(path)) {
-        parts.push("!");
-        continue;
-      }
-      parts.push(path, fileVersion(resolve(root, path)) ?? "-");
-    }
-  }
-  return parts.join("\u0000");
-}
-
-function computeCloudJevPolicies(active: Record<string, unknown>): CloudJevRead {
-  const errors: CloudPolicyError[] = [];
+  if (!active) return noCloudJev();
   const rawMode = active.jevMode;
   const jevMode = parseCloudJevMode(rawMode);
+  const errors: CloudPolicyError[] = [];
   if (rawMode !== undefined && rawMode !== null && jevMode === null) {
     // The daemon refuses such a state, so this is a hand-edited or foreign file.
     errors.push({ id: "jevMode", version: null, kind: "daemon", message: `unknown Jev mode ${JSON.stringify(rawMode)} ignored` });
   }
-  const deployment = typeof active.deployment === "number" ? active.deployment : 0;
-  const jsIds = new Set(
-    Array.isArray(active.policies)
-      ? active.policies.flatMap((p) => (p && typeof p === "object" && typeof (p as { id?: unknown }).id === "string" ? [(p as { id: string }).id] : []))
-      : [],
-  );
-  const entries = active.semanticPolicies;
-  if (entries === undefined) return { sets: [], semanticIds: [], jevMode, errors };
-  if (!Array.isArray(entries)) {
-    errors.push({ id: "semanticPolicies", version: null, kind: "daemon", message: "active manifest semanticPolicies is not an array" });
-    return { sets: [], semanticIds: [], jevMode, errors };
-  }
-  const semanticIds = entries.flatMap((e) =>
-    e && typeof e === "object" && typeof (e as { id?: unknown }).id === "string" ? [(e as { id: string }).id] : [],
-  );
+  const deployment = Number.isSafeInteger(active.deployment) ? (active.deployment as number) : null;
+  return { jevMode, deployment, errors };
+}
 
-  const root = cloudManagedPolicyRoot();
-  const sets: CloudSemanticPolicySet[] = [];
-  const seen = new Set<string>();
-  for (const value of entries) {
-    const entry = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-    const id = typeof entry.id === "string" ? entry.id : String(entry.id);
-    const version = Number.isSafeInteger(entry.version) && (entry.version as number) >= 0 ? (entry.version as number) : null;
-    const kind: "jev" | "both" = jsIds.has(id) ? "both" : "jev";
-    const fail = (message: string): void => {
-      warnCloudJevOnce(`FailproofAI Cloud Jev policy ${id}${version === null ? "" : `@${version}`}: ${message}`);
-      errors.push({ id, version, kind, message });
-    };
-    try {
-      if (!POLICY_ID_RE.test(id) || id === "." || id === "..") throw new Error(`unsafe policy id ${JSON.stringify(entry.id)}`);
-      if (version === null) throw new Error("invalid version");
-      if (typeof entry.sha256 !== "string" || !SHA256_RE.test(entry.sha256)) throw new Error("invalid SHA-256");
-      if (seen.has(id)) throw new Error("duplicate semantic policy id");
-      seen.add(id);
-      const path = resolveManagedPath(root, typeof entry.path === "string" ? entry.path : "");
-      const bytes = readFileSync(path);
-      const actual = createHash("sha256").update(bytes).digest("hex");
-      if (actual !== entry.sha256) {
-        throw new Error(`failed integrity verification: expected ${entry.sha256}, got ${actual}`);
-      }
-      let declarations: unknown;
-      try {
-        declarations = JSON.parse(bytes.toString("utf8"));
-      } catch (err) {
-        throw new Error(`artifact is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      if (!Array.isArray(declarations)) throw new Error("artifact is not a JSON array of Jev declarations");
+// ── `both` policies: reviewed by their OWN Cloud checks ─────────────────────
 
-      const source = `cloud:${id}@${version}`;
-      const dropped: string[] = [];
-      // THE manifest parser: the same per-entry rules, the same 24-entry cap and
-      // the same duplicate-name refusal a pack's `semantic` gets.
-      const semantic = parsePackSemantic(source, declarations, dropped);
-      for (const reason of dropped) fail(`declaration dropped: ${reason}`);
-      for (const decl of semantic) {
-        // Kept (the unchanged reserved-name rule voids it downstream, exactly as
-        // for any pack that is not FailproofAI's) and reported, so the org sees
-        // why a check it deployed is never asked.
-        if (SEMANTIC_REVIEWER_NAMES.has(decl.name)) {
-          fail(`${decl.name} is a name reserved for FailproofAI's own Jev checks, so it is never asked here`);
-        }
-      }
-      sets.push({
-        id: `cloud:${id}`,
-        version: String(version),
-        source,
-        effect: "enforce",
-        clis: null,
-        semantic,
-        policyId: id,
-        policyVersion: version,
-        kind,
-        sha256: entry.sha256,
-        deployment,
-      });
-    } catch (err) {
-      fail(`not loaded: ${err instanceof Error ? err.message : String(err)}`);
-    }
+/**
+ * The reviewer name a FailproofAI Cloud policy's `reviewedBy` entry stands for
+ * on this machine: `cloud:<policyId>/<name>`. Pack check names cannot contain
+ * `:` or `/`, so this can never be a pack's check — and the Cloud review files
+ * a Cloud check's outcome under the same key (`toReview`, `jev-review.ts`),
+ * built from the outcome's own `origin.cloudPolicyId`. So a `both` policy's
+ * verdict can be cleared by exactly that policy's Cloud checks and nothing
+ * else: never by an installed pack's check of the same name (CONTRACT C10.5,
+ * C9.4), never by another Cloud policy's.
+ */
+export function cloudReviewerName(policyId: string, name: string): string {
+  return `cloud:${policyId}/${name}`;
+}
+
+/** The authority fields of one Cloud JS assignment, as `active.json` carries them. */
+export interface CloudAuthorityInput {
+  id: string;
+  effect?: PolicyEffect;
+  authority?: PolicyAuthority;
+  reviewedBy?: string[];
+}
+
+/** A name {@link cloudReviewerName} already made (a Jev check name can contain neither `:` nor `/`). */
+const CLOUD_REVIEWER_RE = /^cloud:[^/]+\/./;
+
+/**
+ * The authority a Cloud JS policy registers with on this machine:
+ *
+ * - declared `hard` (or nothing): as declared;
+ * - an `observe` assignment: `hard`, silently. FailproofAI Cloud does not ask
+ *   an observe `both` policy's Jev half (C9.3), and an observe policy blocks
+ *   nothing anyway;
+ * - Cloud's Jev mode is not `observe`/`enforce`: `hard`, silently. Nothing on
+ *   this machine can ask a Cloud check, and that is the org's own choice, so
+ *   it is not a warning;
+ * - otherwise `reviewable`, by its `reviewedBy` names as {@link cloudReviewerName}s
+ *   (a name already translated is kept, so applying this twice is harmless).
+ *
+ * Pure. The handler applies it to every assignment BEFORE the loader merges
+ * two assignments that share one artifact — so each name keeps the policy it
+ * came from — and the reviewer set (`effective-reviewers.ts`) and the
+ * reviewability survey use it too, so none of them can disagree.
+ */
+export function cloudAuthorityDeclaration(
+  policy: CloudAuthorityInput,
+  mode: CloudJevMode | null,
+): { authority?: PolicyAuthority; reviewedBy?: string[] } {
+  if (policy.authority !== "reviewable") return policy.authority ? { authority: policy.authority } : {};
+  if (policy.effect === "observe" || !cloudJevAsks(mode)) return { authority: "hard" };
+  return {
+    authority: "reviewable",
+    reviewedBy: (policy.reviewedBy ?? []).map((n) => (CLOUD_REVIEWER_RE.test(n) ? n : cloudReviewerName(policy.id, n))),
+  };
+}
+
+/**
+ * A Cloud JS assignment as this machine registers it: its `authority` and
+ * `reviewedBy` replaced by {@link cloudAuthorityDeclaration}'s. Pure.
+ */
+export function withCloudAuthority<T extends CloudAuthorityInput>(policy: T, mode: CloudJevMode | null): T {
+  const { authority: _authority, reviewedBy: _reviewedBy, ...rest } = policy;
+  void _authority;
+  void _reviewedBy;
+  return { ...rest, ...cloudAuthorityDeclaration(policy, mode) } as T;
+}
+
+/**
+ * Every reviewer name the deployment's `both` policies may be cleared by on
+ * this machine — empty unless Cloud's Jev mode asks. Pure.
+ */
+export function cloudReviewerNames(policies: ReadonlyArray<CloudAuthorityInput>, mode: CloudJevMode | null): string[] {
+  const out: string[] = [];
+  for (const policy of policies) {
+    const declared = cloudAuthorityDeclaration(policy, mode);
+    if (declared.authority === "reviewable") out.push(...(declared.reviewedBy ?? []));
   }
-  return { sets, semanticIds, jevMode, errors };
+  return out;
+}
+
+/**
+ * The Cloud JS assignments' authority fields, read off the cached `active.json`
+ * parse — no artifact is read or hashed, so this is cheap enough for the
+ * reviewer set, which is rebuilt on every event. Never throws: an unreadable
+ * manifest has no assignments here (the JS reader reports it).
+ */
+export function readCloudAuthorityInputs(): CloudAuthorityInput[] {
+  try {
+    const raw = readActiveJson();
+    if (raw === undefined) return [];
+    return parseManifest(raw).policies.flatMap((policy) =>
+      typeof policy.id === "string"
+        ? [
+            {
+              id: policy.id,
+              effect: policy.effect === "observe" ? "observe" : "enforce",
+              ...authorityFieldsOf(policy as unknown as Record<string, unknown>),
+            } satisfies CloudAuthorityInput,
+          ]
+        : [],
+    );
+  } catch {
+    return [];
+  }
 }
 
 export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {

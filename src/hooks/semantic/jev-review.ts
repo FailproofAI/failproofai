@@ -7,6 +7,13 @@
  * `jev.json` never loads the semantic evaluator at all, and its hook path is
  * exactly what it was before two tiers existed.
  *
+ * Or once FailproofAI Cloud sets this machine's Jev mode to `observe` or
+ * `enforce` (CONTRACT C10): then the call goes to FailproofAI Cloud on the
+ * Cloud Jev credential (`JevCallContext.cloud`), Cloud decides the checks it
+ * deployed here, and `evaluateCloudSemantic` merges that verdict with the
+ * machine's own. Cloud's outcomes are filed as their policy's OWN reviewers
+ * (`reviewerKey`), so a `both` policy is cleared by its Cloud checks alone.
+ *
  * Everything the request needs comes through the §7 contracts:
  * `transportForConfig` (T1) for the provider, `throttleTransport` (T5) for the
  * cache and rate limit (scoped to the config's provider, endpoint and model;
@@ -44,17 +51,20 @@
  * it distinguishes, which is what `toReview` below does.
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
+import { cloudReviewerName } from "../cloud-managed-policies";
+import { recordJevBudgetDrops } from "../cloud-policy-errors";
 import { normalizePolicyName } from "../policy-registry";
 import { effectiveAuthority, type PolicyAuthority, type RegisteredPolicy } from "../policy-types";
 import type { JevMode, JevReview, TwoTierReview } from "./combine";
 import { DEFAULT_THRESHOLDS_V1 } from "./decide";
+import { evaluateCloudSemantic, type CloudSemanticOutcome } from "./cloud-jev";
 import { DEFAULT_JEV_TIMEOUT_MS, appendVerdictLog, evaluateSemantic, verdictLogRow, type SemanticOutcome } from "./evaluator";
 import * as intentStore from "./intent";
 import { JevError, transportForConfig, type JevTransport } from "./jev-client";
 import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
 import * as jevThrottle from "./jev-throttle";
 import { sessionProjectRoot } from "./session-root";
-import type { SemanticInput } from "./types";
+import type { PolicyOutcome, SemanticInput } from "./types";
 
 /**
  * T5's throttle as this file calls it. §7 declares only
@@ -149,6 +159,12 @@ export interface JevCallContext {
   permissionMode?: string;
   sessionId?: string;
   cli: string;
+  /**
+   * Set when FailproofAI Cloud's Jev mode asks (CONTRACT C10.2): the call goes
+   * to Cloud with this machine's id, and the deployment it was made under
+   * scopes the answer cache (a new deployment can change Cloud's checks).
+   */
+  cloud?: { machineId: string; deployment: number | null; mode: "observe" | "enforce" };
 }
 
 export function resolveMode(cfg: JevConfig): JevMode {
@@ -175,6 +191,19 @@ export function resolveTimeout(cfg: JevConfig): number {
   const t = cfg.timeoutMs;
   if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return DEFAULT_JEV_TIMEOUT_MS;
   return Math.min(MAX_JEV_TIMEOUT_MS, Math.max(MIN_JEV_TIMEOUT_MS, t));
+}
+
+/**
+ * The reviewer an outcome answers for: a FailproofAI Cloud check's is
+ * `cloud:<policyId>/<name>` (its outcome's own `origin.cloudPolicyId`, carried
+ * pack-shaped as `cloud:<id>`), which is what a Cloud `both` policy registers
+ * its `reviewedBy` as — so only that policy's own Cloud outcomes can clear it,
+ * and a Cloud outcome never clears an installed pack's policy (CONTRACT C10.5).
+ * An installed pack's check is its plain name, as it always was.
+ */
+export function reviewerKey(o: Pick<PolicyOutcome, "policy" | "origin">): string {
+  const packId = o.origin?.packId;
+  return packId !== undefined && packId.startsWith("cloud:") ? cloudReviewerName(packId.slice("cloud:".length), o.policy) : o.policy;
 }
 
 /** The semantic policy an attributable Jev verdict is filed under. */
@@ -232,11 +261,11 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     // Every selected policy's questions were in the request, and `readAnswers`
     // refuses a response missing any of them — so selected == asked, and only
     // when a request was actually made.
-    asked: sent ? outcomes.map((o) => o.policy) : [],
+    asked: sent ? outcomes.map(reviewerKey) : [],
     // `none` found nothing, `overridden` is what the human asked for, and a
     // deny the human's task softened to a warning is that task's consent — all
     // three clear. A `deny`, or a warning nobody consented to, keeps the block.
-    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny" && !warned(o)).map((o) => o.policy) : [],
+    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny" && !warned(o)).map(reviewerKey) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
     // A check that CAN deny warned without consent: nothing may be cleared on
@@ -297,7 +326,12 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   let throttled: JevTransport;
   try {
     route = transportForConfig(cfg);
-    throttled = throttle.throttleTransport(route.transport, { scope: throttleScope(cfg, route) });
+    // A Cloud answer also depends on what Cloud deployed to this machine, which
+    // the request does not show: a new deployment is a new cache scope.
+    const scope = call.cloud
+      ? `${throttleScope(cfg, route)}\u0000cloud\u0000${call.cloud.machineId}\u0000${call.cloud.deployment ?? "-"}`
+      : throttleScope(cfg, route);
+    throttled = throttle.throttleTransport(route.transport, { scope });
   } catch (err) {
     const reason = err instanceof JevError ? err.code : "config";
     return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null }));
@@ -335,21 +369,36 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   const timeoutMs = resolveTimeout(cfg);
   /** Set once the backstop below gave up on the answer: a late one is logged, never applied. */
   let abandoned = false;
-  const answered = evaluateSemantic(input, {
+  const options = {
     transport,
     cli: call.cli,
     via: route.via,
     model: route.model,
     timeoutMs,
-    intent: "v1",
+    intent: "v1" as const,
     v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
     signal: controller.signal,
     // No `contextTruncated`: nothing reports a store cut out of band, so the
     // evaluator's own (narrower) guess stands. See `IntentStore` above.
-  })
+  };
+  const cloud = call.cloud;
+  const evaluated: Promise<SemanticOutcome | CloudSemanticOutcome> = cloud
+    ? evaluateCloudSemantic(input, { ...options, machineId: cloud.machineId })
+    : evaluateSemantic(input, options);
+  const answered = evaluated
     .then((outcome): JevReview => {
       const hit = cached && outcome.status === "ok";
       const review = toReview(outcome, hit);
+      // The machine's own pack checks Cloud dropped from this request
+      // (CONTRACT C10.5), reported for the deployment it happened under. Only
+      // from an answer that arrived in time: one the backstop abandoned is not
+      // applied, and neither is anything it said.
+      if (cloud && !abandoned && outcome.status === "ok" && "cloud" in outcome && outcome.cloud.droppedLocal.length > 0) {
+        recordJevBudgetDrops(
+          { machineId: cloud.machineId, deployment: cloud.deployment, jevMode: cloud.mode },
+          outcome.cloud.droppedLocal.map((d) => ({ packId: d.packId ?? "unknown", name: d.name })),
+        );
+      }
       // An aborted request has nothing worth replaying; everything else goes
       // to the local verdict log (never shipped), so any verdict can be
       // re-derived offline from its recorded probabilities. A cache hit is
@@ -361,7 +410,8 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
           eventType: call.eventType,
           applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "observe" ? "observe" : "two-tier",
         });
-        appendVerdictLog(hit ? { ...row, cached: true } : row);
+        const withCloud = outcome.status === "ok" && "cloud" in outcome ? { ...row, cloud: outcome.cloud } : row;
+        appendVerdictLog(hit ? { ...withCloud, cached: true } : withCloud);
       }
       return review;
     })

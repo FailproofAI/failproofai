@@ -55,14 +55,19 @@
  * - **A session pause.** It suspends local policy for minutes, and a warning
  *   about a policy set that is coming back shortly would be noise.
  */
-import { cloudOwnCheckNames, readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
-import { jevPacks, withCloudSemantic } from "./effective-reviewers";
+import {
+  cloudAuthorityDeclaration,
+  cloudReviewerNames,
+  readActiveCloudManagedPolicies,
+  readCloudJevMode,
+} from "./cloud-managed-policies";
+import { jevPacks } from "./effective-reviewers";
 import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { customPoliciesDir } from "./fp-home";
 import { configuredCustomPolicyPaths, findProjectConfigDir, readMergedHooksConfig } from "./hooks-config";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
-import { bindReviewedBy, resolvePolicyAuthority } from "./policy-authority";
+import { resolvePolicyAuthority } from "./policy-authority";
 import { POLICY_CATALOG } from "./policy-catalog";
 import { normalizePolicyName } from "./policy-registry";
 import type { HooksConfig } from "./policy-types";
@@ -180,9 +185,7 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // contested name AND minus a check the question budget drops — which the
     // hook path's manifest-only `reviewerNamesFor` cannot see. Anything else and
     // the panel and `jev status` promise a clear that cannot happen.
-    // FailproofAI Cloud Jev policies take part exactly as the hook path takes
-    // them (`resolveSemanticPolicies`), Cloud winning a name clash.
-    const asked = semanticPoliciesFromPacks(withCloudSemantic(jevPacks(packs), readCloudJevPolicies().sets).sources);
+    const asked = semanticPoliciesFromPacks(jevPacks(packs));
     reviewers = new Set(asked.policies.map((p) => p.name));
   } catch {
     // An unreadable manifest enforces nothing and gives Jev nothing to ask;
@@ -204,18 +207,15 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   }
 
   try {
-    // A `both` policy is bound to its own Jev half, exactly as registration
-    // binds it (CONTRACT C9.4): a pack's same-named check never makes it
-    // reviewable. So is an `observe` one whose half the server withheld
-    // (C9.3) — to no checks, so it is hard, as `handler.ts` registers it
-    // (review F2). One with no Jev half is judged as it always was.
-    const cloudJev = readCloudJevPolicies();
-    for (const assignment of readActiveCloudManagedPolicies()) {
-      const declared = { authority: assignment.authority, reviewedBy: assignment.reviewedBy };
-      const own = cloudOwnCheckNames(cloudJev, assignment.id);
-      const withheld = own === null && assignment.effect === "observe" && declared.authority === "reviewable";
-      records.push(withheld ? { authority: "hard" } : own ? bindReviewedBy(declared, own).declaration : declared);
-    }
+    // Exactly as `handler.ts` registers them: a `both` policy is reviewable
+    // only while FailproofAI Cloud's Jev mode asks, and then only by its own
+    // Cloud checks (`cloud:<id>/<name>`), which this machine cannot list but
+    // Cloud answers for. No mode, `off`, or an `observe` assignment: hard.
+    const mode = readCloudJevMode();
+    const assignments = readActiveCloudManagedPolicies();
+    const cloudReviewers = cloudReviewerNames(assignments, mode);
+    if (cloudReviewers.length > 0) reviewers = new Set([...(reviewers ?? []), ...cloudReviewers]);
+    for (const assignment of assignments) records.push(cloudAuthorityDeclaration(assignment, mode));
   } catch {
     // Same fail-open as the handler's own read of this file.
   }
@@ -236,7 +236,12 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records, reviewers), customFiles, jevChecks: reviewers?.size ?? 0 };
+  return {
+    ...countReviewable(records, reviewers),
+    customFiles,
+    // The checks THIS machine asks; a Cloud policy's checks are FailproofAI Cloud's.
+    jevChecks: reviewers ? [...reviewers].filter((name) => !name.startsWith("cloud:")).length : 0,
+  };
 }
 
 /**

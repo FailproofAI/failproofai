@@ -21,6 +21,12 @@ export interface JevRequest {
   model: string;
   state: Record<string, unknown>;
   questions: Record<string, NoulQuestion>;
+  /**
+   * FailproofAI Cloud only: the tool-call metadata Cloud decides this
+   * machine's deployed Jev checks on (CONTRACT C10.3, `cloud-jev.ts`). Cloud
+   * strips it before anything reaches TypeSafe.
+   */
+  cloud?: Record<string, unknown>;
 }
 
 export interface JevNoulAnswer {
@@ -34,6 +40,8 @@ export interface JevResponse {
   usage?: { input_tokens?: number; output_tokens?: number };
   /** Set when the provider did not report which Jev version answered (Cloudflare's unversioned alias). */
   modelUnverified?: boolean;
+  /** FailproofAI Cloud only: its verdict for this machine's Cloud checks, unvalidated (`parseCloudReply`). */
+  cloud?: unknown;
 }
 
 /** A yes/no probe. A policy fires only when every one of its probes holds. */

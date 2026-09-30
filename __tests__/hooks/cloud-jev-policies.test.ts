@@ -1,24 +1,23 @@
 // @vitest-environment node
 /**
- * FailproofAI Cloud Jev / regex / both policies on the machine (CONTRACT C6).
+ * FailproofAI Cloud Jev on the machine, as CONTRACT C10 has it: Jev policies,
+ * and the Jev half of `both` policies, live ONLY on FailproofAI Cloud. The
+ * machine holds the Cloud Jev MODE (`active.json` `jevMode`) and a `both`
+ * policy's JS half with `authority`/`reviewedBy`, and nothing else Jev-related.
+ * What is pinned here:
  *
- * The daemon places each `jev`/`both` policy's declarations at
- * `artifacts/<sha>.json` and names them in `active.json` `semanticPolicies`,
- * with an optional `jevMode`. What is pinned here:
- *
- *   - the loader verifies each artifact's digest and parses it with THE pack
- *     manifest's own semantic parser (the shared contract fixtures: every valid
- *     one accepted, every invalid one rejected — the reserved-name one is
- *     accepted by the parser and voided by the reserved-name rule);
- *   - a bad entry is dropped fail-open, logged, and reported in `errors.json`;
- *   - `resolveSemanticPolicies` = installed packs ∪ Cloud, Cloud winning a name
- *     clash, one question budget across both;
- *   - a `both` policy's `reviewedBy` names its own Cloud check and is honoured;
- *   - Cloud's `jevMode` overrides the local mode (a local `off` included), with
- *     `jev.json`'s provider or else the Cloud Jev credential, else
- *     `jev_unconfigured`;
- *   - `errors.json` is written atomically, only on change;
- *   - `policies`, `jev status` and `config --disconnect` show and clear it all.
+ *   - who calls Cloud (C10.2): `jevMode` × Cloud Jev credential × decisions-only
+ *     connection × a local BYOK `jev.json`;
+ *   - the request (C10.3): today's, the global intent questions ALWAYS, and a
+ *     `cloud` block whose `targetScan` is `scanTargets` with sorted arrays;
+ *   - the reply (C10.5): Cloud's verdict validated, local pack checks decided
+ *     from the answers minus `droppedLocal`, the two merged (cloud first, most
+ *     severe wins), and a `both` policy cleared ONLY by its own Cloud outcomes;
+ *   - a Cloud failure is today's fallback, and writes nothing;
+ *   - `errors.json` (`transcripts_disabled`, `jev_unconfigured`, budget drops),
+ *     `jev status`, `policies` and `config --disconnect`;
+ *   - the shared contract fixtures still pass the CLI's own parser and question
+ *     count, which Cloud's publish validation mirrors.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHash } from "node:crypto";
@@ -26,7 +25,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { RegisteredPolicy } from "@/src/hooks/policy-types";
-import type { CloudSemanticPolicySet } from "@/src/hooks/cloud-managed-policies";
+import type { PolicyOutcome, SemanticInput, SemanticVerdict } from "@/src/hooks/semantic/types";
 
 const VALID = JSON.parse(
   readFileSync(resolve(__dirname, "../fixtures/cloud-jev/semantic-valid.json"), "utf8"),
@@ -34,6 +33,9 @@ const VALID = JSON.parse(
 const INVALID = JSON.parse(
   readFileSync(resolve(__dirname, "../fixtures/cloud-jev/semantic-invalid.json"), "utf8"),
 ) as Array<{ why: string; decl: Record<string, unknown> }>;
+const TARGET_SCANS = JSON.parse(
+  readFileSync(resolve(__dirname, "../fixtures/cloud-jev/target-scan-cases.json"), "utf8"),
+) as { cases: Array<{ id: string; toolName: string; toolInput: Record<string, unknown>; targetScan: { groups: string[][]; complete: boolean } }> };
 
 const ENV_KEYS = [
   "FAILPROOFAI_HOME",
@@ -43,11 +45,15 @@ const ENV_KEYS = [
   "FAILPROOFAI_CLOUD_CREDENTIALS",
   "FAILPROOFAI_JEV_CONFIG_DIR",
   "FAILPROOFAI_EVALUATOR",
+  "FAILPROOFAI_JEV_TIMEOUT_MS",
+  "FAILPROOFAI_JEV_MODEL",
 ] as const;
 
 // Built at runtime: this repo's own hooks refuse secret-shaped literals.
 const KEY = ["tk", "cloudjev", "0123456789abcdef"].join("-");
 const ORIGIN = "https://app.befailproof.ai";
+const CLOUD_ENDPOINT = `${ORIGIN}/enforcement/v1/jev/systemone`;
+const MACHINE = "machine-7";
 const posix = process.platform !== "win32";
 
 let home: string;
@@ -80,6 +86,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
@@ -100,12 +107,17 @@ const decl = (name: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** A JS policy artifact registering the named hooks. */
-const jsArtifact = (tag: string, names: string[]) => `
+/** A JS policy artifact registering the named hooks; `deny` makes every one of them deny. */
+const jsArtifact = (tag: string, names: string[], verdict: "allow" | "deny") => `
   // ${tag}
-  import { customPolicies, allow } from "failproofai";
+  import { customPolicies, allow, deny } from "failproofai";
   ${names
-    .map((n) => `customPolicies.add({ name: ${JSON.stringify(n)}, description: "d", match: { events: ["PreToolUse"] }, fn: async () => allow() });`)
+    .map(
+      (n) =>
+        `customPolicies.add({ name: ${JSON.stringify(n)}, description: "d", match: { events: ["PreToolUse"] }, fn: async () => ${
+          verdict === "deny" ? `deny(${JSON.stringify(`${n} says no`)})` : "allow()"
+        } });`,
+    )
     .join("\n  ")}
 `;
 
@@ -116,23 +128,14 @@ interface CloudJs {
   authority?: "hard" | "reviewable";
   reviewedBy?: string[];
   effect?: "enforce" | "observe";
-}
-interface CloudSemantic {
-  id: string;
-  version: number;
-  /** The declarations, or raw artifact bytes. */
-  declarations?: unknown;
-  raw?: string;
-  /** Record a digest other than the bytes' own. */
-  wrongSha?: boolean;
-  path?: string;
+  verdict?: "allow" | "deny";
 }
 
-/** Write a deployment exactly as the daemon materialises it. */
-function deploy(opts: { policies?: CloudJs[]; semantic?: CloudSemantic[]; jevMode?: string; deployment?: number }): void {
+/** Write a deployment exactly as the daemon materialises it: JS artifacts, the Jev mode, nothing else Jev. */
+function deploy(opts: { policies?: CloudJs[]; jevMode?: string; deployment?: number; extra?: Record<string, unknown> }): void {
   mkdirSync(join(cloudRoot, "artifacts"), { recursive: true });
   const policies = (opts.policies ?? []).map((p) => {
-    const bytes = jsArtifact(`${p.id}@${p.version}`, p.hooks ?? [`${p.id}-hook`]);
+    const bytes = jsArtifact(`${p.id}@${p.version}`, p.hooks ?? [`${p.id}-hook`], p.verdict ?? "allow");
     const digest = sha(bytes);
     writeFileSync(join(cloudRoot, "artifacts", `${digest}.mjs`), bytes, { mode: 0o600 });
     return {
@@ -145,28 +148,20 @@ function deploy(opts: { policies?: CloudJs[]; semantic?: CloudSemantic[]; jevMod
       ...(p.reviewedBy ? { reviewedBy: p.reviewedBy } : {}),
     };
   });
-  const semanticPolicies = (opts.semantic ?? []).map((s) => {
-    const bytes = s.raw ?? JSON.stringify(s.declarations ?? []);
-    const digest = sha(bytes);
-    writeFileSync(join(cloudRoot, "artifacts", `${digest}.json`), bytes, { mode: 0o600 });
-    return {
-      id: s.id,
-      version: s.version,
-      sha256: s.wrongSha ? sha(`${bytes}!`) : digest,
-      path: s.path ?? `artifacts/${digest}.json`,
-    };
-  });
+  // Written by rename, as the daemon does: a new deployment is a new inode.
+  const tmp = join(cloudRoot, `active.json.tmp-${Math.random()}`);
   writeFileSync(
-    join(cloudRoot, "active.json"),
+    tmp,
     JSON.stringify({
       schemaVersion: 2,
       deployment: opts.deployment ?? 43,
       policies,
-      ...(semanticPolicies.length > 0 ? { semanticPolicies } : {}),
       ...(opts.jevMode !== undefined ? { jevMode: opts.jevMode } : {}),
+      ...(opts.extra ?? {}),
     }),
     { mode: 0o600 },
   );
+  renameSync(tmp, join(cloudRoot, "active.json"));
 }
 
 /** Installed packs, as `policies add` leaves them. */
@@ -189,281 +184,755 @@ function installPacks(packs: Array<{ id: string; source?: string; semantic: unkn
   writeFileSync(join(packRoot, "installed.json"), JSON.stringify({ schemaVersion: 1, packs: records }));
 }
 
-async function registeredAfterOneEvent(): Promise<Map<string, RegisteredPolicy>> {
-  const { evaluateHookEvent } = await import("@/src/hooks/handler");
-  await evaluateHookEvent(
-    "PreToolUse",
-    "claude",
-    JSON.stringify({
-      hook_event_name: "PreToolUse",
-      tool_name: "Bash",
-      tool_input: { command: "ls" },
-      session_id: "cloud-jev-policies",
-      cwd: project,
+/**
+ * This machine connected to FailproofAI Cloud the way `config --token` leaves
+ * it: a policy connection (with its machine id), the Jev credential on the
+ * same origin, and `collector.sessions` true unless connected for decisions
+ * only (`--no-transcripts`).
+ */
+async function connect(opts: { jev?: boolean; sessions?: boolean } = {}): Promise<void> {
+  const { writeCredentials, writeJevCloudCredential } = await import("@/src/hooks/fp-config");
+  writeCredentials({ cloud: { url: ORIGIN, machineId: MACHINE, token: KEY } });
+  if (opts.jev !== false) writeJevCloudCredential({ url: ORIGIN, key: KEY });
+  writeFileSync(
+    join(home, "config.json"),
+    JSON.stringify({ mode: { kind: "cloud" }, collector: { sessions: opts.sessions !== false, hooks: true } }),
+    { mode: 0o600 },
+  );
+}
+
+/** A local BYOK `jev.json` (TypeSafe direct). */
+function localJev(mode: "observe" | "enforce" | "off" = "enforce"): void {
+  const file = join(home, "jev.json");
+  writeFileSync(file, JSON.stringify({ provider: "typesafe", apiKey: KEY, mode }), { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+
+// ── A stand-in for FailproofAI Cloud (and any BYOK provider) on `fetch` ─────
+
+interface SeenCall {
+  url: string;
+  body: { model: string; state: Record<string, unknown>; questions: Record<string, unknown>; cloud?: Record<string, unknown> };
+}
+
+/** Cloud's reply for one request: every question answered `base`, and the given `cloud` block. */
+type Reply = (call: SeenCall) => { status?: number; body: unknown };
+
+function stubFetch(reply: Reply): SeenCall[] {
+  const seen: SeenCall[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL, init?: { body?: unknown }) => {
+      const call: SeenCall = { url: String(url), body: JSON.parse(String(init?.body ?? "{}")) as SeenCall["body"] };
+      seen.push(call);
+      const { status = 200, body } = reply(call);
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     }),
   );
+  return seen;
+}
+
+const answerAll = (call: SeenCall, base = 0.05, overrides: Record<string, number> = {}) =>
+  Object.fromEntries(Object.keys(call.body.questions).map((id) => [id, { noul: overrides[id] ?? base }]));
+
+const allowVerdict = {
+  decision: "allow",
+  reason: null,
+  outcomes: [],
+  injectionSuspected: null,
+  scopeWithinRequest: null,
+  beyondTask: false,
+};
+
+/** One Cloud outcome, as the server sends it. */
+function cloudOutcome(policy: string, cloudPolicyId: string, verdict: PolicyOutcome["verdict"], over: Record<string, unknown> = {}) {
+  return {
+    policy,
+    mode: "deny",
+    userCanOverride: true,
+    evidence: verdict === "none" ? 0.05 : 0.95,
+    exempt: null,
+    userAsked: null,
+    targetNamedByUser: false,
+    escalatedByInjection: false,
+    verdict,
+    origin: { cloudPolicyId, cloudVersion: 3 },
+    ...over,
+  };
+}
+
+/** A Cloud reply block whose verdict follows from the given outcomes, as the server's decide would. */
+function cloudBlock(outcomes: Array<ReturnType<typeof cloudOutcome>>, extra: Record<string, unknown> = {}) {
+  const deny = outcomes.find((o) => o.verdict === "deny");
+  const instructs = outcomes.filter((o) => o.verdict === "instruct");
+  return {
+    verdict: {
+      decision: deny ? "deny" : instructs.length > 0 ? "instruct" : "allow",
+      reason: deny
+        ? `Checked ${deny.policy} (semantic/${deny.policy}, p=0.95). Ask the user first.`
+        : instructs.length > 0
+          ? instructs.map((o) => `Checked ${o.policy} (semantic/${o.policy}, p=0.95). Ask the user first.`).join("\n")
+          : null,
+      outcomes,
+      injectionSuspected: 0.05,
+      scopeWithinRequest: null,
+      beyondTask: false,
+    },
+    asked: outcomes.map((o) => o.policy),
+    droppedLocal: [],
+    droppedCloud: [],
+    ...extra,
+  };
+}
+
+async function hook(command = "ls", sessionId = "cloud-jev-policies") {
+  const { evaluateHookEvent } = await import("@/src/hooks/handler");
+  return evaluateHookEvent(
+    "PreToolUse",
+    "claude",
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: sessionId, cwd: project }),
+  );
+}
+
+async function registeredAfterOneEvent(): Promise<Map<string, RegisteredPolicy>> {
+  await hook();
   const { getAllPolicies } = await import("@/src/hooks/policy-registry");
   return new Map(getAllPolicies().map((p) => [p.name, p]));
 }
 
 const errorsFile = () => join(cloudRoot, "errors.json");
-
-/**
- * A working local Jev setup, so Jev can ask the deployed Cloud checks. Without
- * one (and no mode from Cloud) they are never asked, and `errors.json` says so
- * (review m5) — which a test about something else must not trip over.
- */
-function localJev(): void {
-  const file = join(home, "jev.json");
-  writeFileSync(file, JSON.stringify({ provider: "typesafe", apiKey: KEY, mode: "enforce" }), { mode: 0o600 });
-  chmodSync(file, 0o600);
-}
+const budgetFile = () => join(cloudRoot, "jev-budget.json");
 const readErrors = () => JSON.parse(readFileSync(errorsFile(), "utf8")) as { errors: Array<Record<string, unknown>> };
 
-// ── The loader ───────────────────────────────────────────────────────────────
+// ── C10.2: who calls FailproofAI Cloud ───────────────────────────────────────
 
-describe("readCloudJevPolicies", () => {
-  it("reads nothing, and reports nothing, on a machine with no deployment", async () => {
-    const { readCloudJevPolicies, readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
-    expect(readCloudJevPolicies()).toEqual({ sets: [], semanticIds: [], jevMode: null, errors: [] });
-    expect(readCloudJevMode()).toBeNull();
+describe("C10.2 gating: jevMode × Cloud Jev credential × decisions-only × BYOK", () => {
+  const cloudReplies: Reply = (call) => ({
+    body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { ...cloudBlock([]), verdict: allowVerdict } },
   });
 
-  it("verifies and parses a jev and a both policy into pack-shaped sets", async () => {
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [
-        { id: "no-prod-db", version: 3, declarations: [decl("acme-prod-db")] },
-        { id: "secrets-in-output", version: 1, declarations: [decl("acme-secrets"), decl("acme-tokens")] },
-      ],
-      jevMode: "observe",
-    });
-    const { readCloudJevPolicies, readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    expect(read.errors).toEqual([]);
-    expect(read.jevMode).toBe("observe");
-    expect(readCloudJevMode()).toBe("observe");
-    expect(read.semanticIds).toEqual(["no-prod-db", "secrets-in-output"]);
-    expect(read.sets.map((s) => [s.id, s.version, s.source, s.effect, s.kind, s.semantic.map((e) => e.name)])).toEqual([
-      ["cloud:no-prod-db", "3", "cloud:no-prod-db@3", "enforce", "both", ["acme-prod-db"]],
-      ["cloud:secrets-in-output", "1", "cloud:secrets-in-output@1", "enforce", "jev", ["acme-secrets", "acme-tokens"]],
-    ]);
-    expect(read.sets[0].clis).toBeNull();
-    expect(read.sets[0].deployment).toBe(43);
+  it.each([
+    // [jevMode, credential, sessions, local jev.json, pack installed] → [Cloud calls, BYOK calls, report]
+    ["enforce", true, true, false, false, 1, 0, null],
+    ["observe", true, true, false, false, 1, 0, null],
+    ["enforce", true, true, true, true, 1, 0, null],
+    ["enforce", true, false, false, false, 0, 0, "transcripts_disabled"],
+    ["enforce", true, false, true, true, 0, 0, "transcripts_disabled"],
+    ["enforce", false, true, false, false, 0, 0, "jev_unconfigured"],
+    ["observe", false, true, true, true, 0, 0, "jev_unconfigured"],
+    ["off", true, true, true, true, 0, 0, null],
+    [null, true, true, false, true, 0, 0, null],
+    [null, true, true, true, true, 0, 1, null],
+    [null, false, true, true, false, 0, 0, null],
+  ] as const)(
+    "mode %s, credential %s, transcripts %s, jev.json %s, pack %s → %i Cloud / %i BYOK calls, report %s",
+    async (mode, credential, sessions, byok, pack, cloudCalls, byokCalls, report) => {
+      await connect({ jev: credential, sessions });
+      if (byok) localJev();
+      if (pack) installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+      deploy({ ...(mode !== null ? { jevMode: mode } : {}) });
+      const seen = stubFetch((call) =>
+        call.url === CLOUD_ENDPOINT ? cloudReplies(call) : { body: { model: "jev-1.13.0", answers: answerAll(call) } },
+      );
+      await hook();
+      expect(seen.filter((c) => c.url === CLOUD_ENDPOINT)).toHaveLength(cloudCalls);
+      expect(seen.filter((c) => c.url !== CLOUD_ENDPOINT)).toHaveLength(byokCalls);
+      // A BYOK call is today's request: no `cloud` block, and to the file's provider.
+      for (const c of seen.filter((s) => s.url !== CLOUD_ENDPOINT)) {
+        expect(c.url).toBe("https://api.typesafe.ai/v1/systemone");
+        expect(c.body.cloud).toBeUndefined();
+      }
+      const jevEntries = existsSync(errorsFile()) ? readErrors().errors.filter((e) => e.id === "jevMode") : [];
+      expect(jevEntries.map((e) => e.message)).toEqual(report === null ? [] : [report]);
+      if (report !== null) expect(jevEntries[0]).toEqual({ id: "jevMode", version: null, kind: "daemon", message: report });
+    },
+  );
+
+  it("under a Cloud mode every gated call goes, with the global questions, even with no installed pack's check", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    const seen = stubFetch(cloudReplies);
+    await hook("cat README.md");
+    await hook("git status", "another-session");
+    expect(seen).toHaveLength(2);
+    for (const c of seen) {
+      expect(c.url).toBe(CLOUD_ENDPOINT);
+      expect(Object.keys(c.body.questions)).toEqual(["injection"]);
+      expect(c.body.cloud).toMatchObject({ v: 1, machineId: MACHINE, intentMode: "v1", localPolicies: [] });
+    }
   });
 
-  it("drops a policy whose artifact fails its digest, reports it, and keeps the rest", async () => {
-    deploy({
-      semantic: [
-        { id: "tampered", version: 2, declarations: [decl("acme-a")], wrongSha: true },
-        { id: "fine", version: 1, declarations: [decl("acme-b")] },
-      ],
-    });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    expect(read.sets.map((s) => s.policyId)).toEqual(["fine"]);
-    expect(read.errors).toHaveLength(1);
-    expect(read.errors[0]).toMatchObject({ id: "tampered", version: 2, kind: "jev" });
-    expect(read.errors[0].message).toMatch(/integrity verification/);
-    // Logged once, not per read.
-    readCloudJevPolicies();
-    expect(stderr.join("").match(/tampered@2/g)?.length ?? 0).toBeLessThanOrEqual(1);
+  it("a known tool with no side effects is not sent: Cloud's selection of it is empty by construction", async () => {
+    await connect();
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local", { appliesTo: ["shell", "write", "read", "network", "other"] })] }]);
+    deploy({ jevMode: "enforce" });
+    const seen = stubFetch(cloudReplies);
+    const { evaluateHookEvent } = await import("@/src/hooks/handler");
+    for (const tool of ["TodoWrite", "Task"]) {
+      const result = await evaluateHookEvent(
+        "PreToolUse",
+        "claude",
+        JSON.stringify({ hook_event_name: "PreToolUse", tool_name: tool, tool_input: { todos: [] }, session_id: "s", cwd: project }),
+      );
+      expect(result.evaluation?.decision).toBe("allow");
+    }
+    expect(seen).toHaveLength(0);
+    // An unknown (MCP) tool is sent: every check may apply to it.
+    await evaluateHookEvent(
+      "PreToolUse",
+      "claude",
+      JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "mcp__db__query", tool_input: { sql: "select 1" }, session_id: "s", cwd: project }),
+    );
+    expect(seen).toHaveLength(1);
   });
 
-  it("drops an artifact that is not JSON, or not an array, or escapes the root", async () => {
-    deploy({
-      semantic: [
-        { id: "not-json", version: 1, raw: "{nope" },
-        { id: "not-array", version: 1, raw: JSON.stringify({ name: "x" }) },
-        { id: "escape", version: 1, declarations: [decl("acme-c")], path: "../../etc/passwd" },
-      ],
-    });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    expect(read.sets).toEqual([]);
-    const byId = Object.fromEntries(read.errors.map((e) => [e.id, e.message]));
-    expect(byId["not-json"]).toMatch(/not valid JSON/);
-    expect(byId["not-array"]).toMatch(/not a JSON array/);
-    expect(byId.escape).toMatch(/escapes its root/);
+  it("the Cloud credential's key is sent, never a local jev.json's", async () => {
+    await connect();
+    const other = ["tk", "local", "fedcba9876543210"].join("-");
+    const file = join(home, "jev.json");
+    writeFileSync(file, JSON.stringify({ provider: "typesafe", apiKey: other, mode: "enforce" }), { mode: 0o600 });
+    deploy({ jevMode: "enforce" });
+    const auth: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { headers?: Record<string, string>; body?: unknown }) => {
+        auth.push(`${url} ${init?.headers?.Authorization ?? ""}`);
+        const body = JSON.parse(String(init?.body)) as SeenCall["body"];
+        return new Response(JSON.stringify({ model: "jev-1.13.0", answers: answerAll({ url, body }), cloud: { ...cloudBlock([]), verdict: allowVerdict } }), {
+          status: 200,
+        });
+      }),
+    );
+    await hook();
+    expect(auth).toEqual([`${CLOUD_ENDPOINT} Bearer ${KEY}`]);
   });
 
-  it("reports a declaration its parser drops, and loads the rest of that policy", async () => {
-    deploy({
-      semantic: [{ id: "mixed", version: 5, declarations: [decl("acme-ok"), { ...decl("acme-bad"), mode: "maybe" }] }],
-    });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    expect(read.sets[0].semantic.map((e) => e.name)).toEqual(["acme-ok"]);
-    expect(read.errors).toHaveLength(1);
-    expect(read.errors[0]).toMatchObject({ id: "mixed", version: 5, kind: "jev" });
-    expect(read.errors[0].message).toMatch(/declaration dropped: .*acme-bad.*mode/);
-  });
-
-  it("ignores and reports a jevMode it cannot read", async () => {
-    deploy({ semantic: [], jevMode: "shadow" });
-    const { readCloudJevPolicies, readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
-    expect(readCloudJevMode()).toBeNull();
-    expect(readCloudJevPolicies().errors).toEqual([
-      { id: "jevMode", version: null, kind: "daemon", message: 'unknown Jev mode "shadow" ignored' },
-    ]);
+  it.each([
+    ["a Cloud mode that asks, with no installed pack", "enforce", true],
+    ["no Cloud mode and no pack", null, false],
+  ] as const)("captures what the human types under %s: %s", async (_why, mode, captured) => {
+    await connect();
+    deploy({ ...(mode ? { jevMode: mode } : {}) });
+    const { evaluateHookEvent } = await import("@/src/hooks/handler");
+    await evaluateHookEvent(
+      "UserPromptSubmit",
+      "claude",
+      JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "clean the build folder", session_id: "s1", cwd: project }),
+    );
+    const { readIntent } = await import("@/src/hooks/semantic/intent");
+    expect(readIntent("s1").userSaid).toEqual(captured ? ["clean the build folder"] : []);
   });
 });
 
-// ── The shared contract fixtures ─────────────────────────────────────────────
+// ── C10.3: the request ───────────────────────────────────────────────────────
 
-describe("the contract fixtures, through the manifest's own parser", () => {
-  it("has the shape the contract names: 16 valid, 8 invalid", () => {
-    expect(VALID).toHaveLength(16);
-    expect(INVALID).toHaveLength(8);
-  });
-
-  it("accepts every valid declaration, unchanged in count and name, with nothing dropped", async () => {
-    const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
-    const warnings: string[] = [];
-    const parsed = parsePackSemantic("cloud:acme@1", VALID, warnings);
-    expect(warnings).toEqual([]);
-    expect(parsed.map((e) => e.name)).toEqual(VALID.map((d) => d.name));
-
-    // And end to end, as one deployed Cloud policy.
-    deploy({ semantic: [{ id: "acme-baseline", version: 1, declarations: VALID }] });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    expect(read.errors).toEqual([]);
-    expect(read.sets[0].semantic).toHaveLength(16);
-  });
-
-  for (const { why, decl: bad } of INVALID) {
-    if (why === "reserved FailproofAI name") continue;
-    it(`rejects: ${why}`, async () => {
-      const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
-      const warnings: string[] = [];
-      expect(parsePackSemantic("cloud:acme@1", [bad], warnings)).toEqual([]);
-      expect(warnings).toHaveLength(1);
-
-      deploy({ semantic: [{ id: "acme-bad", version: 1, declarations: [bad] }] });
-      const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-      const read = readCloudJevPolicies();
-      expect(read.sets[0].semantic).toEqual([]);
-      expect(read.errors.map((e) => e.message).join("\n")).toMatch(/declaration dropped/);
-    });
+describe("C10.3 the cloud block", () => {
+  async function prepared(input: Partial<SemanticInput> & { toolInput: Record<string, unknown> }, intent: "v0" | "v1" = "v1") {
+    const { prepareSemantic } = await import("@/src/hooks/semantic/evaluator");
+    const full: SemanticInput = { eventType: "PreToolUse", toolName: "Bash", userSaid: [], cwd: project, ...input };
+    const policies = input.toolName === "none" ? [] : undefined;
+    return { full, prep: prepareSemantic(full, { intent, ...(policies ? { policies } : {}) }) };
   }
 
-  it("the reserved-name fixture: the PARSER accepts it, and the reserved-name rule voids it for a Cloud source", async () => {
-    const reserved = INVALID.find((c) => c.why === "reserved FailproofAI name")!.decl;
-    const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
-    const warnings: string[] = [];
-    expect(parsePackSemantic("cloud:acme@1", [reserved], warnings).map((e) => e.name)).toEqual([reserved.name]);
-    expect(warnings).toEqual([]);
+  it.each([
+    ["v1", [], ["injection"]],
+    ["v1", ["clean the build"], ["injection", "task_step", "op_requested", "beyond_task"]],
+    ["v0", [], ["injection"]],
+    // v0: `scope` whenever a human message was recorded — Cloud's checks may be overridable.
+    ["v0", ["clean the build"], ["injection", "scope"]],
+  ] as const)("%s with userSaid %j carries exactly the global questions %j when no pack check applies", async (intent, said, keys) => {
+    const { buildCloudRequest } = await import("@/src/hooks/semantic/cloud-jev");
+    const { full, prep } = await prepared({ toolInput: { command: "rm -rf build/" }, userSaid: [...said] }, intent);
+    const request = buildCloudRequest(prep, full, MACHINE);
+    expect(Object.keys(request.questions)).toEqual(keys);
+    expect(request.cloud).toMatchObject({ v: 1, machineId: MACHINE, intentMode: intent, localPolicies: [] });
+  });
 
-    deploy({ semantic: [{ id: "acme-reserved", version: 1, declarations: [reserved] }] });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const read = readCloudJevPolicies();
-    // Loaded, and reported so the org sees why it is never asked…
-    expect(read.sets[0].semantic.map((e) => e.name)).toEqual([reserved.name]);
-    expect(read.errors[0].message).toMatch(/reserved for FailproofAI's own Jev checks/);
-    // …and voided by the unchanged rule: never asked, never a reviewer.
-    const { isReservedClaim, reviewerNamesFor, withCloudSemantic } = await import("@/src/hooks/effective-reviewers");
-    expect(isReservedClaim(read.sets[0], reserved.name as string)).toBe(true);
-    const sources = withCloudSemantic([], read.sets).sources;
-    expect(reviewerNamesFor(sources).has(reserved.name as string)).toBe(false);
-    const { semanticPoliciesFromPacks } = await import("@/src/hooks/semantic/pack-policies");
-    expect(semanticPoliciesFromPacks(sources).policies.map((p) => p.name)).not.toContain(reserved.name);
+  it("keeps the machine's own per-policy questions, in order, and names their groups in localPolicies", async () => {
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-a"), decl("acme-b", { userCanOverride: false })] }]);
+    const { buildCloudRequest } = await import("@/src/hooks/semantic/cloud-jev");
+    const { full, prep } = await prepared({ toolInput: { command: "rm -rf build/" }, userSaid: ["clean the build"] }, "v0");
+    const request = buildCloudRequest(prep, full, MACHINE);
+    // compileRequest's own keys first, untouched; `scope` added because Cloud's
+    // checks may be overridable (acme-b is not, and acme-a asked for it anyway).
+    expect(Object.keys(request.questions)).toEqual([
+      "acme-a.fires",
+      "acme-a.user_asked",
+      "acme-b.fires",
+      "injection",
+      "scope",
+    ]);
+    expect((request.cloud as { localPolicies: string[] }).localPolicies).toEqual(["acme-a", "acme-b"]);
+    // Its request is today's otherwise: the same model and the same state.
+    expect(request.model).toBe(prep.compiled.request.model);
+    expect(request.state).toBe(prep.compiled.request.state);
+  });
+
+  it("carries the facts, the human's turns, the agent message and the cut flag as the local decider reads them", async () => {
+    const { buildCloudBlock } = await import("@/src/hooks/semantic/cloud-jev");
+    const { full, prep } = await prepared(
+      { toolInput: { command: "rm -rf build/ ~/important" }, userSaid: ["clean the build"], agentLastMessage: "Shall I clean build/?" },
+      "v1",
+    );
+    const block = buildCloudBlock(prep, full, MACHINE);
+    expect(block.facts).toEqual(prep.facts);
+    expect(block.facts).toMatchObject({ toolName: "Bash", toolClass: "shell", toolIsKnown: true, cwd: project });
+    expect(block.userSaid).toEqual(prep.userSaid);
+    expect(block.agentLastMessage).toBe(prep.agentLastMessage);
+    expect(block.userSaidCut).toBe(false);
+    expect(block.targetScan).toEqual({ groups: [["build"], ["important"]], complete: true });
+  });
+
+  it("targetScan is scanTargets with each group's Set as a sorted array — every case of the server's parity fixture", async () => {
+    const { cloudTargetScan } = await import("@/src/hooks/semantic/cloud-jev");
+    const { scanTargets } = await import("@/src/hooks/semantic/decide");
+    expect(TARGET_SCANS.cases.length).toBeGreaterThanOrEqual(50);
+    for (const c of TARGET_SCANS.cases) {
+      const sent = cloudTargetScan(c.toolInput);
+      const expected = { groups: c.targetScan.groups.map((g) => [...g].sort()), complete: c.targetScan.complete };
+      expect(sent, c.id).toEqual(expected);
+      // And it is exactly scanTargets, as sets.
+      const scan = scanTargets(c.toolInput);
+      expect(sent.groups.map((g) => new Set(g)), c.id).toEqual(scan.groups);
+      for (const g of sent.groups) expect(g, c.id).toEqual([...g].sort());
+    }
+    // The fixture covers the shapes that matter: none, several, incomplete, and non-shell tools.
+    expect(TARGET_SCANS.cases.some((c) => c.targetScan.groups.length === 0)).toBe(true);
+    expect(TARGET_SCANS.cases.some((c) => c.targetScan.groups.length > 2)).toBe(true);
+    expect(TARGET_SCANS.cases.some((c) => !c.targetScan.complete)).toBe(true);
+    expect(TARGET_SCANS.cases.some((c) => c.toolName.startsWith("mcp__"))).toBe(true);
+  });
+
+  it("an incomplete shell scan ($'…', heredoc) says so, and a huge one is cut to a prefix marked incomplete", async () => {
+    const { cloudTargetScan, MAX_TARGET_SCAN_CHARS } = await import("@/src/hooks/semantic/cloud-jev");
+    expect(cloudTargetScan({ command: "rm -rf $'build' important" }).complete).toBe(false);
+    const wide: Record<string, unknown> = {};
+    for (let i = 0; i < 6_000; i++) wide[`f${i}`] = `target${i} value${i}`;
+    const huge = cloudTargetScan(wide);
+    // A non-shell tool's fields are one target — one group of 12,000 words.
+    expect(huge.complete).toBe(false);
+    expect(JSON.stringify(huge.groups).length).toBeLessThanOrEqual(MAX_TARGET_SCAN_CHARS);
+    const cmd = Array.from({ length: 3_000 }, (_, i) => `file${i}`).join(" ");
+    const many = cloudTargetScan({ command: `rm ${cmd}` });
+    expect(many.complete).toBe(false);
+    expect(many.groups.length).toBeGreaterThan(100);
+    expect(JSON.stringify(many.groups).length).toBeLessThanOrEqual(MAX_TARGET_SCAN_CHARS);
+  });
+
+  it("a secret in the call or in what the human typed does not leave the machine; the group stays, unmatchable", async () => {
+    const secret = ["sk", "live", "4f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c"].join("_");
+    const { buildCloudBlock, REDACTED_TARGET_WORD } = await import("@/src/hooks/semantic/cloud-jev");
+    const { full, prep } = await prepared(
+      { toolInput: { command: `curl -H "x-api-key: ${secret}" https://api.example.com/v1/charges` }, userSaid: [`use ${secret} to call it`] },
+      "v1",
+    );
+    const block = buildCloudBlock(prep, full, MACHINE);
+    const text = JSON.stringify(block);
+    expect(text).not.toContain(secret);
+    expect(block.targetScan.groups.flat()).toContain(REDACTED_TARGET_WORD);
+    // As many targets as the call names: the secret's group is kept, just unmatchable.
+    const { scanTargets } = await import("@/src/hooks/semantic/decide");
+    expect(block.targetScan.groups.length).toBe(scanTargets(full.toolInput).groups.length);
+  });
+
+  it("the block never passes Cloud's size cap: the human's turns go first", async () => {
+    const { buildCloudBlock, MAX_CLOUD_BLOCK_CHARS } = await import("@/src/hooks/semantic/cloud-jev");
+    const { full, prep } = await prepared({ toolInput: { command: "ls" }, userSaid: ["x"] }, "v1");
+    const padded = { ...prep, userSaid: Array.from({ length: 60 }, () => "y".repeat(6_000)) };
+    const block = buildCloudBlock(padded, full, MACHINE);
+    expect(JSON.stringify(block).length).toBeLessThanOrEqual(MAX_CLOUD_BLOCK_CHARS);
+    expect(block.userSaid).toEqual([]);
+    expect(block.userSaidCut).toBe(false);
   });
 });
 
-// ── packs ∪ Cloud ────────────────────────────────────────────────────────────
+// ── C10.5: the reply, the merge and the local decision ──────────────────────
 
-describe("resolveSemanticPolicies: installed packs ∪ FailproofAI Cloud", () => {
-  it("asks both, and Cloud wins a name clash — the pack's same-named check is dropped, with one warning", async () => {
-    installPacks([{ id: "acme/checks", semantic: [decl("acme-shared", { title: "The pack's version" }), decl("acme-pack-only")] }]);
-    deploy({ semantic: [{ id: "org-checks", version: 4, declarations: [decl("acme-shared", { title: "The org's version" }), decl("acme-cloud-only")] }] });
-    const { resolveSemanticPolicies } = await import("@/src/hooks/semantic/pack-policies");
-    const policies = resolveSemanticPolicies("claude");
-    const byName = Object.fromEntries(policies.map((p) => [p.name, p]));
-    expect(Object.keys(byName).sort()).toEqual(["acme-cloud-only", "acme-pack-only", "acme-shared"]);
-    expect(byName["acme-shared"].title).toBe("The org's version");
-    expect(byName["acme-shared"].origin).toEqual({ packId: "cloud:org-checks", packVersion: "4" });
-    expect(byName["acme-pack-only"].origin?.packId).toBe("acme/checks");
-    const warned = stderr.join("").match(/declares Jev check acme-shared, which FailproofAI Cloud policy cloud:org-checks@4 also declares/g);
-    expect(warned).toHaveLength(1);
-    resolveSemanticPolicies("claude");
-    expect(stderr.join("").match(/declares Jev check acme-shared/g)).toHaveLength(1);
-  });
-
-  it("a Cloud claim to a reserved name shadows nothing: FailproofAI's own pack keeps it", async () => {
-    const reserved = INVALID.find((c) => c.why === "reserved FailproofAI name")!.decl;
-    installPacks([{ id: "FailproofAI/jev-policies", source: "github:FailproofAI/jev-policies@v0.2.0", semantic: [reserved] }]);
-    deploy({ semantic: [{ id: "org-copy", version: 1, declarations: [{ ...reserved, title: "An org's copy" }] }] });
-    const { resolveSemanticPolicies } = await import("@/src/hooks/semantic/pack-policies");
-    const [only] = resolveSemanticPolicies("claude");
-    expect(only.name).toBe(reserved.name);
-    expect(only.origin?.packId).toBe("FailproofAI/jev-policies");
-    expect(only.title).toBe(reserved.title);
-  });
-
-  it("spends ONE question budget across packs and Cloud", async () => {
-    const renamed = (prefix: string) => VALID.map((d) => ({ ...d, name: `${prefix}-${d.name as string}` }));
-    deploy({
-      semantic: [
-        { id: "org-a", version: 1, declarations: renamed("a") },
-        { id: "org-b", version: 1, declarations: renamed("b") },
-        { id: "org-c", version: 1, declarations: renamed("c") },
-      ],
+describe("C10.5 parseCloudReply", () => {
+  it("accepts the server's reply exactly as c10-server-shapes.md shows it, origin carried pack-shaped", async () => {
+    const { parseCloudReply } = await import("@/src/hooks/semantic/cloud-jev");
+    const reply = parseCloudReply({
+      verdict: {
+        decision: "deny",
+        reason: "Tried to write to the production database (semantic/acme-prod-db, p=0.95). Ask the user first.",
+        outcomes: [
+          {
+            policy: "acme-prod-db",
+            mode: "deny",
+            userCanOverride: true,
+            evidence: 0.95,
+            exempt: null,
+            userAsked: 0.2,
+            targetNamedByUser: false,
+            escalatedByInjection: false,
+            verdict: "deny",
+            origin: { cloudPolicyId: "prod-db", cloudVersion: 3 },
+          },
+        ],
+        injectionSuspected: 0.02,
+        scopeWithinRequest: 0.1,
+        beyondTask: false,
+      },
+      asked: ["acme-prod-db"],
+      droppedLocal: [],
+      droppedCloud: [],
+      somethingNew: "ignored",
     });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const { withCloudSemantic } = await import("@/src/hooks/effective-reviewers");
-    const { semanticPoliciesFromPacks, MAX_PACK_QUESTION_CHARS, questionChars } = await import("@/src/hooks/semantic/pack-policies");
-    const resolved = semanticPoliciesFromPacks(withCloudSemantic([], readCloudJevPolicies().sets).sources);
-    const spent = readCloudJevPolicies()
-      .sets.flatMap((s) => s.semantic)
-      .filter((e) => resolved.policies.some((p) => p.name === e.name))
-      .reduce((n, e) => n + questionChars(e), 0);
-    expect(spent).toBeLessThanOrEqual(MAX_PACK_QUESTION_CHARS);
-    expect(resolved.policies.length).toBeLessThan(48);
-    expect(resolved.errors.join("\n")).toMatch(/pack cloud:org-[abc] semantic policy .* was dropped: its questions need/);
+    expect(reply.verdict.outcomes[0]).toEqual({
+      policy: "acme-prod-db",
+      mode: "deny",
+      userCanOverride: true,
+      origin: { packId: "cloud:prod-db", packVersion: "3" },
+      evidence: 0.95,
+      exempt: null,
+      userAsked: 0.2,
+      targetNamedByUser: false,
+      escalatedByInjection: false,
+      verdict: "deny",
+    });
+    expect(reply.asked).toEqual(["acme-prod-db"]);
+  });
+
+  it.each([
+    ["no block", undefined],
+    ["no verdict", { asked: [] }],
+    ["an unknown decision", { verdict: { ...allowVerdict, decision: "maybe" } }],
+    ["no outcomes list", { verdict: { ...allowVerdict, outcomes: null } }],
+    ["an outcome with no Cloud origin", { verdict: { ...allowVerdict, outcomes: [{ ...cloudOutcome("a", "p", "none"), origin: undefined }] } }],
+    ["an outcome from a pack", { verdict: { ...allowVerdict, outcomes: [{ ...cloudOutcome("a", "p", "none"), origin: { packId: "x" } }] } }],
+    ["evidence out of range", { verdict: { ...allowVerdict, outcomes: [{ ...cloudOutcome("a", "p", "none"), evidence: 1.5 }] } }],
+    ["an unknown verdict", { verdict: { ...allowVerdict, outcomes: [{ ...cloudOutcome("a", "p", "none"), verdict: "maybe" }] } }],
+    ["a bad policy id", { verdict: { ...allowVerdict, outcomes: [cloudOutcome("a", "../x", "none")] } }],
+    ["names that are not names", { verdict: allowVerdict, droppedLocal: [7] }],
+  ])("refuses %s as malformed", async (_why, block) => {
+    const { parseCloudReply } = await import("@/src/hooks/semantic/cloud-jev");
+    const { JevError } = await import("@/src/hooks/semantic/jev-client");
+    expect(() => parseCloudReply(block)).toThrow(JevError);
+    try {
+      parseCloudReply(block);
+    } catch (err) {
+      expect((err as InstanceType<typeof JevError>).code).toBe("malformed");
+    }
   });
 });
 
-// ── Reviewers: a `both` policy's reviewedBy ──────────────────────────────────
+describe("C10.5 mergeCloudVerdict (table)", () => {
+  const out = (policy: string, verdict: PolicyOutcome["verdict"], cloud = false): PolicyOutcome => ({
+    policy,
+    mode: "deny",
+    evidence: 0.9,
+    exempt: null,
+    userAsked: null,
+    targetNamedByUser: false,
+    escalatedByInjection: false,
+    verdict,
+    ...(cloud ? { origin: { packId: "cloud:p", packVersion: "1" } } : {}),
+  });
+  const v = (
+    decision: SemanticVerdict["decision"],
+    reason: string | null,
+    outcomes: PolicyOutcome[] = [],
+    extra: Partial<SemanticVerdict> = {},
+  ): SemanticVerdict => ({ decision, reason, outcomes, injectionSuspected: null, scopeWithinRequest: null, ...extra });
 
-describe("a both policy's reviewedBy names its own Cloud check", () => {
-  it("is honoured: the JS half registers reviewable, and nothing is reported", async () => {
-    localJev();
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [{ id: "no-prod-db", version: 3, declarations: [decl("acme-prod-db")] }],
+  const C = { deny: v("deny", "C deny", [out("c1", "deny", true)]), instruct: v("instruct", "C warn a\nC warn b", [out("c1", "instruct", true)]), allow: v("allow", null, [out("c1", "none", true)]), allowNote: v("allow", "C note", [out("c1", "overridden", true)]) };
+  const L = { deny: v("deny", "L deny", [out("l1", "deny")]), instruct: v("instruct", "L warn", [out("l1", "instruct")]), allow: v("allow", null, [out("l1", "none")]), allowNote: v("allow", "L note", [out("l1", "overridden")]) };
+
+  it.each([
+    // cloud, local → decision, reason
+    ["deny", "deny", "deny", "C deny"],
+    ["deny", "instruct", "deny", "C deny"],
+    ["deny", "allow", "deny", "C deny"],
+    ["instruct", "deny", "deny", "L deny"],
+    ["allow", "deny", "deny", "L deny"],
+    ["instruct", "instruct", "instruct", "C warn a\nC warn b\nL warn"],
+    ["instruct", "allow", "instruct", "C warn a\nC warn b"],
+    ["allow", "instruct", "instruct", "L warn"],
+    ["allowNote", "allowNote", "allow", "C note\nL note"],
+    ["allow", "allowNote", "allow", "L note"],
+    ["allowNote", "allow", "allow", "C note"],
+    ["allow", "allow", "allow", null],
+  ] as const)("cloud %s + local %s → %s, reason %j", async (c, l, decision, reason) => {
+    const { mergeCloudVerdict } = await import("@/src/hooks/semantic/cloud-jev");
+    const merged = mergeCloudVerdict(C[c], L[l]);
+    expect(merged.decision).toBe(decision);
+    expect(merged.reason).toBe(reason);
+    // Outcomes: Cloud's first, then the machine's.
+    expect(merged.outcomes.map((o) => o.policy)).toEqual(["c1", "l1"]);
+  });
+
+  it("beyondTask is either side's; the same warning line from both sides is said once", async () => {
+    const { mergeCloudVerdict } = await import("@/src/hooks/semantic/cloud-jev");
+    const line = "Goes beyond what the user asked for (semantic/beyond-task, p=0.90). Do only what they asked, or confirm the wider change with them first.";
+    const merged = mergeCloudVerdict(v("instruct", line, [], { beyondTask: true }), v("instruct", `L warn\n${line}`, [], { beyondTask: true }));
+    expect(merged.reason).toBe(`${line}\nL warn`);
+    expect(merged.beyondTask).toBe(true);
+    expect(mergeCloudVerdict(v("allow", null, [], { beyondTask: false }), v("allow", null, [], { beyondTask: true })).beyondTask).toBe(true);
+    expect(mergeCloudVerdict(v("allow", null, [], { beyondTask: false }), v("allow", null)).beyondTask).toBe(false);
+    expect("beyondTask" in mergeCloudVerdict(v("allow", null), v("allow", null))).toBe(false);
+  });
+
+  it("injection and scope: the machine's own reading of the shared answer, else Cloud's", async () => {
+    const { mergeCloudVerdict } = await import("@/src/hooks/semantic/cloud-jev");
+    const m = mergeCloudVerdict(v("allow", null, [], { injectionSuspected: 0.3, scopeWithinRequest: 0.9 }), v("allow", null, [], { injectionSuspected: 0.4 }));
+    expect(m.injectionSuspected).toBe(0.4);
+    expect(m.scopeWithinRequest).toBe(0.9);
+  });
+});
+
+describe("C10.5 evaluateCloudSemantic", () => {
+  const input = (command = "rm -rf build/"): SemanticInput => ({
+    eventType: "PreToolUse",
+    toolName: "Bash",
+    toolInput: { command },
+    cwd: project,
+    userSaid: [],
+  });
+
+  async function evaluate(respond: (request: SeenCall["body"]) => unknown | Promise<unknown>) {
+    const { evaluateCloudSemantic } = await import("@/src/hooks/semantic/cloud-jev");
+    const requests: SeenCall["body"][] = [];
+    const outcome = await evaluateCloudSemantic(input(), {
+      machineId: MACHINE,
+      intent: "v1",
+      transport: async (request) => {
+        requests.push(request as SeenCall["body"]);
+        return (await respond(request as SeenCall["body"])) as never;
+      },
     });
-    const registered = await registeredAfterOneEvent();
-    const policy = registered.get("cloud/no-prod-db@3/block-prod-db");
-    expect(policy?.authority).toBe("reviewable");
-    expect(policy?.reviewedBy).toEqual(["acme-prod-db"]);
-    const { effectiveReviewerNames, jevChecksInstalled } = await import("@/src/hooks/effective-reviewers");
-    expect(effectiveReviewerNames().has("acme-prod-db")).toBe(true);
-    expect(jevChecksInstalled()).toBe(true);
+    return { outcome, requests };
+  }
+
+  it("the short-circuit reply (no answers, nothing asked) is an empty allow, not a malformed answer", async () => {
+    const { outcome } = await evaluate(() => ({ model: "jev-1.13.0", answers: {}, cloud: { ...cloudBlock([]), verdict: allowVerdict } }));
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.verdict).toMatchObject({ decision: "allow", reason: null, outcomes: [] });
+    expect(outcome.cloud).toEqual({ asked: [], droppedLocal: [], droppedCloud: [] });
+  });
+
+  it("decides the pack checks from the answers, minus the groups Cloud dropped, and merges Cloud's verdict first", async () => {
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-kept"), decl("acme-dropped")] }]);
+    const { outcome, requests } = await evaluate((request) => {
+      const answers = answerAll({ url: "", body: request }, 0.05, { "acme-kept.fires": 0.95 });
+      delete (answers as Record<string, unknown>)["acme-dropped.fires"];
+      return {
+        model: "jev-1.13.0",
+        answers: { ...answers, "acme-cloud.fires": { noul: 0.95 } },
+        cloud: cloudBlock([cloudOutcome("acme-cloud", "org-policy", "instruct", { mode: "instruct" })], { droppedLocal: ["acme-dropped", "not-mine"] }),
+      };
+    });
+    expect((requests[0].cloud as { localPolicies: string[] }).localPolicies).toEqual(["acme-kept", "acme-dropped"]);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.verdict.decision).toBe("deny");
+    expect(outcome.verdict.outcomes.map((o) => [o.policy, o.verdict, o.origin?.packId])).toEqual([
+      ["acme-cloud", "instruct", "cloud:org-policy"],
+      ["acme-kept", "deny", "acme/pack"],
+    ]);
+    expect(outcome.verdict.reason).toMatch(/^Checked acme-kept \(semantic\/acme-kept/);
+    expect(outcome.cloud.droppedLocal).toEqual([{ name: "acme-dropped", packId: "acme/pack" }]);
+  });
+
+  it.each([
+    ["a reply with no cloud block (a server without C10)", () => ({ model: "jev-1.13.0", answers: { injection: { noul: 0.05 } } }), "malformed"],
+    [
+      "a kept pack check left unanswered",
+      () => ({ model: "jev-1.13.0", answers: { injection: { noul: 0.05 } }, cloud: cloudBlock([cloudOutcome("acme-cloud", "p", "none")]) }),
+      "malformed",
+    ],
+    [
+      "an answer from another model",
+      (r: SeenCall["body"]) => ({ model: "gpt-9", answers: answerAll({ url: "", body: r }), cloud: cloudBlock([cloudOutcome("acme-cloud", "p", "none")]) }),
+      "model-mismatch",
+    ],
+    [
+      "a transport failure",
+      () => {
+        throw Object.assign(new Error("HTTP 503"), { name: "Error" });
+      },
+      "error: HTTP 503",
+    ],
+  ])("%s is a degrade (%s), never a verdict", async (_why, respond, reason) => {
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-kept")] }]);
+    const { outcome } = await evaluate(respond as (r: SeenCall["body"]) => unknown);
+    expect(outcome).toMatchObject({ status: "degraded", reason });
+  });
+});
+
+// ── C10.5: a `both` policy is reviewed by its OWN Cloud checks only ─────────
+
+describe("C10.5 both reviewability: only its own Cloud outcomes clear it", () => {
+  const both: CloudJs = { id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-x"], verdict: "deny" };
+
+  it("registers reviewable by cloud:<id>/<name> under a Cloud mode that asks, and hard otherwise", async () => {
+    for (const [mode, effect, expected] of [
+      ["enforce", "enforce", { authority: "reviewable", reviewedBy: ["cloud:no-prod-db/acme-x"] }],
+      ["observe", "enforce", { authority: "reviewable", reviewedBy: ["cloud:no-prod-db/acme-x"] }],
+      ["enforce", "observe", { authority: "hard" }],
+      ["off", "enforce", { authority: "hard" }],
+      [undefined, "enforce", { authority: "hard" }],
+    ] as const) {
+      vi.resetModules();
+      deploy({ policies: [{ ...both, effect }], ...(mode ? { jevMode: mode } : {}) });
+      const registered = await registeredAfterOneEvent();
+      const policy = registered.get("cloud/no-prod-db@3/block-prod-db");
+      expect({ authority: policy?.authority, ...(policy?.reviewedBy ? { reviewedBy: policy.reviewedBy } : {}) }, `${mode}/${effect}`).toEqual(expected);
+    }
+    // Never a warning: an org's own mode choice is not a broken policy.
+    expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
+  });
+
+  it.each([
+    ["its own Cloud check found nothing", [cloudOutcome("acme-x", "no-prod-db", "none")], "allow"],
+    ["its own Cloud check was what the human asked for", [cloudOutcome("acme-x", "no-prod-db", "overridden")], "allow"],
+    ["its own Cloud check denied", [cloudOutcome("acme-x", "no-prod-db", "deny")], "deny"],
+    ["another Cloud policy's check of that name found nothing", [cloudOutcome("acme-x", "someone-else", "none")], "deny"],
+    ["Cloud did not ask it", [], "deny"],
+  ])("%s → %s", async (_why, outcomes, decision) => {
+    await connect();
+    deploy({ policies: [both], jevMode: "enforce" });
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock(outcomes) } }));
+    const result = await hook("psql -h prod-db -c 'select 1'");
+    expect(result.evaluation?.decision).toBe(decision);
+  });
+
+  it("an installed pack's check of the same name, answered locally, never clears it", async () => {
+    await connect();
+    installPacks([{ id: "acme/lenient", semantic: [decl("acme-x", { title: "Anything goes" })] }]);
+    deploy({ policies: [both], jevMode: "enforce" });
+    const seen = stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([]) } }));
+    const result = await hook("psql -h prod-db -c 'select 1'");
+    // The pack's acme-x was asked (through Cloud) and found nothing…
+    expect(Object.keys(seen[0].body.questions)).toContain("acme-x.fires");
+    // …and the regex deny stands: only no-prod-db's own Cloud outcome could clear it.
+    expect(result.evaluation?.decision).toBe("deny");
+    // The pack's check is still a reviewer — for the pack's own policies.
+    const { effectiveReviewerNames } = await import("@/src/hooks/effective-reviewers");
+    expect([...effectiveReviewerNames()].sort()).toEqual(["acme-x", "cloud:no-prod-db/acme-x"]);
+  });
+
+  it("a Cloud check's deny is attributed to its Cloud policy and version on the activity row", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-prod-db", "prod-db", "deny")]) } }));
+    const result = await hook("psql -h prod-db -c 'delete from users'");
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.reason).toMatch(/semantic\/acme-prod-db/);
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row).toMatchObject({ policySource: "jev", cloudPolicyId: "prod-db", cloudVersion: 3 });
+    store._resetForTest();
+  });
+
+  it("observe mode records Cloud's verdict and enforces the regex result", async () => {
+    await connect();
+    deploy({ jevMode: "observe" });
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-prod-db", "prod-db", "deny")]) } }));
+    const result = await hook("psql -h prod-db -c 'delete from users'");
+    expect(result.evaluation?.decision).toBe("allow");
+  });
+});
+
+// ── C10.5: a Cloud failure is today's fallback ───────────────────────────────
+
+describe("C10.5 failure: the regex decides alone, a both policy stays hard, nothing is written", () => {
+  const both: CloudJs = { id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-x"], verdict: "deny" };
+
+  it.each([
+    ["a 503", () => ({ status: 503, body: { error: "jev_unavailable" } })],
+    ["a 400 over the block", () => ({ status: 400, body: { error: "bad_request", message: "cloud block is malformed" } })],
+    ["a reply with no cloud block", (call: SeenCall) => ({ body: { model: "jev-1.13.0", answers: answerAll(call) } })],
+    ["a malformed cloud block", (call: SeenCall) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { verdict: "yes" } } })],
+  ])("%s", async (_why, reply) => {
+    await connect();
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+    deploy({ policies: [both], jevMode: "enforce" });
+    stubFetch(reply as Reply);
+    const result = await hook("psql -h prod-db -c 'select 1'");
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.policyName).toBe("cloud/no-prod-db@3/block-prod-db");
+    expect(existsSync(errorsFile())).toBe(false);
+    expect(existsSync(budgetFile())).toBe(false);
+  });
+
+  // The Cloud route's timeout is the Jev default (3 s): jev.json's is not used under a Cloud mode.
+  it("a transport that never answers times out to the same fallback", { timeout: 20_000 }, async () => {
+    await connect();
+    deploy({ policies: [both], jevMode: "enforce" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: { signal?: AbortSignal }) =>
+          new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")))),
+      ),
+    );
+    const result = await hook("psql -h prod-db -c 'select 1'");
+    expect(result.evaluation?.decision).toBe("deny");
     expect(existsSync(errorsFile())).toBe(false);
   });
+});
 
-  it("stays hard when the check is not deployed, and errors.json says why", async () => {
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
+// ── C10.5: installed packs' checks Cloud dropped for the budget ──────────────
+
+describe("C10.5 droppedLocal → errors.json jev_budget, for the deployment it happened under", () => {
+  it("reports each dropped pack check once, keeps them across calls, and starts afresh on a new deployment", async () => {
+    await connect();
+    installPacks([{ id: "acme/big", semantic: [decl("acme-a"), decl("acme-b"), decl("acme-c")] }]);
+    deploy({ jevMode: "enforce", deployment: 7 });
+    let dropped = ["acme-c"];
+    stubFetch((call) => {
+      const answers = answerAll(call);
+      for (const name of dropped) delete (answers as Record<string, unknown>)[`${name}.fires`];
+      return { body: { model: "jev-1.13.0", answers, cloud: { ...cloudBlock([]), droppedLocal: dropped } } };
     });
-    const registered = await registeredAfterOneEvent();
-    expect(registered.get("cloud/no-prod-db@3/block-prod-db")?.authority).toBe("hard");
-    expect(readErrors().errors).toEqual([
-      {
-        id: "no-prod-db",
-        version: 3,
-        kind: "regex",
-        message: "reviewedBy names acme-prod-db, which is not a Jev check this machine can ask, so the policy stays hard",
-      },
-    ]);
+    await hook();
+    const expectDrops = (names: string[]) =>
+      expect(existsSync(errorsFile()) ? readErrors().errors.filter((e) => String(e.message).startsWith("jev_budget")) : []).toEqual(
+        names.map((name) => ({ id: "pack:acme/big", version: null, kind: "daemon", message: `jev_budget: dropped ${name}` })),
+      );
+    expectDrops(["acme-c"]);
+    expect(JSON.parse(readFileSync(budgetFile(), "utf8"))).toEqual({
+      machineId: MACHINE,
+      deployment: 7,
+      jevMode: "enforce",
+      dropped: [{ packId: "acme/big", name: "acme-c" }],
+    });
+    if (posix) expect(statSync(budgetFile()).mode & 0o777).toBe(0o600);
+
+    // Another call drops another group: the union is reported, not the latest.
+    dropped = ["acme-b", "acme-c"];
+    await hook("git status", "s2");
+    expectDrops(["acme-b", "acme-c"]);
+    // A call that drops nothing does not flap the report.
+    dropped = [];
+    await hook("pwd", "s3");
+    expectDrops(["acme-b", "acme-c"]);
+
+    // A new deployment: the old drops describe a deployment that is gone.
+    deploy({ jevMode: "enforce", deployment: 8 });
+    await hook("whoami", "s4");
+    expectDrops([]);
+  });
+
+  it("is not reported when Cloud's mode stops asking", async () => {
+    await connect();
+    installPacks([{ id: "acme/big", semantic: [decl("acme-a")] }]);
+    deploy({ jevMode: "enforce", deployment: 7 });
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { ...cloudBlock([]), droppedLocal: ["acme-a"] } } }));
+    await hook();
+    expect(readErrors().errors.some((e) => e.id === "pack:acme/big")).toBe(true);
+    deploy({ jevMode: "off", deployment: 7 });
+    await hook("pwd");
+    expect(readErrors().errors).toEqual([]);
   });
 });
 
 // ── errors.json ──────────────────────────────────────────────────────────────
 
 describe("errors.json", () => {
-  const entry = { id: "p", version: 1, kind: "jev" as const, message: "m" };
+  const entry = { id: "p", version: 1, kind: "regex" as const, message: "m" };
 
   it("is written only on a managed machine, only on change, atomically and owner-only", async () => {
     const { writeCloudPolicyErrors, _resetCloudPolicyErrorsCacheForTest } = await import("@/src/hooks/cloud-policy-errors");
@@ -492,64 +961,53 @@ describe("errors.json", () => {
   });
 
   it("collects every kind of problem, deduplicated, with the right kind", async () => {
-    const { collectCloudPolicyErrors, JEV_UNCONFIGURED } = await import("@/src/hooks/cloud-policy-errors");
+    const { collectCloudPolicyErrors, TRANSCRIPTS_DISABLED } = await import("@/src/hooks/cloud-policy-errors");
     const errors = collectCloudPolicyErrors({
       manifestError: null,
       jsPolicies: [
-        { id: "both-one", version: 2, effect: "enforce", sha256: "a", path: "p", deployment: 1, authority: "reviewable", reviewedBy: ["acme-x", "acme-y"] },
+        { id: "both-one", version: 2, effect: "enforce", sha256: "a", path: "p", deployment: 1, authority: "reviewable", reviewedBy: ["acme-x"] },
         { id: "regex-one", version: 1, effect: "enforce", sha256: "b", path: "q", deployment: 1 },
       ],
-      jsFailures: new Map([["regex-one", { type: "syntax_error" as const, reason: "Unexpected token" }]]),
-      jev: {
-        // Its own Jev half loaded acme-x (CONTRACT C9.4 binds reviewedBy to it);
-        // the parser dropped its acme-y, reported twice here to show the dedup.
-        sets: [{ policyId: "both-one", semantic: [{ name: "acme-x" }] } as unknown as CloudSemanticPolicySet],
-        semanticIds: ["both-one"],
-        jevMode: "enforce",
-        errors: [
-          { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
-          { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
-        ],
-      },
-      reviewerNames: new Set(["acme-x"]),
-      jevUnconfigured: JEV_UNCONFIGURED,
+      jsFailures: new Map([
+        ["regex-one", { type: "syntax_error" as const, reason: "Unexpected token" }],
+        ["both-one", { type: "path_missing" as const, reason: "path missing: artifacts/a.mjs" }],
+      ]),
+      jev: { errors: [{ id: "jevMode", version: null, kind: "daemon", message: 'unknown Jev mode "loud" ignored' }] },
+      jevProblem: TRANSCRIPTS_DISABLED,
+      budgetDrops: [
+        { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_budget: dropped acme-a" },
+        { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_budget: dropped acme-a" },
+      ],
     });
     expect(errors).toEqual([
-      { id: "both-one", version: 2, kind: "both", message: "reviewedBy names acme-y, which is not a Jev check this machine can ask, so the policy stays hard" },
+      { id: "both-one", version: 2, kind: "both", message: "policy did not load (path_missing): path missing: artifacts/a.mjs" },
       { id: "regex-one", version: 1, kind: "regex", message: "policy did not load (syntax_error): Unexpected token" },
-      { id: "both-one", version: 2, kind: "both", message: "declaration dropped: acme-y has an invalid mode" },
-      { id: "jevMode", version: null, kind: "daemon", message: "jev_unconfigured" },
+      { id: "jevMode", version: null, kind: "daemon", message: 'unknown Jev mode "loud" ignored' },
+      { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_budget: dropped acme-a" },
+      { id: "jevMode", version: null, kind: "daemon", message: "transcripts_disabled" },
     ]);
   });
 
-  it("the hook path reports a broken Cloud Jev artifact, and clears the report once it is fixed", async () => {
-    localJev();
-    deploy({ semantic: [{ id: "org-checks", version: 7, declarations: [decl("acme-a")], wrongSha: true }] });
-    await registeredAfterOneEvent();
-    expect(readErrors().errors).toEqual([
-      expect.objectContaining({ id: "org-checks", version: 7, kind: "jev", message: expect.stringMatching(/integrity verification/) }),
-    ]);
-
-    deploy({ semantic: [{ id: "org-checks", version: 8, declarations: [decl("acme-a")] }] });
-    vi.resetModules();
-    await registeredAfterOneEvent();
-    expect(readErrors()).toEqual({ errors: [] });
+  it("a both policy on a machine whose Cloud mode does not ask is simply hard, and not reported", async () => {
+    deploy({ policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-x"] }] });
+    const registered = await registeredAfterOneEvent();
+    expect(registered.get("cloud/no-prod-db@3/no-prod-db-hook")?.authority).toBe("hard");
+    expect(existsSync(errorsFile())).toBe(false);
   });
 
-  it("the hook path reports a Cloud JS policy that fails to load, as kind both when it has Jev checks", async () => {
+  it("the hook path reports a Cloud JS policy that fails to load, as kind both when it names Cloud reviewers", async () => {
     mkdirSync(join(cloudRoot, "artifacts"), { recursive: true });
     const broken = "export default {{{ not javascript";
     const digest = sha(broken);
     writeFileSync(join(cloudRoot, "artifacts", `${digest}.mjs`), broken);
-    const decls = JSON.stringify([decl("acme-z")]);
-    writeFileSync(join(cloudRoot, "artifacts", `${sha(decls)}.json`), decls);
     writeFileSync(
       join(cloudRoot, "active.json"),
       JSON.stringify({
         schemaVersion: 2,
         deployment: 9,
-        policies: [{ id: "broken", version: 1, sha256: digest, path: `artifacts/${digest}.mjs`, effect: "enforce" }],
-        semanticPolicies: [{ id: "broken", version: 1, sha256: sha(decls), path: `artifacts/${sha(decls)}.json` }],
+        policies: [
+          { id: "broken", version: 1, sha256: digest, path: `artifacts/${digest}.mjs`, effect: "enforce", authority: "reviewable", reviewedBy: ["acme-z"] },
+        ],
       }),
     );
     await registeredAfterOneEvent();
@@ -557,182 +1015,99 @@ describe("errors.json", () => {
     expect(problem).toMatchObject({ id: "broken", version: 1, kind: "both" });
     expect(problem.message).toMatch(/policy did not load/);
   });
-});
 
-// ── Jev mode set by FailproofAI Cloud ────────────────────────────────────────
-
-describe("Cloud's jevMode overrides the local mode", () => {
-  const writeJev = (obj: unknown, mode = 0o600) => {
-    const file = join(home, "jev.json");
-    writeFileSync(file, JSON.stringify(obj), { mode });
-    chmodSync(file, mode);
-  };
-  const connect = async () => {
-    const { readCredentials, writeCredentials, writeJevCloudCredential } = await import("@/src/hooks/fp-config");
-    writeCredentials({ ...readCredentials(), ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
-    writeJevCloudCredential({ url: ORIGIN, key: KEY });
-  };
-  const load = async (mode: "off" | "observe" | "enforce") =>
-    (await import("@/src/hooks/semantic/jev-config")).loadJevConfigForCloudMode(mode);
-
-  it("Cloud off: no Jev, even over a working local config, and nothing to report", async () => {
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "enforce" });
-    expect(await load("off")).toEqual({ config: null, provider: null, problem: null });
-  });
-
-  it("Cloud observe over a local enforce: jev.json's provider, Cloud's mode", async () => {
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "enforce" });
-    const r = await load("observe");
-    expect(r.provider).toBe("jev.json");
-    expect(r.config).toMatchObject({ provider: "typesafe", mode: "observe", apiKey: KEY });
-  });
-
-  it("Cloud enforce over a local OFF: the local off is overridden, its routing and key reused", async () => {
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "off" });
-    const { loadJevConfig } = await import("@/src/hooks/semantic/jev-config");
-    expect(loadJevConfig()).toBeNull();
-    const r = await load("enforce");
-    expect(r.config).toMatchObject({ provider: "typesafe", mode: "enforce", apiKey: KEY });
-  });
-
-  it("Cloud enforce over a local Cloud-provider off, with the Cloud credential", async () => {
+  it("an active.json a pre-release build left with semanticPolicies is read as if the key were not there", async () => {
     await connect();
-    writeJev({ provider: "failproofai", baseUrl: `${ORIGIN}/enforcement/v1/jev`, mode: "off" });
-    const r = await load("enforce");
-    expect(r.config).toMatchObject({ provider: "failproofai", mode: "enforce", apiKey: KEY, credentialOrigin: ORIGIN });
-  });
-
-  it("no jev.json: the Cloud Jev credential answers as provider failproofai", async () => {
-    await connect();
-    const r = await load("enforce");
-    expect(r.provider).toBe("cloud-credential");
-    expect(r.problem).toBeNull();
-    expect(r.config).toMatchObject({
-      provider: "failproofai",
-      baseUrl: `${ORIGIN}/enforcement/v1/jev`,
-      mode: "enforce",
-      apiKey: KEY,
-      credentialOrigin: ORIGIN,
-    });
-    const { validateLoadedJevConfig } = await import("@/src/hooks/semantic/jev-config");
-    expect(validateLoadedJevConfig(r.config!).ok).toBe(true);
-  });
-
-  it("neither: no Jev, and jev_unconfigured", async () => {
-    expect(await load("observe")).toEqual({ config: null, provider: null, problem: "jev_unconfigured" });
-  });
-
-  it.skipIf(!posix)("a jev.json that is unusable is not swapped for the Cloud credential", async () => {
-    await connect();
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "enforce" }, 0o644);
-    const r = await load("enforce");
-    expect(r.config).toBeNull();
-    expect(r.problem).toMatch(/^jev_unconfigured: jev\.json is refused/);
-  });
-
-  it("keeps the plain-http rule: enforce is refused on a loopback http endpoint, observe runs", async () => {
-    writeJev({ provider: "custom", apiKey: KEY, baseUrl: "http://127.0.0.1:4000/v1", mode: "observe" });
-    expect((await load("observe")).config?.mode).toBe("observe");
-    const r = await load("enforce");
-    expect(r.config).toBeNull();
-    expect(r.problem).toMatch(/^jev_unconfigured: .*plain http/);
-  });
-
-  it("the hook path reports jev_unconfigured when Cloud sets a mode nothing can answer", async () => {
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }], jevMode: "observe" });
-    await registeredAfterOneEvent();
-    expect(readErrors().errors).toEqual([{ id: "jevMode", version: null, kind: "daemon", message: "jev_unconfigured" }]);
-  });
-
-  it("no Cloud mode: the local file decides, and a working one reports nothing", async () => {
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "enforce" });
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }] });
-    const { readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
-    expect(readCloudJevMode()).toBeNull();
-    await registeredAfterOneEvent();
-    expect(existsSync(errorsFile())).toBe(false);
-  });
-
-  it("no Cloud mode and no local jev.json: the deployed Cloud checks are reported as never asked (review m5)", async () => {
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { ...cloudBlock([]), verdict: allowVerdict } } }));
     deploy({
-      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-a"] }],
-      semantic: [{ id: "no-prod-db", version: 3, declarations: [decl("acme-a")] }],
+      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-x"] }],
+      jevMode: "enforce",
+      extra: { semanticPolicies: [{ id: "no-prod-db", version: 3, sha256: "a".repeat(64), path: "artifacts/gone.json" }] },
     });
-    await registeredAfterOneEvent();
-    expect(readErrors().errors).toEqual([
-      {
-        id: "jevMode",
-        version: null,
-        kind: "daemon",
-        message:
-          "jev_unconfigured: FailproofAI Cloud sets no Jev mode for this machine and it has no jev.json, " +
-          "so its FailproofAI Cloud Jev checks are never asked",
-      },
-    ]);
-  });
-
-  it("no Cloud mode and a local jev.json switched off: reported too, and fixed by a Cloud mode", async () => {
-    writeJev({ provider: "typesafe", apiKey: KEY, mode: "off" });
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }] });
-    await registeredAfterOneEvent();
-    expect(readErrors().errors).toEqual([
-      expect.objectContaining({ id: "jevMode", kind: "daemon", message: expect.stringMatching(/^jev_unconfigured: Jev is off on this machine/) }),
-    ]);
-
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }], jevMode: "observe" });
-    vi.resetModules();
-    await registeredAfterOneEvent();
-    expect(readErrors()).toEqual({ errors: [] });
+    const registered = await registeredAfterOneEvent();
+    expect(registered.get("cloud/no-prod-db@3/no-prod-db-hook")?.reviewedBy).toEqual(["cloud:no-prod-db/acme-x"]);
+    expect(existsSync(errorsFile())).toBe(false);
   });
 });
 
 // ── Surfaces ─────────────────────────────────────────────────────────────────
 
 describe("surfaces", () => {
-  const RENDER = { render: { cols: 120, color: false }, readModelList: async () => ({ ok: false as const, reason: "no list read in tests" }) };
+  const RENDER = { render: { cols: 140, color: false }, readModelList: async () => ({ ok: false as const, reason: "no list read in tests" }) };
 
-  it("jev status: Cloud checks, and the mode set by FailproofAI Cloud", async () => {
-    const { readCredentials, writeCredentials, writeJevCloudCredential } = await import("@/src/hooks/fp-config");
-    writeCredentials({ ...readCredentials(), ingest: { url: `${ORIGIN}/v1/events`, key: KEY } });
-    writeJevCloudCredential({ url: ORIGIN, key: KEY });
+  it("jev status: Jev checks run on FailproofAI Cloud (mode: X), the both policies' Cloud reviewers, no check contents", async () => {
+    await connect();
+    localJev("off");
     deploy({
-      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [{ id: "no-prod-db", version: 3, declarations: [decl("acme-prod-db")] }],
+      policies: [
+        { id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] },
+        { id: "trial", version: 1, effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] },
+        { id: "plain", version: 1 },
+      ],
       jevMode: "enforce",
     });
     const { runJevCommand } = await import("@/src/hooks/jev-cli");
     const human = await runJevCommand(["status"], RENDER);
     const text = human.lines.join("\n");
-    expect(text).toMatch(/on · enforce — mode set by FailproofAI Cloud/);
-    expect(text).toMatch(/FailproofAI Cloud Jev checks/);
-    expect(text).toMatch(/no-prod-db v3\s+acme-prod-db · reviews its own regex policy/);
+    expect(text).toMatch(/on · enforce — Jev checks run on FailproofAI Cloud \(mode: enforce\)/);
+    expect(text).toMatch(/no-prod-db v3\s+acme-prod-db/);
+    expect(text).toMatch(/trial v1\s+acme-trial \(not asked while observed\)/);
+    expect(text).not.toMatch(/plain v1/);
+    expect(text).toMatch(/runs on\s+FailproofAI Cloud/);
     expect(text).not.toMatch(/AgentEye/);
+    // No check contents: the machine does not have them.
+    expect(text).not.toMatch(/instructions|probes|Ask the user first/);
+
+    // No installed pack: "Jev has no checks installed" would be false under a Cloud mode.
+    expect(text).not.toMatch(/no checks installed/);
 
     const json = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
+    expect(json.reviewablePolicies).toMatchObject({ jevChecks: 0, problem: null });
     expect(json).toMatchObject({
       status: "ok",
       mode: "enforce",
       modeSetBy: "FailproofAI Cloud",
+      runsOn: "FailproofAI Cloud",
       provider: "failproofai",
-      providerSource: "cloud-credential",
-      cloud: { jevMode: "enforce", checks: [{ policy: "no-prod-db", version: 3, kind: "both", checks: ["acme-prod-db"] }] },
+      cloud: {
+        jevMode: "enforce",
+        reviewers: [
+          { policy: "no-prod-db", version: 3, effect: "enforce", reviewedBy: ["acme-prod-db"] },
+          { policy: "trial", version: 1, effect: "observe", reviewedBy: ["acme-trial"] },
+        ],
+      },
     });
   });
 
-  it("jev status with Cloud checks and no Cloud mode: the local answer, plus the checks", async () => {
-    deploy({ semantic: [{ id: "org-checks", version: 2, declarations: [decl("acme-a")] }] });
+  it("jev status on a decisions-only connection says why Jev does not run", async () => {
+    await connect({ sessions: false });
+    deploy({ jevMode: "observe" });
     const { runJevCommand } = await import("@/src/hooks/jev-cli");
+    const text = (await runJevCommand(["status"], RENDER)).lines.join("\n");
+    expect(text).toMatch(/FailproofAI Cloud set observe, and this machine cannot run it/);
+    expect(text).toMatch(/connected for decisions only \(--no-transcripts\)/);
     const json = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
-    expect(json.status).toBe("absent");
-    expect(json.cloud).toMatchObject({ jevMode: null, checks: [{ policy: "org-checks", version: 2, kind: "jev", checks: ["acme-a"] }] });
+    expect(json).toMatchObject({ status: "unconfigured", problem: "transcripts_disabled" });
   });
 
-  it("policies lists Cloud jev and both policies with a FailproofAI Cloud label", async () => {
+  it("jev status with Cloud's off, and with no Cloud mode (the local answer)", async () => {
+    localJev("enforce");
+    deploy({ jevMode: "off" });
+    const { runJevCommand } = await import("@/src/hooks/jev-cli");
+    expect((await runJevCommand(["status"], RENDER)).lines.join("\n")).toMatch(/off — mode set by FailproofAI Cloud/);
+    deploy({ deployment: 44 });
+    const json = JSON.parse((await runJevCommand(["status", "--json"], RENDER)).json as string);
+    expect(json.status).toBe("ok");
+    expect(json.provider).toBe("typesafe");
+    expect(json.cloud).toBeUndefined();
+  });
+
+  it("policies lists the both JS policies as both, no Jev-only entry, and the Cloud mode", async () => {
     deploy({
-      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] }, { id: "plain", version: 1 }],
-      semantic: [
-        { id: "no-prod-db", version: 3, declarations: [decl("acme-prod-db")] },
-        { id: "secrets", version: 1, declarations: [decl("acme-secrets")] },
+      policies: [
+        { id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] },
+        { id: "trial", version: 2, effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] },
+        { id: "plain", version: 1 },
       ],
       jevMode: "observe",
     });
@@ -747,220 +1122,115 @@ describe("surfaces", () => {
     const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
     expect(text).toMatch(/Cloud-managed — deployment 43 · FailproofAI Cloud/);
     expect(text).toMatch(/no-prod-db\s+v3\s+both\s+acme-prod-db/);
+    expect(text).toMatch(/trial\s+v2\s+both\s+acme-trial \(not asked while observed\)/);
     expect(text).toMatch(/plain\s+v1\s+regex/);
-    expect(text).toMatch(/secrets\s+v1\s+jev\s+acme-secrets/);
-    expect(text).toMatch(/Jev mode: observe — mode set by FailproofAI Cloud/);
+    expect(text).not.toMatch(/\bjev\s+acme/);
+    expect(text).toMatch(/Jev mode: observe — mode set by FailproofAI Cloud\. Jev checks run on\s+FailproofAI Cloud/);
   });
 
-  it("config --disconnect's clear takes the Jev policies, the Jev mode, the snapshot and both error reports with active.json", async () => {
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }], jevMode: "enforce" });
+  it("config --disconnect's clear takes the Jev mode, the snapshot, both error reports and the budget record with active.json", async () => {
+    deploy({ jevMode: "enforce" });
     writeFileSync(errorsFile(), JSON.stringify({ errors: [] }));
     writeFileSync(join(cloudRoot, "daemon-errors.json"), JSON.stringify({ errors: [] }));
+    writeFileSync(budgetFile(), JSON.stringify({ machineId: MACHINE, deployment: 43, jevMode: "enforce", dropped: [] }));
     // The daemon's snapshot, which its maintenance lane rebuilds active.json
     // from: left behind, the old org's deployment came back (review M2).
     writeFileSync(join(cloudRoot, "desired-state.json"), JSON.stringify({ schemaVersion: 2, deployment: 43, policies: [] }));
-    const { clearActiveCloudManagedPolicies, readCloudJevPolicies, readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
+    const { clearActiveCloudManagedPolicies, readCloudJevMode } = await import("@/src/hooks/cloud-managed-policies");
     expect(clearActiveCloudManagedPolicies()).toBe(true);
-    for (const name of ["desired-state.json", "active.json", "errors.json", "daemon-errors.json"]) {
-      expect(existsSync(join(cloudRoot, name))).toBe(false);
+    for (const name of ["desired-state.json", "active.json", "errors.json", "daemon-errors.json", "jev-budget.json"]) {
+      expect(existsSync(join(cloudRoot, name)), name).toBe(false);
     }
-    expect(readCloudJevPolicies().sets).toEqual([]);
     expect(readCloudJevMode()).toBeNull();
   });
 });
 
-// ── Review fixes (CONTRACT C9) ───────────────────────────────────────────────
+// ── The Cloud-mode config ────────────────────────────────────────────────────
 
-describe("C9.4: a both policy's reviewedBy is bound to its OWN Jev half", () => {
-  it("a pack's same-named check never stands in when the Cloud half failed: the JS half is hard, and errors.json says so", async () => {
-    // An installed third-party pack declares the org's check name, permissively.
-    installPacks([{ id: "acme/lenient", semantic: [decl("acme-prod-db", { title: "Anything goes" })] }]);
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [{ id: "no-prod-db", version: 3, declarations: [decl("acme-prod-db")], wrongSha: true }],
+describe("loadJevConfigForCloudMode", () => {
+  const load = async (mode: "off" | "observe" | "enforce") =>
+    (await import("@/src/hooks/semantic/jev-config")).loadJevConfigForCloudMode(mode);
+
+  it("is the Cloud Jev credential as provider failproofai, whatever jev.json says", async () => {
+    await connect();
+    localJev("enforce");
+    const r = await load("observe");
+    expect(r.problem).toBeNull();
+    expect(r.machineId).toBe(MACHINE);
+    expect(r.config).toMatchObject({
+      provider: "failproofai",
+      baseUrl: `${ORIGIN}/enforcement/v1/jev`,
+      mode: "observe",
+      apiKey: KEY,
+      credentialOrigin: ORIGIN,
     });
-    const registered = await registeredAfterOneEvent();
-    expect(registered.get("cloud/no-prod-db@3/block-prod-db")?.authority).toBe("hard");
-    // The pack's check is still a reviewer on this machine — for the pack's own policies.
-    const { effectiveReviewerNames } = await import("@/src/hooks/effective-reviewers");
-    expect(effectiveReviewerNames().has("acme-prod-db")).toBe(true);
-    const messages = readErrors().errors.filter((e) => e.id === "no-prod-db").map((e) => e.message);
-    expect(messages).toContain(
-      "reviewedBy names acme-prod-db, which this policy's own Jev half does not provide on this machine " +
-        "(an installed pack's check of that name never stands in), so the policy stays hard",
-    );
-    expect(messages.some((m) => /integrity verification/.test(String(m)))).toBe(true);
   });
 
-  it("a declaration the parser dropped is not replaced by a pack's either", async () => {
-    installPacks([{ id: "acme/lenient", semantic: [decl("acme-prod-db")] }]);
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [{ id: "no-prod-db", version: 3, declarations: [decl("acme-other"), { ...decl("acme-prod-db"), mode: "maybe" }] }],
-    });
-    const registered = await registeredAfterOneEvent();
-    expect(registered.get("cloud/no-prod-db@3/block-prod-db")?.authority).toBe("hard");
+  it.each([
+    ["off", {}, { config: null, machineId: null, problem: null }],
+    ["enforce", { sessions: false }, { config: null, machineId: null, problem: "transcripts_disabled" }],
+    ["enforce", { jev: false }, { config: null, machineId: null, problem: "jev_unconfigured" }],
+  ] as const)("mode %s with %j → %j", async (mode, connection, expected) => {
+    await connect(connection);
+    expect(await load(mode)).toEqual(expected);
   });
 
-  it("another Cloud policy's check does not review it either", async () => {
-    deploy({
-      policies: [{ id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
-      semantic: [
-        { id: "no-prod-db", version: 3, declarations: [decl("acme-own")] },
-        { id: "someone-else", version: 1, declarations: [decl("acme-prod-db")] },
-      ],
-    });
-    const registered = await registeredAfterOneEvent();
-    expect(registered.get("cloud/no-prod-db@3/block-prod-db")?.authority).toBe("hard");
+  it("no connection at all: jev_unconfigured, and decisions-only is said first", async () => {
+    // No config.json: the collector's `sessions` reads false.
+    expect((await load("enforce")).problem).toBe("transcripts_disabled");
+    writeFileSync(join(home, "config.json"), JSON.stringify({ collector: { sessions: true } }));
+    expect((await load("enforce")).problem).toBe("jev_unconfigured");
   });
 
-  it("bindReviewedBy is pure: reviewable only on the allowed names", async () => {
-    const { bindReviewedBy } = await import("@/src/hooks/policy-authority");
-    const decl2 = { authority: "reviewable", reviewedBy: ["a", "b"] };
-    expect(bindReviewedBy(decl2, new Set(["a", "b"]))).toEqual({ declaration: decl2, unowned: [] });
-    expect(bindReviewedBy(decl2, new Set(["a"]))).toEqual({ declaration: { authority: "hard" }, unowned: ["b"] });
-    expect(bindReviewedBy({ authority: "hard" }, new Set())).toEqual({ declaration: { authority: "hard" }, unowned: [] });
+  it("answers from its memo until the credentials or config.json change", async () => {
+    await connect();
+    const { loadJevConfigForCloudMode } = await import("@/src/hooks/semantic/jev-config");
+    const first = loadJevConfigForCloudMode("observe");
+    expect(loadJevConfigForCloudMode("observe")).toBe(first);
+    expect(loadJevConfigForCloudMode("enforce")).not.toBe(first);
+    writeFileSync(join(home, "config.json"), JSON.stringify({ mode: { kind: "cloud" }, collector: { sessions: false } }));
+    expect(loadJevConfigForCloudMode("observe").problem).toBe("transcripts_disabled");
   });
 });
 
-describe("C9.3: an observe both policy arrives with its Jev half withheld", () => {
-  it("registers without complaint, reports nothing, and is listed as both", async () => {
-    deploy({
-      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] }],
-    });
-    const registered = await registeredAfterOneEvent();
-    // Hard, which an observed policy never acts on anyway.
-    expect(registered.get("cloud/trial@2/trial-hook")?.authority).toBe("hard");
-    expect(existsSync(errorsFile())).toBe(false);
+// ── The shared contract fixtures, through the CLI's own parser ───────────────
 
-    const out: string[] = [];
-    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
-    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
-      out.push(...String(chunk).split("\n"));
-      return true;
-    });
-    const { listHooks } = await import("@/src/hooks/manager");
-    await listHooks(project);
-    const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
-    expect(text).toMatch(/trial\s+v2\s+both\s+\(not asked while observed\)/);
+describe("the contract fixtures, through the manifest's own parser (Cloud's publish validation mirrors it)", () => {
+  it("has the shape the contract names: 16 valid, 8 invalid", () => {
+    expect(VALID).toHaveLength(16);
+    expect(INVALID).toHaveLength(8);
   });
 
-  it("says nothing on stderr either, on a machine where Jev is configured (e2e: warned on every in-process hook)", async () => {
-    localJev();
-    // Another Cloud Jev policy on the machine, so there ARE reviewer names to be
-    // judged against (with none, nothing is refused and nothing is said).
-    deploy({
-      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] }],
-      semantic: [{ id: "other", version: 1, declarations: [decl("acme-other")] }],
-      jevMode: "enforce",
-    });
-    const registered = await registeredAfterOneEvent();
-    expect(registered.get("cloud/trial@2/trial-hook")?.authority).toBe("hard");
-    expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
-    expect(existsSync(errorsFile())).toBe(false);
+  it("accepts every valid declaration, unchanged in count and name, with nothing dropped", async () => {
+    const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
+    const warnings: string[] = [];
+    const parsed = parsePackSemantic("cloud:acme@1", VALID, warnings);
+    expect(warnings).toEqual([]);
+    expect(parsed.map((e) => e.name)).toEqual(VALID.map((d) => d.name));
   });
 
-  it("stays hard when an installed pack declares its reviewedBy name: registered, reported and counted (review F2)", async () => {
-    // A third-party pack declares the org's check name. The org's own Jev half
-    // was withheld, so the pack's check must not stand in for it (C9.4).
-    installPacks([{ id: "acme/lenient", semantic: [decl("acme-trial")] }]);
-    deploy({
-      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "observe", authority: "reviewable", reviewedBy: ["acme-trial"] }],
+  for (const { why, decl: bad } of INVALID) {
+    if (why === "reserved FailproofAI name") continue;
+    it(`rejects: ${why}`, async () => {
+      const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
+      const warnings: string[] = [];
+      expect(parsePackSemantic("cloud:acme@1", [bad], warnings)).toEqual([]);
+      expect(warnings).toHaveLength(1);
     });
-    const registered = await registeredAfterOneEvent();
-    const { effectiveReviewerNames } = await import("@/src/hooks/effective-reviewers");
-    expect(effectiveReviewerNames().has("acme-trial")).toBe(true);
-    expect(registered.get("cloud/trial@2/trial-hook")?.authority).toBe("hard");
-    expect(stderr.join("")).not.toMatch(/asks to be reviewable/);
-    expect(existsSync(errorsFile())).toBe(false);
+  }
 
-    // `jev status`'s coverage count judges it the same way: not reviewable. The
-    // same entry enforced has no Jev half of its own (D-FB-1: judged by the
-    // machine-wide set, as any assignment always was), so there it counts.
-    const { surveyReviewableCoverage } = await import("@/src/hooks/policy-reviewability");
-    const observed = surveyReviewableCoverage(project);
-    deploy({
-      policies: [{ id: "trial", version: 2, hooks: ["trial-hook"], effect: "enforce", authority: "reviewable", reviewedBy: ["acme-trial"] }],
-      deployment: 44,
-    });
-    const enforced = surveyReviewableCoverage(project);
-    expect(observed.enabled).toBe(enforced.enabled);
-    expect(observed.reviewable).toBe(enforced.reviewable - 1);
-  });
-
-  it("an ENFORCE both with its Jev half missing is still reported", async () => {
-    deploy({ policies: [{ id: "real", version: 1, authority: "reviewable", reviewedBy: ["acme-real"] }] });
-    await registeredAfterOneEvent();
-    expect(readErrors().errors.map((e) => e.id)).toEqual(["real"]);
+  it("the reserved-name fixture: the PARSER accepts it — Cloud's publish refuses it by name", async () => {
+    const reserved = INVALID.find((c) => c.why === "reserved FailproofAI name")!.decl;
+    const { parsePackSemantic } = await import("@/src/hooks/pack-manifest");
+    const warnings: string[] = [];
+    expect(parsePackSemantic("cloud:acme@1", [reserved], warnings).map((e) => e.name)).toEqual([reserved.name]);
+    expect(warnings).toEqual([]);
+    const { SEMANTIC_REVIEWER_NAMES } = await import("@/src/hooks/policy-authority");
+    expect(SEMANTIC_REVIEWER_NAMES.has(reserved.name as string)).toBe(true);
   });
 });
 
-describe("C9.2: one question budget, Cloud first, every drop reported", () => {
-  const renamed = (prefix: string) => VALID.map((d) => ({ ...d, name: `${prefix}-${d.name as string}` }));
-
-  it("keeps every Cloud check and drops installed-pack checks first, each reported as pack:<id>", async () => {
-    installPacks([{ id: "acme/big", semantic: renamed("p") }]);
-    deploy({ semantic: [{ id: "org-a", version: 4, declarations: renamed("c") }], jevMode: "observe" });
-    const { readCloudJevPolicies } = await import("@/src/hooks/cloud-managed-policies");
-    const { withCloudSemantic } = await import("@/src/hooks/effective-reviewers");
-    const { semanticPoliciesFromPacks, MAX_PACK_QUESTION_CHARS, questionChars } = await import("@/src/hooks/semantic/pack-policies");
-    const { readInstalledPacks } = await import("@/src/hooks/pack-manifest");
-    const packs = readInstalledPacks().packs;
-    const cloud = readCloudJevPolicies().sets;
-    const resolved = semanticPoliciesFromPacks(withCloudSemantic(packs, cloud).sources);
-    const names = resolved.policies.map((p) => p.name);
-    for (const d of renamed("c")) expect(names).toContain(d.name);
-    expect(resolved.budgetDropped.length).toBeGreaterThan(0);
-    expect(resolved.budgetDropped.every((d) => d.source.id === "acme/big")).toBe(true);
-
-    // `over` is exactly how far past the budget asking it as well would have been.
-    const spentBefore = (name: string) => {
-      let spent = 0;
-      for (const p of [...cloud.flatMap((c) => c.semantic), ...packs.flatMap((p2) => p2.semantic ?? [])]) {
-        if (p.name === name) break;
-        if (names.includes(p.name)) spent += questionChars(p);
-      }
-      return spent;
-    };
-    const first = resolved.budgetDropped[0];
-    const entry = packs[0].semantic!.find((e) => e.name === first.name)!;
-    expect(first.over).toBe(spentBefore(first.name) + questionChars(entry) - MAX_PACK_QUESTION_CHARS);
-
-    await registeredAfterOneEvent();
-    const reported = readErrors().errors.filter((e) => String(e.message).startsWith("jev_budget"));
-    expect(reported).toHaveLength(resolved.budgetDropped.length);
-    for (const e of reported) {
-      expect(e).toMatchObject({ id: "pack:acme/big", version: null, kind: "daemon" });
-      expect(e.message).toMatch(/^jev_budget: dropped p-acme-[a-z-]+ \(\d+ chars over\)$/);
-    }
-    expect(reported[0].message).toBe(`jev_budget: dropped ${first.name} (${first.over} chars over)`);
-  });
-
-  it("a Cloud set that alone overruns the budget has its own drops reported as kind jev, under its id and version", async () => {
-    deploy({
-      semantic: [
-        { id: "org-a", version: 1, declarations: renamed("a") },
-        { id: "org-b", version: 2, declarations: renamed("b") },
-      ],
-      jevMode: "enforce",
-    });
-    await registeredAfterOneEvent();
-    const reported = readErrors().errors.filter((e) => String(e.message).startsWith("jev_budget"));
-    expect(reported.length).toBeGreaterThan(0);
-    for (const e of reported) {
-      expect(e).toMatchObject({ id: "org-b", version: 2, kind: "jev" });
-    }
-  });
-
-  it("nothing is measured, or reported, when Cloud switches Jev off", async () => {
-    installPacks([{ id: "acme/big", semantic: renamed("p") }]);
-    deploy({ semantic: [{ id: "org-a", version: 4, declarations: renamed("c") }], jevMode: "off" });
-    await registeredAfterOneEvent();
-    expect(existsSync(errorsFile())).toBe(false);
-  });
-});
-
-describe("C9.2: the CLI's own question count, pinned to the shared fixture", () => {
+describe("the CLI's own question count, pinned to the shared fixture Cloud's budget mirrors", () => {
   const CHARS = JSON.parse(
     readFileSync(resolve(__dirname, "../fixtures/cloud-jev/semantic-valid-chars.json"), "utf8"),
   ) as {
@@ -993,10 +1263,12 @@ describe("C9.2: the CLI's own question count, pinned to the shared fixture", () 
   });
 });
 
+// ── C9.5: reports carry no local paths ───────────────────────────────────────
+
 describe("C9.5: reports carry no local paths", () => {
   it("redactLocalPaths: home becomes ~, other absolute paths their last segment (the daemon's cases)", async () => {
     const { redactLocalPaths } = await import("@/src/hooks/cloud-policy-errors");
-    const home = "/home/alice";
+    const home2 = "/home/alice";
     const cases: Array<[string, string]> = [
       [
         "path missing: /home/alice/.failproofai/policies/cloud-policies/artifacts/ab.mjs",
@@ -1020,9 +1292,9 @@ describe("C9.5: reports carry no local paths", () => {
       ["a bare scheme:// stays", "a bare scheme:// stays"],
     ];
     for (const [input, expected] of cases) {
-      expect(redactLocalPaths(input, home)).toBe(expected);
+      expect(redactLocalPaths(input, home2)).toBe(expected);
       // Applied twice (CLI, then daemon): the second pass changes nothing.
-      expect(redactLocalPaths(expected, home)).toBe(expected);
+      expect(redactLocalPaths(expected, home2)).toBe(expected);
     }
     expect(redactLocalPaths("/home/alice/x", null)).toBe("x");
   });
@@ -1041,72 +1313,20 @@ describe("C9.5: reports carry no local paths", () => {
   });
 });
 
-describe("m3: read once per change", () => {
-  it("readCloudJevPolicies answers from its cache until active.json or an artifact changes", async () => {
-    deploy({ semantic: [{ id: "org-checks", version: 1, declarations: [decl("acme-a")] }], jevMode: "observe" });
+describe("read once per change", () => {
+  it("readCloudJevMode and readCloudJevState answer from the cached active.json until it changes", async () => {
+    deploy({ jevMode: "observe", deployment: 5 });
     const mod = await import("@/src/hooks/cloud-managed-policies");
-    const first = mod.readCloudJevPolicies();
-    expect(mod.readCloudJevPolicies()).toBe(first);
     expect(mod.readCloudJevMode()).toBe("observe");
-
-    // A new deployment arrives the daemon's way: tmp + rename, a new inode.
-    const next = JSON.parse(readFileSync(join(cloudRoot, "active.json"), "utf8")) as Record<string, unknown>;
-    next.jevMode = "enforce";
-    writeFileSync(join(cloudRoot, "active.json.tmp"), JSON.stringify(next));
-    renameSync(join(cloudRoot, "active.json.tmp"), join(cloudRoot, "active.json"));
-    const second = mod.readCloudJevPolicies();
-    expect(second).not.toBe(first);
-    expect(second.jevMode).toBe("enforce");
+    expect(mod.readCloudJevState()).toEqual({ jevMode: "observe", deployment: 5, errors: [] });
+    deploy({ jevMode: "enforce", deployment: 6 });
     expect(mod.readCloudJevMode()).toBe("enforce");
-
-    // An artifact tampered with in place: re-read, and refused.
-    const entry = (next.semanticPolicies as Array<{ path: string }>)[0];
-    writeFileSync(join(cloudRoot, entry.path), JSON.stringify([decl("acme-a"), decl("acme-evil")]));
-    const third = mod.readCloudJevPolicies();
-    expect(third.sets).toEqual([]);
-    expect(third.errors[0].message).toMatch(/integrity verification/);
-  });
-
-  it("loadJevConfigForCloudMode answers from its memo until jev.json or the credential changes", async () => {
-    const file = join(home, "jev.json");
-    writeFileSync(file, JSON.stringify({ provider: "typesafe", apiKey: KEY, mode: "enforce" }), { mode: 0o600 });
-    chmodSync(file, 0o600);
-    const { loadJevConfigForCloudMode } = await import("@/src/hooks/semantic/jev-config");
-    const first = loadJevConfigForCloudMode("observe");
-    expect(first.config?.mode).toBe("observe");
-    expect(loadJevConfigForCloudMode("observe")).toBe(first);
-    expect(loadJevConfigForCloudMode("enforce")).not.toBe(first);
-    if (posix) {
-      chmodSync(file, 0o644);
-      const refused = loadJevConfigForCloudMode("observe");
-      expect(refused.config).toBeNull();
-      expect(refused.problem).toMatch(/^jev_unconfigured: jev\.json is refused/);
-    }
-  });
-});
-
-describe("policies lists every Cloud Jev half, loaded or not (review n3)", () => {
-  it("a jev policy whose artifact failed, and a both policy whose JS half could not be read", async () => {
-    deploy({
-      policies: [{ id: "both-one", version: 5 }],
-      semantic: [
-        { id: "broken-jev", version: 2, declarations: [decl("acme-x")], wrongSha: true },
-        { id: "both-one", version: 5, declarations: [decl("acme-y")] },
-      ],
+    expect(mod.readCloudJevState().deployment).toBe(6);
+    deploy({ jevMode: "loud", deployment: 7 });
+    expect(mod.readCloudJevState()).toEqual({
+      jevMode: null,
+      deployment: 7,
+      errors: [{ id: "jevMode", version: null, kind: "daemon", message: 'unknown Jev mode "loud" ignored' }],
     });
-    const active = JSON.parse(readFileSync(join(cloudRoot, "active.json"), "utf8")) as { policies: Array<{ path: string }> };
-    rmSync(join(cloudRoot, active.policies[0].path));
-    const out: string[] = [];
-    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
-    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
-      out.push(...String(chunk).split("\n"));
-      return true;
-    });
-    const { listHooks } = await import("@/src/hooks/manager");
-    await listHooks(project);
-    const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
-    expect(text).toMatch(/broken-jev\s+v2\s+jev\s+\(not loaded\)/);
-    expect(text).toMatch(/both-one\s+v5\s+both\s+acme-y/);
-    expect(text).toMatch(/Cloud JavaScript policies could not be read/);
   });
 });

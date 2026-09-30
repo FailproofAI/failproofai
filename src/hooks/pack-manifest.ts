@@ -739,10 +739,12 @@ export function semanticQuestions(
  * a publisher's semantic policies with it, for the same reason one malformed
  * pack does not take the other packs with it.
  *
- * Exported because it is also THE parser for FailproofAI Cloud Jev policies
- * (`readCloudJevPolicies` in `cloud-managed-policies.ts`): a Cloud declaration
- * is exactly a manifest semantic entry, and a second parser would be a second
- * set of rules to drift.
+ * Exported for one reader outside this file: the shared FailproofAI Cloud
+ * fixtures test (`cloud-jev-policies.test.ts`). A Cloud Jev declaration is
+ * exactly a manifest semantic entry, and Cloud's publish validation mirrors
+ * this parser — so the test pins that both accept and refuse the same
+ * declarations, and measure their questions alike. The machine itself never
+ * parses a Cloud declaration: those checks run on FailproofAI Cloud (C10).
  */
 export function parsePackSemantic(packId: string, value: unknown, warnings: string[]): SemanticManifestEntry[] {
   if (value === undefined) return [];

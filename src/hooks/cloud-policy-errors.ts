@@ -4,11 +4,13 @@
  * (`policyErrors`, CONTRACT C4–C6).
  *
  * Nothing here changes a verdict. Cloud policies are read fail-open: a JS
- * policy that fails to import, a Jev artifact that fails its digest, a
- * declaration the parser drops — each costs that one policy on this machine and
+ * policy that fails to import costs that one policy on this machine and
  * nothing else, which is the right trade on the hook path and the wrong thing
  * to keep quiet about. Before this file the only trace was a line in the local
- * hook log, so a fleet page read "applied" for a deployment that was not.
+ * hook log, so a fleet page read "applied" for a deployment that was not. The
+ * same goes for FailproofAI Cloud's Jev (CONTRACT C10): a Jev mode this machine
+ * cannot act on, and an installed pack's check Cloud dropped for the question
+ * budget, are said here rather than only in a local log.
  *
  * ## One writer per file
  *
@@ -34,9 +36,9 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import {
   CLOUD_POLICY_ERRORS_FILE,
+  JEV_BUDGET_FILE,
   cloudManagedPolicyRoot,
-  cloudOwnCheckNames,
-  type CloudJevRead,
+  type CloudJevState,
   type CloudManagedPolicyArtifact,
   type CloudPolicyError,
   type CloudPolicyErrorKind,
@@ -45,10 +47,17 @@ import type { PolicyLoadFailure } from "./custom-hooks-loader";
 
 export type { CloudPolicyError, CloudPolicyErrorKind } from "./cloud-managed-policies";
 
-/** The message the contract fixes for "Cloud set a Jev mode and nothing can answer". */
+/** The message the contract fixes for "Cloud set a Jev mode and this machine has no Cloud Jev credential". */
 export const JEV_UNCONFIGURED = "jev_unconfigured";
 
-/** How a check the Jev question budget dropped is reported (CONTRACT C9.2). */
+/**
+ * The message the contract fixes for "Cloud set a Jev mode on a machine
+ * connected for decisions only" (`--no-transcripts`), which never runs Jev
+ * (CONTRACT C10.2).
+ */
+export const TRANSCRIPTS_DISABLED = "transcripts_disabled";
+
+/** How an installed pack's check FailproofAI Cloud dropped for the question budget is reported (C10.5). */
 export const JEV_BUDGET = "jev_budget";
 
 /**
@@ -170,19 +179,7 @@ export function writeCloudPolicyErrors(errors: ReadonlyArray<CloudPolicyError>):
       return "unchanged";
     }
     if (current === null && errors.length === 0) return "skipped";
-    const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
-    try {
-      writeFileSync(tmp, text, { mode: 0o600, flag: "wx" });
-      chmodSync(tmp, 0o600);
-      renameSync(tmp, path);
-    } catch (err) {
-      try {
-        rmSync(tmp, { force: true });
-      } catch {
-        // Nothing useful to do.
-      }
-      throw err;
-    }
+    writeAtomic(path, text);
     lastWritten = { path, text };
     return "written";
   } catch {
@@ -198,80 +195,52 @@ export interface CloudPolicyErrorInputs {
   jsPolicies: ReadonlyArray<CloudManagedPolicyArtifact>;
   /** Import failures by Cloud policy id (`LoadAllResult.cloudFailures`). */
   jsFailures?: ReadonlyMap<string, PolicyLoadFailure>;
-  /** The Cloud Jev read (its own drops are already in `errors`). */
-  jev: CloudJevRead;
+  /** Cloud's Jev state (its own problems — an unreadable mode — are in `errors`). */
+  jev: Pick<CloudJevState, "errors">;
   /**
-   * The Jev check names this machine can ask, for every agent — not the
-   * per-agent registration set, or the report would flip with each event's
-   * agent and rewrite the file on every call.
+   * Why Cloud's `observe`/`enforce` mode cannot run here: `transcripts_disabled`,
+   * `jev_unconfigured`, or `jev_unconfigured: <detail>`
+   * (`loadJevConfigForCloudMode`). Null when it runs, or Cloud's mode does not ask.
    */
-  reviewerNames: ReadonlySet<string>;
-  /**
-   * Set when Cloud chose a Jev mode and no provider can answer — or when Cloud
-   * Jev policies are deployed, Cloud chose no mode, and nothing on this machine
-   * asks Jev, so they are never asked.
-   */
-  jevUnconfigured?: string | null;
-  /**
-   * Every check the Jev question budget dropped, already shaped as entries
-   * (`jevBudgetErrors` in `semantic/pack-policies.ts`, CONTRACT C9.2).
-   */
+  jevProblem?: string | null;
+  /** Installed packs' checks FailproofAI Cloud dropped for the budget ({@link readJevBudgetDrops}). */
   budgetDrops?: ReadonlyArray<CloudPolicyError>;
+}
+
+/**
+ * A Cloud JS assignment's kind, as far as this machine can tell: `both` when
+ * the server derived a reviewer list for it (only a `both` policy gets one,
+ * CONTRACT C1), else `regex`.
+ */
+function kindOf(policy: Pick<CloudManagedPolicyArtifact, "authority" | "reviewedBy">): CloudPolicyErrorKind {
+  return policy.authority === "reviewable" && (policy.reviewedBy?.length ?? 0) > 0 ? "both" : "regex";
 }
 
 /**
  * Everything wrong with this machine's Cloud deployment, as `errors.json`
  * entries: deduplicated, in a stable order. Pure.
+ *
+ * What is NOT here any more (CONTRACT C10): Jev artifact and declaration
+ * failures and a `reviewedBy` naming a missing check — the machine holds no
+ * Cloud Jev check to fail, and cannot tell which names Cloud has. A `both`
+ * policy on a machine whose Cloud mode does not ask simply stays hard; the
+ * server knows the mode it set.
  */
 export function collectCloudPolicyErrors(input: CloudPolicyErrorInputs): CloudPolicyError[] {
   const out: CloudPolicyError[] = [];
-  const semanticIds = new Set(input.jev.semanticIds);
-  const kindOf = (id: string): CloudPolicyErrorKind => (semanticIds.has(id) ? "both" : "regex");
-
   if (input.manifestError) {
     out.push({ id: "active.json", version: null, kind: "daemon", message: `Cloud policies could not be loaded: ${input.manifestError}` });
   }
   for (const policy of input.jsPolicies) {
     const failure = input.jsFailures?.get(policy.id);
     if (failure) {
-      out.push({ id: policy.id, version: policy.version, kind: kindOf(policy.id), message: `policy did not load (${failure.type}): ${failure.reason}` });
-    }
-    // A `reviewedBy` naming a check this machine cannot ask FROM THE POLICY'S
-    // OWN Jev half (CONTRACT C9.4): the policy stays hard, and a `both`
-    // policy's regex half then denies what its own Jev check was deployed to
-    // clear. A same-named check from an installed pack never stands in.
-    //
-    // Not for an `observe` policy whose Jev half the server did not send
-    // (C9.3: the Jev half of an observe `both` is withheld, as an observe
-    // pack's checks are not asked): its names are absent by design, and it
-    // blocks nothing.
-    const withheld = policy.effect === "observe" && !semanticIds.has(policy.id);
-    if (policy.authority === "reviewable" && policy.reviewedBy && !withheld) {
-      // Null when the policy has no Jev half deployed: then the machine-wide
-      // set judges it, as any assignment always was.
-      const own = cloudOwnCheckNames(input.jev, policy.id);
-      const missing = policy.reviewedBy.filter((name) => !input.reviewerNames.has(name) || (own !== null && !own.has(name)));
-      if (missing.length > 0) {
-        const one = missing.length === 1;
-        const standIns = own === null ? [] : missing.filter((name) => !own.has(name) && input.reviewerNames.has(name));
-        out.push({
-          id: policy.id,
-          version: policy.version,
-          kind: kindOf(policy.id),
-          message:
-            standIns.length > 0
-              ? `reviewedBy names ${missing.join(", ")}, which this policy's own Jev half does not provide on this machine ` +
-                `(an installed pack's check of that name never stands in), so the policy stays hard`
-              : `reviewedBy names ${missing.join(", ")}, which ${one ? "is not a Jev check" : "are not Jev checks"} ` +
-                `this machine can ask, so the policy stays hard`,
-        });
-      }
+      out.push({ id: policy.id, version: policy.version, kind: kindOf(policy), message: `policy did not load (${failure.type}): ${failure.reason}` });
     }
   }
   out.push(...input.jev.errors);
   out.push(...(input.budgetDrops ?? []));
-  if (input.jevUnconfigured) {
-    out.push({ id: "jevMode", version: null, kind: "daemon", message: input.jevUnconfigured });
+  if (input.jevProblem) {
+    out.push({ id: "jevMode", version: null, kind: "daemon", message: input.jevProblem });
   }
 
   const seen = new Set<string>();
@@ -283,4 +252,118 @@ export function collectCloudPolicyErrors(input: CloudPolicyErrorInputs): CloudPo
       seen.add(key);
       return true;
     });
+}
+
+// ── Installed packs' checks FailproofAI Cloud dropped for the budget ─────────
+//
+// FailproofAI Cloud puts its own checks first in the one question budget and
+// drops whole installed-pack question groups, last first, when the two do not
+// fit together (CONTRACT C10.4 step 5); its reply names them (`droppedLocal`).
+// Which groups a call carries depends on the tool, so a report of only the
+// latest reply's drops would flap from call to call. So the drops are kept,
+// as a union, in `jev-budget.json` for the machine, deployment and Jev mode
+// they happened under — a new deployment or mode starts afresh, which is how
+// a drop that no longer happens stops being reported — and `errors.json`
+// carries them as `{id: "pack:<packId>", kind: "daemon", message: "jev_budget:
+// dropped <name>"}`.
+
+/** What a set of budget drops is keyed by: they are true of this deployment only. */
+export interface JevBudgetKey {
+  machineId: string;
+  deployment: number | null;
+  jevMode: "observe" | "enforce";
+}
+
+interface JevBudgetRecord extends JevBudgetKey {
+  dropped: Array<{ packId: string; name: string }>;
+}
+
+export function jevBudgetPath(): string {
+  return resolve(cloudManagedPolicyRoot(), JEV_BUDGET_FILE);
+}
+
+function readJevBudgetRecord(): JevBudgetRecord | null {
+  try {
+    const raw = JSON.parse(readFileSync(jevBudgetPath(), "utf8")) as Partial<JevBudgetRecord>;
+    if (
+      typeof raw.machineId !== "string" ||
+      !(raw.deployment === null || Number.isSafeInteger(raw.deployment)) ||
+      (raw.jevMode !== "observe" && raw.jevMode !== "enforce") ||
+      !Array.isArray(raw.dropped)
+    ) {
+      return null;
+    }
+    const dropped = raw.dropped.filter(
+      (d): d is { packId: string; name: string } => !!d && typeof d.packId === "string" && typeof d.name === "string",
+    );
+    return { machineId: raw.machineId, deployment: raw.deployment as number | null, jevMode: raw.jevMode, dropped };
+  } catch {
+    return null;
+  }
+}
+
+const sameKey = (a: JevBudgetKey, b: JevBudgetKey): boolean =>
+  a.machineId === b.machineId && a.deployment === b.deployment && a.jevMode === b.jevMode;
+
+function budgetEntries(dropped: ReadonlyArray<{ packId: string; name: string }>): CloudPolicyError[] {
+  return [...dropped]
+    .sort((a, b) => (a.packId === b.packId ? (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) : a.packId < b.packId ? -1 : 1))
+    .map((d) => ({ id: `pack:${d.packId}`, version: null, kind: "daemon" as const, message: `${JEV_BUDGET}: dropped ${d.name}` }));
+}
+
+/**
+ * The drops recorded for exactly this machine, deployment and mode, as
+ * `errors.json` entries — none for any other key. Never throws.
+ */
+export function readJevBudgetDrops(key: JevBudgetKey): CloudPolicyError[] {
+  const record = readJevBudgetRecord();
+  return record && sameKey(record, key) ? budgetEntries(record.dropped) : [];
+}
+
+/**
+ * Add the pack checks FailproofAI Cloud just dropped to the record for `key`
+ * (starting afresh when the key changed), and to `errors.json` at once, so the
+ * report does not wait for the next hook. Both writes are atomic, owner-only,
+ * and happen only when something changed. Never throws: a report must not
+ * cost a hook its answer.
+ */
+export function recordJevBudgetDrops(key: JevBudgetKey, drops: ReadonlyArray<{ packId: string; name: string }>): void {
+  try {
+    if (drops.length === 0 || !existsSync(resolve(cloudManagedPolicyRoot(), "active.json"))) return;
+    const current = readJevBudgetRecord();
+    const base = current && sameKey(current, key) ? current.dropped : [];
+    const seen = new Set(base.map((d) => `${d.packId}\u0000${d.name}`));
+    const added: Array<{ packId: string; name: string }> = [];
+    for (const d of drops) {
+      const id = `${d.packId}\u0000${d.name}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      added.push({ packId: d.packId, name: d.name });
+    }
+    if (current && sameKey(current, key) && added.length === 0) return;
+    const record: JevBudgetRecord = { ...key, dropped: [...base, ...added] };
+    writeAtomic(jevBudgetPath(), `${JSON.stringify(record, null, 2)}\n`);
+    // Merged into the report as it stands: every other entry kept, the pack
+    // budget drops replaced by this deployment's.
+    const report = (readCloudPolicyErrors() ?? []).filter((e) => !(e.id.startsWith("pack:") && e.message.startsWith(JEV_BUDGET)));
+    writeCloudPolicyErrors([...report, ...budgetEntries(record.dropped)]);
+  } catch {
+    // The next event records it again.
+  }
+}
+
+function writeAtomic(path: string, text: string): void {
+  const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    writeFileSync(tmp, text, { mode: 0o600, flag: "wx" });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // Nothing useful to do.
+    }
+    throw err;
+  }
 }

@@ -25,7 +25,7 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
-import { readActiveCloudManagedPolicies, readCloudJevPolicies } from "./cloud-managed-policies";
+import { readActiveCloudManagedPolicies, readCloudJevState } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
@@ -1378,74 +1378,60 @@ export async function listHooks(cwd?: string): Promise<void> {
   // config. `--uninstall <name>` cannot switch one off, and printing them
   // beside toggleable rows without saying so would imply it can.
   //
-  // Each policy's KIND is shown — `regex` (JS), `jev` (Jev checks only) or
-  // `both` (JS reviewable by its own checks) — with the Jev check names, so a
-  // Jev-only policy, which registers no JS at all, is listed too.
+  // Each policy's KIND is shown — `regex` (JS) or `both` (JS whose verdict
+  // its own Jev checks may clear) — with the Jev check names a `both` policy
+  // is reviewed by. Those checks, and every `jev` policy, run on FailproofAI
+  // Cloud (CONTRACT C10): nothing of them is on this machine, so no Jev-only
+  // policy is listed here, and the machine cannot count them.
   try {
     let cloud: ReturnType<typeof readActiveCloudManagedPolicies> = [];
     let jsProblem: string | null = null;
     try {
       cloud = readActiveCloudManagedPolicies();
     } catch (err) {
-      // The Jev half is read independently below; one bad half must not hide
-      // the other. Said below when a section is shown, so a `both` policy
-      // listed with no JS row is explained.
+      // The Jev mode is read independently below; a machine Cloud set one on
+      // still gets its section, with this said.
       jsProblem = err instanceof Error ? err.message : String(err);
     }
-    let jev: ReturnType<typeof readCloudJevPolicies> = { sets: [], semanticIds: [], jevMode: null, errors: [] };
+    let jev: ReturnType<typeof readCloudJevState> = { jevMode: null, deployment: null, errors: [] };
     try {
-      jev = readCloudJevPolicies();
+      jev = readCloudJevState();
     } catch {
       // Never throws by contract; guarded anyway, for the same reason as above.
     }
-    const setFor = (id: string) => jev.sets.find((set) => set.policyId === id);
-    // Every Jev half with no JS row of its own: a `jev` policy — loaded or not,
-    // so one whose artifact failed is listed rather than only warned about —
-    // and a `both` policy whose JS half could not be read.
-    const jsIds = new Set(cloud.map((artifact) => artifact.id));
-    const semanticOnly = [...new Set(jev.semanticIds)].filter((id) => !jsIds.has(id));
-    const versionOf = (id: string): string => {
-      const version = setFor(id)?.policyVersion ?? jev.errors.find((e) => e.id === id && e.version !== null)?.version;
-      return version === undefined || version === null ? "" : `v${version}`;
-    };
-    if (cloud.length > 0 || jev.semanticIds.length > 0 || jev.jevMode !== null) {
-      const deployment = cloud[0]?.deployment ?? jev.sets[0]?.deployment;
+    if (cloud.length > 0 || jev.jevMode !== null) {
+      const deployment = cloud[0]?.deployment ?? jev.deployment ?? undefined;
       groups.push(
         rule(`Cloud-managed${deployment !== undefined ? ` — deployment ${deployment}` : ""} · FailproofAI Cloud`, opts),
       );
-      const checksOf = (id: string): string => setFor(id)?.semantic.map((entry) => entry.name).join(", ") ?? "";
-      const rowsOut = [
-        ...cloud.map((artifact) => {
-          const both = jev.semanticIds.includes(artifact.id);
-          // An observe `both` arrives without its Jev half (CONTRACT C9.3):
-          // still a `both` policy, whose checks are simply not asked while it
-          // is observed.
-          const withheld =
-            !both && artifact.effect === "observe" && artifact.authority === "reviewable" && (artifact.reviewedBy?.length ?? 0) > 0;
-          return [
-            // `observe` is evaluated and then has its verdict discarded, so a
-            // row that read "ON" would claim enforcement this policy
-            // deliberately is not doing.
-            chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
-            artifact.id,
-            `v${artifact.version}`,
-            both || withheld ? "both" : "regex",
-            both ? checksOf(artifact.id) || "(not loaded)" : withheld ? "(not asked while observed)" : "",
-          ];
-        }),
-        ...semanticOnly.map((id) => [
-          chip("cloud", opts),
-          id,
-          versionOf(id),
-          setFor(id)?.kind ?? "jev",
-          checksOf(id) || "(not loaded)",
-        ]),
-      ];
+      const rowsOut = cloud.map((artifact) => {
+        // Only a `both` policy carries a server-derived reviewer list (C1).
+        const both = artifact.authority === "reviewable" && (artifact.reviewedBy?.length ?? 0) > 0;
+        const checks = both ? (artifact.reviewedBy ?? []).join(", ") : "";
+        return [
+          // `observe` is evaluated and then has its verdict discarded, so a
+          // row that read "ON" would claim enforcement this policy
+          // deliberately is not doing.
+          chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
+          artifact.id,
+          `v${artifact.version}`,
+          both ? "both" : "regex",
+          // An observe `both` has its Jev half withheld by Cloud (C9.3).
+          both && artifact.effect === "observe" ? `${checks} (not asked while observed)` : checks,
+        ];
+      });
       if (rowsOut.length > 0) {
         groups.push(table({ head: ["", "Policy", "Version", "Kind", "Jev checks"], rows: rowsOut, flex: 4 }, opts));
       }
-      if (jev.jevMode !== null) {
-        groups.push(note(`Jev mode: ${jev.jevMode} — mode set by FailproofAI Cloud (overrides jev.json).`, opts));
+      if (jev.jevMode === "off") {
+        groups.push(note("Jev mode: off — mode set by FailproofAI Cloud (overrides jev.json).", opts));
+      } else if (jev.jevMode !== null) {
+        groups.push(
+          note(
+            `Jev mode: ${jev.jevMode} — mode set by FailproofAI Cloud. Jev checks run on FailproofAI Cloud; nothing of them is installed here.`,
+            opts,
+          ),
+        );
       }
       if (jev.errors.length > 0 || jsProblem !== null) {
         groups.push(

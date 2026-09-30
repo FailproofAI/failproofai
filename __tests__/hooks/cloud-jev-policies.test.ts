@@ -424,6 +424,60 @@ describe("C10.2 gating: jevMode × Cloud Jev credential × decisions-only × BYO
   });
 });
 
+// ── A session pause: Cloud's Jev checks are exempt, like Cloud JS ────────────
+
+describe("a session pause: FailproofAI Cloud's Jev checks are exempt, installed packs' are paused", () => {
+  const SESSION = "paused-session";
+  const pause = async () => {
+    const { writePause } = await import("@/src/hooks/session-pause");
+    writePause({ sessionId: SESSION, durationMs: 60_000, setBy: "test" });
+  };
+  const cloudDenies: Reply = (call) => ({
+    body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-cloud", "cloud-pol", "deny")]) },
+  });
+
+  it("under a Cloud mode a paused call still goes to Cloud, without the pack's check, and Cloud's deny applies", async () => {
+    await connect();
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+    deploy({ jevMode: "enforce" });
+    await pause();
+    const seen = stubFetch(cloudDenies);
+    const result = await hook("rm -rf build", SESSION);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].url).toBe(CLOUD_ENDPOINT);
+    expect(Object.keys(seen[0].body.questions)).toEqual(["injection"]);
+    expect(seen[0].body.cloud).toMatchObject({ machineId: MACHINE, localPolicies: [] });
+    expect(result.evaluation?.decision).toBe("deny");
+  });
+
+  it("the same call in a session that is not paused asks the pack's check too", async () => {
+    await connect();
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+    deploy({ jevMode: "enforce" });
+    await pause();
+    const seen = stubFetch(cloudDenies);
+    await hook("rm -rf build", "another-session");
+    expect(seen).toHaveLength(1);
+    expect(Object.keys(seen[0].body.questions)).toContain("acme-local.fires");
+    expect(seen[0].body.cloud).toMatchObject({ localPolicies: ["acme-local"] });
+  });
+
+  it.each([
+    ["no Cloud mode, a BYOK jev.json and a pack", null],
+    ["Cloud off", "off"],
+  ] as const)("%s: a pause switches Jev off, no call at all", async (_why, mode) => {
+    await connect();
+    localJev("enforce");
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+    deploy({ ...(mode !== null ? { jevMode: mode } : {}) });
+    await pause();
+    const seen = stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call, 0.95) } }));
+    const result = await hook("rm -rf build", SESSION);
+    expect(seen).toHaveLength(0);
+    expect(result.evaluation?.decision).toBe("allow");
+  });
+});
+
 // ── C10.3: the request ───────────────────────────────────────────────────────
 
 describe("C10.3 the cloud block", () => {
@@ -862,7 +916,7 @@ describe("C10.5 failure: the regex decides alone, a both policy stays hard, noth
     expect(existsSync(budgetFile())).toBe(false);
   });
 
-  // The Cloud route's timeout is the Jev default (3 s): jev.json's is not used under a Cloud mode.
+  // The Cloud route's timeout is CLOUD_JEV_TIMEOUT_MS (5 s): jev.json's is not used under a Cloud mode.
   it("a transport that never answers times out to the same fallback", { timeout: 20_000 }, async () => {
     await connect();
     deploy({ policies: [both], jevMode: "enforce" });
@@ -876,6 +930,24 @@ describe("C10.5 failure: the regex decides alone, a both policy stays hard, noth
     const result = await hook("psql -h prod-db -c 'select 1'");
     expect(result.evaluation?.decision).toBe("deny");
     expect(existsSync(errorsFile())).toBe(false);
+  });
+
+  // Past the local 3 s default (and its 250 ms grace), inside Cloud's 5 s: applied.
+  it("a Cloud answer slower than the local default but inside Cloud's 5 s is applied", { timeout: 20_000 }, async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: unknown }) => {
+        await new Promise((r) => setTimeout(r, 3_600));
+        const body = JSON.parse(String(init?.body)) as SeenCall["body"];
+        const reply = { model: "jev-1.13.0", answers: answerAll({ url: CLOUD_ENDPOINT, body }), cloud: cloudBlock([cloudOutcome("acme-x", "cloud-pol", "deny")]) };
+        return new Response(JSON.stringify(reply), { status: 200 });
+      }),
+    );
+    const result = await hook("ls");
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.reason).toContain("acme-x");
   });
 });
 
@@ -1169,6 +1241,16 @@ describe("loadJevConfigForCloudMode", () => {
       apiKey: KEY,
       credentialOrigin: ORIGIN,
     });
+  });
+
+  it("waits CLOUD_JEV_TIMEOUT_MS (5 s) for Cloud; a local BYOK jev.json keeps the 3 s default", async () => {
+    const jevConfig = await import("@/src/hooks/semantic/jev-config");
+    expect(jevConfig.CLOUD_JEV_TIMEOUT_MS).toBe(5_000);
+    await connect();
+    localJev("enforce");
+    expect((await load("enforce")).config?.timeoutMs).toBe(jevConfig.CLOUD_JEV_TIMEOUT_MS);
+    expect(jevConfig.loadJevConfig()?.timeoutMs).toBe(jevConfig.JEV_CONFIG_DEFAULT_TIMEOUT_MS);
+    expect(jevConfig.JEV_CONFIG_DEFAULT_TIMEOUT_MS).toBe(3_000);
   });
 
   it.each([

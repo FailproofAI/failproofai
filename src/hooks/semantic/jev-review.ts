@@ -165,6 +165,12 @@ export interface JevCallContext {
    * scopes the answer cache (a new deployment can change Cloud's checks).
    */
   cloud?: { machineId: string; deployment: number | null; mode: "observe" | "enforce" };
+  /**
+   * A session pause is active. It suspends local policy, so no installed
+   * pack's check is asked; FailproofAI Cloud's checks are exempt from a pause
+   * (as Cloud JS assignments are) and still are. Only meaningful with `cloud`.
+   */
+  localPaused?: boolean;
 }
 
 export function resolveMode(cfg: JevConfig): JevMode {
@@ -383,7 +389,13 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   };
   const cloud = call.cloud;
   const evaluated: Promise<SemanticOutcome | CloudSemanticOutcome> = cloud
-    ? evaluateCloudSemantic(input, { ...options, machineId: cloud.machineId })
+    ? evaluateCloudSemantic(input, {
+        ...options,
+        machineId: cloud.machineId,
+        // Paused: no installed pack's check is sent, only the globals, and
+        // Cloud's own checks are selected and decided on Cloud as ever.
+        ...(call.localPaused ? { policies: [] } : {}),
+      })
     : evaluateSemantic(input, options);
   const answered = evaluated
     .then((outcome): JevReview => {

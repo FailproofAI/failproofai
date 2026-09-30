@@ -96,8 +96,11 @@ checks, asks TypeSafe once, decides its own checks, and returns every answer
 plus its verdict. The CLI decides its pack checks from the answers as always,
 merges the two verdicts (Cloud first, most severe wins), and a `both`
 policy's `reviewedBy` is satisfied only by that policy's own Cloud outcomes.
-A Cloud failure or timeout is today's fallback: the regex decides alone and a
-`both` policy stays hard.
+Cloud gets 5 s (`CLOUD_JEV_TIMEOUT_MS`); a Cloud failure or timeout is today's
+fallback: the regex decides alone and a `both` policy stays hard. A session
+pause does not stop Cloud's checks (Cloud JS assignments are exempt from a
+pause too): a paused session's calls still go to Cloud, without the installed
+packs' checks, which the pause does switch off.
 
 No call is made, and `errors.json` says why under id `jevMode`, when the mode
 asks but the machine cannot: `transcripts_disabled` on a machine connected for

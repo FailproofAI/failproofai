@@ -179,6 +179,15 @@ export const JEV_API_KEY_ENV = "FAILPROOFAI_JEV_API_KEY";
  * the evaluator; the two are pinned equal by a test.
  */
 export const JEV_CONFIG_DEFAULT_TIMEOUT_MS = 3_000;
+/**
+ * How long one call waits for FailproofAI Cloud when Cloud's Jev mode asks
+ * (CONTRACT C10.2). Longer than the local default above: the call makes one
+ * more hop (Cloud selects this machine's checks, forwards to Jev, and decides
+ * them) before it answers. A local BYOK `jev.json` keeps its own `timeoutMs`
+ * or the default; this one is fixed, because under a Cloud mode `jev.json` is
+ * not read at all. Past it, the regex decides alone, as for any fallback.
+ */
+export const CLOUD_JEV_TIMEOUT_MS = 5_000;
 /** Bounds on `timeoutMs`. Every millisecond of it can be added to a tool call. */
 export const MIN_JEV_TIMEOUT_MS = 100;
 export const MAX_JEV_TIMEOUT_MS = 10_000;
@@ -1213,7 +1222,12 @@ function computeCloudModeConfig(mode: JevConfigMode): CloudModeJevConfig {
         problem: `${JEV_UNCONFIGURED_PROBLEM}: this machine has no FailproofAI Cloud machine id (no policy connection in credentials.json)`,
       };
     }
-    const raw = { provider: JEV_CLOUD_PROVIDER, baseUrl: jevCloudBaseUrl(cloudBaseFor(credential.credential)), mode };
+    const raw = {
+      provider: JEV_CLOUD_PROVIDER,
+      baseUrl: jevCloudBaseUrl(cloudBaseFor(credential.credential)),
+      mode,
+      timeoutMs: CLOUD_JEV_TIMEOUT_MS,
+    };
     const r = validateJevConfig(raw, null, credential.credential);
     return r.ok
       ? { config: r.value, machineId, problem: null }

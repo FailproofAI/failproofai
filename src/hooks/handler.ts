@@ -243,9 +243,12 @@ async function runObserved(
 // live there and this machine cannot know which apply. Cloud's `off` switches
 // Jev off whatever `jev.json` says. The remaining conditions hold either way:
 // - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
-// - this is not the fail-closed `forceDecision` path and no session pause is
+// - this is not the fail-closed `forceDecision` path, and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
-//   evaluate what the pause switched off;
+//   evaluate what the pause switched off. FailproofAI Cloud's checks are the
+//   exception, as Cloud JS assignments are: under a Cloud mode that asks, a
+//   paused session's calls still go to Cloud, with no installed pack's check
+//   in them;
 // - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool
 //   that the AGENT requested (see `isHumanAuthoredGate`).
 //
@@ -433,13 +436,22 @@ async function startTwoTier(
   if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
-  if (jevForcedOff(opts) || activePause) return null;
+  if (jevForcedOff(opts)) return null;
   // Read off the reviewer set registration just cached, so it is free. Under a
   // Cloud mode that asks, every gated call goes to Cloud whether or not an
   // installed pack declares a check: the Cloud checks are Cloud's to select.
-  if (!cloudJevAsks(readCloudJevMode()) && !jevChecksInstalled()) return null;
+  const cloudAsks = cloudJevAsks(readCloudJevMode());
+  // A session pause suspends LOCAL policy only: installed packs' Jev checks
+  // with it, FailproofAI Cloud's Jev checks never — the same exemption Cloud
+  // JS assignments get below, for the same reason (a locally-issued command
+  // must not switch off what the org assigned centrally).
+  if (activePause && !cloudAsks) return null;
+  if (!cloudAsks && !jevChecksInstalled()) return null;
   const loaded = await readJevConfig();
   if (!loaded) return null;
+  // Paused, and the config is not Cloud's after all (read in between): the
+  // local path has nothing left to ask.
+  if (activePause && !loaded.cloud) return null;
   const cfg = loaded.config;
   try {
     const { startJevReview } = await import("./semantic/jev-review");
@@ -452,6 +464,8 @@ async function startTwoTier(
       sessionId: session.sessionId,
       cli,
       ...(loaded.cloud ? { cloud: loaded.cloud } : {}),
+      // Cloud's checks are still asked; the installed packs' are not.
+      ...(activePause ? { localPaused: true } : {}),
     });
   } catch (err) {
     // Configured but unable to start: that is a fallback, and it is recorded

@@ -124,7 +124,7 @@ Every one of these falls back to your policies' result for that call, and is rec
 | `http-502` | Jev is unavailable right now. |
 | `http-503` | This Cloud cannot serve Jev for your org: no model gateway, an org not provisioned yet, or the gateway is down. Ask your admin; hooks ask again at most once a minute. |
 | `http-404` | This FailproofAI Cloud does not serve Jev yet. |
-| `timeout` | No answer within `timeoutMs` (default 3000). |
+| `timeout` | No answer within `timeoutMs` (default 3000). While FailproofAI Cloud sets the machine's Jev mode, the wait is 5000 ms and `jev.json`'s `timeoutMs` is not used. |
 | `model-mismatch` | A Jev version other than 1.13 answered. |
 
 ## Where the key lives, and where it goes

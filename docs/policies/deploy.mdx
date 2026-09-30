@@ -91,8 +91,10 @@ A machine reports what stops it from asking, and `fp fleet show <machine-id>` li
 
 - `transcripts_disabled`: the machine was connected with `--no-transcripts`. Such a machine never sends tool calls to Jev.
 - `jev_unconfigured`: the machine's key does not carry Jev.
+- `jev_rate_limited`: some calls were refused for the organization's Jev rate limit and decided by the regex policies alone.
+- `jev_unavailable`: FailproofAI Cloud's Jev failed several calls in a row, so the machine skips it for a minute at a time.
 
-One Jev request carries a limited amount of question text. FailproofAI Cloud's checks come before the checks of packs installed on the machine. A pack check that does not fit is left out and reported as `jev_budget`.
+One Jev request carries a limited amount of question text. FailproofAI Cloud's checks come before the checks of packs installed on the machine. A pack check that does not fit is left out and reported as `jev_budget`. A pack check with the same name as one of your organization's Cloud checks is left out too, and reported as `jev_name_clash`: the Cloud check is asked in its place.
 
 ## Check coverage
 

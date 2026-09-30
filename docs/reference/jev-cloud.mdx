@@ -77,8 +77,12 @@ FailproofAI Cloud can also set a machine's mode, per machine, from the fleet pag
 
 - `transcripts_disabled`: the machine was connected with `--no-transcripts`, which never switches Jev on.
 - `jev_unconfigured`: the machine's key does not carry `jev:evaluate`.
+- `jev_rate_limited`: FailproofAI Cloud refused some of the machine's calls for the organization's Jev rate limit, and those calls were decided by the regex policies alone.
+- `jev_unavailable`: several calls in a row failed, so the machine skips FailproofAI Cloud's Jev for a minute at a time. It retries on its own.
 
-If FailproofAI Cloud does not answer in time, the regex policies decide alone, as for any Jev outage.
+If FailproofAI Cloud does not answer within 5 seconds, the regex policies decide alone, as for any Jev outage. After 3 failures in a row the machine stops asking for a minute at a time, so a Cloud outage does not slow every tool call.
+
+A session pause (`failproofai config --pause`) does not stop FailproofAI Cloud's Jev checks, just as it does not stop Cloud-managed policies. It does pause the Jev checks of packs installed on the machine.
 
 ## Check what it is doing
 

@@ -35,6 +35,7 @@
 
 - Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support, and where the daemon logs them (#872)
 - `crates/CLOUD_POLICIES.md` documents the Jev mode and `both` fields of desired-state and `active.json`, how the machine calls FailproofAI Cloud Jev, and the `policyErrors` report, and its stale `cloud-managed/`, `deployments/` and `cloud.json` names are fixed; the Cloud CLI reference, the deploy guide and the FailproofAI Cloud Jev page cover Jev policies, which run on FailproofAI Cloud, and the Cloud-set Jev mode.
+- The FailproofAI Cloud Jev docs (`crates/CLOUD_POLICIES.md`, the Cloud Jev page, the deploy guide) give the 5 s Cloud wait, say a session pause does not stop FailproofAI Cloud's Jev checks, describe the circuit breaker, and list `jev_rate_limited`, `jev_unavailable` and `jev_name_clash`.
 
 ### Dependencies
 

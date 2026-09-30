@@ -102,10 +102,21 @@ pause does not stop Cloud's checks (Cloud JS assignments are exempt from a
 pause too): a paused session's calls still go to Cloud, without the installed
 packs' checks, which the pause does switch off.
 
+A circuit breaker keeps a failing Cloud from costing every tool call its 5 s:
+after 3 Cloud Jev failures in a row (a timeout, no connection, a 5xx, a reply
+that cannot be used) the CLI skips Cloud Jev for 60 s — the regex decides
+alone — then lets one call through; an answer closes it, another failure opens
+it again. A 429 is not a failure: its `Retry-After` is honoured, and the calls
+it holds fall back to the regex. The breaker lives in the daemon's warm worker.
+
 No call is made, and `errors.json` says why under id `jevMode`, when the mode
 asks but the machine cannot: `transcripts_disabled` on a machine connected for
 decisions only (`--no-transcripts`), `jev_unconfigured` with no Cloud Jev
 credential (`jev_unconfigured: <detail>` when one exists and cannot be used).
+Also under id `jevMode`, while they last: `jev_rate_limited: <n> calls fell back
+to regex in the last 10 min` (Cloud refused calls for the organization's Jev
+rate limit) and `jev_unavailable: …` (the breaker is open). Both clear once a
+call is answered again.
 
 ## Error report
 
@@ -121,17 +132,24 @@ the JSON is never cut). It merges:
 - `errors.json` — written by the CLI, atomically and only when its content
   changes, as `{"errors": [...]}`: a Cloud JS policy that failed to load,
   `jev_unconfigured` / `transcripts_disabled` (Cloud set a Jev mode this
-  machine cannot act on, see "Cloud Jev"), and an installed pack's check
-  FailproofAI Cloud dropped from a request for the question budget
-  (`{"id": "pack:<packId>", "kind": "daemon", "message": "jev_budget: dropped <name>"}`,
-  kept in `jev-budget.json` for as long as the deployment and mode last).
+  machine cannot act on, see "Cloud Jev"), `jev_rate_limited` /
+  `jev_unavailable` (Cloud Jev refused or failing), and an installed pack's
+  check FailproofAI Cloud dropped from a request, for the question budget
+  (`{"id": "pack:<packId>", "kind": "daemon", "message": "jev_budget: dropped <name>"}`)
+  or because an organization Cloud check has its name
+  (`"jev_name_clash: <name> (the FailproofAI Cloud check is used)"`), kept in
+  `jev-budget.json` for as long as the deployment and mode last.
 
 The CLI rewrites `errors.json` only when a hook runs, so the daemon sends only
 the entries of it that still describe the deployment in `active.json`: one
-policy's entry only while that policy is deployed at the version it names, and
-a `jev_unconfigured`, a `transcripts_disabled` or a pack check's `jev_budget`
-drop only while Cloud's Jev mode is `observe` or `enforce`. A fix made in
-FailproofAI Cloud therefore clears at the next poll, not the next tool call.
+policy's entry only while that policy is deployed at the version it names;
+a `jev_unconfigured`, `transcripts_disabled`, `jev_rate_limited` or
+`jev_unavailable` only while Cloud's Jev mode is `observe` or `enforce`; and a
+pack check's `jev_budget` / `jev_name_clash` drop only while, as well,
+`jev-budget.json` is of the active deployment and Jev mode and the pack is
+still in `installed.json` (`FAILPROOFAI_PACK_DIR`, else `policies/packs/`). A
+fix made in FailproofAI Cloud, or an uninstalled pack, therefore clears at the
+next poll, not the next tool call.
 When `active.json` cannot be read, nothing is left out.
 
 Messages carry no local paths: the home directory becomes `~` and any other

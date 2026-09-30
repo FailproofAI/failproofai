@@ -72,7 +72,9 @@ A machine appears under **Admin → enforcement** once it is connected to Cloud.
 
 ## Deploy Jev checks
 
-A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy: a `both` policy's JavaScript and its checks always reach a machine together.
+A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy.
+
+Jev checks run on FailproofAI Cloud; nothing is installed on the machine. The machine receives only the JavaScript of a `both` policy and the Jev mode you set for it. With a mode of `observe` or `enforce`, each checked tool call goes to FailproofAI Cloud, which asks the checks deployed to that machine and returns their verdict.
 
 ```bash
 fp policies publish prod-db-intent --kind jev --semantic ./checks.json
@@ -83,7 +85,14 @@ An effect applies to JavaScript only. To trial Jev checks without them deciding 
 
 A `both` policy deployed with `:observe` sends only its JavaScript, which is observed. Its Jev checks are not asked while it is observed, as with an observe pack.
 
-A check that fails on a machine is dropped there, and the machine reports it: `fp fleet show <machine-id>` lists it under policy errors. A `both` policy whose checks did not load stays **hard**: every deny of its JavaScript stands, and no installed pack's check of the same name can clear it. One Jev request carries a limited amount of question text. FailproofAI Cloud's checks come before installed packs' checks. A check that does not fit is dropped and reported as `jev_budget`.
+A `both` policy's JavaScript can be cleared only by its own checks' answers from FailproofAI Cloud. An installed pack's check of the same name never clears it. If FailproofAI Cloud cannot be reached, or sets no mode that asks, the policy stays **hard**: every deny of its JavaScript stands.
+
+A machine reports what stops it from asking, and `fp fleet show <machine-id>` lists it under policy errors:
+
+- `transcripts_disabled`: the machine was connected with `--no-transcripts`. Such a machine never sends tool calls to Jev.
+- `jev_unconfigured`: the machine's key does not carry Jev.
+
+One Jev request carries a limited amount of question text. FailproofAI Cloud's checks come before the checks of packs installed on the machine. A pack check that does not fit is left out and reported as `jev_budget`.
 
 ## Check coverage
 

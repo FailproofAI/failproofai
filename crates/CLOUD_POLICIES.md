@@ -10,12 +10,16 @@ hook path; hooks evaluate only the last verified local deployment.
 ~/.failproofai/policies/cloud-policies/      (FAILPROOFAI_CLOUD_POLICY_DIR overrides)
 ├── desired-state.json
 ├── active.json
-├── errors.json            written by the CLI: what it could not load
+├── errors.json            written by the CLI: what it could not load or run
 ├── daemon-errors.json     written by the daemon: its own reconcile errors
+├── jev-budget.json        written by the CLI: pack checks Cloud dropped for the budget
 └── artifacts/
-    ├── <sha256>.mjs       a JS policy (kind regex / both)
-    └── <sha256>.json      a Jev policy's declarations (kind jev / both)
+    └── <sha256>.mjs       a JS policy (kind regex / both)
 ```
+
+Nothing Jev-related is written here but the mode: a `jev` policy, and the Jev
+half of a `both` policy, live only on FailproofAI Cloud (CONTRACT C10). See
+"Cloud Jev" below for how the machine reaches them.
 
 - `desired-state.json` is the last complete desired-state snapshot received
   from cloud. A later slice must authenticate it with a publisher signature;
@@ -24,9 +28,8 @@ hook path; hooks evaluate only the last verified local deployment.
   artifact. The pre-layout-3 `generations/` / `deployments/` trees are removed
   after the first successful flip.
 - `active.json` is an atomically replaced pointer to one complete deployment —
-  its JS policies AND its Jev policies. It is derived state and is
-  reconstructed when it is deleted, malformed, or disagrees with
-  `desired-state.json`.
+  its JS policies and its Jev mode. It is derived state and is reconstructed
+  when it is deleted, malformed, or disagrees with `desired-state.json`.
 
 The directory is `cloud-policies`, matching `cloudPoliciesDir()` in
 `src/hooks/fp-home.ts`; `paths.rs`' parity test executes that module to keep
@@ -49,39 +52,57 @@ the two in step.
       "reviewedBy": ["acme-prod-db-write"]
     }
   ],
-  "semanticPolicies": [
-    {
-      "id": "no-prod-db",
-      "version": 7,
-      "sha256": "<64 lowercase hex characters>",
-      "artifactUrl": "/enforcement/v1/artifacts/<sha256>"
-    }
-  ],
   "jevMode": "observe"
 }
 ```
 
 The schema stays 2: every field after `policies[].effect` is optional and
-omitted when empty, so a fleet with no Jev policy receives, and writes back to
-disk, byte-identical JSON to what it always did.
+omitted when empty, so a fleet with no Jev mode and no `both` policy receives,
+and writes back to disk, byte-identical JSON to what it always did.
 
 - `policies[]` carries the JS half of `regex` and `both` policies. A `both`
   policy's entry adds `authority: "reviewable"` and `reviewedBy` (the names of
-  its own Jev checks); the server derives both, the client never supplies them.
-  `authority` must be `hard` or `reviewable`, or the whole state is refused.
-- `semanticPolicies[]` carries `jev` and `both` policies. Each artifact is a
-  JSON array of pack-manifest semantic declarations; the daemon never parses
-  it, the CLI parses it with the same function it uses for a pack manifest.
-  Ids are unique within this list; the same id may appear in both lists (that
-  is what a `both` policy looks like).
-- `jevMode` (`off | observe | enforce`), when present, overrides the local
-  `jev.json` mode — a local `off` included. Absent means Cloud does not
-  override. Any other value refuses the whole state.
+  its own Jev checks, which run on FailproofAI Cloud); the server derives both,
+  the client never supplies them. `authority` must be `hard` or `reviewable`,
+  or the whole state is refused.
+- `jevMode` (`off | observe | enforce`), when present, is FailproofAI Cloud's
+  Jev mode for this machine; see "Cloud Jev". Absent means Cloud does not set
+  one. Any other value refuses the whole state.
+- A `semanticPolicies` list (sent by a pre-release server) is ignored and never
+  fetched. An `active.json` a pre-release daemon wrote with that key still
+  parses: the key is dropped on read and never written again.
 
 The artifact URL is opaque to the store. A cloud client supplies downloaded
-bytes through `ArtifactFetcher` — the same same-origin, bearer-authenticated
-fetch for both artifact kinds; the reconciler trusts none of those bytes until
-their SHA-256 matches the desired state.
+bytes through `ArtifactFetcher`, same-origin and bearer-authenticated; the
+reconciler trusts none of those bytes until their SHA-256 matches the desired
+state.
+
+## Cloud Jev
+
+Cloud's `jevMode` decides whether this machine uses Jev, and where:
+
+| `jevMode` | what the CLI does on a gated tool call |
+|---|---|
+| absent | today's local behaviour: `jev.json` (BYOK) and installed packs' checks; no Cloud checks |
+| `off` | no Jev at all, whatever `jev.json` says |
+| `observe` / `enforce` | sends the call to FailproofAI Cloud (`POST /enforcement/v1/jev/systemone`) on the Cloud Jev credential — `jev.json` is not used — and applies the answer in that mode |
+
+With a mode of `observe`/`enforce` EVERY gated tool call is sent, with the
+global intent questions even when no installed pack has a check for it, plus
+a `cloud` block of tool-call metadata (`machineId`, the computed facts, the
+target scan, the human's recent turns, `intentMode`, and the names of the
+machine's own pack checks). FailproofAI Cloud adds this machine's deployed Jev
+checks, asks TypeSafe once, decides its own checks, and returns every answer
+plus its verdict. The CLI decides its pack checks from the answers as always,
+merges the two verdicts (Cloud first, most severe wins), and a `both`
+policy's `reviewedBy` is satisfied only by that policy's own Cloud outcomes.
+A Cloud failure or timeout is today's fallback: the regex decides alone and a
+`both` policy stays hard.
+
+No call is made, and `errors.json` says why under id `jevMode`, when the mode
+asks but the machine cannot: `transcripts_disabled` on a machine connected for
+decisions only (`--no-transcripts`), `jev_unconfigured` with no Cloud Jev
+credential (`jev_unconfigured: <detail>` when one exists and cannot be used).
 
 ## Error report
 
@@ -95,18 +116,18 @@ the JSON is never cut). It merges:
   mismatch. Transport failures — of the poll or of an artifact fetch that never
   got an HTTP answer — are not reported.
 - `errors.json` — written by the CLI, atomically and only when its content
-  changes, as `{"errors": [...]}`: a Cloud JS policy that failed to load, a
-  semantic artifact that failed its digest or parse, a declaration its parser
-  dropped, a `reviewedBy` naming a check its own policy's Jev half does not
-  provide, a check the Jev question budget dropped (`jev_budget: …`), and
-  `jev_unconfigured` (Cloud set a Jev mode and the machine has no provider, or
-  Cloud Jev policies are deployed and nothing on the machine asks Jev).
+  changes, as `{"errors": [...]}`: a Cloud JS policy that failed to load,
+  `jev_unconfigured` / `transcripts_disabled` (Cloud set a Jev mode this
+  machine cannot act on, see "Cloud Jev"), and an installed pack's check
+  FailproofAI Cloud dropped from a request for the question budget
+  (`{"id": "pack:<packId>", "kind": "daemon", "message": "jev_budget: dropped <name>"}`,
+  kept in `jev-budget.json` for as long as the deployment and mode last).
 
 The CLI rewrites `errors.json` only when a hook runs, so the daemon sends only
 the entries of it that still describe the deployment in `active.json`: one
 policy's entry only while that policy is deployed at the version it names, and
-a `jev_unconfigured` or a pack check's `jev_budget` drop only while the
-deployment's Jev mode and checks could still produce it. A fix made in
+a `jev_unconfigured`, a `transcripts_disabled` or a pack check's `jev_budget`
+drop only while Cloud's Jev mode is `observe` or `enforce`. A fix made in
 FailproofAI Cloud therefore clears at the next poll, not the next tool call.
 When `active.json` cannot be read, nothing is left out.
 
@@ -134,14 +155,15 @@ That verifies the credentials against the server before storing anything, then
 writes the `cloud` object of `~/.failproofai/credentials.json` (mode 0600; the
 layout-1 `cloud.json` is still read when `credentials.json` is absent).
 `--disconnect` removes it together with `desired-state.json` (first, so nothing
-can rebuild the pointer from it), `active.json` and the two error files, and
+can rebuild the pointer from it), `active.json`, the two error files and
+`jev-budget.json`, and
 `--status` reports the connection with the token masked.
 
 A disconnect sticks. The daemon never rebuilds `active.json` on a machine that
 is not enrolled; a poll that was in flight when the disconnect landed is
 abandoned before it writes anything; and on a machine put back on OSS
 (`mode: "oss"` in `config.json`) the daemon removes any Cloud deployment it
-still finds, so none of the old organisation's policies, Jev checks or Jev mode
+still finds, so none of the old organisation's policies or its Jev mode
 return. That cleanup deletes four fixed filenames, so it runs only in the default
 directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.
 
@@ -178,25 +200,22 @@ deployment leaves the previous deployment active.
 
 ## Activation transaction
 
-1. Validate schema, policy IDs, unique IDs (within each list), digests,
-   `authority`, `jevMode`, and monotonic deployment.
-2. Reuse a verified cached artifact or fetch missing bytes — JS and semantic.
+1. Validate schema, policy IDs, unique IDs, digests, `authority`, `jevMode`,
+   and monotonic deployment.
+2. Reuse a verified cached artifact or fetch missing bytes.
 3. Verify every artifact digest.
 4. Write each verified artifact atomically and `fsync` it.
 5. Persist `desired-state.json`.
-6. Atomically replace `active.json` — both lists and `jevMode` in one write.
+6. Atomically replace `active.json` — the policies and `jevMode` in one write.
 
-Any failure before step 6 leaves the previous deployment active, across both
-lists: a `both` policy's JS half never goes live without the Jev checks that
-review it. The worker loads only paths named by `active.json` and
-independently verifies every digest immediately before importing JavaScript
-or parsing a semantic artifact.
+Any failure before step 6 leaves the previous deployment active. The worker
+loads only paths named by `active.json` and independently verifies every
+digest immediately before importing JavaScript.
 
 ## Integrity maintenance
 
 `failproofaid` runs a maintenance thread outside the hook path. It hashes the
-active deployment's artifacts — JS and semantic — periodically (30 seconds by
-default). On an enrolled machine — reachable or not, and with a readable
+active deployment's artifacts periodically (30 seconds by default). On an enrolled machine — reachable or not, and with a readable
 credential or not — a lost or corrupt `active.json` is rebuilt from
 `desired-state.json` and the verified cache. On a machine that is not enrolled
 nothing is rebuilt. There is one copy of each artifact, so a modified one

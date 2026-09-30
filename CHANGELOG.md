@@ -9,7 +9,7 @@
 ### Fixes
 
 - The daemon logs each failed upload attempt at warning level with its request id and batch id, so every attempt of a batch can be found; before, only the last one was visible (#872)
-- Parking a failed batch works when the spool and state directories are on different filesystems (e.g. separate Docker volumes); before, the batch stayed in the spool and was re-sent on every sweep (#872)
+- Parking a failed batch works when the spool and state directories are on different filesystems (e.g. separate Docker volumes); before, the batch stayed in the spool and was re-sent on every sweep. The move is crash-safe: the original is deleted only after the copy's directory entry is on disk (#872)
 
 ### Docs
 

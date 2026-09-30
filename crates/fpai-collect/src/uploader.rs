@@ -585,6 +585,11 @@ async fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
 /// renamed into place, so the retry sweep (which skips dotfiles) never sees a
 /// half-written batch; the source goes only after that, so a crash midway
 /// leaves a duplicate at worst — never a loss, and the server dedups events.
+///
+/// "Only after that" has to mean after the rename is on disk, not just done:
+/// the new directory entry is made durable (the directory is fsynced) before
+/// the source is deleted. Otherwise a power cut can keep the deletion and lose
+/// the entry, and the source was the last copy of the batch.
 async fn copy_then_remove(from: &Path, to: &Path) -> std::io::Result<()> {
     let name = to.file_name().and_then(|n| n.to_str()).unwrap_or("batch");
     let tmp = to.with_file_name(format!(".{name}.partial"));
@@ -603,7 +608,23 @@ async fn copy_then_remove(from: &Path, to: &Path) -> std::io::Result<()> {
         return Err(err);
     }
     tokio::fs::rename(&tmp, to).await?;
+    if let Some(dir) = to.parent() {
+        sync_dir(dir).await?;
+    }
     tokio::fs::remove_file(from).await
+}
+
+/// fsync a directory, so the entries just created in it survive a crash.
+/// Unix only: Windows cannot open a directory for flushing, and NTFS journals
+/// the rename itself.
+async fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        tokio::fs::File::open(dir).await?.sync_all().await?;
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
 }
 
 /// A fresh request id: 32 lowercase hex, i.e. a W3C trace id — the shape the
@@ -994,6 +1015,18 @@ mod tests {
         let chunks = split_lines(body, 4);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], body);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_directory_can_be_flushed_and_a_missing_one_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("fpai-sync-{}", new_request_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        sync_dir(&dir).await.unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        // The source is only deleted after this succeeds, so a failure here
+        // must surface, not be swallowed.
+        assert!(sync_dir(&dir).await.is_err());
     }
 
     #[tokio::test]

@@ -377,7 +377,11 @@ impl Uploader {
                         });
                     }
                     let wait = retry_after(&resp).unwrap_or_else(|| self.backoff(attempt));
-                    tracing::debug!(
+                    // WARN, not DEBUG: each attempt has its own request id, and
+                    // this line is the only place that ties it to the batch.
+                    // At DEBUG a customer's log showed the last attempt (on the
+                    // park line) and none of the ones before it.
+                    tracing::warn!(
                         file = %path.display(),
                         request_id = %request_id,
                         batch_id = %batch_id,
@@ -395,7 +399,7 @@ impl Uploader {
                             detail: error_chain(&err),
                         });
                     }
-                    tracing::debug!(
+                    tracing::warn!(
                         file = %path.display(),
                         request_id = %request_id,
                         batch_id = %batch_id,
@@ -560,8 +564,46 @@ impl Uploader {
             batch_id = %batch_id(path),
             "parking an undelivered batch"
         );
-        tokio::fs::rename(path, &dest).await
+        move_file(path, &dest).await
     }
+}
+
+/// `rename`, or copy-then-remove when the two paths are on different
+/// filesystems — an SDK spool on its own Docker volume, say. A plain rename
+/// fails there with EXDEV, parking failed, and a batch the server rejected
+/// (401, poison) stayed in the spool to be re-sent on every sweep.
+async fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    match tokio::fs::rename(from, to).await {
+        Err(err) if err.kind() == std::io::ErrorKind::CrossesDevices => {
+            copy_then_remove(from, to).await
+        }
+        other => other,
+    }
+}
+
+/// The cross-filesystem move. The copy is written under a hidden name and
+/// renamed into place, so the retry sweep (which skips dotfiles) never sees a
+/// half-written batch; the source goes only after that, so a crash midway
+/// leaves a duplicate at worst — never a loss, and the server dedups events.
+async fn copy_then_remove(from: &Path, to: &Path) -> std::io::Result<()> {
+    let name = to.file_name().and_then(|n| n.to_str()).unwrap_or("batch");
+    let tmp = to.with_file_name(format!(".{name}.partial"));
+    let copied = async {
+        tokio::fs::copy(from, &tmp).await?;
+        tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(&tmp)
+            .await?
+            .sync_all()
+            .await
+    }
+    .await;
+    if let Err(err) = copied {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(err);
+    }
+    tokio::fs::rename(&tmp, to).await?;
+    tokio::fs::remove_file(from).await
 }
 
 /// A fresh request id: 32 lowercase hex, i.e. a W3C trace id — the shape the
@@ -952,5 +994,38 @@ mod tests {
         let chunks = split_lines(body, 4);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], body);
+    }
+
+    #[tokio::test]
+    async fn a_cross_filesystem_park_copies_then_removes_and_leaves_no_partial() {
+        let root = std::env::temp_dir().join(format!("fpai-park-{}", new_request_id()));
+        let (spool, failed) = (root.join("spool"), root.join("failed"));
+        std::fs::create_dir_all(&spool).unwrap();
+        std::fs::create_dir_all(&failed).unwrap();
+        let from = spool.join("hooks-a-1-0.jsonl");
+        std::fs::write(&from, "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let to = failed.join("hooks-a-1-0.a1.c401.jsonl");
+
+        // The EXDEV branch, driven directly: a test cannot count on two mounts.
+        copy_then_remove(&from, &to).await.unwrap();
+
+        assert!(
+            !from.exists(),
+            "the spool copy must go once the park is in place"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&to).unwrap(),
+            "{\"a\":1}\n{\"b\":2}\n"
+        );
+        let left: Vec<_> = std::fs::read_dir(&failed)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            left,
+            vec![to.file_name().unwrap().to_owned()],
+            "no .partial may remain"
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 }

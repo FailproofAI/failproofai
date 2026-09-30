@@ -6,9 +6,14 @@
 
 - Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#872)
 
+### Fixes
+
+- The daemon logs each failed upload attempt at warning level with its request id and batch id, so every attempt of a batch can be found; before, only the last one was visible (#872)
+- Parking a failed batch works when the spool and state directories are on different filesystems (e.g. separate Docker volumes); before, the batch stayed in the spool and was re-sent on every sweep (#872)
+
 ### Docs
 
-- Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support (#872)
+- Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support, and where the daemon logs them (#872)
 
 ### Dependencies
 

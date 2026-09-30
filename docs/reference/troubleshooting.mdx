@@ -200,6 +200,9 @@ icon: "wrench"
         fp --json sessions --since 24h
         ```
       </Tab>
+      <Tab title="Daemon">
+        When an upload fails, the daemon's log names a `request_id` and a `batch_id`: on Linux, `sudo journalctl -u failproofaid@$USER | grep batch_id`. Every attempt gets its own `request_id`; the `batch_id` stays the same across retries, so it ties the attempts of one batch together. Include both.
+      </Tab>
     </Tabs>
   </Accordion>
 </AccordionGroup>

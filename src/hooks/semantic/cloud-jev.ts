@@ -56,14 +56,17 @@ export const CLOUD_BLOCK_VERSION = 1;
 export const MAX_TARGET_SCAN_CHARS = 64_000;
 
 /**
- * The block as serialized may not exceed this: Cloud answers a larger one with
- * a 400 (256 KiB there), and a refused call is a fallback. Kept a little under
- * Cloud's cap. The rest of the block is bounded by the envelope's own caps
- * (three human turns of at most `MAX_USER_MESSAGE_CHARS`, one capped agent
- * message, the capped facts); if it still does not fit, the human's turns are
- * left out — the stricter direction, since no consent can then be read.
+ * The block's serialized UTF-8 bytes may not exceed this: Cloud answers a
+ * larger one with a 400 (256 KiB there), and a refused call is a fallback.
+ * Kept a little under Cloud's cap. The rest of the block is bounded by the
+ * envelope's own caps (three human turns of at most `MAX_USER_MESSAGE_CHARS`,
+ * one capped agent message, the capped facts); if it still does not fit, the
+ * human's turns are left out — the stricter direction, since no consent can
+ * then be read.
  */
-export const MAX_CLOUD_BLOCK_CHARS = 240_000;
+export const MAX_CLOUD_BLOCK_BYTES = 240_000;
+
+const blockBytes = (block: CloudJevBlock): number => Buffer.byteLength(JSON.stringify(block), "utf8");
 
 /** What a secret word in a target group becomes: no human's words can contain it. */
 export const REDACTED_TARGET_WORD = "\u0000redacted";
@@ -249,11 +252,11 @@ export function buildCloudBlock(prepared: PreparedCall, input: SemanticInput, ma
   // Bounded by the caps above in practice; this is the floor under them. The
   // human's turns go first (no consent can be read, which clears nothing),
   // then the target scan (incomplete, which clears nothing either).
-  if (JSON.stringify(block).length > MAX_CLOUD_BLOCK_CHARS) {
+  if (blockBytes(block) > MAX_CLOUD_BLOCK_BYTES) {
     block.userSaid = [];
     block.userSaidCut = false;
   }
-  if (JSON.stringify(block).length > MAX_CLOUD_BLOCK_CHARS) {
+  if (blockBytes(block) > MAX_CLOUD_BLOCK_BYTES) {
     block.targetScan = { groups: [], complete: false };
   }
   return block;

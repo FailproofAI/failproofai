@@ -535,14 +535,19 @@ describe("C10.3 the cloud block", () => {
     expect(block.targetScan.groups.length).toBe(scanTargets(full.toolInput).groups.length);
   });
 
-  it("the block never passes Cloud's size cap: the human's turns go first", async () => {
-    const { buildCloudBlock, MAX_CLOUD_BLOCK_CHARS } = await import("@/src/hooks/semantic/cloud-jev");
+  it("the block never passes Cloud's size cap, counted in UTF-8 bytes: the human's turns go first", async () => {
+    const { buildCloudBlock, MAX_CLOUD_BLOCK_BYTES } = await import("@/src/hooks/semantic/cloud-jev");
     const { full, prep } = await prepared({ toolInput: { command: "ls" }, userSaid: ["x"] }, "v1");
-    const padded = { ...prep, userSaid: Array.from({ length: 60 }, () => "y".repeat(6_000)) };
+    // 18 turns of 6,000 CJK characters: 108,000 UTF-16 units, but ~324 KB of UTF-8.
+    const padded = { ...prep, userSaid: Array.from({ length: 18 }, () => "界".repeat(6_000)) };
+    expect(JSON.stringify(padded.userSaid).length).toBeLessThan(MAX_CLOUD_BLOCK_BYTES);
     const block = buildCloudBlock(padded, full, MACHINE);
-    expect(JSON.stringify(block).length).toBeLessThanOrEqual(MAX_CLOUD_BLOCK_CHARS);
+    expect(Buffer.byteLength(JSON.stringify(block), "utf8")).toBeLessThanOrEqual(MAX_CLOUD_BLOCK_BYTES);
     expect(block.userSaid).toEqual([]);
     expect(block.userSaidCut).toBe(false);
+    // A block that fits is left whole.
+    const fits = buildCloudBlock({ ...prep, userSaid: ["clean the build"] }, full, MACHINE);
+    expect(fits.userSaid).toEqual(["clean the build"]);
   });
 });
 

@@ -651,6 +651,16 @@ describe("C10.3 the cloud block", () => {
       expect(JSON.stringify(block)).not.toContain(ghp);
     });
 
+    // Live (c10-fix smoke SR.1): the intent store keeps the human's turns narrowly redacted, so the machine's
+    // own reading holds the marker, whose label names `./secret`. The block's copy is letter-free: the readings
+    // differ, the scan goes incomplete, and Cloud keeps a deny the machine's own decider would clear.
+    it("a marker the intent store already put in the human's words: Cloud is stricter, never laxer", async () => {
+      const { block, local, cloud } = await both("rm -rf ./secret", ["run it with --password <redacted:assigned secret> and then tidy up"]);
+      expect(local.every).toBe(true);
+      expect(cloud.every).toBe(false);
+      expect(block.targetScan.complete).toBe(false);
+    });
+
     it("no secret anywhere: the scan stays complete and the words go as they are", async () => {
       const { block, local, cloud } = await both("rm -rf build/ ~/important", ["clean the build"]);
       expect(block.targetScan).toEqual({ groups: [["build"], ["important"]], complete: true });

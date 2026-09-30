@@ -13,6 +13,7 @@
 ### Dependencies
 
 - Python SDK dev lockfile: oauthlib 3.3.1 → 4.0.0 and pyjwt 2.13.0 → 2.15.1, clearing three OSV advisories (#872)
+- Pin brace-expansion 5.0.9 → 5.0.12 (package.json override), clearing three OSV advisories (#872)
 
 ## 1.0.9 — 2026-09-29
 

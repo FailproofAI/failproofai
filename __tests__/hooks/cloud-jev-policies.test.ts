@@ -682,6 +682,18 @@ describe("C10.3 the cloud block", () => {
 // ── C10.5: the reply, the merge and the local decision ──────────────────────
 
 describe("C10.5 parseCloudReply", () => {
+  // Review n8: bounded server-side already; cut, not refused, so Cloud's verdict is never dropped for it.
+  it("cuts an overlong reason instead of refusing the reply", async () => {
+    const { parseCloudReply, MAX_CLOUD_REASON_CHARS } = await import("@/src/hooks/semantic/cloud-jev");
+    const long = "x".repeat(MAX_CLOUD_REASON_CHARS + 500);
+    const reply = parseCloudReply({ ...cloudBlock([cloudOutcome("acme-x", "cloud-pol", "deny")]), verdict: { ...cloudBlock([cloudOutcome("acme-x", "cloud-pol", "deny")]).verdict, reason: long } });
+    expect(reply.verdict.decision).toBe("deny");
+    expect(reply.verdict.reason).toHaveLength(MAX_CLOUD_REASON_CHARS);
+    expect(reply.verdict.reason!.endsWith("…")).toBe(true);
+    const short = parseCloudReply(cloudBlock([cloudOutcome("acme-x", "cloud-pol", "deny")]));
+    expect(short.verdict.reason).toBe("Checked acme-x (semantic/acme-x, p=0.95). Ask the user first.");
+  });
+
   it("accepts the server's reply exactly as c10-server-shapes.md shows it, origin carried pack-shaped", async () => {
     const { parseCloudReply } = await import("@/src/hooks/semantic/cloud-jev");
     const reply = parseCloudReply({
@@ -835,6 +847,23 @@ describe("C10.5 evaluateCloudSemantic", () => {
     });
     return { outcome, requests };
   }
+
+  // Review n10: decided from the tool's name alone, before the envelope is built.
+  it("a known inert tool is answered without a request, and without reading its input", async () => {
+    const { evaluateCloudSemantic } = await import("@/src/hooks/semantic/cloud-jev");
+    let sent = 0;
+    const toolInput = {
+      get todos(): unknown {
+        throw new Error("the input was read");
+      },
+    };
+    const outcome = await evaluateCloudSemantic(
+      { eventType: "PreToolUse", toolName: "TodoWrite", toolInput, cwd: project, userSaid: [] },
+      { machineId: MACHINE, intent: "v1", transport: async () => { sent++; return {} as never; } },
+    );
+    expect(sent).toBe(0);
+    expect(outcome).toMatchObject({ status: "ok", via: "none", questionCount: 0, verdict: { decision: "allow", outcomes: [] } });
+  });
 
   it("the short-circuit reply (no answers, nothing asked) is an empty allow, not a malformed answer", async () => {
     const { outcome } = await evaluate(() => ({ model: "jev-1.13.0", answers: {}, cloud: { ...cloudBlock([]), verdict: allowVerdict } }));

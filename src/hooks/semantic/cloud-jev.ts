@@ -23,9 +23,10 @@
  * block, a missing answer — is `degraded`, and the combine keeps the regex
  * result for that call (a `both` policy's regex half stays hard).
  */
-import { MAX_REQUEST_CHARS } from "./compile";
+import { DEFAULT_JEV_MODEL, MAX_REQUEST_CHARS } from "./compile";
 import { DEFAULT_THRESHOLDS, decide, decideV1, everyTargetNamed, partlyNamed, scanTargets, type TargetScan } from "./decide";
 import { redactSecrets } from "./envelope";
+import { classifyTool } from "./facts";
 import { DEFAULT_JEV_TIMEOUT_MS, prepareSemantic, type PreparedCall, type SemanticOptions, type SemanticOutcome } from "./evaluator";
 import { JevError, readAnswers, type JevTransport } from "./jev-client";
 import type { JevProviderKind } from "./jev-config";
@@ -330,6 +331,12 @@ const POLICY_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 const MAX_NAME_CHARS = 256;
 /** Most outcomes / names accepted back: 24 declarations per policy leaves this far out of reach. */
 const MAX_LIST = 4096;
+/**
+ * Longest Cloud reason kept (review n8). Cloud builds it from bounded titles
+ * and guidance, so this is never reached by a working server; past it the
+ * reason is cut rather than refused, since refusing would drop Cloud's verdict.
+ */
+export const MAX_CLOUD_REASON_CHARS = 8_192;
 
 function malformed(what: string): never {
   throw new JevError("malformed", `FailproofAI Cloud's reply: ${what}`);
@@ -416,7 +423,12 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
   return {
     verdict: {
       decision: v.decision as SemanticVerdict["decision"],
-      reason: typeof v.reason === "string" ? v.reason : null,
+      reason:
+        typeof v.reason === "string"
+          ? v.reason.length > MAX_CLOUD_REASON_CHARS
+            ? `${v.reason.slice(0, MAX_CLOUD_REASON_CHARS - 1)}…`
+            : v.reason
+          : null,
       outcomes,
       injectionSuspected: nullableProbability(v.injectionSuspected, "injectionSuspected"),
       scopeWithinRequest: nullableProbability(v.scopeWithinRequest, "scopeWithinRequest"),
@@ -523,6 +535,31 @@ function presentAnswers(response: JevResponse): Record<string, number> {
 export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSemanticOptions): Promise<CloudSemanticOutcome> {
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
+  // A known tool with no side effects (TodoWrite, Task, …) selects no check
+  // anywhere — `selectPolicies` answers `[]` for it before reading a single
+  // declaration, and Cloud selects its checks with an exact port of that
+  // function — so Cloud's reply is its short-circuit, an empty allow, every
+  // time. Not asked for: a round trip on every such call would buy nothing.
+  // Decided from the tool's name alone, before the envelope and its redaction
+  // passes are built for nothing (review n10).
+  const tool = classifyTool(input.toolName);
+  if (tool.toolIsKnown && tool.toolClass === "other") {
+    return {
+      status: "ok",
+      verdict: { ...EMPTY_ALLOW, outcomes: [] },
+      answers: {},
+      latencyMs: elapsed(),
+      inputTokens: null,
+      questionCount: 0,
+      truncated: false,
+      requestCut: false,
+      redactions: 0,
+      model: opts.model ?? DEFAULT_JEV_MODEL,
+      modelVerified: true,
+      via: "none",
+      cloud: { asked: [], droppedLocal: [], droppedCloud: [] },
+    };
+  }
   let prepared: PreparedCall;
   let request: JevRequest;
   try {
@@ -536,28 +573,6 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
       questionCount: 0,
       truncated: false,
       requestCut: false,
-    };
-  }
-  // A known tool with no side effects (TodoWrite, Task, …) selects no check
-  // anywhere — `selectPolicies` answers `[]` for it before reading a single
-  // declaration, and Cloud selects its checks with an exact port of that
-  // function — so Cloud's reply is its short-circuit, an empty allow, every
-  // time. Not asked for: a round trip on every such call would buy nothing.
-  if (prepared.facts.toolIsKnown && prepared.facts.toolClass === "other") {
-    return {
-      status: "ok",
-      verdict: { ...EMPTY_ALLOW, outcomes: [] },
-      answers: {},
-      latencyMs: elapsed(),
-      inputTokens: null,
-      questionCount: 0,
-      truncated: false,
-      requestCut: false,
-      redactions: prepared.envelope.redactions,
-      model: request.model,
-      modelVerified: true,
-      via: "none",
-      cloud: { asked: [], droppedLocal: [], droppedCloud: [] },
     };
   }
   const questionCount = Object.keys(request.questions).length;

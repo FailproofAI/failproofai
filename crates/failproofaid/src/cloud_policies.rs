@@ -673,6 +673,9 @@ impl PolicyStore {
                 }
             }
         }
+        if activated {
+            self.remove_semantic_leftovers();
+        }
 
         Ok(ReconcileOutcome {
             deployment: desired.deployment,
@@ -801,6 +804,33 @@ impl PolicyStore {
 
     fn artifact_path(&self, sha256: &str) -> PathBuf {
         self.root.join("artifacts").join(format!("{sha256}.mjs"))
+    }
+
+    /// Removes `artifacts/<sha256>.json`: Jev check declarations a pre-release
+    /// build of this branch delivered to the machine. Since CONTRACT C10 Jev
+    /// checks live only on FailproofAI Cloud and nothing writes or reads these,
+    /// but they held an org's check text. Run after an activation, like the
+    /// layout-2 cleanup above; best-effort, and only files named exactly like
+    /// one (64 lowercase hex + `.json`) — the JS artifacts are `.mjs`.
+    fn remove_semantic_leftovers(&self) {
+        let Ok(entries) = fs::read_dir(self.root.join("artifacts")) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".json")) else {
+                continue;
+            };
+            if stem.len() != 64 || !stem.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                continue;
+            }
+            match fs::remove_file(entry.path()) {
+                Ok(()) => tracing::info!("removed a pre-release Jev check artifact"),
+                Err(err) => {
+                    tracing::warn!(?err, "could not remove a pre-release Jev check artifact")
+                }
+            }
+        }
     }
 
     /// Where `errors.json` lives: the CLI's report of what it could not load
@@ -1447,6 +1477,28 @@ pub(crate) mod cloud_jev_tests {
     }
 
     const JS: &[u8] = b"export default 'regex half';\n";
+
+    /// Review m8: `artifacts/<sha>.json` files left by the pre-release
+    /// on-machine delivery hold an org's check text. The next activation
+    /// removes them, and only them: the JS artifacts are `.mjs`.
+    #[test]
+    fn an_activation_removes_pre_release_jev_check_artifacts() {
+        let store = temp_store("semantic-leftovers");
+        let artifacts = store.root().join("artifacts");
+        fs::create_dir_all(&artifacts).unwrap();
+        let leftover = artifacts.join(format!("{}.json", "a1".repeat(32)));
+        let not_a_digest = artifacts.join("notes.json");
+        fs::write(&leftover, b"[{\"name\":\"acme-x\"}]").unwrap();
+        fs::write(&not_a_digest, b"{}").unwrap();
+        store.reconcile(&jev_state(12), &serve).unwrap();
+        assert!(!leftover.exists());
+        assert!(
+            not_a_digest.exists(),
+            "only digest-named declaration files go"
+        );
+        assert!(store.artifact_path(&sha256_hex(JS)).exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
 
     /// A `both` policy's JS half (reviewable by its own Cloud check) under a
     /// Cloud Jev mode.

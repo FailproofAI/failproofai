@@ -614,3 +614,35 @@ def test_the_help_says_enforce_blocks_and_that_the_mode_is_machine_wide(runner):
         flat = " ".join(result.stdout.split())
         assert "BLOCK" in flat, argv
         assert "installed" in flat and "pack" in flat, argv
+
+
+# ── CONTRACT C10.6: Jev checks run on FailproofAI Cloud (help text only) ──────
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["fleet", "deploy", "--help"],
+        ["fleet", "jev-mode", "--help"],
+        ["policies", "publish", "--help"],
+    ],
+)
+def test_the_help_says_jev_checks_run_on_cloud_and_nothing_is_installed(runner, argv):
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.stdout.split())
+    assert "Jev checks run on FailproofAI Cloud; nothing is installed on the machine" in flat, argv
+    # The on-machine delivery it replaced is not described any more.
+    assert "puts its Jev checks on the machine" not in flat, argv
+    assert "AgentEye" not in flat, argv
+
+
+@pytest.mark.parametrize("argv", [["fleet", "show", "--help"], ["fleet", "jev-mode", "--help"]])
+def test_the_help_names_the_reasons_a_machine_cannot_ask(runner, argv):
+    flat = " ".join(runner.invoke(app, argv).stdout.split())
+    assert "transcripts_disabled" in flat, argv
+    if argv[1] == "show":
+        assert "jev_unconfigured" in flat
+        assert "jev_budget" in flat
+        # A machine no longer parses Jev checks, so it cannot fail to.
+        assert "could not parse" not in flat

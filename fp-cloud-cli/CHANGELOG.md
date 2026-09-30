@@ -24,6 +24,10 @@
 - The `--jev-mode` and `fleet jev-mode` help says what `enforce` does: Jev's checks block calls
   as well as clearing what they review, machine-wide (installed packs' checks included); an
   `observe` effect on a `both` policy withholds its Jev checks.
+- The `fleet deploy`, `fleet jev-mode` and `policies publish` help says Jev checks run on
+  FailproofAI Cloud and nothing is installed on the machine, and `fleet show`/`fleet jev-mode`
+  name the reasons a machine with a mode cannot ask (`jev_unconfigured`, `transcripts_disabled`)
+  and the `jev_budget` report.
 - `fp policies list/show` print each version's kind and Jev check names (`show` also the
   declarations); `fp fleet list/show` print the machine's Jev mode and the policy errors it
   reported, and `--json` carries `kind`/`semantic`/`semanticSha256`/`authority`/`reviewedBy`,

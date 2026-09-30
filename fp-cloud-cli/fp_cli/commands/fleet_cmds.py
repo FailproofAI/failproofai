@@ -108,8 +108,10 @@ def fleet_show(
 
     Shows the Jev mode FailproofAI Cloud sets on the machine (`local` when it
     sets none) and the policy errors the machine last reported: a policy it
-    could not load, a Jev check it could not parse, a Jev mode it has no
-    provider for. Anything listed there is not enforcing, whatever the
+    could not load, a Jev mode it cannot act on (`jev_unconfigured`: its key
+    does not carry Jev; `transcripts_disabled`: it was connected with
+    `--no-transcripts`), an installed pack's check left out for the question
+    budget (`jev_budget`). Anything listed there is not enforcing, whatever the
     deployment says.
 
     Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
@@ -165,7 +167,8 @@ def fleet_deploy(
         None, "--jev-mode",
         help="Set the machine's Jev mode from FailproofAI Cloud: off, observe, enforce (Jev's "
              "checks BLOCK calls as well as clearing what they review) — or local to stop "
-             "overriding the machine's own. Machine-wide: installed packs' checks too. "
+             "overriding the machine's own. Jev checks run on FailproofAI Cloud; nothing is "
+             "installed on the machine. Machine-wide: installed packs' checks too. "
              "Omitted: unchanged.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
@@ -179,17 +182,19 @@ def fleet_deploy(
 
     `--set` replaces everything — the only way to drop policies you do not name.
 
-    Any kind deploys the same way: a `jev` policy puts its Jev checks on the
-    machine, a `both` policy its JavaScript and its checks together. An effect
-    applies to JavaScript only — an `observe` `both` policy observes its
-    JavaScript and its Jev checks are not sent, and a `jev` policy is watched
-    through the Jev MODE instead: `--jev-mode observe` asks Jev and logs what it
-    says while the regex policies decide; `enforce` lets Jev's checks BLOCK calls
-    (every `jev` policy's deny checks) as well as clear the regex verdicts they
-    review; `off` stops Jev on the machine; `local` hands the choice back to the
-    machine. The mode is the MACHINE's: it also governs the checks of any pack
-    installed there, and it overrides the machine's own mode, a local `off`
-    included. Without `--jev-mode` it is left as it is.
+    Any kind deploys the same way. Jev checks run on FailproofAI Cloud; nothing
+    is installed on the machine: a `both` policy sends the machine its
+    JavaScript, and the machine asks FailproofAI Cloud about each checked tool
+    call while its Jev mode is `observe` or `enforce`. An effect applies to
+    JavaScript only — an `observe` `both` policy observes its JavaScript and its
+    Jev checks are not asked — and a `jev` policy is watched through the Jev
+    MODE instead: `--jev-mode observe` asks Jev and logs what it says while the
+    regex policies decide; `enforce` lets Jev's checks BLOCK calls (every `jev`
+    policy's deny checks) as well as clear the regex verdicts they review; `off`
+    stops Jev on the machine; `local` hands the choice back to the machine. The
+    mode is the MACHINE's: it also governs the checks of any pack installed
+    there, and it overrides the machine's own mode and `jev.json`, a local
+    `off` included. Without `--jev-mode` it is left as it is.
 
     `--jev-mode` with no change to the set changes ONLY the mode (the same as
     `fp fleet jev-mode`): the policy set — disabled policies' assignments
@@ -421,12 +426,16 @@ def fleet_jev_mode(
 ) -> None:
     """Set the Jev mode FailproofAI Cloud gives machines, and nothing else.
 
-    `off`, `observe` or `enforce` override each machine's own mode, a local
-    `off` included; `local` hands the choice back to the machine. `observe`
-    asks Jev and records what it says while the regex policies decide.
-    `enforce` lets Jev's checks BLOCK calls — every `jev` policy's deny checks —
-    as well as clear the regex verdicts they review. The mode is the machine's:
-    it also governs the checks of every pack installed there.
+    `off`, `observe` or `enforce` override each machine's own mode and
+    `jev.json`, a local `off` included; `local` hands the choice back to the
+    machine. Jev checks run on FailproofAI Cloud; nothing is installed on the
+    machine: under `observe` or `enforce` it sends each checked tool call to
+    FailproofAI Cloud. `observe` asks Jev and records what it says while the
+    regex policies decide. `enforce` lets Jev's checks BLOCK calls — every `jev`
+    policy's deny checks — as well as clear the regex verdicts they review. The
+    mode is the machine's: it also governs the checks of every pack installed
+    there. A machine connected with `--no-transcripts` never asks, and reports
+    `transcripts_disabled`.
 
     Only the mode changes: each machine's policy set, disabled policies'
     assignments included, is left exactly as it is, and a machine already on

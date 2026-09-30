@@ -144,6 +144,10 @@ def policies_publish(
     * `both` — the two together. FailproofAI Cloud makes the JavaScript's
       verdict reviewable by exactly its own checks, and deploys them as one.
 
+    Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+    A machine gets a `both` policy's JavaScript, and asks FailproofAI Cloud
+    about each checked tool call while its Jev mode is `observe` or `enforce`.
+
     The JavaScript is parse-checked with node before it is sent. Nothing
     downstream does this: the server validates the id and a size ceiling, and a
     broken policy otherwise fails on the machine at enforcement time.

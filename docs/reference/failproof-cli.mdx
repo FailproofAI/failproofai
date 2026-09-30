@@ -85,7 +85,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
 | `--machine-id <id>` | Set the stable machine ID |
 | `--machine-label <name>` | Rename a machine that is **already connected**. On its own it never runs setup, so give it after `failproofai config`, not during |
-| `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt |
+| `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt; a `jev.json` left running Jev through FailproofAI Cloud is removed |
 | `--disconnect` | Stop Cloud policy pulls and event delivery. Also removes the Cloud Jev key and a `jev.json` that names FailproofAI Cloud; your own Jev setup is left in place |
 | `--status` | Show current machine state |
 | `--pause [duration]` | Pause the newest session in the current directory; accepts seconds, minutes, or hours and defaults to 30 minutes |

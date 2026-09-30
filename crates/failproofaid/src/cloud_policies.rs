@@ -52,55 +52,20 @@ pub struct DesiredState {
     pub schema_version: u32,
     pub deployment: u64,
     pub policies: Vec<DesiredPolicy>,
-    /// Jev checks deployed from FailproofAI Cloud — the `jev` and `both`
-    /// policy kinds. Each entry names a SEMANTIC artifact: a JSON array of
-    /// pack-manifest semantic declarations, which the CLI parses with the same
-    /// function it uses for a pack's manifest. The daemon never parses it; it
-    /// only fetches, verifies and places the bytes, exactly as for JS.
-    ///
-    /// Absent on the wire when nothing is deployed, and skipped when empty on
-    /// the way back to `desired-state.json`, so a machine with no Jev policy
-    /// writes the byte-identical file it wrote before this field existed.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub semantic_policies: Vec<DesiredSemanticPolicy>,
     /// `off | observe | enforce` when FailproofAI Cloud sets this machine's
-    /// Jev mode, which then overrides the local `jev.json` mode — including a
-    /// local `off`. Absent means Cloud does not override (the server stores its
-    /// `local` choice as NULL and emits nothing). Any other value rejects the
-    /// whole state rather than being guessed at, like an unknown `effect`.
+    /// Jev mode. With `observe`/`enforce` the CLI sends every gated tool call's
+    /// metadata to FailproofAI Cloud, which asks the machine's deployed Jev
+    /// checks and returns their verdict; `off` switches Jev off. Absent means
+    /// Cloud does not override (the server stores its `local` choice as NULL
+    /// and emits nothing), and the machine's own `jev.json` decides. Any other
+    /// value rejects the whole state rather than being guessed at, like an
+    /// unknown `effect`.
+    ///
+    /// Jev checks themselves never reach the machine (CONTRACT C10): they live
+    /// on FailproofAI Cloud. A `semanticPolicies` key from a server that still
+    /// sends one is ignored here, like any other field this build does not know.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jev_mode: Option<String>,
-}
-
-/// One deployed Jev policy version: where its semantic artifact is and what it
-/// must hash to. No `effect` — observe-mode Jev is the machine's Jev MODE, not a
-/// per-policy effect (`jevPacks` drops observe packs from the question set).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct DesiredSemanticPolicy {
-    pub id: String,
-    pub version: u64,
-    pub sha256: String,
-    /// Opaque locator, resolved by the cloud transport exactly like a JS one.
-    pub artifact_url: String,
-}
-
-impl DesiredSemanticPolicy {
-    /// The request the existing, same-origin, bearer-authenticated fetcher
-    /// takes. A semantic artifact is fetched and verified through the very path
-    /// a JS artifact is — one transport, one set of origin and digest rules —
-    /// so it is expressed in that path's own type rather than given a second.
-    fn fetch_request(&self) -> DesiredPolicy {
-        DesiredPolicy {
-            id: self.id.clone(),
-            version: self.version,
-            sha256: self.sha256.clone(),
-            artifact_url: self.artifact_url.clone(),
-            effect: PolicyEffect::Enforce,
-            authority: None,
-            reviewed_by: None,
-        }
-    }
 }
 
 /// The Jev modes FailproofAI Cloud may set. `local` is the server's word for
@@ -160,8 +125,7 @@ impl From<LegacyDesiredState> for DesiredState {
             schema_version: old.schema_version,
             deployment: old.generation,
             policies: old.policies.into_iter().map(DesiredPolicy::from).collect(),
-            // A pre-rename daemon predates Cloud Jev policies entirely.
-            semantic_policies: Vec::new(),
+            // A pre-rename daemon predates the Cloud Jev mode.
             jev_mode: None,
         }
     }
@@ -237,19 +201,19 @@ pub struct ActiveDeployment {
     #[serde(alias = "generation")]
     pub deployment: u64,
     pub policies: Vec<ActivePolicy>,
-    /// The Jev checks of this deployment, activated in the SAME atomic write as
-    /// the JS policies — so a `both` policy's regex half and the checks that
-    /// review it can never be live on a machine one without the other.
-    ///
-    /// Skipped when empty (and `jev_mode` when unset), so a deployment with no
-    /// Jev policy writes the exact `active.json` it wrote before these existed.
-    /// Defaulted on read, so a file written before them still parses under
+    /// Carried from `DesiredState::jev_mode` in the same atomic write as the
+    /// policies. Skipped when unset, so a deployment with no Cloud Jev mode
+    /// writes the exact `active.json` it wrote before this field existed, and
+    /// defaulted on read, so a file written before it still parses under
     /// `deny_unknown_fields`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub semantic_policies: Vec<ActiveSemanticPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jev_mode: Option<String>,
 }
+
+/// The `active.json` key a pre-release build of this branch wrote when it
+/// still delivered Jev checks to the machine (removed by CONTRACT C10). Dropped
+/// on read — see [`PolicyStore::read_active`] — and never written.
+const RETIRED_ACTIVE_KEYS: &[&str] = &["semanticPolicies"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -271,18 +235,6 @@ pub struct ActivePolicy {
     pub authority: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_by: Option<Vec<String>>,
-}
-
-/// A materialised Jev policy: its verified semantic artifact on disk.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActiveSemanticPolicy {
-    pub id: String,
-    pub version: u64,
-    pub sha256: String,
-    /// Relative to the cloud-managed root (`artifacts/<sha>.json`). Never
-    /// supplied by the server.
-    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -364,11 +316,12 @@ impl ReconcileError {
 //
 // What this machine could not apply from its deployment, reported to
 // FailproofAI Cloud on the poll it already makes. Two writers, two files, one
-// wire list: the CLI writes `errors.json` (what it could not LOAD — a JS
-// policy that failed to import, a semantic artifact that failed its digest or
-// its parse, a dropped declaration, a `reviewedBy` naming a check that is not
-// there, Jev mode set with no provider), and the daemon keeps its own
-// reconcile errors in `daemon-errors.json`. Neither ever writes the other's
+// wire list: the CLI writes `errors.json` (what it could not LOAD or RUN — a
+// JS policy that failed to import, a Cloud Jev mode this machine cannot act on
+// because it has no Cloud Jev credential (`jev_unconfigured`) or was connected
+// for decisions only (`transcripts_disabled`), an installed pack's Jev check
+// FailproofAI Cloud dropped for the question budget), and the daemon keeps its
+// own reconcile errors in `daemon-errors.json`. Neither ever writes the other's
 // file, so there is no read-modify-write race between two processes.
 
 /// One reported problem. The wire shape is exactly this, compact JSON.
@@ -513,7 +466,19 @@ impl PolicyStore {
             return Ok(None);
         }
         let bytes = fs::read(path)?;
-        Ok(Some(serde_json::from_slice(&bytes)?))
+        // A file a pre-release build wrote may still name the Jev checks that
+        // build delivered (`semanticPolicies`, CONTRACT C10 retired it). Under
+        // `deny_unknown_fields` that key would make the whole deployment
+        // unreadable — a machine enforcing nothing until a poll rewrote the file
+        // — so it is dropped here, before the strict parse, and nothing else is
+        // loosened. The file keeps it until the next write; nothing reads it.
+        let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        if let Some(object) = value.as_object_mut() {
+            for key in RETIRED_ACTIVE_KEYS {
+                object.remove(*key);
+            }
+        }
+        Ok(Some(serde_json::from_value(value)?))
     }
 
     pub fn read_desired(&self) -> Result<Option<DesiredState>, ReconcileError> {
@@ -648,33 +613,10 @@ impl PolicyStore {
             });
         }
 
-        // The Jev checks, through the same fetch-verify-write as the JS above
-        // and into the same `active_policies`-style list, BEFORE anything is
-        // activated. A failure here returns before the flip exactly like a JS
-        // failure does: the deployment is one unit across both lists, so a
-        // `both` policy's regex half never goes live without the checks that
-        // review it (or the reverse).
-        let mut active_semantic = Vec::with_capacity(desired.semantic_policies.len());
-        for semantic in &desired.semantic_policies {
-            let artifact_path = self.semantic_artifact_path(&semantic.sha256);
-            match self.ensure_artifact(&artifact_path, &semantic.fetch_request(), fetcher)? {
-                Ensured::Present => {}
-                Ensured::Downloaded => downloaded += 1,
-                Ensured::Repaired => repaired += 1,
-            }
-            active_semantic.push(ActiveSemanticPolicy {
-                id: semantic.id.clone(),
-                version: semantic.version,
-                sha256: semantic.sha256.clone(),
-                path: self.relative_to_root(&artifact_path)?,
-            });
-        }
-
         let active = ActiveDeployment {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
             deployment: desired.deployment,
             policies: active_policies,
-            semantic_policies: active_semantic,
             jev_mode: desired.jev_mode.clone(),
         };
         let manifest_bytes = serde_json::to_vec_pretty(&active)?;
@@ -804,24 +746,13 @@ impl PolicyStore {
         }
 
         let mut repaired = 0;
-        let js = active
-            .policies
-            .iter()
-            .map(|p| (&p.id, &p.sha256, &p.path, self.artifact_path(&p.sha256)));
-        let semantic = active.semantic_policies.iter().map(|p| {
-            (
-                &p.id,
-                &p.sha256,
-                &p.path,
-                self.semantic_artifact_path(&p.sha256),
-            )
-        });
-        for (id, sha256, path, artifact_path) in js.chain(semantic) {
-            validate_policy_identity(id)?;
-            validate_sha256(sha256)?;
-            let deployment_path = safe_join_relative(&self.root, path)?;
-            let artifact_valid = file_matches_hash(&artifact_path, sha256)?;
-            let deployment_valid = file_matches_hash(&deployment_path, sha256)?;
+        for policy in &active.policies {
+            validate_policy_identity(&policy.id)?;
+            validate_sha256(&policy.sha256)?;
+            let deployment_path = safe_join_relative(&self.root, &policy.path)?;
+            let artifact_path = self.artifact_path(&policy.sha256);
+            let artifact_valid = file_matches_hash(&artifact_path, &policy.sha256)?;
+            let deployment_valid = file_matches_hash(&deployment_path, &policy.sha256)?;
 
             match (artifact_valid, deployment_valid) {
                 (true, true) => {}
@@ -835,7 +766,7 @@ impl PolicyStore {
                 }
                 (false, false) => {
                     return Err(ReconcileError::NoVerifiedCopy {
-                        policy_id: id.clone(),
+                        policy_id: policy.id.clone(),
                     });
                 }
             }
@@ -870,13 +801,6 @@ impl PolicyStore {
 
     fn artifact_path(&self, sha256: &str) -> PathBuf {
         self.root.join("artifacts").join(format!("{sha256}.mjs"))
-    }
-
-    /// A Jev policy's declarations, content-addressed beside the JS artifacts.
-    /// `.json` rather than `.mjs` so nothing — the CLI's convention loader
-    /// included — can ever mistake it for code to import.
-    fn semantic_artifact_path(&self, sha256: &str) -> PathBuf {
-        self.root.join("artifacts").join(format!("{sha256}.json"))
     }
 
     /// Where `errors.json` lives: the CLI's report of what it could not load
@@ -998,25 +922,6 @@ fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> 
             return Err(ReconcileError::InvalidDesiredState(format!(
                 "policy {} has authority {authority:?} (expected one of {AUTHORITIES:?})",
                 policy.id
-            )));
-        }
-    }
-    // Ids are unique WITHIN each list. The same id in both lists is the normal
-    // shape of a `both` policy — its JS half and its Jev half are one policy.
-    let mut semantic_ids = HashSet::new();
-    for semantic in &desired.semantic_policies {
-        validate_policy_identity(&semantic.id)?;
-        validate_sha256(&semantic.sha256)?;
-        if semantic.artifact_url.trim().is_empty() {
-            return Err(ReconcileError::InvalidDesiredState(format!(
-                "semantic policy {} has an empty artifactUrl",
-                semantic.id
-            )));
-        }
-        if !semantic_ids.insert(semantic.id.as_str()) {
-            return Err(ReconcileError::InvalidDesiredState(format!(
-                "duplicate semantic policy id {}",
-                semantic.id
             )));
         }
     }
@@ -1200,7 +1105,6 @@ mod tests {
                 authority: None,
                 reviewed_by: None,
             }],
-            semantic_policies: Vec::new(),
             jev_mode: None,
         };
         let round_tripped: ActiveDeployment =
@@ -1236,7 +1140,6 @@ mod tests {
                 authority: None,
                 reviewed_by: None,
             }],
-            semantic_policies: Vec::new(),
             jev_mode: None,
         }
     }
@@ -1525,14 +1428,17 @@ mod tests {
 
 #[cfg(test)]
 pub(crate) mod cloud_jev_tests {
-    //! Cloud Jev / regex / both policies (CONTRACT C5). The fixtures are
+    //! Cloud Jev mode and `both` policies on the daemon (CONTRACT C5 as amended
+    //! by C10): the machine receives a `both` policy's JS half with its derived
+    //! `authority`/`reviewedBy`, and the Cloud Jev MODE — never the Jev checks
+    //! themselves, which live on FailproofAI Cloud. The fixtures are
     //! `pub(crate)` for the maintenance-lane tests in `cloud_client.rs`.
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering;
 
     pub(crate) fn temp_store(name: &str) -> PolicyStore {
         let root = std::env::temp_dir().join(format!(
-            "failproofaid-cloud-jev-{name}-{}-{}",
+            "fpaid-cloud-jev-{name}-{}-{}",
             std::process::id(),
             TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -1541,9 +1447,9 @@ pub(crate) mod cloud_jev_tests {
     }
 
     const JS: &[u8] = b"export default 'regex half';\n";
-    const DECLS: &[u8] = br#"[{"name":"acme-prod-db","title":"Tried to write to the production database","appliesTo":["shell"],"mode":"deny","userCanOverride":true,"probes":[{"id":"writes","instructions":"It writes.","criteria":{"true":"yes","false":"no"}}],"guidance":"Ask first."}]"#;
 
-    /// A `both` policy (JS reviewable by its own check) plus a `jev` one.
+    /// A `both` policy's JS half (reviewable by its own Cloud check) under a
+    /// Cloud Jev mode.
     pub(crate) fn jev_state(deployment: u64) -> DesiredState {
         DesiredState {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
@@ -1557,34 +1463,18 @@ pub(crate) mod cloud_jev_tests {
                 authority: Some("reviewable".into()),
                 reviewed_by: Some(vec!["acme-prod-db".into()]),
             }],
-            semantic_policies: vec![
-                DesiredSemanticPolicy {
-                    id: "no-prod-db".into(),
-                    version: 3,
-                    sha256: sha256_hex(DECLS),
-                    artifact_url: format!("/enforcement/v1/artifacts/{}", sha256_hex(DECLS)),
-                },
-                DesiredSemanticPolicy {
-                    id: "secrets-in-output".into(),
-                    version: 1,
-                    sha256: sha256_hex(b"[]"),
-                    artifact_url: format!("/enforcement/v1/artifacts/{}", sha256_hex(b"[]")),
-                },
-            ],
             jev_mode: Some("observe".into()),
         }
     }
 
     pub(crate) fn serve(request: &DesiredPolicy) -> Result<Vec<u8>, String> {
-        for bytes in [JS, DECLS, b"[]".as_slice()] {
-            if sha256_hex(bytes) == request.sha256 {
-                return Ok(bytes.to_vec());
-            }
+        if sha256_hex(JS) == request.sha256 {
+            return Ok(JS.to_vec());
         }
         Err(format!("no such artifact {}", request.sha256))
     }
 
-    /// `active.json` exactly as a daemon from before this change wrote it
+    /// `active.json` exactly as a daemon from before Cloud Jev wrote it
     /// (`to_vec_pretty` of the old struct).
     const TODAYS_ACTIVE: &str = r#"{
   "schemaVersion": 2,
@@ -1600,7 +1490,7 @@ pub(crate) mod cloud_jev_tests {
   ]
 }"#;
 
-    /// `desired-state.json` exactly as a daemon from before this change wrote it.
+    /// `desired-state.json` exactly as a daemon from before Cloud Jev wrote it.
     const TODAYS_DESIRED: &str = r#"{
   "schemaVersion": 2,
   "deployment": 42,
@@ -1620,7 +1510,6 @@ pub(crate) mod cloud_jev_tests {
     #[test]
     fn todays_active_json_round_trips_byte_identical() {
         let parsed: ActiveDeployment = serde_json::from_str(TODAYS_ACTIVE).unwrap();
-        assert!(parsed.semantic_policies.is_empty());
         assert_eq!(parsed.jev_mode, None);
         assert_eq!(parsed.policies[0].authority, None);
         let written = String::from_utf8(serde_json::to_vec_pretty(&parsed).unwrap()).unwrap();
@@ -1630,19 +1519,18 @@ pub(crate) mod cloud_jev_tests {
     #[test]
     fn todays_desired_state_round_trips_byte_identical() {
         let parsed: DesiredState = serde_json::from_str(TODAYS_DESIRED).unwrap();
-        assert!(parsed.semantic_policies.is_empty());
         assert_eq!(parsed.jev_mode, None);
         assert_eq!(parsed.policies[0].reviewed_by, None);
         let written = String::from_utf8(serde_json::to_vec_pretty(&parsed).unwrap()).unwrap();
         assert_eq!(written, TODAYS_DESIRED);
     }
 
-    /// And a reconcile of a Jev-free deployment still writes the old shape.
+    /// And a reconcile of a deployment with no Cloud Jev mode and no `both`
+    /// policy still writes the old shape, byte for byte.
     #[test]
     fn a_deployment_with_no_jev_writes_no_new_keys() {
         let store = temp_store("no-jev");
         let mut state = jev_state(5);
-        state.semantic_policies.clear();
         state.jev_mode = None;
         state.policies[0].authority = None;
         state.policies[0].reviewed_by = None;
@@ -1659,12 +1547,10 @@ pub(crate) mod cloud_jev_tests {
     }
 
     #[test]
-    fn the_wire_carries_the_new_fields_in_camel_case() {
+    fn the_wire_carries_the_mode_and_the_both_fields_in_camel_case() {
         let json = r#"{"schemaVersion":2,"deployment":43,
             "policies":[{"id":"no-prod-db","version":3,"sha256":"aa","artifactUrl":"/a",
                          "effect":"enforce","authority":"reviewable","reviewedBy":["prod-db-write-intent"]}],
-            "semanticPolicies":[{"id":"no-prod-db","version":3,"sha256":"bb","artifactUrl":"/b"},
-                                {"id":"secrets","version":1,"sha256":"cc","artifactUrl":"/c","effect":"observe"}],
             "jevMode":"observe"}"#;
         let parsed: DesiredState = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.policies[0].authority.as_deref(), Some("reviewable"));
@@ -1672,25 +1558,94 @@ pub(crate) mod cloud_jev_tests {
             parsed.policies[0].reviewed_by.as_deref(),
             Some(&["prod-db-write-intent".to_string()][..])
         );
-        assert_eq!(parsed.semantic_policies.len(), 2);
-        assert_eq!(parsed.semantic_policies[1].artifact_url, "/c");
         assert_eq!(parsed.jev_mode.as_deref(), Some("observe"));
     }
 
-    /// Both lists, one atomic `active.json`, semantic artifacts as `.json`.
+    /// A server that still sends Jev checks (`semanticPolicies`, retired by
+    /// CONTRACT C10) is not obeyed: the list is ignored like any unknown field,
+    /// nothing is fetched for it, and nothing Jev-related reaches the disk.
     #[test]
-    fn a_both_policy_and_a_jev_policy_activate_in_one_write() {
-        let store = temp_store("both");
-        let fetched = AtomicUsize::new(0);
-        let outcome = store
-            .reconcile(&jev_state(7), &|request: &DesiredPolicy| {
-                fetched.fetch_add(1, Ordering::Relaxed);
+    fn semantic_policies_from_a_server_are_ignored_and_never_fetched() {
+        let json = format!(
+            r#"{{"schemaVersion":2,"deployment":44,
+                "policies":[{{"id":"no-prod-db","version":3,"sha256":"{js}","artifactUrl":"/a",
+                             "effect":"enforce","authority":"reviewable","reviewedBy":["acme-prod-db"]}}],
+                "semanticPolicies":[{{"id":"no-prod-db","version":3,"sha256":"{other}","artifactUrl":"/b"}}],
+                "jevMode":"enforce"}}"#,
+            js = sha256_hex(JS),
+            other = sha256_hex(b"[]"),
+        );
+        let parsed: DesiredState = serde_json::from_str(&json).unwrap();
+        let store = temp_store("retired-semantic");
+        let fetched = std::cell::RefCell::new(Vec::new());
+        store
+            .reconcile(&parsed, &|request: &DesiredPolicy| {
+                fetched.borrow_mut().push(request.sha256.clone());
                 serve(request)
             })
             .unwrap();
+        assert_eq!(fetched.into_inner(), vec![sha256_hex(JS)]);
+        let active = fs::read_to_string(store.active_manifest_path()).unwrap();
+        let desired = fs::read_to_string(store.desired_state_path()).unwrap();
+        for text in [&active, &desired] {
+            assert!(!text.contains("semanticPolicies"), "{text}");
+            assert!(text.contains("\"jevMode\": \"enforce\""), "{text}");
+            assert!(text.contains("\"reviewedBy\""), "{text}");
+        }
+        let names: Vec<_> = fs::read_dir(store.root().join("artifacts"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![format!("{}.mjs", sha256_hex(JS))]);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// An `active.json` left by a pre-release build that still delivered Jev
+    /// checks carries `semanticPolicies`. It must stay readable under
+    /// `deny_unknown_fields` — or the machine would enforce nothing until a
+    /// poll — with the key ignored, and repair must not trip over it either.
+    #[test]
+    fn a_leftover_semantic_policies_key_in_active_json_is_ignored_safely() {
+        let store = temp_store("leftover-semantic");
+        store.reconcile(&jev_state(8), &serve).unwrap();
+        let good = store.read_active().unwrap().unwrap();
+
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.active_manifest_path()).unwrap()).unwrap();
+        raw["semanticPolicies"] = serde_json::json!([
+            {"id": "no-prod-db", "version": 3, "sha256": "ab".repeat(32), "path": "artifacts/gone.json"}
+        ]);
+        fs::write(
+            store.active_manifest_path(),
+            serde_json::to_vec_pretty(&raw).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        // Repair reads it too, and finds nothing to rebuild — the named Jev
+        // artifact is not a thing the daemon checks any more.
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        // With the snapshot gone, the active.json-only branch reads it as well.
+        fs::remove_file(store.desired_state_path()).unwrap();
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        // Any OTHER unknown key is still refused: only the retired one is dropped.
+        raw["somethingNew"] = serde_json::json!(1);
+        fs::write(
+            store.active_manifest_path(),
+            serde_json::to_vec(&raw).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(store.read_active(), Err(ReconcileError::Json(_))));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The JS half, the derived authority and the Jev mode, in one atomic write.
+    #[test]
+    fn a_both_policy_and_the_jev_mode_activate_in_one_write() {
+        let store = temp_store("both");
+        let outcome = store.reconcile(&jev_state(7), &serve).unwrap();
         assert!(outcome.activated);
-        assert_eq!(outcome.downloaded, 3, "one JS + two semantic artifacts");
-        assert_eq!(fetched.load(Ordering::Relaxed), 3);
+        assert_eq!(outcome.downloaded, 1, "the JS half only");
 
         let active = store.read_active().unwrap().unwrap();
         assert_eq!(active.jev_mode.as_deref(), Some("observe"));
@@ -1699,87 +1654,31 @@ pub(crate) mod cloud_jev_tests {
             active.policies[0].reviewed_by.as_deref(),
             Some(&["acme-prod-db".to_string()][..])
         );
-        assert_eq!(active.semantic_policies.len(), 2);
-        let first = &active.semantic_policies[0];
-        assert_eq!(first.id, "no-prod-db");
-        assert_eq!(first.path, format!("artifacts/{}.json", sha256_hex(DECLS)));
-        assert_eq!(fs::read(store.root().join(&first.path)).unwrap(), DECLS);
-
         let text = fs::read_to_string(store.active_manifest_path()).unwrap();
-        for key in [
-            "\"semanticPolicies\"",
-            "\"jevMode\"",
-            "\"authority\"",
-            "\"reviewedBy\"",
-        ] {
+        for key in ["\"jevMode\"", "\"authority\"", "\"reviewedBy\""] {
             assert!(text.contains(key), "{key} missing: {text}");
         }
+        assert!(!text.contains("semanticPolicies"), "{text}");
         // A second identical poll changes nothing and downloads nothing.
         let again = store.reconcile(&jev_state(7), &serve).unwrap();
         assert!(!again.activated);
         assert_eq!(again.downloaded, 0);
-        fs::remove_dir_all(store.root()).ok();
-    }
 
-    /// All-or-nothing ACROSS the two lists: a bad semantic artifact keeps the
-    /// previous deployment, JS half included.
-    #[test]
-    fn a_bad_semantic_artifact_activates_nothing() {
-        let store = temp_store("bad-semantic");
-        let mut first = jev_state(1);
-        first.semantic_policies.clear();
-        first.policies[0].authority = None;
-        first.policies[0].reviewed_by = None;
-        store.reconcile(&first, &serve).unwrap();
-        let before = fs::read(store.active_manifest_path()).unwrap();
-
-        let err = store
-            .reconcile(&jev_state(2), &|request: &DesiredPolicy| {
-                if request.sha256 == sha256_hex(DECLS) {
-                    Ok(b"[{\"tampered\":true}]".to_vec())
-                } else {
-                    serve(request)
-                }
-            })
-            .unwrap_err();
-        assert!(
-            matches!(err, ReconcileError::HashMismatch { ref policy_id, .. } if policy_id == "no-prod-db")
-        );
-        assert_eq!(err.policy_id(), Some("no-prod-db"));
-        assert_eq!(fs::read(store.active_manifest_path()).unwrap(), before);
-        assert!(
-            store.read_active().unwrap().unwrap().policies[0]
-                .authority
-                .is_none()
+        // A mode-only change (the C9.1 route) is a new deployment that flips.
+        let mut enforce = jev_state(8);
+        enforce.jev_mode = Some("enforce".into());
+        assert!(store.reconcile(&enforce, &serve).unwrap().activated);
+        assert_eq!(
+            store.read_active().unwrap().unwrap().jev_mode.as_deref(),
+            Some("enforce")
         );
         fs::remove_dir_all(store.root()).ok();
     }
 
     #[test]
-    fn semantic_entries_are_validated_like_js_ones() {
+    fn the_mode_and_the_authority_are_validated() {
         let store = temp_store("validate");
-        // The same id in both lists is a `both` policy, and fine.
         validate_desired_state(&jev_state(1)).expect("a both policy is valid");
-
-        let mut dup = jev_state(1);
-        dup.semantic_policies[1].id = "no-prod-db".into();
-        assert!(matches!(
-            validate_desired_state(&dup),
-            Err(ReconcileError::InvalidDesiredState(m)) if m.contains("duplicate semantic policy id")
-        ));
-
-        let mut traversal = jev_state(1);
-        traversal.semantic_policies[0].id = "../escape".into();
-        assert!(validate_desired_state(&traversal).is_err());
-
-        let mut bad_sha = jev_state(1);
-        bad_sha.semantic_policies[0].sha256 = "ABC".into();
-        assert!(validate_desired_state(&bad_sha).is_err());
-
-        let mut empty_url = jev_state(1);
-        empty_url.semantic_policies[0].artifact_url = " ".into();
-        assert!(validate_desired_state(&empty_url).is_err());
-
         for mode in ["off", "observe", "enforce"] {
             let mut ok = jev_state(1);
             ok.jev_mode = Some(mode.into());
@@ -1807,34 +1706,18 @@ pub(crate) mod cloud_jev_tests {
         fs::remove_dir_all(store.root()).ok();
     }
 
-    /// `repair_active_from_cache` covers semantic artifacts: a lost
-    /// `active.json` is rebuilt with its Jev half, and a tampered semantic
-    /// artifact is reported rather than silently accepted.
+    /// A lost `active.json` is rebuilt from the snapshot with its Jev mode and
+    /// the `both` fields.
     #[test]
-    fn repair_from_cache_covers_semantic_artifacts() {
-        let store = temp_store("repair-semantic");
+    fn repair_from_cache_keeps_the_mode_and_the_both_fields() {
+        let store = temp_store("repair-mode");
         store.reconcile(&jev_state(9), &serve).unwrap();
         let good = store.read_active().unwrap().unwrap();
 
         fs::remove_file(store.active_manifest_path()).unwrap();
         assert_eq!(store.repair_active_from_cache().unwrap(), 1);
         assert_eq!(store.read_active().unwrap().unwrap(), good);
-
-        let semantic = store.root().join(&good.semantic_policies[0].path);
-        fs::write(&semantic, b"tampered").unwrap();
-        let err = store
-            .repair_active_from_cache()
-            .expect_err("a tampered semantic artifact cannot be repaired offline");
-        assert!(format!("{err}").contains("refetch"), "{err}");
-        assert_eq!(store.read_active().unwrap().unwrap(), good);
-
-        // With desired-state gone too, the active.json-only branch still checks
-        // the semantic artifact rather than skipping it.
-        fs::remove_file(store.desired_state_path()).unwrap();
-        assert!(matches!(
-            store.repair_active_from_cache(),
-            Err(ReconcileError::NoVerifiedCopy { ref policy_id }) if policy_id == "no-prod-db"
-        ));
+        assert_eq!(good.jev_mode.as_deref(), Some("observe"));
         fs::remove_dir_all(store.root()).ok();
     }
 
@@ -1903,7 +1786,7 @@ pub(crate) mod cloud_jev_tests {
             fs::read_dir(store.root().join("artifacts"))
                 .unwrap()
                 .count(),
-            3
+            1
         );
         assert_eq!(store.clear_deployment().unwrap(), 0);
         assert_eq!(store.repair_active_from_cache().unwrap(), 0);
@@ -2153,7 +2036,6 @@ mod pre_rename_state_tests {
                 authority: None,
                 reviewed_by: None,
             }],
-            semantic_policies: Vec::new(),
             jev_mode: None,
         };
         let text = serde_json::to_string(&state).unwrap();

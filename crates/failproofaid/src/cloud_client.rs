@@ -204,44 +204,49 @@ fn current_policy_errors(
     Some(all)
 }
 
-/// Marks the CLI's "Cloud deploys Jev checks and sets no Jev mode" reports
-/// (`localJevProblem` in `src/hooks/semantic/jev-config.ts`, D-FB-3).
+/// The CLI's report that FailproofAI Cloud set a Jev mode on a machine
+/// connected for decisions only (`--no-transcripts`), where Jev never runs
+/// (CONTRACT C10.2).
+const TRANSCRIPTS_DISABLED: &str = "transcripts_disabled";
+
+/// Marks a "Cloud deploys Jev checks and sets no Jev mode" report. Only a
+/// pre-release build that still delivered Jev checks to the machine wrote it
+/// (D-FB-3); a leftover one describes a state that no longer exists.
 const NO_CLOUD_JEV_MODE: &str = "sets no Jev mode";
 
 /// Whether an entry of the CLI's `errors.json` still describes `active`.
 ///
 /// The CLI rewrites that file only when a hook runs (CONTRACT C6), so after a
-/// FailproofAI Cloud-side fix — a policy removed or re-pinned, a Jev mode set —
-/// the machine would otherwise keep reporting the old problem until its next
-/// tool call, and forever once it stops making them. So:
+/// FailproofAI Cloud-side fix — a policy removed or re-pinned, a Jev mode set
+/// or cleared — the machine would otherwise keep reporting the old problem
+/// until its next tool call, and forever once it stops making them. So:
 ///
 /// - One policy's entry (`regex | jev | both`) is kept only while that policy
-///   is in the deployment, in either list, at the version it names.
+///   is in the deployment at the version it names.
 /// - A machine-level entry (`kind: "daemon"`: `jevMode`, `active.json`,
-///   `semanticPolicies`, `pack:<id>`) is kept, except the ones the CLI reports
-///   only in a Jev state `active` no longer has — the same conditions
-///   `recordCloudPolicyErrors` in `src/hooks/handler.ts` applies:
-///   - `jev_unconfigured` needs Cloud to set `observe`/`enforce` (then a "sets
-///     no Jev mode" report is the old state's), or to set no mode while
-///     deploying Jev checks;
-///   - a pack check's `jev_budget` drop needs deployed Cloud Jev checks and a
-///     mode other than `off`.
+///   `pack:<id>`) is kept, except the ones the CLI reports only while Cloud
+///   has Jev ASKING on this machine (`jevMode` `observe`/`enforce`) — the same
+///   condition `recordCloudPolicyErrors` in `src/hooks/handler.ts` applies:
+///   `jev_unconfigured` (no Cloud Jev credential), `transcripts_disabled`
+///   (decisions-only connection), and an installed pack's `jev_budget` drop
+///   (FailproofAI Cloud dropped that check from a request for the budget).
 ///
 /// The daemon's own entries are never filtered: they describe its last
 /// reconcile, which is of the DESIRED state, not the active one.
 fn cli_entry_is_current(entry: &PolicyErrorEntry, active: Option<&ActiveDeployment>) -> bool {
-    let semantic = active.is_some_and(|a| !a.semantic_policies.is_empty());
-    let mode = active.and_then(|a| a.jev_mode.as_deref());
+    let asks = matches!(
+        active.and_then(|a| a.jev_mode.as_deref()),
+        Some("observe" | "enforce")
+    );
     if entry.kind == "daemon" {
-        if entry.message == "jev_unconfigured" || entry.message.starts_with("jev_unconfigured:") {
-            return match mode {
-                Some("observe" | "enforce") => !entry.message.contains(NO_CLOUD_JEV_MODE),
-                None => semantic,
-                Some(_) => false,
-            };
+        let jev_setup = entry.message == "jev_unconfigured"
+            || entry.message.starts_with("jev_unconfigured:")
+            || entry.message == TRANSCRIPTS_DISABLED;
+        if jev_setup {
+            return asks && !entry.message.contains(NO_CLOUD_JEV_MODE);
         }
         if entry.id.starts_with("pack:") && entry.message.starts_with("jev_budget") {
-            return semantic && mode != Some("off");
+            return asks;
         }
         return true;
     }
@@ -251,14 +256,7 @@ fn cli_entry_is_current(entry: &PolicyErrorEntry, active: Option<&ActiveDeployme
     active
         .policies
         .iter()
-        .map(|p| (p.id.as_str(), p.version))
-        .chain(
-            active
-                .semantic_policies
-                .iter()
-                .map(|p| (p.id.as_str(), p.version)),
-        )
-        .any(|(id, version)| id == entry.id && entry.version.is_none_or(|v| v == version))
+        .any(|p| p.id == entry.id && entry.version.is_none_or(|v| v == p.version))
 }
 
 /// A daemon error entry for a failed poll or reconcile. The version is looked
@@ -269,18 +267,7 @@ fn daemon_error(
     desired: Option<&DesiredState>,
 ) -> PolicyErrorEntry {
     let version = policy_id.and_then(|id| {
-        desired.and_then(|d| {
-            d.policies
-                .iter()
-                .find(|p| p.id == id)
-                .map(|p| p.version)
-                .or_else(|| {
-                    d.semantic_policies
-                        .iter()
-                        .find(|p| p.id == id)
-                        .map(|p| p.version)
-                })
-        })
+        desired.and_then(|d| d.policies.iter().find(|p| p.id == id).map(|p| p.version))
     });
     PolicyErrorEntry {
         // A state-level error names no policy; `desired-state` says which
@@ -1448,8 +1435,8 @@ mod tests {
     #[test]
     fn daemon_errors_name_the_policy_and_its_version_when_they_can() {
         let desired: DesiredState = serde_json::from_str(
-            r#"{"schemaVersion":2,"deployment":1,"policies":[],
-                "semanticPolicies":[{"id":"j","version":4,"sha256":"aa","artifactUrl":"/a"}]}"#,
+            r#"{"schemaVersion":2,"deployment":1,
+                "policies":[{"id":"j","version":4,"sha256":"aa","artifactUrl":"/a"}]}"#,
         )
         .unwrap();
         let named = daemon_error("m".into(), Some("j"), Some(&desired));
@@ -1518,48 +1505,31 @@ mod tests {
         assert!(PollFailure::payload("x".into()).reportable);
     }
 
-    /// End to end over HTTP: a `jev` artifact is fetched through the same
-    /// same-origin, bearer-authenticated path and lands as `artifacts/<sha>.json`.
+    /// End to end over HTTP: a server that still names Jev checks
+    /// (`semanticPolicies`, retired by CONTRACT C10) gets exactly one request —
+    /// the poll. Nothing is fetched for them, and only the Jev MODE lands.
     #[test]
-    fn fetches_a_semantic_artifact_into_the_store() {
-        let decls = br#"[{"name":"acme-x"}]"#.to_vec();
-        let sha = Sha256::digest(&decls)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
+    fn a_server_still_naming_jev_checks_is_not_fetched_from() {
+        let sha = "ab".repeat(32);
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
-        let expected_sha = sha.clone();
-        let body_decls = decls.clone();
+        let named = sha.clone();
         let server = std::thread::spawn(move || {
-            for _ in 0..2 {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0_u8; 4096];
-                let read = stream.read(&mut request).unwrap();
-                let request = String::from_utf8_lossy(&request[..read]).to_string();
-                assert!(
-                    request
-                        .to_ascii_lowercase()
-                        .contains("authorization: bearer tok")
-                );
-                let body = if request.contains("desired-state") {
-                    format!(r#"{{"schemaVersion":2,"deployment":3,"policies":[],"semanticPolicies":[{{"id":"j","version":1,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}],"jevMode":"enforce"}}"#).into_bytes()
-                } else {
-                    assert!(
-                        request
-                            .starts_with(&format!("GET /enforcement/v1/artifacts/{expected_sha}"))
-                    );
-                    body_decls.clone()
-                };
-                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n", body.len()).unwrap();
-                stream.write_all(&body).unwrap();
-            }
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]).to_string();
+            assert!(request.contains("desired-state"), "{request}");
+            let body = format!(r#"{{"schemaVersion":2,"deployment":3,"policies":[],"semanticPolicies":[{{"id":"j","version":1,"sha256":"{named}","artifactUrl":"/enforcement/v1/artifacts/{named}"}}],"jevMode":"enforce"}}"#).into_bytes();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            stream.write_all(&body).unwrap();
+            // The listener is dropped here: a second request would be refused.
         });
         let cloud =
             CloudClient::new(&format!("http://{address}"), "tok".into(), "m".into()).unwrap();
         let desired = cloud.desired_state(None).unwrap();
-        let root =
-            std::env::temp_dir().join(format!("failproofaid-jev-http-{}", std::process::id()));
+        server.join().unwrap();
+        let root = std::env::temp_dir().join(format!("fpaid-jev-http-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let store = PolicyStore::new(root.clone());
         store
@@ -1567,15 +1537,14 @@ mod tests {
             .unwrap();
         let active = store.read_active().unwrap().unwrap();
         assert_eq!(active.jev_mode.as_deref(), Some("enforce"));
+        assert!(active.policies.is_empty());
+        let text = fs::read_to_string(store.active_manifest_path()).unwrap();
+        assert!(!text.contains("semanticPolicies"), "{text}");
         assert_eq!(
-            active.semantic_policies[0].path,
-            format!("artifacts/{sha}.json")
+            fs::read_dir(root.join("artifacts")).unwrap().count(),
+            0,
+            "nothing Jev-related is written to the machine"
         );
-        assert_eq!(
-            fs::read(root.join(&active.semantic_policies[0].path)).unwrap(),
-            decls
-        );
-        server.join().unwrap();
         fs::remove_dir_all(root).ok();
     }
 
@@ -1583,7 +1552,7 @@ mod tests {
 
     use crate::cloud_policies::cloud_jev_tests::{jev_state, serve, temp_store};
 
-    /// A store holding a `both` + `jev` deployment with `jevMode: observe`.
+    /// A store holding a `both` policy's JS half with `jevMode: observe`.
     fn deployed_store(name: &str) -> PolicyStore {
         let store = temp_store(name);
         store.reconcile(&jev_state(12), &serve).unwrap();
@@ -1625,7 +1594,7 @@ mod tests {
     }
 
     /// The review's M2 scenario: after `config --disconnect` the old org's
-    /// JS policies, Jev checks and Jev mode used to be rebuilt from the cache
+    /// JS policies and Jev mode used to be rebuilt from the cache
     /// within one interval. Now nothing reappears, tick after tick.
     #[test]
     fn a_disconnected_machine_stays_empty_across_maintenance_ticks() {
@@ -1769,11 +1738,10 @@ mod tests {
         fs::write(store.cli_errors_path(), serde_json::to_vec(&file).unwrap()).unwrap();
     }
 
+    /// Written only by a pre-release build that delivered Jev checks (D-FB-3).
     const NO_MODE_NO_FILE: &str = "jev_unconfigured: FailproofAI Cloud sets no Jev mode for this machine and it has \
          no jev.json, so its FailproofAI Cloud Jev checks are never asked";
-    const NO_MODE_LOCAL_OFF: &str = "jev_unconfigured: Jev is off on this machine (jev.json mode off) and FailproofAI \
-         Cloud sets no Jev mode, so its FailproofAI Cloud Jev checks are never asked";
-    const PACK_DROP: &str = "jev_budget: dropped acme-x (5 chars over)";
+    const PACK_DROP: &str = "jev_budget: dropped acme-x";
 
     /// `errors.json` is rewritten only when a hook runs, so a Cloud-side fix
     /// used to leave the fleet page showing the old problem until the next
@@ -1781,19 +1749,25 @@ mod tests {
     /// another version, are not sent; the daemon's own entries always are.
     #[test]
     fn cli_errors_about_policies_no_longer_in_force_are_not_reported() {
-        // `no-prod-db@3` (both) + `secrets-in-output@1` (jev), Jev mode observe.
+        // `no-prod-db@3` (both), Jev mode observe.
         let store = deployed_store("stale-report");
         write_cli_errors(
             &store,
             &[
-                entry("no-prod-db", Some(3), "both", "reviewedBy names acme-x"),
+                entry("no-prod-db", Some(3), "both", "policy did not load"),
                 entry("no-prod-db", Some(2), "both", "an older version's problem"),
-                entry("secrets-in-output", Some(1), "jev", "dropped: probe #1"),
-                entry("secrets-in-output", None, "jev", "no version named"),
+                entry("no-prod-db", None, "both", "no version named"),
+                entry(
+                    "secrets-in-output",
+                    Some(1),
+                    "jev",
+                    "a Jev-only policy is not the machine's",
+                ),
                 entry("removed-policy", Some(1), "regex", "failed to load"),
                 entry("active.json", None, "daemon", "cannot read the manifest"),
                 entry("pack:acme/pack", None, "daemon", PACK_DROP),
                 entry("jevMode", None, "daemon", "jev_unconfigured"),
+                entry("jevMode", None, "daemon", TRANSCRIPTS_DISABLED),
                 entry("jevMode", None, "daemon", NO_MODE_NO_FILE),
             ],
         );
@@ -1817,14 +1791,14 @@ mod tests {
             vec![
                 // The daemon's own: its last reconcile, of the DESIRED state.
                 ("removed-policy", Some(1), "sha mismatch"),
-                ("no-prod-db", Some(3), "reviewedBy names acme-x"),
-                ("secrets-in-output", Some(1), "dropped: probe #1"),
-                ("secrets-in-output", None, "no version named"),
+                ("no-prod-db", Some(3), "policy did not load"),
+                ("no-prod-db", None, "no version named"),
                 ("active.json", None, "cannot read the manifest"),
+                // Cloud sets observe: Jev asks, so its setup reports are current,
+                // and a pre-release "Cloud sets no Jev mode" one is not.
                 ("pack:acme/pack", None, PACK_DROP),
-                // Cloud sets observe: "no provider for it" is current, and
-                // "Cloud sets no Jev mode" is the state before that was set.
                 ("jevMode", None, "jev_unconfigured"),
+                ("jevMode", None, TRANSCRIPTS_DISABLED),
             ]
         );
 
@@ -1836,20 +1810,17 @@ mod tests {
         );
 
         // The deployment could not be read: "cannot tell" drops nothing.
-        assert_eq!(current_policy_errors(&store, None).unwrap().len(), 10);
+        assert_eq!(current_policy_errors(&store, None).unwrap().len(), 11);
         fs::remove_dir_all(store.root()).ok();
     }
 
-    /// The Jev entries the CLI reports only in some Jev states — the same
-    /// conditions as `recordCloudPolicyErrors` in `src/hooks/handler.ts`.
+    /// The Jev entries the CLI reports only while Cloud has Jev asking — the
+    /// same condition as `recordCloudPolicyErrors` in `src/hooks/handler.ts`.
     #[test]
-    fn jev_setup_reports_are_kept_only_while_the_deployment_can_produce_them() {
+    fn jev_setup_reports_are_kept_only_while_cloud_has_jev_asking() {
         let base = deployed_active();
-        let with = |semantic: bool, mode: Option<&str>| {
+        let with = |mode: Option<&str>| {
             let mut active = base.clone();
-            if !semantic {
-                active.semantic_policies.clear();
-            }
             active.jev_mode = mode.map(str::to_string);
             active
         };
@@ -1858,11 +1829,11 @@ mod tests {
             "jevMode",
             None,
             "daemon",
-            "jev_unconfigured: jev.json is refused — too open",
+            "jev_unconfigured: the FailproofAI Cloud Jev credential is refused — too open",
         );
-        let no_mode = entry("jevMode", None, "daemon", NO_MODE_NO_FILE);
-        let local_off = entry("jevMode", None, "daemon", NO_MODE_LOCAL_OFF);
+        let transcripts = entry("jevMode", None, "daemon", TRANSCRIPTS_DISABLED);
         let pack = entry("pack:acme/pack", None, "daemon", PACK_DROP);
+        let legacy = entry("jevMode", None, "daemon", NO_MODE_NO_FILE);
         let unknown_mode = entry(
             "jevMode",
             None,
@@ -1871,33 +1842,28 @@ mod tests {
         );
         let manifest = entry("active.json", None, "daemon", "EACCES");
 
-        // (semantic checks deployed, Cloud's mode) → [unconfigured, detail,
-        // no_mode, local_off, pack] kept?
-        let cases: [(bool, Option<&str>, [bool; 5]); 7] = [
-            // No Cloud mode and Cloud Jev checks: only the local setup can ask them.
-            (true, None, [true, true, true, true, true]),
-            // Cloud sets a mode that asks: the "sets no mode" reports are old.
-            (true, Some("enforce"), [true, true, false, false, true]),
-            (true, Some("observe"), [true, true, false, false, true]),
+        // Cloud's mode → [unconfigured, detail, transcripts, pack, legacy] kept?
+        let cases: [(Option<&str>, [bool; 5]); 4] = [
+            (Some("enforce"), [true, true, true, true, false]),
+            (Some("observe"), [true, true, true, true, false]),
             // Cloud switched Jev off: nothing about Jev is reported.
-            (true, Some("off"), [false, false, false, false, false]),
-            // A mode with no Cloud Jev checks still governs the machine's packs.
-            (false, Some("enforce"), [true, true, false, false, false]),
-            // Neither: the CLI reports no Jev setup problem at all.
-            (false, None, [false, false, false, false, false]),
-            (false, Some("off"), [false, false, false, false, false]),
+            (Some("off"), [false, false, false, false, false]),
+            // No Cloud mode: the machine's own jev.json decides, and Cloud's
+            // Jev checks are never asked from here — nothing to report.
+            (None, [false, false, false, false, false]),
         ];
-        for (semantic, mode, expected) in cases {
-            let active = with(semantic, mode);
-            let kept = [&unconfigured, &detail, &no_mode, &local_off, &pack]
+        for (mode, expected) in cases {
+            let active = with(mode);
+            let kept = [&unconfigured, &detail, &transcripts, &pack, &legacy]
                 .map(|e| cli_entry_is_current(e, Some(&active)));
-            assert_eq!(kept, expected, "semantic {semantic}, mode {mode:?}");
+            assert_eq!(kept, expected, "mode {mode:?}");
             // Machine-level entries that are not about the Jev state stay.
             assert!(cli_entry_is_current(&unknown_mode, Some(&active)));
             assert!(cli_entry_is_current(&manifest, Some(&active)));
         }
         // No deployment: no Jev state, no policy.
         assert!(!cli_entry_is_current(&unconfigured, None));
+        assert!(!cli_entry_is_current(&transcripts, None));
         assert!(!cli_entry_is_current(&pack, None));
         assert!(!cli_entry_is_current(
             &entry("no-prod-db", Some(3), "both", "m"),

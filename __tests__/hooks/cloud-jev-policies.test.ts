@@ -1078,6 +1078,230 @@ describe("C10.5 droppedLocal → errors.json jev_budget, for the deployment it h
     await hook("pwd");
     expect(readErrors().errors).toEqual([]);
   });
+
+  it("a group dropped because a Cloud check has its name is a jev_name_clash, not a budget drop", async () => {
+    await connect();
+    installPacks([{ id: "acme/big", semantic: [decl("acme-a"), decl("acme-b"), decl("acme-c")] }]);
+    deploy({ jevMode: "enforce", deployment: 7 });
+    stubFetch((call) => {
+      const answers = answerAll(call);
+      for (const name of ["acme-a", "acme-b", "acme-c"]) delete (answers as Record<string, unknown>)[`${name}.fires`];
+      return {
+        body: {
+          model: "jev-1.13.0",
+          answers,
+          // acme-a: a Cloud check of that name was asked; acme-c: one was selected and then budget-dropped itself.
+          cloud: { ...cloudBlock([cloudOutcome("acme-a", "cloud-pol", "none")]), droppedLocal: ["acme-a", "acme-b", "acme-c"], droppedCloud: ["acme-c"] },
+        },
+      };
+    });
+    await hook();
+    expect(readErrors().errors.filter((e) => e.id === "pack:acme/big")).toEqual([
+      { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_name_clash: acme-a (the FailproofAI Cloud check is used)" },
+      { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_budget: dropped acme-b" },
+      { id: "pack:acme/big", version: null, kind: "daemon", message: "jev_name_clash: acme-c (the FailproofAI Cloud check is used)" },
+    ]);
+    expect(JSON.parse(readFileSync(budgetFile(), "utf8")).dropped).toEqual([
+      { packId: "acme/big", name: "acme-a", clash: true },
+      { packId: "acme/big", name: "acme-b" },
+      { packId: "acme/big", name: "acme-c", clash: true },
+    ]);
+  });
+
+  it("a drop of a pack uninstalled since is no longer reported (review m2)", async () => {
+    await connect();
+    installPacks([{ id: "acme/big", semantic: [decl("acme-a")] }]);
+    deploy({ jevMode: "enforce", deployment: 7 });
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { ...cloudBlock([]), droppedLocal: ["acme-a"] } } }));
+    await hook();
+    expect(readErrors().errors.some((e) => e.id === "pack:acme/big")).toBe(true);
+    installPacks([]);
+    await hook("pwd");
+    expect(readErrors().errors).toEqual([]);
+  });
+});
+
+// ── Review M3: FailproofAI Cloud Jev rate-limited or unavailable ─────────────
+
+describe("M3 FailproofAI Cloud Jev health: a circuit breaker and a report", () => {
+  const SCOPE = "scope-1";
+
+  it("classifies a review by what it says about FailproofAI Cloud", async () => {
+    const { classifyCloudJevReview } = await import("@/src/hooks/semantic/cloud-jev-health");
+    const fb = (reason: string) => ({ kind: "fallback" as const, reason, latencyMs: null, model: null });
+    expect(classifyCloudJevReview({ kind: "not-consulted" } as never)).toBe("neutral");
+    for (const code of ["timeout", "network", "malformed", "model-mismatch", "upstream-error", "error", "http-500", "http-502", "http-503", "http-504"]) {
+      expect(classifyCloudJevReview(fb(code)), code).toBe("failed");
+    }
+    // Cloud's rate limit, or the machine's own budget a Cloud 429 empties.
+    expect(classifyCloudJevReview(fb("http-429"))).toBe("rate-limited");
+    expect(classifyCloudJevReview(fb("rate-limited"))).toBe("rate-limited");
+    // Not Cloud's health: the machine aborted (regex decided first), its own config, Cloud refusing THIS request.
+    for (const code of ["aborted", "config", "no-transport", "prepare", "http-400", "http-401", "http-402", "http-413", "unavailable"]) {
+      expect(classifyCloudJevReview(fb(code)), code).toBe("neutral");
+    }
+  });
+
+  it("opens after 3 failures in a row, skips Cloud for 60 s, then lets ONE call through (half-open)", async () => {
+    const h = await import("@/src/hooks/semantic/cloud-jev-health");
+    let t = 1_000;
+    const fail = (probe = false) => h.recordCloudJevResult(SCOPE, "failed", "timeout", probe, t);
+    for (let i = 0; i < 2; i++) {
+      expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: true, probe: false });
+      fail();
+    }
+    expect(h.cloudJevHealthErrors(t)).toEqual([]);
+    // A neutral result (an abort) neither counts nor resets.
+    h.recordCloudJevResult(SCOPE, "neutral", "aborted", false, t);
+    fail();
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: false });
+    expect(h.cloudJevHealthErrors(t)).toEqual([
+      {
+        id: "jevMode",
+        version: null,
+        kind: "daemon",
+        message:
+          "jev_unavailable: FailproofAI Cloud Jev failed 3 or more calls in a row (last: timeout), so tool calls skip it for 60 s at a time and the regex decides alone",
+      },
+    ]);
+    t += h.BREAKER_OPEN_MS - 1;
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: false });
+    t += 1;
+    // Half-open: one trial; the others keep skipping while it is in flight.
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: true, probe: true });
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: false });
+    // The trial fails: open again for another 60 s.
+    fail(true);
+    expect(h.cloudJevGate(SCOPE, t + h.BREAKER_OPEN_MS - 1)).toEqual({ ask: false });
+    t += h.BREAKER_OPEN_MS;
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: true, probe: true });
+    // The trial is answered: closed, and the report clears.
+    h.recordCloudJevResult(SCOPE, "answered", null, true, t);
+    expect(h.cloudJevGate(SCOPE, t)).toEqual({ ask: true, probe: false });
+    expect(h.cloudJevHealthErrors(t)).toEqual([]);
+  });
+
+  it("an aborted trial frees the half-open slot; a 429 is not a failure and ends the streak", async () => {
+    const h = await import("@/src/hooks/semantic/cloud-jev-health");
+    h.cloudJevGate(SCOPE, 0);
+    for (let i = 0; i < 3; i++) h.recordCloudJevResult(SCOPE, "failed", "http-502", false, 0);
+    expect(h.cloudJevGate(SCOPE, h.BREAKER_OPEN_MS)).toEqual({ ask: true, probe: true });
+    h.recordCloudJevResult(SCOPE, "neutral", "aborted", true, h.BREAKER_OPEN_MS);
+    expect(h.cloudJevGate(SCOPE, h.BREAKER_OPEN_MS)).toEqual({ ask: true, probe: true });
+    // Cloud answered the trial with a 429: it is up, the breaker closes; its Retry-After holds the calls behind.
+    h.recordCloudJevResult(SCOPE, "rate-limited", "http-429", true, h.BREAKER_OPEN_MS);
+    expect(h.cloudJevGate(SCOPE, h.BREAKER_OPEN_MS)).toEqual({ ask: true, probe: false });
+    // Two failures, a 429, two failures: never three in a row.
+    for (const r of ["failed", "failed", "rate-limited", "failed", "failed"] as const) {
+      h.recordCloudJevResult(SCOPE, r, r === "rate-limited" ? "http-429" : "timeout", false, 1);
+    }
+    expect(h.cloudJevGate(SCOPE, 1)).toEqual({ ask: true, probe: false });
+    // The machine's own budget ("rate-limited") is reported, but says nothing about Cloud: the streak goes on.
+    h.recordCloudJevResult(SCOPE, "rate-limited", "rate-limited", false, 1);
+    h.recordCloudJevResult(SCOPE, "failed", "timeout", false, 1);
+    expect(h.cloudJevGate(SCOPE, 1)).toEqual({ ask: false });
+  });
+
+  it("jev_rate_limited counts the fallbacks in the last 10 min, refreshes the count at most every 30 s, and clears on an answer", async () => {
+    const h = await import("@/src/hooks/semantic/cloud-jev-health");
+    const msg = (at: number) => h.cloudJevHealthErrors(at).map((e) => e.message);
+    h.cloudJevGate(SCOPE, 0);
+    h.recordCloudJevResult(SCOPE, "rate-limited", "http-429", false, 0);
+    expect(h.cloudJevHealthErrors(0)).toEqual([
+      { id: "jevMode", version: null, kind: "daemon", message: "jev_rate_limited: 1 call fell back to regex in the last 10 min" },
+    ]);
+    for (let i = 1; i <= 4; i++) h.recordCloudJevResult(SCOPE, "rate-limited", "http-429", false, i * 1_000);
+    // Five now, but the report said one less than 30 s ago: not rewritten yet.
+    expect(msg(5_000)).toEqual(["jev_rate_limited: 1 call fell back to regex in the last 10 min"]);
+    expect(msg(30_000)).toEqual(["jev_rate_limited: 5 calls fell back to regex in the last 10 min"]);
+    // Out of the window, they stop counting.
+    expect(msg(h.RATE_LIMIT_WINDOW_MS + 3_500)).toEqual(["jev_rate_limited: 1 call fell back to regex in the last 10 min"]);
+    expect(msg(h.RATE_LIMIT_WINDOW_MS + 4_000)).toEqual([]);
+    h.recordCloudJevResult(SCOPE, "rate-limited", "http-429", false, h.RATE_LIMIT_WINDOW_MS + 6_000);
+    h.recordCloudJevResult(SCOPE, "answered", null, false, h.RATE_LIMIT_WINDOW_MS + 7_000);
+    expect(msg(h.RATE_LIMIT_WINDOW_MS + 7_000)).toEqual([]);
+  });
+
+  it("a reconnect (another endpoint or machine) starts clean", async () => {
+    const h = await import("@/src/hooks/semantic/cloud-jev-health");
+    h.cloudJevGate(SCOPE, 0);
+    for (let i = 0; i < 3; i++) h.recordCloudJevResult(SCOPE, "failed", "timeout", false, 0);
+    expect(h.cloudJevGate(SCOPE, 0)).toEqual({ ask: false });
+    expect(h.cloudJevGate("scope-2", 0)).toEqual({ ask: true, probe: false });
+    // A late result for the old connection changes nothing.
+    h.recordCloudJevResult(SCOPE, "failed", "timeout", false, 0);
+    expect(h.cloudJevHealthErrors(0)).toEqual([]);
+  });
+
+  it("through the hook: three 502s open it, the next call is not sent and the regex decides alone, and errors.json says so", async () => {
+    await connect();
+    const both: CloudJs = { id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-x"], verdict: "deny" };
+    deploy({ policies: [both], jevMode: "enforce" });
+    const seen = stubFetch(() => ({ status: 502, body: { error: "upstream_error" } }));
+    for (let i = 0; i < 3; i++) await hook(`echo ${i}`, `s${i}`);
+    expect(seen).toHaveLength(3);
+    const unavailable = () => readErrors().errors.filter((e) => String(e.message).startsWith("jev_unavailable"));
+    expect(unavailable()).toEqual([
+      {
+        id: "jevMode",
+        version: null,
+        kind: "daemon",
+        message:
+          "jev_unavailable: FailproofAI Cloud Jev failed 3 or more calls in a row (last: http-502), so tool calls skip it for 60 s at a time and the regex decides alone",
+      },
+    ]);
+    // Skipped: no request, and the both policy's regex half stays hard.
+    const result = await hook("psql -h prod-db -c 'select 1'", "s4");
+    expect(seen).toHaveLength(3);
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.policyName).toBe("cloud/no-prod-db@3/block-prod-db");
+    // Every hook keeps the report while it lasts.
+    await hook("pwd", "s5");
+    expect(unavailable()).toHaveLength(1);
+  });
+
+  it("through the hook: a 429 is reported as jev_rate_limited, never opens the breaker, and an answer clears it", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    let limited = true;
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: unknown }) => {
+        calls++;
+        if (limited) {
+          // Retry-After 0: nothing held, so every call reaches the stand-in.
+          return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { "retry-after": "0" } });
+        }
+        const body = JSON.parse(String(init?.body)) as SeenCall["body"];
+        return new Response(JSON.stringify({ model: "jev-1.13.0", answers: answerAll({ url: CLOUD_ENDPOINT, body }), cloud: cloudBlock([]) }), { status: 200 });
+      }),
+    );
+    // The throttle empties the machine's own bucket on a 429 (those calls would fall back as
+    // `rate-limited`, which counts too); emptied here so every call reaches the stand-in.
+    const { resetJevThrottle } = await import("@/src/hooks/semantic/jev-throttle");
+    for (let i = 0; i < 4; i++) {
+      resetJevThrottle();
+      await hook(`echo ${i}`, `r${i}`);
+    }
+    expect(calls).toBe(4);
+    expect(readErrors().errors).toEqual([
+      { id: "jevMode", version: null, kind: "daemon", message: "jev_rate_limited: 1 call fell back to regex in the last 10 min" },
+    ]);
+    limited = false;
+    resetJevThrottle();
+    await hook("echo ok", "r5");
+    expect(calls).toBe(5);
+    expect(readErrors().errors).toEqual([]);
+  });
+
+  it("a healthy machine never gets a report", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([]) } }));
+    for (let i = 0; i < 3; i++) await hook(`echo ${i}`, `h${i}`);
+    expect(existsSync(errorsFile())).toBe(false);
+  });
 });
 
 // ── errors.json ──────────────────────────────────────────────────────────────

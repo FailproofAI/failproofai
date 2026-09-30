@@ -644,5 +644,8 @@ def test_the_help_names_the_reasons_a_machine_cannot_ask(runner, argv):
     if argv[1] == "show":
         assert "jev_unconfigured" in flat
         assert "jev_budget" in flat
+        # Review M3 and the name-clash split: the machine's own reports.
+        for code in ("jev_rate_limited", "jev_unavailable", "jev_name_clash"):
+            assert code in flat
         # A machine no longer parses Jev checks, so it cannot fail to.
         assert "could not parse" not in flat

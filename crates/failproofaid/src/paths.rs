@@ -81,6 +81,21 @@ pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
 /// Overrides [`cloud_managed_policy_dir`], for tests and development.
 pub const CLOUD_POLICY_DIR_ENV: &str = "FAILPROOFAI_CLOUD_POLICY_DIR";
 
+/// `~/.failproofai/policies/packs` — the installed policy packs, whose
+/// `installed.json` names them. Mirrors `packsRoot()` in the CLI's
+/// `pack-manifest.ts` (`FAILPROOFAI_PACK_DIR`, else `packsDir()` in
+/// `fp-home.ts`). Read only to tell whether a pack a report names is still
+/// installed.
+pub fn packs_dir() -> io::Result<PathBuf> {
+    if let Some(path) = std::env::var_os(PACK_DIR_ENV) {
+        return Ok(PathBuf::from(path));
+    }
+    Ok(failproofai_home()?.join("policies").join("packs"))
+}
+
+/// Overrides [`packs_dir`], as it overrides the CLI's.
+pub const PACK_DIR_ENV: &str = "FAILPROOFAI_PACK_DIR";
+
 /// Whether [`cloud_managed_policy_dir`] is the operator's choice rather than
 /// the default — a directory that may hold more than this daemon's own files.
 pub fn cloud_managed_policy_dir_overridden() -> bool {

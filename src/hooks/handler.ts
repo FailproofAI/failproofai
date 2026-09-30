@@ -68,6 +68,8 @@ import {
 import {
   cloudPolicyErrorsPath,
   collectCloudPolicyErrors,
+  installedPackIds,
+  jevBudgetPath,
   readJevBudgetDrops,
   writeCloudPolicyErrors,
 } from "./cloud-policy-errors";
@@ -398,13 +400,21 @@ async function recordCloudPolicyErrors(input: {
     // changes, so the second ask of a gate event reads no file.
     let jevProblem: string | null = null;
     let budgetDrops: CloudPolicyError[] = [];
+    let health: CloudPolicyError[] = [];
     if (cloudJevAsks(jev.jevMode)) {
       const { loadJevConfigForCloudMode } = await import("./semantic/jev-config");
       const resolved = loadJevConfigForCloudMode(jev.jevMode);
       jevProblem = resolved.problem;
       if (resolved.machineId) {
-        budgetDrops = readJevBudgetDrops({ machineId: resolved.machineId, deployment: jev.deployment, jevMode: jev.jevMode });
+        // A drop of a pack uninstalled since is not reported (review m2);
+        // `installed.json` is read only when there is a record to filter.
+        budgetDrops = existsSync(jevBudgetPath())
+          ? readJevBudgetDrops({ machineId: resolved.machineId, deployment: jev.deployment, jevMode: jev.jevMode }, installedPackIds())
+          : [];
       }
+      // Rate-limited or unavailable FailproofAI Cloud Jev, as this process has seen it (review M3).
+      const { cloudJevHealthErrors } = await import("./semantic/cloud-jev-health");
+      health = cloudJevHealthErrors();
     }
     writeCloudPolicyErrors(
       collectCloudPolicyErrors({
@@ -414,6 +424,7 @@ async function recordCloudPolicyErrors(input: {
         jev,
         jevProblem,
         budgetDrops,
+        health,
       }),
     );
   } catch (err) {

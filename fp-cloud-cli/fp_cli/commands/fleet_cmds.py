@@ -110,9 +110,12 @@ def fleet_show(
     sets none) and the policy errors the machine last reported: a policy it
     could not load, a Jev mode it cannot act on (`jev_unconfigured`: its key
     does not carry Jev; `transcripts_disabled`: it was connected with
-    `--no-transcripts`), an installed pack's check left out for the question
-    budget (`jev_budget`). Anything listed there is not enforcing, whatever the
-    deployment says.
+    `--no-transcripts`), FailproofAI Cloud Jev refusing or failing its calls
+    (`jev_rate_limited`: over the organization's Jev rate limit;
+    `jev_unavailable`: it skips a failing Cloud Jev for a minute at a time), an
+    installed pack's check left out for the question budget (`jev_budget`) or
+    because an organization Cloud check has its name (`jev_name_clash`).
+    Anything listed there is not enforcing, whatever the deployment says.
 
     Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
     record (including `appliedDeployment`, `drifted`, `lastSeen`, both label

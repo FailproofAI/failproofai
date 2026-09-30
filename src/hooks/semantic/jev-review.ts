@@ -58,6 +58,13 @@ import { effectiveAuthority, type PolicyAuthority, type RegisteredPolicy } from 
 import type { JevMode, JevReview, TwoTierReview } from "./combine";
 import { DEFAULT_THRESHOLDS_V1 } from "./decide";
 import { evaluateCloudSemantic, type CloudSemanticOutcome } from "./cloud-jev";
+import {
+  BREAKER_SKIP_REASON,
+  classifyCloudJevReview,
+  cloudJevGate,
+  recordCloudJevResult,
+  reportCloudJevHealth,
+} from "./cloud-jev-health";
 import { DEFAULT_JEV_TIMEOUT_MS, appendVerdictLog, evaluateSemantic, verdictLogRow, type SemanticOutcome } from "./evaluator";
 import * as intentStore from "./intent";
 import { JevError, transportForConfig, type JevTransport } from "./jev-client";
@@ -343,6 +350,19 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null }));
   }
 
+  // FailproofAI Cloud Jev that keeps failing is skipped for a while, so every
+  // tool call does not wait out its timeout (`cloud-jev-health.ts`).
+  const cloud = call.cloud;
+  const healthScope = cloud ? JSON.stringify([cfg.baseUrl ?? null, cloud.machineId]) : "";
+  let probe = false;
+  if (cloud) {
+    const gate = cloudJevGate(healthScope);
+    if (!gate.ask) {
+      return handle(Promise.resolve({ kind: "fallback", reason: BREAKER_SKIP_REASON, latencyMs: null, model: null }));
+    }
+    probe = gate.probe;
+  }
+
   let intent: ReturnType<IntentStore["readIntent"]>;
   try {
     intent = intentReader.readIntent(call.sessionId);
@@ -387,7 +407,6 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     // No `contextTruncated`: nothing reports a store cut out of band, so the
     // evaluator's own (narrower) guess stands. See `IntentStore` above.
   };
-  const cloud = call.cloud;
   const evaluated: Promise<SemanticOutcome | CloudSemanticOutcome> = cloud
     ? evaluateCloudSemantic(input, {
         ...options,
@@ -404,11 +423,19 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
       // The machine's own pack checks Cloud dropped from this request
       // (CONTRACT C10.5), reported for the deployment it happened under. Only
       // from an answer that arrived in time: one the backstop abandoned is not
-      // applied, and neither is anything it said.
+      // applied, and neither is anything it said. A group dropped because a
+      // Cloud check of the same name was selected (Cloud wins the name, D-S-2)
+      // is told apart from a budget drop: that Cloud check is in `asked`, or in
+      // `droppedCloud` when the budget then dropped it too.
       if (cloud && !abandoned && outcome.status === "ok" && "cloud" in outcome && outcome.cloud.droppedLocal.length > 0) {
+        const cloudNames = new Set([...outcome.cloud.asked, ...outcome.cloud.droppedCloud]);
         recordJevBudgetDrops(
           { machineId: cloud.machineId, deployment: cloud.deployment, jevMode: cloud.mode },
-          outcome.cloud.droppedLocal.map((d) => ({ packId: d.packId ?? "unknown", name: d.name })),
+          outcome.cloud.droppedLocal.map((d) => ({
+            packId: d.packId ?? "unknown",
+            name: d.name,
+            ...(cloudNames.has(d.name) ? { clash: true } : {}),
+          })),
         );
       }
       // An aborted request has nothing worth replaying; everything else goes
@@ -443,9 +470,15 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
       resolve({ kind: "fallback", reason: "timeout", latencyMs: timeoutMs + JEV_DEADLINE_GRACE_MS, model: null });
     }, timeoutMs + JEV_DEADLINE_GRACE_MS);
   });
+  const raced = Promise.race([answered, expired]).finally(() => {
+    if (deadline !== undefined) clearTimeout(deadline);
+  });
+  if (!cloud) return handle(raced);
   return handle(
-    Promise.race([answered, expired]).finally(() => {
-      if (deadline !== undefined) clearTimeout(deadline);
+    raced.then((review) => {
+      recordCloudJevResult(healthScope, classifyCloudJevReview(review), review.kind === "fallback" ? review.reason : null, probe);
+      reportCloudJevHealth();
+      return review;
     }),
   );
 }

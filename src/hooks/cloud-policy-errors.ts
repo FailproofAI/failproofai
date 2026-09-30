@@ -44,6 +44,7 @@ import {
   type CloudPolicyErrorKind,
 } from "./cloud-managed-policies";
 import type { PolicyLoadFailure } from "./custom-hooks-loader";
+import { packsRoot } from "./pack-manifest";
 
 export type { CloudPolicyError, CloudPolicyErrorKind } from "./cloud-managed-policies";
 
@@ -59,6 +60,18 @@ export const TRANSCRIPTS_DISABLED = "transcripts_disabled";
 
 /** How an installed pack's check FailproofAI Cloud dropped for the question budget is reported (C10.5). */
 export const JEV_BUDGET = "jev_budget";
+
+/**
+ * How an installed pack's check is reported when FailproofAI Cloud dropped it
+ * because one of the org's Cloud checks has the same name (Cloud wins the name,
+ * D-S-2). It is not a budget problem, and its remedy differs.
+ */
+export const JEV_NAME_CLASH = "jev_name_clash";
+
+/** Is `e` one of the pack-check drops `jev-budget.json` records? */
+export function isPackDropEntry(e: Pick<CloudPolicyError, "id" | "message">): boolean {
+  return e.id.startsWith("pack:") && (e.message.startsWith(JEV_BUDGET) || e.message.startsWith(JEV_NAME_CLASH));
+}
 
 /**
  * A message with no local path in it (CONTRACT C9.5): the home directory
@@ -205,6 +218,8 @@ export interface CloudPolicyErrorInputs {
   jevProblem?: string | null;
   /** Installed packs' checks FailproofAI Cloud dropped for the budget ({@link readJevBudgetDrops}). */
   budgetDrops?: ReadonlyArray<CloudPolicyError>;
+  /** FailproofAI Cloud Jev rate-limited or unavailable here (`semantic/cloud-jev-health.ts`). */
+  health?: ReadonlyArray<CloudPolicyError>;
 }
 
 /**
@@ -242,6 +257,7 @@ export function collectCloudPolicyErrors(input: CloudPolicyErrorInputs): CloudPo
   if (input.jevProblem) {
     out.push({ id: "jevMode", version: null, kind: "daemon", message: input.jevProblem });
   }
+  out.push(...(input.health ?? []));
 
   const seen = new Set<string>();
   return out
@@ -265,7 +281,11 @@ export function collectCloudPolicyErrors(input: CloudPolicyErrorInputs): CloudPo
 // they happened under — a new deployment or mode starts afresh, which is how
 // a drop that no longer happens stops being reported — and `errors.json`
 // carries them as `{id: "pack:<packId>", kind: "daemon", message: "jev_budget:
-// dropped <name>"}`.
+// dropped <name>"}`. A check dropped because an org Cloud check has its name
+// is recorded the same way, as `jev_name_clash: <name> (the FailproofAI Cloud
+// check is used)`. A drop of a pack no longer installed is not reported, here
+// or by the daemon's poll, which also drops the report once the deployment it
+// was recorded under is no longer the active one.
 
 /** What a set of budget drops is keyed by: they are true of this deployment only. */
 export interface JevBudgetKey {
@@ -274,8 +294,15 @@ export interface JevBudgetKey {
   jevMode: "observe" | "enforce";
 }
 
+/** One dropped pack check; `clash` when Cloud dropped it for a same-named Cloud check. */
+export interface JevPackDrop {
+  packId: string;
+  name: string;
+  clash?: true;
+}
+
 interface JevBudgetRecord extends JevBudgetKey {
-  dropped: Array<{ packId: string; name: string }>;
+  dropped: JevPackDrop[];
 }
 
 export function jevBudgetPath(): string {
@@ -293,9 +320,9 @@ function readJevBudgetRecord(): JevBudgetRecord | null {
     ) {
       return null;
     }
-    const dropped = raw.dropped.filter(
-      (d): d is { packId: string; name: string } => !!d && typeof d.packId === "string" && typeof d.name === "string",
-    );
+    const dropped = raw.dropped
+      .filter((d): d is JevPackDrop => !!d && typeof d.packId === "string" && typeof d.name === "string")
+      .map((d) => ({ packId: d.packId, name: d.name, ...(d.clash === true ? { clash: true as const } : {}) }));
     return { machineId: raw.machineId, deployment: raw.deployment as number | null, jevMode: raw.jevMode, dropped };
   } catch {
     return null;
@@ -305,19 +332,48 @@ function readJevBudgetRecord(): JevBudgetRecord | null {
 const sameKey = (a: JevBudgetKey, b: JevBudgetKey): boolean =>
   a.machineId === b.machineId && a.deployment === b.deployment && a.jevMode === b.jevMode;
 
-function budgetEntries(dropped: ReadonlyArray<{ packId: string; name: string }>): CloudPolicyError[] {
+const dropKey = (d: JevPackDrop): string => `${d.packId}\u0000${d.name}\u0000${d.clash === true}`;
+
+function budgetEntries(dropped: ReadonlyArray<JevPackDrop>): CloudPolicyError[] {
   return [...dropped]
-    .sort((a, b) => (a.packId === b.packId ? (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) : a.packId < b.packId ? -1 : 1))
-    .map((d) => ({ id: `pack:${d.packId}`, version: null, kind: "daemon" as const, message: `${JEV_BUDGET}: dropped ${d.name}` }));
+    .sort((a, b) => (dropKey(a) < dropKey(b) ? -1 : dropKey(a) > dropKey(b) ? 1 : 0))
+    .map((d) => ({
+      id: `pack:${d.packId}`,
+      version: null,
+      kind: "daemon" as const,
+      message: d.clash ? `${JEV_NAME_CLASH}: ${d.name} (the FailproofAI Cloud check is used)` : `${JEV_BUDGET}: dropped ${d.name}`,
+    }));
+}
+
+/**
+ * The ids of the installed packs, read straight off `installed.json` (no
+ * artifact is verified: only the ids are wanted). An empty set when no pack is
+ * installed; null when the file exists and cannot be read, which filters
+ * nothing ("cannot tell" is not "not installed"). Never throws.
+ */
+export function installedPackIds(): ReadonlySet<string> | null {
+  try {
+    const path = resolve(packsRoot(), "installed.json");
+    if (!existsSync(path)) return new Set();
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { packs?: unknown };
+    if (!Array.isArray(raw.packs)) return null;
+    return new Set(
+      raw.packs.map((p) => (p && typeof p === "object" ? (p as { id?: unknown }).id : null)).filter((id): id is string => typeof id === "string"),
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
  * The drops recorded for exactly this machine, deployment and mode, as
- * `errors.json` entries — none for any other key. Never throws.
+ * `errors.json` entries — none for any other key, and none of a pack that is
+ * no longer installed (`installed`, when known). Never throws.
  */
-export function readJevBudgetDrops(key: JevBudgetKey): CloudPolicyError[] {
+export function readJevBudgetDrops(key: JevBudgetKey, installed: ReadonlySet<string> | null = null): CloudPolicyError[] {
   const record = readJevBudgetRecord();
-  return record && sameKey(record, key) ? budgetEntries(record.dropped) : [];
+  if (!record || !sameKey(record, key)) return [];
+  return budgetEntries(installed ? record.dropped.filter((d) => installed.has(d.packId)) : record.dropped);
 }
 
 /**
@@ -327,25 +383,25 @@ export function readJevBudgetDrops(key: JevBudgetKey): CloudPolicyError[] {
  * and happen only when something changed. Never throws: a report must not
  * cost a hook its answer.
  */
-export function recordJevBudgetDrops(key: JevBudgetKey, drops: ReadonlyArray<{ packId: string; name: string }>): void {
+export function recordJevBudgetDrops(key: JevBudgetKey, drops: ReadonlyArray<JevPackDrop>): void {
   try {
     if (drops.length === 0 || !existsSync(resolve(cloudManagedPolicyRoot(), "active.json"))) return;
     const current = readJevBudgetRecord();
     const base = current && sameKey(current, key) ? current.dropped : [];
-    const seen = new Set(base.map((d) => `${d.packId}\u0000${d.name}`));
-    const added: Array<{ packId: string; name: string }> = [];
+    const seen = new Set(base.map(dropKey));
+    const added: JevPackDrop[] = [];
     for (const d of drops) {
-      const id = `${d.packId}\u0000${d.name}`;
+      const id = dropKey(d);
       if (seen.has(id)) continue;
       seen.add(id);
-      added.push({ packId: d.packId, name: d.name });
+      added.push({ packId: d.packId, name: d.name, ...(d.clash === true ? { clash: true as const } : {}) });
     }
     if (current && sameKey(current, key) && added.length === 0) return;
     const record: JevBudgetRecord = { ...key, dropped: [...base, ...added] };
     writeAtomic(jevBudgetPath(), `${JSON.stringify(record, null, 2)}\n`);
     // Merged into the report as it stands: every other entry kept, the pack
     // budget drops replaced by this deployment's.
-    const report = (readCloudPolicyErrors() ?? []).filter((e) => !(e.id.startsWith("pack:") && e.message.startsWith(JEV_BUDGET)));
+    const report = (readCloudPolicyErrors() ?? []).filter((e) => !isPackDropEntry(e));
     writeCloudPolicyErrors([...report, ...budgetEntries(record.dropped)]);
   } catch {
     // The next event records it again.

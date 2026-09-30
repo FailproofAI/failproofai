@@ -4,6 +4,8 @@ use crate::cloud_policies::{
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -189,6 +191,7 @@ fn encoded_len(value: &str) -> usize {
 fn current_policy_errors(
     store: &PolicyStore,
     active: Option<Option<&ActiveDeployment>>,
+    packs: &PackDropContext,
 ) -> Option<Vec<PolicyErrorEntry>> {
     let daemon = store.read_daemon_policy_errors();
     let cli = store.read_cli_policy_errors();
@@ -199,7 +202,7 @@ fn current_policy_errors(
     all.extend(
         cli.unwrap_or_default()
             .into_iter()
-            .filter(|entry| active.is_none_or(|active| cli_entry_is_current(entry, active))),
+            .filter(|entry| active.is_none_or(|active| cli_entry_is_current(entry, active, packs))),
     );
     Some(all)
 }
@@ -213,6 +216,83 @@ const TRANSCRIPTS_DISABLED: &str = "transcripts_disabled";
 /// pre-release build that still delivered Jev checks to the machine wrote it
 /// (D-FB-3); a leftover one describes a state that no longer exists.
 const NO_CLOUD_JEV_MODE: &str = "sets no Jev mode";
+
+/// The CLI's reports that FailproofAI Cloud rate-limited this machine's Jev
+/// calls, or that its circuit breaker stopped asking a failing Cloud for a
+/// while (`semantic/cloud-jev-health.ts`, review M3).
+const JEV_RATE_LIMITED: &str = "jev_rate_limited";
+const JEV_UNAVAILABLE: &str = "jev_unavailable";
+
+/// An installed pack's check FailproofAI Cloud dropped from a request: for the
+/// question budget, or because an org Cloud check has its name (Cloud wins).
+const JEV_BUDGET: &str = "jev_budget";
+const JEV_NAME_CLASH: &str = "jev_name_clash";
+
+/// Where the CLI keeps the pack-check drops, keyed by the deployment and Jev
+/// mode they happened under (`jevBudgetPath` in `cloud-policy-errors.ts`).
+const JEV_BUDGET_FILE: &str = "jev-budget.json";
+
+/// What an installed pack's drop report (`pack:<id>`, `jev_budget…` or
+/// `jev_name_clash…`) is checked against (review m2, e2e O1): the record the
+/// CLI collected the drops into, for the deployment and Jev mode they happened
+/// under, and the packs installed now. Without it a report outlived its cause
+/// until the machine's next tool call — a new deployment, or the pack
+/// uninstalled, changed nothing the poll looked at.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PackDropContext {
+    /// `jev-budget.json`'s deployment and Jev mode; `None` without a readable record.
+    record: Option<(Option<u64>, String)>,
+    /// The installed packs' ids; `None` when `installed.json` exists and cannot
+    /// be read, which drops nothing ("cannot tell" is not "not installed").
+    installed: Option<HashSet<String>>,
+}
+
+impl PackDropContext {
+    fn read(store: &PolicyStore) -> Self {
+        let installed = crate::paths::packs_dir()
+            .ok()
+            .map(|dir| dir.join("installed.json"));
+        Self::read_from(&store.root().join(JEV_BUDGET_FILE), installed.as_deref())
+    }
+
+    fn read_from(budget: &Path, installed: Option<&Path>) -> Self {
+        let json = |bytes: Vec<u8>| serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+        let record = std::fs::read(budget).ok().and_then(json).and_then(|v| {
+            let deployment = match v.get("deployment")? {
+                serde_json::Value::Null => None,
+                n => Some(n.as_u64()?),
+            };
+            Some((deployment, v.get("jevMode")?.as_str()?.to_string()))
+        });
+        let installed = installed.and_then(|path| match std::fs::read(path) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Some(HashSet::new()),
+            Err(_) => None,
+            Ok(bytes) => json(bytes).and_then(|v| {
+                Some(
+                    v.get("packs")?
+                        .as_array()?
+                        .iter()
+                        .filter_map(|p| p.get("id")?.as_str().map(str::to_string))
+                        .collect(),
+                )
+            }),
+        });
+        Self { record, installed }
+    }
+
+    /// Whether a drop report for `pack_id` still describes `active`.
+    fn is_current(&self, pack_id: &str, active: &ActiveDeployment) -> bool {
+        let Some((deployment, mode)) = &self.record else {
+            return false;
+        };
+        *deployment == Some(active.deployment)
+            && Some(mode.as_str()) == active.jev_mode.as_deref()
+            && self
+                .installed
+                .as_ref()
+                .is_none_or(|ids| ids.contains(pack_id))
+    }
+}
 
 /// Whether an entry of the CLI's `errors.json` still describes `active`.
 ///
@@ -228,12 +308,20 @@ const NO_CLOUD_JEV_MODE: &str = "sets no Jev mode";
 ///   has Jev ASKING on this machine (`jevMode` `observe`/`enforce`) — the same
 ///   condition `recordCloudPolicyErrors` in `src/hooks/handler.ts` applies:
 ///   `jev_unconfigured` (no Cloud Jev credential), `transcripts_disabled`
-///   (decisions-only connection), and an installed pack's `jev_budget` drop
-///   (FailproofAI Cloud dropped that check from a request for the budget).
+///   (decisions-only connection), `jev_rate_limited` / `jev_unavailable`
+///   (Cloud Jev refused or failing), and an installed pack's `jev_budget` /
+///   `jev_name_clash` drop (FailproofAI Cloud dropped that check from a
+///   request). A drop is kept only while its record is of the active
+///   deployment and Jev mode, and its pack is still installed
+///   ([`PackDropContext`]).
 ///
 /// The daemon's own entries are never filtered: they describe its last
 /// reconcile, which is of the DESIRED state, not the active one.
-fn cli_entry_is_current(entry: &PolicyErrorEntry, active: Option<&ActiveDeployment>) -> bool {
+fn cli_entry_is_current(
+    entry: &PolicyErrorEntry,
+    active: Option<&ActiveDeployment>,
+    packs: &PackDropContext,
+) -> bool {
     let asks = matches!(
         active.and_then(|a| a.jev_mode.as_deref()),
         Some("observe" | "enforce")
@@ -245,8 +333,16 @@ fn cli_entry_is_current(entry: &PolicyErrorEntry, active: Option<&ActiveDeployme
         if jev_setup {
             return asks && !entry.message.contains(NO_CLOUD_JEV_MODE);
         }
-        if entry.id.starts_with("pack:") && entry.message.starts_with("jev_budget") {
+        if entry.id == "jevMode"
+            && (entry.message.starts_with(JEV_RATE_LIMITED)
+                || entry.message.starts_with(JEV_UNAVAILABLE))
+        {
             return asks;
+        }
+        if let Some(pack_id) = entry.id.strip_prefix("pack:")
+            && (entry.message.starts_with(JEV_BUDGET) || entry.message.starts_with(JEV_NAME_CLASH))
+        {
+            return asks && active.is_some_and(|active| packs.is_current(pack_id, active));
         }
         return true;
     }
@@ -946,8 +1042,12 @@ fn poll_once_guarded(store: &PolicyStore, cloud: &CloudClient, withdrawn: &dyn F
     // Every poll carries the current report once there is one to carry — the
     // previous poll's reconcile outcome plus whatever the CLI last wrote that
     // still describes the deployment in force.
-    let report = current_policy_errors(store, active.as_ref().map(Option::as_ref))
-        .map(|errors| encode_policy_errors(&errors));
+    let report = current_policy_errors(
+        store,
+        active.as_ref().map(Option::as_ref),
+        &PackDropContext::read(store),
+    )
+    .map(|errors| encode_policy_errors(&errors));
     match cloud.poll_desired_state(applied, report.as_deref()) {
         Ok(desired) => {
             match store.reconcile_unless(
@@ -1406,27 +1506,38 @@ mod tests {
         let store = PolicyStore::new(root.clone());
 
         assert_eq!(
-            current_policy_errors(&store, None),
+            current_policy_errors(&store, None, &PackDropContext::default()),
             None,
             "never had one: omit"
         );
         // A clean poll on such a machine does not create a state either.
         record_daemon_errors(&store, Vec::new());
         assert!(!store.daemon_errors_path().exists());
-        assert_eq!(current_policy_errors(&store, None), None);
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default()),
+            None
+        );
 
         record_daemon_errors(&store, vec![daemon_error("bad".into(), Some("p"), None)]);
-        assert_eq!(current_policy_errors(&store, None).unwrap().len(), 1);
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default())
+                .unwrap()
+                .len(),
+            1
+        );
         // Fixed: the state is now `[]`, which is what clears the server.
         record_daemon_errors(&store, Vec::new());
-        assert_eq!(current_policy_errors(&store, None), Some(vec![]));
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default()),
+            Some(vec![])
+        );
 
         fs::write(
             store.cli_errors_path(),
             r#"{"errors":[{"id":"q","version":2,"kind":"both","message":"m"}]}"#,
         )
         .unwrap();
-        let merged = current_policy_errors(&store, None).unwrap();
+        let merged = current_policy_errors(&store, None, &PackDropContext::default()).unwrap();
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, "q");
         fs::remove_dir_all(root).ok();
@@ -1781,7 +1892,12 @@ mod tests {
             .unwrap();
 
         let active = store.read_active().unwrap();
-        let sent = current_policy_errors(&store, Some(active.as_ref())).unwrap();
+        // The pack's drop was recorded under this deployment and mode, and it is installed.
+        let packs = PackDropContext {
+            record: Some((Some(12), "observe".into())),
+            installed: Some(HashSet::from(["acme/pack".to_string()])),
+        };
+        let sent = current_policy_errors(&store, Some(active.as_ref()), &packs).unwrap();
         let sent: Vec<(&str, Option<u64>, &str)> = sent
             .iter()
             .map(|e| (e.id.as_str(), e.version, e.message.as_str()))
@@ -1803,14 +1919,19 @@ mod tests {
         );
 
         // Nothing is deployed any more: only machine-level entries remain.
-        let sent = current_policy_errors(&store, Some(None)).unwrap();
+        let sent = current_policy_errors(&store, Some(None), &PackDropContext::default()).unwrap();
         assert_eq!(
             sent.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
             vec!["removed-policy", "active.json"]
         );
 
         // The deployment could not be read: "cannot tell" drops nothing.
-        assert_eq!(current_policy_errors(&store, None).unwrap().len(), 11);
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default())
+                .unwrap()
+                .len(),
+            11
+        );
         fs::remove_dir_all(store.root()).ok();
     }
 
@@ -1854,22 +1975,188 @@ mod tests {
         ];
         for (mode, expected) in cases {
             let active = with(mode);
+            // The pack's drop is recorded under this very deployment and mode.
+            let packs = PackDropContext {
+                record: Some((Some(active.deployment), mode.unwrap_or("-").into())),
+                installed: Some(HashSet::from(["acme/pack".to_string()])),
+            };
             let kept = [&unconfigured, &detail, &transcripts, &pack, &legacy]
-                .map(|e| cli_entry_is_current(e, Some(&active)));
+                .map(|e| cli_entry_is_current(e, Some(&active), &packs));
             assert_eq!(kept, expected, "mode {mode:?}");
             // Machine-level entries that are not about the Jev state stay.
-            assert!(cli_entry_is_current(&unknown_mode, Some(&active)));
-            assert!(cli_entry_is_current(&manifest, Some(&active)));
+            assert!(cli_entry_is_current(&unknown_mode, Some(&active), &packs));
+            assert!(cli_entry_is_current(&manifest, Some(&active), &packs));
         }
         // No deployment: no Jev state, no policy.
-        assert!(!cli_entry_is_current(&unconfigured, None));
-        assert!(!cli_entry_is_current(&transcripts, None));
-        assert!(!cli_entry_is_current(&pack, None));
+        let none = PackDropContext::default();
+        assert!(!cli_entry_is_current(&unconfigured, None, &none));
+        assert!(!cli_entry_is_current(&transcripts, None, &none));
+        assert!(!cli_entry_is_current(&pack, None, &none));
         assert!(!cli_entry_is_current(
             &entry("no-prod-db", Some(3), "both", "m"),
-            None
+            None,
+            &none
         ));
-        assert!(cli_entry_is_current(&manifest, None));
+        assert!(cli_entry_is_current(&manifest, None, &none));
+    }
+
+    /// Review m2 / e2e O1: an installed pack's drop report is sent only while
+    /// its record is of the active deployment and Jev mode, and its pack is
+    /// still installed — so a redeploy, a mode change or an uninstall clears it
+    /// at the next poll, not at the machine's next tool call.
+    #[test]
+    fn pack_drop_reports_follow_their_record_and_the_installed_packs() {
+        let mut active = deployed_active();
+        active.jev_mode = Some("enforce".into());
+        let budget = entry("pack:acme/pack", None, "daemon", PACK_DROP);
+        let clash = entry(
+            "pack:acme/pack",
+            None,
+            "daemon",
+            "jev_name_clash: acme-x (the FailproofAI Cloud check is used)",
+        );
+        let ctx =
+            |deployment: Option<u64>, mode: &str, installed: Option<&[&str]>| PackDropContext {
+                record: Some((deployment, mode.into())),
+                installed: installed.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
+            };
+        let d = active.deployment;
+        let cases: [(PackDropContext, bool); 7] = [
+            (ctx(Some(d), "enforce", Some(&["acme/pack"])), true),
+            // Recorded under an older deployment: Cloud redeployed since.
+            (ctx(Some(d - 1), "enforce", Some(&["acme/pack"])), false),
+            (ctx(None, "enforce", Some(&["acme/pack"])), false),
+            // Recorded under another mode.
+            (ctx(Some(d), "observe", Some(&["acme/pack"])), false),
+            // The pack was uninstalled.
+            (ctx(Some(d), "enforce", Some(&["other/pack"])), false),
+            (ctx(Some(d), "enforce", Some(&[])), false),
+            // The installed packs cannot be read: that is not "uninstalled".
+            (ctx(Some(d), "enforce", None), true),
+        ];
+        for (packs, expected) in cases {
+            assert_eq!(
+                cli_entry_is_current(&budget, Some(&active), &packs),
+                expected,
+                "{packs:?}"
+            );
+            assert_eq!(
+                cli_entry_is_current(&clash, Some(&active), &packs),
+                expected,
+                "{packs:?}"
+            );
+        }
+        // No record at all (the CLI keeps none, or `config --disconnect` removed it).
+        assert!(!cli_entry_is_current(
+            &budget,
+            Some(&active),
+            &PackDropContext::default()
+        ));
+        // Cloud's mode no longer asks: gone whatever the record says.
+        let mut off = active.clone();
+        off.jev_mode = Some("off".into());
+        assert!(!cli_entry_is_current(
+            &budget,
+            Some(&off),
+            &ctx(Some(d), "off", None)
+        ));
+    }
+
+    /// Review M3: `jev_rate_limited` and `jev_unavailable` describe calls made
+    /// under a Cloud mode that asks, and go with it.
+    #[test]
+    fn jev_health_reports_are_kept_only_while_cloud_has_jev_asking() {
+        let base = deployed_active();
+        let limited = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "jev_rate_limited: 7 calls fell back to regex in the last 10 min",
+        );
+        let unavailable = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "jev_unavailable: FailproofAI Cloud Jev failed 3 or more calls in a row (last: timeout)",
+        );
+        for (mode, kept) in [
+            (Some("enforce"), true),
+            (Some("observe"), true),
+            (Some("off"), false),
+            (None, false),
+        ] {
+            let mut active = base.clone();
+            active.jev_mode = mode.map(str::to_string);
+            let packs = PackDropContext::default();
+            assert_eq!(
+                cli_entry_is_current(&limited, Some(&active), &packs),
+                kept,
+                "{mode:?}"
+            );
+            assert_eq!(
+                cli_entry_is_current(&unavailable, Some(&active), &packs),
+                kept,
+                "{mode:?}"
+            );
+        }
+        assert!(!cli_entry_is_current(
+            &limited,
+            None,
+            &PackDropContext::default()
+        ));
+    }
+
+    /// `jev-budget.json` and `installed.json` as the CLI writes them.
+    #[test]
+    fn pack_drop_context_reads_the_clis_files() {
+        let dir = std::env::temp_dir().join(format!("fpd-packdrop-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let budget = dir.join("jev-budget.json");
+        let installed = dir.join("installed.json");
+
+        // Neither file: no record, and no pack installed.
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: None,
+                installed: Some(HashSet::new())
+            }
+        );
+        fs::write(
+            &budget,
+            r#"{"machineId":"m","deployment":7,"jevMode":"enforce","dropped":[{"packId":"acme/pack","name":"x","clash":true}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            &installed,
+            r#"{"schemaVersion":1,"packs":[{"id":"acme/pack"},{"id":"b/c"},{"nope":1}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: Some((Some(7), "enforce".into())),
+                installed: Some(HashSet::from(["acme/pack".to_string(), "b/c".to_string()])),
+            }
+        );
+        // A null deployment is kept as such; an unreadable installed.json filters nothing.
+        fs::write(
+            &budget,
+            r#"{"machineId":"m","deployment":null,"jevMode":"observe","dropped":[]}"#,
+        )
+        .unwrap();
+        fs::write(&installed, "not json").unwrap();
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: Some((None, "observe".into())),
+                installed: None
+            }
+        );
+        // A record missing its mode is no record.
+        fs::write(&budget, r#"{"deployment":7}"#).unwrap();
+        assert_eq!(PackDropContext::read_from(&budget, None).record, None);
+        fs::remove_dir_all(&dir).ok();
     }
 
     /// The deployment of `deployed_store`, without touching disk.

@@ -1,29 +1,29 @@
 ---
 title: "Khóa và quyền hạn"
-description: "Tạo khóa API có phạm vi cho máy, tự động hóa và người vận hành."
+description: "Tạo các khóa API có phạm vi cho máy, tự động hóa và nhà điều hành."
 icon: "key-round"
 ---
 
-Khóa API thuộc về một tổ chức và mang các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho việc thu nạp agent, cung cấp chính sách, đánh giá, tự động hóa CI và các kịch bản quản trị.
+Các khóa API thuộc về một tổ chức và mang theo các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho nhập liệu tác nhân, phân phối chính sách, đánh giá, tự động hóa CI và tập lệnh quản trị.
 
-## Tạo và quay vòng khóa
+## Tạo và xoay khóa
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi đến **Administration → Keys**, chọn **new key** và nhập tên khối lượng công việc.
-    2. Chọn một bộ quyền hạn và chỉ điều chỉnh các quyền hạn riêng lẻ khi bộ cài sẵn không đủ.
+    2. Chọn một tập hợp quyền hạn và chỉ điều chỉnh các quyền riêng lẻ khi tập hợp cài sẵn không đủ.
     3. Tạo khóa và sao chép bí mật một lần của nó ngay lập tức.
-    4. Mở khóa sau đó để cập nhật cấp phép, vô hiệu hóa nó hoặc tạo lại bí mật.
+    4. Mở khóa sau này để cập nhật cấp phát, tắt nó hoặc tạo lại bí mật.
 
-    Ngăn kéo tạo là nơi bạn chọn các cấp phép hẹp nhất cần thiết cho khối lượng công việc.
+    Ngăn kéo tạo là nơi bạn chọn các cấp phát hẹp nhất yêu cầu bởi khối lượng công việc.
 
-    ![Ngăn kéo khóa API mới có các bộ quyền hạn cài sẵn và các cấp phép riêng lẻ.](/images/dashboard/key-create.png)
+    ![Ngăn kéo khóa API mới với các tập hợp quyền cài sẵn và các cấp phát riêng lẻ.](/images/dashboard/key-create.png)
 
-    Sau khi tạo, trang Keys hiển thị siêu dữ liệu bền vững và các hành động quản lý. Bí mật một lần không được hiển thị lại.
+    Sau khi tạo, trang Keys hiển thị siêu dữ liệu liên tục và các hành động quản lý. Bí mật một lần không được hiển thị lại.
 
-    ![Trang API Keys hiển thị quyền hạn khóa, thời gian tạo và các hành động tạo lại và vô hiệu hóa.](/images/dashboard/api-keys.png)
+    ![Trang Khóa API hiển thị quyền hạn khóa, thời gian tạo và các hành động tạo lại và tắt.](/images/dashboard/api-keys.png)
 
-    Sử dụng danh sách này để xem xét các cấp phép thường xuyên và vô hiệu hóa các khóa không còn ánh xạ tới khối lượng công việc hoạt động.
+    Sử dụng danh sách này để xem xét các cấp phát thường xuyên và tắt các khóa không còn ánh xạ tới khối lượng công việc hoạt động.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -40,21 +40,19 @@ Khóa API thuộc về một tổ chức và mang các quyền hạn rõ ràng. 
   </Tab>
 </Tabs>
 
-Hai quyền hạn cần thiết cho một máy Failproof AI kết nối là độc lập:
+Hai quyền hạn yêu cầu bởi máy Failproof AI kết nối là độc lập:
 
-- `events:add` gửi các sự kiện và dữ liệu phiên làm việc.
+- `events:add` gửi sự kiện và dữ liệu phiên làm việc.
 - `policies:pull` truy xuất các triển khai chính sách được gán.
 
-Để chạy [chính sách Jev thông qua FailproofAI Cloud](/vi/policies/jev), chọn bộ cài sẵn khóa **machine**. Nó thêm `jev:evaluate` vào cả hai quyền hạn ở trên. Cloud Jev không thể chạy với khóa thiếu nó.
-
-Bí mật khóa được hiển thị khi tạo hoặc tạo lại. Lưu trữ chúng trong trình quản lý bí mật và quay vòng chúng mà không tái sử dụng thông tin xác thực tương tác của người vận hành.
+Bí mật khóa được hiển thị khi được tạo hoặc tạo lại. Lưu trữ chúng trong trình quản lý bí mật và xoay chúng mà không tái sử dụng thông tin đăng nhập tương tác của nhà điều hành.
 
 ## Danh mục quyền hạn
 
 | Lĩnh vực | Quyền hạn |
 | --- | --- |
 | Sự kiện | `events:add`, `events:read` |
-| Khóa | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` chỉ cho phiên làm việc con người |
+| Khóa | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` chỉ cho phiên con người |
 | Người dùng | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Đánh giá | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
 | Bảng điều khiển | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
@@ -66,12 +64,11 @@ Bí mật khóa được hiển thị khi tạo hoặc tạo lại. Lưu trữ c
 | Kiểm toán | `audits:read`, `audits:write` |
 | Chính sách | `policies:read`, `policies:write`, `policies:pull` |
 | Sử dụng | `usage:read` |
-| Jev | `jev:evaluate` (yêu cầu `events:add` và `policies:pull`) |
 
-`orgs:admin` được dành riêng cho người vận hành thể hiện và không thể được cấp cho khóa tổ chức hoặc thành viên thông thường. Các token `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
+`orgs:admin` được dành riêng cho nhà điều hành thực thể và không thể được cấp cho khóa tổ chức hoặc thành viên thường. Các mã thông báo `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
 
-Các bộ quyền hạn tích hợp là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi sự cố và sử dụng trợ lý vào quyền hạn đọc. Tạo khóa loại bỏ các cấp phép chỉ dành cho con người ngay cả khi một bộ quyền hạn chứa chúng.
+Các tập hợp quyền hạn tích hợp là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi vấn đề và sử dụng trợ lý cho quyền hạn đọc. Tạo khóa loại bỏ các cấp phát chỉ dành cho con người ngay cả khi tập hợp quyền hạn chứa chúng.
 
 <Warning>
-  Khóa có phạm vi thể hiện có thể chọn một tổ chức với tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai nhiều tổ chức; việc bỏ qua có thể chọn tổ chức mặc định.
+  Các khóa có phạm vi thực thể có thể chọn một tổ chức bằng tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai đa tổ chức; việc bỏ qua có thể chọn tổ chức mặc định.
 </Warning>

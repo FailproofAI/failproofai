@@ -1,34 +1,34 @@
 ---
 title: "本地仪表板"
-description: "查看本地项目、会话、策略活动、配置、审计及定时扫描。"
+description: "查看本地项目、会话、策略活动、配置、审计及计划扫描。"
 icon: "monitor-cog"
 ---
 
-不带参数运行 `failproofai`，即可在 `http://localhost:8020` 启动内置仪表板。它直接从本机读取本地 Agent 历史记录、策略配置、审计结果和 Hook 活动。
+不带参数运行 `failproofai` 即可在 `http://localhost:8020` 启动内置仪表板。它直接从本机读取本地 Agent 历史记录、策略配置、审计结果和钩子活动。
 
-本地仪表板独立于 Failproof AI Cloud，无需 Cloud 账号即可使用，也不能证明事件已投递至您的组织。
+本地仪表板与 Failproof AI Cloud 相互独立，无需 Cloud 账户即可使用，也无法证明事件已送达您的组织。
 
-## 仪表板功能区
+## 仪表板区域
 
-| 功能区 | 可执行的操作 |
+| 区域 | 功能说明 |
 | --- | --- |
 | Policies → Activity | 查看本地 allow、instruct 和 deny 决策；按决策、事件、CLI、工具、来源、策略和会话筛选。 |
-| Policies → Configure | 启用内置策略、编辑支持的参数、切换已发现的自定义策略，以及选择目标 Harness。 |
-| Projects | 浏览所有受支持 Agent 历史记录中发现的项目，并比较其最近的会话。 |
-| Project sessions | 打开某条本地转录记录，查看原始有序条目和子 Agent，下载记录，并关联策略活动。 |
-| Audit | 查看上次离线扫描结果、风险模式、优势项、受影响的项目以及建议启用的内置策略。 |
-| Settings | 配置定时本地扫描和邮件审计报告（在守护进程/平台支持时），以及配置 [Jev](#set-up-jev)：包括其提供商、端点、Token、模式，以及是否允许该机器的 FailproofAI Cloud 连接运行 Jev。 |
+| Policies → Configure | 启用内置策略、编辑支持的参数、切换已发现的自定义策略，以及选择目标测试框架。 |
+| Projects | 浏览所有支持的 Agent 历史记录中发现的项目，并比较其最近的会话。 |
+| Project sessions | 打开单条本地记录，查看原始有序条目和子 Agent，下载记录并关联策略活动。 |
+| Audit | 查看最近一次离线扫描结果、风险模式、优势、受影响的项目以及建议的内置策略。 |
+| Settings | 在守护进程/平台支持的情况下，配置定期本地扫描和审计报告的邮件发送。 |
 
 ## 查看策略活动
 
 <Tabs>
   <Tab title="Dashboard">
     1. 打开 **Policies → Activity**，设置决策和来源筛选条件。
-    2. 按事件、Harness、工具或策略名称进一步缩小范围。
+    2. 按事件、测试框架、工具或策略名称进一步筛选。
     3. 展开某行，查看其原因、匹配策略、来源、执行模式和耗时。
-    4. 点击会话链接，在转录上下文中定位该决策。
+    4. 点击会话链接，在记录上下文中定位该决策。
 
-    显示为 deny 的行，在不消费阻断判决的 Harness/事件对上仍可能只是观测性的。详情视图会明确标注已验证的强制执行能力。
+    某行即使看起来像被拒绝，在不采用阻断裁决的测试框架/事件组合中仍可能只是观察性的。详情视图会标注已验证的强制执行能力。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,7 +37,7 @@ icon: "monitor-cog"
     failproofai
     ```
 
-    本地活动存储在 `~/.failproofai/hook-activity` 目录下。请使用仪表板而非直接编辑这些文件。
+    本地活动记录存储于 `~/.failproofai/hook-activity`。请使用仪表板代替直接编辑这些文件。
   </Tab>
 </Tabs>
 
@@ -45,12 +45,12 @@ icon: "monitor-cog"
 
 <Tabs>
   <Tab title="Dashboard">
-    1. 打开 **Policies → Configure**，选择 Harness 和配置范围。
-    2. 启用内置策略或已发现的自定义策略。
+    1. 打开 **Policies → Configure**，选择测试框架和配置范围。
+    2. 启用某个内置策略或已发现的自定义策略。
     3. 对于带参数的内置策略，打开其配置控件并保存支持的值。
-    4. 返回 Activity，执行匹配和不匹配的操作。
+    4. 返回 Activity，执行匹配和不匹配的操作进行验证。
 
-    约定式策略会显示其项目或用户来源。如需显式更改自定义路径，可能需要重新运行 CLI 配置以记录所选路径。
+    约定策略会显示其项目或用户来源。显式自定义路径的更改可能需要重新运行 CLI 配置，以便记录所选路径。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -61,26 +61,17 @@ icon: "monitor-cog"
   </Tab>
 </Tabs>
 
-## 浏览项目和会话
+## 浏览项目与会话
 
-Projects 页面汇总了所有受支持的本地历史存储。选择一个项目即可列出其会话，然后打开某个会话，使用原始日志查看器、子 Agent 片段、下载功能以及会话范围内的策略活动。
+Projects 页面汇总了所有支持的本地历史记录存储。选择一个项目可列出其会话，再打开某个会话即可使用原始日志查看器、子 Agent 片段、下载功能以及会话范围内的策略活动。
 
-如果某个项目或会话缺失，请确认该 Harness 使用的是默认历史存储位置，或通过 `failproofai harness add-path` 注册额外的根路径。
+如果某个项目或会话缺失，请确认该测试框架使用的是默认历史记录位置，或使用 `failproofai harness add-path` 注册额外的根路径。
 
-## 配置 Jev
-
-**Settings** 页面的 Jev 部分会写入与 `failproofai jev setup` 相同的 `~/.failproofai/jev.json` 文件，并经过加载器自身规则的验证，因此 Hook 在下次调用时即可使用该配置。页面会显示 Jev 是否已启用及当前模式，一旦启用，还会显示已响应的调用次数以及回退到正则策略的频率。Failproof AI 不内置任何 Jev 检查：若当前没有已安装的策略包声明任何 Jev 检查，该部分会说明这一情况并提示运行 `failproofai policies add FailproofAI/jev-policies`，此时 Jev 不会发起任何请求。
-
-- **使用您自己的端点。** 选择提供商，为 `custom` 填写端点 URL（其他提供商可选），为 Cloudflare 填写账号 ID，粘贴 Token，并选择模式（`observe`、`enforce` 或 `off`）。Token 为只写字段：页面不会显示已存储的 Token，且字段留空时，只要提供商和端点主机不变，已存储的 Token 将继续使用。若两者之一发生变更，页面会要求重新输入 Token，确保已存储的密钥不会被发送到非授权目标。详见 [Jev with your own key](/zh/reference/jev-providers)。
-- **FailproofAI Cloud。** 通过 Cloud 使用 Jev 需先连接该机器（`failproofai config --token <key>`）；页面仅提供启用/停用开关和模式选择。详见 [Jev through FailproofAI Cloud](/zh/reference/jev-cloud)。
-
-若配置中的密钥来自 `FAILPROOFAI_JEV_API_KEY`（即通过 `jev setup --key-from-env` 设置），则仪表板会以其自身的运行环境来判断该密钥，而该环境可能与 Agent 实际运行的环境不同；请在 Agent 运行的环境中执行 `failproofai jev status`，以查看 Hook 的实际行为。
-
-## 调度离线审计
+## 安排离线审计
 
 <Tabs>
   <Tab title="Dashboard">
-    打开 **Settings**，启用定时扫描，选择支持的时间间隔，并在可用时配置报告投递方式。页面会显示下次运行时间、上次运行时间、退出码，以及当前平台是否支持后台守护进程。
+    打开 **Settings**，启用定期扫描，选择支持的扫描间隔，并在可用时配置报告投递方式。该页面会显示下次运行时间、上次运行时间、退出码，以及当前平台是否支持后台守护进程。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -88,10 +79,10 @@ Projects 页面汇总了所有受支持的本地历史存储。选择一个项�
     failproofai audit --status
     ```
 
-    修改天数即可设置 1–90 天内的不同间隔。使用 `failproofai audit --no-schedule` 可禁用定时扫描；运行 `failproofai audit` 可立即执行交互式扫描。
+    修改天数可设置 1–90 天范围内的不同间隔。使用 `failproofai audit --no-schedule` 可禁用定期扫描；运行 `failproofai audit` 可立即执行交互式扫描。
   </Tab>
 </Tabs>
 
 <Warning>
-  本地仪表板可能显示来自本地 Agent 历史记录的提示词、工具输入、文件内容和终端输出。请仅将其绑定到受信任的网络接口，并在审查完成后关闭进程。
+  本地仪表板可能会显示来自本地 Agent 历史记录的提示词、工具输入、文件内容和终端输出。请仅将其绑定到受信任的网络接口，并在查看完成后停止进程。
 </Warning>

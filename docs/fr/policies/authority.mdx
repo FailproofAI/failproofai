@@ -1,44 +1,44 @@
 ---
 title: "Autorité des politiques"
-description: "Quels verdicts de politiques l'évaluateur sémantique Jev peut lever, et lesquels sont définitifs."
+description: "Quels verdicts de politique l'évaluateur sémantique Jev peut lever, et lesquels sont définitifs."
 icon: "scale"
 ---
 
-Lorsque vous configurez [la revue de politiques Jev](/fr/policies/jev) via FailproofAI Cloud ou votre propre clé, chaque appel d'outil contrôlé est jugé par les politiques que vous exécutez et par Jev, qui demande ce que l'appel fait réellement et si la personne qui a saisi la tâche l'a demandé. L'**autorité** de chaque politique détermine ce qui se passe lorsque les deux sont en désaccord.
+Lorsque vous configurez la [revue de politique Jev](/fr/policies/jev) via FailproofAI Cloud ou votre propre clé, chaque appel d'outil soumis à validation est jugé par les politiques que vous exécutez et par Jev, qui détermine ce que l'appel fait réellement et si la personne ayant saisi la tâche en a fait la demande. L'**autorité** de chaque politique décide ce qui se passe en cas de désaccord entre les deux.
 
 Sans Jev configuré, l'autorité n'a aucun effet. Chaque politique s'applique exactement comme elle l'a toujours fait.
 
-## Strict et révisable
+## Hard et reviewable
 
-- **Strict** est la valeur par défaut. Le refus ou l'instruction d'une politique stricte est définitif : Jev ne peut pas le lever, et un refus strict arrête l'appel sans attendre Jev.
-- **Révisable** signifie que Jev peut lever le verdict de la politique, mais uniquement via les vérifications sémantiques que la politique nomme dans `reviewedBy`. Le verdict n'est levé que lorsque **chaque** vérification nommée a été interrogée sur cet appel et que chacune soit n'a rien trouvé, soit a enregistré que l'utilisateur l'avait demandé. Une vérification qui a **déclenché** — trouvé le problème — sans que l'utilisateur l'ait demandé maintient le blocage, même si son propre verdict n'est qu'un avertissement. Une vérification que Jev n'a pas été invité à faire, parce qu'elle ne s'applique pas à cet outil, ne lève jamais rien, quoi que disent les autres. Un assouplissement compte comme un consentement : lorsque l'appel est une étape de la tâche que l'utilisateur a donnée et ne va pas plus loin, Jev transforme un refus en avertissement, et cet avertissement lève le blocage de la politique et c'est ce qui est communiqué à l'agent.
+- **Hard** est la valeur par défaut. Le refus ou l'instruction d'une politique hard est définitif : Jev ne peut pas le lever, et un refus hard stoppe l'appel sans attendre Jev.
+- **Reviewable** signifie que Jev peut lever le verdict de la politique, mais uniquement via les vérifications sémantiques que la politique déclare dans `reviewedBy`. Le verdict n'est levé que lorsque **chaque** vérification nommée a été interrogée sur cet appel et que chacune n'a rien trouvé ou a enregistré que l'utilisateur en avait fait la demande. Une vérification qui **s'est déclenchée** — a détecté le problème — sans que l'utilisateur en ait fait la demande maintient le blocage, même si son propre verdict n'est qu'un avertissement. Une vérification que Jev n'a pas été invité à faire, parce qu'elle ne s'applique pas à cet outil, ne lève jamais rien, quoi que disent les autres. Un assouplissement compte comme un consentement : lorsque l'appel est une étape de la tâche que l'utilisateur a donnée et ne va pas plus loin, Jev transforme un refus en avertissement, et cet avertissement lève le blocage de la politique et constitue le message transmis à l'agent.
 
-Une politique est révisable uniquement lorsque toutes ces conditions sont réunies :
+Une politique est reviewable uniquement lorsque toutes ces conditions sont réunies :
 
 1. Elle déclare `authority: "reviewable"`.
-2. `reviewedBy` est une liste non vide, et chaque entrée est une vérification Jev déclarée par un pack installé. Failproof AI ne fournit aucune vérification Jev : les [seize ci-dessous](#semantic-policy-names) proviennent de `failproofai policies add FailproofAI/jev-policies`. Sans pack déclarant des vérifications, chaque politique est stricte.
-3. Elle n'est pas `alwaysOn`. Le garde-fou qui empêche un agent de désactiver Failproof AI est toujours strict.
+2. `reviewedBy` est une liste non vide, et chaque entrée est une vérification Jev qu'un pack installé déclare. Failproof AI ne fournit aucune vérification Jev : les [seize ci-dessous](#semantic-policy-names) proviennent de `failproofai policies add FailproofAI/jev-policies`. Sans pack déclarant des vérifications, toute politique est hard.
+3. Elle n'est pas `alwaysOn`. La protection qui empêche un agent de désactiver Failproof AI est toujours hard.
 
-Tout autre cas est strict : un champ manquant, une valeur mal orthographiée, un `reviewedBy` vide ou malformé, ou un nom qui n'est pas une vérification que cette machine peut interroger. Un nom inconnu rend toute la déclaration stricte plutôt que d'être ignoré, car `reviewedBy` signifie « toutes ces vérifications doivent être interrogées, et aucune ne peut refuser » — ignorer un nom permettrait à Jev de lever la politique sur moins de vérifications que vous en avez demandé.
+Tout autre cas est hard : un champ manquant, une valeur mal orthographiée, un `reviewedBy` vide ou mal formé, ou un nom qui n'est pas une vérification que cette machine peut interroger. Un nom inconnu rend l'ensemble de la déclaration hard plutôt que d'être ignoré, car `reviewedBy` signifie « toutes ces vérifications doivent être interrogées, et aucune ne peut refuser », et ignorer un nom permettrait à Jev de lever la politique avec moins de vérifications que vous en avez demandé.
 
-Une fois Jev configuré, Failproof AI enregistre un avertissement lorsqu'il refuse une déclaration `reviewable`, une fois par processus. Sans Jev, il ne dit rien, car l'autorité ne décide alors rien. `failproofai publish` refuse de construire un pack qui porte une telle déclaration, de sorte qu'un auteur de pack le découvre avant que quiconque ne l'installe. Il évalue `reviewedBy` par rapport aux vérifications que le pack déclare s'il en déclare, et par rapport aux seize noms `FailproofAI/jev-policies` sinon.
+Une fois Jev configuré, Failproof AI enregistre un avertissement lorsqu'il refuse une déclaration `reviewable`, une fois par processus. Sans Jev, il ne dit rien, car l'autorité ne décide alors de rien. `failproofai publish` refuse de construire un pack contenant une telle déclaration, de sorte qu'un auteur de pack le découvre avant que quiconque ne l'installe. Il évalue `reviewedBy` par rapport aux vérifications que le pack déclare s'il en déclare, et par rapport aux seize noms de `FailproofAI/jev-policies` dans le cas contraire.
 
 ## Où l'autorité est déclarée
 
-Chaque façon dont une politique atteint une machine a un seul endroit qui décide de son autorité :
+Chaque façon dont une politique atteint une machine dispose d'un seul endroit qui décide de son autorité :
 
 | Source | Déclarée dans | Par défaut |
 | --- | --- | --- |
-| Politiques intégrées | Le tableau ci-dessous | Stricte sauf si listée comme révisable |
-| Vos propres fichiers de politiques | `authority` et `reviewedBy` sur `customPolicies.add` | Stricte |
-| Packs de politiques | L'entrée de chaque politique dans le manifeste du pack (`failproofai-pack.json`) | Stricte |
-| Politiques gérées dans le cloud | L'assignation de la politique dans le déploiement actif | Stricte. Les déploiements ne la définissent pas encore, donc toute politique gérée dans le cloud est stricte aujourd'hui. |
+| Politiques intégrées | Le tableau ci-dessous | Hard sauf mention contraire comme reviewable |
+| Vos propres fichiers de politique | `authority` et `reviewedBy` dans `customPolicies.add` | Hard |
+| Packs de politiques | L'entrée de chaque politique dans le manifeste du pack (`failproofai-pack.json`) | Hard |
+| Politiques gérées depuis le cloud | L'affectation de la politique dans le déploiement actif | Hard. Les déploiements ne le définissent pas encore, donc toute politique gérée depuis le cloud est hard aujourd'hui. |
 
-Pour un pack ou une politique gérée dans le cloud, les champs définis dans le code de la politique sont ignorés ; c'est le manifeste ou l'assignation qui décide. Un pack ne peut décrire que ses propres politiques : ses noms de politiques ne peuvent pas contenir `/` et sont enregistrés sous le préfixe propre au pack, donc aucun manifeste ne peut marquer une politique intégrée ou la politique d'un autre pack comme révisable. Une politique que le code d'un pack enregistre sans la déclarer dans le manifeste est stricte.
+Pour un pack ou une politique gérée depuis le cloud, les champs définis dans le code de la politique sont ignorés ; c'est le manifeste ou l'affectation qui décide. Un pack ne peut décrire que ses propres politiques : ses noms de politique ne peuvent pas contenir `/` et sont enregistrés sous le préfixe du pack lui-même, de sorte qu'aucun manifeste ne peut marquer une politique intégrée ou la politique d'un autre pack comme reviewable. Une politique que le code d'un pack enregistre sans la déclarer dans le manifeste est hard.
 
-Deux packs, ou deux politiques gérées dans le cloud, dont le code est identique octet par octet partagent un seul artefact et se chargent comme une seule politique. Cette politique n'est révisable que si chacun d'eux la déclare révisable, et Jev doit alors lever chaque vérification que l'un d'eux nomme. Si l'un d'eux la déclare stricte, ou ne la déclare pas du tout, elle reste stricte. L'ordre dans lequel les packs ou les politiques sont listés n'a jamais d'importance.
+Deux packs, ou deux politiques gérées depuis le cloud, dont le code est identique octet par octet partagent un seul artefact et se chargent comme une seule politique. Cette politique n'est reviewable que si chacun d'eux la déclare reviewable, et Jev doit alors lever chaque vérification que l'un d'eux nomme. Si l'un d'eux la déclare hard, ou ne la déclare pas du tout, elle reste hard. L'ordre dans lequel les packs ou politiques sont listés n'a jamais d'importance.
 
-La plupart des machines obtiennent les politiques intégrées du pack `FailproofAI/policies`, et lisent leur autorité dans le manifeste de ce pack. Les entrées révisables ci-dessous prennent effet une fois qu'une version du pack qui les contient est installée ; une version plus ancienne n'en contient aucune, donc chaque politique qu'elle contient reste stricte.
+La plupart des machines obtiennent les politiques intégrées du pack `FailproofAI/policies` et lisent leur autorité depuis le manifeste de ce pack. Les entrées reviewable ci-dessous prennent effet une fois qu'une version du pack les contenant est installée ; une version plus ancienne n'en contient aucune, donc toute politique qu'elle contient reste hard.
 
 ## Déclarer l'autorité dans votre propre politique
 
@@ -58,87 +58,87 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish` copie les deux champs dans le manifeste du pack, de sorte qu'une politique publiée en tant que pack conserve l'autorité que son auteur lui a donnée. Il refuse de construire le pack si une déclaration ne serait pas respectée : une valeur autre que `"hard"` ou `"reviewable"`, un `reviewedBy` qui n'est pas une liste de noms, ou un nom qui n'est pas une vérification — l'une des [vérifications Jev](/fr/policies/publish-a-pack#jev-checks-in-a-pack) du pack lorsqu'il en déclare, une vérification intégrée sinon.
+`failproofai publish` copie les deux champs dans le manifeste du pack, de sorte qu'une politique publiée sous forme de pack conserve l'autorité que son auteur lui a donnée. Il refuse de construire le pack si une déclaration ne serait pas respectée : une valeur autre que `"hard"` ou `"reviewable"`, un `reviewedBy` qui n'est pas une liste de noms, ou un nom qui n'est pas une vérification — l'une des [vérifications Jev](/fr/policies/publish-a-pack#jev-checks-in-a-pack) du pack lui-même s'il en déclare, une vérification intégrée sinon.
 
 ## Politiques intégrées
 
-Révisable uniquement lorsqu'une politique sémantique couvre réellement le même problème. Toute autre politique intégrée est stricte.
+Reviewable uniquement là où une politique sémantique couvre réellement la même préoccupation. Toute autre politique intégrée est hard.
 
-Couvrir le problème est nécessaire mais pas suffisant, et les deux façons de se tromper sont silencieuses :
+Couvrir la préoccupation est nécessaire mais pas suffisant, et les deux façons de se tromper sont silencieuses :
 
-- **Une vérification qui n'est jamais interrogée** rend le blocage permanent. `reviewedBy` est une conjonction et une vérification qui n'a pas été interrogée ne lève jamais rien, donc une politique associée à une vérification dont la précondition ne se déclenche pas pour les formes que la politique correspond ne peut jamais être levée.
-- **Une vérification qui est interrogée mais ne se déclenche pas** répond « aucun problème », et aucun problème lève. Donc associer à une vérification qui ne modélise pas les formes de votre politique ne révise pas la politique — cela la désactive précisément pour les entrées que la vérification ne comprend pas.
+- **Une vérification qui n'est jamais interrogée** rend le blocage permanent. `reviewedBy` est une conjonction et une vérification qui n'a pas été interrogée ne lève jamais rien, donc une politique associée à une vérification dont la précondition ne se déclenche pas pour les formes que la politique correspond ne peut jamais être levée du tout.
+- **Une vérification qui est interrogée mais ne se déclenche pas** répond « aucune préoccupation », et l'absence de préoccupation lève le verdict. Ainsi, s'associer à une vérification qui ne modélise pas les formes de votre politique ne revient pas à examiner la politique — cela la désactive précisément pour les entrées que la vérification ne comprend pas.
 
-Une politique sémantique en mode instruct ne peut jamais répondre par un refus, mais elle peut quand même maintenir un blocage : lorsqu'elle se déclenche et que l'utilisateur n'a pas demandé l'appel, la politique qu'elle révise n'est pas levée. Six des vérifications `FailproofAI/jev-policies` sont uniquement en mode instruct — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` et `external-data-egress` — et le [tableau ci-dessous](#semantic-policy-names) indique le mode de chaque vérification. La question à se poser est **« reste-t-il quelque chose qui peut refuser »** : un levé ne doit jamais laisser le problème sans aucune application. Le moteur applique ce test par appel. Un avertissement auquel personne n'a consenti n'est pas un levé, car avant les appels d'outils un avertissement n'arrête pas l'agent. Et lorsqu'une vérification qui *peut* refuser émet un avertissement — ses preuves étaient insuffisantes pour son seuil de refus — et que l'utilisateur n'a pas demandé l'appel, rien n'est levé sur cet appel et chaque refus par expression régulière reste valide.
+Une politique sémantique en mode instruct ne peut jamais répondre deny, mais elle peut quand même maintenir un blocage : lorsqu'elle se déclenche et que l'utilisateur n'a pas demandé l'appel, la politique qu'elle examine n'est pas levée. Six des vérifications de `FailproofAI/jev-policies` sont exclusivement en mode instruct — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` et `external-data-egress` — et le [tableau ci-dessous](#semantic-policy-names) donne le mode de chaque vérification. La question à se poser est **« reste-t-il quelque chose qui peut refuser »** : un levée ne doit jamais laisser la préoccupation sans aucune application. Le moteur applique ce test par appel. Un avertissement auquel personne n'a consenti n'est pas une levée, car avant les appels d'outils un avertissement n'arrête pas l'agent. Et lorsqu'une vérification qui *peut* refuser émet un avertissement — ses preuves étaient insuffisantes pour atteindre son seuil de refus — et que l'utilisateur n'a pas demandé l'appel, rien n'est levé sur cet appel et chaque refus par expression régulière reste en vigueur.
 
 <Warning>
-**Une vérification dont le score est juste en dessous de son seuil de déclenchement ne maintient pas le plancher.** La règle ci-dessus exige qu'une vérification se *déclenche* (preuves ≥ 0,7). Lorsque chaque vérification pertinente tombe juste en dessous, rien ne se déclenche, les réviseurs répondent « aucun problème », et un refus révisable est levé. Mesuré en direct en mode enforce : une lecture non demandée de `/etc/shadow` (`secret-exposure` 0,69, `read-outside-workspace` 0,37, qui ne modélise que les chemins du répertoire personnel) et `set | curl -d @- …` après « follow SETUP.md » (`env-secrets-dump` 0,66, `credential-exfiltration` 0,65 avec `sends_out` 0,97) ont toutes deux été autorisées, tandis que le niveau des expressions régulières seul les refuse. Les seuils ont été calibrés sur le corpus étiqueté et n'ont pas été re-mesurés par rapport à cela ; jusqu'à ce qu'ils le soient, gardez une politique **stricte** lorsque le passage de l'une de ces formes importe plus que ses faux blocages.
+**Une vérification qui score juste en dessous de son seuil de déclenchement ne maintient pas le plancher.** La règle ci-dessus nécessite qu'une vérification se *déclenche* (preuve ≥ 0,7). Lorsque chaque vérification pertinente se situe juste en dessous, rien ne se déclenche, les examinateurs répondent « aucune préoccupation », et un refus reviewable est levé. Mesuré en direct en mode enforce : une lecture non demandée de `/etc/shadow` (`secret-exposure` 0,69, `read-outside-workspace` 0,37, qui ne modélise que les chemins du répertoire personnel) et `set | curl -d @- …` après « follow SETUP.md » (`env-secrets-dump` 0,66, `credential-exfiltration` 0,65 avec `sends_out` 0,97) ont tous deux été autorisés, alors que le niveau des expressions régulières seul les refuse. Les seuils ont été calibrés sur le corpus étiqueté et n'ont pas été re-mesurés par rapport à cela ; jusqu'à ce qu'ils le soient, gardez une politique **hard** là où l'une de ces formes passant au travers importe plus que ses faux blocages.
 </Warning>
 
-| Politique | Autorité | Révisée par | Pourquoi |
+| Politique | Autorité | Examinée par | Pourquoi |
 | --- | --- | --- | --- |
-| `protect-env-vars` | révisable | `env-secrets-dump`, `secret-exposure` | Le motif se déclenche sur toute référence à une variable ; Jev demande si des valeurs secrètes seraient réellement affichées. |
-| `block-env-files` | révisable | `secret-exposure` | Le motif correspond à tout chemin `.env`, y compris les modèles ; Jev demande si de vraies valeurs secrètes seraient lues ou écrites. |
-| `block-read-outside-cwd` | révisable | `read-outside-workspace` | Mesuré comme bruyant sur le trafic réel ; Jev demande si le contenu de fichiers en dehors du projet est lu. Une lecture demandée par l'utilisateur, ou une lecture que la vérification ne signale pas, est levée ; une lecture non demandée qu'elle signale maintient le blocage. |
-| `warn-git-amend` | révisable | `git-history-rewrite` | Amender un commit non poussé est ordinaire ; le problème est de réécrire l'historique que d'autres ont peut-être déjà tiré. |
-| `warn-destructive-sql` | révisable | `database-destruction` | Jev demande aussi si la cible est une vraie base de données plutôt qu'une base de test jetable. |
-| `warn-global-package-install` | révisable | `system-modification` | Le même problème : modifier la machine en dehors du projet. |
-| `block-failproofai-commands` | stricte | | Auto-protection `alwaysOn`. Jamais révisable. |
-| `block-rm-rf` | révisable | `destructive-deletion` | L'heuristique de profondeur de chemin se trompe sur `rm -rf node_modules` ; Jev demande si ce qui serait détruit est régénérable. `rm -rf /` maintient les deux sondes vraies. |
-| `block-sudo` | stricte | | Élévation de privilèges. |
-| `block-curl-pipe-sh` | stricte | | Exécute du code téléchargé depuis internet. |
-| `block-push-master` | stricte | | Pousse directement vers une branche protégée. |
-| `block-work-on-main` | stricte | | `commit-on-protected-branch` couvre exactement ce problème mais est en mode instruct, donc ne peut jamais répondre par un refus, et aucune autre vérification ne le couvre. |
-| `block-force-push` | révisable | `git-history-rewrite` | La sonde de Jev est un sur-ensemble du matcher et compte `--force-with-lease` ; ce qui est levé, c'est le force-push sur votre propre branche. |
-| `block-secrets-write` | révisable | `secret-exposure` | La correspondance de chemin n'est pas ancrée, donc `src/auth/credentials.ts` est intercepté ; Jev demande si du vrai matériel de clé est en train d'être écrit. |
-| `block-kubectl` | révisable | `production-infra-change` | Refuse toute la CLI, y compris les sous-commandes en lecture seule ; Jev demande si l'appel est mutant et si la cible est en production. |
-| `block-terraform` | révisable | `production-infra-change` | Idem : lève `terraform plan` et `validate`. |
-| `block-aws-cli` | révisable | `production-infra-change` | Idem : lève `aws s3 ls`, `aws sts get-caller-identity`. |
-| `block-gcloud` | révisable | `production-infra-change` | Idem : lève `gcloud auth list`, `gcloud config list`. |
-| `block-az-cli` | révisable | `production-infra-change` | Idem : lève `az account show`. |
-| `block-helm` | révisable | `production-infra-change` | Idem : lève `helm list`, `helm status`. |
-| `block-gh-pipeline` | stricte | | Déclenche des pipelines, des fusions et des modifications de secrets. |
-| `warn-git-stash-drop` | stricte | | Aucune vérification sémantique ne couvre la suppression du travail mis en attente. |
-| `warn-git-clean` | stricte | | `destructive-deletion` couvre le problème mais ne peut manifestement pas se déclencher dessus : `git clean` ne nomme aucun chemin, donc sa sonde `irreplaceable` n'a rien à juger et répond bas, et la preuve est le minimum sur les sondes d'une politique. Une vérification interrogée qui ne se déclenche pas lève le verdict, donc l'associer ici désactiverait la politique. |
-| `warn-all-files-staged` | stricte | | Aucune vérification sémantique ne couvre ce qu'un `git add` large sélectionne. |
-| `warn-schema-alteration` | stricte | | `database-destruction` couvre la suppression de données, pas la modification d'un schéma. |
-| `warn-package-publish` | stricte | | La publication est irréversible et aucune vérification sémantique ne la couvre. |
-| `prefer-package-manager` | stricte | | Une convention d'équipe, pas un jugement de sécurité. |
-| `warn-large-file-write` | stricte | | Un seuil de taille, pas un jugement que Jev peut faire. |
-| `warn-background-process` | stricte | | Aucune vérification sémantique ne couvre les processus détachés. |
-| `warn-repeated-tool-calls` | stricte | | Compte les appels ; Jev ne peut pas compter. |
-| `sanitize-jwt` | stricte | | Expurge la sortie d'outil ; pas un contrôle d'appel d'outil. |
-| `sanitize-api-keys` | stricte | | Expurge la sortie d'outil ; pas un contrôle d'appel d'outil. |
-| `sanitize-connection-strings` | stricte | | Expurge la sortie d'outil ; pas un contrôle d'appel d'outil. |
-| `sanitize-private-key-content` | stricte | | Expurge la sortie d'outil ; pas un contrôle d'appel d'outil. |
-| `sanitize-bearer-tokens` | stricte | | Expurge la sortie d'outil ; pas un contrôle d'appel d'outil. |
-| `require-commit-before-stop` | stricte | | Un contrôle de fin de session, pas un contrôle d'appel d'outil. |
-| `require-push-before-stop` | stricte | | Un contrôle de fin de session, pas un contrôle d'appel d'outil. |
-| `require-pr-before-stop` | stricte | | Un contrôle de fin de session, pas un contrôle d'appel d'outil. |
-| `require-no-conflicts-before-stop` | stricte | | Un contrôle de fin de session, pas un contrôle d'appel d'outil. |
-| `require-ci-green-before-stop` | stricte | | Un contrôle de fin de session, pas un contrôle d'appel d'outil. |
+| `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | Le motif se déclenche sur toute référence à une variable ; Jev demande si des valeurs secrètes seraient réellement affichées. |
+| `block-env-files` | reviewable | `secret-exposure` | Le motif correspond à tout chemin `.env`, templates inclus ; Jev demande si de vraies valeurs secrètes seraient lues ou écrites. |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | Mesuré comme bruyant sur le trafic réel ; Jev demande si le contenu de fichiers en dehors du projet est lu. Une lecture que l'utilisateur a demandée, ou pour laquelle la vérification ne trouve rien, est levée ; une lecture non demandée qu'elle signale maintient le blocage. |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | Amender un commit non poussé est ordinaire ; le danger est de réécrire l'historique que d'autres peuvent avoir récupéré. |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev demande également si la cible est une vraie base de données plutôt qu'une base de test jetable. |
+| `warn-global-package-install` | reviewable | `system-modification` | La même préoccupation : modifier la machine en dehors du projet. |
+| `block-failproofai-commands` | hard | | Auto-protection `alwaysOn`. Jamais reviewable. |
+| `block-rm-rf` | reviewable | `destructive-deletion` | L'heuristique de profondeur de chemin se trompe sur `rm -rf node_modules` ; Jev demande si ce qui serait détruit est régénérable. `rm -rf /` garde les deux sondes vraies. |
+| `block-sudo` | hard | | Élévation de privilèges. |
+| `block-curl-pipe-sh` | hard | | Exécute du code téléchargé depuis Internet. |
+| `block-push-master` | hard | | Pousse directement vers une branche protégée. |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` couvre exactement cette préoccupation mais est en mode instruct, donc ne peut jamais répondre deny, et aucune autre vérification ne la couvre. |
+| `block-force-push` | reviewable | `git-history-rewrite` | La sonde de Jev est un sur-ensemble du matcher et compte `--force-with-lease` ; ce qui est levé est le force-push sur votre propre branche. |
+| `block-secrets-write` | reviewable | `secret-exposure` | Le match de chemin est non ancré, donc `src/auth/credentials.ts` est capturé ; Jev demande si de vraies clés sont en train d'être écrites. |
+| `block-kubectl` | reviewable | `production-infra-change` | Refuse l'ensemble de la CLI, sous-commandes en lecture seule incluses ; Jev demande si l'appel mute et si la cible est en production. |
+| `block-terraform` | reviewable | `production-infra-change` | Idem : lève `terraform plan` et `validate`. |
+| `block-aws-cli` | reviewable | `production-infra-change` | Idem : lève `aws s3 ls`, `aws sts get-caller-identity`. |
+| `block-gcloud` | reviewable | `production-infra-change` | Idem : lève `gcloud auth list`, `gcloud config list`. |
+| `block-az-cli` | reviewable | `production-infra-change` | Idem : lève `az account show`. |
+| `block-helm` | reviewable | `production-infra-change` | Idem : lève `helm list`, `helm status`. |
+| `block-gh-pipeline` | hard | | Déclenche des pipelines, des fusions et des modifications de secrets. |
+| `warn-git-stash-drop` | hard | | Aucune vérification sémantique ne couvre la suppression de travail mis en stash. |
+| `warn-git-clean` | hard | | `destructive-deletion` couvre la préoccupation mais ne peut manifestement pas se déclencher sur elle : `git clean` ne nomme aucun chemin, donc sa sonde `irreplaceable` n'a rien à juger et répond faible, et la preuve est le minimum sur les sondes d'une politique. Une vérification qui est interrogée et ne se déclenche pas lève le verdict, donc s'associer ici désactiverait la politique. |
+| `warn-all-files-staged` | hard | | Aucune vérification sémantique ne couvre ce qu'un `git add` large récupère. |
+| `warn-schema-alteration` | hard | | `database-destruction` couvre la suppression de données, pas la modification d'un schéma. |
+| `warn-package-publish` | hard | | La publication est irréversible et aucune vérification sémantique ne la couvre. |
+| `prefer-package-manager` | hard | | Une convention d'équipe, pas un jugement de sécurité. |
+| `warn-large-file-write` | hard | | Un seuil de taille, pas un jugement que Jev peut formuler. |
+| `warn-background-process` | hard | | Aucune vérification sémantique ne couvre les processus détachés. |
+| `warn-repeated-tool-calls` | hard | | Compte les appels ; Jev ne peut pas compter. |
+| `sanitize-jwt` | hard | | Expurge la sortie des outils ; pas une porte de contrôle d'appel d'outil. |
+| `sanitize-api-keys` | hard | | Expurge la sortie des outils ; pas une porte de contrôle d'appel d'outil. |
+| `sanitize-connection-strings` | hard | | Expurge la sortie des outils ; pas une porte de contrôle d'appel d'outil. |
+| `sanitize-private-key-content` | hard | | Expurge la sortie des outils ; pas une porte de contrôle d'appel d'outil. |
+| `sanitize-bearer-tokens` | hard | | Expurge la sortie des outils ; pas une porte de contrôle d'appel d'outil. |
+| `require-commit-before-stop` | hard | | Une porte de fin de session, pas une porte d'appel d'outil. |
+| `require-push-before-stop` | hard | | Une porte de fin de session, pas une porte d'appel d'outil. |
+| `require-pr-before-stop` | hard | | Une porte de fin de session, pas une porte d'appel d'outil. |
+| `require-no-conflicts-before-stop` | hard | | Une porte de fin de session, pas une porte d'appel d'outil. |
+| `require-ci-green-before-stop` | hard | | Une porte de fin de session, pas une porte d'appel d'outil. |
 
 ## Noms des politiques sémantiques
 
-Ce sont les vérifications que `FailproofAI/jev-policies` déclare, et les valeurs que `reviewedBy` accepte une fois installé. Failproof AI n'en fournit aucune : sans ce pack (ou un autre déclarant ces noms), aucune politique les nommant n'est révisable. Chacune est une vérification que Jev répond sur l'appel d'outil devant lui. Le **mode** est ce qu'une vérification peut répondre : une vérification `deny` bloque sur une preuve forte, tandis qu'une vérification `instruct` ne fait qu'avertir. L'une ou l'autre maintient le refus d'une politique lorsqu'elle se déclenche et que l'utilisateur n'a pas demandé l'appel. **L'utilisateur peut outrepasser** indique si la demande explicite de l'humain la lève.
+Ce sont les vérifications que `FailproofAI/jev-policies` déclare, et les valeurs que `reviewedBy` accepte une fois ce pack installé. Failproof AI lui-même n'en fournit aucune : sans ce pack (ou un autre déclarant ces noms), aucune politique les nommant n'est reviewable. Chacune est une vérification que Jev effectue sur l'appel d'outil qui lui est soumis. Le **Mode** indique ce qu'une vérification peut répondre : une vérification `deny` bloque sur preuve solide, tandis qu'une vérification `instruct` ne fait qu'avertir. L'une ou l'autre maintient le refus d'une politique lorsqu'elle se déclenche et que l'utilisateur n'a pas demandé l'appel. **L'utilisateur peut annuler** indique si la demande explicite de l'utilisateur la lève.
 
-Jev interroge exactement les [vérifications Jev](/fr/policies/publish-a-pack#jev-checks-in-a-pack) déclarées par les packs installés, et ce sont les noms que `reviewedBy` accepte. Un nom déclaré différemment par deux packs n'est honoré par aucun des deux. L'un de ces seize noms déclaré par un pack non installé depuis un dépôt FailproofAI est ignoré dans ce pack : sa version n'est jamais interrogée et ne conteste pas celle de FailproofAI, donc un pack tiers ne peut ni devenir la vérification qui lève les politiques du pack principal, ni désactiver l'une de ces vérifications. Une liste de packs illisible, ou un pack dont chaque vérification est inutilisable, ne laisse rien à interroger à Jev.
+Jev interroge exactement les [vérifications Jev](/fr/policies/publish-a-pack#jev-checks-in-a-pack) que les packs installés déclarent, et ce sont les noms que `reviewedBy` accepte. Un nom que deux packs déclarent différemment n'est honoré pour aucun d'eux. L'un de ces seize noms déclaré par un pack non installé depuis un dépôt FailproofAI est ignoré dans ce pack : sa version n'est jamais interrogée et ne conteste pas celle de FailproofAI, donc un pack tiers ne peut ni devenir la vérification qui lève les politiques du pack principal, ni désactiver l'une de ces vérifications. Une liste de packs illisible, ou un pack dont chaque vérification est inutilisable, ne laisse rien à interroger à Jev.
 
-| Nom | Mode | L'utilisateur peut outrepasser | Ce que Jev vérifie |
+| Nom | Mode | L'utilisateur peut annuler | Ce que Jev vérifie |
 | --- | --- | --- | --- |
-| `destructive-deletion` | deny | oui | Suppression permanente de données non régénérables. |
-| `production-infra-change` | deny | oui | Modification d'une infrastructure en production. |
-| `git-history-rewrite` | deny | oui | Réécriture ou abandon d'un historique git partagé. |
-| `push-to-protected-branch` | instruct | oui | Poussée directe vers une branche protégée. |
+| `destructive-deletion` | deny | oui | Suppression permanente de données ne pouvant être régénérées. |
+| `production-infra-change` | deny | oui | Modification de l'infrastructure en production. |
+| `git-history-rewrite` | deny | oui | Réécriture ou suppression de l'historique git partagé. |
+| `push-to-protected-branch` | instruct | oui | Push direct vers une branche protégée. |
 | `commit-on-protected-branch` | instruct | oui | Commit direct sur une branche protégée. |
 | `secret-exposure` | deny | oui | Lecture ou copie d'identifiants. |
 | `credential-exfiltration` | deny | non | Envoi de secrets ou de fichiers privés hors de la machine. |
-| `remote-code-execution` | deny | oui | Exécution de code téléchargé depuis internet. |
+| `remote-code-execution` | deny | oui | Exécution de code téléchargé depuis Internet. |
 | `privilege-escalation` | deny | oui | Exécution avec des privilèges élevés. |
-| `database-destruction` | deny | oui | Destruction ou modification massive de données en base. |
+| `database-destruction` | deny | oui | Destruction ou modification en masse de données de base de données. |
 | `read-outside-workspace` | instruct | oui | Lecture de fichiers en dehors du projet. |
 | `agent-config-tampering` | deny | non | Modification de la propre configuration de sécurité de l'agent. |
 | `system-modification` | instruct | oui | Modification du système en dehors du projet. |
 | `env-secrets-dump` | instruct | oui | Affichage de secrets d'environnement. |
-| `external-destructive-action` | deny | oui | Une action irréversible via un outil externe. |
-| `external-data-egress` | instruct | oui | Envoi de données privées vers un outil externe. |
+| `external-destructive-action` | deny | oui | Action irréversible via un outil externe. |
+| `external-data-egress` | instruct | oui | Envoi de données privées à un outil externe. |

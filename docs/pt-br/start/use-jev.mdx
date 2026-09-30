@@ -8,29 +8,29 @@ O Jev atua em dois momentos durante a execução de um agente: pontuar uma sess�
 
 <Tabs>
   <Tab title="Avaliações Jev">
-    Use uma avaliação Jev quando uma sessão concluída puder ser pontuada em relação a uma pergunta com algumas respostas conhecidas, como "O cliente pediu reembolso? Responda sim ou não." Isso ajuda a identificar padrões entre sessões.
+    Use uma avaliação Jev quando uma sessão concluída puder ser pontuada em relação a uma pergunta com algumas respostas conhecidas, como "O cliente pediu reembolso? Responda sim ou não." Isso ajuda você a identificar padrões entre as sessões.
 
     ## Criar uma avaliação
 
-    No painel do Cloud, abra **Analyze → eval authoring → new eval**. Insira uma pergunta de resposta fixa, selecione **draft** e verifique se foi escolhida uma pontuação de classificador. [Teste-a](/pt-br/evaluations/test) em sessões reais e, em seguida, implante-a.
+    No painel do Cloud, acesse **Analyze → eval authoring → new eval**. Insira uma pergunta de resposta fixa, selecione **draft** e verifique se foi escolhida uma pontuação de classificador. [Teste-a](/pt-br/evaluations/test) em sessões reais e, em seguida, implante-a.
 
-    ![O formulário compartilhado de criação de avaliação onde você descreve uma pergunta, revisa o rascunho e o implanta. Esta captura de tela mostra um rascunho de código; use uma pergunta de resposta fixa para o Jev.](/images/dashboard/eval-authoring-draft.png)
+    ![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta, revisa o rascunho e realiza o deploy. Esta captura de tela mostra um rascunho de código; use uma pergunta de resposta fixa para o Jev.](/images/dashboard/eval-authoring-draft.png)
 
     ## Ler as pontuações
 
-    Após a conclusão de uma nova sessão, abra **Observe → Evaluations** ou use o CLI do Cloud:
+    Após a conclusão de uma nova sessão, acesse **Observe → Evaluations** ou use o Cloud CLI:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    O CLI lê pontuações; a criação de uma avaliação Jev atualmente é feita pelo painel. Consulte [Avaliações Jev](/pt-br/evaluations/jev) para tipos de perguntas e exemplos.
+    O CLI lê as pontuações; a criação de uma avaliação Jev atualmente utiliza o painel. Consulte [avaliações Jev](/pt-br/evaluations/jev) para tipos de perguntas e exemplos.
   </Tab>
   <Tab title="Políticas Jev">
-    Use a revisão por políticas Jev quando uma política de correspondência de strings precisar do contexto da sua solicitação para decidir se uma chamada de ferramenta é segura. Comece no modo **observe** para inspecionar as respostas do Jev enquanto suas políticas instaladas ainda decidem cada chamada.
+    Use a revisão de políticas Jev quando uma política baseada em correspondência de strings precisar do contexto da sua solicitação para decidir se uma chamada de ferramenta é segura. Comece no modo **observe** para que você possa inspecionar as respostas do Jev enquanto suas políticas instaladas ainda decidem cada chamada.
 
-    As verificações do Jev vêm de um pacote; Failproof AI não fornece nenhum. Até que você os instale, o Jev não faz nenhuma pergunta, mesmo quando está configurado:
+    As verificações do Jev vêm de um pacote; Failproof AI não inclui nenhum por padrão. Até que você os instale, o Jev não faz nenhuma verificação, mesmo quando está configurado:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ O Jev atua em dois momentos durante a execução de um agente: pontuar uma sess�
 
     ## Configurar o Cloud Jev
 
-    No painel do Cloud, abra **Administration → Keys** e crie uma chave com o preset **machine**. Use-a com `failproofai config` conforme mostrado no [início rápido](/pt-br/start/quickstart). Em uma máquina sem uma configuração Jev existente, isso ativa o Cloud Jev no modo observe. Verifique a conexão com:
+    No painel do Cloud, acesse **Administration → Keys** e crie uma chave com o preset **machine**. Use-a com `failproofai config` conforme mostrado no [início rápido](/pt-br/start/quickstart). Em uma máquina sem uma configuração Jev existente, isso habilita o Cloud Jev no modo observe. Verifique a conexão com:
 
     ```bash
     failproofai jev status
@@ -47,17 +47,17 @@ O Jev atua em dois momentos durante a execução de um agente: pontuar uma sess�
 
     ## Usar seu próprio endpoint
 
-    No painel local, abra **Settings → Jev**. Escolha o provedor, cole o token, selecione **observe** e ative o Jev.
+    No painel local, acesse **Settings → Jev**. Escolha o provedor, cole o token, selecione **observe** e ative o Jev.
 
     ![O painel de configurações Jev local com um provedor, campo de token e modo observe selecionado.](/images/dashboard/jev-settings.png)
 
-    Ou configure e teste seu endpoint pelo terminal:
+    Ou configure e teste seu endpoint a partir de um terminal:
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    Peça a um agente com hook que use sua ferramenta de leitura de arquivos no `README.md`. Confirme que essa chamada de ferramenta aparece na sessão e, em seguida, inspecione-a em **Policies → Activity** no painel local. Quando os resultados do modo observe parecerem corretos, [Políticas Jev](/pt-br/policies/jev) explica quando aplicar a execução obrigatória. Para detalhes sobre provedores e configuração, consulte a [referência de integração](/pt-br/reference/jev).
+    Peça a um agente com hook que use sua ferramenta de leitura de arquivos no `README.md`. Confirme que essa chamada de ferramenta aparece na sessão e, em seguida, inspecione-a em **Policies → Activity** no painel local. Assim que os resultados do modo observe parecerem corretos, [políticas Jev](/pt-br/policies/jev) explica quando aplicar o modo de restrição. Para detalhes do provedor e configuração, consulte a [referência de integração](/pt-br/reference/jev).
   </Tab>
 </Tabs>

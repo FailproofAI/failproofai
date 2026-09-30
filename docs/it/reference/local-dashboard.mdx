@@ -1,34 +1,34 @@
 ---
 title: "Dashboard locale"
-description: "Rivedi progetti locali, sessioni, attività delle policy, configurazione, audit e scansioni programmate."
+description: "Rivedi progetti locali, sessioni, attività delle policy, configurazione, audit e scansioni pianificate."
 icon: "monitor-cog"
 ---
 
-Esegui `failproofai` senza argomenti per avviare il dashboard integrato su `http://localhost:8020`. Legge le cronologie degli agenti locali, la configurazione delle policy, i risultati degli audit e l'attività degli hook direttamente dal computer.
+Esegui `failproofai` senza argomenti per avviare il dashboard integrato su `http://localhost:8020`. Legge le cronologie degli agenti locali, la configurazione delle policy, i risultati degli audit e l'attività degli hook direttamente dalla macchina.
 
-Il dashboard locale è separato da Failproof AI Cloud. Funziona senza un account Cloud e non dimostra che gli eventi siano stati consegnati alla tua organizzazione.
+Il dashboard locale è separato da Failproof AI Cloud. Funziona senza un account Cloud e non prova che gli eventi sono stati consegnati alla tua organizzazione.
 
 ## Aree del dashboard
 
 | Area | Cosa puoi fare |
 | --- | --- |
-| Policies → Activity | Ispeziona le decisioni locali allow, instruct e deny; filtra per decisione, evento, CLI, tool, sorgente, policy e sessione. |
-| Policies → Configure | Abilita i builtin, modifica i parametri supportati, attiva/disattiva le policy personalizzate scoperte e seleziona gli harness di destinazione. |
-| Projects | Sfoglia i progetti scoperti nelle cronologie degli agenti supportate e confronta le loro sessioni più recenti. |
-| Project sessions | Apri una trascrizione locale, rivedi le voci ordinate non elaborate e i subagent, scaricala e correla l'attività delle policy. |
-| Audit | Rivedi l'ultima scansione offline, i modelli rischiosi, i punti di forza, i progetti interessati e le policy builtin consigliate. |
-| Settings | Configura le scansioni locali programmate e i rapporti di audit inviati per email quando il daemon/platform li supporta, e [Jev](#set-up-jev): il suo provider, endpoint, token e modalità, e se la connessione FailproofAI Cloud di questo computer può eseguirlo. |
+| Policy → Attività | Ispeziona decisioni locali di allow, instruct e deny; filtra per decisione, evento, CLI, strumento, fonte, policy e sessione. |
+| Policy → Configura | Abilita built-in, modifica parametri supportati, attiva/disattiva policy personalizzate rilevate e seleziona harness di destinazione. |
+| Progetti | Sfoglia progetti rilevati tra le cronologie degli agenti supportate e confronta le loro sessioni più recenti. |
+| Sessioni del progetto | Apri un trascritto locale, rivedi le voci ordinate grezze e i sottoagenti, scaricalo e correla l'attività delle policy. |
+| Audit | Rivedi l'ultima scansione offline, i pattern rischiosi, i punti di forza, i progetti interessati e le policy built-in suggerite. |
+| Impostazioni | Configura scansioni locali pianificate e rapporti di audit inviati per email quando il daemon/piattaforma li supporta. |
 
 ## Rivedi l'attività delle policy
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Policies → Activity** e imposta i filtri per decisione e sorgente.
-    2. Restringi per evento, harness, tool o nome della policy.
-    3. Espandi una riga per ispezionare il motivo, le policy corrispondenti, la sorgente, la modalità di esecuzione e la durata.
-    4. Segui il collegamento della sessione per contestualizzare la decisione nella trascrizione.
+    1. Apri **Policy → Attività** e imposta i filtri di decisione e fonte.
+    2. Restringi per evento, harness, strumento o nome della policy.
+    3. Espandi una riga per ispezionare il suo motivo, le policy corrispondenti, la fonte, la modalità di esecuzione e la durata.
+    4. Segui il collegamento della sessione per posizionare la decisione nel contesto del trascritto.
 
-    Una riga simile a una negazione può comunque essere osservazionale su una coppia harness/evento che non utilizza verdetti di blocco. La vista dettagliata evidenzia la capacità di applicazione verificata.
+    Una riga che sembra negata può comunque essere osservazionale su una coppia harness/evento che non utilizza verdetti di blocco. La vista dettagliata evidenzia la capacità di applicazione verificata.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,20 +37,20 @@ Il dashboard locale è separato da Failproof AI Cloud. Funziona senza un account
     failproofai
     ```
 
-    L'attività locale è archiviata sotto `~/.failproofai/hook-activity`. Usa il dashboard invece di modificare questi file.
+    L'attività locale è archiviata in `~/.failproofai/hook-activity`. Usa il dashboard invece di modificare questi file.
   </Tab>
 </Tabs>
 
-## Configura le policy localmente
+## Configura policy localmente
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Policies → Configure** e scegli gli harness e l'ambito della configurazione.
-    2. Abilita un builtin o una policy personalizzata scoperta.
-    3. Per un builtin parametrizzato, apri il controllo di configurazione e salva i valori supportati.
-    4. Torna ad Activity ed esegui azioni corrispondenti e non corrispondenti.
+    1. Apri **Policy → Configura** e scegli gli harness e l'ambito di configurazione.
+    2. Abilita una policy built-in o una policy personalizzata rilevata.
+    3. Per una policy built-in con parametri, apri il suo controllo di configurazione e salva i valori supportati.
+    4. Torna ad Attività ed esegui azioni corrispondenti e non corrispondenti.
 
-    Le policy di convenzione mostrano la loro sorgente di progetto o utente. Le modifiche esplicite del percorso personalizzato possono richiedere di rieseguire la configurazione della CLI in modo che il percorso selezionato sia registrato.
+    Le policy di convenzione mostrano la loro fonte di progetto o utente. Le modifiche esplicite di percorso personalizzato potrebbero richiedere il rieseguo della configurazione CLI in modo che il percorso selezionato sia registrato.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,24 +63,15 @@ Il dashboard locale è separato da Failproof AI Cloud. Funziona senza un account
 
 ## Sfoglia progetti e sessioni
 
-La pagina Projects combina gli archivi di cronologia locali supportati. Seleziona un progetto per elencare le sue sessioni, quindi apri una sessione per il visualizzatore di log non elaborati, i segmenti dei subagent, l'azione di download e l'attività delle policy limitata alla sessione.
+La pagina Progetti combina i negozi di cronologie locali supportati. Seleziona un progetto per elencare le sue sessioni, quindi apri una sessione per il visualizzatore di log grezzo, i segmenti dei sottoagenti, l'azione di download e l'attività delle policy con ambito sessione.
 
-Se un progetto o una sessione non è presente, conferma che l'harness utilizzi la sua posizione di cronologia predefinita o registra una radice aggiuntiva con `failproofai harness add-path`.
+Se un progetto o una sessione mancano, conferma che l'harness utilizza la sua posizione di cronologia predefinita o registra una radice aggiuntiva con `failproofai harness add-path`.
 
-## Configura Jev
-
-La sezione Jev della pagina **Settings** scrive lo stesso `~/.failproofai/jev.json` che scrive `failproofai jev setup`, convalidato dalle regole del loader stesso, quindi gli hook lo utilizzano alla loro prossima chiamata. Dice se Jev è attivo e in quale modalità, e — una volta che lo è — quante chiamate ha risposto e con quale frequenza è tornato alle policy regex. Failproof AI non fornisce controlli Jev: finché nessun pacchetto installato ne dichiara alcuno, la sezione lo dice e nomina `failproofai policies add FailproofAI/jev-policies`, e Jev non chiede nulla.
-
-- **Il tuo endpoint personale.** Scegli il provider, fornisci un URL di endpoint per `custom` (opzionale per gli altri) e un account id per Cloudflare, incolla il token e seleziona la modalità (`observe`, `enforce` oppure `off`). Il token è di sola scrittura: la pagina non lo mostra mai, e lasciare il campo vuoto mantiene quello archiviato mentre il provider e l'host dell'endpoint rimangono uguali. Modifica uno dei due e la pagina chiede di nuovo il token, quindi una chiave archiviata non viene mai inviata da qualche parte per cui non è stata data. Vedi [Jev con la tua chiave personale](/it/reference/jev-providers).
-- **FailproofAI Cloud.** Jev tramite Cloud viene attivato collegando il computer (`failproofai config --token <key>`); la pagina offre solo l'interruttore on/off e la modalità. Vedi [Jev tramite FailproofAI Cloud](/it/reference/jev-cloud).
-
-Una configurazione la cui chiave proviene da `FAILPROOFAI_JEV_API_KEY` (`jev setup --key-from-env`) viene valutata dall'ambiente del dashboard stesso, che potrebbe non essere quello in cui viene eseguito il tuo agente; esegui `failproofai jev status` dove viene eseguito l'agente per vedere cosa fanno i suoi hook.
-
-## Programma audit offline
+## Pianifica audit offline
 
 <Tabs>
   <Tab title="Dashboard">
-    Apri **Settings**, abilita la scansione programmata, scegli l'intervallo supportato e configura la consegna del rapporto quando disponibile. La pagina segnala il prossimo avvio, l'ultimo avvio, il codice di uscita e se il daemon in background è supportato sulla piattaforma.
+    Apri **Impostazioni**, abilita la scansione pianificata, scegli il suo intervallo supportato e configura la consegna dei rapporti quando disponibile. La pagina riporta la prossima esecuzione, l'ultima esecuzione, il codice di uscita e se il daemon in background è supportato sulla piattaforma.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -93,5 +84,5 @@ Una configurazione la cui chiave proviene da `FAILPROOFAI_JEV_API_KEY` (`jev set
 </Tabs>
 
 <Warning>
-  Il dashboard locale può visualizzare prompt, input dei tool, contenuto dei file e output del terminale dalle cronologie degli agenti locali. Collegalo solo a interfacce attendibili e interrompi il processo una volta completata la revisione.
+  Il dashboard locale può visualizzare prompt, input dello strumento, contenuto di file e output del terminale dalle cronologie degli agenti locali. Collegalo solo a interfacce attendibili e ferma il processo al termine della revisione.
 </Warning>

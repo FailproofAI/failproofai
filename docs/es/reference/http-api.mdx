@@ -1,6 +1,6 @@
 ---
 title: "HTTP API"
-description: "Autentícate en la API pública de Failproof AI Cloud `/v1` y utiliza la referencia de endpoints generada."
+description: "Autentícate en la API pública de Failproof AI Cloud en `/v1` y utiliza la referencia de endpoints generada."
 icon: "braces"
 ---
 
@@ -11,13 +11,13 @@ La API pública se sirve bajo `/v1` en el origen de tu panel de Failproof AI.
 <Tabs>
   <Tab title="Panel de control">
     1. Abre **Administración → Claves**, selecciona **Crear clave** y elige el conjunto de permisos más restringido que cubra la integración.
-    2. Añade permisos individuales solo cuando sea necesario, crea la clave y copia su secreto de uso único.
-    3. Realiza una solicitud de prueba a `/v1/sessions` y confirma que la clave permanece activa en la página de Claves.
+    2. Añade permisos individuales solo cuando sea necesario, crea la clave y copia su secreto de un solo uso.
+    3. Realiza una solicitud de prueba a `/v1/sessions` y confirma que la clave sigue activa en la página de Claves.
     4. Rota o deshabilita la clave desde su menú de acciones cuando la integración cambie de propietario.
 
-    ![El panel de creación de nueva clave API con los conjuntos de permisos y los permisos individuales.](/images/dashboard/key-create.png)
+    ![El panel de creación de nueva clave API con preajustes de permisos y permisos individuales.](/images/dashboard/key-create.png)
 
-    El panel de creación se muestra arriba. El secreto de uso único aparece solo después de seleccionar **crear**; cópialo antes de cerrar esa confirmación.
+    El panel de creación se muestra arriba. El secreto de un solo uso aparece únicamente después de seleccionar **crear**; cópialo antes de cerrar esa confirmación.
   </Tab>
   <Tab title="CLI">
     Crea una clave de lectura y úsala directamente con `fp` o `curl`:
@@ -40,15 +40,15 @@ Las claves están vinculadas a una organización y a un conjunto de permisos. Un
 
 ## Selección de organización
 
-Una clave de organización actúa automáticamente sobre su propia organización. Una clave con ámbito de instancia puede seleccionar una organización por solicitud:
+Una clave de organización actúa automáticamente sobre su organización. Una clave de ámbito de instancia puede seleccionar una organización por solicitud:
 
 <Tabs>
   <Tab title="Panel de control">
-    Usa el selector de organización en el encabezado del panel antes de abrir **Administración → Claves**. Las claves creadas allí pertenecen a la organización seleccionada. Confirma el slug de la organización en la URL y en el detalle de la clave antes de copiar la credencial en la automatización.
+    Usa el selector de organización en la cabecera del panel antes de abrir **Administración → Claves**. Las claves creadas allí pertenecen a la organización seleccionada. Confirma el slug de la organización en la URL y en el detalle de la clave antes de copiar la credencial en la automatización.
 
   </Tab>
   <Tab title="CLI">
-    Usa `--org` antes del comando, o envía el encabezado de organización para una clave API con ámbito de instancia.
+    Usa `--org` antes del comando, o envía la cabecera de organización para una clave API de ámbito de instancia.
 
     ```bash
     fp orgs list
@@ -63,12 +63,18 @@ Una clave de organización actúa automáticamente sobre su propia organización
   </Tab>
 </Tabs>
 
-Consulta las páginas de endpoints generadas en esta sección para conocer las rutas actuales, los parámetros, los requisitos de permisos y los códigos de estado. La especificación se genera a partir de las anotaciones de rutas del servidor y se verifica contra el enrutador `/v1`.
+Consulta las páginas de endpoints generadas en esta sección para obtener las rutas actuales, parámetros, requisitos de permisos y códigos de estado. La especificación se genera a partir de las anotaciones de rutas del servidor y se verifica contra el router `/v1`.
 
-La especificación actual tiene cobertura completa de rutas, métodos, parámetros, permisos y códigos de estado. Algunos cuerpos de respuesta permanecen intencionalmente sin tipo porque el servidor aún los construye como JSON dinámico. Inspecciona una respuesta real antes de generar un cliente con tipado estricto para un endpoint que no tenga esquema de respuesta definido.
+La especificación actual tiene cobertura completa de rutas, métodos, parámetros, permisos y códigos de estado. Algunos cuerpos de respuesta permanecen intencionadamente sin tipo porque el servidor todavía los construye como JSON dinámico. Inspecciona una respuesta real antes de generar un cliente fuertemente tipado para un endpoint que no tenga esquema de respuesta.
 
-Usa `Content-Type: application/json` para escrituras en JSON. Interpreta `401` como autenticación ausente o inválida, `403` como una identidad válida sin el permiso requerido, `404` como un recurso inexistente o inaccesible para la organización, `409` como un conflicto de estado, y `422` como un campo o valor de permiso inválido. Las respuestas de error incluyen un mensaje legible por humanos; los fallos de permiso también indican el permiso requerido.
+Usa `Content-Type: application/json` para escrituras JSON. Trata `401` como autenticación ausente o inválida, `403` como una identidad válida sin el permiso requerido, `404` como un recurso inexistente o inaccesible para la organización, `409` como un conflicto de estado y `422` como un campo o valor de permiso inválido. Las respuestas de error incluyen un mensaje legible; los errores de permisos también indican el permiso requerido.
+
+## IDs de solicitud
+
+Cada respuesta lleva una cabecera `X-Request-Id`, y cada cuerpo de error JSON incluye el mismo valor como `request_id`. Indícalo al contactar con soporte: identifica esa solicitud concreta.
+
+Puedes enviar tu propio `X-Request-Id` para correlacionar una solicitud con tus propios registros. Usa 32 caracteres hexadecimales en minúsculas, como un UUID v4 sin guiones. Cualquier otro valor será reemplazado por un nuevo ID, que se devuelve en la respuesta.
 
 <Warning>
-  El despliegue de la aplicación de políticas se gestiona intencionalmente fuera de la superficie pública `/v1` ordinaria. Utiliza el flujo de despliegue en la nube compatible.
+  El despliegue de la aplicación de políticas se gestiona intencionadamente fuera de la superficie pública ordinaria de `/v1`. Usa el flujo de despliegue Cloud compatible.
 </Warning>

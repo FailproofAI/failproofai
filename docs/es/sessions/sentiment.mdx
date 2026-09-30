@@ -1,35 +1,35 @@
 ---
-title: "Análisis de sentimientos"
+title: "Análisis de sentimiento"
 description: "Encuentra mensajes frustrados, confusos y correctivos con las puntuaciones de sentimiento de Jev."
 icon: "smile"
 ---
 
-Jev puntúa cada mensaje que una persona envía a tus agentes en una escala del 0 al 100 para cuatro emociones — **enojado**, **frustrado**, **feliz** y **confundido** — y tres señales sobre el desempeño del agente:
+Jev puntúa cada mensaje que una persona envía a tus agentes en una escala del 0 al 100 para cuatro emociones — **enojado**, **frustrado**, **feliz** y **confundido** — y tres señales sobre el rendimiento del agente:
 
 - **Corrigiendo**: la persona indica que el agente cometió un error.
-- **Resuelto**: la persona confirma que el agente solucionó su problema.
-- **Dubitativo**: la persona cuestiona si la respuesta del agente es correcta, o si realmente realizó el trabajo.
+- **Resuelto**: la persona confirma que el agente resolvió su problema.
+- **Dudoso**: la persona cuestiona si la respuesta del agente es correcta, o si realmente realizó el trabajo.
 
-Usa el análisis de sentimientos para encontrar conversaciones donde las personas están perdiendo la paciencia, agentes que siguen siendo corregidos y respuestas que funcionan bien. Este es el sistema de puntuación integrado de Jev; no necesitas crear una evaluación. Para una pregunta de respuesta fija propia, [crea una evaluación Jev](/es/evaluations/jev).
+Usa el análisis de sentimiento para encontrar conversaciones donde las personas están perdiendo la paciencia, agentes que siguen siendo corregidos y respuestas que funcionan bien. Esta es una puntuación Jev integrada; no necesitas crear una evaluación. Para preguntas propias con respuesta fija, [crea una evaluación Jev](/es/evaluations/jev).
 
 <Note>
-  El análisis de sentimientos está desactivado hasta que un administrador lo habilite para la organización. Jev realiza una solicitud de puntuación por mensaje y recibe ese mensaje junto con la respuesta del agente anterior a él. La puntuación utiliza el presupuesto de modelos de tu organización.
+  El análisis de sentimiento está desactivado hasta que un administrador lo active para la organización. Jev realiza una solicitud de puntuación por mensaje y recibe ese mensaje junto con la respuesta del agente anterior. La puntuación utiliza el presupuesto de modelos de tu organización.
 </Note>
 
 ## Activarlo
 
 1. Ve a **Administración → Configuración**.
-2. En **Sentimiento de entrada humana**, actívalo y guarda los cambios.
+2. En **Sentimiento de la entrada humana**, actívalo y guarda.
 
-Los mensajes del último día se puntúan primero. Después, los nuevos mensajes se puntúan en uno o dos minutos tras su llegada.
+Los mensajes del último día se puntúan primero. Después, los nuevos mensajes se puntúan en uno o dos minutos tras llegar.
 
 ## Encontrar una conversación para revisar
 
-Abre **Observar → Sentimiento**. Filtra por tiempo, entorno, agente o ID de sesión. El encabezado muestra el recuento de mensajes y sesiones, indica cuántos mensajes están **marcados** e identifica la señal principal. Un mensaje queda marcado cuando una puntuación de enojado, frustrado, corrigiendo, confundido o dubitativo alcanza 35 de 100.
+Abre **Observar → Sentimiento**. Filtra por tiempo, entorno, agente o ID de sesión. El encabezado muestra el recuento de mensajes y sesiones, indica cuántos mensajes están **marcados** y nombra la señal principal. Un mensaje se marca cuando una puntuación de enojado, frustrado, corrigiendo, confundido o dudoso alcanza 35 sobre 100.
 
-![El panel de Sentimiento mostrando el recuento de mensajes y sesiones, mensajes marcados y puntuaciones de Jev a lo largo del tiempo.](/images/dashboard/sentiment-overview.png)
+![El panel de Sentimiento mostrando el recuento de mensajes y sesiones, mensajes marcados y puntuaciones Jev a lo largo del tiempo.](/images/dashboard/sentiment-overview.png)
 
-Usa **Puntuación a lo largo del tiempo** para comparar señales. Elige las puntuaciones a mostrar y luego selecciona un punto para ver los mensajes de ese intervalo de tiempo. La tabla **Por agente** muestra dónde se concentra una señal. En **Mensajes**, ordena por la puntuación negativa más alta o selecciona una sola puntuación. Abre un mensaje en su sesión para leer la conversación que lo rodea antes de decidir qué falló.
+Usa **Puntuación a lo largo del tiempo** para comparar señales. Elige las puntuaciones a mostrar y selecciona un punto para ver los mensajes de ese intervalo de tiempo. La tabla **Por agente** muestra dónde se concentra una señal. En **Mensajes**, ordena por la puntuación negativa más alta o selecciona una puntuación individual. Abre un mensaje en su sesión para leer la conversación circundante antes de decidir qué falló.
 
 ![La lista de mensajes de Sentimiento ordenada por la puntuación negativa más alta, con un enlace a cada sesión de origen.](/images/dashboard/sentiment-messages.png)
 
@@ -38,6 +38,6 @@ Usa **Puntuación a lo largo del tiempo** para comparar señales. Elige las punt
 Solo los mensajes escritos por una persona:
 
 - Mensajes que tus agentes personalizados registran como entrada humana con el SDK.
-- Prompts escritos en Claude Code, Codex, OpenCode, pi, Hermes y OpenClaw, cuando se envían las transcripciones de sesión (comportamiento predeterminado). Los trabajos programados, las instrucciones inyectadas, los traspasos entre sub-agentes y cualquier otro texto que escriba el propio entorno de ejecución del agente no se puntúan. Tampoco se puntúan las ejecuciones no interactivas como `claude -p`, `codex exec` y `hermes -z`: esos prompts los generó un script, no una persona.
+- Prompts escritos en Claude Code, Codex, OpenCode, pi, Hermes y OpenClaw, cuando se envían transcripciones de sesión (opción predeterminada). Los trabajos programados, instrucciones inyectadas, transferencias a sub-agentes y otro texto escrito por el propio entorno de ejecución del agente no se puntúan. Tampoco se puntúan las ejecuciones no interactivas como `claude -p`, `codex exec` y `hermes -z`: esos prompts los escribió un script, no una persona.
 
-La puntuación evalúa las palabras propias de la persona. Una instrucción corta y directa como "arréglalo" no se cuenta como enojo, y hacer una pregunta no se cuenta como confusión. Una nueva solicitud no es una corrección, y un agradecimiento por sí solo no cuenta como resuelto.
+La puntuación evalúa las palabras propias de la persona. Una instrucción corta y directa como "arréglalo" no se cuenta como enojo, y hacer una pregunta no se cuenta como confusión. Una nueva solicitud no es una corrección, y dar las gracias por sí solo no cuenta como resuelto.

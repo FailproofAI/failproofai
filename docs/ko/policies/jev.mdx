@@ -1,45 +1,45 @@
 ---
 title: "Jev policies"
-description: "에이전트 도구 호출에 Jev의 실시간 검토를 추가하고, 결정을 적용하기 전에 검토합니다."
+description: "에이전트의 도구 호출에 Jev의 실시간 검토를 추가하고, 결정을 적용하기 전에 검토하세요."
 icon: "shield-check"
 ---
 
-Jev는 에이전트에게 요청된 작업을 기준으로 도구 호출을 검토합니다. 문자열 매칭 정책이 유효한 작업을 차단하거나, 문맥이 필요한 위험한 동작을 놓칠 때 활용하세요. `PreToolUse` 또는 `PermissionRequest` 게이트에서 기존 정책과 함께 응답합니다. 세션 종료 **후** 점수를 확인하려면 [Jev evaluations](/ko/evaluations/jev)를 사용하세요.
+Jev는 도구 호출을 사람이 에이전트에게 요청한 내용과 대조하여 분석합니다. 문자열 매칭 정책이 유효한 작업을 차단하거나, 문맥이 필요한 위험한 동작을 놓칠 때 사용하세요. `PreToolUse` 또는 `PermissionRequest` 게이트에서 기존 정책과 함께 결과를 반환합니다. 세션 종료 **이후** 점수가 필요하다면 [Jev evaluations](/ko/evaluations/jev)를 사용하세요.
 
 ## 관찰 모드로 시작하기
 
-Failproof AI를 설치하고 [지원되는 하네스](/ko/reference/harnesses)에 훅을 연결하세요. failproofai 1.0.8-beta.0 이상이 필요합니다.
+Failproof AI를 설치하고 [지원되는 하네스](/ko/reference/harnesses)에 훅을 연결하세요. failproofai 1.0.8-beta.0 이상 버전이 필요합니다.
 
-Failproof AI에는 Jev 검사가 기본 포함되어 있지 않습니다. 팩으로 설치해야 하며, 설치하지 않으면 Jev가 호출되지 않습니다:
+Failproof AI에는 기본적으로 Jev 검사가 포함되어 있지 않습니다. 팩으로 설치해야 하며, 그렇지 않으면 Jev가 호출되지 않습니다:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-그런 다음 요청이 Jev에 전달되는 방식을 선택하세요:
+그런 다음 Jev로 요청을 전달할 방법을 선택하세요:
 
 | 경로 | 첫 번째 단계 |
 | --- | --- |
-| FailproofAI Cloud | `jev:evaluate` 권한이 있는 **machine** 키로 연결합니다. Jev 설정이 없는 머신에서는 `failproofai config`를 실행하면 Jev가 관찰 모드로 활성화됩니다. |
-| 직접 사용하는 프로바이더 | 로컬 대시보드에서 **Settings → Jev**를 열고, 프로바이더를 선택한 뒤 토큰을 붙여넣고 **observe**를 선택합니다. 또는 `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`를 실행합니다. |
+| FailproofAI Cloud | `jev:evaluate` 권한이 있는 **머신** 키로 연결하세요. Jev 설정이 없는 머신에서는 `failproofai config`를 실행하면 Jev가 관찰 모드로 활성화됩니다. |
+| 자체 프로바이더 | 로컬 대시보드에서 **Settings → Jev**를 열고 프로바이더를 선택한 후 토큰을 붙여넣고 **observe**를 선택하세요. 또는 `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`를 실행하세요. |
 
-![로컬 대시보드의 Jev 설정 화면: 프로바이더, 엔드포인트, 토큰, 그리고 Jev 활성화 전 관찰 모드 설정.](/images/dashboard/jev-settings.png)
+![로컬 대시보드의 Jev 설정 화면: 프로바이더, 엔드포인트, 토큰, 그리고 Jev를 활성화하기 전의 관찰 모드.](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test`는 엔드포인트를 확인합니다. 훅 경로를 검증하려면, 훅이 연결된 에이전트에게 파일 읽기 도구로 `README.md`를 열도록 요청하세요. 해당 도구 호출이 세션에 나타나는지 확인한 후, [로컬 대시보드](/ko/reference/local-dashboard#review-policy-activity)의 **Policies → Activity**에서 검토하세요. `status`의 Jev 카운트가 증가해야 합니다. 관찰 모드에서는 Jev가 어떤 결정을 내렸을지 기록하되, 기존 정책 결과는 그대로 적용됩니다.
+`test`는 엔드포인트를 확인합니다. 훅 경로를 확인하려면 훅이 연결된 에이전트에게 파일 읽기 도구로 `README.md`를 읽도록 요청하세요. 해당 도구 호출이 세션에 나타나는지 확인한 후, [로컬 대시보드](/ko/reference/local-dashboard#review-policy-activity)의 **Policies → Activity**에서 검토하세요. `status`의 Jev 카운트가 증가해야 합니다. 관찰 모드에서는 기존 정책 결과가 그대로 적용되는 동시에, Jev가 어떤 결정을 내렸을지 기록됩니다.
 
 ## 적용 시점 결정하기
 
-**hard** 정책은 항상 최종 결정권을 가집니다. Jev는 명시적으로 **reviewable**로 표시된 정책의 deny만 취소할 수 있으며, 해당 정책의 지정된 concern을 검토했을 때만 가능합니다. 승인(clearance)에 의존하기 전에 [policy authority](/ko/policies/authority)를 먼저 확인하세요. Jev는 자체적으로 경고하거나 deny할 수도 있습니다. 응답할 수 없는 경우에는 정책 결과가 해당 호출을 결정합니다.
+**하드** 정책은 항상 최종 결정권을 갖습니다. Jev는 명시적으로 **reviewable**로 표시된 정책에서만, 그리고 해당 정책의 지정된 우려 사항을 검토한 경우에만 deny를 해제할 수 있습니다. 클리어런스에 의존하기 전에 [정책 권한](/ko/policies/authority)을 먼저 확인하세요. Jev는 자체적으로 경고 또는 거부 결정을 내릴 수도 있습니다. Jev가 응답하지 못하는 경우, 정책 결과가 해당 호출을 결정합니다.
 
-관찰 결과가 적절해 보이면 **Settings → Jev**에서 적용 모드로 전환하거나 다음을 실행하세요:
+관찰 결과가 적절하다고 판단되면, **Settings → Jev**에서 적용 모드로 전환하거나 다음 명령을 실행하세요:
 
 ```bash
 failproofai jev setup --mode enforce
 ```
 
-프로바이더 URL, Cloud 키, 설정, 폴백, 각 요청과 함께 전송되는 데이터에 대한 자세한 내용은 [Jev integration reference](/ko/reference/jev)를 참고하세요.
+프로바이더 URL, Cloud 키, 설정, 폴백, 그리고 각 요청에 함께 전송되는 데이터에 대한 자세한 내용은 [Jev 통합 레퍼런스](/ko/reference/jev)를 참조하세요.

@@ -1,58 +1,54 @@
 ---
-title: "Policies"
+title: "Chính sách"
 description: "Quan sát, hướng dẫn hoặc chặn các hành động của agent trước khi một lỗi đã biết lặp lại."
 icon: "shield-check"
 ---
 
-Một policy đánh giá sự kiện hook của agent và trả về một trong ba quyết định:
+Một chính sách đánh giá sự kiện hook của agent và trả về một trong ba quyết định:
 
 - `allow` cho phép hành động tiếp tục.
-- `instruct` cung cấp hướng dẫn sửa chữa cho agent.
-- `deny` chặn hành động với lý do.
+- `instruct` cung cấp hướng dẫn sửa lỗi cho agent.
+- `deny` chặn hành động kèm theo lý do.
 
-## Policies nằm ở đâu
+## Chính sách nằm ở đâu
 
-| Trong dashboard | Những gì bạn làm ở đó |
+| Trên bảng điều khiển | Những gì bạn làm ở đó |
 | --- | --- |
-| **Observe → policy** | Xem xét các quyết định từ các phiên thực tế: policy nào phù hợp, trên máy nào, và tại sao |
-| **Admin → policy editor** | Viết một policy, backtest nó dựa trên lưu lượng quá khứ, xuất bản một phiên bản bất biến, và so sánh các phiên bản trong **library** |
-| **Admin → enforcement** | Đưa các phiên bản lên các máy, ở chế độ observe hoặc enforce |
+| **Observe → policy** | Xem xét các quyết định từ các phiên làm việc thực tế: chính sách nào khớp, trên máy nào và tại sao |
+| **Admin → policy editor** | Viết một chính sách, kiểm tra ngược lại lưu lượng trước đó, xuất bản một phiên bản bất biến và so sánh các phiên bản trong **library** |
+| **Admin → enforcement** | Triển khai các phiên bản trên các máy, ở chế độ quan sát hoặc thực thi |
 
-Policy editor là nơi một lỗi trở thành một quy tắc. Mô tả chế độ lỗi hoặc dán mã nguồn policy vào **compose**, backtest bản nháp dựa trên lưu lượng bạn đã có, và xuất bản một phiên bản:
+Trình soạn thảo chính sách là nơi một lỗi trở thành một quy tắc. Mô tả chế độ lỗi hoặc dán mã nguồn chính sách trong **compose**, kiểm tra ngược bản nháp với lưu lượng bạn đã có và xuất bản một phiên bản:
 
-![Chế độ compose của Policy editor với danh tính policy, soạn thảo hỗ trợ bởi AI, xác thực mã nguồn, và các điều khiển xuất bản.](/images/dashboard/policy-editor.png)
+![Chế độ soạn thảo của trình soạn thảo chính sách với danh tính chính sách, soạn thảo hỗ trợ bởi AI, xác thực mã nguồn và các điều khiển xuất bản.](/images/dashboard/policy-editor.png)
 
-Trên một máy, `failproofai policies` liệt kê tất cả những gì được thực thi ở đó. `fp policies` và `fp fleet` bao gồm editor và enforcement từ một terminal — xem [tài liệu tham khảo Cloud CLI](/vi/reference/cloud-cli).
+Trên một máy, `failproofai policies` liệt kê tất cả những gì được thực thi ở đó. `fp policies` và `fp fleet` bao quát trình soạn thảo và thực thi từ terminal — xem [Tham chiếu Cloud CLI](/vi/reference/cloud-cli).
 
-## Lấy một policy
+## Lấy một chính sách
 
-Có hai cách để có được một policy.
+Có hai cách để lấy một chính sách.
 
 <Columns cols={2}>
-  <Card title="Viết một policy" icon="file-pen-line" href="/vi/policies/editor">
-    Để Failproof AI soạn thảo một cái từ kết quả kiểm toán, hoặc viết mã nguồn của bạn, sau đó xem xét và xuất bản nó trong editor.
+  <Card title="Viết một chính sách" icon="file-pen-line" href="/vi/policies/editor">
+    Để Failproof AI soạn thảo một chính sách từ kết quả kiểm toàn, hoặc viết mã nguồn của bạn, sau đó xem xét và xuất bản nó trong trình soạn thảo.
   </Card>
-  <Card title="Sử dụng một policy pack" icon="package" href="/vi/policies/packs">
-    Cắm một policy pack của Failproof AI cho trường hợp sử dụng của bạn, hoặc một pack cộng đồng từ policy hub, trong một lệnh.
+  <Card title="Sử dụng một gói chính sách" icon="package" href="/vi/policies/packs">
+    Cắm vào một gói chính sách Failproof AI cho trường hợp sử dụng của bạn, hoặc một gói cộng đồng từ kho chính sách, chỉ với một lệnh.
   </Card>
 </Columns>
-
-## Xem xét các lệnh gọi công cụ với Jev
-
-Jev đọc một lệnh gọi công cụ được kiểm soát trong bối cảnh của yêu cầu của bạn. Nó có thể gắn cờ một mối quan tâm mà một policy khớp chuỗi đã bỏ lỡ hoặc xóa một deny từ một policy được đánh dấu rõ ràng là **reviewable**. Các policy cứng vẫn là cuối cùng. [Bắt đầu với các policies Jev](/vi/policies/jev), sau đó sử dụng [tài liệu tham khảo tích hợp](/vi/reference/jev) khi bạn cần chi tiết về nhà cung cấp hoặc cấu hình.
 
 ## Sau đó triển khai nó
 
 <Steps>
   <Step title="Kiểm tra nó">
-    Backtest bản nháp dựa trên lưu lượng bạn đã có, và chạy nó dựa trên một hành động mà nó phải chặn và một hành động mà nó phải cho phép — tất cả trước khi bạn xuất bản. Xem [Kiểm tra một policy](/vi/policies/test).
+    Kiểm tra ngược bản nháp với lưu lượng bạn đã có, và chạy nó với một hành động nó phải chặn và một hành động nó phải cho phép — tất cả trước khi bạn xuất bản. Xem [Kiểm tra một chính sách](/vi/policies/test).
   </Step>
   <Step title="Triển khai nó">
-    Đưa phiên bản lên các máy ở chế độ **observe**, đọc các quyết định của nó, sau đó thực thi. Xem [Triển khai một policy](/vi/policies/deploy).
+    Đặt phiên bản trên các máy ở chế độ **observe**, đọc các quyết định của nó, sau đó thực thi. Xem [Triển khai một chính sách](/vi/policies/deploy).
   </Step>
-  <Step title="Phiên bản và rollback">
-    Mỗi lần xuất bản là một phiên bản mới, bất biến, vì vậy một bản triển khai chặn công việc hợp lệ được hoàn tác bằng cách triển khai lại phiên bản tốt cuối cùng. Xem [Phiên bản và rollback](/vi/policies/rollback).
+  <Step title="Phiên bản và hoàn nguyên">
+    Mỗi lần xuất bản là một phiên bản mới, bất biến, do đó một bản triển khai mà chặn công việc hợp lệ được hoàn nguyên bằng cách triển khai lại phiên bản tốt cuối cùng. Xem [Phiên bản và hoàn nguyên](/vi/policies/rollback).
   </Step>
 </Steps>
 
-Để chia sẻ các policies của bạn với các team khác, [xuất bản chúng dưới dạng một pack](/vi/policies/publish-a-pack). Để biết điều gì xảy ra khi một policy không thể được đánh giá hoàn toàn, xem [Hành vi lỗi](/vi/policies/failure-behavior).
+Để chia sẻ chính sách của bạn với các nhóm khác, [xuất bản chúng dưới dạng một gói](/vi/policies/publish-a-pack). Để biết điều gì xảy ra khi một chính sách không thể được đánh giá hoàn toàn, xem [Hành vi khi thất bại](/vi/policies/failure-behavior).

@@ -1,13 +1,13 @@
 ---
 title: "Integraciones y referencia"
-description: "Conecta agentes, SDKs, CLIs e interfaces HTTP API compatibles."
+description: "Conecta agentes compatibles, SDKs, CLIs y la API HTTP."
 icon: "braces"
 ---
 
-Elige la integración más cercana al entorno donde ya se ejecuta tu agente.
+Elige la integración más adecuada para donde ya se ejecuta tu agente.
 
 <Columns cols={2}>
-  <Card title="Agentes de ejecución" icon="plug-zap" href="/es/reference/harnesses">
+  <Card title="Agentes compatibles" icon="plug-zap" href="/es/reference/harnesses">
     Instala hooks para CLIs de agentes de codificación y autónomos compatibles.
   </Card>
   <Card title="Frameworks y SDKs de agentes" icon="plug" href="/es/start/integrations">
@@ -19,49 +19,46 @@ Elige la integración más cercana al entorno donde ya se ejecuta tu agente.
   <Card title="Panel de control local" icon="monitor-cog" href="/es/reference/local-dashboard">
     Revisa proyectos locales, sesiones, actividad de políticas y auditorías sin conexión.
   </Card>
-  <Card title="CLI de Failproof AI" icon="terminal" href="/es/reference/failproof-cli">
+  <Card title="Failproof AI CLI" icon="terminal" href="/es/reference/failproof-cli">
     Configura la captura local, hooks, políticas, auditorías, entrega y estado de la máquina.
   </Card>
-  <Card title="Integración con Jev" icon="shield-check" href="/es/reference/jev">
-    Compara evaluaciones de sesiones con revisión de políticas en tiempo real y configura proveedores, claves y modos.
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/es/reference/cloud-cli#comandos-de-la-cli">
+    Consulta y administra sesiones, auditorías, incidencias, alertas, claves, usuarios y configuración en la nube.
   </Card>
-  <Card title="CLI de Failproof Cloud" icon="cloud-cog" href="/es/reference/cloud-cli#cli-commands">
-    Consulta y administra sesiones, auditorías, problemas, alertas, claves, usuarios y configuraciones en Cloud.
-  </Card>
-  <Card title="SDK de evaluación" icon="gauge" href="/es/reference/evaluator-sdk">
+  <Card title="SDK del evaluador" icon="gauge" href="/es/reference/evaluator-sdk">
     Puntúa sesiones completas o inactivas con un servicio FastAPI.
   </Card>
   <Card title="Políticas personalizadas" icon="shield-plus" href="/es/reference/policy-sdk">
-    Crea y prueba decisiones allow, instruct y deny específicas para cada flujo de trabajo.
+    Crea y prueba decisiones allow, instruct y deny específicas para tu flujo de trabajo.
   </Card>
-  <Card title="Alojamiento propio" icon="cloud-cog" href="/es/reference/self-hosting">
-    Despliega el plano de control de Cloud en un clúster de Kubernetes gestionado por el cliente.
+  <Card title="Autoalojamiento" icon="cloud-cog" href="/es/reference/self-hosting">
+    Despliega el plano de control en la nube en un clúster Kubernetes gestionado por el cliente.
   </Card>
 </Columns>
 
-La [referencia de la HTTP API](/es/reference/http-api) generada cubre la superficie pública `/v1`. Las páginas escritas a mano explican flujos de trabajo que abarcan múltiples endpoints o que utilizan interfaces administrativas fuera de esa superficie pública.
+La [referencia de la API HTTP](/es/reference/http-api) generada cubre la superficie pública `/v1`. Las páginas escritas a mano explican flujos de trabajo que abarcan múltiples endpoints o utilizan interfaces administrativas fuera de esa superficie pública.
 
 ## Conectar un agente y verificar los datos
 
 <Tabs>
   <Tab title="Panel de control">
-    1. Abre **Administración → Claves**, crea una clave con los permisos `events:add` y `policies:pull`, y copia el secreto.
-    2. Configura la integración siguiendo la página correspondiente indicada arriba.
-    3. Abre **Observar → Eventos** para confirmar que llegan eventos y, a continuación, **Observar → Sesiones** para verificar que forman ejecuciones completas.
-    4. Filtra por el entorno de la integración e inspecciona una sesión para revisar los campos de modelo, herramienta, error y política que necesitan las auditorías.
+    1. Abre **Administración → Claves**, crea una clave con `events:add` y `policies:pull`, y copia el secreto.
+    2. Configura la integración usando la página correspondiente indicada arriba.
+    3. Abre **Observar → Eventos** para confirmar que los eventos llegan correctamente, luego **Observar → Sesiones** para confirmar que forman ejecuciones completas.
+    4. Filtra por el entorno de la integración e inspecciona una sesión para verificar los campos de modelo, herramienta, error y política que necesitan las auditorías.
 
-    Empieza por el panel de claves. Los permisos seleccionados determinan si la máquina puede enviar eventos y recibir políticas gestionadas en Cloud.
+    Comienza con el panel de claves. Los permisos seleccionados determinan si la máquina puede enviar eventos y recibir políticas gestionadas en la nube.
 
-    ![Panel de creación de clave API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
 
-    Después de conectar la integración, usa la lista de sesiones para confirmar que sus eventos se están agrupando en ejecuciones completas en el entorno esperado.
+    Tras conectar la integración, usa la lista de Sesiones para confirmar que sus eventos se están agrupando en ejecuciones completas en el entorno esperado.
 
-    ![Lista de sesiones utilizada para verificar que una integración recién conectada está reportando ejecuciones completas del agente.](/images/dashboard/sessions-list.png)
+    ![La lista de Sesiones utilizada para verificar que una integración recién conectada está reportando ejecuciones completas del agente.](/images/dashboard/sessions-list.png)
 
-    Abre una de estas sesiones antes de considerar la integración finalizada; el rastro debe contener el modelo, la herramienta, el error y la evidencia de políticas que necesitan tus auditorías.
+    Abre una de estas sesiones antes de dar la integración por completada; la traza debe contener el modelo, la herramienta, el error y la evidencia de política que necesitan tus auditorías.
   </Tab>
   <Tab title="CLI">
-    Crea una clave de máquina y luego lee el secreto que imprime en el shell. `read -s` lo solicita mediante un prompt que no muestra la entrada, por lo que nunca aparece en un comando ni en el historial del shell:
+    Crea una clave de máquina y luego lee el secreto que imprime en el shell. `read -s` lo captura en un prompt que no muestra el texto, de modo que nunca aparece en un comando ni en el historial del shell:
 
     ```bash
     fp keys create agent-production \
@@ -80,8 +77,8 @@ La [referencia de la HTTP API](/es/reference/http-api) generada cubre la superfi
     fp events --since 1h --env production --limit 20
     ```
 
-    Usa `fp --json sessions ...` cuando otra herramienta vaya a consumir el resultado. Las opciones globales como `--json`, `--org` y `--base-url` deben ir antes del comando.
+    Usa `fp --json sessions ...` cuando otra herramienta vaya a consumir el resultado. Los flags globales como `--json`, `--org` y `--base-url` deben ir antes del comando.
 
-    Consulta la [referencia del CLI de Failproof AI](/es/reference/failproof-cli) para los comandos locales y la [referencia del CLI de Failproof Cloud](/es/reference/cloud-cli#cli-commands) para los comandos `fp`.
+    Consulta la [referencia del Failproof AI CLI](/es/reference/failproof-cli) para los comandos locales y la [referencia del Failproof Cloud CLI](/es/reference/cloud-cli#comandos-de-la-cli) para los comandos `fp`.
   </Tab>
 </Tabs>

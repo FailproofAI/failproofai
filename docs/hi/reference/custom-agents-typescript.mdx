@@ -1,27 +1,27 @@
 ---
-title: "Custom agents (TypeScript)"
-description: "Configuration, the event catalog, the scopes and the framework adapters for @failproofai/sdk."
+title: "कस्टम एजेंट (TypeScript)"
+description: "@failproofai/sdk के लिए कॉन्फ़िगरेशन, इवेंट कैटलॉग, स्कोप्स और फ्रेमवर्क एडाप्टर।"
 icon: "square-js"
 ---
 
-TypeScript SDK के लिए हर सेटिंग, मेथड और फील्ड क्या करता है। यदि आप पहली बार इंस्ट्रूमेंट कर रहे हैं, तो गाइड से शुरू करें — यह पेज चीजों को देखने के लिए है।
+TypeScript SDK के लिए हर सेटिंग, मेथड और फील्ड क्या करता है। यदि आप पहली बार इंस्ट्रूमेंटेशन कर रहे हैं, तो गाइड से शुरुआत करें — यह पृष्ठ चीजों को खोजने के लिए है।
 
 <Columns cols={2}>
-  <Card title="Custom agents guide" icon="code" href="/hi/start/integrations/custom-agents">
-    इंस्टॉल करें, इंस्ट्रूमेंट करें, इवेंट मेथड्स, एक व्यावहारिक उदाहरण, और सामान्य समस्याएं।
+  <Card title="कस्टम एजेंट गाइड" icon="code" href="/hi/start/integrations/custom-agents">
+    इंस्टॉल करें, इंस्ट्रूमेंट करें, इवेंट मेथड्स, एक कार्य उदाहरण, और सामान्य समस्याएँ।
   </Card>
   <Card title="Python का उपयोग कर रहे हैं?" icon="python" href="/hi/reference/custom-agents">
-    वही इवेंट्स, वही वायर फॉर्मेट, वही स्पूल — Python से।
+    एक ही इवेंट्स, एक ही वायर फॉर्मेट, एक ही स्पूल — Python से।
   </Card>
 </Columns>
 
-Node 20.9 या नया। ESM और CommonJS। कोई रनटाइम डिपेंडेंसी नहीं।
+Node 20.9 या नया। ESM और CommonJS। कोई रनटाइम निर्भरता नहीं।
 
 <Note>
-  यह SDK और Python वाला एक ही स्पूल में **एक जैसी इवेंट्स लिखता है**। Node agents और Python agents वाली एक फ्लीट एक सेट सेशन प्रोड्यूस करती है, दो नहीं, और डैशबोर्ड में कुछ भी उन्हें अलग नहीं करता। प्रति सेवा चुनें, प्रति कंपनी नहीं।
+  यह SDK और Python वाला **एक ही स्पूल में एक ही इवेंट्स लिखते हैं**। Node एजेंट्स और Python एजेंट्स वाला एक फ्लीट एक सेशन का सेट बनाता है, दो नहीं, और डैशबोर्ड में कुछ भी उन्हें अलग नहीं करता है। कंपनी के अनुसार नहीं, प्रति सेवा चुनें।
 </Note>
 
-## Install
+## इंस्टॉल करें
 
 ```bash
 npm install @failproofai/sdk
@@ -35,13 +35,13 @@ await failproofai.agent("planner", { goal: question }, async () => {
 });
 ```
 
-फ्रेमवर्क एडॉप्टर पैकेज में ही शिप होते हैं। फ्रेमवर्क्स **ऑप्शनल पीयर डिपेंडेंसी** हैं — घोषित किए गए ताकि समर्थित श्रेणियां दिखाई दें, आपकी ओर से कभी इंस्टॉल न हों, और केवल तब इंपोर्ट किए जाएं जब आप `instrument()` को कॉल करें।
+फ्रेमवर्क एडाप्टर पैकेज में ही शिप होते हैं। फ्रेमवर्क्स **ऑप्शनल पीयर निर्भरताएँ** हैं — समर्थित रेंज दृश्यमान करने के लिए घोषित, आपकी ओर से कभी इंस्टॉल नहीं किया जाता, और केवल तभी आयात किया जाता है जब आप `instrument()` कॉल करते हैं।
 
-## Connect the Failproof daemon
+## Failproof डेमन से कनेक्ट करें
 
-Python SDK के समान: **Admin → Keys** के तहत एक `events:add` कुंजी बनाएं, फिर [एजेंट मशीन पर डेमन को कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud)। SDK डिस्क में लिखता है; डेमन शिप करता है।
+Python SDK के समान: **Admin → Keys** के अंतर्गत एक `events:add` की बनाएँ, फिर [डेमन को कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud) एजेंट मशीन पर। SDK डिस्क में लिखता है; डेमन शिप करता है।
 
-## Configuration
+## कॉन्फ़िगरेशन
 
 ```ts
 failproofai.configure({
@@ -53,38 +53,38 @@ failproofai.configure({
 
 | विकल्प | यह क्या करता है |
 | --- | --- |
-| `environment` | हर इवेंट पर लेबल — `production`, `staging`, `prod-eu`। डिफॉल्ट है `dev`। |
-| `flushInterval` | टाइमर कितनी बार डिस्क में लिखता है, सेकंड में। डिफॉल्ट है `0.5`। |
-| `baseDir` | कहां लिखना है। डेमन के स्पूल को डिफॉल्ट करता है, जो आप चाहते हैं जब तक आप अन्यथा न जानते हों। |
+| `environment` | हर इवेंट पर लेबल — `production`, `staging`, `prod-eu`। डिफ़ॉल्ट `dev` है। |
+| `flushInterval` | टाइमर कितनी बार डिस्क में लिखता है, सेकंड में। डिफ़ॉल्ट `0.5` है। |
+| `baseDir` | कहाँ लिखना है। डेमन के स्पूल में डिफ़ॉल्ट, जो आप चाहते हैं जब तक आप अन्यथा नहीं जानते। |
 
-कुछ भी लागू नहीं होता जब तक सब कुछ वैलिडेट न हो, इसलिए एक अस्वीकृत कॉल SDK को बिल्कुल वैसे ही छोड़ देता है जैसे यह नया `baseDir` और पुरानी इंटरवल के साथ होता।
+कुछ भी लागू नहीं होता जब तक सब कुछ सत्य न हो, तो एक अस्वीकृत कॉल SDK को बिल्कुल वैसे ही छोड़ देता है जैसे एक नई `baseDir` और पुरानी अंतराल के साथ।
 
-इसके बजाय एनवायरनमेंट वेरिएबल द्वारा सेट करें:
+इसके बजाय पर्यावरण चर द्वारा सेट करें:
 
-| वेरिएबल | यह क्या करता है |
+| चर | यह क्या करता है |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | कोड परिवर्तन के बिना `environment` सेट करता है। एक `configure()` विकल्प इसे जीतता है। |
-| `FAILPROOFAI_HOME` | Failproof AI रूट को स्थानांतरित करता है जो स्पूल रखता है। |
-| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (डिफॉल्ट), `error`, `silent`। |
-| `FAILPROOFAI_SDK_STRICT` | `1` इंस्ट्रूमेंटेशन त्रुटियों को लॉग किए जाने की बजाय फेंकता है। |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` एक फ्रेमवर्क-कम्पैटिबिलिटी समस्या को चेतावनी देने और जारी रखने की बजाय फेंकता है। |
+| `AGENTEYE_ENVIRONMENT` | कोड परिवर्तन के बिना `environment` सेट करता है। एक `configure()` विकल्प इस पर जीतता है। |
+| `FAILPROOFAI_HOME` | स्पूल रखने वाली Failproof AI रूट को स्थानांतरित करता है। |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (डिफ़ॉल्ट), `error`, `silent`। |
+| `FAILPROOFAI_SDK_STRICT` | `1` इंस्ट्रूमेंटेशन त्रुटियों को फेंकता है बजाय लॉग किए जाने के। |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` फ्रेमवर्क-संगतता समस्या को फेंकता है बजाय चेतावनी देने और जारी रखने के। |
 
 <Warning>
-  **`environment` में कोई अल्पविराम नहीं।** Ingest उस फील्ड को अल्पविराम पर विभाजित करता है अपने फिल्टर बनाने के लिए, और किसी भी इवेंट को छोड़ता है जिसके लेबल में एक होता है — इसलिए एक पूरा रन चुप्पी से गायब हो जाता है। `prod,eu` नहीं, `prod-eu` लिखें।
+  **`environment` में कोई अल्पविराम नहीं।** Ingest उस फील्ड को अल्पविराम पर विभाजित करता है अपने फिल्टर बनाने के लिए, और किसी भी इवेंट को छोड़ देता है जिसके लेबल में एक है — तो एक पूरा रन चुपचाप गायब हो जाता है। `prod,eu` नहीं, `prod-eu` लिखें।
 
-  `configure({ environment: "prod,eu" })` फेंकता है ताकि आप तुरंत पता लगा सकें। `AGENTEYE_ENVIRONMENT` नहीं फेंक सकता — कोई आपको कॉल नहीं कर रहा — इसलिए यह एक बार चेतावनी देता है और `dev` पर वापस जाता है।
+  `configure({ environment: "prod,eu" })` फेंकता है ताकि आप तुरंत पता चलें। `AGENTEYE_ENVIRONMENT` नहीं फेंक सकता — कोई आपको कॉल नहीं कर रहा — तो यह एक बार चेतावनी देता है और `dev` में वापस जाता है।
 </Warning>
 
-`failproofai.setLogger({ debug, info, warn, error })` के साथ SDK की अपनी लॉग लाइनों को अपने लॉगर में रूट करें।
+SDK के अपने लॉग लाइनें अपने लॉगर में `failproofai.setLogger({ debug, info, warn, error })` के साथ रूट करें।
 
-## Shutdown
+## शटडाउन
 
-बफर की गई इवेंट्स `process.on("exit")` पर फ्लश होती हैं।
+बफर किए गए इवेंट्स `process.on("exit")` पर फ्लश होते हैं।
 
-एक प्रक्रिया जो सिग्नल द्वारा मार दी जाती है वह कभी वहां तक नहीं पहुंचती, और `SIGTERM` के लिए Node की डिफॉल्ट बिना एक्जिट हैंडलर चलाए समाप्त करना है — इसलिए एक कंटेनराइज्ड एजेंट जो आखिरी इंटरवल नहीं लिखी थी वह खोता है।
+एक सिग्नल द्वारा मारी गई प्रक्रिया कभी वहाँ नहीं पहुँचती, और Node का `SIGTERM` के लिए डिफ़ॉल्ट समापन हैंडलर्स चलाए बिना समाप्त करना है — तो एक कंटेनराइज्ड एजेंट जो अंतिम अंतराल ने नहीं लिखा था खो देता है।
 
 <Warning>
-  **यह SDK आपके लिए एक सिग्नल हैंडलर इंस्टॉल नहीं करेगा।** एक को पंजीकृत करना आपकी प्रक्रिया के व्यवहार को बदल देता है: एक श्रोता Node की डिफॉल्ट समाप्ति को दबा देता है, इसलिए एक लाइब्रेरी जिसने एक जोड़ा होगा चुप्पी से Ctrl-C को काम करने से रोक देगा। अपना स्वयं का जोड़ें:
+  **यह SDK आपके लिए सिग्नल हैंडलर इंस्टॉल नहीं करेगा।** एक को पंजीकृत करना आपकी प्रक्रिया के व्यवहार को बदलता है: एक श्रोता Node के डिफ़ॉल्ट समापन को दबाता है, तो एक लाइब्रेरी जो एक जोड़ता है Ctrl-C को काम करना बंद कर देगा। अपना स्वयं का जोड़ें:
 
   ```ts
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -96,9 +96,9 @@ failproofai.configure({
   ```
 </Warning>
 
-एक अल्पकालिक स्क्रिप्ट या एक सर्वरलेस हैंडलर को रिटर्न करने से पहले `await failproofai.flush()` करना चाहिए — इंटरवल अकेले डिलीवरी की गारंटी नहीं देता।
+एक अल्पकालिक स्क्रिप्ट या सर्वरलेस हैंडलर को लौटने से पहले `await failproofai.flush()` करना चाहिए — अंतराल अकेले डिलीवरी की गारंटी नहीं देता।
 
-## Identity
+## पहचान
 
 हर इवेंट एक सेशन और एक एजेंट से संबंधित है। **स्कोप्स दोनों को भरते हैं**, इसलिए आप शायद ही कभी उन्हें पास करते हैं:
 
@@ -110,41 +110,41 @@ await failproofai.session(async () => {
 });
 ```
 
-`sessionId` या `agentId` को स्पष्ट रूप से पास करना अभी भी काम करता है और जीतता है। न तो बाध्य और न ही पास किए गए साथ, कॉल एक इवेंट फेंकता है जो Cloud चुप्पी से त्यागता है।
+`sessionId` या `agentId` को स्पष्ट रूप से पास करना अभी भी काम करता है और जीतता है। न तो बाउंड और न ही पास के साथ, कॉल फेंकता है बजाय Cloud चुपचाप त्यागेगा इवेंट उत्सर्जन करने के।
 
 <Note>
-  Identity `AsyncLocalStorage` पर सवारी करता है। यह `await`, `.then()`, टाइमर्स और स्कोप के अंदर बनाई गई किसी भी कॉलबैक का पालन करता है। यह एक रन के दौरान संग्रहीत एक कॉलबैक का पालन **नहीं करता** और दूसरे के दौरान आमंत्रित किया जाता है, या `worker_threads` की सीमा पार हस्तांतरित काम — उन्हें `failproofai.propagate()` में लपेटें या उनकी इवेंट्स अनुलग्न होती हैं।
+  पहचान `AsyncLocalStorage` पर सवारी करती है। यह `await`, `.then()`, टाइमर्स और स्कोप के अंदर बनाया गया कोई भी कॉलबैक का अनुसरण करता है। यह **नहीं** एक कॉलबैक का अनुसरण करता है जो एक रन के दौरान संग्रहीत है और दूसरे के दौरान आमंत्रित है, या `worker_threads` सीमा के पार हाथ दिया गया है — उन्हें `failproofai.propagate()` में लपेटें या उनके इवेंट्स अनुपस्थित लैंड करते हैं।
 </Note>
 
-### Scopes
+### स्कोप्स
 
-| Scope | Emits | Returns |
+| स्कोप | उत्सर्जन | रिटर्न्स |
 | --- | --- | --- |
-| `session(body)` | कुछ नहीं — केवल identity | जो कुछ `body` रिटर्न करता है |
-| `agent(id, options?, body)` | `agent_start`, फिर `agent_end` | जो कुछ `body` रिटर्न करता है |
-| `toolCall(name, options?, body)` | `tool_use`, फिर `tool_result` | जो कुछ `body` रिटर्न करता है |
+| `session(body)` | कुछ नहीं — पहचान केवल | जो `body` रिटर्न करता है |
+| `agent(id, options?, body)` | `agent_start`, फिर `agent_end` | जो `body` रिटर्न करता है |
+| `toolCall(name, options?, body)` | `tool_use`, फिर `tool_result` | जो `body` रिटर्न करता है |
 
-एक synchronous body synchronous रहता है: `agent("x", () => 1)` `1` रिटर्न करता है, एक प्रॉमिस नहीं।
+एक सिंक्रोनस बॉडी सिंक्रोनस रहती है: `agent("x", () => 1)` `1` रिटर्न करता है, प्रॉमिस नहीं।
 
-`toolCall` body के resolved मान को टूल के `output` के रूप में रिकॉर्ड करता है, जब तक आप स्वयं `call.output` असाइन न करें।
+`toolCall` बॉडी के हल मूल्य को टूल के `output` के रूप में रिकॉर्ड करता है, जब तक आप `call.output` को स्वयं असाइन नहीं करते।
 
-<Accordion title="Exit semantics" icon="arrow-right-from-bracket">
+<Accordion title="बाहर निकलने की शब्दार्थ" icon="arrow-right-from-bracket">
 
-| क्या हुआ | Events | `outcome` |
+| क्या हुआ | इवेंट्स | `outcome` |
 | --- | --- | --- |
-| ब्लॉक रिटर्न हुआ | `agent_end` | `"success"`, या आपका `outcome` |
-| ब्लॉक फेंका गया | `error`, फिर `agent_end` | `"failed"` |
+| ब्लॉक रिटर्न किया | `agent_end` | `"success"`, या आपका `outcome` |
+| ब्लॉक फेंका | `error`, फिर `agent_end` | `"failed"` |
 | एक `AbortError` | केवल `agent_end` | `"cancelled"` |
 
-त्रुटि हमेशा फिर से फेंकी जाती है।
+त्रुटि हमेशा पुनः फेंकी जाती है।
 
-एक टूल विफलता लीफ पर रिकॉर्ड की जाती है — `tool_result` एक `error` स्ट्रिंग के साथ — और **कोई** रन-स्तरीय `error` इवेंट उत्सर्जित नहीं करता। एक जो एजेंट लूप पकड़ता है वह एक रन विफलता नहीं है, और एक जो प्रसारित होता है वह बिल्कुल एक बार रिपोर्ट किया जाता है, संलग्न `agent()` द्वारा।
+एक टूल विफलता पत्ती पर रिकॉर्ड की जाती है — `tool_result` एक `error` स्ट्रिंग के साथ — और **कोई** रन-स्तर `error` इवेंट उत्सर्जन नहीं करता है। एक जो एजेंट लूप पकड़ता है वह रन विफलता नहीं है, और एक जो प्रचारित होता है वह बिल्कुल एक बार, संलग्न `agent()` द्वारा रिपोर्ट किया जाता है।
 
 </Accordion>
 
-<Accordion title="The `using` form" icon="brackets-curly">
+<Accordion title="`using` फॉर्म" icon="brackets-curly">
 
-जब काम एक एकल फ़ंक्शन नहीं है — एक कंस्ट्रक्टर में खोला गया स्कोप और एक teardown में बंद, या एक जो मौजूदा कंट्रोल फ्लो को स्ट्रैडल करता है:
+जब काम एक एकल फ़ंक्शन नहीं है — एक स्कोप निर्माता में खोला गया और टियरडाउन में बंद, या एक जो मौजूदा नियंत्रण प्रवाह को स्ट्रैडल करता है:
 
 ```ts
 {
@@ -154,32 +154,32 @@ await failproofai.session(async () => {
 }  // tool_result, फिर agent_end
 ```
 
-दोनों फॉर्म बाइट-समान इवेंट्स उत्सर्जित करते हैं। कॉलबैक फॉर्म को प्राथमिकता दें: यह `AsyncLocalStorage.run()` के अंदर चलता है, इसलिए unwinding के लिए कुछ नहीं है और पूरी "यहां खोला गया, वहां बंद" बग्स की श्रेणी अप्राप्य है।
+दोनों फॉर्म बाइट-समान इवेंट्स उत्सर्जन करते हैं। कॉलबैक फॉर्म को प्राथमिकता दें: यह `AsyncLocalStorage.run()` के अंदर चलता है, इसलिए अनवाइंड करने के लिए कुछ भी नहीं है और "खोला यहाँ, वहाँ बंद" बग की पूरी क्लास अप्राप्य है।
 
-एक `using` ब्लॉक जो अपनी अपनी विफलता पकड़ता है `span.fail(error)` के साथ रिपोर्ट करता है — disposer के पास अपना कोई अपवाद चैनल नहीं है।
+एक `using` ब्लॉक जो अपनी खुद की विफलता को पकड़ता है इसे `span.fail(error)` के साथ रिपोर्ट करता है — डिस्पोजर के पास अपना स्वयं का अपवाद चैनल नहीं है।
 
 </Accordion>
 
-## Event catalog
+## इवेंट कैटलॉग
 
-Python SDK के समान पंद्रह मेथड्स, camelCase में। अधिकतर **जोड़े** में आते हैं — आप opener को कॉल करते हैं, फिर closer को, और SDK अंतर को समय देता है।
+Python SDK के समान पंद्रह मेथड्स, camelCase में। अधिकांश **जोड़े** में आते हैं — आप ओपनर कॉल करते हैं, फिर क्लोजर, और SDK अंतराल को समय देता है।
 
-| | Opens | Closes |
+| | खोलता है | बंद करता है |
 | --- | --- | --- |
-| **Agents** | `agentStart` | `agentEnd` |
+| **एजेंट्स** | `agentStart` | `agentEnd` |
 | | `agentPause` | `agentResume` |
-| **Models** | `modelRequest` | `modelResponse` |
-| **Tools** | `toolUse` | `toolResult` |
-| **Hooks** | `hookTriggered` | `hookCompleted` |
-| **Humans** | `humanWait` | `humanInput` |
+| **मॉडल्स** | `modelRequest` | `modelResponse` |
+| **टूल्स** | `toolUse` | `toolResult` |
+| **हुक्स** | `hookTriggered` | `hookCompleted` |
+| **मनुष्य** | `humanWait` | `humanInput` |
 
-तीन अकेले खड़े होते हैं: `error`, `humanPause`, `humanInterrupt`।
+तीन अकेले खड़े हैं: `error`, `humanPause`, `humanInterrupt`।
 
-<Accordion title="Every field, per method" icon="table">
+<Accordion title="प्रति मेथड हर फील्ड" icon="table">
 
-हर मेथड `sessionId` और `agentId` भी लेता है, जो स्कोप आपके लिए भरते हैं। कुछ भी छोड़ी गई चीज JSON `null` के रूप में भेजी जाने की बजाय छोड़ दी जाती है।
+हर मेथड भी `sessionId` और `agentId` लेता है, जो स्कोप्स आपके लिए भरते हैं। कुछ भी छोड़ा गया JSON `null` के रूप में भेजे जाने के बजाय ड्रॉप होता है।
 
-| Method | Required | Optional |
+| मेथड | आवश्यक | ऑप्शनल |
 | --- | --- | --- |
 | `agentStart` | — | `goal`, `parentId` |
 | `agentEnd` | — | `outcome`, `summary` |
@@ -197,57 +197,57 @@ Python SDK के समान पंद्रह मेथड्स, camelCase 
 | `humanPause` | — | `reason`, `userId` |
 | `humanInterrupt` | — | `reason`, `userId`, `atStep` |
 
-कोई अन्य कुंजी जो आप जोड़ते हैं एक कस्टम पेलोड फील्ड बन जाती है। कुछ भी फ्रेमवर्क-विशिष्ट `fw_*` को namespace करें; एक नाम जो घोषित फील्ड के साथ टकराता है एक प्रचारित कॉलम को चुप्पी से ओवरराइट करने की बजाय अस्वीकार किया जाता है।
+कोई अन्य की जो आप जोड़ते हैं एक कस्टम पेलोड फील्ड बन जाती है। कुछ भी फ्रेमवर्क-विशिष्ट `fw_*` को नेमस्पेस करें; एक नाम जो घोषित फील्ड के साथ टकराता है इसे खामोशी से प्रचारित कॉलम को अधिलेखित करने के बजाय अस्वीकार किया जाता है।
 
 </Accordion>
 
 <Warning>
-  **`duration_ms` computed है, accepted नहीं।** चार बंद करने वाले मेथड्स अपने opener से अंतर को समय देते हैं और एक कॉलर-आपूर्ति किए गए `duration_ms` को अस्वीकार करते हैं — एक रिपोर्ट किया गया अवधि unfalsifiable है।
+  **`duration_ms` कंप्यूटेड है, स्वीकृत नहीं।** चार बंद करने वाले मेथड्स अपने ओपनर से अंतराल को समय देते हैं और एक कॉलर-आपूर्ति की गई `duration_ms` को अस्वीकार करते हैं — एक रिपोर्ट किया गया अवधि अखंडनीय है।
 
-  जोड़े को session और id पर मिलाया जाता है, कभी एजेंट पर नहीं। एक टूल जो `planner` के तहत खोला जाता है और `worker` के तहत बंद किया जाता है अभी भी जोड़ता है, जो nested multi-agent runs वास्तव में क्या करते हैं।
+  जोड़े **सेशन** और आईडी पर मेल खाते हैं, एजेंट पर कभी नहीं। एक टूल `planner` के अंतर्गत खोला गया और `worker` के अंतर्गत बंद किया गया अभी भी मेल खाता है, जो कि नेस्टेड मल्टी-एजेंट रन वास्तव में क्या करते हैं।
 </Warning>
 
-## Framework adapters
+## फ्रेमवर्क एडाप्टर्स
 
 ```ts
-await failproofai.instrument();              // जो कुछ यह पा सकता है
+await failproofai.instrument();              // जो भी यह पा सकता है
 await failproofai.instrument("langchain");   // बिल्कुल एक
-failproofai.uninstrument();                  // सब कुछ वापस डालें
+failproofai.uninstrument();                  // सब कुछ वापस रखो
 ```
 
-| Framework | Supported | How it attaches |
+| फ्रेमवर्क | समर्थित | यह कैसे संलग्न होता है |
 | --- | --- | --- |
-| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, इसलिए हर `invoke`/`stream`/`batch` कवर किया जाता है बिना कहीं भी `callbacks:` पास किए — या `langchainHandler()` को स्वयं पास करें और कुछ नहीं पैच करें। |
-| **Vercel AI SDK** | `ai` 4 – 7 | कॉल साइट पर `telemetry()`, या `instrument("ai")` पूरी प्रक्रिया के लिए `ai` 7 पर (`4–6` पर वह opt-in है — नीचे देखें)। |
-| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, एजेंट की मॉडल और टूल resolution, और वर्कफ़्लो run/step engine। |
-| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (subscribed) प्लस `AgentWorkflow.runStream`, वर्कफ़्लो runs और उनके steps के लिए। |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, तो हर `invoke`/`stream`/`batch` कहीं भी `callbacks:` पास किए बिना कवर किया जाता है — या `langchainHandler()` को स्वयं पास करें और कुछ भी पैच न करें। |
+| **Vercel AI SDK** | `ai` 4 – 7 | कॉल साइट पर `telemetry()`, या `ai` 7 पर पूरी प्रक्रिया के लिए `instrument("ai")` (4–6 पर यह ऑप्ट-इन है — नीचे देखें)। |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, एजेंट की मॉडल और टूल रेजोल्यूशन, और वर्कफ़्लो रन/स्टेप इंजन। |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (सदस्यता) प्लस `AgentWorkflow.runStream`, वर्कफ़्लो रन और उनके चरणों के लिए। |
 
-हर श्रेणी को वास्तविक फ्रेमवर्क रिलीज के विरुद्ध परीक्षण किया जाता है, दोनों सिरों पर, एक ES मॉड्यूल के रूप में और CommonJS के रूप में, प्रत्येक CI रन पर।
+हर रेंज वास्तविक फ्रेमवर्क रिलीज़ के विरुद्ध परीक्षित है, दोनों सिरों पर, ES मॉड्यूल और CommonJS के रूप में, हर CI रन पर।
 
-मैपिंग Python SDK का है, इसलिए वही प्रोग्राम किसी भी भाषा में एक ही ट्री बनाता है। एक construct एक **agent** केवल तभी है जब यह एक LLM decision loop रखता है — एक ग्राफ या chain run, एक AI SDK `generateText`/`streamText` कॉल, एक Mastra agent, एक LlamaIndex agent run। एक LangGraph नोड या एक वर्कफ़्लो step एक **hook** (`hook_triggered`/`hook_completed`) है, कभी एक nested agent नहीं। मॉडल कॉल्स `model_request`/`model_response` जोड़े हैं token counts के साथ; tool calls मॉडल की अपनी tool call id ले जाते हैं। एक विफलता इसे हुई इवेंट पर एक बार रिकॉर्ड किया जाता है।
+मैपिंग Python SDK की है, तो एक ही प्रोग्राम किसी भी भाषा में एक ही पेड़ बनाता है। एक निर्माण एक **एजेंट** है केवल यदि यह एक LLM निर्णय लूप के मालिक हैं — एक ग्राफ या चेन रन, एक AI SDK `generateText`/`streamText` कॉल, एक Mastra एजेंट, एक LlamaIndex एजेंट रन। एक LangGraph नोड या वर्कफ़्लो स्टेप एक **हुक** है (`hook_triggered`/`hook_completed`), कभी एक नेस्टेड एजेंट नहीं। मॉडल कॉल्स `model_request`/`model_response` जोड़े टोकन गणनाओं के साथ हैं; टूल कॉल्स मॉडल की खुद की टूल कॉल आईडी ले जाते हैं। एक विफलता इवेंट पर रिकॉर्ड की जाती है जहाँ यह हुआ।
 
-एक एडॉप्टर जो इंस्टॉल करने में विफल रहता है वह लॉग किया जाता है और छोड़ा जाता है; अन्य अभी भी इंस्टॉल करते हैं, क्योंकि एक टूटा हुआ LlamaIndex आपको LangGraph नहीं चाहिए।
+एक एडाप्टर जो इंस्टॉल करने में विफल रहता है लॉग किया जाता है और छोड़ दिया जाता है; दूसरे अभी भी इंस्टॉल करते हैं, क्योंकि एक टूटा हुआ LlamaIndex आपको LangGraph की कीमत नहीं देना चाहिए।
 
 <Note>
-  `instrument()` बिना argument के **resolves** द्वारा फ्रेमवर्क का पता लगाता है, न कि यह पहले से imported है या नहीं — Node ES modules के लिए Python के `sys.modules` के समतुल्य को expose नहीं करता। एक फ्रेमवर्क जो आपके पास installed है लेकिन use नहीं करते हैं imported और patched होगा। अपने जो चाहते हैं उसे name करें यदि वह मायने रखता है।
+  कोई तर्क के साथ `instrument()` एक फ्रेमवर्क को यह नहीं कि यह **पहले से आयात है** बल्कि यह **रेजोल्व करता है** यह नहीं देखकर पहचानता है — Node ES मॉड्यूल के लिए Python के `sys.modules` के बराबर कुछ भी उजागर नहीं करता है। एक फ्रेमवर्क आपने इंस्टॉल किया है लेकिन उपयोग नहीं करते हैं आयात और पैच किया जाएगा। नाम वह जो आप चाहते हैं यदि यह महत्वपूर्ण है।
 </Note>
 
 <Note>
-  अधिकतर ये फ्रेमवर्क एक ES-module बिल्ड और एक CommonJS बिल्ड शिप करते हैं, जो Node को दो unrelated copies के रूप में लोड करता है। एडॉप्टर copy को पैच करते हैं जो आपका एप्लिकेशन लोड करता है (और CommonJS copy भी यदि कुछ पहले से इसे `require` कर चुका है), इसलिए दोनों मॉड्यूल सिस्टम काम करते हैं। एक फ्रेमवर्क **आपके अपने output में bundled** esbuild या webpack द्वारा reach के बाहर है — वहां कॉल-साइट हेल्परों का उपयोग करें: `langchainHandler()`, `telemetry()`, `wrapTool()`।
+  इनमें से अधिकांश फ्रेमवर्क्स एक ES-मॉड्यूल बिल्ड और एक CommonJS बिल्ड शिप करते हैं, जो Node दो असंबंधित कॉपी के रूप में लोड करता है। एडाप्टर्स आपके आवेदन लोड करने वाली कॉपी को पैच करते हैं (और CommonJS कॉपी भी यदि कुछ पहले से इसे `require` किया है), तो दोनों मॉड्यूल सिस्टम काम करते हैं। एक फ्रेमवर्क **esbuild या webpack द्वारा आपके अपने आउटपुट में बंडल किया गया** `instrument()` की पहुँच से बाहर है — कॉल-साइट हेल्पर्स वहाँ उपयोग करें: `langchainHandler()`, `telemetry()`, `wrapTool()`।
 </Note>
 
-### LangChain without patching
+### पैच के बिना LangChain
 
 ```ts
 import { langchainHandler } from "@failproofai/sdk/langchain";
 await graph.invoke(input, { callbacks: [langchainHandler()] });
 ```
 
-हैंडलर `instrument()` के साथ या बिना काम करता है और कभी double-record नहीं करता। `instrument("langchain")` `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` और `captureLimit` लेता है, जैसे Python एडॉप्टर करता है; एक कॉल पर `metadata: { failproofai_sdk_session_id }` उस invocation के लिए session चुनता है।
+हैंडलर `instrument()` के साथ या बिना काम करता है और कभी दोहरा-रिकॉर्ड नहीं करता है। `instrument("langchain")` `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` और `captureLimit` लेता है, जैसे Python एडाप्टर करता है; `metadata: { failproofai_sdk_session_id }` एक कॉल पर उस आह्वान के लिए सेशन चुनता है।
 
 ### Vercel AI SDK
 
-AI SDK एक ES module से plain functions export करता है, और एक ES module namespace specification द्वारा immutable है — patch करने के लिए कहीं नहीं है। यह SDK द्वारा ही documented extension points का उपयोग करता है:
+AI SDK एक ES मॉड्यूल से सादा फ़ंक्शन्स निर्यात करता है, और एक ES मॉड्यूल नेमस्पेस विनिर्देश द्वारा अपरिवर्तनीय है — पैच करने के लिए कहीं नहीं है। यह एक्सटेंशन पॉइंट्स का उपयोग करता है SDK स्वयं दस्तावेज़:
 
 ```ts
 import { telemetry } from "@failproofai/sdk/ai";
@@ -256,35 +256,35 @@ const { text } = await generateText({
   model,
   prompt,
   experimental_telemetry: telemetry({ functionId: "answer-question" }),
-  // ai 7 पर, `telemetry: telemetry({ … })` — वही object, नया नाम
+  // ai 7 पर, `telemetry: telemetry({ … })` — एक ही ऑब्जेक्ट, नया नाम
 });
 ```
 
-यह पूर्ण integration है: एक agent span, model request/response pair हर step पर token counts के साथ, और हर tool call। एक कॉल साइट हर major पर काम करता है — `ai` 4–6 tracer को read करते हैं जो यह ले जाता है, `ai` 7 telemetry integration को।
+यह पूरा एकीकरण है: एक एजेंट स्पैन, टोकन गणनाओं के साथ प्रति स्टेप एक मॉडल अनुरोध/प्रतिक्रिया जोड़ी, और हर टूल कॉल। एक कॉल साइट हर बड़े संस्करण पर काम करता है — `ai` 4–6 ट्रेसर पढ़ते हैं यह ले जाता है, `ai` 7 टेलीमेट्री इंटीग्रेशन।
 
-`instrument("ai")` **`ai` 7 पर** वही process-wide करता है: हर कॉल, AI SDK की global telemetry-integration list के माध्यम से, जो additive है और किसी की ओर से कुछ भी लेता नहीं है।
+`instrument("ai")` **`ai` 7 पर** पूरी प्रक्रिया में एक ही करता है: हर कॉल, AI SDK के वैश्विक टेलीमेट्री-एकीकरण सूची के माध्यम से, जो योगात्मक है और किसी और से कुछ भी नहीं लेता है।
 
-**`ai` 4–6 पर, `instrument("ai")` अपने आप से कुछ रिकॉर्ड नहीं करता, और एक चेतावनी लॉग करता है कि ऐसा है।** उन majors के पास एकमात्र process-wide हुक global OpenTelemetry tracer provider है — एक एकल slot जो OpenTelemetry एक बार लिया जाने के बाद सौंप देने से मना करता है। हमारे को register करना चुप्पी से बाद में startup में आपके अपने `NodeSDK.start()` को मना करेगा और आपकी http/database spans को एक tracer के पास भेजेगा जो कुछ नहीं export करता। कॉल साइट पर `telemetry()` का उपयोग करें या वहां `wrapModel`। यदि process अपना कोई OpenTelemetry नहीं चलाता है, `instrument("ai", { registerGlobalTracer: true })` के साथ opt in करें: यह तब हर कॉल रिकॉर्ड करता है जो `experimental_telemetry: { isEnabled: true }` पास करता है, और केवल slot लेता है यदि यह अभी भी empty है। `registerGlobalTracer: false` default को रखता है और चेतावनी को silence करता है।
+**`ai` 4–6 पर, `instrument("ai")` स्वयं कुछ भी रिकॉर्ड नहीं करता है, और यह कहते हुए एक चेतावनी लॉग करता है।** एकमात्र प्रक्रिया-व्यापी हुक जो इन बड़े संस्करणों के पास है वैश्विक OpenTelemetry ट्रेसर प्रदाता है — एक एकल स्लॉट जो OpenTelemetry एक बार लिए जाने के बाद हाथ से नहीं देगा। हमारे को पंजीकृत करना आपके अपने `NodeSDK.start()` को बाद में स्टार्टअप में चुपचाप अस्वीकार करेगा और आपके http/डेटाबेस स्पैन्स को एक ट्रेसर को भेजेगा जो कुछ भी निर्यात नहीं करता है। कॉल साइट पर `telemetry()` का उपयोग करें या `wrapModel` वहाँ। यदि प्रक्रिया अपना कोई OpenTelemetry नहीं चलाता है, `instrument("ai", { registerGlobalTracer: true })` के साथ ऑप्ट इन करें: यह तब हर कॉल रिकॉर्ड करता है जो `experimental_telemetry: { isEnabled: true }` पास करता है, और केवल स्लॉट लेता है यदि यह अभी भी खाली है। `registerGlobalTracer: false` डिफ़ॉल्ट रखता है और चेतावनी को मौन करता है।
 
-यदि आप बजाय मॉडल को एक बार wrap करना पसंद करते हैं, `wrapModel` केवल मॉडल कॉल्स देखता है, क्योंकि tool calls मॉडल layer के ऊपर होते हैं। एक wrapped मॉडल जो कुछ के चारों ओर नहीं कॉल किया जाता है इसके अपने run के रूप में रिकॉर्ड किया जाता है। एक streamed कॉल जैसे stream रुकता है बंद होता है — `stop_reason: "cancelled"` जब consumer इसे cancel करता है, `"error"` त्रुटि के साथ जब यह आधा-रास्ता विफल हो:
+यदि आप मॉडल को एक बार लपेटना पसंद करते हैं, `wrapModel` केवल मॉडल कॉल्स देखता है, क्योंकि टूल कॉल्स मॉडल परत के ऊपर होते हैं। कुछ नहीं के साथ लपेटा गया एक मॉडल अपने स्वयं के रन के रूप में रिकॉर्ड किया जाता है। एक स्ट्रीम किया गया कॉल कैसे भी स्ट्रीम बंद होता है बंद होता है — `stop_reason: "cancelled"` जब उपभोक्ता इसे रद्द करता है, `"error"` त्रुटि के साथ जब यह आधे रास्ते में विफल हो जाता है:
 
 ```ts
 import { wrapModel } from "@failproofai/sdk/ai";
 const model = await wrapModel(openai("gpt-4o"));
 ```
 
-दोनों का उपयोग ठीक है: middleware नोट करता है कि कॉल पहले से रिकॉर्ड की जा रही है और defers करता है, इसलिए हर कॉल एक बार रिकॉर्ड किया जाता है।
+दोनों का उपयोग करना ठीक है: मिडलवेयर कॉल को पहले से रिकॉर्ड किया जा रहा है और स्थगित करता है, तो हर कॉल एक बार रिकॉर्ड होता है।
 
-`functionId` agent span को names करता है। इसे low-cardinality रखें — यह `agent_id` में लैंड करता है, primary dashboard facet।
+`functionId` एजेंट स्पैन को नाम देता है। इसे कम-कार्डिनैलिटी रखें — यह `agent_id` में लैंड करता है, प्राथमिक डैशबोर्ड पहलू।
 
 ### Next.js
 
-`next build` default द्वारा आपके सर्वर की dependencies को bundle करता है, और एक फ्रेमवर्क जो build में bundled होता है एक copy है जो `instrument()` तक नहीं पहुंच सकता। एक बार config wrap करें और Next के startup हुक से `instrument()` को कॉल करें:
+`next build` डिफ़ॉल्ट रूप से आपके सर्वर की निर्भरताओं को बंडल करता है, और एक बंडल किया गया फ्रेमवर्क बिल्ड में `instrument()` नहीं पहुँच सकता है की एक कॉपी है। कॉन्फ़िग को एक बार लपेटें और Next के स्टार्टअप हुक से `instrument()` कॉल करें:
 
 ```ts
 // next.config.ts
 import { withFailproofai } from "@failproofai/sdk/next";
-export default withFailproofai({ /* आपका config */ });
+export default withFailproofai({ /* your config */ });
 ```
 
 ```ts
@@ -296,27 +296,27 @@ export async function register() {
 }
 ```
 
-`withFailproofai` LangChain, Mastra, LlamaIndex और SDK को `serverExternalPackages` में जोड़ता है, आपकी अपनी list रखते हुए। बिना इसके, `instrument()` एक बार चेतावनी देता है प्रत्येक फ्रेमवर्क के लिए जो यह तक नहीं पहुंच सकता बजाय चुप्पी से विफल होने के; यदि आप packages को स्वयं list करते हैं, `FAILPROOFAI_NEXT_EXTERNALS=1` सेट करें। Vercel AI SDK और कॉल-साइट हेल्परों दोनों तरीकों से काम करते हैं। एक Edge route को एक no-op build मिलता है: SDK को importing safe है और कुछ नहीं रिकॉर्ड करता है।
+`withFailproofai` LangChain, Mastra, LlamaIndex और SDK को `serverExternalPackages` में जोड़ता है, आपकी अपनी सूची को बनाए रखता है। इसके बिना, `instrument()` एक बार प्रति फ्रेमवर्क चेतावनी देता है जो यह नहीं पहुँच सकता बजाय चुप्पी से विफल होने के; यदि आप पैकेज को स्वयं सूचीबद्ध करते हैं, `FAILPROOFAI_NEXT_EXTERNALS=1` सेट करें। Vercel AI SDK और कॉल-साइट हेल्पर्स दोनों तरह से काम करते हैं। एक Edge रूट एक नो-ऑप बिल्ड प्राप्त करता है: SDK आयात करना सुरक्षित है और कुछ भी रिकॉर्ड नहीं करता है।
 
-### Token counts on streamed calls
+### स्ट्रीम किए गए कॉल्स पर टोकन गणना
 
-OpenAI-compatible APIs केवल stream पर usage report करते हैं जब client पूछता है। LangChain और Vercel AI SDK पूछते हैं; LlamaIndex के लिए अपने `OpenAI` LLM को `additionalChatOptions: { stream_options: { include_usage: true } }` पास करें, और Mastra के लिए usage enabled के साथ मॉडल build करें (उदाहरण के लिए `createOpenAICompatible({ includeUsage: true })`)। अन्यथा streamed मॉडल कॉल्स token counts ले जाते नहीं हैं।
+OpenAI-संगत APIs केवल तब उपयोग रिपोर्ट करते हैं जब क्लाइंट पूछता है। LangChain और Vercel AI SDK पूछते हैं; LlamaIndex के लिए `additionalChatOptions: { stream_options: { include_usage: true } }` अपने `OpenAI` LLM को पास करें, और Mastra के लिए उपयोग सक्षम के साथ मॉडल बिल्ड करें (उदाहरण के लिए `createOpenAICompatible({ includeUsage: true })`)। अन्यथा स्ट्रीम किए गए मॉडल कॉल्स कोई टोकन गणना नहीं ले जाते हैं।
 
-### Runtimes
+### रनटाइम्स
 
-Node ≥ 20.9, Bun और Deno — हर फ्रेमवर्क, एक ES मॉड्यूल के रूप में और CommonJS के रूप में, प्रत्येक के विरुद्ध Node के trace पर परीक्षण किया जाता है। SDK `failproofaid` डेमन के बगल में चलता है, जो जो लिखता है उसे शिप करता है।
+Node ≥ 20.9, Bun और Deno — हर फ्रेमवर्क, ES मॉड्यूल और CommonJS के रूप में, हर एक पर Node के ट्रेस के विरुद्ध परीक्षित है। SDK `failproofaid` डेमन के साथ चलता है, जो जो लिखता है वह शिप करता है।
 
-## Your own agent — no framework
+## आपका स्वयं का एजेंट — कोई फ्रेमवर्क नहीं
 
-एक एजेंट लूप के लिए जो आपने स्वयं लिखा है, या एक फ्रेमवर्क बिना एडॉप्टर के। आप एडॉप्टर्स के तहत समान API के साथ इवेंट्स emit करते हैं, इसलिए ट्रेस एक ही shape और quality है।
+एक एजेंट लूप के लिए जो आपने स्वयं लिखा है, या एक फ्रेमवर्क के बिना एक एडाप्टर। आप एडाप्टर्स के तहत उपयोग करने वाली एक ही API के साथ इवेंट्स उत्सर्जन करते हैं, तो ट्रेस एक ही आकार और गुणवत्ता रखता है।
 
-आपको नहीं जानना होगा कि एजेंट कैसे organized है। हर hand-built एजेंट पहले से ही तीन जगहें हैं, जो कुछ भी इसके functions को कहा जाता है, और वे तीन पूरा integration हैं:
+आपको यह जानने की आवश्यकता नहीं है कि एजेंट कैसे संगठित है। हर हाथ-निर्मित एजेंट के पास पहले से ही तीन जगहें हैं, चाहे उसके फ़ंक्शन्स को क्या कहा जाता है, और वे तीन पूरा एकीकरण हैं:
 
-| Where | What to add | Emits |
+| कहाँ | क्या जोड़ना है | उत्सर्जन |
 | --- | --- | --- |
-| जहां **एक run** शुरू और समाप्त होता है | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
-| **मेथड जो मॉडल को कॉल करता है** | `event.modelRequest` पहले, `event.modelResponse` बाद में — दोनों आधे, failure पर भी | एक जोड़ी प्रति मॉडल turn |
-| **मेथड जो tools चलाता है** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+| जहाँ **एक रन** शुरू और समाप्त होता है | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **एक फ़ंक्शन जो मॉडल कॉल करता है** | `event.modelRequest` से पहले, `event.modelResponse` के बाद — विफलता पर भी दोनों आधे | एक जोड़ी प्रति मॉडल बारी |
+| **एक फ़ंक्शन जो टूल्स चलाता है** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
 
 ```ts
 async function callModel(messages) {
@@ -353,15 +353,15 @@ await failproofai.agent("inventory", { goal: question }, async () => {
 });
 ```
 
-Identity ambient है: `agent()` के अंदर सब कुछ उस run के session पर लैंड करता है बिना एक id लिए, और program में कुछ और नहीं बदलता है — जो कुछ भी एजेंट पहले से ही अपने अपने डेटाबेस में लिखता है।
+पहचान परिवेशी है: `agent()` के अंदर सब कुछ उस रन के सेशन पर बिना आईडी लिए लैंड करता है, और प्रोग्राम में कुछ और नहीं बदलता है — जो कुछ एजेंट पहले से अपने स्वयं के डेटाबेस में लिखता है वह भी।
 
-- **एक service या एक worker:** अपने अपने request या job id को `sessionId` के रूप में पास करें, इसलिए डैशबोर्ड पर एक session और आपने अपने logs या database में record एक ही string हैं।
-- **Sub-agents:** `agent()` calls को nest करें। inner एक session को outer के साथ अपने `parent_id` के रूप में join करता है।
-- **जोड़ी को emit करें।** एक `modelRequest` बिना `modelResponse` के एक span है जो डैशबोर्ड forever चल रहे दिखाता है — इसलिए `catch`।
+- **एक सेवा या कार्यकर्ता:** अपने स्वयं के अनुरोध या नौकरी आईडी को `sessionId` के रूप में पास करें, तो डैशबोर्ड पर एक सेशन और आपकी अपनी लॉग्स या डेटाबेस में रिकॉर्ड एक ही स्ट्रिंग हैं।
+- **सब-एजेंट्स:** `agent()` कॉल नेस्ट करें। आंतरिक एक सेशन में बाहरी के साथ जुड़ता है इसके `parent_id` के रूप में।
+- **जोड़े उत्सर्जन करें।** कोई `modelResponse` के बिना एक `modelRequest` एक स्पैन है जो डैशबोर्ड चिरकाल के लिए चलना दिखाता है — इसलिए `catch`।
 
-[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) repository में है पूर्ण, runnable version: एक real OpenAI tool loop instrumented बिल्कुल इस तरह, CI में हर change पर run करना एक ES module और CommonJS के रूप में।
+रिपॉजिटरी में [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) पूरा, रनेबल संस्करण है: एक वास्तविक OpenAI टूल लूप बिल्कुल इस तरह इंस्ट्रूमेंटेड, हर परिवर्तन पर CI में ES मॉड्यूल और CommonJS के रूप में चलाएं।
 
-## Evaluations
+## मूल्यांकन
 
 ```ts
 import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
@@ -383,19 +383,19 @@ FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
   npx failproofai-evaluator ./my-evals.js
 ```
 
-Protocol, worker settings और result types के लिए [Evaluator SDK reference](/hi/reference/evaluator-sdk) देखें।
+प्रोटोकॉल, कार्यकर्ता सेटिंग्स और परिणाम प्रकार के लिए [Evaluator SDK संदर्भ](/hi/reference/evaluator-sdk) देखें।
 
 <Warning>
-  **एक evaluation को yield करना चाहिए।** एक synchronous function जो कभी return नहीं करता वह Node के पास एकमात्र thread को blocks करता है, और कोई timeout इसके दौरान fire नहीं कर सकता। `async` evaluations लिखें।
+  **एक मूल्यांकन को उपज देनी चाहिए।** एक सिंक्रोनस फ़ंक्शन जो कभी नहीं लौटता Node के एकमात्र थ्रेड को अवरुद्ध करता है, और इसके दौरान कोई टाइमआउट फायर नहीं कर सकता। `async` मूल्यांकन लिखें।
 </Warning>
 
-## What it will not do to your process
+## यह आपकी प्रक्रिया के लिए क्या नहीं करेगा
 
 | | |
 | --- | --- |
-| **आपके एजेंट लूप को block करना** | Events एक in-memory queue में जाती हैं; एक timer इन्हें लिखता है। Timer `unref`'d है, इसलिए इस package को import करना कभी script को exiting से नहीं रोकता। |
-| **बाध्यता के बिना grow करना** | Queue को count *और* measured bytes द्वारा cap किया जाता है। किसी भी एक को पास करते हुए, सबसे पुरानी events को discard किया जाता है और एक चेतावनी कहती है — एक telemetry outage एक OOM kill नहीं बन सकता। |
-| **Process को लेना नीचे** | एक unencodable event को अकेले drop किया जाता है, इसके चारों ओर batch नहीं। एक throwing getter, एक circular reference, एक `BigInt`, एक lone surrogate: हर एक को handle किया जाता है rather than propagated। |
-| **एक half-written batch छोड़ना** | Content `fsync`ed है एक atomic rename से पहले, directory को `fsync`ed है बाद में, और एक failed write अपनी temporary file को clean up करता है। |
-| **Transcripts को readable छोड़ना** | Batches `0600` हैं एक `0700` directory के अंदर। वे goals, prompts, tool arguments और tool output ले जाते हैं। |
-| **Credentials को ship करना** | API keys, tokens, JWTs, bearer headers और secret-shaped assignments को redact किया जाता है bytes disk तक पहुंचने से पहले। Daemon upload से पहले फिर से redact करता है। |
+| **आपके एजेंट लूप को अवरुद्ध करें** | इवेंट्स एक इन-मेमोरी क्यू में जाते हैं; एक टाइमर उन्हें लिखता है। टाइमर `unref`'d है, तो इस पैकेज को आयात करना कभी स्क्रिप्ट बाहर निकलने को नहीं रोकता है। |
+| **बाउंड के बिना बढ़ें** | क्यू गणना *और* मापी गई बाइट्स द्वारा कैप किया गया है। किसी एक के पास, सबसे पुराने इवेंट्स त्यागे जाते हैं और एक चेतावनी कहती है — एक टेलीमेट्री आउटेज एक OOM हत्या नहीं बनना चाहिए। |
+| **प्रक्रिया को नीचे ले जाएँ** | एक असंवेदनशील इवेंट अकेले त्यागा गया है, इसके चारों ओर बैच नहीं। एक फेंकने वाला गेटर, एक गोलाकार संदर्भ, एक `BigInt`, एक अकेला सरोगेट: प्रत्येक को प्रचारित करने के बजाय संभाला जाता है। |
+| **एक आधी-लिखी हुई बैच छोड़ दें** | कंटेंट परमाणु रीनेम से पहले `fsync`ed है, डायरेक्टरी के बाद, और एक विफल लेखन अपनी अस्थायी फाइल को साफ करता है। |
+| **ट्रांसक्रिप्ट्स पठनीय छोड़ दें** | बैच एक `0700` डायरेक्टरी के अंदर `0600` हैं। वे लक्ष्य, प्रॉम्प्ट्स, टूल तर्क और टूल आउटपुट ले जाते हैं। |
+| **साख शिप करें** | API कुंजियाँ, टोकन्स, JWTs, असर हेडर्स और गुप्त-आकार असाइनमेंट बाइट्स डिस्क तक पहुँचने से पहले रीडैक्ट किए जाते हैं। डेमन अपलोड से पहले फिर से रीडैक्ट करता है। |

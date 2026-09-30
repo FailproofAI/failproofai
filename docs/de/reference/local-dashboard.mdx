@@ -1,34 +1,34 @@
 ---
 title: "Lokales Dashboard"
-description: "Lokale Projekte, Sitzungen, Richtlinienaktivität, Konfiguration, Audits und geplante Scans überprüfen."
+description: "Lokale Projekte, Sitzungen, Richtlinienaktivitäten, Konfiguration, Audits und geplante Scans einsehen."
 icon: "monitor-cog"
 ---
 
-Führen Sie `failproofai` ohne Argumente aus, um das integrierte Dashboard unter `http://localhost:8020` zu starten. Es liest lokale Agent-Verläufe, Richtlinienkonfiguration, Audit-Ergebnisse und Hook-Aktivitäten direkt vom Gerät.
+Führen Sie `failproofai` ohne Argumente aus, um das integrierte Dashboard unter `http://localhost:8020` zu starten. Es liest lokale Agentverläufe, Richtlinienkonfiguration, Audit-Ergebnisse und Hook-Aktivitäten direkt vom System.
 
 Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne ein Cloud-Konto und bestätigt nicht, dass Ereignisse an Ihre Organisation übermittelt wurden.
 
 ## Dashboard-Bereiche
 
-| Bereich | Was Sie erledigen können |
+| Bereich | Was Sie tun können |
 | --- | --- |
-| Policies → Activity | Lokale allow-, instruct- und deny-Entscheidungen prüfen; nach Entscheidung, Ereignis, CLI, Tool, Quelle, Richtlinie und Sitzung filtern. |
-| Policies → Configure | Builtins aktivieren, unterstützte Parameter bearbeiten, gefundene benutzerdefinierte Richtlinien umschalten und Ziel-Harnesses auswählen. |
-| Projects | Gefundene Projekte über unterstützte Agent-Verläufe durchsuchen und ihre letzten Sitzungen vergleichen. |
-| Project sessions | Ein lokales Transkript öffnen, rohe geordnete Einträge und Subagenten überprüfen, herunterladen und Richtlinienaktivität korrelieren. |
-| Audit | Den letzten Offline-Scan, risikobehaftete Muster, Stärken, betroffene Projekte und empfohlene integrierte Richtlinien überprüfen. |
-| Settings | Geplante lokale Scans und per E-Mail versandte Audit-Berichte konfigurieren, wenn Daemon/Plattform dies unterstützen, sowie [Jev](#set-up-jev): Anbieter, Endpunkt, Token und Modus, und ob die FailproofAI Cloud-Verbindung dieses Geräts ihn ausführen kann. |
+| Policies → Activity | Lokale allow-, instruct- und deny-Entscheidungen einsehen; nach Entscheidung, Ereignis, CLI, Tool, Quelle, Richtlinie und Sitzung filtern. |
+| Policies → Configure | Eingebaute Richtlinien aktivieren, unterstützte Parameter bearbeiten, erkannte benutzerdefinierte Richtlinien umschalten und Ziel-Harnesses auswählen. |
+| Projects | Erkannte Projekte aus unterstützten Agentverläufen durchsuchen und deren aktuellste Sitzungen vergleichen. |
+| Project sessions | Ein lokales Transkript öffnen, unverarbeitete geordnete Einträge und Subagenten einsehen, herunterladen und Richtlinienaktivitäten zuordnen. |
+| Audit | Den letzten Offline-Scan, riskante Muster, Stärken, betroffene Projekte und vorgeschlagene eingebaute Richtlinien prüfen. |
+| Settings | Geplante lokale Scans und per E-Mail versendete Audit-Berichte konfigurieren, sofern der Daemon bzw. die Plattform dies unterstützt. |
 
-## Richtlinienaktivität überprüfen
+## Richtlinienaktivitäten einsehen
 
 <Tabs>
   <Tab title="Dashboard">
     1. Öffnen Sie **Policies → Activity** und setzen Sie die Filter für Entscheidung und Quelle.
-    2. Eingrenzen nach Ereignis, Harness, Tool oder Richtlinienname.
-    3. Eine Zeile aufklappen, um Begründung, zutreffende Richtlinien, Quelle, Ausführungsmodus und Dauer zu prüfen.
-    4. Dem Sitzungslink folgen, um die Entscheidung im Transkriptkontext einzuordnen.
+    2. Grenzen Sie nach Ereignis, Harness, Tool oder Richtlinienname ein.
+    3. Klappen Sie eine Zeile auf, um Grund, übereinstimmende Richtlinien, Quelle, Ausführungsmodus und Dauer einzusehen.
+    4. Folgen Sie dem Sitzungslink, um die Entscheidung im Transkript-Kontext einzuordnen.
 
-    Eine Zeile, die wie eine Ablehnung aussieht, kann auf einem Harness/Ereignis-Paar, das keine blockierenden Urteile verarbeitet, dennoch rein beobachtend sein. Die Detailansicht weist auf die verifizierte Durchsetzungsfähigkeit hin.
+    Eine Zeile, die wie eine Ablehnung aussieht, kann auf einem Harness/Ereignis-Paar, das keine blockierenden Urteile verarbeitet, rein beobachtend sein. Die Detailansicht zeigt an, ob die Durchsetzung verifiziert ist.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -46,11 +46,11 @@ Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne e
 <Tabs>
   <Tab title="Dashboard">
     1. Öffnen Sie **Policies → Configure** und wählen Sie die Harnesses und den Konfigurationsbereich.
-    2. Eine integrierte oder gefundene benutzerdefinierte Richtlinie aktivieren.
-    3. Bei einem parametrisierten Builtin dessen Konfigurationssteuerung öffnen und unterstützte Werte speichern.
-    4. Zu Activity zurückkehren und passende sowie nicht passende Aktionen ausführen.
+    2. Aktivieren Sie eine eingebaute oder erkannte benutzerdefinierte Richtlinie.
+    3. Öffnen Sie bei einer parametrisierten eingebauten Richtlinie das Konfigurationssteuerelement und speichern Sie die unterstützten Werte.
+    4. Kehren Sie zu Activity zurück und führen Sie passende und nicht passende Aktionen aus.
 
-    Konventionsrichtlinien zeigen ihre Projekt- oder Benutzerquelle. Explizite Änderungen an benutzerdefinierten Pfaden erfordern möglicherweise eine erneute Ausführung der CLI-Konfiguration, damit der ausgewählte Pfad gespeichert wird.
+    Konventionsrichtlinien zeigen ihre Projekt- oder Benutzerquelle an. Explizite Änderungen am benutzerdefinierten Pfad erfordern möglicherweise ein erneutes Ausführen der CLI-Konfiguration, damit der gewählte Pfad gespeichert wird.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,24 +63,15 @@ Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne e
 
 ## Projekte und Sitzungen durchsuchen
 
-Die Seite „Projects" fasst unterstützte lokale Verlaufsspeicher zusammen. Wählen Sie ein Projekt aus, um dessen Sitzungen aufzulisten, und öffnen Sie dann eine Sitzung für den Rohprotokoll-Viewer, Subagenten-Segmente, die Download-Funktion und sitzungsbezogene Richtlinienaktivität.
+Die Seite Projects kombiniert unterstützte lokale Verlaufsspeicher. Wählen Sie ein Projekt aus, um dessen Sitzungen aufzulisten, und öffnen Sie dann eine Sitzung für den Rohdaten-Log-Viewer, Subagent-Segmente, die Download-Funktion und sitzungsbezogene Richtlinienaktivitäten.
 
-Fehlt ein Projekt oder eine Sitzung, vergewissern Sie sich, dass der Harness den standardmäßigen Verlaufsspeicherort verwendet, oder registrieren Sie ein zusätzliches Stammverzeichnis mit `failproofai harness add-path`.
-
-## Jev einrichten
-
-Der Jev-Bereich der Seite **Settings** schreibt dieselbe `~/.failproofai/jev.json`, die auch `failproofai jev setup` schreibt, validiert durch die eigenen Regeln des Loaders, sodass die Hooks sie beim nächsten Aufruf verwenden. Er zeigt an, ob Jev aktiviert ist und in welchem Modus — und sobald er aktiv ist, wie viele Aufrufe er beantwortet hat und wie häufig auf die Regex-Richtlinien zurückgefallen wurde. Failproof AI liefert keine Jev-Prüfungen mit: Solange kein installiertes Paket welche deklariert, zeigt der Bereich dies an, nennt `failproofai policies add FailproofAI/jev-policies`, und Jev stellt keine Anfragen.
-
-- **Eigener Endpunkt.** Wählen Sie den Anbieter, geben Sie für `custom` eine Endpunkt-URL an (bei anderen optional) und eine Konto-ID für Cloudflare, fügen Sie das Token ein und wählen Sie den Modus (`observe`, `enforce` oder `off`). Das Token ist schreibgeschützt: Die Seite zeigt es nie an, und ein leeres Feld behält das gespeicherte Token bei, solange Anbieter und Endpunkt-Host gleich bleiben. Ändern Sie eines davon, fordert die Seite das Token erneut an, damit ein gespeicherter Schlüssel nie an einen Ort gesendet wird, für den er nicht vorgesehen war. Siehe [Jev with your own key](/de/reference/jev-providers).
-- **FailproofAI Cloud.** Jev über Cloud wird aktiviert, indem das Gerät verbunden wird (`failproofai config --token <key>`); die Seite bietet nur den Ein/Aus-Schalter und den Modus. Siehe [Jev through FailproofAI Cloud](/de/reference/jev-cloud).
-
-Eine Konfiguration, deren Schlüssel aus `FAILPROOFAI_JEV_API_KEY` stammt (`jev setup --key-from-env`), wird anhand der eigenen Umgebung des Dashboards beurteilt, die möglicherweise nicht mit der Umgebung Ihres Agenten übereinstimmt. Führen Sie `failproofai jev status` dort aus, wo der Agent läuft, um zu sehen, was seine Hooks tun.
+Wenn ein Projekt oder eine Sitzung fehlt, stellen Sie sicher, dass der Harness seinen Standard-Verlaufsort verwendet, oder registrieren Sie einen zusätzlichen Stammpfad mit `failproofai harness add-path`.
 
 ## Offline-Audits planen
 
 <Tabs>
   <Tab title="Dashboard">
-    Öffnen Sie **Settings**, aktivieren Sie die geplante Überprüfung, wählen Sie das unterstützte Intervall und konfigurieren Sie die Berichtsübermittlung, falls verfügbar. Die Seite zeigt den nächsten Lauf, den letzten Lauf, den Exit-Code und ob der Hintergrunddaemon auf der Plattform unterstützt wird.
+    Öffnen Sie **Settings**, aktivieren Sie die geplante Überprüfung, wählen Sie das unterstützte Intervall und konfigurieren Sie die Berichtsübermittlung, sofern verfügbar. Die Seite zeigt den nächsten Ausführungszeitpunkt, den letzten Ausführungszeitpunkt, den Exit-Code und ob der Hintergrunddaemon auf der Plattform unterstützt wird.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -93,5 +84,5 @@ Eine Konfiguration, deren Schlüssel aus `FAILPROOFAI_JEV_API_KEY` stammt (`jev 
 </Tabs>
 
 <Warning>
-  Das lokale Dashboard kann Prompts, Tool-Eingaben, Dateiinhalte und Terminal-Ausgaben aus lokalen Agent-Verläufen anzeigen. Binden Sie es nur an vertrauenswürdige Schnittstellen und beenden Sie den Prozess, wenn die Überprüfung abgeschlossen ist.
+  Das lokale Dashboard kann Eingabeaufforderungen, Tool-Eingaben, Dateiinhalte und Terminal-Ausgaben aus lokalen Agentverläufen anzeigen. Binden Sie es nur an vertrauenswürdige Schnittstellen und beenden Sie den Prozess, wenn die Überprüfung abgeschlossen ist.
 </Warning>

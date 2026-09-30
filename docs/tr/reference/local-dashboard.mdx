@@ -1,34 +1,34 @@
 ---
-title: "Yerel kontrol paneli"
-description: "Yerel projeleri, oturumları, politika etkinliğini, yapılandırmayı, denetimleri ve zamanlanmış taramaları inceleyin."
+title: "Yerel dashboard"
+description: "Yerel projeleri, oturumları, politika aktivitesini, konfigürasyonu, denetimleri ve planlanan taramaları gözden geçirin."
 icon: "monitor-cog"
 ---
 
-Bundled kontrol panelini başlatmak için `failproofai` komutunu argüman olmadan çalıştırın: `http://localhost:8020`. Yerel aracı geçmişlerini, politika yapılandırmasını, denetim sonuçlarını ve hook etkinliğini doğrudan makineden okur.
+Bundled dashboard'u `http://localhost:8020` adresinde başlatmak için `failproofai` komutunu argüman olmadan çalıştırın. Yerel ajan geçmişlerini, politika konfigürasyonunu, denetim sonuçlarını ve hook aktivitesini doğrudan makineden okur.
 
-Yerel kontrol paneli Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır ve olayların kuruluşunuza teslim edildiğini kanıtlamaz.
+Yerel dashboard, Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır ve olayların kuruluşunuza teslim edildiğini kanıtlamaz.
 
-## Kontrol paneli alanları
+## Dashboard alanları
 
-| Alan | Ne yapabilirsiniz |
+| Alan | Yapabileceğiniz şeyler |
 | --- | --- |
-| Policies → Activity | Yerel allow, instruct ve deny kararlarını inceleyin; karar, etkinlik, CLI, araç, kaynak, politika ve oturum bazında filtreleyin. |
-| Policies → Configure | Yerleşik politikaları etkinleştirin, desteklenen parametreleri düzenleyin, keşfedilen özel politikaları değiştirin ve hedef ortamlarını seçin. |
-| Projects | Desteklenen aracı geçmişleri genelinde keşfedilen projeleri listeleyin ve en son oturumlarını karşılaştırın. |
-| Project sessions | Yerel transkripti açın, ham sıralı girdileri ve alt aracıları inceleyin, indirin ve politika etkinliğiyle ilişkilendirin. |
-| Audit | Son çevrimdışı taramayı, riskli desenleri, güçlü yönleri, etkilenen projeleri ve önerilen yerleşik politikaları inceleyin. |
-| Settings | Daemon/platform bunları desteklediğinde zamanlanmış yerel taramaları ve e-posta denetim raporlarını yapılandırın ve [Jev](#set-up-jev): sağlayıcısı, uç noktası, jetonu ve modunu, ayrıca bu makinenin FailproofAI Cloud bağlantısının bunu çalıştırıp çalıştıramayacağını ayarlayın. |
+| Policies → Activity | Yerel allow, instruct ve deny kararlarını inceleyebilir; karar, olay, CLI, araç, kaynak, politika ve oturuma göre filtreleyebilirsiniz. |
+| Policies → Configure | Builtins'i etkinleştir, desteklenen parametreleri düzenle, keşfedilen özel politikaları aç/kapat ve hedef harness'leri seç. |
+| Projects | Desteklenen ajan geçmişleri arasında keşfedilen projelere göz at ve en son oturumlarını karşılaştır. |
+| Project sessions | Bir yerel transkripsiyonu aç, ham sıralanmış girdileri ve alt ajanları gözden geçir, indir ve politika aktivitesi ile ilişkilendir. |
+| Audit | Son çevrimdışı taramayı, riskli desenleri, güçlü yönleri, etkilenen projeleri ve önerilen builtin politikaları gözden geçir. |
+| Settings | Daemon/platform desteklediğinde planlanan yerel taramaları ve e-posta ile gönderilen denetim raporlarını yapılandır. |
 
-## Politika etkinliğini inceleyin
+## Politika aktivitesini gözden geçirme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Activity** açın ve karar ile kaynak filtrelerini ayarlayın.
-    2. Etkinlik, ortam, araç veya politika adı bazında daraltın.
-    3. Nedenini, eşleşen politikaları, kaynağını, yürütme modunu ve süresini incelemek için bir satırı genişletin.
-    4. Kararı transkript bağlamına yerleştirmek için oturum bağlantısını takip edin.
+    1. **Policies → Activity** sayfasını aç ve karar ile kaynak filtrelerini ayarla.
+    2. Olay, harness, araç veya politika adına göre daralt.
+    3. Nedenini, eşleşen politikaları, kaynağını, yürütme modunu ve süresini incelemek için bir satırı genişlet.
+    4. Kararı transkripsiyonun içeriğine yerleştirmek için oturum bağlantısını takip et.
 
-    Reddedilmiş görünen bir satır, engelleme kararlarını tüketmeyen bir ortam/etkinlik çiftinde gözlemsel olabilir. Ayrıntı görünümü doğrulanmış uygulama yeteneğini vurgular.
+    Reddedilmiş görünen bir satır, engelleme kararlarını tüketmeyen bir harness/olay çiftinde yine de gözlemsel olabilir. Ayrıntı görünümü doğrulanmış yaptırım yeteneğini vurgular.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,20 +37,20 @@ Yerel kontrol paneli Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan ça
     failproofai
     ```
 
-    Yerel etkinlik `~/.failproofai/hook-activity` altında depolanır. Bu dosyaları düzenlemek yerine kontrol panelini kullanın.
+    Yerel aktivite `~/.failproofai/hook-activity` altında depolanır. Bu dosyaları düzenlemek yerine dashboard'u kullan.
   </Tab>
 </Tabs>
 
-## Politikaları yerel olarak yapılandırın
+## Politikaları yerel olarak yapılandırma
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Configure** açın ve ortamları ile yapılandırma kapsamını seçin.
-    2. Yerleşik bir politikayı veya keşfedilen özel bir politikayı etkinleştirin.
-    3. Parametrelendirilmiş bir yerleşik politika için, yapılandırma kontrolünü açın ve desteklenen değerleri kaydedin.
-    4. Activity sayfasına dönün ve eşleşen ve eşleşmeyen eylemleri çalıştırın.
+    1. **Policies → Configure** sayfasını aç ve harness'leri ile konfigürasyon kapsamını seç.
+    2. Bir builtin veya keşfedilen özel politikayı etkinleştir.
+    3. Parametreli bir builtin için konfigürasyon kontrolünü aç ve desteklenen değerleri kaydet.
+    4. Activity sayfasına dön ve eşleşen ve eşleşmeyen aksiyonları çalıştır.
 
-    Convention politikaları proje veya kullanıcı kaynağını gösterir. Açık özel-yol değişiklikleri, seçilen yolun kaydedilmesi için CLI yapılandırmasını yeniden çalıştırmayı gerektirebilir.
+    Convention politikaları proje veya kullanıcı kaynağını gösterir. Açık custom-path değişiklikleri, seçilen yolun kaydedilmesi için CLI konfigürasyonunun yeniden çalıştırılmasını gerektirebilir.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -61,26 +61,17 @@ Yerel kontrol paneli Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan ça
   </Tab>
 </Tabs>
 
-## Projeleri ve oturumları listeleyin
+## Projeleri ve oturumları tarama
 
-Projects sayfası desteklenen yerel geçmiş depolarını birleştirir. Oturumlarını listelemek için bir projeyi seçin, ardından ham günlük görüntüleyiciyi, alt aracı segmentlerini, indirme eylemini ve oturum kapsamındaki politika etkinliğini için bir oturumu açın.
+Projects sayfası desteklenen yerel geçmiş depolarını birleştirir. Oturumlarını listelemek için bir proje seçin, ardından ham log görüntüleyici, alt ajan segmentleri, indirme aksiyon ve oturum kapsamlı politika aktivitesi için bir oturum açın.
 
-Bir proje veya oturum eksikse, ortamın varsayılan geçmiş konumunu kullanıp kullanmadığını doğrulayın veya `failproofai harness add-path` ile ek bir kök kaydedin.
+Bir proje veya oturum eksikse, harness'in varsayılan geçmiş konumunu kullandığını doğrula veya `failproofai harness add-path` ile ekstra bir kök kaydet.
 
-## Jev'i kurun
-
-**Settings** sayfasının Jev bölümü, `failproofai jev setup` yazanla aynı `~/.failproofai/jev.json` dosyasını yazar; yükleyicinin kendi kurallarıyla doğrulanır, böylece hook'lar bir sonraki çağrıda onu kullanır. Jev'in açık olup olmadığını ve hangi modda olduğunu, ve açık olduktan sonra kaç çağrıya yanıt verdiğini ve ne sıklıkla regex politikalarına geri döndüğünü söyler. Failproof AI hiçbir Jev kontrolü göndermiyor: yüklü hiçbir paket herhangi birini beyan etmediği sürece, bölüm bunu söyler ve `failproofai policies add FailproofAI/jev-policies` adını verir, ve Jev hiçbir şey sormaz.
-
-- **Kendi uç noktanız.** Sağlayıcıyı seçin, `custom` için bir uç nokta URL'si verin (diğerleri için isteğe bağlı) ve Cloudflare için bir hesap kimliği verin, jetonu yapıştırın ve modu seçin (`observe`, `enforce` veya `off`). Jeton sadece yazma amaçlıdır: sayfa onu asla göstermez ve alanı boş bırakmak depolanmış olanı tutar, sağlayıcı ve uç noktanın ana bilgisayarı aynı kalır. Birini değiştirin ve sayfa jetonu yeniden sorar, bu nedenle depolanmış bir anahtar asla verilmediği bir yere gönderilmez. [Jev'i kendi anahtarınızla](/tr/reference/jev-providers) kullanın.
-- **FailproofAI Cloud.** Cloud üzerinden Jev, makineyi bağlayarak açılır (`failproofai config --token <key>`); sayfa yalnızca açma/kapama anahtarını ve modu sunur. [FailproofAI Cloud üzerinden Jev](/tr/reference/jev-cloud) bölümüne bakın.
-
-Anahtarı `FAILPROOFAI_JEV_API_KEY` (`jev setup --key-from-env`) den gelen bir yapılandırma, kontrol panelinin kendi ortamından değerlendirilir; bu, aracınızın çalıştığı ortam olmayabilir; aracının çalıştığı yerde `failproofai jev status` komutunu çalıştırarak hook'larının ne yaptığını görebilirsiniz.
-
-## Çevrimdışı denetimleri zamanla
+## Çevrimdışı denetimleri planlama
 
 <Tabs>
   <Tab title="Dashboard">
-    **Settings** açın, zamanlanmış taramayı etkinleştirin, desteklenen aralığını seçin ve kullanılabilir olduğunda rapor sunumunu yapılandırın. Sayfa sonraki çalışmayı, son çalışmayı, çıkış kodunu ve arka plan daemon'unun platform tarafından desteklenip desteklenmediğini raporlar.
+    **Settings** sayfasını aç, planlanan taramayı etkinleştir, desteklenen aralığını seç ve kullanılabilir olduğunda rapor teslimini yapılandır. Sayfa sonraki çalışmayı, son çalışmayı, çıkış kodunu ve arka plan daemon'unun platformda desteklenip desteklenmediğini bildirir.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -88,10 +79,10 @@ Anahtarı `FAILPROOFAI_JEV_API_KEY` (`jev setup --key-from-env`) den gelen bir y
     failproofai audit --status
     ```
 
-    Farklı bir 1–90 gün aralığı ayarlamak için gün sayısını değiştirin. Yinelenen taramaları `failproofai audit --no-schedule` ile devre dışı bırakın; anlık etkileşimli tarama için `failproofai audit` komutunu çalıştırın.
+    Farklı bir 1–90 gün aralığı belirlemek için gün sayısını değiştir. Yinelenen taramaları `failproofai audit --no-schedule` ile devre dışı bırak; anlık etkileşimli tarama için `failproofai audit` komutunu çalıştır.
   </Tab>
 </Tabs>
 
 <Warning>
-  Yerel kontrol paneli, yerel aracı geçmişlerinden istemler, araç girişi, dosya içeriği ve terminal çıktısını görüntüleyebilir. Yalnızca güvenilen arayüzlere bağlayın ve inceleme tamamlandığında işlemi durdurun.
+  Yerel dashboard, yerel ajan geçmişlerinden ipuçları, araç girdisini, dosya içeriğini ve terminal çıktısını görüntüleyebilir. Sadece güvenilen arayüzlere bağla ve inceleme tamamlandığında süreci durdur.
 </Warning>

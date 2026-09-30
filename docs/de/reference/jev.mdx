@@ -6,17 +6,17 @@ icon: "braces"
 
 Jev hat zwei Verwendungszwecke in Failproof AI:
 
-| Verwendung | Ausführungszeitpunkt | Rückgabewert | Einstieg |
+| Verwendung | Zeitpunkt der Ausführung | Rückgabewert | Einstiegspunkt |
 | --- | --- | --- | --- |
-| Sitzungsauswertung | Nach Abschluss einer Sitzung | Ein Score für eine Frage mit festgelegter Antwort | [Jev evaluations](/de/evaluations/jev) |
-| Tool-Call-Richtlinienprüfung | Vor der Ausführung eines gesperrten Tool-Calls | Ein Urteil zusammen mit den installierten Richtlinien | [Jev policies](/de/policies/jev) |
+| Sitzungsauswertung | Nach Abschluss einer Sitzung | Ein Punktwert für eine Frage mit festgelegter Antwort | [Jev-Auswertungen](/de/evaluations/jev) |
+| Tool-Call-Richtlinienprüfung | Vor dem Ausführen eines gesperrten Tool-Calls | Ein Urteil zusammen mit den installierten Richtlinien | [Jev-Richtlinien](/de/policies/jev) |
 
 ## Referenzseiten
 
 | Thema | Details |
 | --- | --- |
-| [Auswertungsfragen](/de/reference/jev-evaluations) | Boolesche und geordnete Score-Kriterien, Ergebnisse, Limits und Backfill. |
-| [Anbietervergleich und eigene Schlüssel einrichten](/de/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare und benutzerdefinierte Endpunkte; URL-Inferenz, Modell-IDs, `jev.json`, Modi und Fallback-Codes. |
-| [FailproofAI Cloud Route](/de/reference/jev-cloud) | Machine-Key-Berechtigungen, automatische Observe-Einrichtung, Nutzungslimits, Verbindungsstatus und Datenverarbeitung. |
+| [Auswertungsfragen](/de/reference/jev-evaluations) | Boolesche und geordnete Bewertungskriterien, Ergebnisse, Grenzwerte und Nacherfassung. |
+| [Anbietervergleich und eigene Schlüsselkonfiguration](/de/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare und benutzerdefinierte Endpunkte; URL-Ableitung, Modell-IDs, `jev.json`, Modi und Fallback-Codes. |
+| [FailproofAI Cloud-Route](/de/reference/jev-cloud) | Maschinenschlüssel-Berechtigungen, automatische Observe-Einrichtung, Nutzungslimits, Verbindungsstatus und Datenverarbeitung. |
 
-Die lokalen CLI-Befehle sind in der [Failproof AI CLI-Referenz](/de/reference/failproof-cli) aufgeführt. Die [lokale Dashboard-Referenz](/de/reference/local-dashboard#set-up-jev) beschreibt die Jev-Einstellungen und die Aktivitätsansicht.
+Die lokalen CLI-Befehle sind in der [Failproof AI CLI-Referenz](/de/reference/failproof-cli) aufgeführt. Die [lokale Dashboard-Referenz](/de/reference/local-dashboard#set-up-jev) beschreibt die zugehörigen Jev-Einstellungen und die Aktivitätsansicht.

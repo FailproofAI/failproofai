@@ -1,43 +1,43 @@
 ---
-title: "Analyse des sentiments"
-description: "Repérez les messages frustrés, confus et correctifs grâce aux scores de sentiment Jev."
+title: "Analyse de sentiment"
+description: "Identifiez les messages frustrés, confus et correctifs grâce aux scores de sentiment Jev."
 icon: "smile"
 ---
 
-Jev attribue à chaque message envoyé par une personne à vos agents un score de 0 à 100 pour quatre émotions — **en colère**, **frustré**, **heureux** et **confus** — ainsi que trois signaux sur le comportement de l'agent :
+Jev attribue à chaque message envoyé par un utilisateur à vos agents un score de 0 à 100 pour quatre émotions — **en colère**, **frustré**, **heureux** et **confus** — ainsi que trois signaux sur le comportement de l'agent :
 
-- **Correction** : la personne signale que l'agent s'est trompé.
-- **Résolu** : la personne confirme que l'agent a résolu son problème.
-- **Doute** : la personne remet en question la véracité de la réponse de l'agent, ou se demande s'il a vraiment effectué le travail.
+- **Correction** : l'utilisateur indique que l'agent a fait une erreur.
+- **Résolu** : l'utilisateur confirme que l'agent a résolu son problème.
+- **Dubitatif** : l'utilisateur remet en question la véracité de la réponse de l'agent, ou doute que le travail ait vraiment été effectué.
 
-Utilisez l'analyse des sentiments pour identifier les conversations où les utilisateurs perdent patience, les agents qu'on corrige sans cesse, et les réponses qui font mouche. Il s'agit d'un scoring Jev intégré ; vous n'avez pas besoin de créer une évaluation. Pour vos propres questions à réponse fixe, [créez une évaluation Jev](/fr/evaluations/jev).
+Utilisez l'analyse de sentiment pour repérer les conversations où les utilisateurs perdent patience, les agents qui font l'objet de corrections répétées, et les réponses qui fonctionnent bien. Il s'agit d'un score Jev intégré ; vous n'avez pas besoin de créer une évaluation. Pour une question à réponse fixe personnalisée, [créez une évaluation Jev](/fr/evaluations/jev).
 
 <Note>
-  L'analyse des sentiments est désactivée jusqu'à ce qu'un administrateur l'active pour l'organisation. Jev effectue une requête de scoring par message et reçoit ce message accompagné de la réponse de l'agent qui le précède. Le scoring utilise le budget de modèle de votre organisation.
+  L'analyse de sentiment est désactivée jusqu'à ce qu'un administrateur l'active pour l'organisation. Jev effectue une requête de scoring par message et reçoit ce message ainsi que la réponse de l'agent qui le précède. Le scoring utilise le budget de modèle de votre organisation.
 </Note>
 
 ## Activation
 
 1. Accédez à **Administration → Paramètres**.
-2. Sous **Sentiment des saisies humaines**, activez l'option et enregistrez.
+2. Sous **Sentiment des entrées humaines**, activez le bouton et enregistrez.
 
-Les messages du jour précédent sont scorés en premier. Ensuite, les nouveaux messages sont scorés dans un délai d'une à deux minutes après leur arrivée.
+Les messages du dernier jour sont scorés en priorité. Ensuite, les nouveaux messages sont scorés dans la minute ou les deux minutes suivant leur réception.
 
-## Trouver une conversation à examiner
+## Trouver une conversation à analyser
 
-Ouvrez **Observer → Sentiment**. Filtrez par période, environnement, agent ou identifiant de session. L'en-tête indique le nombre de messages et de sessions, affiche le nombre de messages **signalés** et nomme le signal dominant. Un message est signalé lorsqu'un score de colère, frustration, correction, confusion ou doute atteint 35 sur 100.
+Ouvrez **Observer → Sentiment**. Filtrez par période, environnement, agent ou identifiant de session. L'en-tête indique le nombre de messages et de sessions, affiche le nombre de messages **signalés** et nomme le signal principal. Un message est signalé lorsqu'un score de colère, de frustration, de correction, de confusion ou de doute atteint 35 sur 100.
 
 ![Le tableau de bord Sentiment affichant le nombre de messages et de sessions, les messages signalés et les scores Jev dans le temps.](/images/dashboard/sentiment-overview.png)
 
-Utilisez **Score dans le temps** pour comparer les signaux. Choisissez les scores à afficher, puis sélectionnez un point pour voir les messages de ce créneau temporel. Le tableau **Par agent** indique où un signal est concentré. Dans **Messages**, triez par score négatif le plus élevé ou sélectionnez un score unique. Ouvrez un message dans sa session pour lire la conversation environnante avant de déterminer ce qui a échoué.
+Utilisez **Score dans le temps** pour comparer les signaux. Choisissez les scores à afficher, puis sélectionnez un point pour voir les messages de ce créneau temporel. Le tableau **Par agent** indique où un signal est concentré. Dans **Messages**, triez par score négatif le plus élevé ou sélectionnez un score unique. Ouvrez un message dans sa session pour lire la conversation environnante avant de déterminer ce qui a posé problème.
 
 ![La liste des messages Sentiment triée par score négatif le plus élevé, avec un lien vers chaque session source.](/images/dashboard/sentiment-messages.png)
 
 ## Quels messages sont scorés
 
-Uniquement les messages rédigés par une personne :
+Uniquement les messages écrits par un utilisateur :
 
-- Les messages que vos agents personnalisés enregistrent comme saisie humaine via le SDK.
-- Les prompts saisis dans Claude Code, Codex, OpenCode, pi, Hermes et OpenClaw, lorsque les transcriptions de session sont envoyées (comportement par défaut). Les tâches planifiées, les instructions injectées, les transferts vers des sous-agents et autres textes générés par le runtime de l'agent lui-même ne sont pas scorés. Il en va de même pour les exécutions non interactives telles que `claude -p`, `codex exec` et `hermes -z` : ces prompts ont été écrits par un script, pas par une personne.
+- Les messages que vos agents personnalisés enregistrent comme entrées humaines via le SDK.
+- Les invites saisies dans Claude Code, Codex, OpenCode, pi, Hermes et OpenClaw, lorsque les transcriptions de session sont envoyées (comportement par défaut). Les tâches planifiées, les instructions injectées, les transferts entre sous-agents et tout autre texte écrit par le runtime de l'agent lui-même ne sont pas scorés. Les exécutions non interactives comme `claude -p`, `codex exec` et `hermes -z` ne le sont pas non plus : ces invites ont été écrites par un script, pas par un utilisateur.
 
-Le scoring évalue les mots propres à la personne. Une instruction courte et directe comme « corrige ça » n'est pas comptabilisée comme de la colère, et poser une question n'est pas comptabilisé comme de la confusion. Une nouvelle demande ne constitue pas une correction, et un simple remerciement ne compte pas comme résolu.
+Le scoring évalue les mots propres à l'utilisateur. Une instruction courte et directe comme « corrige ça » n'est pas considérée comme de la colère, et poser une question n'est pas considéré comme de la confusion. Une nouvelle demande n'est pas une correction, et des remerciements seuls ne comptent pas comme une résolution.

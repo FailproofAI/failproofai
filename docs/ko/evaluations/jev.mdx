@@ -1,28 +1,28 @@
 ---
 title: "Jev 평가"
-description: "Jev를 사용해 완료된 세션을 알려진 답변이 있는 질문에 따라 채점합니다."
+description: "Jev를 사용하여 완료된 세션을 알려진 답변이 있는 질문에 대해 채점합니다."
 icon: "list-checks"
 ---
 
-Jev 평가는 **완료된 세션**을 읽고 0에서 1 사이의 점수를 부여합니다. "고객이 긴박감을 표현했나요?" 또는 "고객이 얼마나 불만스러워했나요?"처럼 답이 미리 알려진 경우에 사용하세요. 여러 실행에 걸쳐 패턴을 찾는 데 도움이 되며, 도구 호출을 중단하지는 않습니다. 도구가 실행되기 **전에** 내리는 결정에는 [Jev policies](/ko/policies/jev)를 사용하세요.
+Jev 평가는 **완료된 세션**을 읽고 0에서 1 사이의 점수를 부여합니다. "고객이 긴박감을 표현했나요?" 또는 "고객이 얼마나 불만스러워했나요?"와 같이 답변이 미리 알려진 경우에 사용하세요. 여러 실행에 걸친 패턴을 찾는 데 도움이 되며, 도구 호출을 중단하지는 않습니다. 도구가 실행되기 **전에** 내리는 결정에는 [Jev 정책](/ko/policies/jev)을 사용하세요.
 
 ## 대시보드에서 생성하기
 
 1. **Analyze → eval authoring**을 열고 **new eval**을 선택합니다.
-2. 하나의 질문과 가능한 답변을 설명합니다. 예를 들어: "에이전트가 환불 정책을 확인하기 전에 환불을 약속했나요? 예 또는 아니오로 답하세요." **draft**를 선택하고 결과가 분류기 점수인지 확인합니다.
-3. 최근 세션을 대상으로 [테스트](/ko/evaluations/test)한 후 [배포](/ko/evaluations/deploy)합니다. 새로 완료된 세션에는 자동으로 점수가 매겨지며, 기존 기록도 필요한 경우 [백필](/ko/evaluations/deploy#score-sessions-you-already-have)할 수 있습니다.
+2. 하나의 질문과 가능한 답변을 설명합니다. 예를 들어: "에이전트가 환불 정책을 확인하기 전에 환불을 약속했나요? 예 또는 아니오로 답하세요." **draft**를 선택하고 결과가 분류기 점수인지 검토합니다.
+3. 최근 세션에서 [테스트](/ko/evaluations/test)한 후 [배포](/ko/evaluations/deploy)합니다. 새로 완료된 세션은 채점되며, 이전 기록도 필요한 경우 [백필](/ko/evaluations/deploy#score-sessions-you-already-have)하세요.
 
-![고정 답변 질문을 설명하고, 초안을 검토하며, 테스트 후 배포하는 공유 eval 작성 폼. 표시된 예시는 코드 평가이지만, Jev 질문도 동일한 작성 흐름을 사용합니다.](/images/dashboard/eval-authoring-draft.png)
+![고정된 답변이 있는 질문을 설명하고, 초안을 검토하고, 테스트 후 배포하는 공유 eval 작성 폼. 표시된 예시는 코드 평가이며, Jev 질문도 동일한 작성 흐름을 사용합니다.](/images/dashboard/eval-authoring-draft.png)
 
-어시스턴트는 코드, Jev 분류, [judge](/ko/evaluations/judge) 중에서 선택할 수 있습니다. 배포하기 전에 선택 결과를 확인하세요. Jev는 산문 형태의 설명 없이 점수만 제공합니다. 설명이 필요한 경우에는 judge를 선택하세요. 질문 유형 및 점수 한도에 대한 자세한 내용은 [Jev evaluation 레퍼런스](/ko/reference/jev-evaluations)를 참조하세요.
+어시스턴트는 코드, Jev 분류, [judge](/ko/evaluations/judge) 중에서 선택할 수 있습니다. 배포 전에 어시스턴트의 선택을 확인하세요. Jev는 산문 형식의 추론 없이 점수를 제공합니다. 설명이 필요한 경우에는 judge를 선택하세요. 질문 유형과 점수 한도에 대한 자세한 내용은 [Jev 평가 참조 문서](/ko/reference/jev-evaluations)를 참고하세요.
 
 ## 점수 확인하기
 
-**Observe → Evaluations**를 열면 에이전트별, 시간별로 결과를 차트로 확인할 수 있습니다. 터미널에서는 Cloud CLI로 동일한 결과를 조회할 수 있습니다:
+**Observe → Evaluations**를 열어 에이전트 및 시간별로 결과를 차트로 확인합니다. 터미널에서는 Cloud CLI로 동일한 결과를 조회할 수 있습니다:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI는 결과를 읽는 용도로 사용하며, 작성 및 배포는 대시보드에서 진행합니다. 필터 옵션에 대한 자세한 내용은 [Cloud CLI 레퍼런스](/ko/reference/cloud-cli#evaluations)를 참조하세요.
+Cloud CLI는 결과를 조회하는 데 사용되며, 작성 및 배포는 대시보드에서 이루어집니다. 필터에 대한 자세한 내용은 [Cloud CLI 참조 문서](/ko/reference/cloud-cli#evaluations)를 참고하세요.

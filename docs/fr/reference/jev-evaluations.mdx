@@ -1,32 +1,32 @@
 ---
 title: "Référence d'évaluation Jev"
-description: "Types de questions, scores calibrés, limites et remplissage rétroactif pour les évaluations de session Jev."
+description: "Types de questions, scores calibrés, limites et remplissage rétroactif pour les évaluations de sessions Jev."
 icon: "list-checks"
 ---
 
-Cette page décrit les formes de questions et les règles de notation utilisées par les [évaluations Jev](/fr/evaluations/jev). Certaines questions nécessitent qu'un modèle *lise* la conversation, mais pas qu'il en *écrive* quelque chose. « Le client a-t-il exprimé de l'urgence ? » n'a que deux réponses possibles. « À quel point était-il frustré ? » en a quelques-unes, dans un ordre précis. Vous connaissez toutes les réponses avant même de poser la question.
+Cette page décrit la forme des questions et les règles de notation derrière les [évaluations Jev](/fr/evaluations/jev). Certaines questions demandent à un modèle de *lire* la conversation, mais pas d'en *écrire* une analyse. « Le client a-t-il exprimé une urgence ? » n'a que deux réponses possibles. « À quel point était-il frustré ? » en a quelques-unes, dans un ordre précis. Vous connaissez toutes les réponses avant même de poser la question.
 
-Une **évaluation par classification** est conçue exactement pour ces cas. Vous rédigez la question et les réponses qu'elle peut retourner, et un petit modèle dédié à la classification renvoie un nombre calibré — jamais du texte libre.
+Une **évaluation par classificateur** est conçue exactement pour cela. Vous rédigez la question et les réponses qu'elle peut produire, et un petit modèle dédié à la classification renvoie un nombre calibré — jamais du texte libre.
 
 <Note>
-Comme un juge, une évaluation par classification coûte un appel de modèle par session. Contrairement à un juge, il s'agit d'un petit modèle à usage unique plutôt que d'un modèle généraliste : il est donc plus rapide et moins coûteux — mais il ne s'expliquera jamais. Si vous avez besoin du raisonnement, utilisez un [juge](/fr/evaluations/judge).
+Comme un juge, une évaluation par classificateur consomme un appel de modèle par session. Contrairement à un juge, il s'agit d'un modèle petit et mono-tâche plutôt que généraliste : il est donc plus rapide et moins coûteux — mais il ne s'expliquera jamais. Si vous avez besoin du raisonnement, utilisez un [juge](/fr/evaluations/judge).
 </Note>
 
-## Laquelle choisir ?
+## Lequel dois-je choisir ?
 
-| Question | Usage |
+| Question | Utilisation |
 | --- | --- |
 | Combien d'appels d'outils y a-t-il eu ? | code |
 | La session a-t-elle duré moins de 30 secondes ? | code |
-| Le client a-t-il exprimé de l'urgence ? | **classification** |
-| Quelle équipe doit gérer cela : facturation, technique ou commercial ? | **classification** |
-| À quel point le client était-il frustré ? | **classification** |
-| La réponse était-elle vraiment correcte ? | **juge** |
-| A-t-il suivi notre politique d'escalade, et pourquoi pensez-vous cela ? | **juge** |
+| Le client a-t-il exprimé une urgence ? | **classificateur** |
+| Quelle équipe doit traiter ce cas : facturation, technique ou commercial ? | **classificateur** |
+| À quel point le client était-il frustré ? | **classificateur** |
+| La réponse était-elle réellement correcte ? | **juge** |
+| A-t-il suivi notre politique d'escalade, et pourquoi le pensez-vous ? | **juge** |
 
-La règle générale : **ce qui se compte → code, ce qui a des réponses listables → classification, ce qui nécessite une explication → juge.**
+La règle générale : **quantifiable → code, réponses listables → classificateur, nécessite une explication → juge.**
 
-Vous n'avez pas besoin de décider à l'avance. Décrivez ce que vous souhaitez mesurer et l'assistant choisit, vous indique ce qu'il a sélectionné et pourquoi, et vous pouvez en changer.
+Vous n'avez pas à décider à l'avance. Décrivez ce que vous souhaitez mesurer et l'assistant choisit, vous indique ce qu'il a choisi et pourquoi, et vous pouvez changer d'avis.
 
 ## Les deux types de questions
 
@@ -44,11 +44,11 @@ Deux réponses, et vous décrivez les deux. Le résultat est la probabilité que
 }
 ```
 
-Décrivez les deux côtés. « Aucune urgence exprimée » est une vraie réponse, et la formuler rend l'autre plus précise.
+Décrivez les deux côtés. « Aucune urgence exprimée » est une vraie réponse, et la formuler explicitement rend l'autre plus précise.
 
 ### `score` — dans quelle mesure ?
 
-Un barème ordonné, **du pire au meilleur**. Le résultat indique où la session se situe dans ce barème, remis à l'échelle de 0 à 1 :
+Un barème ordonné, **du pire au meilleur**. Le résultat indique où la session se situe dans ce barème, redimensionné de 0 à 1 :
 
 ```json
 {
@@ -57,32 +57,32 @@ Un barème ordonné, **du pire au meilleur**. Le résultat indique où la sessio
 }
 ```
 
-**Un barème comporte trois à cinq niveaux, tous distincts.** Les deux limites sont mesurées, non stylistiques :
+**Un barème comporte entre trois et cinq niveaux, et ils doivent tous être différents.** Les deux limites sont mesurées, pas stylistiques :
 
-- **Deux niveaux** revient à faire ce que `noul` fait déjà mieux, et **plus de cinq** pousse le modèle à se rabattre sur le milieu plutôt que de trancher. La même question sur la même session a obtenu 0,00 avec deux niveaux, 0,01 avec trois, et 0,55 avec dix.
-- **Des niveaux répétés** divisent la réponse arbitrairement entre eux. Une session manifestement en colère a obtenu 1,00 avec `["Calm", "Frustrated", "Very angry"]` et 0,66 avec `["Angry", "Angry", "Angry"]` — un nombre bien formé qui ne signifie rien.
+- **Deux niveaux** revient à faire ce que `noul` fait déjà mieux, et **plus de cinq** pousse le modèle à s'ancrer vers le milieu plutôt qu'à trancher. La même question sur la même session a obtenu 0,00 avec deux niveaux, 0,01 avec trois et 0,55 avec dix.
+- **Des niveaux répétés** répartissent la réponse arbitrairement entre eux. Une session incontestablement en colère a obtenu 1,00 avec `["Calm", "Frustrated", "Very angry"]` et 0,66 avec `["Angry", "Angry", "Angry"]` — un nombre bien formé qui ne signifie rien.
 
-Les catégories sans ordre — « facturation, technique ou commercial » — ne constituent pas un barème. Posez-les sous forme de `noul` par catégorie, ou utilisez un juge.
+Les catégories sans ordre — « facturation, technique ou commercial » — ne constituent pas un barème. Posez-les sous forme de question `noul` par catégorie, ou utilisez un juge.
 
-## Lire les résultats
+## Interprétation des résultats
 
-Une classification produit un **score** de 0 à 1, exactement comme un juge : il s'affiche en graphique, se filtre et déclenche des alertes de la même façon. Deux différences méritent d'être notées :
+Un classificateur produit un **score** de 0 à 1, exactement comme un juge, ce qui permet de le représenter en graphique, de le filtrer et de déclencher des alertes de la même façon. Deux différences méritent d'être mentionnées :
 
-- **Il n'y a pas de raisonnement.** Le champ est vide, délibérément. Ce modèle ne s'explique pas, et inventer une explication serait une fabrication plutôt qu'une fonctionnalité.
-- **L'incertitude est signalée.** Une question de type `score` rend compte de sa propre confiance, et un résultat sur lequel le modèle n'était pas sûr est étiqueté `low_confidence` — ainsi, « lesquels méritent un regard humain » devient un filtre plutôt qu'une supposition. Une question de type `noul` ne rend pas compte de la confiance et n'est donc jamais étiquetée.
+- **Il n'y a pas de raisonnement.** Le champ est vide, délibérément. Ce modèle ne s'explique pas, et inventer une explication serait une fabrication, pas une fonctionnalité.
+- **L'incertitude est signalée.** Une question `score` rapporte sa propre confiance, et un résultat sur lequel le modèle était incertain est étiqueté `low_confidence` — ainsi, « lesquels méritent un examen humain » est un filtre plutôt qu'une supposition. Une question `noul` ne rapporte pas de niveau de confiance et n'est donc jamais étiquetée.
 
-Les sessions très longues sont lues par extraits puis combinées. Lorsqu'une session est trop longue pour être lue intégralement, le résultat indique combien de tours ont été omis — vous ne verrez jamais un jugement rendu sur une partie de la session présenté comme rendu sur la totalité.
+Les sessions très longues sont lues par extraits puis combinées. Lorsqu'une session est trop longue pour être lue intégralement, le résultat indique combien de tours ont été omis — vous ne verrez jamais un jugement rendu sur une partie d'une session présenté comme s'il portait sur sa totalité.
 
 ## Limites
 
-- **Trois à cinq niveaux de barème, tous distincts.** Voir ci-dessus ; les deux bornes sont appliquées lors de la rédaction.
-- **Une seule question par évaluation.** Posez deux questions et vous obtenez deux évaluations, ce qui est aussi ce que vous souhaitez afficher dans un graphique.
-- **Modifier la question publie une nouvelle version.** Les anciens et nouveaux scores ne sont pas comparables, ils sont donc séparés plutôt que mélangés dans une même courbe de tendance.
-- **Une classification produit toujours un score**, jamais une métrique ou une assertion.
-- **Pas de raisonnement**, comme indiqué plus haut. Si un nombre amènera quelqu'un à demander « pourquoi ? », rédigez plutôt un juge.
+- **Trois à cinq niveaux de barème, tous distincts.** Voir ci-dessus ; les deux bornes sont appliquées au moment de la création.
+- **Une question par évaluation.** Posez deux questions et vous obtenez deux évaluations, ce qui est aussi ce que vous souhaitez sur un graphique.
+- **Modifier la question publie une nouvelle version.** Les anciens et les nouveaux scores ne sont pas comparables, ils sont donc séparés plutôt que mélangés dans une même tendance.
+- **Un classificateur produit toujours un score**, jamais une métrique ou une assertion.
+- **Pas de raisonnement**, comme indiqué ci-dessus. Si un nombre amènera quelqu'un à demander « pourquoi ? », rédigez plutôt un juge.
 
-## Tests et remplissage rétroactif
+## Test et remplissage rétroactif
 
-Contrairement à un juge, une évaluation par classification **peut** être testée avant son déploiement — [testez-la](/fr/evaluations/test) sur de vraies sessions de la même façon que vous le feriez pour une évaluation par code, et lisez les scores avant toute mise en production.
+Contrairement à un juge, une évaluation par classificateur **peut** être testée avant déploiement — [testez-la](/fr/evaluations/test) sur de vraies sessions de la même façon que vous le feriez pour une évaluation par code, et lisez les scores avant toute mise en production.
 
-Elle peut également être [remplie rétroactivement](/fr/evaluations/deploy#score-sessions-you-already-have) sur des sessions que vous avez déjà. Cela coûte un appel de modèle par session, donc délimitez la fenêtre de manière intentionnelle plutôt que de tout rejouer.
+Elle peut également être [appliquée rétroactivement](/fr/evaluations/deploy#score-sessions-you-already-have) sur des sessions déjà existantes. Cela consomme un appel de modèle par session, alors délimitez soigneusement la fenêtre temporelle plutôt que de tout rejouer.

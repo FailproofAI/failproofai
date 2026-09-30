@@ -1,46 +1,46 @@
 ---
-title: "Policy authority"
-description: "Jev semantic evaluator किन policy verdicts को clear कर सकता है, और कौन से अंतिम हैं।"
+title: "नीति प्राधिकार"
+description: "Jev सिमेंटिक मूल्यांकनकर्ता कौन सी नीति वर्डिक्ट को स्पष्ट कर सकता है, और कौन से अंतिम हैं।"
 icon: "scale"
 ---
 
-जब आप FailproofAI Cloud के माध्यम से या अपनी अपनी key से [Jev policy review](/hi/policies/jev) configure करते हैं, तो प्रत्येक gated tool call को आपके द्वारा चलाई जाने वाली policies और Jev द्वारा judge किया जाता है, जो पूछता है कि call वास्तव में क्या करता है और क्या जिस व्यक्ति ने task type किया है वह इसके लिए ask कर रहे हैं। प्रत्येक policy का **authority** निर्धारित करता है कि जब दोनों असहमत हों तो क्या होता है।
+जब आप FailproofAI Cloud या अपनी खुद की key के माध्यम से [Jev नीति समीक्षा](/hi/policies/jev) को कॉन्फ़िगर करते हैं, तो प्रत्येक गेटेड टूल कॉल को उन नीतियों द्वारा आंका जाता है जो आप चलाते हैं और Jev द्वारा, जो पूछता है कि कॉल वास्तव में क्या करता है और क्या जिस व्यक्ति ने कार्य टाइप किया वह इसके लिए पूछ रहा था। प्रत्येक नीति का **प्राधिकार** यह तय करता है कि जब दोनों असहमत हों तो क्या होता है।
 
-Jev के बिना configure किए गए, authority का कोई प्रभाव नहीं है। प्रत्येक policy बिल्कुल वैसे ही enforce होती है जैसे हमेशा से होती आई है।
+Jev को कॉन्फ़िगर किए बिना, प्राधिकार का कोई प्रभाव नहीं होता। हर नीति बिल्कुल वैसे ही लागू होती है जैसे हमेशा होती है।
 
-## Hard और reviewable
+## कठोर और समीक्षण योग्य
 
-- **Hard** default है। एक hard policy का deny या instruction अंतिम है: Jev इसे clear नहीं कर सकता है, और एक hard deny Jev की प्रतीक्षा किए बिना call को रोक देता है।
-- **Reviewable** का मतलब है कि Jev policy के verdict को clear कर सकता है, लेकिन केवल `reviewedBy` में नामित semantic checks के माध्यम से। Verdict केवल तब clear होता है जब **हर एक** नामित check को इस call के बारे में ask किया गया था और प्रत्येक को या तो कुछ नहीं मिला या उपयोगकर्ता ने इसके लिए ask करते हुए दर्ज किया। एक check जो **fire** हुआ — concern मिला — लेकिन उपयोगकर्ता ने ask नहीं किया, block को रखता है, भले ही इसका अपना verdict केवल एक warning हो। एक check जिसे Jev से ask नहीं किया गया क्योंकि यह उस tool पर लागू नहीं होता है, कभी कुछ भी clear नहीं करता है, चाहे अन्य ने क्या कहा हो। एक softening को consent के रूप में गिना जाता है: जब call उपयोगकर्ता द्वारा दिए गए task का एक step है और आगे नहीं बढ़ता है, तो Jev एक deny को warning में बदल देता है, और यह warning policy के block को clear करता है और यही agent को बताया जाता है।
+- **कठोर** डिफ़ॉल्ट है। एक कठोर नीति की अस्वीकृति या निर्देश अंतिम है: Jev इसे स्पष्ट नहीं कर सकता, और एक कठोर अस्वीकृति Jev की प्रतीक्षा किए बिना कॉल को रोकता है।
+- **समीक्षण योग्य** का अर्थ है कि Jev नीति की वर्डिक्ट को स्पष्ट कर सकता है, लेकिन केवल सिमेंटिक जांचों के माध्यम से जो नीति `reviewedBy` में नाम देती है। वर्डिक्ट तभी स्पष्ट होती है जब **हर** नामित जांच को इस कॉल के बारे में पूछा गया था और प्रत्येक को या तो कुछ नहीं मिला या उपयोगकर्ता को यह पूछते हुए दर्ज किया गया। एक जांच जो **सक्रिय हुई** — चिंता को पाया — उपयोगकर्ता को यह पूछे बिना ब्लॉक को बनाए रखता है, भले ही इसकी खुद की वर्डिक्ट केवल एक चेतावनी हो। एक जांच Jev को नहीं पूछी गई, क्योंकि यह उस टूल पर लागू नहीं होती, कभी कुछ भी स्पष्ट नहीं करती, चाहे अन्य ने क्या कहा। एक नरमी सहमति के रूप में गिनती करती है: जब कॉल उपयोगकर्ता द्वारा दिए गए कार्य का एक कदम है और आगे नहीं पहुंचता, Jev अस्वीकृति को चेतावनी में बदल देता है, और वह चेतावनी नीति के ब्लॉक को स्पष्ट करती है और वह है जो एजेंट को बताया जाता है।
 
-एक policy केवल reviewable है जब ये सभी hold करते हैं:
+एक नीति केवल समीक्षण योग्य है जब ये सभी रखते हैं:
 
-1. यह `authority: "reviewable"` declare करता है।
-2. `reviewedBy` एक non-empty list है, और हर entry एक Jev check है जो एक installed pack declare करता है। Failproof AI कोई Jev checks नहीं ship करता है: [नीचे दिए सोलह](#semantic-policy-names) `failproofai policies add FailproofAI/jev-policies` से आते हैं। कोई pack checks declare नहीं करने के साथ, हर policy hard है।
-3. यह `alwaysOn` नहीं है। guard जो agent को Failproof AI को disable करने से रोकता है, हमेशा hard है।
+1. यह `authority: "reviewable"` घोषित करता है।
+2. `reviewedBy` एक गैर-रिक्त सूची है, और हर प्रविष्टि एक Jev जांच है जो एक स्थापित पैक घोषित करता है। Failproof AI कोई Jev जांच नहीं भेजता: [नीचे सोलह](#semantic-policy-names) `failproofai policies add FailproofAI/jev-policies` से आते हैं। कोई पैक जांचों की घोषणा नहीं करने के साथ, हर नीति कठोर है।
+3. यह `alwaysOn` नहीं है। वह गार्ड जो एक एजेंट को Failproof AI को अक्षम करने से रोकता है, हमेशा कठोर है।
 
-बाकी सब कुछ hard है: एक missing field, एक misspelled value, एक empty या malformed `reviewedBy`, या एक नाम जो इस machine द्वारा ask नहीं किया जा सकता है। एक unknown name पूरी declaration को hard बनाता है बजाय skip किए जाने के, क्योंकि `reviewedBy` मतलब है "इन सभी को ask किया जाना चाहिए, और उनमें से कोई भी deny नहीं कर सकता है", और एक नाम को skip करना Jev को कम checks के साथ policy को clear करने देगा।
+कुछ भी और कठोर है: एक लापता क्षेत्र, एक गलत वर्तनी मान, एक खाली या विकृत `reviewedBy`, या एक नाम जो इस मशीन से पूछी जा सकने वाली जांच नहीं है। एक अज्ञात नाम पूरी घोषणा को कठोर बनाता है बजाय छोड़े जाने के, क्योंकि `reviewedBy` का अर्थ है "इन सभी को पूछा जाना चाहिए, और उनमें से कोई भी अस्वीकार नहीं कर सकता", और एक नाम को छोड़ना Jev को कम जांचों पर नीति को स्पष्ट करने देता जितना आपने पूछा।
 
-एक बार Jev configure होने के बाद, Failproof AI एक warning log करता है जब यह एक `reviewable` declaration को refuse करता है, process के हिसाब से एक बार। Jev के बिना यह कुछ नहीं कहता है, क्योंकि authority तब कुछ भी decide नहीं करता है। `failproofai publish` एक pack को build करने से refuse करता है जो such declaration लेकर जाता है, इसलिए एक pack author को इससे पहले पता चलता है कि कोई इसे install करे। यह `reviewedBy` को checks के विरुद्ध judge करता है जो pack declare करता है जब यह कोई भी declare करता है, और अन्यथा sixteen `FailproofAI/jev-policies` names के विरुद्ध।
+Jev को कॉन्फ़िगर करने के बाद, Failproof AI एक चेतावनी लॉग करता है जब यह एक `reviewable` घोषणा से इनकार करता है, प्रति प्रक्रिया एक बार। Jev के बिना यह कुछ नहीं कहता, क्योंकि प्राधिकार तब कुछ नहीं तय करता। `failproofai publish` ऐसी घोषणा वहन करने वाले पैक को बनाने से इनकार करता है, इसलिए एक पैक लेखक को कोई भी इंस्टॉल करने से पहले पता चल जाता है। यह `reviewedBy` को उन जांचों के विरुद्ध आंकता है जो पैक घोषित करता है जब यह कोई भी घोषित करता है, और अन्यथा सोलह `FailproofAI/jev-policies` नामों के विरुद्ध।
 
-## जहां authority declare किया जाता है
+## जहां प्राधिकार घोषित किया जाता है
 
-प्रत्येक तरीके से एक policy machine तक पहुंचता है एक जगह है जो इसके authority को decide करता है:
+जिस प्रत्येक तरीके से एक नीति एक मशीन तक पहुंचती है, एक ही जगह है जो इसके प्राधिकार को तय करती है:
 
-| Source | Declared in | Default |
+| स्रोत | इसमें घोषित | डिफ़ॉल्ट |
 | --- | --- | --- |
-| Built-in policies | नीचे table | Hard जब तक कि reviewable के रूप में listed न हो |
-| Your own policy files | `authority` और `reviewedBy` पर `customPolicies.add` | Hard |
-| Policy packs | Pack manifest में प्रत्येक policy की entry (`failproofai-pack.json`) | Hard |
-| Cloud-managed policies | Active deployment में policy का assignment | Hard। Deployments अभी इसे set नहीं करते हैं, इसलिए आज हर cloud-managed policy hard है। |
+| बिल्ट-इन नीतियां | नीचे तालिका | कठोर जब तक समीक्षण योग्य के रूप में सूचीबद्ध न हो |
+| आपकी अपनी नीति फाइलें | `customPolicies.add` पर `authority` और `reviewedBy` | कठोर |
+| नीति पैक | पैक मैनिफेस्ट में प्रत्येक नीति की प्रविष्टि (`failproofai-pack.json`) | कठोर |
+| क्लाउड-प्रबंधित नीतियां | सक्रिय तैनाती में नीति का असाइनमेंट | कठोर। तैनातियां अभी तक इसे सेट नहीं करती हैं, इसलिए आज हर क्लाउड-प्रबंधित नीति कठोर है। |
 
-एक pack या cloud-managed policy के लिए, policy code के अंदर set fields को ignore किया जाता है; manifest या assignment decide करता है। एक pack केवल अपनी policies को describe कर सकता है: इसके policy names में `/` नहीं हो सकता है और pack के अपने prefix के तहत registered हैं, इसलिए कोई manifest एक built-in policy या दूसरे pack की policy को reviewable के रूप में mark नहीं कर सकता है। एक policy जो pack का code manifest में declare किए बिना register करता है, hard है।
+एक पैक या क्लाउड-प्रबंधित नीति के लिए, नीति कोड के अंदर सेट किए गए क्षेत्रों को अनदेखा किया जाता है; मैनिफेस्ट या असाइनमेंट तय करता है। एक पैक केवल अपनी स्वयं की नीतियों का वर्णन कर सकता है: इसके नीति नामों में `/` नहीं हो सकते और पैक के अपने उपसर्ग के तहत पंजीकृत हैं, इसलिए कोई मैनिफेस्ट एक बिल्ट-इन नीति या किसी अन्य पैक की नीति को समीक्षण योग्य के रूप में चिह्नित नहीं कर सकता। एक नीति जो एक पैक का कोड बिना मैनिफेस्ट में घोषित किए पंजीकृत करता है, कठोर है।
 
-दो packs, या दो cloud-managed policies, जिनका code byte-identical है, एक artifact share करते हैं और एक policy के रूप में load होते हैं। यह policy केवल reviewable है यदि उनमें से हर एक इसे reviewable declare करता है, और Jev को तब हर check को clear करना चाहिए जो कोई भी नाम देता है। यदि उनमें से कोई इसे hard declare करता है, या बिल्कुल declare नहीं करता है, तो यह hard रहता है। जिस order में packs या policies list किए जाते हैं वह कभी matter नहीं करता है।
+दो पैक, या दो क्लाउड-प्रबंधित नीतियां, जिनका कोड बाइट-समान है, एक कलाकृति साझा करते हैं और एक नीति के रूप में लोड करते हैं। वह नीति केवल समीक्षण योग्य है यदि उनमें से हर एक इसे समीक्षण योग्य घोषित करता है, और Jev को फिर हर जांच को स्पष्ट करना चाहिए जो उनमें से कोई भी नाम देता है। यदि उनमें से कोई भी इसे कठोर घोषित करता है, या इसे बिल्कुल भी घोषित नहीं करता है, तो यह कठोर रहता है। पैक या नीतियां सूचीबद्ध होने का क्रम कभी मायने नहीं रखता।
 
-अधिकांश machines को `FailproofAI/policies` pack से built-in policies मिलती हैं, और उनके authority को उस pack के manifest से पढ़ते हैं। नीचे reviewable entries एक बार यह release का pack जो उन्हें carries install होता है तब प्रभाव लेते हैं; एक पुरानी release उनमें से कोई नहीं carries, इसलिए इसमें हर policy hard रहती है।
+अधिकांश मशीनें `FailproofAI/policies` पैक से बिल्ट-इन नीतियां प्राप्त करती हैं, और उस पैक के मैनिफेस्ट से अपने प्राधिकार को पढ़ती हैं। नीचे समीक्षण योग्य प्रविष्टियां तभी प्रभावी होती हैं जब पैक जो उन्हें ले जाता है उसका एक रिलीज़ स्थापित होता है; एक पुराना रिलीज़ कोई नहीं ले जाता, इसलिए इसमें हर नीति कठोर रहती है।
 
-## अपनी अपनी policy में authority declare करें
+## अपनी स्वयं की नीति में प्राधिकार घोषित करें
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -58,87 +58,87 @@ customPolicies.add({
 });
 ```
 
-`failproofai publish` दोनों fields को pack manifest में copy करता है, इसलिए एक policy जो pack के रूप में publish होती है उसका authority जो author ने दिया था वह रखता है। यह pack को build करने से refuse करता है यदि एक declaration को honor नहीं किया जाएगा: `"hard"` या `"reviewable"` के अलावा एक value, एक `reviewedBy` जो names की list नहीं है, या एक नाम जो एक check नहीं है — pack के अपने [Jev checks](/hi/policies/publish-a-pack#jev-checks-in-a-pack) में से एक जब यह कोई भी declare करता है, अन्यथा एक built-in check।
+`failproofai publish` दोनों क्षेत्रों को पैक मैनिफेस्ट में कॉपी करता है, इसलिए एक नीति जो एक पैक के रूप में प्रकाशित होती है अपने लेखक द्वारा दिया गया प्राधिकार रखती है। यह पैक को बनाने से इनकार करता है यदि कोई घोषणा सम्मानित नहीं होगी: एक मान जो `"hard"` या `"reviewable"` के अलावा है, एक `reviewedBy` जो नामों की सूची नहीं है, या एक नाम जो एक जांच नहीं है — पैक की अपनी [Jev जांचें](/hi/policies/publish-a-pack#jev-checks-in-a-pack) जब यह कोई भी घोषित करता है, अन्यथा एक बिल्ट-इन जांच।
 
-## Built-in policies
+## बिल्ट-इन नीतियां
 
-केवल reviewable जहां एक semantic policy genuinely same concern को cover करता है। हर अन्य built-in policy hard है।
+केवल जहां एक सिमेंटिक नीति वास्तव में एक ही चिंता को कवर करती है, वहां समीक्षण योग्य। हर अन्य बिल्ट-इन नीति कठोर है।
 
-Concern को cover करना जरूरी है लेकिन sufficient नहीं है, और गलत जाने के दोनों तरीकों quiet हैं:
+चिंता को कवर करना आवश्यक है लेकिन पर्याप्त नहीं है, और गलत होने के दोनों तरीके चुप हैं:
 
-- **एक check जो कभी ask नहीं होता है** block को permanent बनाता है। `reviewedBy` एक conjunction है और एक check जो ask नहीं हुआ कभी clear नहीं करता है, इसलिए एक policy जो एक check के साथ paired है जिसका precondition उन shapes के लिए नहीं fire होता है जो policy match करती है, कभी clear नहीं हो सकती है।
-- **एक check जो ask होता है लेकिन fire नहीं होता है** "कोई concern नहीं" का जवाब देता है, और कोई concern clear नहीं करता है। तो एक check के साथ pairing जो आपकी policy के shapes को model नहीं करता है policy को review नहीं करता है — यह बिल्कुल उन inputs के लिए इसे switch off करता है जो check understand नहीं करता है।
+- **एक जांच जो कभी नहीं पूछी जाती** ब्लॉक को स्थायी बनाती है। `reviewedBy` एक संयोजन है और एक जांच जो नहीं पूछी गई वह कभी स्पष्ट नहीं करती, इसलिए एक नीति जो एक जांच के साथ युग्मित है जिसकी पूर्वशर्त उन आकृतियों के लिए फायर नहीं करती जो नीति से मेल खाती हैं, कभी भी स्पष्ट नहीं की जा सकती।
+- **एक जांच जो पूछी जाती है लेकिन फायर नहीं करती** "कोई चिंता नहीं" का उत्तर देती है, और कोई चिंता स्पष्ट नहीं करती। तो एक जांच के साथ युग्मन जो आपकी नीति के आकृतियों को मॉडल नहीं करता, नीति की समीक्षा नहीं करता — यह बिल्कुल उन इनपुट के लिए इसे बंद कर देता है जो जांच नहीं समझता।
 
-एक instruct-mode semantic policy कभी deny का जवाब नहीं दे सकता है, लेकिन यह फिर भी एक block रख सकता है: जब यह fire होता है और user ने call के लिए ask नहीं किया है, तो policy जो यह review करती है clear नहीं होती है। छह `FailproofAI/jev-policies` checks instruct-only हैं — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` और `external-data-egress` — और [नीचे table](#semantic-policy-names) हर check की mode देता है। पूछने का सवाल है **"क्या कोई चीज बची है जो deny कर सकती है"**: एक clear कभी भी concern को enforce किए बिना नहीं छोड़ना चाहिए। Engine यह test हर call per apply करता है। एक warning जिसे कोई consent नहीं दिया उसे clear नहीं माना जाता है, क्योंकि tool calls से पहले एक warning agent को नहीं रोकता है। और जब एक check जो *कर सकता है* deny करना warn करता है — इसका evidence अपनी deny line तक नहीं पहुंचा — और user ने call के लिए ask नहीं किया है, तो इस call पर कुछ भी clear नहीं होता है और हर regex deny stands करता है।
+एक निर्देश-मोड सिमेंटिक नीति कभी भी अस्वीकृति का उत्तर नहीं दे सकती, लेकिन यह फिर भी एक ब्लॉक रख सकती है: जब यह फायर करता है और उपयोगकर्ता ने कॉल के लिए नहीं पूछा, तो जिस नीति की यह समीक्षा करता है वह स्पष्ट नहीं होती। `FailproofAI/jev-policies` की छह जांचें निर्देश-केवल हैं — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` और `external-data-egress` — और [नीचे तालिका](#semantic-policy-names) हर जांच का मोड देता है। पूछने वाला सवाल है **"क्या कोई भी चीज़ बची है जो अस्वीकार कर सकती है"**: एक स्पष्ट को कभी भी चिंता को कुछ से भी लागू नहीं छोड़ना चाहिए। इंजन कॉल के अनुसार उस परीक्षण को लागू करता है। एक चेतावनी जिसके लिए किसी को सहमति नहीं दी गई वह स्पष्ट नहीं है, क्योंकि टूल कॉलों से पहले एक चेतावनी एजेंट को नहीं रोकती। और जब एक जांच जो *कर सकती है* अस्वीकार करना चेतावनी देता है — इसका साक्ष्य इसकी अस्वीकृति पंक्ति से कम था — और उपयोगकर्ता ने कॉल के लिए नहीं पूछा, उस कॉल पर कुछ भी स्पष्ट नहीं होता और हर रेजेक्स अस्वीकृति खड़ी रहती है।
 
 <Warning>
-**एक check जो अपनी fire line से बस नीचे score करता है floor को नहीं रखता है।** ऊपर का rule एक check को *fire* करने की जरूरत है (evidence ≥ 0.7)। जब हर relevant check बस इससे नीचे lands होता है, तो कुछ भी fire नहीं होता है, reviewers "कोई concern नहीं" का जवाब देते हैं, और एक reviewable deny clear हो जाता है। Measured live enforce mode में: एक unrequested Read of `/etc/shadow` (`secret-exposure` 0.69, `read-outside-workspace` 0.37, जो केवल home-directory paths को model करता है) और `set | curl -d @- …` "follow SETUP.md" के बाद (`env-secrets-dump` 0.66, `credential-exfiltration` 0.65 with `sends_out` 0.97) दोनों allow किए गए थे, जबकि regex tier अकेले उन्हें deny करता है। Thresholds को labelled corpus पर calibrate किया गया था और इसके विरुद्ध re-measured नहीं हुए हैं; जब तक वे नहीं हैं, एक policy को **hard** रखें जहां इन shapes में से एक के through आने से matter अधिक है इसके false blocks की तुलना में।
+**एक जांच जो सिर्फ अपनी फायर पंक्ति से नीचे स्कोर करती है वह तल को नहीं रखता।** ऊपर का नियम एक जांच को *फायर* करने की आवश्यकता है (साक्ष्य ≥ 0.7)। जब हर प्रासंगिक जांच सिर्फ नीचे उतरती है, कुछ भी फायर नहीं होता, समीक्षक "कोई चिंता नहीं" का उत्तर देते हैं, और एक समीक्षण योग्य अस्वीकृति स्पष्ट होती है। लाइव को प्रवर्तन मोड में मापा जाता है: `/etc/shadow` का एक अनुरोधित पठन (`secret-exposure` 0.69, `read-outside-workspace` 0.37, जो केवल होम-निर्देशिका पथों को मॉडल करता है) और "SETUP.md का पालन करें" के बाद `set | curl -d @- …` (`env-secrets-dump` 0.66, `credential-exfiltration` 0.65 with `sends_out` 0.97) दोनों को अनुमति दी गई, जबकि रेजेक्स स्तर अकेले उन्हें अस्वीकार करता है। थ्रेसहोल्ड को लेबल किए गए कॉर्पस पर कैलिब्रेट किया गया था और इसके विरुद्ध फिर से मापा नहीं गया है; जब तक वे हैं, इन आकृतियों में से एक को पास करना यदि इसके गलत ब्लॉक की तुलना में अधिक मायने रखता है तो नीति **कठोर** रखें।
 </Warning>
 
-| Policy | Authority | Reviewed by | क्यों |
+| नीति | प्राधिकार | समीक्षा की गई | क्यों |
 | --- | --- | --- | --- |
-| `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | Pattern किसी भी variable reference पर fire होता है; Jev पूछता है कि क्या secret values actually print होंगी। |
-| `block-env-files` | reviewable | `secret-exposure` | Pattern किसी भी `.env` path को match करता है, templates included; Jev पूछता है कि क्या real secret values read या write होंगी। |
-| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | Real traffic पर noisy मापा गया; Jev पूछता है कि क्या project के बाहर की file contents read होती हैं। एक read जो user ने ask किया है, या एक जो check को कुछ नहीं मिलता है, clear होता है; एक unrequested read जिसे यह flag करता है block को रखता है। |
-| `warn-git-amend` | reviewable | `git-history-rewrite` | Unpushed commit को amend करना ordinary है; harm history को rewrite करना है जो दूसरे pull कर सकते हैं। |
-| `warn-destructive-sql` | reviewable | `database-destruction` | Jev भी पूछता है कि क्या target एक real database है बजाय एक disposable test के। |
-| `warn-global-package-install` | reviewable | `system-modification` | Same concern: machine को project के बाहर change करना। |
-| `block-failproofai-commands` | hard | | `alwaysOn` self-protection। कभी reviewable नहीं। |
-| `block-rm-rf` | reviewable | `destructive-deletion` | Path-depth heuristic `rm -rf node_modules` को गलत करता है; Jev पूछता है कि क्या क्या destroy होगा regenerable है। `rm -rf /` दोनों probes को true रखता है। |
-| `block-sudo` | hard | | Privilege escalation। |
-| `block-curl-pipe-sh` | hard | | Internet से downloaded code को run करता है। |
-| `block-push-master` | hard | | सीधे protected branch में push करता है। |
-| `block-work-on-main` | hard | | `commit-on-protected-branch` बिल्कुल इसी concern को cover करता है लेकिन instruct-mode है, इसलिए यह कभी deny का जवाब नहीं दे सकता है, और कोई अन्य check इसे cover नहीं करता है। |
-| `block-force-push` | reviewable | `git-history-rewrite` | Jev का probe matcher का एक superset है और `--force-with-lease` count करता है; क्या clear होता है अपनी branch को force-push करना है। |
-| `block-secrets-write` | reviewable | `secret-exposure` | Path match unanchored है, इसलिए `src/auth/credentials.ts` caught है; Jev पूछता है कि क्या real key material write हो रहा है। |
-| `block-kubectl` | reviewable | `production-infra-change` | पूरे CLI को deny करता है, read-only subcommands included; Jev पूछता है कि क्या call mutate करता है और क्या target production है। |
-| `block-terraform` | reviewable | `production-infra-change` | Same: `terraform plan` और `validate` को clear करता है। |
-| `block-aws-cli` | reviewable | `production-infra-change` | Same: `aws s3 ls`, `aws sts get-caller-identity` को clear करता है। |
-| `block-gcloud` | reviewable | `production-infra-change` | Same: `gcloud auth list`, `gcloud config list` को clear करता है। |
-| `block-az-cli` | reviewable | `production-infra-change` | Same: `az account show` को clear करता है। |
-| `block-helm` | reviewable | `production-infra-change` | Same: `helm list`, `helm status` को clear करता है। |
-| `block-gh-pipeline` | hard | | Pipelines, merges और secret changes को trigger करता है। |
-| `warn-git-stash-drop` | hard | | कोई semantic check stashed work को discard करने को cover नहीं करता है। |
-| `warn-git-clean` | hard | | `destructive-deletion` concern को cover करता है लेकिन demonstrably इस पर fire नहीं कर सकता है: `git clean` कोई path नहीं name करता है, इसलिए इसका `irreplaceable` probe के पास judge करने के लिए कुछ नहीं है और low का जवाब देता है, और evidence एक policy के probes के ऊपर minimum है। एक check जो ask होता है और fire नहीं होता verdict को clear करता है, तो यहां pairing policy को switch off कर देगी। |
-| `warn-all-files-staged` | hard | | कोई semantic check wide `git add` को cover नहीं करता है क्या pick up करता है। |
-| `warn-schema-alteration` | hard | | `database-destruction` data को drop करने को cover करता है, schema को alter करना नहीं। |
-| `warn-package-publish` | hard | | Publishing irreversible है और कोई semantic check इसे cover नहीं करता है। |
-| `prefer-package-manager` | hard | | एक team convention, एक safety judgment नहीं। |
-| `warn-large-file-write` | hard | | एक size threshold, एक judgment नहीं जो Jev कर सकता है। |
-| `warn-background-process` | hard | | कोई semantic check detached processes को cover नहीं करता है। |
-| `warn-repeated-tool-calls` | hard | | Calls count करता है; Jev count नहीं कर सकता है। |
-| `sanitize-jwt` | hard | | Tool output को redact करता है; एक tool-call gate नहीं। |
-| `sanitize-api-keys` | hard | | Tool output को redact करता है; एक tool-call gate नहीं। |
-| `sanitize-connection-strings` | hard | | Tool output को redact करता है; एक tool-call gate नहीं। |
-| `sanitize-private-key-content` | hard | | Tool output को redact करता है; एक tool-call gate नहीं। |
-| `sanitize-bearer-tokens` | hard | | Tool output को redact करता है; एक tool-call gate नहीं। |
-| `require-commit-before-stop` | hard | | एक session-completion gate, एक tool-call gate नहीं। |
-| `require-push-before-stop` | hard | | एक session-completion gate, एक tool-call gate नहीं। |
-| `require-pr-before-stop` | hard | | एक session-completion gate, एक tool-call gate नहीं। |
-| `require-no-conflicts-before-stop` | hard | | एक session-completion gate, एक tool-call gate नहीं। |
-| `require-ci-green-before-stop` | hard | | एक session-completion gate, एक tool-call gate नहीं। |
+| `protect-env-vars` | समीक्षण योग्य | `env-secrets-dump`, `secret-exposure` | पैटर्न किसी भी चर संदर्भ पर फायर करता है; Jev पूछता है कि क्या गुप्त मान वास्तव में प्रिंट होंगे। |
+| `block-env-files` | समीक्षण योग्य | `secret-exposure` | पैटर्न किसी भी `.env` पथ से मेल खाता है, टेम्प्लेट सहित; Jev पूछता है कि क्या वास्तविक गुप्त मान पढ़े या लिखे जाएंगे। |
+| `block-read-outside-cwd` | समीक्षण योग्य | `read-outside-workspace` | वास्तविक ट्रैफिक पर शोर के रूप में मापा जाता है; Jev पूछता है कि क्या प्रोजेक्ट के बाहर की फाइल सामग्री पढ़ी जाती है। एक पठन उपयोगकर्ता ने पूछा, या एक जांच में कोई नहीं पाता, स्पष्ट होता है; एक अनुरोधित पठन यह इसे फ्लैग करता है ब्लॉक रखता है। |
+| `warn-git-amend` | समीक्षण योग्य | `git-history-rewrite` | एक अनपुश किए गए कमिट में संशोधन साधारण है; नुकसान दूसरों के इतिहास को फिर से लिखना है जो पुश कर सकते हैं। |
+| `warn-destructive-sql` | समीक्षण योग्य | `database-destruction` | Jev यह भी पूछता है कि क्या लक्ष्य एक वास्तविक डेटाबेस है एक डिस्पोजेबल परीक्षण के बजाय। |
+| `warn-global-package-install` | समीक्षण योग्य | `system-modification` | एक ही चिंता: प्रोजेक्ट के बाहर मशीन को बदलना। |
+| `block-failproofai-commands` | कठोर | | `alwaysOn` स्व-संरक्षण। कभी समीक्षण योग्य नहीं। |
+| `block-rm-rf` | समीक्षण योग्य | `destructive-deletion` | पथ-गहराई अनुमान `rm -rf node_modules` को गलत प्राप्त करता है; Jev पूछता है कि क्या जो नष्ट होगा वह पुनर्जन्मयोग्य है। `rm -rf /` दोनों जांचों को सच रखता है। |
+| `block-sudo` | कठोर | | प्राधिकार वृद्धि। |
+| `block-curl-pipe-sh` | कठोर | | इंटरनेट से डाउनलोड किए गए कोड को चलाता है। |
+| `block-push-master` | कठोर | | एक सुरक्षित शाखा पर सीधे धकेलता है। |
+| `block-work-on-main` | कठोर | | `commit-on-protected-branch` बिल्कुल इस चिंता को कवर करता है लेकिन निर्देश-मोड है, इसलिए यह कभी भी अस्वीकार का उत्तर नहीं दे सकता, और कोई अन्य जांच इसे कवर नहीं करता। |
+| `block-force-push` | समीक्षण योग्य | `git-history-rewrite` | Jev की जांच मैचर का एक सुपरसेट है और `--force-with-lease` की गिनती करता है; जो स्पष्ट करता है वह अपनी स्वयं की शाखा को बल से धकेलना है। |
+| `block-secrets-write` | समीक्षण योग्य | `secret-exposure` | पथ मैच अनंकित है, इसलिए `src/auth/credentials.ts` पकड़ा जाता है; Jev पूछता है कि क्या वास्तविक कुंजी सामग्री लिखी जा रही है। |
+| `block-kubectl` | समीक्षण योग्य | `production-infra-change` | पूरी CLI को अस्वीकार करता है, केवल-पढ़ने वाले सबकमांड सहित; Jev पूछता है कि क्या कॉल म्यूट करता है और क्या लक्ष्य उत्पादन है। |
+| `block-terraform` | समीक्षण योग्य | `production-infra-change` | समान: `terraform plan` और `validate` को स्पष्ट करता है। |
+| `block-aws-cli` | समीक्षण योग्य | `production-infra-change` | समान: `aws s3 ls`, `aws sts get-caller-identity` को स्पष्ट करता है। |
+| `block-gcloud` | समीक्षण योग्य | `production-infra-change` | समान: `gcloud auth list`, `gcloud config list` को स्पष्ट करता है। |
+| `block-az-cli` | समीक्षण योग्य | `production-infra-change` | समान: `az account show` को स्पष्ट करता है। |
+| `block-helm` | समीक्षण योग्य | `production-infra-change` | समान: `helm list`, `helm status` को स्पष्ट करता है। |
+| `block-gh-pipeline` | कठोर | | पाइपलाइन, विलय और गुप्त परिवर्तन को ट्रिगर करता है। |
+| `warn-git-stash-drop` | कठोर | | कोई सिमेंटिक जांच स्टैश किए गए काम को त्यागने को कवर नहीं करता। |
+| `warn-git-clean` | कठोर | | `destructive-deletion` चिंता को कवर करता है लेकिन प्रदर्शनी से इसे फायर नहीं कर सकता: `git clean` कोई पथ नाम नहीं देता, इसलिए इसकी `irreplaceable` जांच का आंकलन करने के लिए कुछ नहीं है और कम उत्तर देता है, और साक्ष्य एक नीति की जांचों पर न्यूनतम है। एक जांच जो पूछी जाती है और फायर नहीं करती वर्डिक्ट को स्पष्ट करती है, इसलिए यहां युग्मन नीति को बंद कर देता है। |
+| `warn-all-files-staged` | कठोर | | कोई सिमेंटिक जांच कवर नहीं करता कि एक विस्तृत `git add` क्या उठाता है। |
+| `warn-schema-alteration` | कठोर | | `database-destruction` डेटा को गिराना कवर करता है, स्कीमा को संशोधित नहीं करता। |
+| `warn-package-publish` | कठोर | | प्रकाशन अपरिवर्तनीय है और कोई सिमेंटिक जांच इसे कवर नहीं करता। |
+| `prefer-package-manager` | कठोर | | एक टीम सम्मेलन, सुरक्षा निर्णय नहीं। |
+| `warn-large-file-write` | कठोर | | एक आकार थ्रेसहोल्ड, एक निर्णय Jev नहीं दे सकता। |
+| `warn-background-process` | कठोर | | कोई सिमेंटिक जांच अलग प्रक्रियाओं को कवर नहीं करता। |
+| `warn-repeated-tool-calls` | कठोर | | कॉलों की गिनती करता है; Jev नहीं कर सकता। |
+| `sanitize-jwt` | कठोर | | टूल आउटपुट को रीडैक्ट करता है; टूल-कॉल गेट नहीं। |
+| `sanitize-api-keys` | कठोर | | टूल आउटपुट को रीडैक्ट करता है; टूल-कॉल गेट नहीं। |
+| `sanitize-connection-strings` | कठोर | | टूल आउटपुट को रीडैक्ट करता है; टूल-कॉल गेट नहीं। |
+| `sanitize-private-key-content` | कठोर | | टूल आउटपुट को रीडैक्ट करता है; टूल-कॉल गेट नहीं। |
+| `sanitize-bearer-tokens` | कठोर | | टूल आउटपुट को रीडैक्ट करता है; टूल-कॉल गेट नहीं। |
+| `require-commit-before-stop` | कठोर | | एक सत्र-समापन गेट, टूल-कॉल गेट नहीं। |
+| `require-push-before-stop` | कठोर | | एक सत्र-समापन गेट, टूल-कॉल गेट नहीं। |
+| `require-pr-before-stop` | कठोर | | एक सत्र-समापन गेट, टूल-कॉल गेट नहीं। |
+| `require-no-conflicts-before-stop` | कठोर | | एक सत्र-समापन गेट, टूल-कॉल गेट नहीं। |
+| `require-ci-green-before-stop` | कठोर | | एक सत्र-समापन गेट, टूल-कॉल गेट नहीं। |
 
-## Semantic policy names
+## सिमेंटिक नीति नाम
 
-ये checks हैं जो `FailproofAI/jev-policies` declare करता है, और values जो `reviewedBy` एक बार यह install होने के बाद accept करता है। Failproof AI स्वयं उनमें से कोई नहीं ship करता है: उस pack के बिना (या एक और जो ये names declare करता है), कोई policy जो उन्हें name करती है reviewable नहीं हो सकती है। हर एक एक check है जो Jev अपने सामने tool call के बारे में जवाब देता है। **Mode** यह है कि एक check क्या जवाब दे सकता है: एक `deny` check strong evidence पर block करता है, जबकि एक `instruct` check केवल कभी warn करता है। दोनों policy के deny को standing रखते हैं जब यह fire होता है और user ने call के लिए ask नहीं किया है। **User can override** कहता है कि मानव की अपनी explicit request इसे clear करती है या नहीं।
+ये वे जांचें हैं जो `FailproofAI/jev-policies` घोषित करता है, और मान जो `reviewedBy` स्वीकार करता है जब यह स्थापित होता है। Failproof AI अपने आप में उनमें से कोई नहीं भेजता: बिना उस पैक (या इन नामों को घोषित करने वाले दूसरे के बिना), कोई भी पॉलिसी उन्हें नाम देना समीक्षण योग्य नहीं है। प्रत्येक एक जांच है Jev इसके सामने टूल कॉल के बारे में उत्तर देता है। **मोड** यह है कि एक जांच क्या उत्तर दे सकती है: एक `deny` जांच मजबूत साक्ष्य पर ब्लॉक करता है, जबकि एक `instruct` जांच केवल चेतावनी देता है। या तो नीति की अस्वीकृति को खड़ा रखता है जब यह फायर करता है और उपयोगकर्ता ने कॉल के लिए नहीं पूछा। **उपयोगकर्ता ओवरराइड कर सकता है** यह कहता है कि क्या मानव का स्वयं का स्पष्ट अनुरोध इसे स्पष्ट करता है।
 
-Jev बिल्कुल [Jev checks](/hi/policies/publish-a-pack#jev-checks-in-a-pack) ask करता है जो installed packs declare करते हैं, और वे names हैं जो `reviewedBy` accept करता है। एक नाम जो दो packs अलग-अलग declare करते हैं किसी के लिए भी honored नहीं है। इन सोलह names में से एक pack द्वारा declare किया गया है जो FailproofAI repository से install नहीं है, उस pack में ignored है: इसका version कभी ask नहीं होता है और FailproofAI के अपने को contest नहीं करता है, इसलिए एक third-party pack core pack की policies को clear करने वाला check नहीं बन सकता है न ही इन checks में से एक को switch off कर सकता है। एक unreadable pack list, या एक pack जिसका हर check unusable है, Jev को कुछ भी ask करने के लिए नहीं छोड़ता है।
+Jev बिल्कुल उन [Jev जांचों](/hi/policies/publish-a-pack#jev-checks-in-a-pack) को पूछता है जो स्थापित पैक घोषित करते हैं, और वे नाम हैं `reviewedBy` स्वीकार करता है। एक नाम जो दो पैक अलग तरीके से घोषित करते हैं, उसका सम्मान नहीं किया जाता है। इन सोलह नामों में से एक जो एक पैक FailproofAI रिपोजिटरी से स्थापित नहीं से घोषित करता है वह उस पैक में अनदेखा किया जाता है: इसका संस्करण कभी नहीं पूछा जाता है और Failproof AI के अपने के विरुद्ध प्रतिस्पर्धा नहीं करता, इसलिए एक तीसरे पक्ष का पैक न तो मुख्य पैक की नीतियों को स्पष्ट करने वाली जांच बन सकता है और न ही इनमें से एक को बंद कर सकता है। एक अपठनीय पैक सूची, या एक पैक जिसकी हर जांच अनुपयोगी है, Jev को पूछने के लिए कुछ नहीं छोड़ता है।
 
-| Name | Mode | User can override | Jev क्या check करता है |
+| नाम | मोड | उपयोगकर्ता ओवरराइड कर सकता है | Jev क्या जांचता है |
 | --- | --- | --- | --- |
-| `destructive-deletion` | deny | yes | Permanently data को delete करना जो regenerate नहीं हो सकता है। |
-| `production-infra-change` | deny | yes | Live infrastructure को change करना। |
-| `git-history-rewrite` | deny | yes | Shared git history को rewrite या discard करना। |
-| `push-to-protected-branch` | instruct | yes | सीधे protected branch में push करना। |
-| `commit-on-protected-branch` | instruct | yes | सीधे protected branch पर commit करना। |
-| `secret-exposure` | deny | yes | Credentials को read या copy करना। |
-| `credential-exfiltration` | deny | no | Machine से secrets या private files को बाहर भेजना। |
-| `remote-code-execution` | deny | yes | Internet से downloaded code को run करना। |
-| `privilege-escalation` | deny | yes | Elevated privileges के साथ run करना। |
-| `database-destruction` | deny | yes | Database data को destroy या mass-modify करना। |
-| `read-outside-workspace` | instruct | yes | Project के बाहर files को read करना। |
-| `agent-config-tampering` | deny | no | Agent के अपने safety configuration को change करना। |
-| `system-modification` | instruct | yes | System को project के बाहर change करना। |
-| `env-secrets-dump` | instruct | yes | Environment secrets को print करना। |
-| `external-destructive-action` | deny | yes | एक external tool के माध्यम से एक irreversible action। |
-| `external-data-egress` | instruct | yes | Private data को एक external tool में भेजना। |
+| `destructive-deletion` | अस्वीकार | हाँ | स्थायी रूप से डेटा को हटाना जो पुनर्जन्मित नहीं हो सकता। |
+| `production-infra-change` | अस्वीकार | हाँ | लाइव बुनियादी ढांचे को बदलना। |
+| `git-history-rewrite` | अस्वीकार | हाँ | साझा git इतिहास को फिर से लिखना या त्यागना। |
+| `push-to-protected-branch` | निर्देश | हाँ | एक सुरक्षित शाखा पर सीधे धकेलना। |
+| `commit-on-protected-branch` | निर्देश | हाँ | एक सुरक्षित शाखा पर सीधे प्रतिबद्ध होना। |
+| `secret-exposure` | अस्वीकार | हाँ | साख को पढ़ना या कॉपी करना। |
+| `credential-exfiltration` | अस्वीकार | नहीं | गुप्त या निजी फाइलों को मशीन के बाहर भेजना। |
+| `remote-code-execution` | अस्वीकार | हाँ | इंटरनेट से डाउनलोड किए गए कोड को चलाना। |
+| `privilege-escalation` | अस्वीकार | हाँ | उन्नत विशेषाधिकार के साथ चलाना। |
+| `database-destruction` | अस्वीकार | हाँ | डेटाबेस डेटा को नष्ट करना या सामूहिक-संशोधित करना। |
+| `read-outside-workspace` | निर्देश | हाँ | प्रोजेक्ट के बाहर फाइलें पढ़ना। |
+| `agent-config-tampering` | अस्वीकार | नहीं | एजेंट के स्वयं के सुरक्षा कॉन्फ़िगरेशन को बदलना। |
+| `system-modification` | निर्देश | हाँ | प्रोजेक्ट के बाहर सिस्टम को बदलना। |
+| `env-secrets-dump` | निर्देश | हाँ | पर्यावरण गुप्त को प्रिंट करना। |
+| `external-destructive-action` | अस्वीकार | हाँ | एक बाहरी टूल के माध्यम से एक अपरिवर्तनीय कार्य। |
+| `external-data-egress` | निर्देश | हाँ | बाहरी टूल को निजी डेटा भेजना। |

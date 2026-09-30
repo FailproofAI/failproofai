@@ -1,28 +1,28 @@
 ---
 title: "Avaliações Jev"
-description: "Use Jev para pontuar uma sessão finalizada em relação a uma pergunta com respostas conhecidas."
+description: "Use o Jev para pontuar uma sessão finalizada em relação a uma pergunta com respostas conhecidas."
 icon: "list-checks"
 ---
 
-Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use quando a resposta é conhecida de antemão, como "O cliente expressou urgência?" ou "Quão frustrado estava o cliente?". Ela ajuda a identificar padrões entre execuções; não interrompe uma chamada de ferramenta. Para decisões tomadas **antes** de uma ferramenta ser executada, use [políticas Jev](/pt-br/policies/jev).
+Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use-a quando a resposta é conhecida de antemão, como "O cliente expressou urgência?" ou "Qual foi o nível de frustração do cliente?" Ela ajuda a identificar padrões entre execuções; não interrompe chamadas de ferramentas. Para decisões tomadas **antes** de uma ferramenta ser executada, use [políticas Jev](/pt-br/policies/jev).
 
 ## Crie uma no dashboard
 
 1. Abra **Analyze → eval authoring** e selecione **new eval**.
 2. Descreva uma pergunta e suas possíveis respostas. Por exemplo: "O agente prometeu reembolso antes de verificar a política de reembolso? Responda sim ou não." Selecione **draft** e verifique se o resultado é uma pontuação de classificador.
-3. [Teste-a](/pt-br/evaluations/test) em sessões recentes, depois [implante-a](/pt-br/evaluations/deploy). Novas sessões concluídas são pontuadas; use o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) se também precisar do histórico.
+3. [Teste-a](/pt-br/evaluations/test) em sessões recentes e, em seguida, [implante-a](/pt-br/evaluations/deploy). Novas sessões concluídas serão pontuadas; faça o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) se também precisar do histórico.
 
-![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta de resposta fixa, revisa o rascunho e implanta após os testes. O exemplo mostrado é uma avaliação de código; uma pergunta Jev usa o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
+![O formulário de criação de avaliações compartilhado, onde você descreve uma pergunta de resposta fixa, revisa o rascunho e implanta após os testes. O exemplo exibido é uma avaliação de código; uma pergunta Jev usa o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
 
-O assistente pode escolher entre código, classificação Jev e um [juiz](/pt-br/evaluations/judge). Verifique a escolha dele antes de implantar. Jev fornece uma pontuação sem raciocínio em prosa; escolha um juiz quando precisar de uma explicação. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para tipos de perguntas e limites de pontuação.
+O assistente pode escolher entre código, classificação Jev e um [judge](/pt-br/evaluations/judge). Verifique a escolha feita antes de implantar. O Jev fornece uma pontuação sem raciocínio em prosa; escolha um judge quando precisar de uma explicação. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para tipos de perguntas e limites de pontuação.
 
 ## Leia as pontuações
 
-Abra **Observe → Evaluations** para visualizar o resultado por agente e período. Em um terminal, a CLI Cloud pode ler os mesmos resultados:
+Abra **Observe → Evaluations** para visualizar o resultado por agente e período. Em um terminal, o Cloud CLI pode ler os mesmos resultados:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-A CLI Cloud lê resultados; a criação e a implantação acontecem no dashboard. Consulte a [referência da CLI Cloud](/pt-br/reference/cloud-cli#evaluations) para filtros.
+O Cloud CLI lê os resultados; a criação e a implantação acontecem no dashboard. Consulte a [referência do Cloud CLI](/pt-br/reference/cloud-cli#evaluations) para filtros.

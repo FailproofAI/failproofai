@@ -1,45 +1,45 @@
 ---
-title: "Jev-Policies"
-description: "Füge Jevs Live-Review zu überwachten Tool-Aufrufen hinzu und prüfe sie, bevor ihre Entscheidungen durchgesetzt werden."
+title: "Jev policies"
+description: "Fügen Sie Jevs Live-Überprüfung zu gesperrten Tool-Aufrufen hinzu und prüfen Sie diese, bevor seine Entscheidungen durchgesetzt werden."
 icon: "shield-check"
 ---
 
-Jev liest einen Tool-Aufruf im Kontext dessen, was die Person dem Agenten aufgetragen hat. Nutze es, wenn eine zeichenkettenbasierte Policy gültige Aktionen blockiert oder eine riskante Aktion übersieht, die Kontext erfordert. Es antwortet zusammen mit deinen Policies am `PreToolUse`- oder `PermissionRequest`-Gate. Für eine Bewertung **nach** dem Ende einer Sitzung verwende [Jev-Evaluierungen](/de/evaluations/jev).
+Jev prüft einen Tool-Aufruf im Kontext dessen, was die Person den Agenten zu tun gebeten hat. Verwenden Sie es, wenn eine Richtlinie auf Basis von String-Matching gültige Arbeit blockiert oder eine riskante Aktion übersieht, die Kontext erfordert. Es antwortet zusammen mit Ihren Richtlinien am `PreToolUse`- oder `PermissionRequest`-Gate. Für eine Bewertung **nach** dem Ende einer Sitzung verwenden Sie [Jev-Evaluierungen](/de/evaluations/jev).
 
 ## Im Beobachtungsmodus starten
 
-Installiere Failproof AI und verbinde Hooks mit einem [unterstützten Harness](/de/reference/harnesses). Verwende failproofai 1.0.8-beta.0 oder höher.
+Installieren Sie Failproof AI und hängen Sie Hooks an ein [unterstütztes Harness](/de/reference/harnesses) an. Verwenden Sie failproofai 1.0.8-beta.0 oder höher.
 
-Failproof AI enthält keine Jev-Prüfungen. Installiere sie als Paket, sonst hat Jev nichts zu prüfen und wird nie aufgerufen:
+Failproof AI enthält keine Jev-Prüfungen. Installieren Sie diese als Paket, sonst hat Jev nichts zu prüfen und wird nie aufgerufen:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-Wähle dann, wie Anfragen Jev erreichen:
+Wählen Sie anschließend, wie Anfragen Jev erreichen:
 
 | Route | Erster Schritt |
 | --- | --- |
-| FailproofAI Cloud | Verbinde dich mit einem **Machine**-Schlüssel, der `jev:evaluate` enthält. Auf einem Gerät ohne Jev-Konfiguration aktiviert `failproofai config` Jev im Beobachtungsmodus. |
-| Eigener Anbieter | Öffne im lokalen Dashboard **Einstellungen → Jev**, wähle den Anbieter, füge dessen Token ein und wähle **observe**. Oder führe `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` aus. |
+| FailproofAI Cloud | Verbinden Sie sich mit einem **Machine**-Schlüssel mit der Berechtigung `jev:evaluate`. Auf einem Rechner ohne Jev-Konfiguration aktiviert `failproofai config` Jev im Beobachtungsmodus. |
+| Eigener Anbieter | Öffnen Sie im lokalen Dashboard **Settings → Jev**, wählen Sie den Anbieter, fügen Sie dessen Token ein und wählen Sie **observe**. Oder führen Sie `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` aus. |
 
-![Die Jev-Einstellungen im lokalen Dashboard: Anbieter, Endpunkt, Token und Beobachtungsmodus, bevor Jev aktiviert wird.](/images/dashboard/jev-settings.png)
+![Die Jev-Einstellungen des lokalen Dashboards: Anbieter, Endpunkt, Token und Beobachtungsmodus, bevor Jev aktiviert wird.](/images/dashboard/jev-settings.png)
 
 ```bash
 failproofai jev status
 failproofai jev test
 ```
 
-`test` prüft den Endpunkt. Um den Hook-Pfad zu prüfen, weise einen verbundenen Agenten an, sein Datei-Lese-Tool auf `README.md` anzuwenden. Stelle sicher, dass dieser Tool-Aufruf in der Sitzung erscheint, und prüfe dann **Policies → Activity** im [lokalen Dashboard](/de/reference/local-dashboard#review-policy-activity). Die Jev-Zählung in `status` sollte steigen. Der Beobachtungsmodus zeichnet auf, wie Jev entschieden hätte, während dein bestehendes Policy-Ergebnis weiterhin gilt.
+`test` prüft den Endpunkt. Um den Hook-Pfad zu überprüfen, bitten Sie einen eingebundenen Agenten, sein Datei-Lese-Tool auf `README.md` anzuwenden. Vergewissern Sie sich, dass dieser Tool-Aufruf in der Sitzung erscheint, und prüfen Sie dann **Policies → Activity** im [lokalen Dashboard](/de/reference/local-dashboard#review-policy-activity). Der Jev-Zähler in `status` sollte sich erhöhen. Der Beobachtungsmodus zeichnet auf, was Jev entschieden hätte, während das bisherige Richtlinienergebnis weiterhin gilt.
 
-## Entscheiden, wann durchgesetzt werden soll
+## Entscheiden, wann durchgesetzt wird
 
-Eine **harte** Policy hat immer das letzte Wort. Jev kann ein Deny nur von einer Policy aufheben, die ausdrücklich als **reviewable** markiert ist, und nur, wenn das zugehörige Anliegen dieser Policy geprüft wurde. Lies [Policy-Autorität](/de/policies/authority), bevor du dich auf eine Freigabe verlässt. Jev kann auch eigenständig warnen oder ablehnen. Wenn keine Antwort möglich ist, entscheidet das Policy-Ergebnis über den jeweiligen Aufruf.
+Eine **harte** Richtlinie hat immer das letzte Wort. Jev kann ein Deny nur bei einer Richtlinie aufheben, die explizit als **reviewable** markiert ist, und nur dann, wenn es das benannte Anliegen dieser Richtlinie geprüft hat. Lesen Sie [Richtlinien-Autorität](/de/policies/authority), bevor Sie sich auf eine Freigabe verlassen. Jev kann auch eigenständig warnen oder ablehnen. Kann es nicht antworten, entscheidet das Richtlinienergebnis über diesen Aufruf.
 
-Sobald die Beobachtungsergebnisse korrekt aussehen, wechsle in den Durchsetzungsmodus unter **Einstellungen → Jev** oder führe folgendes aus:
+Sobald die Beobachtungsergebnisse korrekt aussehen, wechseln Sie in **Settings → Jev** in den Durchsetzungsmodus oder führen Sie Folgendes aus:
 
 ```bash
 failproofai jev setup --mode enforce
 ```
 
-Informationen zu Anbieter-URLs, Cloud-Schlüsseln, Konfiguration, Fallbacks und den mit jeder Anfrage gesendeten Daten findest du in der [Jev-Integrationsreferenz](/de/reference/jev).
+Informationen zu Anbieter-URLs, Cloud-Schlüsseln, Konfiguration, Fallbacks und den mit jeder Anfrage gesendeten Daten finden Sie in der [Jev-Integrationsreferenz](/de/reference/jev).

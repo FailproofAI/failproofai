@@ -1,12 +1,12 @@
 ---
 title: "Évaluer les agents"
-description: "Notez chaque session terminée avec des évaluations que vous définissez : vérifications Python hébergées ou juges LLM dans votre propre worker."
+description: "Notez chaque session terminée avec des évaluations que vous définissez : vérifications Python hébergées, ou juges LLM dans votre propre worker."
 icon: "gauge"
 ---
 
-Une évaluation attribue une note à une session d'agent terminée. Lorsqu'une session se termine, chaque évaluation activée qui lui est applicable s'exécute et enregistre ce qu'elle a trouvé, avec un raisonnement que vous pouvez lire à côté de la trace :
+Une évaluation attribue une note à une session d'agent terminée. Lorsqu'une session se termine, chaque évaluation activée qui lui est applicable s'exécute et enregistre ses résultats, avec un raisonnement que vous pouvez consulter à côté de la trace :
 
-- un **score** de 0 à 1, éventuellement marqué réussi ou échoué
+- un **score** de 0 à 1, éventuellement marqué comme réussi ou échoué
 - une **métrique**, telle qu'un comptage, une durée ou un coût, avec son unité
 - une **assertion**, qui a réussi ou non
 
@@ -14,41 +14,31 @@ Une évaluation attribue une note à une session d'agent terminée. Lorsqu'une s
 
 | | Python hébergé | Votre propre worker |
 | --- | --- | --- |
-| Écrit | Dans le tableau de bord, sous **Analyse → création d'évaluations** | En Python, avec l'[SDK Évaluateur](/fr/reference/evaluator-sdk) |
-| S'exécute | Sur l'évaluateur géré de Failproof AI, dans un sandbox | Sur votre infrastructure |
-| Idéal pour | Les vérifications déterministes, et celles basées sur un modèle que nous hébergeons pour vous | Les packages, les secrets, votre propre réseau, les modèles que vous hébergez vous-même, les traitements lourds |
+| Rédigé | Dans le tableau de bord, sous **Analyze → eval authoring** | En Python, avec le [SDK Évaluateur](/fr/reference/evaluator-sdk) |
+| S'exécute | Sur l'évaluateur géré de Failproof AI, dans un bac à sable | Sur votre infrastructure |
+| Idéal pour | Vérifications déterministes basées sur du code | Juges LLM, appels de modèles, packages, secrets, accès réseau, traitement intensif |
 
-Les évaluations hébergées se présentent sous trois formes, et l'assistant choisit entre elles pour vous :
-
-| | Lit la session avec | Vous fournit |
-| --- | --- | --- |
-| **Code** | rien — une seule expression Python, sans imports, sans réseau | un score, une métrique ou une assertion |
-| **[Classificateur Jev](/fr/evaluations/jev)** | un petit modèle conçu pour la classification | un score, et rien d'autre — il ne s'explique pas |
-| **[Juge](/fr/evaluations/judge)** | un modèle à usage général | un score **et** le raisonnement qui le sous-tend |
-
-Le code ne coûte rien à exécuter. Les deux autres consomment un appel de modèle par session, alors donnez-leur une condition qui les limite aux sessions concernées par la question.
-
-Votre propre worker reste la solution adaptée lorsqu'une évaluation a besoin de quelque chose que nous n'hébergeons pas : un package, un secret, votre propre réseau ou un modèle que vous exécutez vous-même. Aucun des deux types ne nécessite de connexion entrante : les workers récupèrent les sessions terminées et soumettent les résultats via HTTPS sortant.
+Le Python hébergé est volontairement minimaliste : une seule expression, sans imports, sans réseau. Tout ce qui nécessite un modèle — un juge LLM évaluant la pertinence d'une réponse, par exemple — s'exécute dans votre propre worker à la place. Aucun des deux types ne nécessite de connexion entrante : les workers récupèrent les sessions terminées et soumettent les résultats via HTTPS sortant.
 
 ## Chaque organisation évalue ses propres agents
 
-Les évaluations appartiennent à l'organisation qui les définit. Chaque organisation sur une instance écrit les siennes — ses propres vérifications, conditions, seuils et labels — les versionne et les déploie sans affecter les autres, et ne voit que ses propres résultats. Filtrez ces résultats par agent, environnement, évaluation et période, ou interrogez l'assistant à leur sujet.
+Les évaluations appartiennent à l'organisation qui les définit. Chaque organisation sur une instance rédige les siennes — ses propres vérifications, conditions, seuils et libellés — les versionne et les déploie sans affecter les autres, et ne consulte que ses propres résultats. Filtrez ces résultats par agent, environnement, évaluation et période, ou interrogez l'assistant à leur sujet.
 
 ## Du premier brouillon aux scores en production
 
 <Steps>
   <Step title="Rédigez-la">
-    Décrivez ce qu'il faut mesurer et laissez l'assistant en faire un brouillon, ou rédigez-la vous-même. Voir [Rédiger une évaluation](/fr/evaluations/write).
+    Décrivez ce que vous souhaitez mesurer et laissez l'assistant en rédiger une ébauche, ou écrivez-la vous-même. Voir [Rédiger une évaluation](/fr/evaluations/write).
   </Step>
   <Step title="Testez-la">
-    Exécutez-la sur des sessions réelles avant de la mettre en production ; rien n'est enregistré. Voir [Tester une évaluation](/fr/evaluations/test).
+    Exécutez-la sur de vraies sessions avant sa mise en production ; rien n'est enregistré. Voir [Tester une évaluation](/fr/evaluations/test).
   </Step>
-  <Step title="Déployez-la et gérez ses versions">
-    Déployez une version immuable, publiez de nouvelles versions au fur et à mesure de son évolution, et revenez à une version antérieure si nécessaire. Voir [Déployer et versionner](/fr/evaluations/deploy).
+  <Step title="Déployez-la et versionnez-la">
+    Déployez une version immuable, publiez de nouvelles versions à mesure qu'elle évolue, et revenez à une version antérieure si nécessaire. Voir [Déployer et versionner](/fr/evaluations/deploy).
   </Step>
-  <Step title="Lisez les résultats">
-    Visualisez les scores dans le temps, comparez les agents et les environnements, et interrogez l'assistant. Voir [Lire les résultats d'évaluation](/fr/sessions/evaluations).
+  <Step title="Consultez les résultats">
+    Visualisez les scores dans le temps, comparez les agents et les environnements, et interrogez l'assistant. Voir [Consulter les résultats des évaluations](/fr/sessions/evaluations).
   </Step>
 </Steps>
 
-L'évaluation s'applique vers l'avant : une version déployée maintenant note les sessions qui se terminent à partir de ce moment. Pour noter des sessions déjà existantes, [remplissez-les rétroactivement](/fr/evaluations/deploy#score-sessions-you-already-have).
+L'évaluation s'applique en avance : une version déployée maintenant notera les sessions qui se termineront à partir de ce moment. Pour noter les sessions déjà existantes, [effectuez un remplissage rétrospectif](/fr/evaluations/deploy#noter-des-sessions-existantes).

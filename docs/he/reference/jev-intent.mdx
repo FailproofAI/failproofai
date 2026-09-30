@@ -1,112 +1,112 @@
 ---
-title: " Television intent capture"
-description: "אילו אירועים בקורה מספרים למעריך Jev מה האדם ביקש, באיזה שדה נמצא הטקסט, מה לעולם לא נספר, והסיכון בהסתמכות על הנושא שהועבר על ידי הקורה."
+title: "Jev intent capture"
+description: "אילו אירועים harness מספרים למעריך Jev מה אדם בן תמותה ביקש, באיזה שדה נמצא הטקסט, מה לעולם לא נספר, והסיכון שמגיע מהסתמכות על prompt שמסופק על ידי harness."
 icon: "message-square-quote"
 ---
 
-כאשר אתה משדר את [סקירת Jev](/he/policies/jev), המעריך שופט כל קריאת כלי תחת דלת כנגד **מה בנוי לאדם ביקש**, לא מפני שום טקסט שהקורה שמה לפני הסוכן. תשובה כמו "כן, force-push זה" יכולה לנקות מדיניות **reviewable** — שזה בדיוק הנקודה של המעריך, שכן regex שלא יכול לקרוא את הבקשה חוסם שליש מהעבודה האמיתית.
+כאשר אתה מגדיר [Jev policy review](/he/policies/jev), המעריך שופט כל קריאת tool בשער מול **מה אדם בן תמותה ביקש**, לא מול טקסט כלשהו שה-harness שם לפני ה-agent. תשובה כמו "כן, force-push זה" יכולה לעבור מדיניות **reviewable** — וזו בדיוק כל הנקודה של המעריך, כי regex שלא יכול לקרוא את הבקשה חוסם שליש מהעבודה האמיתית.
 
-הטקסט הזה בא ממקום אחד בלבד: **הנושא שהקורה עצמה מיד לכך שהוקל בו את hook בו prompt-submit**. Failproof AI רושם את החלק שלו שהאדם הקליד — מחזיקות קורה הן מדולדלות, סודות מטבחיים, מכופלות — לתוך קובץ `0600` תחת תיקיית המדינה שלה. שום דבר בדיסק אינו שאול: תמלול ההפעלה הוא קובץ שהסוכן יכול לכתוב מחדש בפקודה אחת, כך שלעולם לא נשאל מי כתב נושא.
+הטקסט הזה בא ממקום אחד: **ה-prompt שה-harness עצמו מעביר לה-hook בעת אירוע prompt-submit שלו**. Failproof AI מתעד את החלק שבן תמותה הקליד — wrapper של harness מבוטל, סודות מעודכנים, מוגבל — לתוך קובץ `0600` תחת ספריית state משלה. שום דבר על הדיסק לא נשאל: תמליל הסשן הוא קובץ שה-agent יכול לכתוב מחדש בפקודה אחת, כך שלעולם לא נשאל מי כתב prompt.
 
-## הסיכון שזה מקבל, בבהירות
+## הסיכון שזה מקבל, בבירור
 
-סוכן שכבר יכול להריץ פקודות יכול לגרום לקורה לשלוח נושא. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` ו-`pi -p` כל אש אותו prompt-submit event, עם אותו עומס, כמו אדם הקלדה, בהפעלה בת שהסוכן שולט בה. זה יכול גם להריץ את binary hook של Failproof AI שלה ולהאכיל לו עומס שכתבה. שום דבר בתוך Failproof AI יכול להבדיל בין שניהם — שניהם הם אותו תוכנית קריאה stdin זהה.
+agent שכבר יכול להריץ פקודות יכול להנחות harness להגיש prompt. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` ו-`pi -p` כולם מפעילים את אותו אירוע prompt-submit, עם אותו payload, כמו אדם שמקליד, בסשן ילד שה-agent שולט בו. זה יכול גם להריץ את binary ה-hook של Failproof AI עצמו ולהזין לו payload שכתב. שום דבר בתוך Failproof AI לא יכול להבדיל בין שניים — שניהם אותה תוכנית קוראת אותו stdin.
 
-**אז סוכן עם shell יכול לזייף את ההסכמה שלו.** זה סחר בכוונה, נלקח ב- 2026-09-23, וכאן שני חצאי זה:
+**אז agent עם shell יכול לזייף את ההסכמה שלו.** זה עסקה בעלת כוונה, שנתקבלה ב-2026-09-23, וזה שני הצדדים שלה:
 
-- **מה זה קונה.** החלופה נבנתה ותוקדקדת: דרישה שדה שבו קורה קוראת לאדם כמו מחבר הנושא, ורשום שום דבר אחרת. לא קורה משלוח שולחת שדה כזה, כך שגרסה זו רשומה **כלום, בכל קורה** — Jev שפט כל קריאה ללא כונה המדינה ולעולם לא יכול לנקות מדיניות אחת. לכידה שלעולם לא יורה היא לא מוצר בטוח יותר, זה לא מוצר.
-- **מה זה לא יכול לעשות.** נושא מוקלט רק על פי כללים כדי נקות מדיניות כבר מסומנת **reviewable**. מדיניות **hard** לעולם אינה נוקה על ידי שום דבר Jev אומר, כך שנושא מזויף לעולם לא יכול להפוך כנסיון קשה לתור — והשמטת hook שיער סוכן שום דבר: הקורה משדרת Failproof AI לקריאת הכלי באופן עצמאי.
-- **מה זה יכול לעשות, בגודל מלא.** הגרוע ביותר שזה יכול לעשות הוא נקות אחת משלוש עשרה מדיניות reviewable שנבנתה — **שתים עשרה מאלה חמש עשרה חוסם**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` ו-שישה בלוקי תשתית-CLI (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) הם denies, כך שהסכמה מזויפת יכולה להפוך כנסיון קשה לתור על הדפסת סודות סביבה, קריאת קובץ `.env`, קריאה מחוץ לפרויקט, `rm -rf`, force-push, כתיבה בקובץ סודות או שינוי תשתית חיה. רק `warn-git-amend`, `warn-destructive-sql` ו-`warn-global-package-install` הם דחיפות. התקנה ברירת מחדל מדליקה שתיים מתוך שתים עשרה, `protect-env-vars` ו-`block-env-files`; עשר האחרים מגיעים רק למחשב שבו מישהו הפעיל אותם. מה אין נושא מגיע הוא הכל קשה — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, שומר העצירה שעוצר סוכן השבתת Failproof AI, וכל built-in אחרת לא מסומנת reviewable. [Policy authority](/he/policies/authority) רשום את כל חמש עשרה ומה כל אחד אחד ביקורי על ידי.
+- **מה זה קונה.** החלופה היתה בנויה ונמדדת: דרוש שדה שבו ה-harness קורא לאדם בן תמותה ככותב ה-prompt, ותעד כלום אחרת. שום harness משיגור לא שולח שדה כזה, כך שהגרסה הזו תעדה **כלום, על כל harness** — Jev שפט כל קריאה ללא כוונה מוצהרת ולעולם לא יכול לנקות מדיניות אחת. capture שלעולם לא מופעל לא הוא מוצר בטוח יותר, הוא אין מוצר.
+- **מה זה לא יכול לעשות.** prompt שנרשם רק אי פעם מנקה מדיניות שכבר מסומנת **reviewable**. מדיניות **hard** לעולם לא מנוקה על ידי כל דבר שJev אומר, אז prompt מזויף לעולם לא יכול להפוך hard deny ל-allow — וביטול ה-hook לא משיג אגנט כלום: ה-harness משדר Failproof AI עבור קריאת ה-tool בנפרד.
+- **מה זה יכול לעשות, בגודל מלא.** הגרוע שזה יכול לעשות הוא לנקות אחת מחמש עשרה המדיניויות reviewable המובנות — ו**שתים עשרה מאלה חמש עשרה חוסמות**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` ושש בלוקי CLI תשתית (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) הם denies, אז הסכמה מזויפת יכולה להפוך deny אמיתי ל-allow על הדפסת סודות סביבה, קריאת קובץ `.env`, קריאה מחוץ לפרויקט, `rm -rf`, force-push, כתיבת קובץ סודות, או שינוי תשתית חיה. רק `warn-git-amend`, `warn-destructive-sql` ו-`warn-global-package-install` הם nudges. התקנה ברירת מחדל מדליקה שניים מתוך שתים עשרה, `protect-env-vars` ו-`block-env-files`; עשרה אחרים מגיעים רק למכונה שבה מישהו הדליק אותם. מה שprompt לא מגיע אליו הוא הכל hard — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, השומר שעוצר agent מהשבתת Failproof AI, וכל built-in אחר לא מסומן reviewable. [Policy authority](/he/policies/authority) מפרטת את כל חמש עשרה ומה כל אחת נבדקת על ידי.
 
-מה עדיין נדחה הוא הכל זול בדוק והסוכן לא יכול להשיג רק על ידי שאלה: תור שעומס הקורה שלה סימן כמו מכונה-מוגש, עומס שם תת-סוכן, session id שאינו שם רגיל, אירוע שאינו prompt-submit, וטקסט שהוא כלום אלא מלח קורה — כולל Failproof AI שלה עצמה עצור-שער מילים, אשר מספר harnesses לאכול חזרה כמו הפנייה הבאה של המשתמש.
+מה שעדיין נדחה הוא כל דבר שזול לבדיקה וש-agent לא יכול להשיג רק בשאלה: תור שpayload שלה-harness עצמו מסומן כmachine-submitted, payload שנותן שם לsub-agent, session id שהוא לא שם פשוט, אירוע שאינו prompt-submit, וטקסט שהוא כלום חוץ ממעטפת harness — כולל המילים stop-gate שלFailproof AI עצמו, שמספר harnesses משובות כתור המשתמש הבא.
 
-## טבלה לכל קורה
+## טבלה לכל harness
 
-"Text field" היא stdin payload שדה לאחר Failproof AI של לכל-קורה normalization. "Recorded" אומר האם נושא נשמר כבקשת האדם.
+"Text field" הוא שדה stdin payload לאחר נורמליזציה לכל harness של Failproof AI. "Recorded" אומר אם ה-prompt נשמר כבקשה של אדם בן תמותה.
 
 | Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | כן, אלא אם כן עומס של `source` שם פנייה שלא הגיש אחד (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, ערך לא ידוע וbuild שלא שולח `source` בכלל כל הם רשומים | session transcript (`transcript_path`) |
-| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | כן | rollout JSONL (`agent_message`, `AgentMessage`) |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | כן, אלא אם ה-`source` של ה-payload קורא לתור שאף אחד לא הגיש (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, ערך לא ידוע וbuild שאינו שולח `source` כלל מתועדים כולם | תמליל הסשן (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | כן | ה-JSONL rollout (`agent_message`, `AgentMessage`) |
 | GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | כן | `events.jsonl` (`assistant.message`) |
-| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | כן, עם `<user_query>` wrapper קלף כאשר זה הנושא כולו | agent transcript JSONL |
-| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | כן — אבל OpenCode הנוכחי אינו נושא טקסט באירוע זה, כך שבפועל כלום לא רשום; חזרה על אותו הודעה רשומה פעם אחת | none (sessions are SQLite) |
-| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | כן, אלא אם כן `input_source` הוא `extension` — של הרחבה אחרת `sendUserMessage()`, שטקסט שלה יכול להיות כתוב דֿ מודל או מגזע רפט | Pi session JSONL |
-| Hermes | `hermes` | none | — | No — Hermes אין לה prompt-submit event בכלל | — |
-| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | כן, אלא אם כן run metadata סימן הרץ כמו מכונה של: `trigger` שאינו `user`, `inputProvenance.kind` שאינו `external_user`, או `senderIsOwner: false` | none (`before_agent_run` אינו נושא transcript path) |
-| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | כן | droid session JSONL |
-| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | כן | none (sessions are SQLite) |
-| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | No — `PreInvocation` שרופה לפני *כל* קריאת מודל בתור וללא prompt טקסט | — |
-| Goose | `goose` | `UserPromptSubmit` | `message` | כן | none (sessions are SQLite) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | כן, עם wrapper ה-`<user_query>` קלוף כאשר זה כל ה-prompt | ה-agent transcript JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | כן — אבל OpenCode הנוכחי לא נושא טקסט באירוע זה, אז בפועל כלום לא מתועד; חזרה על אותה הודעה מתועדת פעם אחת | אין (sessions הן SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | כן, אלא אם `input_source` הוא `extension` — `sendUserMessage()` של extension אחרת, שהטקסט שלה יכול להיות מכתוב על ידי מודל או נגזר מrepo | ה-Pi session JSONL |
+| Hermes | `hermes` | אין | — | לא — Hermes אין לו אירוע prompt-submit כלל | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | כן, אלא אם metadata ההרצה מסמן את ההרצה כשל מכונה: `trigger` אחר מ-`user`, `inputProvenance.kind` אחר מ-`external_user`, או `senderIsOwner: false` | אין (`before_agent_run` לא נושא transcript path) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | כן | ה-droid session JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | כן | אין (sessions הן SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | אין | לא — `PreInvocation` משתלח לפני *כל* קריאת מודל בתור ואינו נושא טקסט prompt | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | כן | אין (sessions הן SQLite) |
 
-שתי harnesses רושם כלום, ובאותה הסיבה בשני המקרים: האירוע שלהם לא משודר טקסט אנושי. Hermes אין לה prompt-submit event — plugin native שלה עוסק `pre_llm_call` עצמה וfirers רק כלי, session ו subagent events. `PreInvocation` של Antigravity שורפת לפני כל קריאת מודל, בתור אנושי וב- חמש שעות בעקבות זה, וללא prompt שדה; hooks יכול גם להחדירות `userMessage` צעדים לתוך אותה קוןmunication. יש כלום באירוע כל אחד כדי רשום.
+שני harnesses לא מתעדים כלום, וממה טעם זהה בשני המקרים: האירוע שלהם לא מסדיר טקסט של אדם בן תמותה. Hermes אין לו אירוע prompt-submit — ה-plugin הנטיבי שלו מטפל ב-`pre_llm_call` בעצמו ומשדר רק tool, session וsub-agent events. `PreInvocation` של Antigravity משתלח לפני כל קריאת מודל, על תור של אדם בן תמותה וב-5 שמתעקבים אחריו, ואינו נושא שדה prompt; hooks יכולים גם להזריק `userMessage` steps לאותה שיחה. אין כלום בשום אירוע לתעד.
 
-## מה עושה נושא האדם
+## מה הופך prompt לשל אדם בן תמותה
 
-1. **The event.** Failproof AI הוזמנה עבור prompt-submit event של הקורה, שה handler canonicalizes ל `UserPromptSubmit`.
-2. **The payload.** הקורה כותבת אותו בstdin של hook, וזה נושא טקסט בשדה שנקרא לעיל. קריאה שמגיעה ל Failproof AI ללא payload רושם כלום.
-3. **Nothing in the payload rules the turn out.** עומס שנקרא תת-סוכן (`agent_id`) הוא הסוכן prompting עצמו. `source`, `input_source` או OpenClaw run marker שנקרא מכונה-מוגשת תור הוא סרב. סימן **absent** לא דולקות כלום — זה ההבדל מהגרסה שרשומה כלום, שכן כל סימן כאן absent על כל shipped build.
-4. **Something is left after the wrapping is stripped** (ראו להלן).
+1. **האירוע.** Failproof AI הוקרא עבור אירוע prompt-submit של ה-harness, שה-handler מנוקד ל-`UserPromptSubmit`.
+2. **ה-Payload.** ה-harness כותב אותו על stdin של ה-hook, והוא נושא את הטקסט בשדה המנוקד למעלה. קריאה שמגיעה ל-Failproof AI ללא ה-payload לא מתעדת כלום.
+3. **כלום ב-payload לא שוללת את התור.** payload שנותן שם לsub-agent (`agent_id`) זהו ה-agent מנחה את עצמו. `source`, `input_source` או OpenClaw run marker שנותן שם לתור machine-submitted נדחה. marker **חסר** לא שוללת כלום — זה ההבדל מהגרסה שלא תעדה כלום, כי כל marker כאן חסר בכל build משיגור.
+4. **משהו נשאר לאחר ממבטל המעטפת** (ראה למטה).
 
-**The session transcript is not evidence of who wrote a prompt.** גרסות קודמות של עמוד זה תיאור סימ-תמלול: נושא נדחה אם תמלול הראה את המודל זמנו, ותמלול היה להמשך זה הקודם ראה נושא. שקישור הוא הלך. תמלול הוא קובץ הסוכן כבר יש shell על — זה יכול להיות קטומה, להוחלפה, padded עבור קרא טווח, snapshot בהתחלה של תור ו restored בסוף, או קבוע יפה שוב עם רשומות הסוכן כתבה. כל סיבוב של hardening היה בעקבות כתיב שונה של אותה forgery, אז הכל מנגנון הוא הוסר במקום repaired.
+**תמליל הסשן אינו ראיות מי כתב prompt.** גרסאות קודמות של דף זה תיארו בדיקת cross-check בתמליל: ה-prompt נדחה אם התמליל הראה את המודל תזמורו, והתמליל היה להמשיך את זה שה-prompt הקודם ראה. הבדיקה הזו נעלמה. תמליל הוא קובץ שה-agent כבר יש לו shell מעליו — הוא יכול להיות קטע, החלפה, cushioned עבור תקציב קריאה, snapshot בתחילת תור וחזר בסוף, או עשה קריאה טובה שוב עם entries שה-agent כתב. כל סיבוב של hardening הוסבר על ידי איות נוסף של אותה forgery, אז כל המנגנון הוסר במקום שלא תוקן.
 
-התמלול עדיין קרא ל דבר אחד: **הסוכן של אחרון גלוי הודעה**. הודעה ש היא סוכן כתבה בהגדרה, Jev מוזהר כמו כן, וזה לעולם לא הסכמה בעצמו.
+התמליל עדיין קראו לדבר אחד: **ההודעה האחרונה הגלויה של ה-agent**. הודעה זו כתובה על ידי agent בהגדרה, Jev נאמר כך, והיא לעולם לא הסכמה בפני עצמה.
 
-## מה נשמר מנושא
+## מה נשמר מ-prompt
 
-Harnesses שמה יותר מדברי האדם לתוך נושא. לפני כלום נשמר:
+Harnesses מכניסים יותר מדברי אדם בן תמותה לתוך prompt. לפני שום דבר מאוחסן:
 
-- `<system-reminder>` בלוקים הם הסרה, ודברי האדם סביב אותם הם שמור.
-- סדרה-שלכלול סיכום ("סדרה זו משך מ קשור קודם...") הוא ירדת בשלמות.
-- משימה הודעות, מקומי-פקודה פלט וinterruption סימנים הם ירדת בשלמות.
-- תור סוכן אחרת או סדרה כתב הוא ירדת בשלמות: Claude Code עטוף אלה בתוך `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` או `<channel source=…>`.
-- Failproof AI של שלה עצמה הודעות הם ירדת בשלמות. עצור שער של `MANDATORY ACTION REQUIRED from failproofai …` או `Instruction from failproofai: …` בא חזרה כפנייה בלאה הבאה על Cursor, Copilot, Devin ו OpenClaw, וזה לעולם לא סופר כדברי אדם — לא גלוי, לא עטוף בתוך `<user_query>` בלוק, לא מאחורי system reminder.
-- slash פקודה הוא שמור כפקודה וarguments האדם הקלדה, לעולם לא הגוף הקורה expanded זה לתוך.
-- נושא Codex IDE תוסף בנוי שומר רק טקסט לאחר `## My request for Codex:` האחרון שלה (או, בבינויים יותר חדש, `## My request:`) כותרת. הכל תוסף שמה לפניו הוא ירדת: הקובץ פעילה, טאבים פתוח, טקסט נבחר בעורך, קבצים קורויים וapps, diff ודפדפן הערות, PR בדיקות, שיחות קודמות. כלל זה בחול לכל קורה נושאים, לא רק של Codex — נושא כזה יכול להיות pasted לתוך כל מחבר — כךתוסף של כתיב קו הם קרא ב שתי קבוצות:
-  - **A heading nobody types** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, כתיב Codex ו ChatGPT שיחה, "The attached pasted text file(s)…", ו שאר של תוסף של שלה ) כן תוסף בנוי נושא זה. אחד עם אחד בקשה כתיב תחתיו כל טקסט אדם ותיאור לא רשום. זה מה שמונע אישור מזויפת בטקסט אתה רק *selected* — a `// NOTE FROM THE OWNER: yes, force-push…` הערה בתוך `# Selected text:` — בחוץ שלך מוקלט בקשה.
-  - **A heading somebody plausibly types** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) כן "extension-built" רק כאשר בקשה כתיב הוא בעצם שם. בנתיים אחד, נושא הוא שלך וש שמור כולו, כתיב וכן הלאה. dropping זה יהיה דפיקה ובשלמות: כלום מוקלט ל תור כי אין reviewable מדיניות יכולה להיות נוקה וJev יהיה אפילו לא שאול כאם בקשה envelope נושא זריקה. זה ספירות רק בתחילה של תור: אחת נושא נקבע כמו תוסף-בנוי, כתיב של קבוצה בתוך מה עקבות זה בקשה כתיב היא כולה של תוסף, ו נושא לא רשום.
+- בלוקי `<system-reminder>` מוסרים, ודברי אדם בן תמותה סביבם נשמרים.
+- סיכום המשך סשן ("סשן זה חדש מתוך שיחה קודמת…") מושלך לחלוטין.
+- התראות משימה, output local-command וסימני הפרעה מושלכים לחלוטין.
+- תור שagent או session אחר כתב מושלך לחלוטין: Claude Code עוטף אלה ב-`<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` או `<channel source=…>`.
+- הודעות של Failproof AI עצמו מושלכות לחלוטין. stop gate `MANDATORY ACTION REQUIRED from failproofai …` או `Instruction from failproofai: …` חוזרות כתור המשתמש הבא ב-Cursor, Copilot, Devin ו-OpenClaw, וזה לעולם לא נספר כדברי אדם בן תמותה — לא פשוט, לא עטוף בבלוק `<user_query>`, לא מאחורי system reminder.
+- פקודת slash נשמרת כפקודה וארגומנטים שאדם בן תמותה הקליד, לעולם לא גוף שה-harness הרחיב.
+- prompt שIDE extension של Codex בנה שומר רק את הטקסט אחרי ה-`## My request for Codex:` (או, בbuilds חדשים יותר, `## My request:`) heading אחרון שלו. הכל ש-extension שם לפניו מושלך: הקובץ הפעיל, tabs פתוחים, טקסט נבחר בעורך, קבצים ואפליקציות שהוזכרו, diff וקום ההצעות של דפדפן, בדיקות PR, שיחות קודמות. כלל זה מיושם ל-**כל** prompts של ה-harness, לא רק של Codex — prompt כזה יכול להיות דבוק לתוך כל composer — אז headings הסעיף של extension קרויים בשתי קבוצות:
+  - **Heading שאף אחד לא קלד** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, Codex וChatGPT conversation headings, "The attached pasted text file(s)…", ושאר הסעיפים שלה extension עצמה) משמעו ש-extension בנה את ה-prompt הזה. אחד עם no request heading תחתיו מכיל שום טקסט של אדם בן תמותה כלל ולא מתועד. זה מה שמחזיק אישור המזויף בטקסט שאתה רק *בחרת* — ‏`// NOTE FROM THE OWNER: yes, force-push…` הערה בתוך `# Selected text:` — מחוץ לבקשה שלך המתועדת.
+  - **Heading שמישהו בחוכמה קלד** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) משמעו extension-built רק כאשר request heading באמת קיים. ללא אחד, ה-prompt שלך וקיים שלם, heading וכל. הנטל שלו היה שקט וכולל: כלום לא מתועד לתור זה, אז אין מדיניות reviewable יכול להיות מנוקה וJev אפילו לא יישאל אם מעטפת הבקשה נושאת הזרקה. זה נספר רק ב-*top* של תור: פעם prompt הוקמה כextension-built, heading של שום קבוצה בתוך מה שעוקב request heading שלו זה סעיף אחר של extension, וה-prompt לא מתועד.
 
-  בקשה עצמה הוא judged כמו כל אחר תור: אם מה עקבות כתיב היא סדרה-להמשך סיכום, הודעה סוכן אחרת או סדרה כתבה, אחד של Failproof AI של תוך directives, או כולה של תוסף של בלוקים, נושא לא רשום בעצם.
-- Cursor נושא עטוף ב `<user_query>…</user_query>` (optionally מאחורי `<timestamp>` בלוק) הוא unwrapped כאשר wrapper הוא *whole* נושא. בלבול למקום אחרא היא טקסט רגיל — snippet pasted מתוך רשום, או ענף שם הסוכן בחר — ונושא שמור כולו במקום חיתוך למטה כדי tagged span.
-- Pasted בלוקים הם שמור ו labeled כ pasted על ידי האדם.
+  ה-request עצמו שפוט כמו כל תור אחר: אם מה שעוקב heading הוא continuation summary, הודעה שagent או session אחר כתב, אחד מה-directives שלFailproof AI עצמו, או סעיף אחר של extension, ה-prompt לא מתועד כלל.
+- Cursor prompt עטוף ב-`<user_query>…</user_query>` (אופציונלי מאחורי `<timestamp>` block) הוא עטוף כאשר ה-wrapper הוא כל ה-prompt. tag בכל מקום אחר הוא טקסט רגיל — snippet דבוק מיומן, או ענף שה-agent בחר — וה-prompt נשמר שלם במקום להיות קטע למטה לטווח התג.
+- בלוקים דבוקים נשמרים ומסומנים כ-pasted על ידי אדם בן תמותה.
 
-נושא זה כלום אלא קורה טקסט לא רשום בעצם.
+prompt שהוא כלום חוץ מטקסט של harness לא מתועד כלל.
 
-## הסוכן של אחרון הודעה
+## ההודעה האחרונה של ה-Agent
 
-תשובה כמו "כן" כן אומר כלום ללא השאלה זה תשובות. כאשר נושא הוא רשום, Failproof AI גם קורא סוכן של אחרון גלוי הודעה מהסדרה transcript **בזה רגע**, וstores זה עם נושא. Jev קבלות זה בעצמו שדה, labeled כמו כתוב על ידי סוכן: זה explains קצר תשובה ולעולם לא סופר כאנושי של בקשה בעצמו. זה ה- אחד דבר תמלול הוא קרא, ו הגרוע ביותר שכתובה מחדש תמלול יכול לעשות הוא שמה הודעה סוכן כתבה כאן הודעה סוכן כתבה הוא משהו דָרוּש.
+תשובה כמו "כן" אומרת כלום ללא השאלה שהיא עונה. כאשר prompt מתועד, Failproof AI גם קורא את ההודעה האחרונה הגלויה של ה-agent מתמליל הסשן **באותו הרגע**, וחנויות עימה. Jev מקבל אותה בשדה משלה, מסומן ככתוב על ידי ה-agent: הוא מסביר תשובה קצרה ולעולם לא נספר כבקשת אדם בן תמותה בפני עצמו. זה הדבר היחיד שהתמליל קרוא, וגרוע ביותר שתמליל כתוב מחדש יכול לעשות הוא שום הודעה שה-agent כתב שבו הודעה שה-agent כתב מצפה.
 
-זה קרא מה הסוף של התמלול, לרובוץ האחרון 4 MB. Supported תמלול פורמטים הם Claude Code, Codex rollouts (קדום `agent_message` אירועים וחדש `AgentMessage` items), Cursor, Copilot `events.jsonl`, ו Pi, Factory ו OpenClaw סדרה JSONL. Claude Code של שלה synthetic ו API-שגיאה הודעות וsubagent (sidechain) הודעות הם skipped. יש אין snapshot ל Goose וOpenCode, שכן סדרות SQLite, ל Devin, שתמלול הוא ה- יחיד JSON מסמך, או ל OpenClaw, שלפניה_agent_run אירוע לא נושא transcript path.
+זה קרוא מה-end של התמליל, ברוב 4 MB. התמליל שנתמך הוא Claude Code, rollouts Codex (ישן יותר `agent_message` events וחדש יותר `AgentMessage` items), Cursor, Copilot `events.jsonl`, ו-Pi, Factory וOpenClaw session JSONL. סינתטי Claude Code וAPI-error messages וsub-agent (sidechain) messages דילוגים. אין snapshot ל-Goose וOpenCode, אשר מחזיקות sessions בSQLite, ל-Devin, אשר transcript הוא JSON document יחיד, או ל-OpenClaw, אשר `before_agent_run` event לא נושא transcript path.
 
 ## אחסון
 
 | Property | Value |
 | --- | --- |
 | Location | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
-| Permissions | file `0600`, directory `0700`. כל תיקייה מעל זה, עד `~/.failproofai`, היא אחזקה ל אותה כלל `jev.json` של תיקייה הוא: אחד זה כל אחד אחר **write** אל יכול להיות renamed משם וhij, כך קרא דרך לוקח אלה write bits כאן אתה יכול, וקורא **nothing** איפה זה יכול לא. נושא מוקלט הוא אז absent במקום זויף, וכלום לא נוקה |
-| Kept per session | האחרון 5 נושאים; נושא זהה ל הקודם עצמו הוא להחליף זה במקום לוקח חדש חריץ |
-| Window | נושאים קדום יותר מ 6 שעות הם התעלמות |
-| Size | כל נושא וסוכן הודעה הוא capped בְ 6,000 תווים, שומר ראש וזנב |
-| Secrets | redacted עם אותו דפוסים כמו `sanitize-*` מדיניויות לפני כלום כתוב. טקסט יותר ארוך מ 48,000 תווים הוא redacted כמו זה הראשון 28,800 ו אחרון 19,200 תווים, וטקסט ליד אלה חתכים, איפה סוד יכול להיות split, לא משמור |
+| Permissions | קובץ `0600`, ספרייה `0700`. כל ספרייה מעליה, עד `~/.failproofai`, מוחזקת לאותו כלל הספרייה `jev.json` הוא: אחד שכל אחד אחר יכול **לכתוב** אליו יכול להיות שם שוני והחלפה, אז נתיב הקריאה לוקח את write bits אלה מאוכלוס היכן שהוא יכול, ו**לא קורא** היכן שהוא לא יכול. prompt שנרשם הוא אז כלום במקום מזויף, ושום דבר לא מנוקה |
+| Kept per session | ה-5 prompts האחרונים; prompt זהה לזה שלפניו מחליף אותו במקום לקחת slot חדש |
+| Window | prompts יותר ישן מ-6 שעות מתעלמים |
+| Size | כל prompt והודעת agent מוגבלים ל-6,000 תווים, ושמרו את הראש והזנב |
+| Secrets | מעודכנים עם אותם דפוסים כמו המדיניויות `sanitize-*` לפני הכל כתוב. טקסט ארוך יותר מ-48,000 תווים מעודכן כ-28,800 הראשון ו-19,200 האחרונים שלו, וטקסט ליד chops אלה, שם סוד יכול להיות split, לא אי פעם מאוחסן |
 
-מזהה סדרה כולל כל דבר אלא אותיות, ספרות, `.`, `_` ו `-`, או יותר ארוך מ 128 תווים, לעולם לא בשימוש כ קובץ שם, כךכלום לא רשום ל זה.
+session ID שמכיל משהו מלבד letters, digits, `.`, `_` ו-`-`, או יותר ארוך מ-128 תווים, לעולם לא משמש כשם קובץ, אז כלום לא מתועד עבורו.
 
-קובץ סדרה קיים רק פעם אחת נושא הוא רשום ב זה. זה עיר נושאים וכלום אחרת — אחרון origin מדינה, אחרון תמלול סימן — וזה מחיקה פעם אחת זה היה שקט ל יותר מ ה שש-שעה חלון, הפעם הבאה חדש סדרה כתיבה זה הראשון נושא.
+session file קיים רק פעם אחת prompt נרשם בתוך. זה מחזיק prompts ושום דבר אחר — לא origin state, לא transcript mark — והוא נמחק פעם שהיה שקט יותר ארוך מ-6-שעה window, בפעם הבאה session חדש כותב את ה-prompt הראשון שלו.
 
-כלום לא רשום אלא אם כן Jev endpoint הוא משדר.
+כלום לא מתועד אלא אם Jev endpoint מגדר.
 
-### פרויקט שורש
+### שורש הפרויקט
 
-"בתוך הפרויקט" — מה `read-outside-workspace` וה אחר דרך בדיקות דון נגד — כן בתוך הפרויקט הסדרה היה ב זה **first reviewed call**. שורש הוא pinned אז וחדש `cd` לעולם לא עוברת זה; `cd` עדיין תשנויות איך יחסית דרך resolves. משך זה עקבות ה `cd` יהיה אפשרות `cd ~/.ssh` ב אחד קריאה קבוע `~/.ssh` הפרויקט ל הבא.
+"בתוך הפרויקט" — מה `read-outside-workspace` וה-path checks אחרים שופטים נגד — משמעו בתוך הפרויקט שה-session היה בו בה-**first reviewed call** שלו. השורש pinned אז ו-later `cd` לעולם לא זוז אותו; `cd` עדיין משנה איך relative path מתפזר. להנחה לו לעקוב אחר ה-`cd` היה להנחה `cd ~/.ssh` בקריאה אחת לעשות `~/.ssh` את הפרויקט לשנייה.
 
-핀 הוא `~/.failproofai/state/semantic/roots/<session-id>.json`, אחזקה `{root, at}`: file `0600`, directory `0700`, וה אותה סדרה-ID כלל כמו לעיל. קבצים קדום מ 7 ימים הם מחיקה כאשר חדש סדרה pins זה שורש. קבצייה `roots` אחרת משתמשים יכול כתוב כדי הוא התעלמות, וה חי תיקייה של שורש הוא משמש. כדי re-pin סדרה, מחק זה קובץ.
+ה-pin הוא `~/.failproofai/state/semantic/roots/<session-id>.json`, מחזיק `{root, at}`: קובץ `0600`, ספרייה `0700`, ואותו session-ID כלל כמו למעלה. קבצים יותר ישן מ-7 ימים מחוקים כאשר session חדש pins את השורש שלו. ספרייה `roots` שזה בו משתמשים אחרים יכול לכתוב אליו מתעלמים, וה-live ספרייה של root משמש במקום. כדי לחזור pin session, מחק את קובץ שלו.
 
-## ידוע גבולות
+## הגבלות ידועות
 
-- **A prompt is only as trustworthy as the hook invocation.** הכל כאן קורא עומס הקורה כתבה בstdin של hook. סוכן שיכול להריץ פקודות יכול להריץ הקורה headlessly (`claude -p` ו שבע אחרים רשום מעל) או להריץ Failproof AI של hook binary עצמה עם עומס זה כתב, וرecord נושא אף אחד typed. זה ה accepted סחר תואר בתחילה של עמוד זה: זה clears reviewable מדיניויות רק, לעולם קשה אחד — אבל שתים עשרה של חמש עשרה reviewable built-ins הם denies, כךמזויף נושא יכול להפוך קשה בלוק לתור ב אלה שתים עשרה.
-- **Sub-agent detection is Claude-shaped.** עומס נושא `agent_id` לעולם לא רשום, בכל קורה. זה ה שדה Claude Code, Factory Droid וDevin יהיה משתמש. Codex fires זה בקשה אירוע בתוך תת-סוכן חוטים, Copilot רץ בתוך-תהליך sidekicks, Goose יש `delegate` כלי ו OpenClaw רץ personas — אף אחד מה סימני עומס בדרך זה recognises, כך תת-סוכן בקשה בסוג harnesses הוא רשום כמו סדרה של שלה. OpenClaw של `openclaw.agentId` הוא **not** זה סימן: shipped plugin סטים זה בכל רץ, הבעלים של כלול.
-- **Schedulers that carry no marker.** Claude Code של `schedule_wakeup` ו `loop_wakeup`, וOpenClaw של `cron` ו `heartbeat` triggers, הם סרב כי אלה harnesses אמור כך בעומס. Goose של שלה עצמה scheduler (`goose schedule add`) ו Codex של `codex exec` אמור כלום, כךרץ אותה התחלה הוא רשום כמו כל אחר.
-- **An agent's last message can be a message the agent chose.** תמלול לא הוא authenticatedevents אז סוכן כתבה זה שלה עצמה תמלול יכול להחליט מה זה "last message" אומר. זה labeled סוכן-כתוב ולעולם clears כלום בעצמו — אבל הערה זה `decide.ts` של v1 דרך אפשר זה מרוצה ה deterministic "did משתמש name זה target" בדוק, אז סוכן זה תחקוקי זה תמלול יכול לספק target שם חציוני צרכים.
-- **A prompt that opens with one of the extension's machine headings is dropped whole.** התחלה נושא עם `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` או אחרת כתיב מכתיב מה קבוצה ראשונה מעל, ולעולם לא כתוב `## My request:` כתיב, וכלום לא רשום ל תור — כך כלום לא נוקה ל זה או. זה deliberate: אלה בלוקים לוקחים טקסט מישהו אחרת תחקוקי (קוד אתה בחרת, סקור של diff הערה, עמוד כותרת), וrecord זה כמו שלך מילים הוא גרוע כשל. Headings מפתח plausibly סוג הם בקבוצה שנייה ולעולם לא טיפול נושא בעצמם.
-- **OpenCode records nothing in practice.** זה `message.updated` אירוע לוקח אחרון טקסט בעתידות OpenCode, וזה גם שורף עבור ילד סדרות זה משימה כלי ביוצרה, שלהן "user" הודעה הסוכן הורה כתבה.
-- **`CODEX_HOME` is not honoured** על ידי ה rollout discovery ב `lib/codex-sessions.ts`. זה משפיע רק איפה סוכן-הודעה snapshot הוא looked, לעולם כן נושא הוא רשום.
+- **prompt בלבד כמו trustworthy כמו hook invocation.** הכל כאן קורא את ה-payload ש-harness כתב על stdin של ה-hook. agent שיכול להריץ פקודות יכול להריץ את ה-harness headlessly (`claude -p` ו-7 אחרים מנוקדים למעלה) או להריץ את binary ה-hook של Failproof AI עצמו עם payload שכתב, וקטן prompt שאף אחד לא קלד. זה עסקה מקובלת תיארה בחלק העליון של דף זה: זה מנקה מדיניויות reviewable בלבד, לעולם לא hard אחת — אבל 12 של 15 built-in reviewable הם denies, אז prompt מזויף יכול להפוך חסימה אמיתית ל-allow על 12 אלה.
+- **Sub-agent detection הוא Claude-shaped.** payload שנושא `agent_id` לעולם לא מתועד, בכל harness. שדה זה Codex Code, Factory Droid וDevin היו משתמשים בו. Codex משתלח את אירוע prompt שלו בתוך sub-agent threads, Copilot משנה in-process sidekicks, Goose יש `delegate` tool וOpenClaw משנה personas — לא אחד מהם מסמן את ה-payload בדרך זה מזהה, אז sub-agent prompt ב-harnesses אלה מתועד כשלה-session שלה. OpenClaw של `openclaw.agentId` **לא** שדה זה: ה-plugin שהושיגור קובע אותו בכל הרצה, של הבעלים כולל.
+- **Schedulers שלא נושאים marker.** Claude Code של `schedule_wakeup` ו-`loop_wakeup`, וOpenClaw של `cron` ו-`heartbeat` triggers, נדחים כי harnesses אלה אומרים כך ב-payload. Goose של scheduler שלה (`goose schedule add`) וCodex של `codex exec` אומרים כלום, אז הרצה שהם מתחילים מתועדת כמו אחרת.
+- **ההודעה האחרונה של agent יכול להיות הודעה שה-agent בחר.** התמליל לא מאומת, אז agent שכותב את התמליל שלה יכול להחליט מה האחרון שלה message אומר. זה מסומן agent-כתוב ולעולם לא מנקה כלום בפני עצמו — אבל ציין כי `decide.ts`'s v1 path להנחה לה להנקות את deterministic "האם המשתמש שם שם זה target" בדוק, אז agent ששולטת תמליל שלה יכולה לספק שם target override צריך.
+- **prompt שפתוח עם אחד מה-machine headings של extension מושלך שלם.** התחל prompt עם `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` או heading סעיף אחר מהקבוצה הראשונה למעלה, ולעולם לא כתב `## My request:` heading, וכלום לא מתועד לתור זה — אז כלום לא מנוקה עבורו גם. זה בעלי כוונה: סעיפים אלה נושאים טקסט מישהו אחר שולטים בו (קוד שבחרת, diff הערת בדוק, כותרת דף), וקטן זה כדברי שלך הוא הכישלון גרוע יותר. Headings מפתח plausibly קלדו בקבוצה שנייה ולעולם לא פיל prompt בפני עצמם.
+- **OpenCode תעדה כלום בפועל.** ה-`message.updated` event שלו לא נושא טקסט בOpenCode הנוכחי, והוא גם משתלח ל-child sessions שה-task tool שלה יוצר, שהודעת המשתמש שלהם agent הורה כתב.
+- **`CODEX_HOME` לא כבדה** על ידי ה-rollout discovery ב-`lib/codex-sessions.ts`. זה משפיע רק היכן snapshot של agent-message מחפש, לעולם אם prompt מתועד.

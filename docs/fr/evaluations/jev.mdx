@@ -1,20 +1,20 @@
 ---
 title: "Évaluations Jev"
-description: "Utilisez Jev pour noter une session terminée en réponse à une question avec des réponses connues."
+description: "Utilisez Jev pour noter une session terminée par rapport à une question avec des réponses connues."
 icon: "list-checks"
 ---
 
-Une évaluation Jev lit une **session terminée** et attribue un score de 0 à 1. Utilisez-la lorsque la réponse est connue à l'avance, par exemple « Le client a-t-il exprimé de l'urgence ? » ou « À quel point le client était-il frustré ? » Elle vous aide à identifier des tendances entre les exécutions ; elle n'interrompt pas un appel d'outil. Pour les décisions prises **avant** l'exécution d'un outil, utilisez les [politiques Jev](/fr/policies/jev).
+Une évaluation Jev lit une **session terminée** et attribue un score de 0 à 1. Utilisez-la lorsque la réponse est connue à l'avance, par exemple : « Le client a-t-il exprimé une urgence ? » ou « Quel était le niveau de frustration du client ? » Elle vous aide à identifier des tendances sur plusieurs exécutions ; elle n'interrompt pas un appel d'outil. Pour les décisions prises **avant** l'exécution d'un outil, utilisez les [politiques Jev](/fr/policies/jev).
 
-## Créer une évaluation dans le tableau de bord
+## En créer une dans le tableau de bord
 
 1. Ouvrez **Analyze → eval authoring** et sélectionnez **new eval**.
-2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de vérifier la politique de remboursement ? Répondre par oui ou non. » Sélectionnez **draft** et vérifiez que le résultat est bien un score de classification.
+2. Décrivez une question et ses réponses possibles. Par exemple : « L'agent a-t-il promis un remboursement avant de vérifier la politique de remboursement ? Répondez par oui ou non. » Sélectionnez **draft** et vérifiez que le résultat correspond bien à un score de classification.
 3. [Testez-la](/fr/evaluations/test) sur des sessions récentes, puis [déployez-la](/fr/evaluations/deploy). Les nouvelles sessions terminées sont notées ; effectuez un [remplissage rétroactif](/fr/evaluations/deploy#score-sessions-you-already-have) si vous avez également besoin de l'historique.
 
-![Le formulaire partagé de création d'évaluation, où vous décrivez une question à réponses fixes, examinez le brouillon et déployez après les tests. L'exemple présenté est une évaluation de code ; une question Jev utilise le même flux de création.](/images/dashboard/eval-authoring-draft.png)
+![Le formulaire partagé d'authoring d'évaluation, où vous décrivez une question à réponse fixe, examinez le brouillon et déployez après les tests. L'exemple présenté est une évaluation de code ; une question Jev utilise le même flux d'authoring.](/images/dashboard/eval-authoring-draft.png)
 
-L'assistant peut choisir entre du code, la classification Jev et un [juge](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev fournit un score sans raisonnement en prose ; choisissez un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour les types de questions et les limites de score.
+L'assistant peut choisir entre du code, une classification Jev et un [juge](/fr/evaluations/judge). Vérifiez son choix avant de déployer. Jev fournit un score sans raisonnement en prose ; optez pour un juge lorsque vous avez besoin d'une explication. Consultez la [référence des évaluations Jev](/fr/reference/jev-evaluations) pour connaître les types de questions et les limites de score.
 
 ## Lire les scores
 
@@ -25,4 +25,4 @@ fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Le Cloud CLI lit les résultats ; la création et le déploiement s'effectuent dans le tableau de bord. Consultez la [référence du Cloud CLI](/fr/reference/cloud-cli#evaluations) pour les filtres.
+Le Cloud CLI lit les résultats ; l'authoring et le déploiement s'effectuent dans le tableau de bord. Consultez la [référence du Cloud CLI](/fr/reference/cloud-cli#evaluations) pour les filtres disponibles.

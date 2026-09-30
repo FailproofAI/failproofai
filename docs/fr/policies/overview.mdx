@@ -1,26 +1,26 @@
 ---
 title: "Politiques"
-description: "Observez, guidez ou bloquez les actions d'un agent avant qu'un échec connu ne se reproduise."
+description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue ne se reproduise."
 icon: "shield-check"
 ---
 
-Une politique évalue un événement de hook d'agent et retourne l'une des trois décisions suivantes :
+Une politique évalue un événement de hook d'agent et renvoie l'une des trois décisions suivantes :
 
 - `allow` laisse l'action se poursuivre.
-- `instruct` fournit des consignes correctives à l'agent.
+- `instruct` fournit des conseils correctifs à l'agent.
 - `deny` bloque l'action en indiquant un motif.
 
 ## Où vivent les politiques
 
 | Dans le tableau de bord | Ce que vous y faites |
 | --- | --- |
-| **Observe → policy** | Consultez les décisions issues de vraies sessions : quelle politique a correspondu, sur quelle machine, et pourquoi |
-| **Admin → policy editor** | Rédigez une politique, testez-la en rétroactif sur du trafic passé, publiez une version immuable, et comparez les versions dans **library** |
-| **Admin → enforcement** | Déployez des versions sur des machines, en mode observe ou enforce |
+| **Observe → policy** | Consulter les décisions issues de sessions réelles : quelle politique a correspondu, sur quelle machine, et pourquoi |
+| **Admin → policy editor** | Rédiger une politique, la backtester sur du trafic passé, publier une version immuable, et comparer les versions dans la **bibliothèque** |
+| **Admin → enforcement** | Déployer des versions sur des machines, en mode observe ou enforce |
 
-L'éditeur de politiques est l'endroit où un échec devient une règle. Décrivez le mode d'échec ou collez le code source de la politique dans **compose**, testez le brouillon en rétroactif sur du trafic déjà collecté, puis publiez une version :
+L'éditeur de politique est l'endroit où une défaillance devient une règle. Décrivez le mode de défaillance ou collez le code source de la politique dans **compose**, backtestez le brouillon sur le trafic que vous avez déjà, puis publiez une version :
 
-![La vue compose de l'éditeur de politiques avec l'identité de la politique, la rédaction assistée par IA, la validation du code source et les contrôles de publication.](/images/dashboard/policy-editor.png)
+![La vue compose de l'éditeur de politique, avec l'identité de la politique, la rédaction assistée par IA, la validation du code source et les contrôles de publication.](/images/dashboard/policy-editor.png)
 
 Sur une machine, `failproofai policies` liste tout ce qui y est appliqué. `fp policies` et `fp fleet` couvrent l'éditeur et l'application depuis un terminal — consultez la [référence Cloud CLI](/fr/reference/cloud-cli).
 
@@ -30,28 +30,24 @@ Il existe deux façons d'en obtenir une.
 
 <Columns cols={2}>
   <Card title="Rédiger une politique" icon="file-pen-line" href="/fr/policies/editor">
-    Laissez Failproof AI en rédiger une à partir d'un constat d'audit, ou rédigez vous-même le code source, puis examinez-la et publiez-la dans l'éditeur.
+    Laissez Failproof AI en rédiger une à partir d'un résultat d'audit, ou écrivez vous-même le code source, puis relisez-le et publiez-le dans l'éditeur.
   </Card>
   <Card title="Utiliser un pack de politiques" icon="package" href="/fr/policies/packs">
     Intégrez un pack de politiques Failproof AI adapté à votre cas d'usage, ou un pack communautaire depuis le hub de politiques, en une seule commande.
   </Card>
 </Columns>
 
-## Examiner les appels d'outils avec Jev
-
-Jev lit un appel d'outil mis en attente dans le contexte de votre requête. Il peut signaler un problème qu'une politique par correspondance de chaînes aurait manqué, ou lever un blocage issu d'une politique explicitement marquée **reviewable**. Les politiques strictes restent définitives. [Commencez avec les politiques Jev](/fr/policies/jev), puis consultez la [référence d'intégration](/fr/reference/jev) lorsque vous avez besoin de détails sur le fournisseur ou la configuration.
-
 ## Puis déployez
 
 <Steps>
   <Step title="Testez-la">
-    Testez le brouillon en rétroactif sur du trafic existant, et exécutez-le contre une action qu'il doit bloquer et une qu'il doit autoriser — tout cela avant de publier. Voir [Tester une politique](/fr/policies/test).
+    Backtestez le brouillon sur le trafic existant, et exécutez-le contre une action qu'il doit bloquer et une qu'il doit autoriser — tout cela avant de publier. Voir [Tester une politique](/fr/policies/test).
   </Step>
   <Step title="Déployez-la">
-    Placez la version sur des machines en mode **observe**, lisez ses décisions, puis appliquez-la. Voir [Déployer une politique](/fr/policies/deploy).
+    Déployez la version sur des machines en mode **observe**, lisez ses décisions, puis appliquez-la. Voir [Déployer une politique](/fr/policies/deploy).
   </Step>
-  <Step title="Versions et retour arrière">
-    Chaque publication crée une nouvelle version immuable, de sorte qu'un déploiement qui bloque des actions légitimes peut être annulé en redéployant la dernière version fonctionnelle. Voir [Versions et retour arrière](/fr/policies/rollback).
+  <Step title="Versionnez et revenez en arrière">
+    Chaque publication crée une nouvelle version immuable, de sorte qu'un déploiement qui bloque du travail légitime peut être annulé en redéployant la dernière version correcte. Voir [Versions et retour arrière](/fr/policies/rollback).
   </Step>
 </Steps>
 

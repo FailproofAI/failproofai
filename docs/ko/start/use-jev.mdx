@@ -4,33 +4,33 @@ description: "완료된 세션에 대한 Jev 평가를 설정하거나, 실시�
 icon: "sparkles"
 ---
 
-Jev는 에이전트 실행의 두 시점에서 도움을 줍니다. 완료된 세션을 알려진 답변과 비교해 점수를 매기거나, 에이전트에게 요청한 내용의 맥락에서 도구 호출을 검토합니다.
+Jev는 에이전트 실행의 두 시점에서 도움을 줍니다: 완료된 세션을 알려진 답변과 비교해 점수를 매기거나, 에이전트에게 요청한 작업의 맥락에서 도구 호출을 검토합니다.
 
 <Tabs>
-  <Tab title="Jev evals">
-    완료된 세션을 "고객이 환불을 요청했나요? 예 또는 아니오로 답하세요."와 같이 몇 가지 정해진 답변이 있는 질문에 대해 점수를 매길 수 있을 때 Jev eval을 사용하세요. 세션 전반에 걸친 패턴을 파악하는 데 도움이 됩니다.
+  <Tab title="Jev 평가">
+    완료된 세션을 "고객이 환불을 요청했나요? 예 또는 아니오로 답하세요."와 같이 몇 가지 알려진 답이 있는 질문과 비교해 점수를 매길 수 있을 때 Jev 평가를 사용하세요. 세션 전반에서 패턴을 찾는 데 도움이 됩니다.
 
-    ## 평가 생성하기
+    ## 평가 만들기
 
-    Cloud 대시보드에서 **Analyze → eval authoring → new eval**을 엽니다. 고정 답변이 있는 질문 하나를 입력하고 **draft**를 선택한 다음, 분류자 점수가 선택되었는지 확인합니다. 실제 세션에서 [테스트](/ko/evaluations/test)한 후 배포하세요.
+    Cloud 대시보드에서 **Analyze → eval authoring → new eval**을 엽니다. 단일 고정 답변 질문을 입력하고 **draft**를 선택한 다음, 분류기 점수가 선택되었는지 확인합니다. 실제 세션에서 [테스트](/ko/evaluations/test)한 후 배포합니다.
 
-    ![질문을 기술하고 초안을 검토하며 배포하는 공유 eval 작성 폼. 이 스크린샷은 코드 초안을 보여줍니다. Jev에는 고정 답변 질문을 사용하세요.](/images/dashboard/eval-authoring-draft.png)
+    ![질문을 설명하고 초안을 검토하며 배포하는 공유 평가 작성 양식입니다. 이 스크린샷은 코드 초안을 보여줍니다. Jev에는 고정 답변 질문을 사용하세요.](/images/dashboard/eval-authoring-draft.png)
 
     ## 점수 확인하기
 
-    새 세션이 완료된 후 **Observe → Evaluations**를 열거나 Cloud CLI를 사용하세요.
+    새 세션이 완료된 후 **Observe → Evaluations**를 열거나 Cloud CLI를 사용하세요:
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    CLI로 점수를 확인할 수 있으며, Jev eval 생성은 현재 대시보드에서만 가능합니다. 질문 유형과 예시는 [Jev evaluations](/ko/evaluations/jev)를 참고하세요.
+    CLI는 점수를 읽어옵니다. Jev 평가 생성은 현재 대시보드에서만 가능합니다. 질문 유형과 예시는 [Jev 평가](/ko/evaluations/jev)를 참고하세요.
   </Tab>
-  <Tab title="Jev policies">
-    문자열 매칭 정책이 도구 호출의 안전 여부를 판단하기 위해 요청 맥락이 필요할 때 Jev 정책 검토를 사용하세요. 먼저 **observe** 모드로 시작하면 설치된 정책이 각 호출을 결정하는 동안 Jev의 응답을 확인할 수 있습니다.
+  <Tab title="Jev 정책">
+    문자열 매칭 정책이 도구 호출의 안전 여부를 판단하기 위해 요청 맥락이 필요할 때 Jev 정책 검토를 사용하세요. 설치된 정책이 각 호출을 결정하는 동안 Jev의 응답을 확인할 수 있도록 **observe** 모드로 시작하세요.
 
-    Jev의 검사는 팩에서 제공됩니다. Failproof AI는 기본 팩을 제공하지 않으므로, 설치하기 전까지는 Jev가 설정되어 있더라도 아무것도 요청하지 않습니다.
+    Jev의 검사는 팩에서 제공되며, Failproof AI는 기본 팩을 제공하지 않습니다. 설치하기 전까지는 Jev가 설정되어 있어도 아무것도 확인하지 않습니다:
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev는 에이전트 실행의 두 시점에서 도움을 줍니다. 완료된 �
 
     ## Cloud Jev 설정하기
 
-    Cloud 대시보드에서 **Administration → Keys**를 열고 **machine** 프리셋으로 키를 생성합니다. [빠른 시작](/ko/start/quickstart)에 나온 대로 `failproofai config`와 함께 사용하세요. 기존 Jev 설정이 없는 머신에서는 observe 모드로 Cloud Jev가 활성화됩니다. 다음 명령으로 연결을 확인하세요.
+    Cloud 대시보드에서 **Administration → Keys**를 열고 **machine** 프리셋으로 키를 생성합니다. [빠른 시작](/ko/start/quickstart)에 나온 대로 `failproofai config`와 함께 사용하세요. 기존 Jev 설정이 없는 머신에서는 observe 모드로 Cloud Jev가 활성화됩니다. 다음 명령으로 연결을 확인하세요:
 
     ```bash
     failproofai jev status
@@ -47,17 +47,17 @@ Jev는 에이전트 실행의 두 시점에서 도움을 줍니다. 완료된 �
 
     ## 자체 엔드포인트 사용하기
 
-    로컬 대시보드에서 **Settings → Jev**를 엽니다. 프로바이더를 선택하고 토큰을 붙여넣은 다음 **observe**를 선택하고 Jev를 켭니다.
+    로컬 대시보드에서 **Settings → Jev**를 엽니다. 제공자를 선택하고 토큰을 붙여넣은 다음 **observe**를 선택하고 Jev를 켭니다.
 
-    ![프로바이더, 토큰 필드, observe 모드가 선택된 로컬 Jev 설정 패널.](/images/dashboard/jev-settings.png)
+    ![제공자, 토큰 필드, observe 모드가 선택된 로컬 Jev 설정 패널입니다.](/images/dashboard/jev-settings.png)
 
-    또는 터미널에서 엔드포인트를 설정하고 테스트할 수 있습니다.
+    또는 터미널에서 엔드포인트를 설정하고 테스트할 수 있습니다:
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    훅이 연결된 에이전트에게 `README.md`에 대해 파일 읽기 도구를 사용하도록 요청합니다. 해당 도구 호출이 세션에 나타나는지 확인한 다음, 로컬 대시보드의 **Policies → Activity**에서 검토하세요. observe 결과가 올바르게 보이면 [Jev policies](/ko/policies/jev)에서 언제 적용할지 설명합니다. 프로바이더 세부 정보와 설정은 [통합 레퍼런스](/ko/reference/jev)를 참고하세요.
+    훅이 연결된 에이전트에게 `README.md`에서 파일 읽기 도구를 사용하도록 요청합니다. 해당 도구 호출이 세션에 나타나는지 확인한 후 로컬 대시보드의 **Policies → Activity**에서 검토합니다. observe 결과가 올바르게 보이면 [Jev 정책](/ko/policies/jev)에서 언제 적용할지 설명합니다. 제공자 세부 정보 및 설정은 [통합 레퍼런스](/ko/reference/jev)를 참고하세요.
   </Tab>
 </Tabs>

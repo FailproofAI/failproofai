@@ -1,22 +1,22 @@
 ---
-title: "Jev インテグレーション リファレンス"
-description: "Jev の設定、プロバイダー、キー、リクエストデータ、および障害発生時の動作について。"
+title: "Jev インテグレーションリファレンス"
+description: "Jev の設定、プロバイダー、キー、リクエストデータ、および障害時の動作について。"
 icon: "braces"
 ---
 
-Jev は Failproof AI において 2 つの用途があります。
+Jev は Failproof AI において2つの用途があります：
 
-| 用途 | 実行タイミング | 返り値 | 開始ページ |
+| 用途 | 実行タイミング | 返り値 | 開始ガイド |
 | --- | --- | --- | --- |
-| セッション評価 | セッション終了後 | 固定回答質問に対するスコア | [Jev evaluations](/ja/evaluations/jev) |
-| ツール呼び出しポリシーレビュー | ゲート付きツール呼び出しの実行前 | インストール済みポリシーと併せた判定結果 | [Jev policies](/ja/policies/jev) |
+| セッション評価 | セッション終了後 | 固定回答の質問に対するスコア | [Jev evaluations](/ja/evaluations/jev) |
+| ツールコールのポリシーレビュー | ゲート付きツールコール実行前 | インストール済みポリシーとともに返される判定結果 | [Jev policies](/ja/policies/jev) |
 
 ## リファレンスページ
 
 | トピック | 詳細 |
 | --- | --- |
-| [Evaluation questions](/ja/reference/jev-evaluations) | ブール値および順序付きスコアの基準、結果、制限、バックフィル。 |
-| [Provider comparison and own-key setup](/ja/reference/jev-providers) | TypeSafe、OpenRouter、Vercel、Cloudflare、カスタムエンドポイント、URL 推論、モデル ID、`jev.json`、モード、フォールバックコード。 |
-| [FailproofAI Cloud route](/ja/reference/jev-cloud) | マシンキーの権限、自動 observe セットアップ、使用量制限、接続状態、データ処理。 |
+| [評価の質問](/ja/reference/jev-evaluations) | Boolean およびスコア順の評価基準、結果、制限、バックフィル。 |
+| [プロバイダーの比較と独自キーの設定](/ja/reference/jev-providers) | TypeSafe、OpenRouter、Vercel、Cloudflare、カスタムエンドポイント；URL推論、モデルID、`jev.json`、モード、フォールバックコード。 |
+| [FailproofAI Cloud ルート](/ja/reference/jev-cloud) | マシンキーの権限、自動 observe セットアップ、使用制限、接続状態、データ処理。 |
 
 ローカル CLI コマンドは [Failproof AI CLI リファレンス](/ja/reference/failproof-cli) に記載されています。[ローカルダッシュボードリファレンス](/ja/reference/local-dashboard#set-up-jev) では、Jev の設定とアクティビティビューについて説明しています。

@@ -1,55 +1,55 @@
 ---
 title: "LLM hakamlar"
-description: "Oturumları kod ölçemeyeceği şeyler üzerinden puanlandırın — doğruluk, ton, aracının bir politikayı izleyip izlemediği — iyi olanın neye benzediğini tanımlayarak ve modelin konuşmayı okumasına izin vererek."
+description: "Oturumları kod ölçemeyecek şeyler — doğruluk, ton, aracının bir politikayı takip edip etmediği — üzerinde puanlandırın. İyi neyin olduğunu tanımlayın ve bir modelin konuşmayı okumasına izin verin."
 icon: "scale"
 ---
 
-Barındırılan bir Python değerlendirmesi şu şekilde sayabilir ve karşılaştırabılır: kaç araç çağrısı, kaç hata, bir oturumun ne kadar sürdüğü. Size bir cevabın *doğru* olup olmadığını, bir yanıtın kaba olup olmadığını veya aracının hareket etmeden önce bir politikayı kontrol edip etmediğini söyleyemez.
+Barındırılan bir Python değerlendirmesi sayabilir ve karşılaştırabilir: kaç araç çağrısı, kaç hata, bir oturum ne kadar sürdü. *Doğru* bir cevap olup olmadığını, bir yanıtın kaba olup olmadığını veya aracının hareket etmeden önce bir politikayı kontrol edip etmediğini söyleyemez.
 
-Bir **LLM hakem** bunu yapabilir. Siz düz dilde neyin iyi olduğunu tanımladığınızda, model oturumu okur ve 0 ile 1 arasında bir puan ile gerekçesini döndürür.
+Bir **LLM hakam** bunu yapabilir. İyi neyin olduğunu açık dille tanımlarsınız, bir model oturumu okur ve gerekçesi ile birlikte 0 ile 1 arasında bir puan döndürür.
 
 <Note>
-Bir hakem, üzerinde çalıştığı her oturum için bir model çağrısına mal olur ve bir kod değerlendirmesi hiçbir şeye mal olmaz. Bir hakemi yalnızca konuşmanın *anlaşılması* gereken sorular için kullanın — ve ona bir koşul verin, böylece sorunun gerçekten ilgili olduğu oturumlar üzerinde çalışsın.
+Bir hakam çalıştığı her oturum için bir model çağrısı maliyetlidir ve bir kod değerlendirmesi hiç maliyetli değildir. Bir hakamı sadece konuşmanın *anlaşılması* gereken sorular için kullanın — ve buna bir koşul verin, böylece hakam sorunun gerçekten ilgili olduğu oturumlar üzerinde çalışsın.
 </Note>
 
 ## Hangisini istiyorum?
 
-| Soru | Kullanın |
+| Soru | Kullan |
 | --- | --- |
 | Aynı aracı iki kez çağırdı mı? | kod |
 | Kaç hata vardı? | kod |
 | Oturum 30 saniyenin altında mıydı? | kod |
 | Müşteri aciliyet ifade etti mi? | [sınıflandırıcı](/tr/evaluations/jev) |
-| Müşteri ne kadar hayal kırıklığına uğramıştı? | [sınıflandırıcı](/tr/evaluations/jev) |
-| Cevap gerçekten doğru muydu? | **hakem** |
-| Yanıt kaba veya alaycı mıydı? | **hakem** |
-| İade politikasını kontrol etmeden iadeyi vadettı mi? | **hakem** |
+| Müşteri ne kadar kızgındı? | [sınıflandırıcı](/tr/evaluations/jev) |
+| Cevap gerçekten doğru muydu? | **hakam** |
+| Yanıt kaba veya küçümseyici miydi? | **hakam** |
+| İade politikasını kontrol etmeden önce bir iade vaat etti mi? | **hakam** |
 
-Temel kural: **sayılabilir → kod, önceden listeleyebileceğiniz cevaplar → [sınıflandırıcı](/tr/evaluations/jev), açıklama gerektiren → hakem.** Hakem, gördüğü hakkında söz yazı yazan kişidir; sayı insanların "neden?" diye sormasına neden olacak bir durumlarda bunu kullanın.
+Genel kural: **sayılabilir → kod, önceden listeleyebileceğiniz cevaplar → [sınıflandırıcı](/tr/evaluations/jev), açıklama gerektiren → hakam.** Hakam gördüğü şey hakkında yazı yazan olandır; sayının birinin "neden?" demesini sağlayacağı durumlar için buna başvurun.
 
-Önceden karar vermeniz gerekmez. Ölçülmesini istediğinizi tanımlayın ve asistan seçim yapar, ardından hangisini seçtiğini ve neden seçtiğini söyler. Değiştirebilirsiniz.
+Önceden karar vermek zorunda değilsiniz. Ölçülmesini istediğiniz şeyi tanımlayın ve asistan seçer, ardından hangisini seçtiğini ve neden seçtiğini söyler. Bunu değiştirebilirsiniz.
 
 ## Bir tane yazın
 
-1. **Analyze → eval authoring** bölümüne gidin ve **new eval** seçin.
-2. Neyi yargılanmasını istediğinizi tanımlayın ve **draft** seçin.
+1. **Analiz → eval yazarlığı** bölümüne gidin ve **yeni eval** seçin.
+2. Neyin değerlendirilmesini istediğinizi tanımlayın ve **taslak** seçin.
 3. **Kriterler**, **eşik** ve **koşulu** gözden geçirin, ardından dağıtın.
 
 ### Kriterler
 
-Bir veya iki cümle, soru olarak değil gereklilik olarak yazılmış:
+Bir veya iki cümle, soru yerine gereklilik olarak yazılmış:
 
-> Asistan, önce iadeyi politikasını kontrol etmeden iadeyi vaad etmeli veya onaylamamalıdır.
+> Asistan, ilk olarak iade politikasını kontrol etmeden bir iade vaat edemez veya onaylayamaz.
 
-Neyin başarısız olmasına neden olacağı konusunda spesifik olun. "Yanıt iyi miydi?" size hiçbir şey ifade etmeyen bir sayı verir; yukarıdaki cümle size üzerinde hareket edebileceğiniz bir sayı verir.
+Neyin bunu *başarısız* yapacağını konusunda spesifik olun. "Cevap iyi miydi?" size anlamı olmayan bir sayı verir; yukarıdaki cümle size üzerinde hareket edebileceğiniz bir sayı verir.
 
 ### Eşik
 
-Oturumun geçtiği, eşit veya üstü puan. `0.7` makul bir başlangıç noktasıdır. Tam 0 ile 1 arasındaki puan her zaman depolanır, bu nedenle eşik yalnızca geçti/başarısız oldu kararını verir — dağılımı görebilir ve ayarlayabilirsiniz.
+Oturumun geçtiği puan veya daha yüksek. `0.7` mantıklı bir başlangıç noktasıdır. Tam 0-1 arasındaki puan her zaman depolanır, bu nedenle eşik sadece geçme/başarısızlık olarak karar verir — dağılımı görebilir ve ayarlayabilirsiniz.
 
 ### Koşul
 
-Diğer herhangi bir değerlendirme ile aynı Python koşulu ve burada çok daha önemlidir. Koşul olmadan, hakem **her** oturum üzerinde kuruluşunuzda, her birinde bir model çağrısıyla çalışır:
+Herhangi bir başka değerlendirme ile aynı Python koşulu ve burada çok daha önemlidir. Bir koşul olmadan, hakam **kuruluşunuzdaki her** oturum üzerinde, her birinde bir model çağrısı ile çalışır:
 
 ```python
 session.count("tool_use") > 0
@@ -59,33 +59,33 @@ session.count("tool_use") > 0
 session.agent_id == "support-bot" and session.count("error") > 0
 ```
 
-Pano, koşulsuz bir hakemi dağıtırsanız sizi uyarır. Bu bazen doğrudur — tam olarak yargılanmasını istediğiniz düşük hacimli bir aracı — ama bu bir kazaya değil bir karara dönüşmelidir.
+Pano, bir hakamı koşulsuz dağıtırsanız sizi uyarır. Bu bazen doğrudur — tam olarak değerlendirmek istediğiniz düşük hacimli bir aracı — fakat bu bir kaza değil, bir karar olmalıdır.
 
-## Hakem neyi görür
+## Hakam ne görür
 
-Konuşma, turlar halinde, oturum uzunsa en yeni başında:
+Konuşma, turlar halinde, oturum uzunsa en yenisi önce:
 
-- kullanıcının söyledikleri
+- kullanıcının söylediği
 - asistanın yanıtladığı
-- **aracının çağırdığı her araç ve sırada bu çağrının ne döndürdüğü**
+- **aracının çağırdığı her araç ve o çağrının ne döndürdüğü, sırasıyla**
 
-Son kısım "X'i *Y'den* önce mi yaptı" sorusunu adil bir soru yapar. Başarısız bir araç çağrısı başarısızlık olarak gösterilir, bu nedenle "bir hatadan zarif bir şekilde kurtuldu mu" de çalışır.
+Son kısım "X'i Y'den *önce* yaptı mı" sorusunun adil bir soru olmasını sağlayan şeydir. Başarısız bir araç çağrısı bir başarısızlık olarak gösterilir, bu nedenle "hata durumundan zarif bir şekilde kurtarıldı mı" işe yarar.
 
-Çok uzun oturumlar modelin bağlamına uyacak şekilde kesilir. Bunun olması durumunda akıl yürütme açıkça bunu söyler — asla tüm oturuma yapılmış bir hükme dayalı olarak sunulan oturumun bir bölümü üzerinde yapılmış bir yargı görmezsiniz.
+Çok uzun oturumlar modelin bağlamına sığması için kesilir. Bu olduğunda gerekçe bunu açıkça söyler — hiçbir zaman tüm bir oturum üzerinde yapılmış gibi sunulan kısmen bir oturum üzerine yapılan bir hüküm görmezsiniz.
 
-## Sonuçları okuma
+## Sonuçları okumak
 
-Bir hakem, diğer herhangi bir puanlanan değerlendirme gibi bir **puan** üretir, bu nedenle harita, filtre ve uyarıları aynı şekilde tetikler. Sayının yanında hakem'in **gerekçesini** depolar — gördüğünü açıklayan paragraf. Bir puan sizi şaşırttığında bunu önce okuyun; genellikle gerçekten ilginç bir oturum veya kriterlerin keskinleştirilmesi gerektiğinin bir işaretidir.
+Bir hakam herhangi diğer puanlandırılmış değerlendirme gibi bir **puan** üretir, bu nedenle grafiklere, filtrelere ve uyarıları tetikler aynı şekilde. Sayının yanında hakamın **gerekçesini** — gördüğü şeyi açıklayan paragrafı — depolar. Bir puan sizi şaşırttığında bunu önce okuyun; genellikle ya gerçekten ilginç bir oturum ya da kriterlerin daha net hale getirilmesinin bir işaretidir.
 
-Puanlar açık olan durumlar için stabildir, ancak bit-for-bit belirleyici değildir. Tek bir sınırda puanı oturumu okumaya davet olarak düşünün, bir karar olarak değil.
+Puanlar açık seçik durumlar için istikrarlıdır fakat bit-for-bit deterministik değildir. Tek bir sınır durumundaki puanı oturumu okumak için bir istem olarak ele alın, bir karar olarak değil.
 
-## Sınırlamalar
+## Sınırlar
 
-- **Test henüz kullanılamıyor.** Kuru bir çalışmanın arkasında oturum ataması yoktur ve bu atama model bütçeniz harcamasını yetkilendiren şeydir — bu nedenle bir test çağrısının ücretlendirecek hiçbir şeyi yoktur. Dar bir koşula karşı dağıtın ve ilk birkaç sonucu okuyun.
-- **Geri dolum kullanılamıyor.** Bir kod değerlendirmesini aylar boyunca geriye doğru doldurmak ücretsizdir; bunu bir hakemle yapmak tüm bütçenizi dakikalar içinde harcar.
-- **Kriterleri düzenlemek yeni bir sürüm yayınlar.** Eski ve yeni puanlar karşılaştırılmaz, bu nedenle bir trend çizgisinde karıştırılmak yerine ayrı tutulurlar.
-- **Hakem her zaman puan üretir**, asla metrik veya iddia değil.
+- **Test henüz mevcut değildir.** Kuru bir çalışma arkasında oturum atıması yoktur ve bu atama model bütçenizi harcamayı yetkilendirir — bu nedenle bir test çağrısının ücretlendirebileceği bir şey yoktur. Dar bir koşula karşı dağıtın ve ilk birkaç sonucu okuyun.
+- **Geriye dönük doldurma mevcut değildir.** Bir kod değerlendirmesini aylar geçmişe geriye dönük olarak doldurmak ücretsizdir; bunu bir hakam ile yapmak dakikalar içinde tüm bütçenizi harcardı.
+- **Kriterleri düzenlemek yeni bir sürümü yayınlar.** Eski ve yeni puanlar karşılaştırılamaz, bu nedenle tek bir trend çizgisine karışmış yerine ayrı tutulurlar.
+- **Bir hakam her zaman bir puan üretir**, hiçbir zaman bir metrik veya bir iddia değil.
 
-## Bütçeniz tüklendiğinde
+## Bütçe tükendiğinde
 
-Hakamlar kuruluşunuzun model bütçesini harcar. Tükendi mi, hakem değerlendirmeleri açık bir nedenden dolayı sessizce başarısız olmak yerine duraklar ve **kod değerlendirmeleri normal şekilde çalışmaya devam eder**. Bütçeyi yükseltin ve sonraki oturumda devam ederler.
+Hakamlar kuruluşunuzun model bütçesini harcar. Tükendiğinde, hakam değerlendirmeleri net bir nedenle durur ve **kod değerlendirmeleri normal olarak çalışmaya devam eder**. Bütçeyi artırın ve sonraki oturum üzerinde devam ederler.

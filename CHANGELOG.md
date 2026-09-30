@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.10-beta.0 — 2026-09-30
+
+### Features
+
+- Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#872)
+
+### Fixes
+
+- The daemon logs each failed upload attempt at warning level with its request id and batch id, so every attempt of a batch can be found; before, only the last one was visible (#872)
+- Parking a failed batch works when the spool and state directories are on different filesystems (e.g. separate Docker volumes); before, the batch stayed in the spool and was re-sent on every sweep. The move is crash-safe: the original is deleted only after the copy's directory entry is on disk (#872)
+
+### Docs
+
+- Troubleshooting, HTTP API and Cloud CLI pages explain the `ref` / `request_id` to quote to support, and where the daemon logs them (#872)
+
+### Dependencies
+
+- Python SDK dev lockfile: oauthlib 3.3.1 → 4.0.0 and pyjwt 2.13.0 → 2.15.1, clearing three OSV advisories (#872)
+- Pin brace-expansion 5.0.9 → 5.0.12 (package.json override), clearing three OSV advisories (#872)
+- Python SDK and `fp` CLI lockfiles: urllib3 2.7.0 → 2.8.0, clearing three OSV advisories (#872)
+
 ## 1.0.9 — 2026-09-29
 
 Action needed if you use Jev: its log-only mode is now `observe`, a `jev.json` still set to `shadow` is refused (Jev stays off until `failproofai jev setup` is run again), and Jev's checks now come only from `failproofai policies add FailproofAI/jev-policies`. For Hermes, `failproofai update` moves every profile from the old shell hooks (never run for cron jobs) to the native plugin, and every agent config failproofai edits is written crash-safely with a `.failproofai-backup`. Collects 1.0.9-beta.0 to beta.2 below.

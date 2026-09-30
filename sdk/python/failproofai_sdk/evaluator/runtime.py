@@ -289,9 +289,17 @@ class WorkerRuntime:
                     )
                 except EvaluatorAPIError as error:
                     self._increment("claim_failures")
+                    # The id rides in the message as well as `extra`: a plain
+                    # `logging.basicConfig` formatter drops extras, and this is
+                    # the id that finds the server's side of the failure.
                     logger.warning(
-                        "evaluator claim failed",
-                        extra={"code": error.code, "retryable": error.retryable},
+                        "evaluator claim failed (request_id=%s)",
+                        error.request_id,
+                        extra={
+                            "code": error.code,
+                            "retryable": error.retryable,
+                            "request_id": error.request_id,
+                        },
                     )
                     if not error.retryable:
                         raise
@@ -372,8 +380,11 @@ class WorkerRuntime:
                 # transcript that can never shrink. Log and return; the server
                 # terminalizes the assignment as `too_large`.
                 logger.warning(
-                    "assignment %s transcript is too large to evaluate; skipping",
+                    "assignment %s transcript is too large to evaluate; skipping "
+                    "(request_id=%s)",
                     assignment.assignment_id,
+                    error.request_id,
+                    extra={"request_id": error.request_id},
                 )
                 self._increment("transcripts_too_large")
                 return
@@ -796,10 +807,12 @@ class WorkerRuntime:
                         task.cancel()
                     return
                 logger.warning(
-                    "evaluator heartbeat failed",
+                    "evaluator heartbeat failed (request_id=%s)",
+                    error.request_id,
                     extra={
                         "assignment_id": assignment.assignment_id,
                         "code": error.code,
+                        "request_id": error.request_id,
                     },
                 )
                 self._increment("heartbeat_failures")
@@ -924,6 +937,12 @@ class WorkerRuntime:
             task.result()
         except asyncio.CancelledError:
             pass
+        except EvaluatorAPIError as error:
+            logger.exception(
+                "evaluator assignment failed (request_id=%s)",
+                error.request_id,
+                extra={"code": error.code, "request_id": error.request_id},
+            )
         except Exception:
             logger.exception("evaluator assignment failed")
 

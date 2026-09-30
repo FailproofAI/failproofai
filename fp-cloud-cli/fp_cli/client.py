@@ -19,6 +19,7 @@ Two auth modes, and they never mix:
 from __future__ import annotations
 
 import json as _json
+import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -264,8 +265,43 @@ def _path(ctx: ClientContext, path: str) -> str:
     return path
 
 
+# A request id as the server may echo it: our own 32 hex, or a dashed UUID from
+# an older server. Anything else is not put on an error a person will paste.
+_SANE_REQUEST_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+def _new_request_id() -> str:
+    """One id per HTTP request — a W3C trace id, the shape the server keeps as-is."""
+    return uuid.uuid4().hex
+
+
+def _request_id_of(response: httpx.Response) -> Optional[str]:
+    """The failed request's id: the server's echo, else the one this CLI sent.
+
+    The server echoes ours back, so the two normally agree. The fallback matters
+    when something in front of the API answered instead — a proxy, a front door —
+    and a ref is still worth printing: our id is in the dashboard's access logs.
+    """
+    echoed = (response.headers.get("x-request-id") or "").strip()
+    if _SANE_REQUEST_ID.match(echoed):
+        return echoed
+    try:
+        return response.request.headers.get("x-request-id")
+    except RuntimeError:  # a Response built without a request (tests)
+        return None
+
+
+def _sent_request_id(exc: httpx.RequestError) -> Optional[str]:
+    """The id of a request that never got an answer."""
+    try:
+        return exc.request.headers.get("x-request-id")
+    except RuntimeError:
+        return None
+
+
 def _client(ctx: ClientContext, *, timeout: Any = None) -> httpx.Client:
-    headers = {"x-request-id": uuid.uuid4().hex}
+    # One id per client, and every call site opens a fresh client per request.
+    headers = {"x-request-id": _new_request_id()}
     cookies = None
     # Bearer XOR cookie — an `else`, never two independent `if`s. Sending both
     # would hand a human's `ae_session` to `/v1` alongside the key, and every
@@ -355,7 +391,7 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     "the dashboard's login page, so it landed on the web app instead of "
                     "the API.",
                     status=response.status_code,
-                    request_id=response.headers.get("x-request-id"),
+                    request_id=_request_id_of(response),
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
         # Session mode is deliberately left alone for the /login case: that 3xx is
@@ -375,22 +411,23 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                 "The request was redirected and did not reach the API, so it had no "
                 "effect. Nothing was changed.",
                 status=response.status_code,
-                request_id=response.headers.get("x-request-id"),
+                request_id=_request_id_of(response),
                 hint=(
                     "check --base-url: a redirect here usually means http:// where the "
                     "server wants https://, or a front door in front of the API"
                 ),
             )
         return
-    request_id = response.headers.get("x-request-id")
+    request_id = _request_id_of(response)
     message = _extract_error(response)
     if response.status_code == 401:
         if key_mode:
             raise AuthError(
                 "The API key was rejected. It may be revoked, mistyped, or issued by a "
-                "different deployment than --base-url points at."
+                "different deployment than --base-url points at.",
+                request_id=request_id,
             )
-        raise AuthError("Session expired or not logged in. Run fp login.")
+        raise AuthError("Session expired or not logged in. Run fp login.", request_id=request_id)
     if response.status_code == 403:
         needed = _required_permission(response)
         if key_mode:
@@ -406,10 +443,13 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
             raise ForbiddenError(
                 f"{what}, or it cannot act for this org — the server answers 403 for both.",
                 hint="check the key's grants, and the org you targeted with --org / FP_ORG",
+                request_id=request_id,
             )
         if needed:
-            raise ForbiddenError(f"you don't have the {needed} permission")
-        raise ForbiddenError(message or "you don't have permission for this action")
+            raise ForbiddenError(f"you don't have the {needed} permission", request_id=request_id)
+        raise ForbiddenError(
+            message or "you don't have permission for this action", request_id=request_id
+        )
     if response.status_code == 404:
         # In key mode a 404 has TWO very different causes, and the wrong reading
         # sends people hunting for a server bug that isn't there:
@@ -434,7 +474,7 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     request_id=request_id,
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
-        raise NotFoundError(message or "Not found.")
+        raise NotFoundError(message or "Not found.", request_id=request_id)
     if response.status_code == 429:
         retry_after = response.headers.get("retry-after")
         wait = f" Retry after {retry_after}s." if retry_after else " Please wait a moment and try again."
@@ -458,7 +498,8 @@ def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = 
             response = client.get(url, params=clean)
     except httpx.RequestError as exc:
         raise NetworkError(
-            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}"
+            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}",
+            request_id=_sent_request_id(exc),
         )
     _raise_for_status(response, ctx)
     # A 2xx with an empty or non-JSON body is anomalous for a read (e.g. a proxy or
@@ -470,7 +511,7 @@ def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = 
         raise ApiError(
             "The dashboard returned a malformed (non-JSON) response.",
             status=response.status_code,
-            request_id=response.headers.get("x-request-id"),
+            request_id=_request_id_of(response),
         )
 
 
@@ -495,7 +536,8 @@ def _request_json(
             response = client.request(method, url, json=json_body, params=clean)
     except httpx.RequestError as exc:
         raise NetworkError(
-            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}"
+            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}",
+            request_id=_sent_request_id(exc),
         )
     _raise_for_status(response, ctx)
     # A genuinely empty body (204, or a 200 with no content) is a legitimate
@@ -514,7 +556,7 @@ def _request_json(
             "The dashboard returned a malformed (non-JSON) response, so the request "
             "may not have been applied.",
             status=response.status_code,
-            request_id=response.headers.get("x-request-id"),
+            request_id=_request_id_of(response),
         )
 
 
@@ -575,7 +617,8 @@ def org_is_accessible(ctx: ClientContext, slug: str) -> bool:
             response = client.get(_path(probe, "/api/access-granters"))
     except httpx.RequestError as exc:
         raise NetworkError(
-            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}"
+            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}",
+            request_id=_sent_request_id(exc),
         )
     if response.status_code == 200:
         return True

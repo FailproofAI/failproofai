@@ -10,10 +10,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
+import uuid
+
 import httpx
 
 from .config import CliConfig, save_config
+from .client import _request_id_of
 from .errors import ApiError, AuthError, NetworkError
+
+
+def _request_id_header() -> Dict[str, str]:
+    """A fresh request id for one login-flow call — same shape as the client's."""
+    return {"x-request-id": uuid.uuid4().hex}
 
 
 def _iso(dt: datetime) -> str:
@@ -36,7 +44,11 @@ def request_otp(
     valid request (the server returns 200 even for unknown emails)."""
     try:
         with httpx.Client(
-            base_url=base_url.rstrip("/"), timeout=timeout, transport=transport, verify=verify
+            base_url=base_url.rstrip("/"),
+            timeout=timeout,
+            transport=transport,
+            verify=verify,
+            headers=_request_id_header(),
         ) as client:
             # Mark this as a CLI login so the server emails the paste-into-terminal
             # OTP template (with no "open the dashboard" button) instead of the
@@ -52,6 +64,7 @@ def request_otp(
         raise ApiError(
             f"Failed to request a login code (HTTP {response.status_code}).",
             status=response.status_code,
+            request_id=_request_id_of(response),
         )
 
 
@@ -67,7 +80,11 @@ def verify_otp(
     """Exchange the code for a session token. Returns ``(token, expires_in_secs, user)``."""
     try:
         with httpx.Client(
-            base_url=base_url.rstrip("/"), timeout=timeout, transport=transport, verify=verify
+            base_url=base_url.rstrip("/"),
+            timeout=timeout,
+            transport=transport,
+            verify=verify,
+            headers=_request_id_header(),
         ) as client:
             response = client.post(
                 "/api/auth/otp/verify", json={"email": email, "code": code}
@@ -76,18 +93,25 @@ def verify_otp(
         raise _network_error(base_url, exc)
 
     if response.status_code == 401:
-        raise AuthError("That code didn't match or has expired. Sign in again with fp login.")
+        raise AuthError(
+            "That code didn't match or has expired. Sign in again with fp login.",
+            request_id=_request_id_of(response),
+        )
     if response.status_code == 429:
         raise ApiError(
             "Too many attempts — wait a bit, then run fp login again.",
             status=429,
+            request_id=_request_id_of(response),
         )
     if response.status_code >= 400:
         # The dashboard proxy collapses the server's wrong/expired-code 401 into a 500 (its
         # `await res.json()` throws on the server's empty 401 body). So a non-401 4xx/5xx at the
         # verify step is, in practice, a bad/expired code — surface it as a clean auth failure,
         # not a raw "HTTP 500". (Real unreachability is a NetworkError, handled above.)
-        raise AuthError("That code didn't match or has expired. Sign in again with fp login.")
+        raise AuthError(
+            "That code didn't match or has expired. Sign in again with fp login.",
+            request_id=_request_id_of(response),
+        )
 
     token = response.cookies.get("ae_session")
     if not token:
@@ -151,6 +175,7 @@ def logout(
         with httpx.Client(
             base_url=base_url.rstrip("/"),
             cookies={"ae_session": token},
+            headers=_request_id_header(),
             timeout=timeout,
             transport=transport,
             verify=verify,

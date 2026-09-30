@@ -37,7 +37,7 @@ use tokio::sync::Semaphore;
 
 use crate::spool::is_batch_file;
 use crate::supervisor::{Shutdown, TaskError};
-use crate::uploader::{ParkedName, Uploader};
+use crate::uploader::{ParkedName, Uploader, batch_id};
 
 /// Concurrent uploads across the watcher and sweeper combined.
 ///
@@ -141,7 +141,14 @@ impl Delivery {
 
         match self.uploader.upload_file(&path).await {
             Ok(()) => tracing::debug!(file = %path.display(), "uploaded"),
-            Err(err) => tracing::warn!(file = %path.display(), %err, "upload failed"),
+            // The batch id ties this to the attempt and park lines, which
+            // carry the request ids.
+            Err(err) => tracing::warn!(
+                file = %path.display(),
+                batch_id = %batch_id(&path),
+                %err,
+                "upload failed"
+            ),
         }
     }
 }
@@ -324,6 +331,12 @@ async fn stale_batches(dir: &Path, min_age: Duration, max: usize) -> Vec<PathBuf
 /// Skips anything poison or carrying a definitive client status — those fail
 /// identically until a human fixes the key or the URL, and retrying them burns
 /// permits that batches which could succeed are waiting for.
+/// Whether the parked-batch sweep may retry the file with this name.
+fn sweepable(name: &str) -> bool {
+    // A dotfile is a park still being copied across filesystems.
+    !name.starts_with('.') && ParkedName::parse(name).is_auto_retryable()
+}
+
 async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown) {
     let Ok(mut rd) = tokio::fs::read_dir(failed_dir).await else {
         return;
@@ -336,7 +349,7 @@ async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown) {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !ParkedName::parse(name).is_auto_retryable() {
+        if !sweepable(name) {
             continue;
         }
         let Ok(meta) = entry.metadata().await else {
@@ -412,6 +425,14 @@ mod tests {
         let found = stale_batches(&dir, Duration::ZERO, 64).await;
         assert_eq!(found.len(), 1);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_parked_sweep_skips_rejected_batches_and_half_copied_parks() {
+        assert!(sweepable("hooks-a-1-0.a1.jsonl"));
+        assert!(!sweepable("hooks-a-1-0.a1.c401.jsonl"));
+        assert!(!sweepable("hooks-a-1-0.a3.jsonl.poison"));
+        assert!(!sweepable(".hooks-a-1-0.a1.jsonl.partial"));
     }
 
     #[tokio::test]

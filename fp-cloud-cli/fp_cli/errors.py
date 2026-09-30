@@ -26,9 +26,24 @@ class FpCliError(click.ClickException):
 
     exit_code = 1
 
-    def __init__(self, message: str, *, hint: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        hint: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
         self.hint = hint
+        # The id of the HTTP request that failed — the server's echo, else the
+        # one this CLI sent. On every typed error, not only ApiError, so a 403 or
+        # a 404 is as traceable in the server's logs as a 500.
+        self.request_id = request_id
+
+    @property
+    def ref(self) -> Optional[str]:
+        """What a person reads and pastes: the first 8 chars of the request id."""
+        return self.request_id[:8] if self.request_id else None
 
 
 class KeyModeUnsupportedError(FpCliError):
@@ -85,9 +100,8 @@ class ApiError(FpCliError):
         request_id: Optional[str] = None,
         hint: Optional[str] = None,
     ) -> None:
-        super().__init__(message, hint=hint)
+        super().__init__(message, hint=hint, request_id=request_id)
         self.status = status
-        self.request_id = request_id
 
     def format_message(self) -> str:
         parts = [self.message]

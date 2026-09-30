@@ -14,7 +14,12 @@ from failproofai_sdk.evaluator.authoring import (
     Metric,
     Score,
 )
-from failproofai_sdk.evaluator.client import EvaluatorAPIError, EvaluatorClient
+from failproofai_sdk.evaluator.client import (
+    EvaluatorAPIError,
+    EvaluatorClient,
+    current_request_id,
+    request_id_scope,
+)
 from failproofai_sdk.evaluator.protocol import (
     Assignment,
     AssignmentDefinition,
@@ -70,6 +75,8 @@ __all__ = [
     "Evaluator",
     "ManagedCompiler",
     "EvaluatorAPIError",
+    "current_request_id",
+    "request_id_scope",
     "EvaluatorClient",
     "EvaluatorKind",
     "HeartbeatRequest",

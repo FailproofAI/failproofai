@@ -1,0 +1,43 @@
+---
+title: "Sentimentanalyse"
+description: "Finden Sie frustrierte, verwirrte und korrigierende Nachrichten mithilfe von Jev-Sentiment-Scores."
+icon: "smile"
+---
+
+Jev bewertet jede Nachricht, die eine Person an Ihre Agenten sendet, auf einer Skala von 0 bis 100 für vier Gefühle — **wütend**, **frustriert**, **glücklich** und **verwirrt** — sowie drei Signale darüber, wie der Agent abschneidet:
+
+- **Korrigierend**: Die Person gibt an, dass der Agent etwas falsch gemacht hat.
+- **Gelöst**: Die Person bestätigt, dass der Agent ihr Problem gelöst hat.
+- **Zweifelnd**: Die Person hinterfragt, ob die Antwort des Agenten korrekt ist oder ob er die Aufgabe wirklich erledigt hat.
+
+Verwenden Sie die Sentimentanalyse, um Gespräche zu finden, in denen Menschen die Geduld verlieren, Agenten, die ständig korrigiert werden, und Antworten, die gut ankommen. Dabei handelt es sich um die integrierte Jev-Bewertung – Sie müssen keine eigene Evaluation erstellen. Für Ihre eigene Frage mit fester Antwort können Sie eine [Jev-Evaluation erstellen](/de/evaluations/jev).
+
+<Note>
+  Das Sentiment ist deaktiviert, bis ein Administrator es für die Organisation einschaltet. Jev stellt pro Nachricht eine Bewertungsanfrage und erhält dabei die Nachricht zusammen mit der vorherigen Agentenantwort. Die Bewertung verwendet das Modellbudget Ihrer Organisation.
+</Note>
+
+## Aktivierung
+
+1. Gehen Sie zu **Administration → Einstellungen**.
+2. Aktivieren Sie unter **Sentiment für menschliche Eingaben** den Schalter und speichern Sie.
+
+Nachrichten des letzten Tages werden zuerst bewertet. Danach werden neue Nachrichten innerhalb ein bis zwei Minuten nach Eingang bewertet.
+
+## Ein Gespräch zur Überprüfung finden
+
+Öffnen Sie **Beobachten → Sentiment**. Filtern Sie nach Zeitraum, Umgebung, Agent oder Session-ID. Die Kopfzeile zeigt die Anzahl der Nachrichten und Sessions, wie viele Nachrichten **markiert** sind, und nennt das stärkste Signal. Eine Nachricht wird markiert, wenn ein Wut-, Frustrations-, Korrektur-, Verwirrung- oder Zweifel-Score den Wert 35 von 100 erreicht.
+
+![Das Sentiment-Dashboard mit Nachrichten- und Session-Zählern, markierten Nachrichten und Jev-Scores über die Zeit.](/images/dashboard/sentiment-overview.png)
+
+Verwenden Sie **Score über Zeit**, um Signale zu vergleichen. Wählen Sie die anzuzeigenden Scores aus und klicken Sie dann auf einen Punkt, um die Nachrichten des jeweiligen Zeitraums zu sehen. Die Tabelle **Nach Agent** zeigt, wo ein Signal gehäuft auftritt. Sortieren Sie unter **Nachrichten** nach dem stärksten negativen Score oder wählen Sie einen einzelnen Score aus. Öffnen Sie eine Nachricht in ihrer Session, um das umgebende Gespräch zu lesen, bevor Sie entscheiden, was schiefgelaufen ist.
+
+![Die Sentiment-Nachrichtenliste, sortiert nach dem stärksten negativen Score, mit einem Link zur jeweiligen Quell-Session.](/images/dashboard/sentiment-messages.png)
+
+## Welche Nachrichten bewertet werden
+
+Nur Nachrichten, die eine Person geschrieben hat:
+
+- Nachrichten, die Ihre benutzerdefinierten Agenten als menschliche Eingabe mit dem SDK erfassen.
+- Prompts, die in Claude Code, Codex, OpenCode, pi, Hermes und OpenClaw eingegeben werden, sofern Session-Transkripte gesendet werden (Standardeinstellung). Geplante Jobs, injizierte Anweisungen, Sub-Agenten-Übergaben und andere Texte, die die eigene Laufzeit des Agenten erzeugt, werden nicht bewertet. Ebenso wenig nicht-interaktive Ausführungen wie `claude -p`, `codex exec` und `hermes -z`: Diese Prompts wurden von einem Skript geschrieben, nicht von einer Person.
+
+Die Bewertung beurteilt die eigenen Worte der Person. Eine kurze, knappe Anweisung wie „fix it" wird nicht als Wut gewertet, und das Stellen einer Frage gilt nicht als Verwirrung. Eine neue Anfrage ist keine Korrektur, und bloßes Bedanken zählt nicht als gelöst.

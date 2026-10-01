@@ -1,0 +1,275 @@
+---
+title: "Jev 提供商与自带密钥配置"
+description: "使用自有密钥进行 Jev 策略实时审查时的提供商端点、模型 ID、配置方法及故障处理行为。"
+icon: "key-round"
+---
+
+本文是使用自有密钥配置 [Jev 策略](/zh/policies/jev) 的提供商与配置参考文档。正则策略只能匹配字符串，无法区分你主动要求的 `rm -rf build/` 和不小心混入计划中的 `rm -rf ~`，因此在某些地方拦截过多，在另一些地方又拦截不足。**Jev** 是 TypeSafe 的分类器，它能结合你实际的请求内容来审查工具调用，并在一次快速请求中回答一系列是/否问题。
+
+配置好你自己的 Jev 端点和密钥后，Failproof AI 会在每次工具调用时**同时**向 Jev 查询和执行正则策略，而非二选一：
+
+- **硬性**策略的拒绝是最终决定，Jev 无法撤销。除非策略被明确标记为可审查并指定了对应的 Jev 检查项，否则默认均为硬性策略。因此，未作任何说明的自定义策略、插件策略或云端策略均为硬性策略，始终开启的自我保护守卫也始终是硬性策略。
+- **可审查**策略的拒绝可以被撤销，但前提是：Jev 被明确询问了该策略所关注的具体问题，且回答为「未发现问题」或「用户已请求此操作」。如果检查发现该问题确实存在，且用户并未请求该调用，则拒绝保持不变——即便该检查项本身只是警告级别，因为在工具调用发生之前，警告不会阻止智能体执行。如果该检查项属于可以直接拒绝的类型（如密钥泄露、凭证窃取、破坏性删除等），则该调用的任何清除请求均无效。
+- 当某次调用是你所下达任务的执行步骤且影响范围未超出当前范围时，拦截仍可降级为**警告**：Jev 会将自身的拒绝软化为警告，该警告会明确说明调用的具体问题，并替换策略的拦截提示。
+- Jev 也可以独立发出警告或拒绝，针对正则无法描述的有害行为。
+- 如果 Jev 无法给出答案（超时、限速、服务器错误、额度不足、意外的模型版本），该调用将使用正则策略的结果，与未配置 Jev 时完全一致。
+- 除非 Jev 读取了完整的调用内容并被明确询问了相关关切，否则 Jev 绝不会让调用变得比单独执行策略时更宽松。任何不满足此条件的情况——调用内容过大无法完整发送、疑似注入攻击——都将撤销清除授权并保持所有拒绝。
+
+<Note>
+未配置 Jev 时一切不变：钩子会完全按照既有方式执行正则策略。配置本身就是完整的启用开关。
+</Note>
+
+<Tip>
+使用 FailproofAI Cloud？你无需自备密钥：通过携带 `jev:evaluate` 权限的密钥连接的机器可以使用你组织方案中的 Jev。详见 [通过 FailproofAI Cloud 使用 Jev](/zh/reference/jev-cloud)。
+</Tip>
+
+## 开始之前
+
+在运行智能体的机器上安装 **failproofai 1.0.8-beta.0 或更高版本**，并将其钩子挂载到[支持的运行环境](/zh/reference/harnesses)。如果是新机器，请参考[快速入门](/zh/start/quickstart)；如果不使用 Cloud，请参考[配置本地执行](/zh/start/setup#enforce-locally)。使用 `failproofai --version` 检查已安装的 CLI 版本。
+
+从以下任一提供商获取 API 密钥，或准备好兼容的端点及其密钥。Jev 在 `PreToolUse` 或 `PermissionRequest` 阶段审查具名工具调用。它可以独立给出裁定，但撤销现有策略拒绝还需要安装标记为[可审查](/zh/policies/authority)的策略。硬性策略的拒绝始终是最终决定。
+
+## 选择提供商
+
+Jev 可通过五条路径访问，为其中任意一条准备密钥即可。
+
+| 提供商 | `--provider` | 端点 | 默认模型 | 备注 |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | 精确版本锁定。 |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 请求仅路由至零数据留存端点，不回退至其他提供商。报告的版本格式如 `typesafe/jev-1.13-20260917`。 |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | 仅通过别名标识 Jev，因此响应版本记录为未验证。 |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | 需要 `--account-id`。测量到每个密钥每秒约六次调用后出现 HTTP 429。 |
+| 自定义端点 | `custom` | `<base-url>/systemone` | `jev-1.13.0` | 任何接受 TypeSafe 请求体并报告响应模型的端点。仅支持 `https`；仅在观察模式下接受纯 `http://localhost`。 |
+
+<Warning>
+使用 Vercel 自带密钥功能时，失败的请求会静默地使用 Vercel 的凭证重试。如果你需要所有调用仅通过你自己的 TypeSafe 账户计费和查看，请直接使用 TypeSafe。
+</Warning>
+
+## 配置方法
+
+一条命令，配置端点和密钥。先以 `observe` 模式启动，这样你可以在现有策略继续处理调用时查看 Jev 的裁定：
+
+```bash
+failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+```
+
+### 通过 URL 选择提供商
+
+无需手动指定提供商：URL 的**主机名**即代表对应提供商。
+
+| URL 主机名 | 提供商 | 额外参数 |
+| --- | --- | --- |
+| `api.typesafe.ai` | `typesafe` | — |
+| `openrouter.ai` | `openrouter` | — |
+| `ai-gateway.vercel.sh` | `vercel` | — |
+| `api.cloudflare.com` | `cloudflare` | `--account-id <32位十六进制账户 ID>` |
+| 其他主机名 | `custom` | — 你提供的 URL 即为基础 URL |
+
+由此引出三点说明：
+
+- **指向提供商官方 API 的 URL 不会写入覆盖配置。** `--url https://api.typesafe.ai/v1` 的效果与 `--provider typesafe` 完全相同。如果在已知提供商上使用不同路径或主机名，则会作为基础 URL 存储，效果与 `--base-url` 相同。
+- **`--provider` 仍可覆盖自动推断**，这样你就可以通过自有主机上的代理访问某个提供商的 API：`--url https://jev-proxy.internal/v1 --provider typesafe`。
+- **`--provider` 与主机名冲突时会被拒绝**，而非猜测。`--provider openrouter --url https://api.typesafe.ai/v1` 不会写入任何内容，并会说明原因：两者对密钥发送目标的描述不一致。同样的冲突在 `jev setup --base-url` 和控制台的 Jev 设置中同样会被拒绝。（`--provider custom` 不属于冲突——它的含义是「将此 URL 视为自身」——但在 Cloudflare 主机上除外，其按账户区分的端点无法通过自定义路由访问。）
+
+`--url` 的验证规则与配置文件中的 `baseUrl` 完全相同，拒绝理由也相同：必须使用 `https`，仅在观察模式下接受纯 `http://localhost`。
+
+### 密钥
+
+通过 `--key-stdin` 管道传入，或在终端中不带此参数运行命令，然后在掩码提示符处粘贴密钥。两种方式都会直接写入配置文件，不会回显。
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev --url https://openrouter.ai/api/v1 --mode observe --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev --url https://ai-gateway.vercel.sh/typesafe/v1 --mode observe \
+      --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev --url https://api.cloudflare.com/client/v4 \
+      --account-id <32位十六进制账户 ID> --mode observe --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev --url https://jev.internal.example.com/v1 --mode observe --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+`failproofai jev setup` 接受相同的参数，是完整的长格式命令：如果你更倾向于指定提供商而非 URL，可以使用 `setup --provider <kind>`。
+
+### `--token` 及其代价
+
+`--token <token>` 将密钥放在命令行上，这是配置机器最快的方式，也是唯一会将密钥留在配置文件以外地方的用法：
+
+```bash
+failproofai jev --url https://openrouter.ai/api/v1 --token <token>
+```
+
+<Warning>
+命令行参数会留在 shell 的历史记录中，且命令运行期间会出现在进程列表里——以你的身份运行的任何程序都可以从 `/proc` 读取到。每次使用 `--token` 时，`setup` 都会给出提示。在共用机器上、在有录制的会话中，或在历史记录会被同步的环境中，请优先使用 `--key-stdin`；如果密钥安全性有要求，请及时轮换通过此方式传入的密钥。
+</Warning>
+
+`--token`、`--key-stdin` 和 `--key-from-env` 互斥，只能选其一。
+
+然后发送一个小型实时请求，检查密钥、端点以及响应的 Jev 版本：
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 3000 ms timeout
+```
+
+当响应在超时后才到达（每个钩子都会以 `timeout` 为由回退到正则）或检查问题回答错误时，`jev test` 退出码为 1，并在标题中说明。
+
+钩子在每次工具调用时都会读取配置，因此从下一次调用起即生效。无论是否使用守护进程，都无需重启。
+
+## 查看运行状态
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` 显示提供商、端点、模型、模式、配置文件及其权限，但不显示密钥。下方汇总近期活动：Jev 评估的调用次数、回退到正则的频率及原因、延迟情况，以及清除的可审查策略列表。
+
+## 验证真实调用
+
+在已挂载钩子的智能体中开始新会话。让它使用文件读取工具读取 `README.md` 并报告标题。确认会话中包含该工具调用后，再次运行 `failproofai jev status`：近期评估调用数应有所增加。在[本地控制台](/zh/reference/local-dashboard#review-policy-activity)的**策略 → 活动**中查看该调用的 Jev 裁定和模式。在观察模式下，策略结果仍决定调用的最终处理。只有当可审查策略匹配且 Jev 清除了所有指定检查项时，才会出现清除记录；普通的读取操作可能没有需要清除的策略。
+
+## 观察模式
+
+`enforce` 是默认模式。若想在不影响任何决策的情况下观察 Jev，可切换到 `observe` 模式：Jev 仍会被询问且结果会被记录，但最终执行的是正则策略的结果。
+
+```bash
+failproofai jev setup --mode observe
+failproofai jev setup --mode enforce
+failproofai jev setup --mode off
+```
+
+`off` 保留配置——端点和密钥——并停止询问 Jev：钩子完全按照无配置时的方式执行正则策略，`failproofai jev status` 显示「off (switched off)」。使用 `--mode observe` 或 `--mode enforce` 可重新启用。
+
+对同一提供商重新运行 `setup` 时会保留已存储的密钥，因此切换模式只需一个参数。切换提供商则需重新开始并提供新提供商的密钥。将请求迁移到不同主机的 `--base-url` 也是如此：已存储的密钥只会发送到最初提供该密钥时指定的主机或该提供商的官方 API。
+
+## 配置文件
+
+所有内容存储在一个文件中：`~/.failproofai/jev.json`，由 `setup` 写入：
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 3000
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `provider` | `typesafe`、`openrouter`、`vercel`、`cloudflare` 或 `custom`——或 `failproofai`，其密钥来自 FailproofAI Cloud 连接而非本文件（详见[通过 FailproofAI Cloud 使用 Jev](/zh/reference/jev-cloud)）。 |
+| `apiKey` | 以 `Authorization: Bearer <key>` 形式发送。 |
+| `baseUrl` | `custom` 必填；对其他提供商则替换其 API 基础地址。必须使用 `https`。仅在 `mode: observe` 时接受 `localhost` 的纯 `http`：本地端口无任何认证机制，若代理下线，机器上的任何进程（包括被评判的智能体）都可能冒充响应。 |
+| `accountId` | 仅 Cloudflare 需要：32 位小写十六进制字符。 |
+| `model` | 替换提供商的默认模型 ID。带版本号的 ID 必须指向 Jev 1.13。形如 API 密钥的值会被拒绝（且不会回显），因此误将密钥粘贴到 `--model` 中不会被存储或作为模型名发送。 |
+| `timeoutMs` | 工具调用等待 Jev 响应的最长时间，超时后使用正则结果。范围 100–10000，默认 3000。 |
+| `mode` | `enforce`（默认）、`observe` 或 `off`（保留配置，不运行 Jev）。 |
+
+三条规则保护此文件：
+
+- **仅限所有者访问。** 文件权限为 `0600`。任何其他用户或组可读写的副本会被**拒绝**，钩子回退到正则策略，直到你运行 `chmod 600 ~/.failproofai/jev.json` 或重新运行 `setup`。目录也会被检查：`~/.failproofai` 不得对其他人**可写**，因为有写入权限者可以替换文件，无论文件本身的权限如何。`setup` 发现此类写入位时会将其清除。`failproofai jev status` 会提示配置已被拒绝，并显示文件中记录的端点：由于他人可能已修改该文件，请在执行 `chmod` 前确认文件内容属于你。对此类文件重新运行 `setup` 时，已存储的密钥仅会发送到该提供商的官方 API；文件中记录的其他任何端点都需要重新提供密钥（`--key-stdin`），或使用 `--base-url default` 将请求还原至提供商官方 API。
+- **仅限全局配置。** 仓库无法开启 Jev、将其指向其他端点或选择模型：项目内的 `.failproofai/jev.json` 会被忽略，提供商、URL、模型和账户 ID 仅从上述文件读取——永远不从环境变量读取，而仓库的智能体设置可以设置环境变量。（`FAILPROOFAI_HOME` 不是绕过此限制的方法：它会移动整个 failproofai 目录，包括你的策略，而不是单独重定向 Jev。）
+- **仅密钥可来自环境变量。** 如果文件中没有 `apiKey`，`FAILPROOFAI_JEV_API_KEY` 会在该会话中提供密钥（`setup --key-from-env` 会写入此类文件）。它不会替换文件中已有的密钥，也无法在没有配置文件的情况下开启 Jev。变量未设置时，Jev 在该 shell 中简单处于关闭状态：`failproofai jev status` 会说明此情况，退出码为 0 且不修改配置（`status --json` 报告 `"status": "key-missing"`，`"reason": "no-env-key"`）。`failproofaid` 守护进程无法访问你的 shell 环境，因此在使用 `failproofai config` 配置的机器上，请将密钥保存在文件中。
+
+## 哪个 Jev 版本响应
+
+Failproof AI 的决策阈值是基于 Jev 1.13 校准的，因此只有来自该系列的响应才会被采用：`jev-1.13.x`，或 OpenRouter 的 `typesafe/jev-1.13-<date>`。当提供商仅通过别名标识 Jev 且不报告版本时（Vercel，以及未说明版本的 Cloudflare），响应仍会被采用，但记录为未验证。`custom` 端点必须报告响应的模型；唯一的例外是你为其配置的无版本号 `--model` 名称，回显后同样记录为未验证。报告其他版本的响应，或 `custom` 端点未报告版本的响应，均不会被采用：该调用会以 `model-mismatch` 为由回退到正则。
+
+## Jev 无法响应时
+
+以下每种情况都会对该调用回退到正则策略结果，并记录相应原因，`failproofai jev status` 会统计各原因的出现次数：
+
+| 原因 | 说明 |
+| --- | --- |
+| `timeout` | 在 `timeoutMs` 内未收到响应。 |
+| `http-429` | 提供商对该密钥进行了限速。 |
+| `rate-limited` | Failproof AI 自身的限速器在发送前拦截了请求：每秒 5 个请求，最大突发 5 个，提供商返回 `429` 后暂停片刻。不是提供商限制。 |
+| `http-500`、`http-502`、`http-503`……| 提供商端服务器错误，具体状态码会被记录。 |
+| `out-of-credits` | HTTP 402：提供商账户额度不足。 |
+| `provider-refused` | Cloudflare 返回的 HTTP 402，内容为「Model execution failed (Payment error)」：提供商拒绝在此请求上运行模型。通常与账单无关，充值也无法解决。 |
+| `http-401`、`http-403` | 密钥被拒绝。 |
+| `http-404` | `<base>/systemone` 处未提供服务，说明基础 URL 有误——`/systemone` 会追加到基础 URL 后，所有提供商都在其版本根路径下提供此接口。`failproofai jev models` 可查看该端点实际提供的接口。 |
+| `network` | 无法连接到端点。 |
+| `http-301`、`http-302`、`http-307`、`http-308` | 端点返回了重定向。重定向永不跟随，响应只会来自配置中的 URL；请将 `--base-url` 设置为最终 URL。 |
+| `malformed` | 端点有响应，但内容不是 Jev 答案——响应体不是 JSON，或不包含答案。 |
+| `cloudflare-error`、`cloudflare-incomplete` | Cloudflare 的信封报告了失败，或任务尚未完成。 |
+| `model-mismatch` | 响应的 Jev 版本不是 1.13，或 `custom` 端点未说明响应的模型。 |
+| `request-cut` | **不是服务故障。** Jev 已响应，但只看到了部分调用内容，因此其答案不清除任何内容。详见[Jev 已响应但未审查完整调用时](#when-jev-answered-but-not-on-the-whole-call)。 |
+
+`failproofai jev status` 还可能显示一些更罕见的原因，例如 `upstream-error`（响应携带了提供商自身的错误）或 `config`，以及将无法命名的原因统计为 `other`。
+
+`request-cut` 出现在此表中，是因为 `failproofai jev status` 会将它与其他原因一并统计，且它同样会保留所有拒绝。它是这里唯一一个与提供商状况无关的原因：请求已到达评估器且 Jev 已作答。与上方所有条目不同，该答案仍然有效——Jev 自身的拒绝或警告会叠加在正则结果之上，而非被丢弃。因此，此类情况频繁出现意味着调用内容过大无法完整发送，而非端点出现问题，充值或更换 URL 均无法降低此计数。
+
+## Jev 已响应但未审查完整调用时
+
+还有两种情况需要说明，它们都不是 Jev 未能响应的问题，而是关于调用本身或对话有多少内容适合放入一次请求。
+
+**调用本身有部分内容未能纳入。** 工具调用在固定预算内发送，对于过大的调用——非常大的 `Write`、庞大的 MCP 请求体、被填充至上限的命令——会发送已适配的部分。Jev 仍会响应，其答案仍然有效：自身的拒绝或警告照常生效。但它无法**清除**任何内容，因为基于部分调用给出的裁定不是对完整调用的裁定。因此所有策略拒绝保持不变，该调用以 `request-cut` 为由记录为回退，`failproofai jev status` 会与上述原因一并统计。此规则给你的启示是：调用越大越可能失去清除资格，而且更大的调用永远无法换来清除授权。
+
+**有消息未能纳入。** 你粘贴的长提示、智能体的最后一条消息，或该评估器的本地存储中已被截断的提示。**不产生任何变化**：调用的判定、清除和记录与其他调用完全相同，也不计入回退统计。你输入内容的长度永远不会决定裁定，截断也不会制造授权：若提示到达时已被截断，则「你未请求此操作」这一结论根本无从得出，而非变成一个结论。
+
+两者的区别在于谁写了这段文字。调用是智能体的，允许其长度降低严重性就等于给了智能体可利用的规则；提示是你的，将其长度视为信号只会惩罚粘贴规格说明或堆栈跟踪的行为。
+
+## 离开机器的数据
+
+对于 Jev 评估的每次工具调用，会向你的提供商发送一次请求，携带以下内容：
+
+- 工具调用本身，其中 API 密钥、Bearer 令牌和 `KEY=` 赋值等敏感信息已被脱敏；
+- 你最近输入的提示，已去除智能体运行环境添加的内容；
+- 智能体在你最新提示之前的最后一条消息，标注为智能体生成；
+- 本地计算的事实，例如路径是否在项目内——即会话首次被审查的调用时所在的项目，[在会话期间固定](/zh/reference/jev-intent#the-project-root)——以及当前 git 分支。
+
+请求仅发送至你配置中指定的端点，使用你的密钥。
+
+## 关闭 Jev
+
+```bash
+failproofai jev remove
+```
+
+此命令删除 `~/.failproofai/jev.json`。从下一次工具调用起，钩子将完全按照之前的方式执行正则策略。`~/.failproofai/state/semantic/` 下的会话存储（`sessions/` 中的已记录提示，`roots/` 中的项目根目录）会保留并自然老化过期。若想停止询问 Jev 但保留配置，请使用 `failproofai jev setup --mode off`。
+
+## 命令参考
+
+| 命令 | 效果 |
+| --- | --- |
+| `failproofai jev --url <url> --key-stdin` | 一条命令完成配置；提供商由 URL 主机名推断 |
+| `failproofai jev --url <url> --token <token>` | 同上，但密钥在命令行上——会留在历史记录和进程列表中 |
+| `failproofai jev setup --provider <kind> --key-stdin` | 从 stdin 管道读取密钥并写入配置 |
+| `failproofai jev setup --provider <kind>` | 同上，在掩码提示符处输入密钥 |
+| `failproofai jev setup --key-from-env` | 不存储密钥；每次会话从 `FAILPROOFAI_JEV_API_KEY` 读取 |
+| `failproofai jev setup --mode observe` | 切换模式（`enforce`、`observe` 或 `off`），保留已存储密钥 |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | 覆盖模型或 API 基础地址；`default` 清除覆盖 |
+| `failproofai jev setup --timeout-ms <n>` | 修改每次调用的等待预算 |
+| `failproofai jev status [--json]` | 配置、权限及近期活动；不显示密钥 |
+| `failproofai jev test [--json]` | 一次实时请求：延迟和响应版本 |
+| `failproofai jev models [--provider <kind>] [--url <base>] [--json]` | 该端点 `/models` 返回的模型 ID 列表，标注已配置的模型 |
+| `failproofai jev remove` | 删除配置；Jev 关闭 |

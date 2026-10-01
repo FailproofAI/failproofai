@@ -1,0 +1,28 @@
+---
+title: "Jev 评估"
+description: "使用 Jev 对已完成的会话按已知答案问题进行评分。"
+icon: "list-checks"
+---
+
+Jev 评估读取**已完成的会话**，并给出 0 到 1 之间的分数。当答案事先已知时使用它，例如"客户是否表达了紧迫感？"或"客户有多沮丧？"它帮助您发现多次运行中的规律；它不会阻止工具调用。对于在工具运行**之前**做出的决策，请使用 [Jev 策略](/zh/policies/jev)。
+
+## 在控制台中创建
+
+1. 打开 **Analyze → eval authoring**，选择 **new eval**。
+2. 描述一个问题及其可能的答案。例如："代理在检查退款政策之前是否承诺退款？回答是或否。"选择 **draft** 并确认结果为分类分数。
+3. 在近期会话上[测试它](/zh/evaluations/test)，然后[部署它](/zh/evaluations/deploy)。新完成的会话将被评分；如果还需要历史记录，请[回填](/zh/evaluations/deploy#score-sessions-you-already-have)。
+
+![共享的 eval 创作表单，您可以在其中描述固定答案问题、审查草稿，并在测试后部署。所示示例为代码评估；Jev 问题使用相同的创作流程。](/images/dashboard/eval-authoring-draft.png)
+
+助手可以在代码、Jev 分类和[判断器](/zh/evaluations/judge)之间进行选择。部署前请确认其选择。Jev 给出分数但不含文字说明；当您需要解释时，请选择判断器。有关问题类型和分数限制，请参阅 [Jev 评估参考](/zh/reference/jev-evaluations)。
+
+## 读取分数
+
+打开 **Observe → Evaluations**，按代理和时间绘制结果图表。在终端中，Cloud CLI 可以读取相同的结果：
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Cloud CLI 用于读取结果；创作和部署在控制台中进行。有关筛选器，请参阅 [Cloud CLI 参考](/zh/reference/cloud-cli#evaluations)。

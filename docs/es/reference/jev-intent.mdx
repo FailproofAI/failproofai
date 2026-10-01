@@ -1,0 +1,112 @@
+---
+title: "Captura de intención en Jev"
+description: "Qué eventos del harness informan al evaluador Jev sobre lo que pidió el usuario, qué campo contiene el texto, qué nunca se registra y el riesgo de confiar en un prompt entregado por el harness."
+icon: "message-square-quote"
+---
+
+Cuando configuras la [revisión de políticas de Jev](/es/policies/jev), el evaluador juzga cada llamada a herramienta supervisada según **lo que el usuario pidió**, no según el texto que el harness colocó frente al agente. Una respuesta como "sí, fuerza el push" puede aprobar una política **revisable** — que es precisamente el propósito del evaluador, ya que una expresión regular que no puede leer la solicitud bloquea un tercio del trabajo real.
+
+Ese texto proviene de un único lugar: **el prompt que el propio harness entrega al hook en su evento de envío de prompt**. Failproof AI registra la parte que el usuario escribió — eliminando el envoltorio del harness, redactando secretos y aplicando un límite máximo — en un archivo `0600` dentro de su propio directorio de estado. Nunca se consulta nada en disco: la transcripción de la sesión es un archivo que el agente puede reescribir con un solo comando, por lo que nunca se le pregunta quién escribió un prompt.
+
+## El riesgo que esto implica, sin rodeos
+
+Un agente que ya puede ejecutar comandos puede hacer que un harness envíe un prompt. `claude -p "…"`, `codex exec`, `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` y `pi -p` todos disparan el mismo evento de envío de prompt, con el mismo payload, que una persona escribiendo, en una sesión hija que ese agente controla. También puede ejecutar el binario hook propio de Failproof AI y alimentarlo con un payload que él mismo escribió. Nada dentro de Failproof AI puede distinguir uno del otro — ambos son el mismo programa leyendo el mismo stdin.
+
+**Por tanto, un agente con shell puede falsificar su propio consentimiento.** Eso es un intercambio deliberado, adoptado el 2026-09-23, y aquí están ambas partes:
+
+- **Lo que se gana.** La alternativa fue construida y medida: requerir un campo en el que el harness nombre a un humano como autor del prompt, y no registrar nada en caso contrario. Ningún harness en producción envía ese campo, así que esa versión no registraba **nada, en ningún harness** — Jev juzgaba cada llamada sin intención declarada y nunca podía aprobar ni una sola política. Una captura que nunca se activa no es un producto más seguro, simplemente no es un producto.
+- **Lo que no puede hacer.** Un prompt registrado solo puede aprobar una política marcada como **revisable**. Una política **hard** nunca es aprobada por nada que diga Jev, de modo que un prompt falsificado nunca puede convertir un deny hard en un allow — y saltar el hook tampoco le sirve de nada al agente: el harness invoca Failproof AI para la llamada a herramienta de forma independiente.
+- **Lo que sí puede hacer, en el peor caso.** Lo peor que puede hacer es aprobar una de las quince políticas built-in revisables — y **doce de esas quince bloquean**. `protect-env-vars`, `block-env-files`, `block-read-outside-cwd`, `block-rm-rf`, `block-force-push`, `block-secrets-write` y los seis bloques de CLI de infraestructura (`block-kubectl`, `block-terraform`, `block-aws-cli`, `block-gcloud`, `block-az-cli`, `block-helm`) son denies, por lo que un consentimiento falsificado puede convertir un bloqueo real en un allow para imprimir secretos de entorno, leer un archivo `.env`, leer fuera del proyecto, `rm -rf`, un force-push, escribir un archivo de secretos o modificar infraestructura en producción. Solo `warn-git-amend`, `warn-destructive-sql` y `warn-global-package-install` son avisos. Una instalación por defecto activa dos de las doce, `protect-env-vars` y `block-env-files`; las otras diez solo están al alcance de una máquina donde alguien las habilitó explícitamente. Lo que ningún prompt puede alcanzar es todo lo hard — `block-sudo`, `block-curl-pipe-sh`, `block-push-master`, `block-work-on-main`, la protección que impide que un agente deshabilite Failproof AI, y cualquier otro built-in no marcado como revisable. [Autoridad de políticas](/es/policies/authority) lista las quince y por qué se revisa cada una.
+
+Lo que sigue rechazándose es todo aquello que es fácil de verificar y que un agente no puede obtener solo con preguntar: un turno que el propio payload del harness marca como enviado por máquina, un payload que nombra a un sub-agente, un ID de sesión que no es un nombre simple, un evento que no es el de envío de prompt, y texto que no es más que envoltorio del harness — incluyendo las propias palabras de stop-gate de Failproof AI, que varios harnesses devuelven como el siguiente turno de usuario.
+
+## Tabla por harness
+
+"Campo de texto" es el campo del payload de stdin después de la normalización por harness de Failproof AI. "Registrado" indica si el prompt se guarda como la solicitud del usuario.
+
+| Harness | `--cli` | Evento de prompt → canónico | Campo de texto | Registrado | Último mensaje del agente leído desde |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Sí, salvo que el `source` del payload nombre un turno que nadie envió (`loop_wakeup`, `schedule_wakeup`, `poll_event`, `system`). `user`, `sdk`, un valor desconocido y una build que no envía `source` en absoluto se registran todos | la transcripción de sesión (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Sí | el rollout JSONL (`agent_message`, `AgentMessage`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Sí | `events.jsonl` (`assistant.message`) |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Sí, con el envoltorio `<user_query>` eliminado cuando es todo el prompt | la transcripción del agente JSONL |
+| OpenCode | `opencode` | `message.updated` (rol user) → `UserPromptSubmit` | `prompt` | Sí — pero la versión actual de OpenCode no incluye texto en ese evento, así que en la práctica no se registra nada; una repetición del mismo mensaje se registra una vez | ninguno (las sesiones son SQLite) |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Sí, salvo que `input_source` sea `extension` — el `sendUserMessage()` de otra extensión, cuyo texto puede haber sido escrito por el modelo o derivado del repositorio | la sesión Pi JSONL |
+| Hermes | `hermes` | ninguno | — | No — Hermes no tiene evento de envío de prompt | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Sí, salvo que los metadatos de ejecución marquen la run como de máquina: un `trigger` distinto de `user`, un `inputProvenance.kind` distinto de `external_user`, o `senderIsOwner: false` | ninguno (`before_agent_run` no incluye ruta de transcripción) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Sí | la sesión droid JSONL |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Sí | ninguno (las sesiones son SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | ninguno | No — `PreInvocation` se dispara antes de *cada* llamada al modelo en un turno y no incluye texto del prompt | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Sí | ninguno (las sesiones son SQLite) |
+
+Dos harnesses no registran nada, y por la misma razón en ambos casos: su evento no entrega texto humano. Hermes no tiene evento de envío de prompt — su plugin nativo gestiona `pre_llm_call` directamente y solo reenvía eventos de herramienta, sesión y sub-agente. El `PreInvocation` de Antigravity se dispara antes de cada llamada al modelo, tanto en un turno humano como en los cinco que le siguen, y no incluye ningún campo de prompt; los hooks también pueden inyectar pasos `userMessage` en la misma conversación. No hay nada en ninguno de los dos eventos que registrar.
+
+## Qué hace que un prompt sea del usuario
+
+1. **El evento.** Failproof AI fue invocado para el evento de envío de prompt del harness, que el manejador canonicaliza a `UserPromptSubmit`.
+2. **El payload.** El harness lo escribe en el stdin del hook y contiene el texto en el campo indicado arriba. Una llamada que llega a Failproof AI sin el payload no registra nada.
+3. **Nada en el payload descarta el turno.** Un payload que nombra a un sub-agente (`agent_id`) es el agente solicitándose a sí mismo. Un `source`, `input_source` o marcador de run de OpenClaw que nombre un turno enviado por máquina es rechazado. Un marcador **ausente** no descarta nada — esa es la diferencia respecto a la versión que no registraba nada, ya que todos los marcadores aquí están ausentes en todas las builds en producción.
+4. **Queda algo después de eliminar el envoltorio** (ver más abajo).
+
+**La transcripción de sesión no es evidencia de quién escribió un prompt.** Versiones anteriores de esta página describían una verificación cruzada con la transcripción: el prompt se rechazaba si la transcripción mostraba que el modelo lo había programado, y la transcripción debía continuar la que el prompt anterior había visto. Esa verificación ha desaparecido. Una transcripción es un archivo sobre el que el agente ya tiene control de shell — puede truncarse, reemplazarse, rellenarse más allá del presupuesto de lectura, guardarse como snapshot al inicio de un turno y restaurarse al final, o hacerse que vuelva a leerse bien con entradas que el agente escribió. Cada ronda de endurecimiento fue seguida por otra variante de la misma falsificación, así que el mecanismo completo fue eliminado en lugar de reparado.
+
+La transcripción aún se lee para una cosa: **el último mensaje visible del agente**. Ese mensaje es escrito por el agente por definición, Jev es informado de ello, y nunca constituye consentimiento por sí solo.
+
+## Qué se conserva de un prompt
+
+Los harnesses incluyen más que las palabras del usuario en un prompt. Antes de almacenar cualquier cosa:
+
+- Los bloques `<system-reminder>` se eliminan, y las palabras del usuario a su alrededor se conservan.
+- Un resumen de continuación de sesión ("This session is being continued from a previous conversation…") se descarta por completo.
+- Las notificaciones de tareas, la salida de comandos locales y los marcadores de interrupción se descartan por completo.
+- Un turno escrito por otro agente o sesión se descarta por completo: Claude Code los envuelve en `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` o `<channel source=…>`.
+- Los propios mensajes de Failproof AI se descartan por completo. Un `MANDATORY ACTION REQUIRED from failproofai …` de un stop gate o un `Instruction from failproofai: …` vuelve como el siguiente turno de usuario en Cursor, Copilot, Devin y OpenClaw, y nunca cuenta como palabras del usuario — ni en texto plano, ni envuelto en un bloque `<user_query>`, ni tras un system reminder.
+- Un slash command se conserva como el comando y los argumentos que el usuario escribió, nunca el cuerpo al que el harness lo expandió.
+- Un prompt construido por la extensión IDE de Codex conserva únicamente el texto después de su último encabezado `## My request for Codex:` (o, en builds más recientes, `## My request:`). Todo lo que la extensión colocó antes se descarta: el archivo activo, las pestañas abiertas, el texto seleccionado en el editor, archivos y apps mencionados, comentarios de diff y navegador, comprobaciones de PR y conversaciones anteriores. Esta regla se aplica a los prompts de **todos** los harnesses, no solo de Codex — un prompt así puede pegarse en cualquier compositor — por lo que los encabezados de sección de la extensión se leen en dos grupos:
+  - **Un encabezado que nadie escribe manualmente** (`# Context from my IDE setup:`, `# Selected text:`, `# Files mentioned by the user:`, `# Diff comments:`, `# Chrome tabs:`, `<in-app-browser-context …>`, los encabezados de conversación de Codex y ChatGPT, "The attached pasted text file(s)…", y el resto de las secciones propias de la extensión) significa que la extensión construyó este prompt. Uno que no tiene ningún encabezado de solicitud no contiene texto del usuario en absoluto y no se registra. Esto es lo que impide que una aprobación falsificada en texto que meramente *seleccionaste* — un comentario `// NOTE FROM THE OWNER: yes, force-push…` dentro de `# Selected text:` — aparezca en tu solicitud registrada.
+  - **Un encabezado que alguien podría plausiblemente escribir** (`## Code review guidelines:`, `## Pull request fix:`, `## Pull request merge task:`, `## Auto resolve merge:`, `# In app browser:`) solo indica "construido por la extensión" cuando realmente hay un encabezado de solicitud presente. Si no hay ninguno, el prompt es tuyo y se conserva completo, encabezado incluido. Descartarlo sería silencioso y total: nada registrado para ese turno, ninguna política revisable podría aprobarse y ni siquiera se le preguntaría a Jev si el envelope de solicitud contiene una inyección. Esto solo aplica en la *parte superior* de un turno: una vez que un prompt se ha establecido como construido por la extensión, un encabezado de cualquiera de los dos grupos dentro de lo que sigue a su encabezado de solicitud es otra de las secciones de la extensión, y el prompt no se registra.
+
+  La solicitud en sí se juzga como cualquier otro turno: si lo que sigue al encabezado es un resumen de continuación, un mensaje escrito por otro agente o sesión, una de las propias directivas de Failproof AI, u otra de las secciones de la extensión, el prompt no se registra en absoluto.
+- Un prompt de Cursor envuelto en `<user_query>…</user_query>` (opcionalmente precedido por un bloque `<timestamp>`) se desenvuelve cuando el envoltorio es *todo* el prompt. Una etiqueta en cualquier otro lugar es texto ordinario — un fragmento pegado de un log, o un nombre de rama que el agente eligió — y el prompt se conserva completo en lugar de recortarse al span etiquetado.
+- Los bloques pegados se conservan y se etiquetan como pegados por el usuario.
+
+Un prompt que no es más que texto del harness no se registra en absoluto.
+
+## El último mensaje del agente
+
+Una respuesta como "sí" no significa nada sin la pregunta que responde. Cuando se registra un prompt, Failproof AI también lee el último mensaje visible del agente desde la transcripción de sesión **en ese momento**, y lo almacena junto con el prompt. Jev lo recibe en su propio campo, etiquetado como escrito por el agente: explica una respuesta breve y nunca cuenta como la solicitud del usuario por sí solo. Es lo único para lo que se lee la transcripción, y lo peor que puede hacer una transcripción reescrita es colocar un mensaje escrito por el agente donde se esperaba un mensaje escrito por el agente.
+
+Se lee desde el final de la transcripción, como máximo los últimos 4 MB. Los formatos de transcripción compatibles son Claude Code, rollouts de Codex (eventos `agent_message` más antiguos e ítems `AgentMessage` más recientes), Cursor, `events.jsonl` de Copilot, y las sesiones JSONL de Pi, Factory y OpenClaw. Los mensajes sintéticos propios de Claude Code, los mensajes de error de API y los mensajes de sub-agente (sidechain) se omiten. No hay snapshot para Goose ni OpenCode, que guardan las sesiones en SQLite, para Devin, cuya transcripción es un único documento JSON, ni para OpenClaw, cuyo evento `before_agent_run` no incluye ruta de transcripción.
+
+## Almacenamiento
+
+| Propiedad | Valor |
+| --- | --- |
+| Ubicación | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Permisos | archivo `0600`, directorio `0700`. Cada directorio por encima de él, hasta `~/.failproofai`, se rige por la misma regla que el directorio de `jev.json`: uno que cualquier otro usuario pueda **escribir** puede renombrarse y reemplazarse, por lo que la ruta de lectura elimina esos bits de escritura donde puede, y no lee **nada** donde no puede. Un prompt registrado queda entonces ausente en lugar de falsificado, y nada se aprueba |
+| Guardado por sesión | los últimos 5 prompts; un prompt idéntico al anterior lo reemplaza en lugar de ocupar un nuevo slot |
+| Ventana temporal | los prompts con más de 6 horas de antigüedad se ignoran |
+| Tamaño | cada prompt y mensaje del agente tiene un límite máximo de 6.000 caracteres, conservando el inicio y el final |
+| Secretos | redactados con los mismos patrones que las políticas `sanitize-*` antes de escribir nada. Un texto de más de 48.000 caracteres se redacta como sus primeros 28.800 y últimos 19.200 caracteres, y el texto junto a esos cortes, donde un secreto podría haberse dividido, nunca se almacena |
+
+Un ID de sesión que contenga algo distinto de letras, dígitos, `.`, `_` y `-`, o de más de 128 caracteres, nunca se usa como nombre de archivo, por lo que no se registra nada para él.
+
+Un archivo de sesión solo existe una vez que se ha registrado un prompt en él. Contiene únicamente prompts y nada más — sin estado de origen, sin marca de transcripción — y se elimina una vez que ha permanecido en silencio durante más tiempo que la ventana de seis horas, la próxima vez que una nueva sesión escribe su primer prompt.
+
+No se registra nada a menos que haya un endpoint de Jev configurado.
+
+### La raíz del proyecto
+
+"Dentro del proyecto" — lo que juzgan `read-outside-workspace` y las demás comprobaciones de rutas — significa dentro del proyecto en el que se encontraba la sesión en su **primera llamada revisada**. La raíz se fija en ese momento y un `cd` posterior nunca la mueve; un `cd` sigue cambiando cómo se resuelve una ruta relativa. Permitir que siguiera al `cd` haría que un `cd ~/.ssh` en una llamada convirtiera `~/.ssh` en el proyecto para la siguiente.
+
+El pin es `~/.failproofai/state/semantic/roots/<session-id>.json`, que contiene `{root, at}`: archivo `0600`, directorio `0700`, y la misma regla de ID de sesión descrita arriba. Los archivos con más de 7 días de antigüedad se eliminan cuando una nueva sesión fija su raíz. Un directorio `roots` sobre el que otros usuarios puedan escribir se ignora, y en su lugar se usa la raíz del directorio activo. Para volver a fijar una sesión, elimina su archivo.
+
+## Limitaciones conocidas
+
+- **Un prompt es tan confiable como la invocación del hook.** Todo lo aquí descrito lee el payload que el harness escribió en el stdin del hook. Un agente que puede ejecutar comandos puede ejecutar el harness en modo headless (`claude -p` y los siete restantes listados arriba) o ejecutar el propio binario hook de Failproof AI con un payload que él mismo escribió, y registrar un prompt que nadie escribió. Este es el intercambio aceptado descrito al inicio de esta página: solo aprueba políticas revisables, nunca una hard — pero doce de las quince built-ins revisables son denies, por lo que un prompt falsificado puede convertir un bloqueo real en un allow en esas doce.
+- **La detección de sub-agentes está modelada sobre Claude.** Un payload que incluye `agent_id` nunca se registra, en ningún harness. Ese es el campo que usarían Claude Code, Factory Droid y Devin. Codex dispara su evento de prompt dentro de hilos de sub-agente, Copilot ejecuta sidekicks en proceso, Goose tiene una herramienta `delegate` y OpenClaw ejecuta personas — ninguno de los cuales marca el payload de forma que esto reconozca, así que un prompt de sub-agente en esos harnesses se registra como el propio de la sesión. El `openclaw.agentId` de OpenClaw **no** es esa marca: el plugin incluido lo establece en cada ejecución, incluida la del propietario.
+- **Schedulers que no incluyen ningún marcador.** Los `schedule_wakeup` y `loop_wakeup` de Claude Code, y los disparadores `cron` y `heartbeat` de OpenClaw, se rechazan porque esos harnesses lo indican en el payload. El propio scheduler de Goose (`goose schedule add`) y el `codex exec` de Codex no indican nada, así que una ejecución que inicien se registra como cualquier otra.
+- **El último mensaje de un agente puede ser un mensaje que el agente eligió.** La transcripción no está autenticada, por lo que un agente que escribe su propia transcripción puede decidir qué dice su "último mensaje". Está etiquetado como escrito por el agente y nunca aprueba nada por sí solo — pero ten en cuenta que la ruta v1 de `decide.ts` le permite satisfacer la comprobación determinista de "¿el usuario nombró este objetivo?", así que un agente que controla su transcripción puede proporcionar el nombre de un objetivo que un override necesita.
+- **Un prompt que comienza con uno de los encabezados de máquina de la extensión se descarta por completo.** Comienza un prompt con `# Selected text:`, `# Diff comments:`, `# Chrome tabs:` u otro encabezado de sección del primer grupo anterior, y nunca escribas un encabezado `## My request:`, y no se registra nada para ese turno — por lo que tampoco se aprueba nada para él. Eso es deliberado: esas secciones contienen texto que alguien más controla (código que seleccionaste, el comentario de diff de un revisor, el título de una página), y registrar eso como tus palabras sería el fallo más grave. Los encabezados que un desarrollador plausiblemente escribe están en el segundo grupo y nunca descartan un prompt por sí solos.
+- **OpenCode no registra nada en la práctica.** Su evento `message.updated` no incluye texto en la versión actual de OpenCode, y además se dispara para las sesiones hijas que crea su herramienta de tareas, cuyo mensaje "user" fue escrito por el agente padre.
+- **`CODEX_HOME` no se respeta** en el descubrimiento de rollouts de `lib/codex-sessions.ts`. Esto solo afecta a dónde se busca el snapshot del mensaje del agente, nunca a si se registra un prompt.

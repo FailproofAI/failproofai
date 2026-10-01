@@ -1,0 +1,45 @@
+---
+title: "Jev policies"
+description: "Aggiungi la revisione live di Jev alle chiamate di strumento bloccate, quindi ispezionala prima di applicare le sue decisioni."
+icon: "shield-check"
+---
+
+Jev legge una chiamata di strumento rispetto a ciò che la persona ha chiesto all'agente di fare. Usalo quando una policy basata su corrispondenza di stringhe blocca un lavoro valido o perde un'azione rischiosa che necessita contesto. Risponde insieme alle tue policy al gate `PreToolUse` o `PermissionRequest`. Per un punteggio **dopo** che una sessione termina, usa [Jev evaluations](/it/evaluations/jev).
+
+## Inizia in modalità observe
+
+Installa Failproof AI e collega i hook a un [harness supportato](/it/reference/harnesses). Usa failproofai 1.0.8-beta.0 o successivo.
+
+Failproof AI non include alcun controllo Jev. Installali come pacchetto, altrimenti Jev non ha nulla da chiedere e non viene mai chiamato:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+Quindi scegli come le richieste raggiungono Jev:
+
+| Route | Primo passo |
+| --- | --- |
+| FailproofAI Cloud | Connettiti con una chiave **machine** che porta `jev:evaluate`. Su una macchina senza configurazione Jev, `failproofai config` attiva Jev in modalità observe. |
+| Il tuo provider | Nel dashboard locale, apri **Settings → Jev**, scegli il provider, incolla il suo token e seleziona **observe**. Oppure esegui `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
+
+![Le impostazioni Jev del dashboard locale: provider, endpoint, token e modalità observe prima di attivare Jev.](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`test` controlla l'endpoint. Per controllare il percorso dell'hook, chiedi a un agente con hook di utilizzare il suo strumento di lettura file su `README.md`. Conferma che quella chiamata di strumento appare nella sessione, quindi ispeziona **Policies → Activity** nel [dashboard locale](/it/reference/local-dashboard#review-policy-activity). Il conteggio di Jev in `status` dovrebbe aumentare. La modalità observe registra cosa Jev avrebbe deciso mentre il tuo risultato di policy esistente continua ad applicarsi.
+
+## Decidi quando applicare
+
+Una policy **hard** ha sempre l'ultima parola. Jev può cancellare un deny solo da una policy esplicitamente marcata come **reviewable** e solo quando ha controllato la preoccupazione nominata di quella policy. Consulta [policy authority](/it/policies/authority) prima di affidarti a un'autorizzazione. Jev può anche avvertire o negare autonomamente. Se non riesce a rispondere, il risultato della policy decide quella chiamata.
+
+Una volta che i risultati dell'observe sembrano corretti, passa alla modalità enforce in **Settings → Jev** oppure esegui:
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+Per URL dei provider, chiavi Cloud, configurazione, fallback e dati inviati con ogni richiesta, consulta il [Jev integration reference](/it/reference/jev).

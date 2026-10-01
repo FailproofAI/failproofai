@@ -1,0 +1,63 @@
+---
+title: "使用 Jev"
+description: "为已完成的会话设置 Jev 评估，或为实时工具调用审查设置 Jev policies。"
+icon: "sparkles"
+---
+
+Jev 在 Agent 运行的两个节点发挥作用：对已完成的会话按已知答案进行评分，或在您交给 Agent 的任务背景下对工具调用进行审查。
+
+<Tabs>
+  <Tab title="Jev evals">
+    当一个已完成的会话可以对照几个已知答案进行评分时，请使用 Jev eval，例如"客户是否要求退款？请回答是或否。"它可以帮助您发现跨会话的规律。
+
+    ## 创建 eval
+
+    在 Cloud 控制台中，依次打开 **Analyze → eval authoring → new eval**。输入一个固定答案的问题，选择 **draft**，并确认它选择了分类器评分。在真实会话上[测试](/zh/evaluations/test)后再部署。
+
+    ![共享 eval 编辑表单，您可以在其中描述问题、审查草稿并进行部署。截图显示的是代码草稿；Jev 请使用固定答案问题。](/images/dashboard/eval-authoring-draft.png)
+
+    ## 查看评分结果
+
+    新会话完成后，打开 **Observe → Evaluations**，或使用 Cloud CLI：
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    CLI 用于读取评分；创建 Jev eval 目前需通过控制台操作。有关问题类型和示例，请参阅 [Jev evaluations](/zh/evaluations/jev)。
+  </Tab>
+  <Tab title="Jev policies">
+    当基于字符串匹配的 policy 需要结合您的请求上下文来判断某次工具调用是否安全时，请使用 Jev policy 审查。首先以 **observe** 模式运行，这样您可以查看 Jev 的判断结果，同时已安装的 policies 仍负责处理每次调用。
+
+    Jev 的检查来自一个包；Failproof AI 默认不附带任何包。在您安装之前，即使已完成配置，Jev 也不会发出任何询问：
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## 设置 Cloud Jev
+
+    在 Cloud 控制台中，打开 **Administration → Keys**，使用 **machine** 预设创建一个密钥。按[快速入门](/zh/start/quickstart)中的说明将其与 `failproofai config` 配合使用。在没有现有 Jev 配置的机器上，此操作将以 observe 模式启用 Cloud Jev。使用以下命令检查连接状态：
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## 使用自定义端点
+
+    在本地控制台中，打开 **Settings → Jev**。选择提供商，粘贴其 token，选择 **observe**，然后开启 Jev。
+
+    ![本地 Jev 设置面板，显示提供商、token 输入框以及已选中的 observe 模式。](/images/dashboard/jev-settings.png)
+
+    或在终端中配置并测试您的端点：
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    让一个已接入 hook 的 Agent 对 `README.md` 使用其文件读取工具。确认该工具调用出现在会话中，然后在本地控制台的 **Policies → Activity** 下查看详情。一旦 observe 结果符合预期，请参阅 [Jev policies](/zh/policies/jev) 了解何时启用强制执行。有关提供商详情和配置说明，请参阅[集成参考](/zh/reference/jev)。
+  </Tab>
+</Tabs>

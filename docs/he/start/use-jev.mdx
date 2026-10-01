@@ -1,0 +1,63 @@
+---
+title: "השתמש ב-Jev"
+description: "הגדר הערכות Jev עבור סשנים שהסתיימו או מדיניות Jev לסקירת קריאות כלים בזמן אמת."
+icon: "sparkles"
+---
+
+Jev עוזר בשתי נקודות בהפעלת agent: הערכת סשן שהסתיים מול תשובות ידועות, או סקירת קריאת כלי בהקשר של מה שביקשת מה-agent לעשות.
+
+<Tabs>
+  <Tab title="Jev evals">
+    השתמש בהערכת Jev כאשר סשן שהסתיים יכול להיות מדורג מול שאלה עם כמה תשובות ידועות, כמו "האם הלקוח ביקש החזר? ענה כן או לא." זה עוזר לך למצוא דפוסים על פני סשנים.
+
+    ## יצירת הערכה
+
+    בדשבורד הענן, פתח **Analyze → eval authoring → new eval**. הזן שאלה עם תשובה קבועה, בחר **draft**, ובדוק שהוא בחר ניקוד מסווג. [בדוק אותה](/he/evaluations/test) בסשנים אמיתיים, ואז הפרס אותה.
+
+    ![טופס יצירת הערכה משותף בו אתה מתאר שאלה, בוחן את הטיוטה, והופץ אותה. צילום מסך זה מציג טיוטת קוד; השתמש בשאלה עם תשובה קבועה עבור Jev.](/images/dashboard/eval-authoring-draft.png)
+
+    ## קרא את הניקודים
+
+    לאחר שסשן חדש מסתיים, פתח **Observe → Evaluations** או השתמש ב-Cloud CLI:
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    ה-CLI קורא ניקודים; יצירת הערכת Jev כרגע משתמשת בדשבורד. ראה [Jev evaluations](/he/evaluations/jev) עבור סוגי שאלות וודוגמאות.
+  </Tab>
+  <Tab title="Jev policies">
+    השתמש בסקירת מדיניות Jev כאשר למדיניות תיאום מחרוזות צריכה את ההקשר של בקשתך כדי להחליט אם קריאת כלי בטוחה. התחל במצב **observe** כדי שתוכל לבדוק את התשובות של Jev בזמן שהמדיניות המותקנת שלך עדיין מחליטה על כל קריאה.
+
+    הבדיקות של Jev באות מחבילה; Failproof AI לא משגרת אף אחת. עד שתתקין אותן, Jev לא שואל כלום, גם כשהוא מוגדר:
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## הגדר את Cloud Jev
+
+    בדשבורד הענן, פתח **Administration → Keys** וצור מפתח עם ערכת **machine**. השתמש בו עם `failproofai config` כמוצג ב-[quickstart](/he/start/quickstart). במכונה ללא תצורת Jev קיימת, זה מאפשר את Cloud Jev במצב observe. בדוק את החיבור עם:
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## השתמש בנקודת הקצה שלך
+
+    בדשבורד המקומי, פתח **Settings → Jev**. בחר את הספק, הדבק את הטוקן שלו, בחר **observe**, והפעל את Jev.
+
+    ![לוח הגדרות Jev המקומי עם ספק, שדה טוקן, ומצב observe שנבחר.](/images/dashboard/jev-settings.png)
+
+    או הגדר ובדוק את נקודת הקצה שלך מטרמינל:
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    בקש מ-agent המחובר להשתמש בכלי קריאת הקבצים שלו ב-`README.md`. אשר שקריאת הכלי הזו מופיעה בסשן, ואז בדוק אותה תחת **Policies → Activity** בדשבורד המקומי. ברגע שתוצאות ה-observe נראות נכונות, [Jev policies](/he/policies/jev) מסביר מתי לאכוף. לפרטי ספק והגדרה, ראה את [integration reference](/he/reference/jev).
+  </Tab>
+</Tabs>

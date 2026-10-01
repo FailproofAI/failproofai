@@ -1,0 +1,22 @@
+---
+title: "Referencia de integración de Jev"
+description: "Configuración, proveedores, claves, datos de solicitud y comportamiento ante fallos para Jev."
+icon: "braces"
+---
+
+Jev tiene dos usos en Failproof AI:
+
+| Uso | Cuándo se ejecuta | Qué devuelve | Empieza aquí |
+| --- | --- | --- | --- |
+| Evaluación de sesión | Después de que finaliza una sesión | Una puntuación para una pregunta de respuesta fija | [Evaluaciones con Jev](/es/evaluations/jev) |
+| Revisión de políticas de llamadas a herramientas | Antes de que se ejecute una llamada a herramienta bloqueada | Un veredicto junto con las políticas instaladas | [Políticas de Jev](/es/policies/jev) |
+
+## Páginas de referencia
+
+| Tema | Detalles |
+| --- | --- |
+| [Preguntas de evaluación](/es/reference/jev-evaluations) | Criterios booleanos y de puntuación ordenada, resultados, límites y relleno retroactivo. |
+| [Comparación de proveedores y configuración con clave propia](/es/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare y endpoints personalizados; inferencia de URL, IDs de modelos, `jev.json`, modos y códigos de reserva. |
+| [Ruta de FailproofAI Cloud](/es/reference/jev-cloud) | Permisos de clave de máquina, configuración automática de observación, límites de uso, estado de conexión y manejo de datos. |
+
+Los comandos locales de la CLI se encuentran en la [referencia de la CLI de Failproof AI](/es/reference/failproof-cli). La [referencia del panel local](/es/reference/local-dashboard#set-up-jev) describe la configuración de Jev y la vista de actividad.

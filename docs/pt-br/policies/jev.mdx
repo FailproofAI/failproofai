@@ -1,0 +1,45 @@
+---
+title: "Políticas do Jev"
+description: "Adicione a revisão ao vivo do Jev às chamadas de ferramentas monitoradas e inspecione suas decisões antes de aplicá-las."
+icon: "shield-check"
+---
+
+O Jev analisa uma chamada de ferramenta em relação ao que a pessoa pediu ao agente para fazer. Use-o quando uma política baseada em correspondência de strings bloqueia um trabalho válido ou deixa passar uma ação arriscada que precisa de contexto. Ele responde junto com suas políticas no gate `PreToolUse` ou `PermissionRequest`. Para uma pontuação **após** o encerramento de uma sessão, use as [avaliações do Jev](/pt-br/evaluations/jev).
+
+## Comece no modo de observação
+
+Instale o Failproof AI e conecte hooks a um [harness compatível](/pt-br/reference/harnesses). Use a versão failproofai 1.0.8-beta.0 ou posterior.
+
+O Failproof AI não vem com verificações do Jev. Instale-as como um pacote; caso contrário, o Jev não terá nada para verificar e nunca será chamado:
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+Em seguida, escolha como as solicitações chegam ao Jev:
+
+| Rota | Primeiro passo |
+| --- | --- |
+| FailproofAI Cloud | Conecte-se com uma chave de **máquina** com permissão `jev:evaluate`. Em uma máquina sem configuração do Jev, `failproofai config` ativa o Jev no modo de observação. |
+| Seu próprio provedor | No painel local, abra **Configurações → Jev**, escolha o provedor, cole o token e selecione **observe**. Ou execute `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key`. |
+
+![Configurações do Jev no painel local: provedor, endpoint, token e modo de observação antes de ativar o Jev.](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+O comando `test` verifica o endpoint. Para verificar o caminho do hook, peça a um agente monitorado que use sua ferramenta de leitura de arquivos no `README.md`. Confirme que a chamada de ferramenta aparece na sessão e inspecione **Políticas → Atividade** no [painel local](/pt-br/reference/local-dashboard#review-policy-activity). O contador do Jev em `status` deve aumentar. O modo de observação registra o que o Jev teria decidido, enquanto o resultado da sua política existente ainda é aplicado.
+
+## Decida quando aplicar
+
+Uma política **rígida** sempre tem a palavra final. O Jev só pode cancelar uma negação de uma política explicitamente marcada como **revisável** e somente quando verificou a preocupação nomeada dessa política. Consulte a [autoridade de política](/pt-br/policies/authority) antes de depender de uma liberação. O Jev também pode emitir avisos ou negar por conta própria. Se não conseguir responder, o resultado da política decide aquela chamada.
+
+Assim que os resultados do modo de observação parecerem corretos, alterne para o modo de aplicação em **Configurações → Jev** ou execute:
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+Para URLs de provedores, chaves do Cloud, configurações, fallbacks e dados enviados com cada solicitação, consulte a [referência de integração do Jev](/pt-br/reference/jev).

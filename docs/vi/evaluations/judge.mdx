@@ -1,0 +1,91 @@
+---
+title: "Trọng tài LLM"
+description: "Đánh giá các phiên làm việc theo những tiêu chí mà mã không thể đo lường — tính chính xác, tông độc, liệu agent có tuân theo chính sách hay không — bằng cách mô tả tiêu chuẩn tốt là gì và để một mô hình đọc cuộc hội thoại."
+icon: "scale"
+---
+
+Một đánh giá Python được lưu trữ có thể đếm và so sánh: bao nhiêu lệnh gọi công cụ, bao nhiêu lỗi, phiên làm việc mất bao lâu. Nó không thể cho bạn biết liệu một câu trả lời có *chính xác*, liệu một phản hồi có thô lỗ hay không, hoặc liệu agent có kiểm tra một chính sách trước khi hành động hay không.
+
+Một **trọng tài LLM** có thể. Bạn mô tả tiêu chuẩn tốt bằng ngôn ngữ tự nhiên, và một mô hình đọc phiên làm việc rồi trả về điểm từ 0 đến 1 kèm theo lý do của nó.
+
+<Note>
+Một trọng tài tốn một lệnh gọi mô hình cho mỗi phiên mà nó chạy trên, còn đánh giá mã thì không tốn gì. Chỉ sử dụng trọng tài cho những câu hỏi cần phải *hiểu rõ* cuộc hội thoại — và đặt điều kiện cho nó, để nó chỉ chạy trên những phiên mà câu hỏi thực sự liên quan.
+</Note>
+
+## Tôi nên chọn cái nào?
+
+| Câu hỏi | Sử dụng |
+| --- | --- |
+| Nó có gọi cùng một công cụ hai lần không? | mã |
+| Có bao nhiêu lỗi? | mã |
+| Phiên có dưới 30 giây không? | mã |
+| Khách hàng có bày tỏ sự vội vàng không? | [bộ phân loại](/vi/evaluations/jev) |
+| Khách hàng bực dọc đến mức nào? | [bộ phân loại](/vi/evaluations/jev) |
+| Câu trả lời có thực sự chính xác không? | **trọng tài** |
+| Phản hồi có thô lỗ hoặc bất cảm không? | **trọng tài** |
+| Nó có kiểm tra chính sách hoàn tiền trước khi hứa hoàn tiền không? | **trọng tài** |
+
+Nguyên tắc chung: **có thể đếm được → mã, câu trả lời bạn có thể liệt kê trước → [bộ phân loại](/vi/evaluations/jev), cần giải thích → trọng tài.** Trọng tài là cái viết văn bản về những gì nó thấy; hãy sử dụng nó khi con số sẽ khiến ai đó hỏi "tại sao?".
+
+Bạn không cần quyết định trước. Mô tả những gì bạn muốn đo lường và trợ lý sẽ chọn, sau đó cho bạn biết nó đã chọn cái nào và tại sao. Bạn có thể thay đổi nó.
+
+## Viết một cái
+
+1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
+2. Mô tả những gì bạn muốn đánh giá, và chọn **draft**.
+3. Xem lại **criteria**, **threshold**, và **condition**, sau đó triển khai.
+
+### Criteria
+
+Một hoặc hai câu, được viết như một yêu cầu chứ không phải một câu hỏi:
+
+> Agent không được hứa hoặc phê duyệt hoàn tiền mà không kiểm tra chính sách hoàn tiền trước.
+
+Hãy cụ thể về những gì sẽ khiến nó *thất bại*. "Phản hồi có tốt không?" sẽ cho bạn một con số không có ý nghĩa gì; câu phía trên sẽ cho bạn một con số mà bạn có thể hành động dựa trên đó.
+
+### Threshold
+
+Điểm ở mức đó hoặc cao hơn để phiên vượt qua. `0.7` là một điểm khởi đầu hợp lý. Toàn bộ điểm từ 0 đến 1 luôn được lưu trữ, vì vậy ngưỡng chỉ quyết định vượt/không vượt — bạn có thể xem phân phối và điều chỉnh.
+
+### Condition
+
+Điều kiện Python giống như bất kỳ đánh giá nào khác, và nó quan trọng hơn nhiều ở đây. Nếu không có, trọng tài sẽ chạy trên **mọi** phiên trong tổ chức của bạn, với mỗi lệnh gọi mô hình:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Bảng điều khiển sẽ cảnh báo bạn nếu bạn triển khai một trọng tài mà không có điều kiện. Đôi khi điều này là đúng — một agent có lưu lượng thấp mà bạn muốn đánh giá đầy đủ — nhưng nó phải là một quyết định, không phải một sai sót.
+
+## Trọng tài thấy gì
+
+Cuộc hội thoại, dưới dạng các lượt, mới nhất trước nếu phiên dài:
+
+- người dùng nói gì
+- trợ lý trả lời gì
+- **mọi công cụ mà agent gọi, và lệnh gọi đó trả về gì, theo thứ tự**
+
+Phần cuối cùng đó là những gì khiến "nó có làm X *trước* Y không" trở thành một câu hỏi công bằng. Một lệnh gọi công cụ không thành công được hiển thị như một lỗi, vì vậy "nó có phục hồi một cách nhuyễn mịn từ một lỗi không" cũng hoạt động.
+
+Các phiên rất dài được cắt ngắn để vừa với ngữ cảnh của mô hình. Khi điều đó xảy ra, lý do sẽ nói rõ ràng — bạn sẽ không bao giờ thấy một phán xét được đưa ra trên một phần của phiên được trình bày như được đưa ra trên toàn bộ nó.
+
+## Đọc kết quả
+
+Một trọng tài tạo ra một **score** giống như bất kỳ đánh giá được tính điểm nào khác, vì vậy nó biểu đồ, lọc, và kích hoạt cảnh báo theo cách tương tự. Bên cạnh con số, nó lưu trữ **reasoning** của trọng tài — đoạn văn giải thích những gì nó thấy. Hãy đọc điều đó trước khi một điểm làm bạn ngạc nhiên; nó thường là một phiên thực sự thú vị hoặc một dấu hiệu rằng tiêu chí cần phải được làm sắc nét hơn.
+
+Điểm là ổn định đối với những trường hợp rõ ràng nhưng không hoàn toàn xác định bit theo bit. Hãy coi một điểm biên duy nhất như một lời nhắc để đi đọc phiên, chứ không phải như một phán xét.
+
+## Hạn chế
+
+- **Kiểm tra chưa khả dụng.** Một lần chạy thử không có gán phiên đằng sau nó, và gán đó là những gì ủy quyền chi tiêu ngân sách mô hình của bạn — vì vậy không có gì để lệnh gọi kiểm tra tính phí. Triển khai lại một điều kiện hẹp và đọc một vài kết quả đầu tiên.
+- **Backfill không khả dụng.** Backfill một đánh giá mã trong hàng tháng lịch sử là miễn phí; làm điều đó với một trọng tài sẽ chi tiêu toàn bộ ngân sách của bạn trong vài phút.
+- **Chỉnh sửa tiêu chí sẽ xuất bản một phiên bản mới.** Điểm cũ và mới không so sánh được, vì vậy chúng được giữ riêng thay vì trộn thành một dòng xu hướng.
+- **Một trọng tài luôn tạo ra một điểm**, không bao giờ là một chỉ số hoặc một khẳng định.
+
+## Khi ngân sách của bạn hết
+
+Trọng tài chi tiêu ngân sách mô hình của tổ chức bạn. Khi nó cạn kiệt, đánh giá trọng tài dừng lại với một lý do rõ ràng thay vì thất bại im lặng, và **đánh giá mã tiếp tục chạy bình thường**. Tăng ngân sách và chúng tiếp tục trên phiên tiếp theo.

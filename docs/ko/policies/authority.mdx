@@ -1,0 +1,144 @@
+---
+title: "정책 권한"
+description: "Jev 시맨틱 평가기가 승인할 수 있는 정책 판정과 최종 판정의 구분."
+icon: "scale"
+---
+
+FailproofAI Cloud 또는 직접 키를 사용해 [Jev 정책 검토](/ko/policies/jev)를 구성하면, 각 게이트된 도구 호출은 실행 중인 정책과 Jev 양쪽의 판단을 받습니다. Jev는 해당 호출이 실제로 무엇을 하는지, 그리고 작업을 입력한 사람이 그것을 요청했는지 확인합니다. 두 판단이 불일치할 때 정책의 **권한**이 결과를 결정합니다.
+
+Jev가 구성되어 있지 않으면 권한은 아무런 효과가 없습니다. 모든 정책은 기존 방식 그대로 적용됩니다.
+
+## Hard와 Reviewable
+
+- **Hard**가 기본값입니다. hard 정책의 deny 또는 instruction은 최종입니다. Jev가 이를 승인할 수 없으며, hard deny는 Jev를 기다리지 않고 호출을 즉시 차단합니다.
+- **Reviewable**은 Jev가 정책 판정을 승인할 수 있음을 의미하지만, 정책이 `reviewedBy`에 명시한 시맨틱 검사를 통해서만 가능합니다. **모든** 명시된 검사가 해당 호출에 대해 질의되고, 각각이 아무것도 발견하지 못했거나 사용자가 이를 요청했다고 기록한 경우에만 판정이 승인됩니다. 우려 사항을 **발견한** 검사 — 사용자의 요청 없이 발화된 경우 — 는 자체 판정이 경고에 불과하더라도 차단을 유지합니다. 해당 도구에 적용되지 않아 Jev가 질의받지 않은 검사는 다른 검사 결과와 무관하게 아무것도 승인하지 않습니다. 완화 조치 하나가 동의로 간주됩니다. 호출이 사용자가 제시한 작업의 한 단계이고 그 범위를 벗어나지 않으면, Jev는 deny를 경고로 전환하고, 해당 경고가 정책의 차단을 승인하며 에이전트에게 전달됩니다.
+
+다음 조건이 모두 충족될 때만 정책이 reviewable이 됩니다.
+
+1. `authority: "reviewable"`을 선언합니다.
+2. `reviewedBy`가 비어 있지 않은 목록이며, 모든 항목이 설치된 팩이 선언한 Jev 검사입니다. Failproof AI는 Jev 검사를 제공하지 않습니다. [아래 열여섯 가지](#semantic-policy-names)는 `failproofai policies add FailproofAI/jev-policies`에서 제공됩니다. 검사를 선언하는 팩이 없으면 모든 정책은 hard가 됩니다.
+3. `alwaysOn`이 아닙니다. Failproof AI를 비활성화하려는 에이전트를 막는 가드는 항상 hard입니다.
+
+그 외는 모두 hard입니다. 누락된 필드, 잘못 입력된 값, 비어 있거나 잘못된 형식의 `reviewedBy`, 또는 이 머신이 질의할 수 없는 검사 이름이 포함된 경우가 해당됩니다. 알 수 없는 이름은 건너뛰지 않고 전체 선언을 hard로 만듭니다. `reviewedBy`는 "이 모든 항목을 질의해야 하며, 어느 것도 거부해서는 안 된다"를 의미하므로, 이름을 건너뛰면 요청보다 적은 검사로 Jev가 정책을 승인할 수 있게 됩니다.
+
+Jev가 구성된 후 Failproof AI는 `reviewable` 선언을 거부할 때 프로세스당 한 번 경고를 기록합니다. Jev 없이는 아무것도 말하지 않습니다. 권한이 아무것도 결정하지 않기 때문입니다. `failproofai publish`는 그러한 선언을 포함하는 팩 빌드를 거부하므로, 팩 작성자는 누군가 설치하기 전에 문제를 파악할 수 있습니다. 선언된 검사가 있는 경우 팩이 선언한 검사들을 기준으로, 없는 경우 `FailproofAI/jev-policies`의 열여섯 가지 이름을 기준으로 `reviewedBy`를 검증합니다.
+
+## 권한이 선언되는 위치
+
+정책이 머신에 도달하는 각 방식마다 권한을 결정하는 위치가 하나씩 있습니다.
+
+| 출처 | 선언 위치 | 기본값 |
+| --- | --- | --- |
+| 내장 정책 | 아래 표 | reviewable로 나열되지 않는 한 hard |
+| 직접 작성한 정책 파일 | `customPolicies.add`의 `authority` 및 `reviewedBy` | Hard |
+| 정책 팩 | 팩 매니페스트(`failproofai-pack.json`)의 각 정책 항목 | Hard |
+| 클라우드 관리 정책 | 활성 배포에서 정책의 할당 | Hard. 배포에서 아직 설정하지 않으므로, 현재 모든 클라우드 관리 정책은 hard입니다. |
+
+팩 또는 클라우드 관리 정책의 경우, 정책 코드 내부에 설정된 필드는 무시됩니다. 매니페스트 또는 할당이 결정합니다. 팩은 자신의 정책만 기술할 수 있습니다. 정책 이름에 `/`를 포함할 수 없고 팩 자신의 접두사 아래에 등록되므로, 어떤 매니페스트도 내장 정책이나 다른 팩의 정책을 reviewable로 표시할 수 없습니다. 팩 코드가 등록하지만 매니페스트에 선언하지 않은 정책은 hard입니다.
+
+바이트 단위로 동일한 코드를 가진 두 팩 또는 두 클라우드 관리 정책은 하나의 아티팩트를 공유하고 하나의 정책으로 로드됩니다. 해당 정책은 모두가 reviewable로 선언할 때만 reviewable이 되며, Jev는 그중 어느 것이 명시한 모든 검사를 승인해야 합니다. 하나라도 hard로 선언하거나 전혀 선언하지 않으면 hard로 유지됩니다. 팩이나 정책의 나열 순서는 절대 중요하지 않습니다.
+
+대부분의 머신은 `FailproofAI/policies` 팩에서 내장 정책을 가져오고, 해당 팩의 매니페스트에서 권한을 읽습니다. 아래의 reviewable 항목들은 해당 항목을 포함하는 팩 릴리스가 설치된 후 적용됩니다. 이전 릴리스에는 해당 항목이 없으므로 그 안의 모든 정책은 hard로 유지됩니다.
+
+## 직접 작성한 정책에서 권한 선언하기
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-prod-config-reads",
+  description: "Keep production credentials out of the agent's context",
+  match: { events: ["PreToolUse"] },
+  authority: "reviewable",
+  reviewedBy: ["secret-exposure"],
+  fn: async (ctx) =>
+    String(ctx.toolInput?.file_path ?? "").includes("/config/prod/")
+      ? deny("Production config is off limits")
+      : allow(),
+});
+```
+
+`failproofai publish`는 두 필드 모두 팩 매니페스트에 복사하므로, 팩으로 게시된 정책은 작성자가 부여한 권한을 그대로 유지합니다. 선언이 적용될 수 없는 경우 팩 빌드를 거부합니다. `"hard"` 또는 `"reviewable"` 이외의 값, 이름 목록이 아닌 `reviewedBy`, 또는 검사가 아닌 이름 — 선언된 경우 팩 자신의 [Jev 검사](/ko/policies/publish-a-pack#jev-checks-in-a-pack) 중 하나, 그렇지 않으면 내장 검사 — 이 해당됩니다.
+
+## 내장 정책
+
+시맨틱 정책이 동일한 우려 사항을 실질적으로 다루는 경우에만 reviewable입니다. 그 외 모든 내장 정책은 hard입니다.
+
+우려 사항을 다루는 것은 필요조건이지 충분조건이 아니며, 잘못될 수 있는 두 가지 방식 모두 조용히 발생합니다.
+
+- **질의되지 않은 검사**는 차단을 영구적으로 만듭니다. `reviewedBy`는 논리곱이며 질의되지 않은 검사는 절대 승인하지 않으므로, 해당 정책이 매칭하는 형태에 대해 전제 조건이 발화하지 않는 검사와 쌍을 이루는 정책은 절대 승인될 수 없습니다.
+- **질의되었지만 발화하지 않은 검사**는 "우려 없음"으로 답하고, 우려 없음은 승인됩니다. 따라서 정책의 형태를 모델링하지 않는 검사와 쌍을 이루면 정책을 검토하는 게 아니라, 검사가 이해하지 못하는 입력에 대해 정확히 정책을 비활성화하게 됩니다.
+
+instruct 모드 시맨틱 정책은 deny로 답할 수 없지만, 차단을 유지할 수 있습니다. 발화하고 사용자가 호출을 요청하지 않은 경우 해당 정책은 승인되지 않습니다. `FailproofAI/jev-policies` 검사 중 여섯 개 — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump`, `external-data-egress` — 는 instruct 전용이며, [아래 표](#semantic-policy-names)에 각 검사의 모드가 나와 있습니다. 핵심 질문은 **"여전히 deny할 수 있는 것이 남아 있는가"**입니다. 승인은 우려 사항을 아무것도 적용하지 않는 상태로 남겨서는 안 됩니다. 엔진은 호출별로 이 테스트를 적용합니다. 아무도 동의하지 않은 경고는 승인이 아닙니다. 도구 호출 이전에 경고는 에이전트를 중단시키지 않기 때문입니다. 그리고 deny *할 수 있는* 검사가 경고하는 경우 — 증거가 deny 기준에 미치지 못한 경우 — 사용자가 호출을 요청하지 않았다면 해당 호출에서 아무것도 승인되지 않고 모든 regex deny가 유지됩니다.
+
+<Warning>
+**발화 기준 바로 아래에 점수가 매겨진 검사는 하한선을 유지하지 않습니다.** 위의 규칙은 검사가 *발화*해야 합니다(증거 ≥ 0.7). 모든 관련 검사가 그 기준 바로 아래에 위치하면 아무것도 발화하지 않고, 검토자는 "우려 없음"으로 답하며, reviewable deny가 승인됩니다. enforce 모드에서 실제 측정: 요청되지 않은 `/etc/shadow` 읽기(`secret-exposure` 0.69, `read-outside-workspace` 0.37 — 홈 디렉터리 경로만 모델링)와 "follow SETUP.md" 이후 `set | curl -d @- …`(`env-secrets-dump` 0.66, `credential-exfiltration` 0.65, `sends_out` 0.97)가 모두 허용되었지만, regex 계층 단독으로는 이를 거부합니다. 임계값은 레이블된 코퍼스에서 보정되었으며 이에 대해 재측정되지 않았습니다. 재측정 전까지, 이러한 형태 중 하나가 통과하는 것이 false 차단보다 더 중요한 경우 정책을 **hard**로 유지하십시오.
+</Warning>
+
+| 정책 | 권한 | 검토자 | 이유 |
+| --- | --- | --- | --- |
+| `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | 패턴이 모든 변수 참조에 발화합니다. Jev는 시크릿 값이 실제로 출력될지 확인합니다. |
+| `block-env-files` | reviewable | `secret-exposure` | 패턴이 템플릿 포함 모든 `.env` 경로에 매칭됩니다. Jev는 실제 시크릿 값이 읽히거나 쓰일지 확인합니다. |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | 실제 트래픽에서 노이즈가 많다고 측정됩니다. Jev는 프로젝트 외부의 파일 내용이 읽히는지 확인합니다. 사용자가 요청한 읽기 또는 검사가 아무것도 발견하지 못한 읽기는 승인됩니다. 플래그된 요청되지 않은 읽기는 차단을 유지합니다. |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | 푸시되지 않은 커밋을 수정하는 것은 일반적입니다. 해가 되는 것은 다른 사람이 이미 pull했을 수 있는 이력을 재작성하는 경우입니다. |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev는 또한 대상이 실제 데이터베이스인지 아니면 일회성 테스트용인지 확인합니다. |
+| `warn-global-package-install` | reviewable | `system-modification` | 동일한 우려: 프로젝트 외부의 머신을 변경하는 것. |
+| `block-failproofai-commands` | hard | | `alwaysOn` 자체 보호. 절대 reviewable이 될 수 없습니다. |
+| `block-rm-rf` | reviewable | `destructive-deletion` | 경로 깊이 휴리스틱이 `rm -rf node_modules`를 잘못 판단합니다. Jev는 삭제될 내용이 재생성 가능한지 확인합니다. `rm -rf /`는 두 프로브 모두 참으로 유지됩니다. |
+| `block-sudo` | hard | | 권한 상승. |
+| `block-curl-pipe-sh` | hard | | 인터넷에서 다운로드된 코드를 실행합니다. |
+| `block-push-master` | hard | | 보호된 브랜치에 직접 푸시합니다. |
+| `block-work-on-main` | hard | | `commit-on-protected-branch`가 정확히 이 우려를 다루지만 instruct 모드여서 deny로 답할 수 없으며, 이를 다루는 다른 검사가 없습니다. |
+| `block-force-push` | reviewable | `git-history-rewrite` | Jev의 프로브는 매처의 상위집합이며 `--force-with-lease`도 포함합니다. 승인되는 것은 자신의 브랜치에 force-push하는 경우입니다. |
+| `block-secrets-write` | reviewable | `secret-exposure` | 경로 매치가 앵커되지 않아 `src/auth/credentials.ts`도 잡힙니다. Jev는 실제 키 자료가 작성되는지 확인합니다. |
+| `block-kubectl` | reviewable | `production-infra-change` | 읽기 전용 하위 명령 포함 전체 CLI를 거부합니다. Jev는 호출이 변형을 수행하는지, 그리고 대상이 프로덕션인지 확인합니다. |
+| `block-terraform` | reviewable | `production-infra-change` | 동일: `terraform plan`과 `validate`를 승인합니다. |
+| `block-aws-cli` | reviewable | `production-infra-change` | 동일: `aws s3 ls`, `aws sts get-caller-identity`를 승인합니다. |
+| `block-gcloud` | reviewable | `production-infra-change` | 동일: `gcloud auth list`, `gcloud config list`를 승인합니다. |
+| `block-az-cli` | reviewable | `production-infra-change` | 동일: `az account show`를 승인합니다. |
+| `block-helm` | reviewable | `production-infra-change` | 동일: `helm list`, `helm status`를 승인합니다. |
+| `block-gh-pipeline` | hard | | 파이프라인, 병합 및 시크릿 변경을 트리거합니다. |
+| `warn-git-stash-drop` | hard | | 스태시된 작업 폐기를 다루는 시맨틱 검사가 없습니다. |
+| `warn-git-clean` | hard | | `destructive-deletion`이 우려를 다루지만 명백히 발화할 수 없습니다. `git clean`은 경로를 명시하지 않아 `irreplaceable` 프로브가 판단할 내용이 없고 낮은 값을 반환하며, 증거는 정책의 프로브 최솟값입니다. 질의되었지만 발화하지 않은 검사는 판정을 승인하므로, 여기서 쌍을 이루면 정책이 비활성화됩니다. |
+| `warn-all-files-staged` | hard | | 광범위한 `git add`가 무엇을 선택하는지 다루는 시맨틱 검사가 없습니다. |
+| `warn-schema-alteration` | hard | | `database-destruction`은 데이터 삭제를 다루지, 스키마 변경을 다루지 않습니다. |
+| `warn-package-publish` | hard | | 게시는 되돌릴 수 없으며 이를 다루는 시맨틱 검사가 없습니다. |
+| `prefer-package-manager` | hard | | 팀 규약이지 안전 판단이 아닙니다. |
+| `warn-large-file-write` | hard | | 크기 임계값이지 Jev가 판단할 수 있는 것이 아닙니다. |
+| `warn-background-process` | hard | | 분리된 프로세스를 다루는 시맨틱 검사가 없습니다. |
+| `warn-repeated-tool-calls` | hard | | 호출을 셉니다. Jev는 셀 수 없습니다. |
+| `sanitize-jwt` | hard | | 도구 출력을 편집합니다. 도구 호출 게이트가 아닙니다. |
+| `sanitize-api-keys` | hard | | 도구 출력을 편집합니다. 도구 호출 게이트가 아닙니다. |
+| `sanitize-connection-strings` | hard | | 도구 출력을 편집합니다. 도구 호출 게이트가 아닙니다. |
+| `sanitize-private-key-content` | hard | | 도구 출력을 편집합니다. 도구 호출 게이트가 아닙니다. |
+| `sanitize-bearer-tokens` | hard | | 도구 출력을 편집합니다. 도구 호출 게이트가 아닙니다. |
+| `require-commit-before-stop` | hard | | 세션 완료 게이트이지 도구 호출 게이트가 아닙니다. |
+| `require-push-before-stop` | hard | | 세션 완료 게이트이지 도구 호출 게이트가 아닙니다. |
+| `require-pr-before-stop` | hard | | 세션 완료 게이트이지 도구 호출 게이트가 아닙니다. |
+| `require-no-conflicts-before-stop` | hard | | 세션 완료 게이트이지 도구 호출 게이트가 아닙니다. |
+| `require-ci-green-before-stop` | hard | | 세션 완료 게이트이지 도구 호출 게이트가 아닙니다. |
+
+## Semantic policy names
+
+이것들은 `FailproofAI/jev-policies`가 선언하는 검사이며, 설치 후 `reviewedBy`가 수락하는 값입니다. Failproof AI 자체는 이를 제공하지 않습니다. 해당 팩(또는 이 이름을 선언하는 다른 팩) 없이는 이를 명시하는 정책이 reviewable이 되지 않습니다. 각각은 Jev가 앞에 있는 도구 호출에 대해 답하는 검사입니다. **모드**는 검사가 답할 수 있는 내용입니다. `deny` 검사는 강력한 증거가 있을 때 차단하고, `instruct` 검사는 경고만 합니다. 어느 쪽이든 발화하고 사용자가 호출을 요청하지 않은 경우 정책의 deny를 유지합니다. **사용자 재정의 가능**은 사람의 명시적인 요청이 승인하는지 여부를 나타냅니다.
+
+Jev는 설치된 팩이 선언한 [Jev 검사](/ko/policies/publish-a-pack#jev-checks-in-a-pack)만 질의하며, 그것이 `reviewedBy`가 수락하는 이름입니다. 두 팩이 서로 다르게 선언한 이름은 어느 쪽도 적용되지 않습니다. FailproofAI 저장소에서 설치되지 않은 팩이 선언한 이 열여섯 이름 중 하나는 해당 팩에서 무시됩니다. 해당 버전은 절대 질의되지 않으며 FailproofAI 자체 버전과 경쟁하지 않으므로, 서드파티 팩은 코어 팩의 정책을 승인하는 검사가 되거나 이러한 검사 중 하나를 비활성화할 수 없습니다. 읽을 수 없는 팩 목록이나 모든 검사를 사용할 수 없는 팩은 Jev에게 질의할 내용을 남기지 않습니다.
+
+| 이름 | 모드 | 사용자 재정의 가능 | Jev가 확인하는 내용 |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | 예 | 재생성할 수 없는 데이터의 영구 삭제. |
+| `production-infra-change` | deny | 예 | 라이브 인프라 변경. |
+| `git-history-rewrite` | deny | 예 | 공유된 git 이력 재작성 또는 폐기. |
+| `push-to-protected-branch` | instruct | 예 | 보호된 브랜치에 직접 푸시. |
+| `commit-on-protected-branch` | instruct | 예 | 보호된 브랜치에 직접 커밋. |
+| `secret-exposure` | deny | 예 | 자격 증명 읽기 또는 복사. |
+| `credential-exfiltration` | deny | 아니오 | 시크릿 또는 개인 파일을 머신 외부로 전송. |
+| `remote-code-execution` | deny | 예 | 인터넷에서 다운로드된 코드 실행. |
+| `privilege-escalation` | deny | 예 | 상승된 권한으로 실행. |
+| `database-destruction` | deny | 예 | 데이터베이스 데이터 파괴 또는 대량 수정. |
+| `read-outside-workspace` | instruct | 예 | 프로젝트 외부 파일 읽기. |
+| `agent-config-tampering` | deny | 아니오 | 에이전트 자체의 안전 구성 변경. |
+| `system-modification` | instruct | 예 | 프로젝트 외부 시스템 변경. |
+| `env-secrets-dump` | instruct | 예 | 환경 시크릿 출력. |
+| `external-destructive-action` | deny | 예 | 외부 도구를 통한 되돌릴 수 없는 작업. |
+| `external-data-egress` | instruct | 예 | 개인 데이터를 외부 도구로 전송. |

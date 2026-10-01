@@ -1,0 +1,28 @@
+---
+title: "Jev評価"
+description: "既知の回答がある質問に対して、完了したセッションをJevでスコアリングします。"
+icon: "list-checks"
+---
+
+Jev評価は**完了したセッション**を読み取り、0から1のスコアを付与します。「顧客は緊急性を示しましたか？」や「顧客はどの程度不満を感じていましたか？」など、回答が事前にわかっている場合に使用します。複数の実行にわたるパターンを発見するのに役立ちますが、ツール呼び出しを停止するものではありません。ツールが実行される**前**に行う判断には、[Jevポリシー](/ja/policies/jev)を使用してください。
+
+## ダッシュボードで作成する
+
+1. **Analyze → eval authoring** を開き、**new eval** を選択します。
+2. 質問とその回答の選択肢を記述します。例：「エージェントは返金ポリシーを確認する前に返金を約束しましたか？はいまたはいいえで答えてください。」**draft** を選択し、結果が分類スコアになっていることを確認します。
+3. 最近のセッションで[テスト](/ja/evaluations/test)し、その後[デプロイ](/ja/evaluations/deploy)します。新しく完了したセッションがスコアリングされます。履歴も必要な場合は[バックフィル](/ja/evaluations/deploy#score-sessions-you-already-have)を行ってください。
+
+![質問と固定回答を記述し、ドラフトを確認してテスト後にデプロイする共有eval authoring フォーム。表示されている例はコード評価ですが、Jevの質問も同じauthoringフローを使用します。](/images/dashboard/eval-authoring-draft.png)
+
+アシスタントはコード、Jev分類、[judge](/ja/evaluations/judge)の中から選択できます。デプロイ前にその選択を確認してください。Jevは文章による説明なしでスコアを返します。説明が必要な場合はjudgeを選択してください。質問の種類とスコアの上限については、[Jev評価リファレンス](/ja/reference/jev-evaluations)を参照してください。
+
+## スコアを確認する
+
+**Observe → Evaluations** を開くと、エージェントや時間ごとに結果をグラフで確認できます。ターミナルからは、Cloud CLIで同じ結果を読み取ることができます：
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+Cloud CLIは結果の読み取りに使用します。authoring（作成）とデプロイはダッシュボードで行います。フィルターについては[Cloud CLIリファレンス](/ja/reference/cloud-cli#evaluations)を参照してください。

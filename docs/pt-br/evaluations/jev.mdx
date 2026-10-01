@@ -1,0 +1,28 @@
+---
+title: "Avaliações Jev"
+description: "Use Jev para pontuar uma sessão finalizada em relação a uma pergunta com respostas conhecidas."
+icon: "list-checks"
+---
+
+Uma avaliação Jev lê uma **sessão finalizada** e atribui uma pontuação de 0 a 1. Use-a quando a resposta é conhecida de antemão, como "O cliente demonstrou urgência?" ou "Quão frustrado estava o cliente?". Ela ajuda a identificar padrões entre execuções; não interrompe chamadas de ferramentas. Para decisões tomadas **antes** de uma ferramenta ser executada, use as [políticas Jev](/pt-br/policies/jev).
+
+## Crie uma no dashboard
+
+1. Abra **Analyze → eval authoring** e selecione **new eval**.
+2. Descreva uma pergunta e suas possíveis respostas. Por exemplo: "O agente prometeu um reembolso antes de verificar a política de reembolso? Responda sim ou não." Selecione **draft** e verifique se o resultado é uma pontuação de classificador.
+3. [Teste-a](/pt-br/evaluations/test) em sessões recentes e, em seguida, [publique-a](/pt-br/evaluations/deploy). Novas sessões concluídas são pontuadas; utilize o [backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have) caso precise também do histórico.
+
+![O formulário compartilhado de criação de avaliações, onde você descreve uma pergunta com respostas fixas, revisa o rascunho e publica após os testes. O exemplo mostrado é uma avaliação de código; uma pergunta Jev usa o mesmo fluxo de criação.](/images/dashboard/eval-authoring-draft.png)
+
+O assistente pode escolher entre código, classificação Jev e um [judge](/pt-br/evaluations/judge). Verifique a escolha antes de publicar. Jev fornece uma pontuação sem raciocínio em prosa; escolha um judge quando precisar de uma explicação. Consulte a [referência de avaliações Jev](/pt-br/reference/jev-evaluations) para tipos de perguntas e limites de pontuação.
+
+## Leia as pontuações
+
+Abra **Observe → Evaluations** para visualizar os resultados por agente e período. A partir de um terminal, o Cloud CLI pode ler os mesmos resultados:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+O Cloud CLI lê os resultados; a criação e a publicação acontecem no dashboard. Consulte a [referência do Cloud CLI](/pt-br/reference/cloud-cli#evaluations) para opções de filtros.

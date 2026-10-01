@@ -1,0 +1,63 @@
+---
+title: "Sử dụng Jev"
+description: "Thiết lập đánh giá Jev cho các phiên hoàn tất hoặc chính sách Jev để xem xét lệnh gọi công cụ trực tiếp."
+icon: "sparkles"
+---
+
+Jev hỗ trợ tại hai điểm trong quá trình chạy agent: đánh giá một phiên hoàn tất so với các câu trả lời đã biết, hoặc xem xét một lệnh gọi công cụ trong bối cảnh những gì bạn yêu cầu agent thực hiện.
+
+<Tabs>
+  <Tab title="Đánh giá Jev">
+    Sử dụng đánh giá Jev khi một phiên hoàn tất có thể được đánh giá dựa trên một câu hỏi có một vài câu trả lời đã biết, chẳng hạn như "Khách hàng có yêu cầu hoàn tiền không? Trả lời có hoặc không." Nó giúp bạn tìm ra các mô hình trên các phiên.
+
+    ## Tạo một đánh giá
+
+    Trong bảng điều khiển Cloud, mở **Analyze → eval authoring → new eval**. Nhập một câu hỏi với câu trả lời cố định, chọn **draft**, và kiểm tra xem nó đã chọn điểm phân loại chưa. [Kiểm tra nó](/vi/evaluations/test) trên các phiên thực tế, sau đó triển khai nó.
+
+    ![Biểu mẫu tạo đánh giá được chia sẻ nơi bạn mô tả một câu hỏi, xem xét bản nháp và triển khai nó. Ảnh chụp màn hình này cho thấy bản nháp mã; sử dụng câu hỏi với câu trả lời cố định cho Jev.](/images/dashboard/eval-authoring-draft.png)
+
+    ## Đọc các điểm số
+
+    Sau khi một phiên mới hoàn tất, mở **Observe → Evaluations** hoặc sử dụng Cloud CLI:
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    CLI đọc các điểm số; tạo đánh giá Jev hiện tại sử dụng bảng điều khiển. Xem [Jev evaluations](/vi/evaluations/jev) để biết các loại câu hỏi và ví dụ.
+  </Tab>
+  <Tab title="Chính sách Jev">
+    Sử dụng xem xét chính sách Jev khi một chính sách khớp chuỗi cần bối cảnh yêu cầu của bạn để quyết định liệu một lệnh gọi công cụ có an toàn không. Bắt đầu ở chế độ **observe** để bạn có thể kiểm tra các câu trả lời của Jev trong khi các chính sách cài đặt của bạn vẫn quyết định mỗi lệnh gọi.
+
+    Các kiểm tra của Jev đến từ một gói; Failproof AI không cung cấp kiểm tra nào. Cho đến khi bạn cài đặt chúng, Jev không hỏi gì, ngay cả khi nó được định cấu hình:
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Thiết lập Cloud Jev
+
+    Trong bảng điều khiển Cloud, mở **Administration → Keys** và tạo một khóa với cài đặt **machine**. Sử dụng nó với `failproofai config` như được hiển thị trong [quickstart](/vi/start/quickstart). Trên một máy không có cấu hình Jev hiện tại, điều này bật Cloud Jev ở chế độ observe. Kiểm tra kết nối bằng:
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## Sử dụng điểm cuối của riêng bạn
+
+    Trong bảng điều khiển cục bộ, mở **Settings → Jev**. Chọn nhà cung cấp, dán mã thông báo của nó, chọn **observe**, và bật Jev.
+
+    ![Bảng điều khiển cài đặt Jev cục bộ với nhà cung cấp, trường mã thông báo và chế độ observe được chọn.](/images/dashboard/jev-settings.png)
+
+    Hoặc cấu hình và kiểm tra điểm cuối của bạn từ một terminal:
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    Yêu cầu một agent được nối kết sử dụng công cụ đọc tệp của nó trên `README.md`. Xác nhận rằng lệnh gọi công cụ đó xuất hiện trong phiên, sau đó kiểm tra nó dưới **Policies → Activity** trong bảng điều khiển cục bộ. Sau khi kết quả quan sát có vẻ đúng, [Jev policies](/vi/policies/jev) giải thích khi nào cần thực thi. Để biết chi tiết nhà cung cấp và cấu hình, xem [integration reference](/vi/reference/jev).
+  </Tab>
+</Tabs>

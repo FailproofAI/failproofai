@@ -1,0 +1,63 @@
+---
+title: "Jev 사용하기"
+description: "완료된 세션에 대한 Jev 평가 또는 라이브 툴 호출 검토를 위한 Jev 정책을 설정합니다."
+icon: "sparkles"
+---
+
+Jev는 에이전트 실행의 두 시점에서 도움을 줍니다. 완료된 세션을 알려진 답변과 비교해 점수를 매기거나, 에이전트에게 요청한 작업의 맥락에서 툴 호출을 검토합니다.
+
+<Tabs>
+  <Tab title="Jev 평가">
+    완료된 세션을 몇 가지 정해진 답변이 있는 질문과 비교해 점수를 매길 수 있을 때 Jev 평가를 사용하세요. 예: "고객이 환불을 요청했나요? 예 또는 아니오로 답하세요." 세션 전반에 걸친 패턴을 파악하는 데 도움이 됩니다.
+
+    ## 평가 만들기
+
+    Cloud 대시보드에서 **Analyze → eval authoring → new eval**을 엽니다. 고정 답변 질문 하나를 입력하고 **draft**를 선택한 후, 분류기 점수가 선택되었는지 확인합니다. 실제 세션에서 [테스트](/ko/evaluations/test)한 다음 배포합니다.
+
+    ![질문을 설명하고, 초안을 검토하고, 배포하는 공유 평가 작성 양식. 이 스크린샷은 코드 초안을 보여줍니다. Jev의 경우 고정 답변 질문을 사용하세요.](/images/dashboard/eval-authoring-draft.png)
+
+    ## 점수 확인하기
+
+    새 세션이 완료된 후 **Observe → Evaluations**를 열거나 Cloud CLI를 사용하세요:
+
+    ```bash
+    fp evals --since 7d
+    fp evals --aggregate --since 7d
+    ```
+
+    CLI는 점수를 읽어옵니다. Jev 평가 생성은 현재 대시보드에서만 가능합니다. 질문 유형과 예시는 [Jev 평가](/ko/evaluations/jev)를 참고하세요.
+  </Tab>
+  <Tab title="Jev 정책">
+    문자열 매칭 정책이 툴 호출의 안전 여부를 판단하기 위해 요청 맥락이 필요할 때 Jev 정책 검토를 사용하세요. 설치된 정책이 각 호출을 계속 처리하는 동안 Jev의 답변을 검사할 수 있도록 **observe** 모드로 시작하세요.
+
+    Jev의 검사는 패키지에서 제공됩니다. Failproof AI는 기본 제공하지 않습니다. 설치 전까지는 Jev가 설정되어 있더라도 아무것도 묻지 않습니다:
+
+    ```bash
+    failproofai policies add FailproofAI/jev-policies
+    ```
+
+    ## Cloud Jev 설정하기
+
+    Cloud 대시보드에서 **Administration → Keys**를 열고 **machine** 프리셋으로 키를 생성합니다. [빠른 시작](/ko/start/quickstart)에 나온 대로 `failproofai config`와 함께 사용하세요. 기존 Jev 설정이 없는 머신에서는 observe 모드로 Cloud Jev가 활성화됩니다. 다음 명령으로 연결을 확인하세요:
+
+    ```bash
+    failproofai jev status
+    failproofai jev test
+    ```
+
+    ## 직접 엔드포인트 사용하기
+
+    로컬 대시보드에서 **Settings → Jev**를 엽니다. 공급자를 선택하고 토큰을 붙여넣은 후 **observe**를 선택하고 Jev를 켭니다.
+
+    ![공급자, 토큰 필드, observe 모드가 선택된 로컬 Jev 설정 패널.](/images/dashboard/jev-settings.png)
+
+    또는 터미널에서 엔드포인트를 설정하고 테스트하세요:
+
+    ```bash
+    failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
+    failproofai jev test
+    ```
+
+    훅이 연결된 에이전트에게 `README.md`에 파일 읽기 툴을 사용하도록 요청합니다. 해당 툴 호출이 세션에 나타나는지 확인한 후, 로컬 대시보드의 **Policies → Activity**에서 검사합니다. observe 결과가 적절하게 보이면 [Jev 정책](/ko/policies/jev)에서 적용 시점을 확인하세요. 공급자 세부 정보와 설정은 [통합 레퍼런스](/ko/reference/jev)를 참고하세요.
+  </Tab>
+</Tabs>

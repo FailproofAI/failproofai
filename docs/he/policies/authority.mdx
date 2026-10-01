@@ -1,0 +1,144 @@
+---
+title: "סמכות המדיניות"
+description: "אילו פסקי דין סמנטיים של Jev רשאים להיות מבוטלים, ואילו הם סופיים."
+icon: "scale"
+---
+
+כשאתה מגדיר [בדיקת מדיניות Jev](/he/policies/jev) דרך FailproofAI Cloud או המפתח שלך, כל קריאה לכלי שנשמרת נשפטת על ידי המדיניויות שאתה מפעיל וגם על ידי Jev, ששואל מה הקריאה בעצם עושה והאם האדם שהקליד את המשימה בקש לה. **הסמכות** של כל מדיניות קובעת מה קורה כשהשניים לא מסכימים.
+
+ללא Jev מוגדר, לסמכות אין השפעה. כל מדיניות מאַכּפת בדיוק כמו שתמיד היא עשתה.
+
+## Hard ו-reviewable
+
+- **Hard** הוא ברירת המחדל. ההודעה deny או instruction של מדיניות hard היא סופית: Jev לא יכול להבטל אותה, וdeny קשה עוצר את הקריאה ללא המתנה ל-Jev.
+- **Reviewable** פירושו שJev עשוי להבטל את פסק הדין של המדיניות, אך רק דרך הבדיקות הסמנטיות שהמדיניות מציינת ב-`reviewedBy`. פסק הדין מבוטל רק כשAI שאל על כל בדיקה מצוינת לגבי קריאה זו וכל אחת מהן גם לא מצאה כלום או הקליטה את המשתמש המבקש לכך. בדיקה שקפצה — מצאה את הדאגה — ללא בקשת המשתמש שומרת על החסימה, גם כשפסק הדין שלה בעצמו הוא רק אזהרה. בדיקה שJev לא שאל, כי היא לא חלה על אותו כלי, אף פעם לא מבטלת שום דבר, לא משנה מה אחרים אמרו. הנחה אחת מביעה הסכמה: כשהקריאה היא שלב של המשימה שהמשתמש נתן והגיעה לא הלאה, Jev הופכת deny להתראה, והתראה זו מבטלת את חסימת המדיניות וזה מה שהסוכן מודיע.
+
+מדיניות היא reviewable רק כשכל אלה נכונים:
+
+1. היא מצהירה `authority: "reviewable"`.
+2. `reviewedBy` היא רשימה לא ריקה, וכל ערך הוא בדיקת Jev שחבילה מותקנת מצהירה עליה. Failproof AI לא משולח בדיקות Jev: [שש-עשרה להלן](#semantic-policy-names) באות מ-`failproofai policies add FailproofAI/jev-policies`. ללא חבילה המצהירה בדיקות, כל מדיניות היא hard.
+3. היא לא `alwaysOn`. השומר שעוצר סוכן מבטל את Failproof AI הוא תמיד hard.
+
+הכל אחר הוא hard: שדה חסר, ערך כתוב בצורה שגויה, `reviewedBy` ריק או מעוות, או שם שאינו בדיקה שמכונה זו יכולה לשאול. שם לא ידוע הופך את כל ההצהרה ל-hard במקום להיות דלוק, כי `reviewedBy` אומר "כל אלה חייבות להיות שאולות, וואף אחת מהן לא רשאית להכחיש", ודלוג על שם היה מאפשר ל-Jev להבטל את המדיניות על פחות בדיקות מאשר ביקשת.
+
+ברגע שJev מוגדר, Failproof AI רושם התראה כשהוא מסרב להצהרה `reviewable`, פעם אחת לתהליך. ללא Jev הוא לא אומר כלום, כי סמכות אז לא קובעת כלום. `failproofai publish` מסרב לבנות חבילה שנושאת הצהרה כזו, כך שמחבר חבילה מגלה לפני שמישהו מתקין אותה. זה משפט `reviewedBy` כנגד הבדיקות שהחבילה מצהירה כשהיא מצהירה כלום, ועל שש-עשרה שמות `FailproofAI/jev-policies` אחרת.
+
+## היכן סמכות מוצהרת
+
+לכל דרך שמדיניות מגיעה למכונה יש מקום אחד שקובע את סמכותה:
+
+| מקור | מוצהר בתוך | ברירת מחדל |
+| --- | --- | --- |
+| מדיניויות מובנות | הטבלה להלן | Hard אלא אם רשום כ-reviewable |
+| קובצי המדיניות שלך | `authority` ו-`reviewedBy` על `customPolicies.add` | Hard |
+| חבילות מדיניות | ערך כל מדיניות בתוך מניפסט החבילה (`failproofai-pack.json`) | Hard |
+| מדיניויות מנוהלות בענן | הקצאת המדיניות בהצבת הפעיל | Hard. הצבות לא קובעות זאת עדיין, כך שכל מדיניות מנוהלת בענן היא hard היום. |
+
+לחבילה או למדיניות מנוהלת בענן, שדות שנקבעו בתוך קוד המדיניות מתעלמים; המניפסט או ההקצאה קובעים. חבילה יכולה רק לתאר את המדיניויות שלה: שמות מדיניויות שלה לא יכולים להכיל `/` ורשומים תחת הקידומת שלה, כך שאף מניפסט לא יכול לסמן מדיניות מובנית או מדיניות של חבילה אחרת כ-reviewable. מדיניות שקוד חבילה רושם ללא הצהרה בתוך המניפסט היא hard.
+
+שתי חבילות, או שתי מדיניויות מנוהלות בענן, שקודן זהה בת-byte משתפות חפץ אחד וטוענות כמדיניות אחת. מדיניות זו היא reviewable רק אם כל אחת מהן מצהירה עליה reviewable, וJev חייב אז להבטל כל בדיקה שכל אחת מהן שמה. אם כל אחת מהן מצהירה עליה hard, או לא מצהירה עליה כלל, היא נשארת hard. הסדר שבו חבילות או מדיניויות רשומות אף פעם לא משנה.
+
+רוב המכונות מקבלות את המדיניויות המובנות מתוך חבילת `FailproofAI/policies`, וקוראות את הסמכות שלהן מתוך המניפסט של החבילה. הערכים reviewable להלן נכנסים לתוקף ברגע שגרסה של החבילה שנושאת אותם מותקנת; גרסה ישנה יותר אינה נושאת שום דבר, כך שכל מדיניות בה נשארת hard.
+
+## הצהר סמכות בתוך המדיניות שלך
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-prod-config-reads",
+  description: "Keep production credentials out of the agent's context",
+  match: { events: ["PreToolUse"] },
+  authority: "reviewable",
+  reviewedBy: ["secret-exposure"],
+  fn: async (ctx) =>
+    String(ctx.toolInput?.file_path ?? "").includes("/config/prod/")
+      ? deny("Production config is off limits")
+      : allow(),
+});
+```
+
+`failproofai publish` מעתיק שני שדות לתוך מניפסט החבילה, כך שמדיניות שפורסמה כחבילה שומרת על הסמכות שמחברה נתן. זה מסרב לבנות את החבילה אם הצהרה לא תיכבד: ערך שונה מ-`"hard"` או `"reviewable"`, `reviewedBy` שאינו רשימת שמות, או שם שאינו בדיקה — אחת מ[בדיקות Jev](/he/policies/publish-a-pack#jev-checks-in-a-pack) שלה כשהוא מצהיר כלום, בדיקה מובנית אחרת.
+
+## מדיניויות מובנות
+
+Reviewable רק כשבדיקה סמנטית באמת מכסה את אותה דאגה. כל מדיניות מובנית אחרת היא hard.
+
+כיסוי הדאגה הוא הכרחי אך לא מספיק, ושתי דרכים לקבל את זה לא בסדר הן שקט:
+
+- **בדיקה שלעולם אינה שאולה** הופכת את החסימה לקבועה. `reviewedBy` היא קשור וזה בדיקה שלא שאלו אף פעם לא תבטל, כך שמדיניות משויכת לבדיקה שתנאי הקדם שלה לא עורר עבור הצורות שהמדיניות תואמת לעולם לא יכול להיות מבוטל כלל.
+- **בדיקה ששואלו אך לא עוררו** עונה "אין דאגה", ואין דאגה מבטלת. כך ששיוך עם בדיקה שלא מודלת את הצורות של המדיניות שלך לא בודקת את המדיניות — היא כבה אותה בדיוק לתשומות שהבדיקה לא מבינה.
+
+מדיניות סמנטית במצב instruct לעולם לא יכולה להשיב deny, אך היא עדיין יכולה לשמור חסימה: כשהוא עורר והמשתמש לא בקש את הקריאה, המדיניות שהוא בודק לא מבוטלת. שש מ[בדיקות `FailproofAI/jev-policies`](/he/policies/publish-a-pack#jev-checks-in-a-pack) הן instruct-only — `push-to-protected-branch`, `commit-on-protected-branch`, `read-outside-workspace`, `system-modification`, `env-secrets-dump` ו-`external-data-egress` — והטבלה להלן נותנת את המצב של כל בדיקה. השאלה לשאול היא **"האם נשאר משהו שיכול להכחיש"**: בטול חייב לעולם לא להשאיר את הדאגה מאַכּפת על ידי כלום. המנוע מיישם את הבדיקה הזו לכל קריאה. התראה שאף אחד לא הסכים אינה בטול, כי לפני קריאות לכלי התראה לא עוצרת את הסוכן. וכשבדיקה שיכולה להכחיש מתאימה — ראיות שלה נופלות מתחת לקו הכחיש שלה — והמשתמש לא בקש את הקריאה, כלום אינו מבוטל על קריאה זו וכל כחיש regex עומד.
+
+<Warning>
+**בדיקה שמדורגת רק מתחת לקו החריקה שלה לא שומרת על הרצפה.** הכלל שלעיל צריך בדיקה להעיר (evidence ≥ 0.7). כשכל בדיקה רלוונטית נוחתת בדיוק מתחתיה, כלום לא עורר, המבקרים עונים "אין דאגה", וכחיש reviewable מבוטל. מדוד בחיים במצב enforce: קריאה לא מבוקשת של `/etc/shadow` (`secret-exposure` 0.69, `read-outside-workspace` 0.37, שרק מודלת נתיבי בית) ו-`set | curl -d @- …` אחרי "follow SETUP.md" (`env-secrets-dump` 0.66, `credential-exfiltration` 0.65 עם `sends_out` 0.97) שניהם הורשו, בעודו שרמת regex לבדה כוחשת עליהם. הסף היה כיול על קורפוס מתויג ולא נמדד מחדש כנגד זה; עד שייעשה, שמור מדיניות **hard** כשאחת מהצורות הללו עוברת את העניין יותר מאשר בלוקים שגויים שלה.
+</Warning>
+
+| מדיניות | סמכות | בדיקה על ידי | למה |
+| --- | --- | --- | --- |
+| `protect-env-vars` | reviewable | `env-secrets-dump`, `secret-exposure` | התבנית עוררת בהפניה לכל משתנה; Jev שואל האם ערכי סודות בעצם יודפסו. |
+| `block-env-files` | reviewable | `secret-exposure` | התבנית תואמת כל נתיב `.env`, תבניות כלולות; Jev שואל האם ערכי סודות בעצם היו נקראים או כתובים. |
+| `block-read-outside-cwd` | reviewable | `read-outside-workspace` | מדוד כרועש בתנועה אמיתית; Jev שואל האם תוכני קובץ מחוץ לפרויקט נקראים. קריאה שהמשתמש בקש, או שהבדיקה לא מצאה בה כלום, מבוטלת; קריאה לא מבוקשת שהוא מדגיל שומרת את החסימה. |
+| `warn-git-amend` | reviewable | `git-history-rewrite` | שינוי commit שלא דחוק הוא רגיל; הנזק הוא כתיבה מחדש של היסטוריה אחרים עשויים למשוך. |
+| `warn-destructive-sql` | reviewable | `database-destruction` | Jev גם שואל האם המטרה היא מסד נתונים אמיתי ולא אחד מטיל חד-פעמי. |
+| `warn-global-package-install` | reviewable | `system-modification` | אותה דאגה: שינוי המכונה מחוץ לפרויקט. |
+| `block-failproofai-commands` | hard | | `alwaysOn` הגנה עצמית. לעולם לא reviewable. |
+| `block-rm-rf` | reviewable | `destructive-deletion` | ההיוריסטיקה של עומק הנתיב מקבלת `rm -rf node_modules` בצורה שגויה; Jev שואל האם מה שהיה מחוסל ניתן להשגה. `rm -rf /` שומר את שתי הבדיקות true. |
+| `block-sudo` | hard | | הסלמת הגעות. |
+| `block-curl-pipe-sh` | hard | | מפעיל קוד שהורד מהאינטרנט. |
+| `block-push-master` | hard | | דחף ישיר לענף מוגן. |
+| `block-work-on-main` | hard | | `commit-on-protected-branch` מכסה בדיוק דאגה זו אך הוא instruct-mode, כך שהוא לעולם לא יכול להשיב deny, ואף בדיקה אחרת לא מכסה אותה. |
+| `block-force-push` | reviewable | `git-history-rewrite` | הבדיקה של Jev היא כל ערך של המתאם וסופרת `--force-with-lease`; מה מבטל הוא force-pushing של הענף שלך. |
+| `block-secrets-write` | reviewable | `secret-exposure` | התאמת הנתיב אינה עוגנת, כך `src/auth/credentials.ts` תופסת; Jev שואל האם חומר מפתח אמיתי נכתב. |
+| `block-kubectl` | reviewable | `production-infra-change` | כוחש את כל ה-CLI, תתי-פקודות לקריאה בלבד כלולים; Jev שואל האם הקריאה משנה ואם המטרה היא ייצור. |
+| `block-terraform` | reviewable | `production-infra-change` | אותו דבר: מבטל `terraform plan` ו-`validate`. |
+| `block-aws-cli` | reviewable | `production-infra-change` | אותו דבר: מבטל `aws s3 ls`, `aws sts get-caller-identity`. |
+| `block-gcloud` | reviewable | `production-infra-change` | אותו דבר: מבטל `gcloud auth list`, `gcloud config list`. |
+| `block-az-cli` | reviewable | `production-infra-change` | אותו דבר: מבטל `az account show`. |
+| `block-helm` | reviewable | `production-infra-change` | אותו דבר: מבטל `helm list`, `helm status`. |
+| `block-gh-pipeline` | hard | | מפעיל צינורות, מיזוג ושינויים סודיים. |
+| `warn-git-stash-drop` | hard | | אף בדיקה סמנטית לא מכסה הסרת עבודה מוסתרת. |
+| `warn-git-clean` | hard | | `destructive-deletion` מכסה את הדאגה אך לא יכול להעיר עליה: `git clean` אינו שם נתיב, כך שהבדיקה `irreplaceable` שלו אין מה לשפוט ותשובה נמוכה, וראיות היא המינימום על בדיקות מדיניות. בדיקה ששאלו ואינה עוררת מבטלת את הפסק, כך שזיווג כאן היה כבה את המדיניות. |
+| `warn-all-files-staged` | hard | | אף בדיקה סמנטית לא מכסה מה `git add` רחב בוחר. |
+| `warn-schema-alteration` | hard | | `database-destruction` מכסה הנחת נתונים, לא שינוי סכימה. |
+| `warn-package-publish` | hard | | ציבור בלתי הפיך ואף בדיקה סמנטית לא מכסה אותו. |
+| `prefer-package-manager` | hard | | אמנה של צוות, לא שיפוט בטיחות. |
+| `warn-large-file-write` | hard | | סף גודל, לא פסק שJev יכול לעשות. |
+| `warn-background-process` | hard | | אף בדיקה סמנטית לא מכסה תהליכים מנותקים. |
+| `warn-repeated-tool-calls` | hard | | קובע קריאות; Jev לא יכול לספור. |
+| `sanitize-jwt` | hard | | גדז פלט כלי; לא שער קריאת כלי. |
+| `sanitize-api-keys` | hard | | גדז פלט כלי; לא שער קריאת כלי. |
+| `sanitize-connection-strings` | hard | | גדז פלט כלי; לא שער קריאת כלי. |
+| `sanitize-private-key-content` | hard | | גדז פלט כלי; לא שער קריאת כלי. |
+| `sanitize-bearer-tokens` | hard | | גדז פלט כלי; לא שער קריאת כלי. |
+| `require-commit-before-stop` | hard | | שער השלמת הפעלה, לא שער קריאת כלי. |
+| `require-push-before-stop` | hard | | שער השלמת הפעלה, לא שער קריאת כלי. |
+| `require-pr-before-stop` | hard | | שער השלמת הפעלה, לא שער קריאת כלי. |
+| `require-no-conflicts-before-stop` | hard | | שער השלמת הפעלה, לא שער קריאת כלי. |
+| `require-ci-green-before-stop` | hard | | שער השלמת הפעלה, לא שער קריאת כלי. |
+
+## שמות מדיניות סמנטיות
+
+אלה הבדיקות `FailproofAI/jev-policies` מצהירות, וערכים `reviewedBy` מקבל ברגע שהוא מותקן. Failproof AI עצמו לא משולח שום אחד מהם: ללא החבילה הזו (או אחר המצהיר שמות אלה), אף מדיניות שמשמה אותם היא לא reviewable. כל אחד הוא בדיקה Jev עונה על קריאת הכלי בפניה. **Mode** הוא מה בדיקה יכולה להשיב: בדיקת `deny` חוסמת על ראיות חזקות, בעודו שבדיקת `instruct` רק אי פעם מתאימה. או אחד שומר את כחיש מדיניות כשהוא עורר והמשתמש לא בקש את הקריאה. **משתמש יכול לעקוף** אומר האם הבקשה המפורשת שלו האנושית מבטלת אותה.
+
+Jev שואל בדיוק את [בדיקות Jev](/he/policies/publish-a-pack#jev-checks-in-a-pack) חבילות מותקנות מצהירות, וגם הם שמות `reviewedBy` מקבל. שם שתי חבילות מצהירות באופן שונה מכובד לא עבור אף אחד. אחד מהשמות השש-עשרה האלה מוצהר על ידי חבילה לא מותקנת מתוך מאגר FailproofAI מתעלם בחבילה זו: הגרסה שלה אף פעם לא שאולה ולא מתחרות בשלה של FailproofAI, כך שחבילה של צד שלישי לא יכולה להפוך לבדיקה שמבטלת מדיניויות חבילת הליבה ואף לא לכבות אחת מהבדיקות הללו. רשימת חבילות לא קריאה, או חבילה שכל בדיקה שלה לא שמישה, משאירה ל-Jev כלום לשאול.
+
+| שם | Mode | משתמש יכול לעקוף | מה Jev בודק |
+| --- | --- | --- | --- |
+| `destructive-deletion` | deny | כן | מחיקה קבועה של נתונים שלא ניתן להשגה. |
+| `production-infra-change` | deny | כן | שינוי תשתית חיה. |
+| `git-history-rewrite` | deny | כן | כתיבה מחדש או הסרת היסטוריית git משותפת. |
+| `push-to-protected-branch` | instruct | כן | דחף ישיר לענף מוגן. |
+| `commit-on-protected-branch` | instruct | כן | ביצוע ישיר על ענף מוגן. |
+| `secret-exposure` | deny | כן | קריאה או העתקת אישורים. |
+| `credential-exfiltration` | deny | לא | שליחת סודות או קובצים פרטיים מחוץ למכונה. |
+| `remote-code-execution` | deny | כן | הפעלת קוד שהורד מהאינטרנט. |
+| `privilege-escalation` | deny | כן | הפעלה עם הגעות מוגברות. |
+| `database-destruction` | deny | כן | הרס או שינוי מוני של נתוני מסד נתונים. |
+| `read-outside-workspace` | instruct | כן | קריאת קובצים מחוץ לפרויקט. |
+| `agent-config-tampering` | deny | לא | שינוי תצורת הבטיחות שלו של הסוכן. |
+| `system-modification` | instruct | כן | שינוי המערכת מחוץ לפרויקט. |
+| `env-secrets-dump` | instruct | כן | הדפסת סודות סביבה. |
+| `external-destructive-action` | deny | כן | פעולה בלתי הפיכה דרך כלי חיצוני. |
+| `external-data-egress` | instruct | כן | שליחת נתונים פרטיים לכלי חיצוני. |

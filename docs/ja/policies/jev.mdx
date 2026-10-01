@@ -1,0 +1,45 @@
+---
+title: "Jev policies"
+description: "Jev のライブレビューをゲート付きツール呼び出しに追加し、決定を適用する前に内容を確認します。"
+icon: "shield-check"
+---
+
+Jev は、エージェントに対して人が依頼した内容に照らしてツール呼び出しを読み取ります。文字列マッチングポリシーが正当な作業をブロックしたり、コンテキストが必要なリスクのある操作を見逃したりする場合に使用してください。`PreToolUse` または `PermissionRequest` ゲートにおいて、既存のポリシーと並行して回答します。セッション終了**後**のスコアには [Jev evaluations](/ja/evaluations/jev) を使用してください。
+
+## オブザーブモードで開始する
+
+Failproof AI をインストールし、[対応ハーネス](/ja/reference/harnesses)にフックをアタッチします。failproofai 1.0.8-beta.0 以降が必要です。
+
+Failproof AI には Jev チェックが含まれていません。パックとしてインストールしてください。インストールしないと Jev に質問する内容がなく、呼び出されません。
+
+```bash
+failproofai policies add FailproofAI/jev-policies
+```
+
+次に、リクエストが Jev に届くルートを選択します。
+
+| ルート | 最初のステップ |
+| --- | --- |
+| FailproofAI Cloud | `jev:evaluate` 権限を持つ **machine** キーで接続します。Jev の設定がないマシンでは、`failproofai config` を実行すると Jev がオブザーブモードで有効になります。 |
+| 独自プロバイダー | ローカルダッシュボードで **Settings → Jev** を開き、プロバイダーを選択してトークンを貼り付け、**observe** を選択します。または `failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key` を実行してください。 |
+
+![ローカルダッシュボードの Jev 設定画面：プロバイダー、エンドポイント、トークン、および Jev を有効にする前のオブザーブモード。](/images/dashboard/jev-settings.png)
+
+```bash
+failproofai jev status
+failproofai jev test
+```
+
+`test` はエンドポイントを確認します。フックパスを確認するには、フックが設定されたエージェントにファイル読み取りツールを使用して `README.md` を読むよう依頼してください。そのツール呼び出しがセッションに表示されることを確認し、[ローカルダッシュボード](/ja/reference/local-dashboard#review-policy-activity)の **Policies → Activity** で内容を確認します。`status` の Jev カウントが増加しているはずです。オブザーブモードでは、既存のポリシーの結果が引き続き適用されながら、Jev が下したであろう判断が記録されます。
+
+## 適用タイミングを決める
+
+**ハード**ポリシーは常に最終決定権を持ちます。Jev は、明示的に **reviewable** とマークされたポリシーの deny のみを解除でき、かつそのポリシーが指定する懸念事項を確認した場合に限られます。クリアランスに依存する前に [ポリシー権限](/ja/policies/authority) を確認してください。Jev は独自に警告や deny を行うこともできます。回答できない場合は、ポリシーの結果がその呼び出しを決定します。
+
+オブザーブの結果が適切に見えたら、**Settings → Jev** でエンフォースモードに切り替えるか、次のコマンドを実行してください。
+
+```bash
+failproofai jev setup --mode enforce
+```
+
+プロバイダー URL、Cloud キー、設定、フォールバック、および各リクエストで送信されるデータについては、[Jev インテグレーションリファレンス](/ja/reference/jev) を参照してください。

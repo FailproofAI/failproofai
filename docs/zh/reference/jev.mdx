@@ -1,0 +1,22 @@
+---
+title: "Jev 集成参考"
+description: "Jev 的配置、提供商、密钥、请求数据及失败行为。"
+icon: "braces"
+---
+
+Jev 在 Failproof AI 中有两种用途：
+
+| 用途 | 运行时机 | 返回内容 | 入门指南 |
+| --- | --- | --- | --- |
+| 会话评估 | 会话结束后 | 固定答案问题的评分 | [Jev 评估](/zh/evaluations/jev) |
+| 工具调用策略审查 | 受控工具调用执行前 | 与已安装策略一同返回的判决结果 | [Jev 策略](/zh/policies/jev) |
+
+## 参考页面
+
+| 主题 | 详情 |
+| --- | --- |
+| [评估问题](/zh/reference/jev-evaluations) | 布尔值与有序评分标准、结果、限制及回填。 |
+| [提供商对比与自定义密钥配置](/zh/reference/jev-providers) | TypeSafe、OpenRouter、Vercel、Cloudflare 及自定义端点；URL 推断、模型 ID、`jev.json`、模式及回退代码。 |
+| [FailproofAI Cloud 路由](/zh/reference/jev-cloud) | 机器密钥权限、自动观测设置、使用限制、连接状态及数据处理。 |
+
+本地 CLI 命令详见 [Failproof AI CLI 参考](/zh/reference/failproof-cli)。[本地仪表板参考](/zh/reference/local-dashboard#set-up-jev)中介绍了其 Jev 设置与活动视图。

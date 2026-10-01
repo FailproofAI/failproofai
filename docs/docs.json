@@ -277,6 +277,7 @@
                   "zh/start/first-policy",
                   "zh/start/setup",
                   "zh/start/concepts",
+                  "zh/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -334,6 +335,8 @@
                 "pages": [
                   "zh/evaluations/overview",
                   "zh/evaluations/write",
+                  "zh/evaluations/judge",
+                  "zh/evaluations/jev",
                   "zh/evaluations/test",
                   "zh/evaluations/deploy",
                   "zh/sessions/evaluations"
@@ -342,6 +345,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "zh/sessions/sentiment",
                   "zh/audits/overview",
                   "zh/audits/local-audit",
                   "zh/audits/setup",
@@ -362,12 +366,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "zh/policies/overview"
+                  "zh/policies/overview",
+                  "zh/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "zh/policies/authority",
                   "zh/policies/editor",
                   "zh/policies/packs"
                 ]
@@ -410,9 +416,19 @@
                   "zh/reference/overview",
                   "zh/reference/harnesses",
                   "zh/reference/custom-agents",
+                  "zh/reference/custom-agents-typescript",
                   "zh/reference/evaluator-sdk",
                   "zh/reference/policy-sdk",
                   "zh/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "zh/reference/jev",
+                  "zh/reference/jev-evaluations",
+                  "zh/reference/jev-providers",
+                  "zh/reference/jev-cloud"
                 ]
               },
               {
@@ -450,6 +466,7 @@
                   "ja/start/first-policy",
                   "ja/start/setup",
                   "ja/start/concepts",
+                  "ja/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -507,6 +524,8 @@
                 "pages": [
                   "ja/evaluations/overview",
                   "ja/evaluations/write",
+                  "ja/evaluations/judge",
+                  "ja/evaluations/jev",
                   "ja/evaluations/test",
                   "ja/evaluations/deploy",
                   "ja/sessions/evaluations"
@@ -515,6 +534,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ja/sessions/sentiment",
                   "ja/audits/overview",
                   "ja/audits/local-audit",
                   "ja/audits/setup",
@@ -535,12 +555,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ja/policies/overview"
+                  "ja/policies/overview",
+                  "ja/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ja/policies/authority",
                   "ja/policies/editor",
                   "ja/policies/packs"
                 ]
@@ -583,9 +605,19 @@
                   "ja/reference/overview",
                   "ja/reference/harnesses",
                   "ja/reference/custom-agents",
+                  "ja/reference/custom-agents-typescript",
                   "ja/reference/evaluator-sdk",
                   "ja/reference/policy-sdk",
                   "ja/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ja/reference/jev",
+                  "ja/reference/jev-evaluations",
+                  "ja/reference/jev-providers",
+                  "ja/reference/jev-cloud"
                 ]
               },
               {
@@ -623,6 +655,7 @@
                   "ko/start/first-policy",
                   "ko/start/setup",
                   "ko/start/concepts",
+                  "ko/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -680,6 +713,8 @@
                 "pages": [
                   "ko/evaluations/overview",
                   "ko/evaluations/write",
+                  "ko/evaluations/judge",
+                  "ko/evaluations/jev",
                   "ko/evaluations/test",
                   "ko/evaluations/deploy",
                   "ko/sessions/evaluations"
@@ -688,6 +723,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ko/sessions/sentiment",
                   "ko/audits/overview",
                   "ko/audits/local-audit",
                   "ko/audits/setup",
@@ -708,7 +744,8 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ko/policies/overview"
+                  "ko/policies/overview",
+                  "ko/policies/jev"
                 ]
               },
               {
@@ -756,9 +793,19 @@
                   "ko/reference/overview",
                   "ko/reference/harnesses",
                   "ko/reference/custom-agents",
+                  "ko/reference/custom-agents-typescript",
                   "ko/reference/evaluator-sdk",
                   "ko/reference/policy-sdk",
                   "ko/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ko/reference/jev",
+                  "ko/reference/jev-evaluations",
+                  "ko/reference/jev-providers",
+                  "ko/reference/jev-cloud"
                 ]
               },
               {
@@ -796,6 +843,7 @@
                   "es/start/first-policy",
                   "es/start/setup",
                   "es/start/concepts",
+                  "es/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -853,6 +901,8 @@
                 "pages": [
                   "es/evaluations/overview",
                   "es/evaluations/write",
+                  "es/evaluations/judge",
+                  "es/evaluations/jev",
                   "es/evaluations/test",
                   "es/evaluations/deploy",
                   "es/sessions/evaluations"
@@ -861,6 +911,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "es/sessions/sentiment",
                   "es/audits/overview",
                   "es/audits/local-audit",
                   "es/audits/setup",
@@ -881,12 +932,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "es/policies/overview"
+                  "es/policies/overview",
+                  "es/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "es/policies/authority",
                   "es/policies/editor",
                   "es/policies/packs"
                 ]
@@ -929,9 +982,19 @@
                   "es/reference/overview",
                   "es/reference/harnesses",
                   "es/reference/custom-agents",
+                  "es/reference/custom-agents-typescript",
                   "es/reference/evaluator-sdk",
                   "es/reference/policy-sdk",
                   "es/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "es/reference/jev",
+                  "es/reference/jev-evaluations",
+                  "es/reference/jev-providers",
+                  "es/reference/jev-cloud"
                 ]
               },
               {
@@ -969,6 +1032,7 @@
                   "pt-br/start/first-policy",
                   "pt-br/start/setup",
                   "pt-br/start/concepts",
+                  "pt-br/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1026,6 +1090,8 @@
                 "pages": [
                   "pt-br/evaluations/overview",
                   "pt-br/evaluations/write",
+                  "pt-br/evaluations/judge",
+                  "pt-br/evaluations/jev",
                   "pt-br/evaluations/test",
                   "pt-br/evaluations/deploy",
                   "pt-br/sessions/evaluations"
@@ -1034,6 +1100,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "pt-br/sessions/sentiment",
                   "pt-br/audits/overview",
                   "pt-br/audits/local-audit",
                   "pt-br/audits/setup",
@@ -1054,12 +1121,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "pt-br/policies/overview"
+                  "pt-br/policies/overview",
+                  "pt-br/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "pt-br/policies/authority",
                   "pt-br/policies/editor",
                   "pt-br/policies/packs"
                 ]
@@ -1102,9 +1171,19 @@
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
+                  "pt-br/reference/custom-agents-typescript",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "pt-br/reference/jev",
+                  "pt-br/reference/jev-evaluations",
+                  "pt-br/reference/jev-providers",
+                  "pt-br/reference/jev-cloud"
                 ]
               },
               {
@@ -1142,6 +1221,7 @@
                   "de/start/first-policy",
                   "de/start/setup",
                   "de/start/concepts",
+                  "de/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1199,6 +1279,8 @@
                 "pages": [
                   "de/evaluations/overview",
                   "de/evaluations/write",
+                  "de/evaluations/judge",
+                  "de/evaluations/jev",
                   "de/evaluations/test",
                   "de/evaluations/deploy",
                   "de/sessions/evaluations"
@@ -1207,6 +1289,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "de/sessions/sentiment",
                   "de/audits/overview",
                   "de/audits/local-audit",
                   "de/audits/setup",
@@ -1227,12 +1310,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "de/policies/overview"
+                  "de/policies/overview",
+                  "de/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "de/policies/authority",
                   "de/policies/editor",
                   "de/policies/packs"
                 ]
@@ -1275,9 +1360,19 @@
                   "de/reference/overview",
                   "de/reference/harnesses",
                   "de/reference/custom-agents",
+                  "de/reference/custom-agents-typescript",
                   "de/reference/evaluator-sdk",
                   "de/reference/policy-sdk",
                   "de/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "de/reference/jev",
+                  "de/reference/jev-evaluations",
+                  "de/reference/jev-providers",
+                  "de/reference/jev-cloud"
                 ]
               },
               {
@@ -1315,6 +1410,7 @@
                   "fr/start/first-policy",
                   "fr/start/setup",
                   "fr/start/concepts",
+                  "fr/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1372,6 +1468,8 @@
                 "pages": [
                   "fr/evaluations/overview",
                   "fr/evaluations/write",
+                  "fr/evaluations/judge",
+                  "fr/evaluations/jev",
                   "fr/evaluations/test",
                   "fr/evaluations/deploy",
                   "fr/sessions/evaluations"
@@ -1380,6 +1478,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "fr/sessions/sentiment",
                   "fr/audits/overview",
                   "fr/audits/local-audit",
                   "fr/audits/setup",
@@ -1400,12 +1499,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "fr/policies/overview"
+                  "fr/policies/overview",
+                  "fr/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "fr/policies/authority",
                   "fr/policies/editor",
                   "fr/policies/packs"
                 ]
@@ -1448,9 +1549,19 @@
                   "fr/reference/overview",
                   "fr/reference/harnesses",
                   "fr/reference/custom-agents",
+                  "fr/reference/custom-agents-typescript",
                   "fr/reference/evaluator-sdk",
                   "fr/reference/policy-sdk",
                   "fr/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "fr/reference/jev",
+                  "fr/reference/jev-evaluations",
+                  "fr/reference/jev-providers",
+                  "fr/reference/jev-cloud"
                 ]
               },
               {
@@ -1488,6 +1599,7 @@
                   "ru/start/first-policy",
                   "ru/start/setup",
                   "ru/start/concepts",
+                  "ru/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1545,6 +1657,8 @@
                 "pages": [
                   "ru/evaluations/overview",
                   "ru/evaluations/write",
+                  "ru/evaluations/judge",
+                  "ru/evaluations/jev",
                   "ru/evaluations/test",
                   "ru/evaluations/deploy",
                   "ru/sessions/evaluations"
@@ -1553,6 +1667,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ru/sessions/sentiment",
                   "ru/audits/overview",
                   "ru/audits/local-audit",
                   "ru/audits/setup",
@@ -1573,12 +1688,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ru/policies/overview"
+                  "ru/policies/overview",
+                  "ru/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ru/policies/authority",
                   "ru/policies/editor",
                   "ru/policies/packs"
                 ]
@@ -1621,9 +1738,19 @@
                   "ru/reference/overview",
                   "ru/reference/harnesses",
                   "ru/reference/custom-agents",
+                  "ru/reference/custom-agents-typescript",
                   "ru/reference/evaluator-sdk",
                   "ru/reference/policy-sdk",
                   "ru/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ru/reference/jev",
+                  "ru/reference/jev-evaluations",
+                  "ru/reference/jev-providers",
+                  "ru/reference/jev-cloud"
                 ]
               },
               {
@@ -1661,6 +1788,7 @@
                   "hi/start/first-policy",
                   "hi/start/setup",
                   "hi/start/concepts",
+                  "hi/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1718,6 +1846,8 @@
                 "pages": [
                   "hi/evaluations/overview",
                   "hi/evaluations/write",
+                  "hi/evaluations/judge",
+                  "hi/evaluations/jev",
                   "hi/evaluations/test",
                   "hi/evaluations/deploy",
                   "hi/sessions/evaluations"
@@ -1726,6 +1856,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "hi/sessions/sentiment",
                   "hi/audits/overview",
                   "hi/audits/local-audit",
                   "hi/audits/setup",
@@ -1746,12 +1877,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "hi/policies/overview"
+                  "hi/policies/overview",
+                  "hi/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "hi/policies/authority",
                   "hi/policies/editor",
                   "hi/policies/packs"
                 ]
@@ -1794,9 +1927,19 @@
                   "hi/reference/overview",
                   "hi/reference/harnesses",
                   "hi/reference/custom-agents",
+                  "hi/reference/custom-agents-typescript",
                   "hi/reference/evaluator-sdk",
                   "hi/reference/policy-sdk",
                   "hi/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "hi/reference/jev",
+                  "hi/reference/jev-evaluations",
+                  "hi/reference/jev-providers",
+                  "hi/reference/jev-cloud"
                 ]
               },
               {
@@ -1834,6 +1977,7 @@
                   "tr/start/first-policy",
                   "tr/start/setup",
                   "tr/start/concepts",
+                  "tr/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1891,6 +2035,8 @@
                 "pages": [
                   "tr/evaluations/overview",
                   "tr/evaluations/write",
+                  "tr/evaluations/judge",
+                  "tr/evaluations/jev",
                   "tr/evaluations/test",
                   "tr/evaluations/deploy",
                   "tr/sessions/evaluations"
@@ -1899,6 +2045,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "tr/sessions/sentiment",
                   "tr/audits/overview",
                   "tr/audits/local-audit",
                   "tr/audits/setup",
@@ -1919,12 +2066,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "tr/policies/overview"
+                  "tr/policies/overview",
+                  "tr/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "tr/policies/authority",
                   "tr/policies/editor",
                   "tr/policies/packs"
                 ]
@@ -1967,9 +2116,19 @@
                   "tr/reference/overview",
                   "tr/reference/harnesses",
                   "tr/reference/custom-agents",
+                  "tr/reference/custom-agents-typescript",
                   "tr/reference/evaluator-sdk",
                   "tr/reference/policy-sdk",
                   "tr/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "tr/reference/jev",
+                  "tr/reference/jev-evaluations",
+                  "tr/reference/jev-providers",
+                  "tr/reference/jev-cloud"
                 ]
               },
               {
@@ -2007,6 +2166,7 @@
                   "vi/start/first-policy",
                   "vi/start/setup",
                   "vi/start/concepts",
+                  "vi/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2064,6 +2224,8 @@
                 "pages": [
                   "vi/evaluations/overview",
                   "vi/evaluations/write",
+                  "vi/evaluations/judge",
+                  "vi/evaluations/jev",
                   "vi/evaluations/test",
                   "vi/evaluations/deploy",
                   "vi/sessions/evaluations"
@@ -2072,6 +2234,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "vi/sessions/sentiment",
                   "vi/audits/overview",
                   "vi/audits/local-audit",
                   "vi/audits/setup",
@@ -2092,12 +2255,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "vi/policies/overview"
+                  "vi/policies/overview",
+                  "vi/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "vi/policies/authority",
                   "vi/policies/editor",
                   "vi/policies/packs"
                 ]
@@ -2140,9 +2305,19 @@
                   "vi/reference/overview",
                   "vi/reference/harnesses",
                   "vi/reference/custom-agents",
+                  "vi/reference/custom-agents-typescript",
                   "vi/reference/evaluator-sdk",
                   "vi/reference/policy-sdk",
                   "vi/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "vi/reference/jev",
+                  "vi/reference/jev-evaluations",
+                  "vi/reference/jev-providers",
+                  "vi/reference/jev-cloud"
                 ]
               },
               {
@@ -2180,6 +2355,7 @@
                   "it/start/first-policy",
                   "it/start/setup",
                   "it/start/concepts",
+                  "it/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2237,6 +2413,8 @@
                 "pages": [
                   "it/evaluations/overview",
                   "it/evaluations/write",
+                  "it/evaluations/judge",
+                  "it/evaluations/jev",
                   "it/evaluations/test",
                   "it/evaluations/deploy",
                   "it/sessions/evaluations"
@@ -2245,6 +2423,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "it/sessions/sentiment",
                   "it/audits/overview",
                   "it/audits/local-audit",
                   "it/audits/setup",
@@ -2265,12 +2444,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "it/policies/overview"
+                  "it/policies/overview",
+                  "it/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "it/policies/authority",
                   "it/policies/editor",
                   "it/policies/packs"
                 ]
@@ -2313,9 +2494,19 @@
                   "it/reference/overview",
                   "it/reference/harnesses",
                   "it/reference/custom-agents",
+                  "it/reference/custom-agents-typescript",
                   "it/reference/evaluator-sdk",
                   "it/reference/policy-sdk",
                   "it/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "it/reference/jev",
+                  "it/reference/jev-evaluations",
+                  "it/reference/jev-providers",
+                  "it/reference/jev-cloud"
                 ]
               },
               {
@@ -2353,6 +2544,7 @@
                   "ar/start/first-policy",
                   "ar/start/setup",
                   "ar/start/concepts",
+                  "ar/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2410,6 +2602,8 @@
                 "pages": [
                   "ar/evaluations/overview",
                   "ar/evaluations/write",
+                  "ar/evaluations/judge",
+                  "ar/evaluations/jev",
                   "ar/evaluations/test",
                   "ar/evaluations/deploy",
                   "ar/sessions/evaluations"
@@ -2418,6 +2612,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "ar/sessions/sentiment",
                   "ar/audits/overview",
                   "ar/audits/local-audit",
                   "ar/audits/setup",
@@ -2438,12 +2633,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ar/policies/overview"
+                  "ar/policies/overview",
+                  "ar/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "ar/policies/authority",
                   "ar/policies/editor",
                   "ar/policies/packs"
                 ]
@@ -2486,9 +2683,19 @@
                   "ar/reference/overview",
                   "ar/reference/harnesses",
                   "ar/reference/custom-agents",
+                  "ar/reference/custom-agents-typescript",
                   "ar/reference/evaluator-sdk",
                   "ar/reference/policy-sdk",
                   "ar/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "ar/reference/jev",
+                  "ar/reference/jev-evaluations",
+                  "ar/reference/jev-providers",
+                  "ar/reference/jev-cloud"
                 ]
               },
               {
@@ -2526,6 +2733,7 @@
                   "he/start/first-policy",
                   "he/start/setup",
                   "he/start/concepts",
+                  "he/start/use-jev",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2583,6 +2791,8 @@
                 "pages": [
                   "he/evaluations/overview",
                   "he/evaluations/write",
+                  "he/evaluations/judge",
+                  "he/evaluations/jev",
                   "he/evaluations/test",
                   "he/evaluations/deploy",
                   "he/sessions/evaluations"
@@ -2591,6 +2801,7 @@
               {
                 "group": "Find and manage failures",
                 "pages": [
+                  "he/sessions/sentiment",
                   "he/audits/overview",
                   "he/audits/local-audit",
                   "he/audits/setup",
@@ -2611,12 +2822,14 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "he/policies/overview"
+                  "he/policies/overview",
+                  "he/policies/jev"
                 ]
               },
               {
                 "group": "Get a policy",
                 "pages": [
+                  "he/policies/authority",
                   "he/policies/editor",
                   "he/policies/packs"
                 ]
@@ -2659,9 +2872,19 @@
                   "he/reference/overview",
                   "he/reference/harnesses",
                   "he/reference/custom-agents",
+                  "he/reference/custom-agents-typescript",
                   "he/reference/evaluator-sdk",
                   "he/reference/policy-sdk",
                   "he/reference/self-hosting"
+                ]
+              },
+              {
+                "group": "Jev reference",
+                "pages": [
+                  "he/reference/jev",
+                  "he/reference/jev-evaluations",
+                  "he/reference/jev-providers",
+                  "he/reference/jev-cloud"
                 ]
               },
               {

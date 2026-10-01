@@ -1,0 +1,22 @@
+---
+title: "Jev integration reference"
+description: "Configuration, providers, keys, request data, और failure behavior Jev के लिए।"
+icon: "braces"
+---
+
+Failproof AI में Jev के दो उपयोग हैं:
+
+| उपयोग | कब चलता है | यह क्या रिटर्न करता है | यहाँ से शुरू करें |
+| --- | --- | --- | --- |
+| Session evaluation | एक session समाप्त होने के बाद | एक fixed-answer question के लिए स्कोर | [Jev evaluations](/hi/evaluations/jev) |
+| Tool-call policy review | एक gated tool call चलने से पहले | installed policies के साथ एक verdict | [Jev policies](/hi/policies/jev) |
+
+## संदर्भ पृष्ठ
+
+| विषय | विवरण |
+| --- | --- |
+| [Evaluation questions](/hi/reference/jev-evaluations) | Boolean और ordered-score criteria, results, limits, और backfill। |
+| [Provider comparison और own-key setup](/hi/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare, और custom endpoints; URL inference, model IDs, `jev.json`, modes, और fallback codes। |
+| [FailproofAI Cloud route](/hi/reference/jev-cloud) | Machine-key permissions, automatic observe setup, usage limits, connection state, और data handling। |
+
+स्थानीय CLI commands को [Failproof AI CLI reference](/hi/reference/failproof-cli) में सूचीबद्ध किया गया है। [local dashboard reference](/hi/reference/local-dashboard#set-up-jev) इसकी Jev settings और activity view का वर्णन करता है।

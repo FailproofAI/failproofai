@@ -1,0 +1,401 @@
+---
+title: "Özel ajanlar (TypeScript)"
+description: "@failproofai/sdk için yapılandırma, etkinlik kataloğu, kapsamlar ve çerçeve adaptörleri."
+icon: "square-js"
+---
+
+TypeScript SDK için her ayarın, metodun ve alanın ne yaptığını öğrenin. İlk kez enstrümantasyon yapıyorsanız kılavuzla başlayın — bu sayfa referans amaçlıdır.
+
+<Columns cols={2}>
+  <Card title="Özel ajanlar kılavuzu" icon="code" href="/tr/start/integrations/custom-agents">
+    Yükleme, enstrümantasyon, etkinlik metodları, çalışan bir örnek ve yaygın sorunlar.
+  </Card>
+  <Card title="Python kullanıyor musunuz?" icon="python" href="/tr/reference/custom-agents">
+    Aynı etkinlikler, aynı tel formatı, aynı spool — Python'dan.
+  </Card>
+</Columns>
+
+Node 20.9 veya daha yeni sürüm. ESM ve CommonJS desteklenir. Çalışma zamanı bağımlılığı yok.
+
+<Note>
+  Bu SDK ve Python SDK **aynı spool'a aynı etkinlikleri yazar**. Node ajanları ve Python ajanları içeren bir filo bir set oturum üretir, iki set değil ve pano hiçbirini ayırt etmez. Şirket başına değil, hizmet başına seçin.
+</Note>
+
+## Yükleme
+
+```bash
+npm install @failproofai/sdk
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+
+await failproofai.agent("planner", { goal: question }, async () => {
+  const hits = await failproofai.toolCall("web_search", { input: { q } }, () => search(q));
+});
+```
+
+Çerçeve adaptörleri paketin kendisinde gönderilir. Çerçeveler **isteğe bağlı eş bağımlılıklardır** — desteklenen aralıklar görülebilsin diye bildirilir, asla sizin adınıza yüklenmez ve sadece `instrument()` çağırdığınızda alınır.
+
+## Failproof daemon'ı bağlayın
+
+Python SDK ile aynıdır: **Admin → Anahtarlar** altında bir `events:add` anahtarı oluşturun, ardından [daemon'ı bağlayın](/tr/start/setup#connect-a-machine-to-cloud). SDK diske yazarak; daemon gönderir.
+
+## Yapılandırma
+
+```ts
+failproofai.configure({
+  environment: "production",
+  flushInterval: 0.5,
+  baseDir: undefined,
+});
+```
+
+| Seçenek | Ne yaptığı |
+| --- | --- |
+| `environment` | Her etkinlik üzerindeki etiket — `production`, `staging`, `prod-eu`. Varsayılan `dev`. |
+| `flushInterval` | Zamanlayıcının diske yazma sıklığı, saniye cinsinden. Varsayılan `0.5`. |
+| `baseDir` | Nereye yazılacağı. Varsayılan daemon'ın spool'u, aksi takdirde bilmediğiniz sürece istediğiniz şeydir. |
+
+Hiçbir şey uygulanmaz, hepsi doğrulanmazsa, reddedilen bir çağrı SDK'yı yeni bir `baseDir` ve eski aralık ile değil, tamamen olduğu gibi bırakır.
+
+Bunun yerine ortam değişkeni ile ayarlayın:
+
+| Değişken | Ne yaptığı |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | Kod değişikliği olmadan `environment` ayarlar. `configure()` seçeneği bunu geçersiz kılar. |
+| `FAILPROOFAI_HOME` | Spool'u tutan Failproof AI kökünü taşır. |
+| `FAILPROOFAI_SDK_LOG_LEVEL` | `debug`, `info`, `warn` (varsayılan), `error`, `silent`. |
+| `FAILPROOFAI_SDK_STRICT` | `1` enstrümantasyon hatalarını günlüğe kaydırmak yerine fırlatır. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` çerçeve uyumluluğu sorunu fırlatır, uyarı vermek ve devam etmek yerine. |
+
+<Warning>
+  **`environment` içinde virgül yok.** Alım bu alanı virgülle ayırarak filtrelerini oluşturur ve bir tane içeren herhangi bir etkinliği atlar — böylece tüm bir çalıştırma sessizce kaybolur. `prod,eu` yerine `prod-eu` yazın.
+
+  `configure({ environment: "prod,eu" })` hemen anlaşılması için fırlatır. `AGENTEYE_ENVIRONMENT` fırlatamaz — hiç kimse sizi çağırmıyor — bu yüzden bir kez uyarır ve `dev`'e geri döner.
+</Warning>
+
+SDK'nın kendi günlük satırlarını loggerinize `failproofai.setLogger({ debug, info, warn, error })` ile yönlendirin.
+
+## Kapatma
+
+Arabelleğe alınan etkinlikler `process.on("exit")` üzerinde temizlenir.
+
+Bir sinyal tarafından öldürülen bir işlem asla buna ulaşmaz ve Node'un `SIGTERM` için varsayılanı çıkış işleyicileri çalıştırmadan sonlandırmaktır — bu nedenle kapsayıcılı bir ajan son aralığın yazmadığı her şeyi kaybeder.
+
+<Warning>
+  **Bu SDK sizin için bir sinyal işleyicisi yüklemeyecektir.** Birini kaydetmek işleminizin davranışını değiştirir: bir dinleyici Node'un varsayılan sonlandırmasını bastırır, bu nedenle bir tane ekleyen bir kütüphane sessizce Ctrl-C'yi çalışmaktan alıkoyardı. Kendi başınızınkini ekleyin:
+
+  ```ts
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      failproofai.flushSync();
+      process.exit(0);
+    });
+  }
+  ```
+</Warning>
+
+Kısa ömürlü bir komut dosyası veya sunucusuz işleyici dönmeden önce `await failproofai.flush()` çalıştırmalıdır — aralık tek başına teslim etmeyi garanti etmez.
+
+## Kimlik
+
+Her etkinlik bir oturuma ve bir ajanı aittir. **Kapsamlar her ikisini de doldurur**, bu nedenle nadiren onları geçersiniz:
+
+```ts
+await failproofai.session(async () => {
+  await failproofai.agent("planner", async () => {
+    failproofai.event.toolUse({ toolName: "search", toolCallId: "c1" });
+  });
+});
+```
+
+`sessionId` veya `agentId` açıkça geçirmek hala işe yarar ve kazanır. Ne bağlı ne de geçilmişse, çağrı Cloud'un sessizce atacağı bir etkinlik yayarken bir hata fırlatır.
+
+<Note>
+  Kimlik `AsyncLocalStorage` üzerinde gider. `await`, `.then()`, zamanlayıcılar ve kapsam içinde oluşturulan herhangi bir geri çağrıyı takip eder. Bir çalıştırma sırasında depolanan ve başka bir sırasında çağrılan geri çağrıyı **takip etmez** veya `worker_threads` sınırı arasında verilen işle çalışmaz — bunları `failproofai.propagate()` ile sarın veya etkinlikleri bağlantısız olarak iner.
+</Note>
+
+### Kapsamlar
+
+| Kapsam | Yayar | Döndürür |
+| --- | --- | --- |
+| `session(body)` | hiçbir şey — sadece kimlik | `body` ne döndürürse |
+| `agent(id, options?, body)` | `agent_start`, sonra `agent_end` | `body` ne döndürürse |
+| `toolCall(name, options?, body)` | `tool_use`, sonra `tool_result` | `body` ne döndürürse |
+
+Eşzamanlı bir gövde eşzamanlı kalır: `agent("x", () => 1)` `1` döndürür, bir söz değil.
+
+`toolCall` gövdenin çözülmüş değerini aracın `output` olarak kaydeder, `call.output`'u kendiniz atamadığınız sürece.
+
+<Accordion title="Çıkış anlamları" icon="arrow-right-from-bracket">
+
+| Ne oldu | Etkinlikler | `outcome` |
+| --- | --- | --- |
+| blok döndü | `agent_end` | `"success"`, veya sizin `outcome` |
+| blok fırladı | `error`, sonra `agent_end` | `"failed"` |
+| bir `AbortError` | sadece `agent_end` | `"cancelled"` |
+
+Hata her zaman yeniden fırlatılır.
+
+Bir araç hatası yaprakta kaydedilir — `tool_result` bir `error` dizesi ile — ve **hiçbir** çalıştırma düzeyi `error` etkinliği yayar. Ajan döngüsünün yakaladığı bir, bir çalıştırma hatası değildir ve yayılan bir, çevreleyen `agent()` tarafından tam olarak bir kez bildirilir.
+
+</Accordion>
+
+<Accordion title="`using` formu" icon="brackets-curly">
+
+İş tek bir fonksiyon değilse — bir kapsam bir yapıcıda açılır ve bir sökmede kapatılır veya mevcut kontrol akışını geçen bir:
+
+```ts
+{
+  using span = failproofai.agent.open("planner", { goal });
+  using call = failproofai.toolCall.open("search", { input: { q } });
+  call.call.output = await search(q);
+}  // tool_result, sonra agent_end
+```
+
+Her iki form bayt-özdeş etkinlikler yayar. Geri çağrı formunu tercih edin: `AsyncLocalStorage.run()` içinde çalışır, bu nedenle açılmış kalan hiçbir şey yoktur ve "burada açık, orada kapalı" hatalarının tüm sınıfı ulaşılamaz.
+
+Kendi başarısızlığını yakalayan bir `using` bloğu bunu `span.fail(error)` ile bildirir — ayırıcının kendi istisna kanalı yoktur.
+
+</Accordion>
+
+## Etkinlik kataloğu
+
+Python SDK ile aynı on beş metod, camelCase'te. Çoğu **çiftler halinde** gelir — açıcıyı çağırırsınız, ardından kapatıcıyı, ve SDK boşluğu zamanlar.
+
+| | Açar | Kapar |
+| --- | --- | --- |
+| **Ajanlar** | `agentStart` | `agentEnd` |
+| | `agentPause` | `agentResume` |
+| **Modeller** | `modelRequest` | `modelResponse` |
+| **Araçlar** | `toolUse` | `toolResult` |
+| **Kanca** | `hookTriggered` | `hookCompleted` |
+| **İnsanlar** | `humanWait` | `humanInput` |
+
+Üç kişi tek başına durur: `error`, `humanPause`, `humanInterrupt`.
+
+<Accordion title="Her metod başına her alan" icon="table">
+
+Her metod ayrıca `sessionId` ve `agentId` alır, kapsamlar bunları sizin için doldurur. Atlanmış hiçbir şey JSON `null` olarak gönderilmek yerine bırakılır.
+
+| Metod | Gerekli | İsteğe Bağlı |
+| --- | --- | --- |
+| `agentStart` | — | `goal`, `parentId` |
+| `agentEnd` | — | `outcome`, `summary` |
+| `agentPause` | `pauseId` | `reason`, `userId` |
+| `agentResume` | `pauseId` | `reason`, `userId` |
+| `modelRequest` | — | `model`, `messages`, `system`, `tools`, `requestId` |
+| `modelResponse` | — | `model`, `stopReason`, `inputTokens`, `outputTokens`, `content`, `role`, `requestId` |
+| `toolUse` | `toolName`, `toolCallId` | `input` |
+| `toolResult` | `toolName`, `toolCallId` | `output`, `error` |
+| `hookTriggered` | `hookName`, `hookId` | `triggerEvent`, `input` |
+| `hookCompleted` | `hookName`, `hookId` | `outcome`, `output`, `error` |
+| `error` | `errorType`, `message` | `traceback` |
+| `humanWait` | `inputId` | `prompt`, `options`, `reason` |
+| `humanInput` | `inputId` | `response` |
+| `humanPause` | — | `reason`, `userId` |
+| `humanInterrupt` | — | `reason`, `userId`, `atStep` |
+
+Eklediğiniz diğer herhangi bir anahtar özel bir yük alanı haline gelir. Çerçeveye özgü hiçbir şeyi `fw_*` olarak adlandırın; beyan edilen bir alanla çarpışan bir ad, sessizce tanıtılan bir sütunu üzerine yazmak yerine reddedilir.
+
+</Accordion>
+
+<Warning>
+  **`duration_ms` hesaplanır, kabul edilmez.** Dört kapatıcı metod açıcılarından boşluğu zamanlar ve arayan tarafından sağlanan `duration_ms` öğesini reddeder — bildirilen bir süre tahrifatsızdır.
+
+  Çiftler ajanın değil **oturumda** ve id'de eşleştirilir. Planner altında açılan ve çalışan altında kapatılan bir araç hala eşleşir, bu gerçek iç içe geçmiş çok ajanı çalıştırmaların yaptığı şeydir.
+</Warning>
+
+## Çerçeve adaptörleri
+
+```ts
+await failproofai.instrument();              // bulabilir ne olursa
+await failproofai.instrument("langchain");   // tam olarak bir tane
+failproofai.uninstrument();                  // her şeyi geri koy
+```
+
+| Çerçeve | Desteklenen | Nasıl bağlandığı |
+| --- | --- | --- |
+| **LangChain.js / LangGraph.js** | `@langchain/core` 0.3 – 1.x, LangGraph.js 0.4 – 1.x | `CallbackManager.configure`, böylece her `invoke`/`stream`/`batch` hiçbir yerde `callbacks:` geçmeden veya kendiniz `langchainHandler()` yama ve geçmeden kapsanır. |
+| **Vercel AI SDK** | `ai` 4 – 7 | `telemetry()` çağrı sitesinde veya `ai` 7'de (4–6'da opt-in — aşağıya bakın) tüm işlem için `instrument("ai")`. |
+| **Mastra** | `@mastra/core` 0.20 – 1.x | `Agent.generate`/`.stream`, ajanın modeli ve araç çözümü ve iş akışı çalıştırma/adım motoru. |
+| **LlamaIndex.TS** | `llamaindex` 0.11.4 – 0.x | `Settings.callbackManager` (abone edilmiş) artı `AgentWorkflow.runStream`, iş akışı çalıştırmaları ve adımları için. |
+
+Her aralık, gerçek çerçeve sürümleriyle her iki uçta da ES modülü olarak ve CommonJS olarak her CI çalıştırmasında test edilir.
+
+Harita Python SDK'sının olduğu için aynı program her iki dilde de aynı ağacı çizer. Bir yapı bir **ajan** 'dir sadece LLM karar döngüsüne sahipse — bir grafik veya zincir çalıştırması, AI SDK `generateText`/`streamText` çağrısı, Mastra ajanı, LlamaIndex ajan çalıştırması. Bir LangGraph düğümü veya iş akışı adımı bir **kanca** (`hook_triggered`/`hook_completed`), asla iç içe geçmiş bir ajan değil. Model çağrıları token sayılarıyla `model_request`/`model_response` çiftleridir; araç çağrıları modelin kendi araç çağrısı id'sini taşır. Bir başarısızlık, olduğu etkinlikte bir kez kaydedilir.
+
+Yüklemede başarısız olan bir adaptör günlüğe kaydedilir ve atlanır; diğerleri hala yükler, çünkü kırık bir LlamaIndex sizi LangGraph'a mal olmamalıdır.
+
+<Note>
+  Bağımsız değişken içermeyen `instrument()` çerçeveyi zaten alınıp alınmadığı değil, **çözüp çözmediğine** göre algılar — Node ES modülleri için Python'un `sys.modules` eşdeğerini sunmaz. Yüklediğiniz ancak kullanmadığınız bir çerçeve alınır ve yamalanır. İstediğiniz birini adlandırın, bu önemliyse.
+</Note>
+
+<Note>
+  Bu çerçevelerin çoğu ES modülü yapısı ve CommonJS yapısı gönderir, bu Node'u iki ilişkisiz kopya olarak yükler. Adaptörler uygulamanızın yüklediği kopyayı (ve bir şey zaten `require` ettiyse CommonJS kopya da) yamarlar, bu nedenle her iki modül sistemi çalışır. esbuild veya webpack tarafından kendi çıktınıza **paketlenmiş** bir çerçeve ulaşılamaz — orada çağrı sitesi yardımcılarını kullanın: `langchainHandler()`, `telemetry()`, `wrapTool()`.
+</Note>
+
+### Yamalama olmadan LangChain
+
+```ts
+import { langchainHandler } from "@failproofai/sdk/langchain";
+await graph.invoke(input, { callbacks: [langchainHandler()] });
+```
+
+İşleyici `instrument()` ile veya olmadan çalışır ve asla çift kayıt yapmaz. `instrument("langchain")` `sessionId`, `captureContent`, `includeChains`, `graphCallbacks` ve `captureLimit` alır, Python adaptörü yaptığı gibi; bir çağrı üzerinde `metadata: { failproofai_sdk_session_id }` o çağrıyı oturum için seçer.
+
+### Vercel AI SDK
+
+AI SDK, bir ES modülünden düz fonksiyonlar dışarı aktarır ve bir ES modülü ad alanı belirtim tarafından değişmez — yamlanacak yer yoktur. SDK'nın kendisinin belgelediği uzantı noktalarını kullanır:
+
+```ts
+import { telemetry } from "@failproofai/sdk/ai";
+
+const { text } = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: telemetry({ functionId: "answer-question" }),
+  // ai 7'de, `telemetry: telemetry({ … })` — aynı nesne, yeni ad
+});
+```
+
+Bu tam entegrasyon: bir ajan aralığı, adım başına token sayılı bir model istek/yanıt çifti ve her araç çağrısı. Bir çağrı sitesi her büyük çalışır — `ai` 4–6 taşıdığı izlemeci okur, `ai` 7 telemetri entegrasyonu.
+
+`instrument("ai")` **`ai` 7'de** aynı şeyi işlem genelinde yapar: her çağrı, AI SDK'nın küresel telemetri entegrasyonu listesi aracılığıyla, katkı maddesi ve başka kimsenin hiçbir şeyini almaz.
+
+**`ai` 4–6'da, `instrument("ai")` kendi başına hiçbir şey kaydetmez ve bunun söyleyen bir uyarı günlüğe kaydeder.** Bu büyükelçi Tek işlem genelinde kancası küresel OpenTelemetry izlemeci sağlayıcıdır — OpenTelemetry alındıktan sonra teslim etmeyi reddeden bir tek yuva. Bizimkini kaydetmek daha sonra başlangıçta kendi `NodeSDK.start()` öğesini sessizce reddedecek ve http/veritabanı açıklığınızı hiçbir şey ihraç etmeyen bir izlemeciye gönderecektir. Çağrı sitesinde `telemetry()` veya orada `wrapModel` kullanın. İşlem kendi OpenTelemetry'sini çalıştırmıyorsa `instrument("ai", { registerGlobalTracer: true })` ile opt-in yapın: daha sonra `experimental_telemetry: { isEnabled: true }` geçen her çağrıyı kaydeder ve hala boşsa yuvasını alır. `registerGlobalTracer: false` varsayılanı tutar ve uyarıyı susturur.
+
+Modeli bir kez sarmalayı tercih ederseniz, `wrapModel` araç çağrıları model katmanının üstünde olduğu için sadece model çağrılarını görür. Etrafında hiçbir şey olmadan çağrılan sarmalı model kendi çalıştırması olarak kaydedilir. Bir akışa alınan çağrı akışın nasıl durduğunu kapatır — tüketici iptal ettiğinde `stop_reason: "cancelled"`, yarı yolda başarısız olduğunda `"error"`:
+
+```ts
+import { wrapModel } from "@failproofai/sdk/ai";
+const model = await wrapModel(openai("gpt-4o"));
+```
+
+Her ikisini de kullanmak iyidir: ara yazılım çağrının zaten kaydedilmekte olduğunu fark eder ve ertelerse, her çağrı bir kez kaydedilir.
+
+`functionId` ajan aralığını adlandırır. Düşük kardinalite tutun — `agent_id`'ye, birincil pano yüzüne iner.
+
+### Next.js
+
+`next build` sunucunun bağımlılıklarını varsayılan olarak paketler ve bir çerçeve yapıya paketlenmiş bir `instrument()`'ın ulaşamayacağı bir kopyadır. Config'i bir kez sarın ve Next'in başlangıç kancasından `instrument()` çağırın:
+
+```ts
+// next.config.ts
+import { withFailproofai } from "@failproofai/sdk/next";
+export default withFailproofai({ /* your config */ });
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const failproofai = await import("@failproofai/sdk");
+  await failproofai.instrument();
+}
+```
+
+`withFailproofai` LangChain, Mastra, LlamaIndex ve SDK'nın kendisini `serverExternalPackages`'a ekler, kendi listenizi tutar. Olmadan, `instrument()` ulaşamadığı her çerçeve için bir kez uyarır, sessizce başarısız olmakla değil; paketleri kendiniz listeleyeniz `FAILPROOFAI_NEXT_EXTERNALS=1` ayarlayın. Vercel AI SDK ve çağrı sitesi yardımcıları her iki şekilde de çalışır. Bir Edge rotası no-op yapısı alır: SDK'yı almak güvenlidir ve hiçbir şey kaydetmez.
+
+### Akışa alınan çağrılarda token sayıları
+
+OpenAI uyumlu API'ler bir akışta kullanımı sadece istemci sorduğunda bildirir. LangChain ve Vercel AI SDK sorar; LlamaIndex için `additionalChatOptions: { stream_options: { include_usage: true } }` öğesini `OpenAI` LLM'sine geçirin ve Mastra için modeli kullanım etkin şekilde oluşturun (örneğin `createOpenAICompatible({ includeUsage: true })`). Aksi takdirde akışa alınan model çağrıları token sayılarını taşımaz.
+
+### Çalışma zamanları
+
+Node ≥ 20.9, Bun ve Deno — her çerçeve, ES modülü olarak ve CommonJS olarak, her CI çalıştırmasında Node'un izine karşı test edilir. SDK `failproofaid` daemon'ın yanında çalışır, bu yazılan şeyi gönderir.
+
+## Kendi ajanınız — çerçeve yok
+
+Kendi yazdığınız bir ajan döngüsü için veya adaptörleri olmayan bir çerçeve için. Etkinlikleri adaptörlerin altında kullandığı aynı API ile yayarsınız, bu nedenle izlemenin aynı şekli ve kalitesi vardır.
+
+Ajanın nasıl organize edildiğini bilmeniz gerekmiyor. Her el yapımı ajan zaten üç yere sahiptir, işlevleri ne adlandırılırsa olsun, ve bu üç bütün entegrasyondur:
+
+| Nerede | Ne eklenecek | Yayar |
+| --- | --- | --- |
+| **Bir çalıştırma** başında ve bitişinde | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| **Modeli çağıran tek fonksiyon** | `event.modelRequest` öncesinde, `event.modelResponse` sonrasında — her iki yarı, başarısızlıkta bile | model açarı başına bir çift |
+| **Araçları çalıştıran tek fonksiyon** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+Kimlik ortam oluşturur: `agent()` içindeki her şey bir id almadan o çalıştırma oturumuna iner ve programdaki başka hiçbir şey değişmez — ajanın zaten kendi veritabanına yazdığı da dahil olmak üzere.
+
+- **Bir hizmet veya bir çalışan:** kendi isteğinizi veya iş id'sini `sessionId` olarak geçirin, böylece pano üzerinde bir oturum ve kendi günlüğüne veya veritabanına kayıt aynı dizedir.
+- **Alt ajanlar:** `agent()` çağrılarını iç içe yerleştirin. İçeri olan dış olarak oturuma `parent_id` ile katılır.
+- **Çiftleri yayar.** `modelRequest` ile `modelResponse` yoksa pano çalıştığını sonsuza kadar gösteren bir aralıktır — dolayısıyla `catch`.
+
+Depo içinde [`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) tam ve çalıştırılabilir sürümdür: tam bir OpenAI araç döngüsü tam olarak bu şekilde enstrümante, ES modülü olarak ve CommonJS olarak her değişiklikte CI'da çalıştırılır.
+
+## Değerlendirmeler
+
+```ts
+import { Evaluator, EvalResult, Score } from "@failproofai/sdk/evaluator";
+
+export const app = new Evaluator({ name: "my-evals", version: "1" });
+
+app.eval("tool_success_rate", { version: "1" }, (session) => {
+  const results = session.eventsOfType("tool_result");
+  const failures = results.filter((event) => event.payload.error != null).length;
+  return new EvalResult({
+    score: new Score(results.length === 0 ? 1 : 1 - failures / results.length),
+    reasoning: `${failures} of ${results.length} tool calls failed`,
+  });
+});
+```
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=… FAILPROOFAI_EVALUATOR_TOKEN=… \
+  npx failproofai-evaluator ./my-evals.js
+```
+
+Protokol, çalışan ayarları ve sonuç türleri için [Evaluator SDK referansı](/tr/reference/evaluator-sdk) bölümüne bakın.
+
+<Warning>
+  **Bir değerlendirme vermelidir.** Asla döndürmeyen eşzamanlı bir fonksiyon Node'un sahip olduğu tek thread'i bloke eder ve hiçbir zaman aman aşımı ateşlendi. Yazma `async` değerlendirmeleri.
+</Warning>
+
+## İşleminize ne yapmayacağı
+
+| | |
+| --- | --- |
+| **Ajan döngünüzü bloke** | Etkinlikler bellek içi sıraya girer; zamanlayıcı yazar. Zamanlayıcı `unref`'lenmiştir, bu nedenle bu paketi almak hiçbir zaman komut dosyasını çıkıştan alıkoyamaz. |
+| **Sınırlar olmadan büyü** | Sıra sayı *ve* ölçülen bayt tarafından sınırlanır. Her birini geçerek, en eski etkinlikler atılır ve bir uyarı bunu söyler — telemetri kesintisi OOM öldürmesi haline gelmemeli. |
+| **İşlemi aşağıya al** | Bir kodlanamaz etkinlik, etrafındaki toplu değil, yalnız bırakılır. Fırlatılan bir alıcı, dairesel referans, `BigInt`, yalnız bir vekil: her biri yayılmak yerine ele alınır. |
+| **Yarı yazılmış toplu iş bırak** | İçerik `fsync`lenmiş önce atomik yeniden adlandırma, dizin `fsync`lenmiş sonra ve başarısız yazılı temiz geçici dosya. |
+| **Transkriptleri okunabilir bırak** | Toplu işlemler `0700` dizini içinde `0600`'dir. Hedefler, istemi, araç bağımsız değişkenleri ve araç çıktısı taşırlar. |
+| **Gemi kimlik bilgileri** | API anahtarları, belirteçler, JWT'ler, taşıyıcı başlıkları ve gizli şekilli atamalar baytlar diske ulaşmadan önce redaksiyonlanır. Daemon yüklemeden önce yeniden redaksiyonlanır. |

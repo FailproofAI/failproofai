@@ -1,0 +1,28 @@
+---
+title: "Jev evaluations"
+description: "השתמש ב-Jev כדי לתת ניקוד לסשן שהסתיים מול שאלה עם תשובות ידועות."
+icon: "list-checks"
+---
+
+Jev evaluation קורא **סשן שהסתיים** ותן ניקוד בין 0 ל-1. השתמש בו כאשר התשובה ידועה מראש, כמו "האם הלקוח הביע דחיפות?" או "עד כמה הלקוח היה מתוסכל?" זה עוזר לך למצוא דפוסים בין הרצות; זה לא עוצר קריאת כלי. להחלטות שנעשות **לפני** שכלי רץ, השתמש ב-[Jev policies](/he/policies/jev).
+
+## צור אחד בלוח הבקרה
+
+1. פתח **Analyze → eval authoring** ובחר **new eval**.
+2. תאר שאלה אחת ותשובות אפשריות. לדוגמה: "האם הסוכן הבטיח זיכוי לפני בדיקת מדיניות ההחזר? ענה כן או לא." בחר **draft** וסקור שהתוצאה היא ניקוד מסווג.
+3. [בדוק זאת](/he/evaluations/test) בסשנים האחרונים, ואז [הצג זאת](/he/evaluations/deploy). סשנים שהושלמו חדשים מקבלים ניקוד; [מלא לפי הצורך](/he/evaluations/deploy#score-sessions-you-already-have) אם אתה צריך גם היסטוריה.
+
+![טופס authoring eval משותף, שבו אתה מתאר שאלה בעלת תשובה קבועה, סוקר את draft, והצג לאחר בדיקה. הדוגמה המוצגת היא הערכה של קוד; שאלת Jev משתמשת בתוך זרימת authoring זהה.](/images/dashboard/eval-authoring-draft.png)
+
+העוזר יכול לבחור בין קוד, סיווג Jev, ו-[judge](/he/evaluations/judge). בדוק את הבחירה שלו לפני הצגה. Jev נותן ניקוד ללא נימוק בפרוזה; בחר judge כאשר אתה צריך הסבר. ראה את [Jev evaluation reference](/he/reference/jev-evaluations) לסוגי שאלות והגבלות ניקוד.
+
+## קרא את הניקודים
+
+פתח **Observe → Evaluations** כדי לתרשים את התוצאה לפי סוכן וזמן. מטרמינל, ה-Cloud CLI יכול לקרוא את אותן תוצאות:
+
+```bash
+fp evals --since 7d
+fp evals --aggregate --since 7d
+```
+
+ה-Cloud CLI קורא תוצאות; authoring והצגה מתרחשות בלוח הבקרה. ראה את [Cloud CLI reference](/he/reference/cloud-cli#evaluations) לסינונים.

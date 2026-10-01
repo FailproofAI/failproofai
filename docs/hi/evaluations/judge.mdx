@@ -1,0 +1,91 @@
+---
+title: "LLM judges"
+description: "Sessions को उन चीजों पर स्कोर करें जो कोड नहीं माप सकता — सटीकता, टोन, क्या agent ने policy का पालन किया — यह वर्णन करके कि अच्छा क्या दिखता है और एक model को conversation पढ़ने देकर।"
+icon: "scale"
+---
+
+एक hosted Python evaluation गिन सकता है और तुलना कर सकता है: कितनी tool calls, कितनी errors, एक session कितना समय लिया। यह आपको यह नहीं बता सकता कि जवाब *सही* था या नहीं, क्या जवाब असभ्य था, या agent ने काम करने से पहले policy check की या नहीं।
+
+एक **LLM judge** कर सकता है। आप plain language में वर्णन करते हैं कि अच्छा क्या दिखता है, और एक model session को पढ़ता है और अपने reasoning के साथ 0 से 1 का score देता है।
+
+<Note>
+एक judge हर session के लिए एक model call करता है जिस पर वह चलता है, और एक code evaluation कुछ भी नहीं करता। एक judge का उपयोग केवल उन सवालों के लिए करें जिन्हें conversation को *समझना* पड़े — और इसे एक condition दें, ताकि यह केवल उन sessions पर चले जो सवाल के बारे में हों।
+</Note>
+
+## मुझे कौन सा चाहिए?
+
+| सवाल | उपयोग करें |
+| --- | --- |
+| क्या इसने एक ही tool को दो बार call किया? | code |
+| कितनी errors थीं? | code |
+| क्या session 30 सेकंड से कम था? | code |
+| क्या customer ने urgency व्यक्त की? | [classifier](/hi/evaluations/jev) |
+| Customer कितना frustrated था? | [classifier](/hi/evaluations/jev) |
+| क्या जवाब वास्तव में सही था? | **judge** |
+| क्या जवाब असभ्य या dismissive था? | **judge** |
+| क्या इसने refund का वादा करने से पहले refund policy check की? | **judge** |
+
+आम नियम: **countable → code, जवाब जो आप advance में list कर सकते हैं → [classifier](/hi/evaluations/jev), जिसे explanation की जरूरत है → judge.** एक judge वह है जो अपने देखे हुए बारे में prose लिखता है; इसे उपयोग करें जब संख्या किसी से "क्यों?" पूछने के लिए कहे।
+
+आपको advance में decide करना जरूरी नहीं है। वर्णन करें कि आप क्या measure करना चाहते हैं और assistant चुनता है, फिर आपको बताता है कि उसने क्या चुना और क्यों। आप switch कर सकते हैं।
+
+## एक लिखें
+
+1. **Analyze → eval authoring** पर जाएं और **new eval** चुनें।
+2. वर्णन करें कि आप क्या judge करना चाहते हैं, और **draft** चुनें।
+3. **criteria**, **threshold**, और **condition** की समीक्षा करें, फिर deploy करें।
+
+### Criteria
+
+एक या दो वाक्य, प्रश्न के रूप में नहीं बल्कि आवश्यकता के रूप में लिखें:
+
+> Assistant को refund policy पहले check किए बिना refund का वादा या अनुमोदन नहीं करना चाहिए।
+
+यह विशिष्ट रहें कि क्या इसे *fail* करेगा। "क्या response अच्छा था?" आपको एक संख्या देता है जिसका कोई मतलब नहीं; ऊपर दिया गया वाक्य आपको एक देता है जिस पर आप कार्य कर सकते हैं।
+
+### Threshold
+
+वह score जिसके बराबर या ऊपर session pass होता है। `0.7` एक sensible starting point है। पूरा 0-से-1 score हमेशा stored होता है, इसलिए threshold केवल pass/fail को decide करता है — आप distribution देख सकते हैं और adjust कर सकते हैं।
+
+### Condition
+
+किसी भी अन्य evaluation के समान Python condition, और यह यहां कहीं अधिक महत्वपूर्ण है। इसके बिना, judge आपके organization के **हर** session पर चलता है, प्रत्येक पर एक model call:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Dashboard आपको चेतावनी देता है यदि आप कोई condition के बिना judge deploy करते हैं। यह कभी-कभी सही है — एक low-volume agent जिसे आप पूरी तरह judge करना चाहते हैं — लेकिन यह एक decision होना चाहिए, न कि एक accident।
+
+## Judge क्या देखता है
+
+Conversation, turns के रूप में, अगर session लंबा है तो newest-first:
+
+- user ने क्या कहा
+- assistant ने क्या जवाब दिया
+- **agent ने हर tool को call किया, और वह call क्या return किया, क्रम में**
+
+वह आखिरी हिस्सा है जो "क्या इसने X को Y से *पहले* किया" को एक fair सवाल बनाता है। एक failed tool call को failure के रूप में दिखाया जाता है, इसलिए "क्या यह error से gracefully recover किया" भी काम करता है।
+
+बहुत लंबे sessions को model के context में fit करने के लिए truncate किया जाता है। जब ऐसा होता है तो reasoning स्पष्ट रूप से कहती है — आप कभी भी ऐसा judgment नहीं देखेंगे जो एक session के हिस्से पर किया गया हो जिसे सभी पर किया गया हो।
+
+## Results पढ़ना
+
+एक judge एक **score** produce करता है जैसे कोई अन्य scored evaluation, इसलिए यह charts, filters, और alerts को एक ही तरह trigger करता है। संख्या के साथ यह judge के **reasoning** को store करता है — वह paragraph जो समझाता है कि इसने क्या देखा। जब कोई score आपको surprise करे तो पहले वह पढ़ें; यह आमतौर पर या तो एक genuinely interesting session है या एक संकेत है कि criteria को sharpen करने की जरूरत है।
+
+Scores clear-cut cases के लिए stable हैं लेकिन bit-for-bit deterministic नहीं हैं। एक single borderline score को session पढ़ने के लिए एक prompt के रूप में treat करें, न कि एक verdict के रूप में।
+
+## Limits
+
+- **Testing अभी उपलब्ध नहीं है।** एक dry run के पीछे कोई session assignment नहीं है, और वह assignment ही है जो आपके model budget को खर्च करने के लिए authorize करता है — इसलिए test call को charge करने के लिए कुछ नहीं है। एक narrow condition के विरुद्ध deploy करें और पहले कुछ results पढ़ें।
+- **Backfill उपलब्ध नहीं है।** किसी code evaluation को महीनों के history में backfill करना free है; इसे judge के साथ करने से आपका पूरा budget मिनटों में खर्च हो जाएगा।
+- **Criteria को edit करना एक नया version publish करता है।** पुराने और नए scores comparable नहीं हैं, इसलिए उन्हें एक ही trend line में मिलाने के बजाय अलग रखा जाता है।
+- **एक judge हमेशा एक score produce करता है**, कभी metric या assertion नहीं।
+
+## जब आपका budget खत्म हो जाए
+
+Judges आपके organization के model budget को खर्च करते हैं। जब यह exhausted हो जाता है, तो judge evaluations एक स्पष्ट कारण के साथ stop हो जाते हैं न कि silently fail होते हैं, और **code evaluations normally चलती रहती हैं**। Budget को बढ़ाएं और वे अगले session पर resume हो जाती हैं।

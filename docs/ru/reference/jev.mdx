@@ -1,22 +1,22 @@
 ---
-title: "Справочник интеграции Jev"
-description: "Конфигурация, поставщики, ключи, данные запроса и поведение при сбоях для Jev."
+title: "Jev integration reference"
+description: "Configuration, providers, keys, request data, and failure behavior for Jev."
 icon: "braces"
 ---
 
-Jev имеет два назначения в Failproof AI:
+Jev имеет два применения в Failproof AI:
 
-| Назначение | Когда выполняется | Что возвращает | Начните отсюда |
+| Применение | Когда выполняется | Что возвращает | Начните отсюда |
 | --- | --- | --- | --- |
-| Оценка сеанса | После завершения сеанса | Оценка для вопроса с фиксированным ответом | [Оценки Jev](/ru/evaluations/jev) |
-| Проверка политики вызовов инструментов | Перед выполнением защищённого вызова инструмента | Вердикт вместе с установленными политиками | [Политики Jev](/ru/policies/jev) |
+| Session evaluation | После завершения сессии | Оценка для вопроса с фиксированным ответом | [Jev evaluations](/ru/evaluations/jev) |
+| Tool-call policy review | Перед запуском защищённого вызова инструмента | Вердикт вместе с установленными политиками | [Jev policies](/ru/policies/jev) |
 
 ## Справочные страницы
 
 | Тема | Подробности |
 | --- | --- |
-| [Вопросы оценки](/ru/reference/jev-evaluations) | Логические и упорядоченные критерии оценки, результаты, лимиты и заполнение исторических данных. |
-| [Сравнение поставщиков и настройка собственного ключа](/ru/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare и пользовательские точки доступа; определение URL, идентификаторы моделей, `jev.json`, режимы и коды отката. |
-| [Маршрут FailproofAI Cloud](/ru/reference/jev-cloud) | Разрешения машинных ключей, автоматическая настройка режима наблюдения, лимиты использования, состояние соединения и обработка данных. |
+| [Evaluation questions](/ru/reference/jev-evaluations) | Критерии типа булево значение и упорядоченная оценка, результаты, ограничения и восстановление данных. |
+| [Provider comparison and own-key setup](/ru/reference/jev-providers) | TypeSafe, OpenRouter, Vercel, Cloudflare и пользовательские эндпоинты; вывод URL, идентификаторы моделей, `jev.json`, режимы и коды отката. |
+| [FailproofAI Cloud route](/ru/reference/jev-cloud) | Разрешения machine-key, автоматическая настройка observe, ограничения использования, состояние подключения и обработка данных. |
 
-Локальные команды CLI перечислены в [справочнике Failproof AI CLI](/ru/reference/failproof-cli). [Справочник локальной панели управления](/ru/reference/local-dashboard#set-up-jev) описывает её параметры Jev и представление активности.
+Команды локального CLI перечислены в [справочнике Failproof AI CLI](/ru/reference/failproof-cli). [Справочник локальной панели управления](/ru/reference/local-dashboard#set-up-jev) описывает её параметры Jev и представление активности.

@@ -1,72 +1,72 @@
 ---
 title: "Jev thông qua FailproofAI Cloud"
-description: "Khóa máy trên cloud, trạng thái kết nối, giới hạn và hành vi khi lỗi cho đánh giá chính sách Jev trực tiếp."
+description: "Khóa máy trên cloud, trạng thái kết nối, giới hạn và hành vi lỗi cho việc xem xét chính sách Jev trực tiếp."
 icon: "cloud"
 ---
 
-Đây là tài liệu tham khảo tuyến Cloud cho [chính sách Jev](/vi/policies/jev). Jev, bộ phân loại của TypeSafe, đọc từng lệnh gọi công cụ so với những gì bạn thực sự yêu cầu và đưa ra câu trả lời cùng với các chính sách của bạn, không bao giờ thay thế chúng. Thông qua **FailproofAI Cloud**, một máy được kết nối sử dụng Jev với cùng khóa mà nó đã kết nối với: không cần tài khoản TypeSafe, không cần khóa thứ hai, không cần cấu hình điểm cuối. Mỗi lệnh gọi được tính vào phân bổ kế hoạch hiện tại của tổ chức bạn.
+Đây là tham khảo tuyến đường Cloud cho [chính sách Jev](/vi/policies/jev). Jev, bộ phân loại của TypeSafe, đọc từng lệnh gọi công cụ so với những gì bạn thực sự yêu cầu và trả lời cùng với chính sách của bạn, không bao giờ thay thế chúng. Thông qua **FailproofAI Cloud**, một máy kết nối sử dụng Jev với cùng một khóa mà nó đã kết nối: không cần tài khoản TypeSafe, không cần khóa thứ hai, không cần cấu hình điểm cuối. Mỗi lệnh gọi được tính vào phân bổ kế hoạch hiện có của tổ chức bạn.
 
-Mọi thứ mà Jev làm đều không thay đổi so với [thiết lập mang khóa của riêng bạn](/vi/reference/jev-providers): các chính sách cứng vẫn có hiệu lực cuối cùng, phủ nhận của chính sách có thể xem xét chỉ được xóa khi Jev được hỏi về chính xác mối quan tâm đó, và bất kỳ lỗi nào cũng quay lại kết quả regex cho lệnh gọi đó.
+Mọi thứ Jev làm không thay đổi từ [thiết lập mang khóa của riêng bạn](/vi/reference/jev-providers): chính sách cứng vẫn cuối cùng, việc từ chối của chính sách có thể xem xét chỉ được xóa khi Jev được hỏi về chính xác mối quan tâm đó, và bất kỳ lỗi nào đều quay lại kết quả regex cho lệnh gọi đó.
 
 <Note>
-Yêu cầu **failproofai 1.0.8-beta.0** hoặc mới hơn. 1.0.7 không có Jev, mặc dù nó xếp trên các bản beta 1.0.7. Nếu không có cấu hình Jev thì không có gì thay đổi: các hook chạy chính sách regex chính xác như trước đây.
+Yêu cầu **failproofai 1.0.8-beta.0** hoặc mới hơn. Phiên bản 1.0.7 không có Jev, mặc dù nó được sắp xếp trên các beta 1.0.7. Nếu không có cấu hình Jev, không có gì thay đổi: các hook chạy chính sách regex chính xác như trước đây.
 </Note>
 
 ## Trước khi bắt đầu
 
-Cài đặt Failproof AI trên máy nơi agent của bạn chạy và gắn các hook của nó vào một [harness được hỗ trợ](/vi/reference/harnesses). Nếu bạn bắt đầu từ đầu, hãy làm theo [hướng dẫn khởi động nhanh](/vi/start/quickstart) đến cài đặt hook. Kiểm tra CLI đã cài đặt bằng `failproofai --version`; cập nhật nó nếu nó trước Jev. Bạn cũng cần truy cập vào trang **Administration → Keys** của tổ chức để tạo khóa máy.
+Cài đặt Failproof AI trên máy nơi agent của bạn chạy và đính kèm các hook của nó vào một [harness được hỗ trợ](/vi/reference/harnesses). Nếu bạn bắt đầu từ đầu, hãy làm theo [hướng dẫn bắt đầu nhanh](/vi/start/quickstart) thông qua cài đặt hook. Kiểm tra CLI đã cài đặt bằng `failproofai --version`; cập nhật nếu nó trước Jev. Bạn cũng cần truy cập vào trang **Administration → Keys** của tổ chức để tạo khóa máy.
 
-Jev đánh giá các lệnh gọi công cụ được đặt tên ở cổng `PreToolUse` hoặc `PermissionRequest`. Nó không đánh giá mọi sự kiện trong phiên. Để xem Jev xóa phủ nhận chính sách, bạn cần một chính sách đã cài đặt được đánh dấu [có thể xem xét](/vi/policies/authority); tất cả các phủ nhận chính sách khác vẫn có hiệu lực cuối cùng.
+Jev xem xét các lệnh gọi công cụ được đặt tên ở cổng `PreToolUse` hoặc `PermissionRequest`. Nó không xem xét mọi sự kiện trong một phiên. Để thấy Jev xóa việc từ chối chính sách, bạn cần một chính sách đã cài đặt được đánh dấu [có thể xem xét](/vi/policies/authority); tất cả các lần từ chối chính sách khác vẫn cuối cùng.
 
 ## Bật nó lên
 
-1. **Tạo khóa với Jev.** Trong bảng điều khiển FailproofAI Cloud, mở **Administration → Keys → Create key** và chọn cài đặt **machine**. Nó cấp ba quyền mà máy cần: `events:add` (gửi hoạt động), `policies:pull` (nhận chính sách) và `jev:evaluate` (Jev, tính vào kế hoạch của tổ chức bạn). Một khóa không thể mang `jev:evaluate` mà không có hai khóa khác.
-2. **Kết nối máy** với khóa đó. Đọc bí mật một lần của nó tại dấu nhắc, sau đó chạy lệnh thiết lập đầy đủ:
+1. **Tạo khóa với Jev.** Trong bảng điều khiển FailproofAI Cloud, hãy mở **Administration → Keys → Create key** và chọn cài đặt **machine**. Nó cấp ba quyền mà máy cần: `events:add` (gửi hoạt động), `policies:pull` (nhận chính sách) và `jev:evaluate` (Jev, được tính vào kế hoạch của tổ chức bạn). Một khóa không thể mang `jev:evaluate` mà không có hai khóa kia.
+2. **Kết nối máy** với khóa đó. Đọc bí mật một lần của nó ở lời nhắc, sau đó chạy lệnh thiết lập đầy đủ:
 
    ```bash
    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
    failproofai config
    ```
 
-   `failproofai config` cài đặt daemon, gắn hook cho CLI agent mà nó tìm thấy, và kết nối máy. Biến môi trường giữ khóa ra khỏi đối số của lệnh và lịch sử shell của bạn. Nếu harness của bạn được cài đặt sau này, [gắn nó một cách rõ ràng](/vi/start/quickstart).
+   `failproofai config` cài đặt daemon, đính kèm hook cho các CLI agent mà nó tìm thấy, và kết nối máy. Biến môi trường giữ khóa ra khỏi các đối số của lệnh và lịch sử shell của bạn. Nếu harness của bạn được cài đặt sau này, [đính kèm nó một cách rõ ràng](/vi/start/quickstart).
 
-   Nếu tổ chức của bạn chạy FailproofAI Cloud của riêng nó thay vì cái được lưu trữ, hãy thêm địa chỉ của nó: `--url https://<your dashboard host>` (hoặc xuất `FAILPROOFAI_CLOUD_URL`). Nếu không có nó, khóa được kiểm tra dựa trên dịch vụ được lưu trữ và kết nối không thành công. Nếu chứng chỉ của máy chủ đó đến từ CA riêng tư, hãy cài đặt CA trong kho tin tưởng của hệ thống máy (ví dụ: với `update-ca-certificates`), không chỉ trong `NODE_EXTRA_CA_CERTS`: daemon gửi sự kiện và kéo chính sách đọc kho hệ thống. Xem [Khắc phục sự cố](/vi/reference/troubleshooting).
+   Nếu tổ chức bạn chạy FailproofAI Cloud của riêng mình thay vì cái được lưu trữ, hãy thêm địa chỉ của nó: `--url https://<your dashboard host>` (hoặc xuất `FAILPROOFAI_CLOUD_URL`). Nếu không có nó, khóa được kiểm tra dựa trên dịch vụ được lưu trữ và kết nối không thành công. Nếu chứng chỉ của máy chủ đó đến từ CA riêng, hãy cài đặt CA trong cửa hàng tin tưởng hệ thống của máy (ví dụ với `update-ca-certificates`), không chỉ trong `NODE_EXTRA_CA_CERTS`: daemon gửi sự kiện và lấy chính sách đọc cửa hàng hệ thống. Xem [Khắc phục sự cố](/vi/reference/troubleshooting).
 
-Đó là tất cả. Kết nối lưu trữ khóa và khi máy **không** có cấu hình Jev nào, bật Jev thông qua FailproofAI Cloud ở chế độ **quan sát**: sau khi một gói cung cấp cho nó các kiểm tra, Jev được hỏi về mọi lệnh gọi công cụ được cổng và phán quyết của nó được ghi lại, nhưng kết quả của chính sách của bạn là những gì được thực thi. Đầu ra nói như vậy:
+Đó là tất cả. Kết nối lưu trữ khóa và, khi máy **không** có cấu hình Jev, bật Jev thông qua FailproofAI Cloud ở chế độ **observe**: khi một gói cung cấp nó kiểm tra, Jev được hỏi về mọi lệnh gọi công cụ được gating và các bản án của nó được ghi lại, nhưng kết quả của chính sách của bạn là những gì được thực thi. Đầu ra nói như vậy:
 
 ```text
   Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (~/.failproofai/jev.json).
 ```
 
-Jev vẫn không hỏi gì cho đến khi một gói cung cấp cho nó các kiểm tra. Failproof AI không vận chuyển bất cứ cái nào; trong khi không có gói đã cài đặt nào khai báo bất cứ cái nào, đầu ra thêm một dòng nói như vậy, và `failproofai jev status` lặp lại nó. Cài đặt chúng bằng:
+Jev vẫn không hỏi gì cho đến khi một gói cung cấp nó kiểm tra. Failproof AI không vận chuyển bất kỳ; trong khi không có gói được cài đặt khai báo bất kỳ, đầu ra thêm một dòng nói như vậy, và `failproofai jev status` lặp lại. Cài đặt chúng bằng:
 
 ```bash
 failproofai policies add FailproofAI/jev-policies
 ```
 
-**Với `--no-transcripts`, kết nối không bật Jev.** Jev gửi mỗi lệnh gọi công cụ được kiểm tra và lời nhắc gần đây đến FailproofAI Cloud, đó là nhiều hơn những gì kết nối chỉ quyết định được yêu cầu gửi. Khóa vẫn được lưu trữ, và đầu ra nói Jev có sẵn và cách bật nó:
+**Với `--no-transcripts`, kết nối không bật Jev.** Jev gửi từng lệnh gọi công cụ được kiểm tra và lời nhắc gần đây tới FailproofAI Cloud, đây là nhiều hơn kết nối chỉ quyết định được yêu cầu gửi. Khóa vẫn được lưu trữ, và đầu ra nói Jev khả dụng và cách bật nó:
 
 ```bash
 failproofai jev setup --provider failproofai
 ```
 
-Nó cũng không bật Jev **tắt**. Nếu `jev.json` của máy đã chạy Jev thông qua FailproofAI Cloud, nó được để nguyên như cũ, và đầu ra nói rằng Jev vẫn gửi mỗi lệnh gọi công cụ được kiểm tra và lời nhắc gần đây, và `failproofai jev setup --mode off` tắt nó.
+Nó cũng không bật Jev **tắt**. Nếu máy `jev.json` đã chạy Jev thông qua FailproofAI Cloud, nó sẽ được để nguyên như vậy, và đầu ra nói Jev vẫn gửi từng lệnh gọi công cụ được kiểm tra và lời nhắc gần đây, và `failproofai jev setup --mode off` tắt nó.
 
 <Warning>
-Kết nối **không bao giờ ghi đè** `~/.failproofai/jev.json` hiện tại. Nếu bạn đã sử dụng điểm cuối Jev của riêng mình, nó tiếp tục được sử dụng, và đầu ra nói tệp được để cấu hình như đã cấu hình — và khi tệp đó để Jev tắt (từ chối hoặc được tắt), nó nói như vậy và cách khắc phục. Để chuyển máy đó sang FailproofAI Cloud, chạy `failproofai jev setup --provider failproofai`.
+Kết nối **không bao giờ ghi đè** một `~/.failproofai/jev.json` hiện có. Nếu bạn đã sử dụng điểm cuối Jev của riêng mình, nó tiếp tục được sử dụng, và đầu ra nói tệp được để lại như được cấu hình — và, khi tệp đó để Jev tắt (bị từ chối hoặc tắt), nó nói như vậy và cách khắc phục. Để chuyển máy đó sang FailproofAI Cloud, hãy chạy `failproofai jev setup --provider failproofai`.
 </Warning>
 
 ## Quan sát, thực thi hoặc tắt
 
-Bắt đầu ở chế độ quan sát, xem những gì Jev sẽ đã làm trên trang chính sách, sau đó hãy để nó hoạt động:
+Bắt đầu bằng cách quan sát, xem những gì Jev sẽ làm trên trang chính sách, sau đó để nó hoạt động:
 
 ```bash
-failproofai jev setup --mode enforce   # Phán quyết của Jev áp dụng: nó có thể xóa phủ nhận có thể xem xét và thêm của riêng nó
-failproofai jev setup --mode observe    # Jev được hỏi và ghi lại; kết quả chính sách của bạn được thực thi
-failproofai jev setup --mode off       # giữ cấu hình, dừng hỏi Jev
+failproofai jev setup --mode enforce   # Jev's verdicts apply: it may clear a reviewable deny and add its own
+failproofai jev setup --mode observe    # Jev is asked and logged; your policies' result is enforced
+failproofai jev setup --mode off       # keep the config, stop asking Jev
 ```
 
-Công tắc tương tự có ở bảng điều khiển cục bộ: **Settings → Jev** có công tắc bật/tắt và quan sát/thực thi. Nó viết lại chế độ và không có gì khác. Hook đọc cấu hình ở mọi lệnh gọi công cụ, vì vậy thay đổi áp dụng từ lệnh tiếp theo, không cần khởi động lại.
+Cùng một công tắc nằm trong bảng điều khiển cục bộ: **Settings → Jev** có công tắc bật/tắt và quan sát/thực thi. Nó viết lại chế độ và không có gì khác. Các hook đọc cấu hình trên mọi lệnh gọi công cụ, vì vậy một thay đổi áp dụng từ lệnh tiếp theo, không cần khởi động lại.
 
 ## Kiểm tra những gì nó đang làm
 
@@ -75,62 +75,62 @@ failproofai jev status
 failproofai jev test
 ```
 
-`status` hiển thị nhà cung cấp là **FailproofAI Cloud**, máy chủ Cloud mà máy kết nối, chế độ, và nguồn khóa là **FailproofAI Cloud connection**, không bao giờ khóa. Khi `jev.json` của FailproofAI Cloud có trên chỗ nhưng Jev không thể chạy, nó nói lý do tại sao:
+`status` hiển thị nhà cung cấp là **FailproofAI Cloud**, máy chủ Cloud mà máy đã kết nối, chế độ, và nguồn khóa là **FailproofAI Cloud connection**, không bao giờ là khóa. Khi một `jev.json` của FailproofAI Cloud đang có nhưng Jev không thể chạy, nó nói tại sao:
 
 | `status` nói | `status --json` | Ý nghĩa |
 | --- | --- | --- |
-| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | Máy được kết nối, nhưng không có khóa Jev nào được lưu trữ cho nó: khóa thiếu `jev:evaluate`, hoặc kết nối không thể xác nhận nó. Chạy `failproofai config` lại với khóa trong `FAILPROOFAI_CLOUD_TOKEN`; nếu nó thiếu quyền, hãy sử dụng khóa **machine**. |
+| **off — no Jev key is stored for this machine's FailproofAI Cloud connection** | `key-lacks-jev` | Máy được kết nối, nhưng không có khóa Jev được lưu trữ cho nó: khóa thiếu `jev:evaluate`, hoặc kết nối không thể xác nhận nó. Chạy lại `failproofai config` với khóa trong `FAILPROOFAI_CLOUD_TOKEN`; nếu nó thiếu quyền, hãy sử dụng khóa **machine**. |
 | **off — this machine is not connected to FailproofAI Cloud** | `not-connected` | Không có kết nối FailproofAI Cloud trên máy này để khóa Jev thuộc về. |
 
-Sau `failproofai config --disconnect` không còn `jev.json` của FailproofAI Cloud nữa (trừ khi nó được tắt, được giữ lại), vì vậy `status` chỉ báo cáo Jev ở trạng thái tắt. `status --json` mang các sự kiện tương tự (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), cũng khi cấu hình không có hoặc bị từ chối. `permissions` luôn được của `jev.json`; một từ chối về `credentials.json` thêm `credentialsPermissions`, và `fix` khi một lệnh sửa nó. `test` gửi một yêu cầu trực tiếp và báo cáo độ trễ và phiên bản Jev đã trả lời. Nó thoát 1 và nói như vậy trong tiêu đề, khi câu trả lời đến sau thời gian chờ của hook (hook sẽ ghi `timeout`) hoặc trả lời câu hỏi kiểm tra sai.
+Sau `failproofai config --disconnect` không còn có `jev.json` của FailproofAI Cloud nữa (trừ khi nó bị tắt, được giữ lại), nên `status` chỉ báo cáo Jev là tắt. `status --json` mang các sự kiện tương tự (`provider: "failproofai"`, `keySource: "cloud"`, `cloudConnected`, `keyCarriesJev`), cũng khi cấu hình vắng mặt hoặc bị từ chối. `permissions` luôn là của `jev.json`; một sự từ chối về `credentials.json` thêm `credentialsPermissions`, và `fix` khi một lệnh khắc phục nó. `test` gửi một yêu cầu trực tiếp và báo cáo độ trễ và phiên bản Jev đã trả lời của nó. Nó thoát 1 và nói như vậy trong tiêu đề của nó, khi câu trả lời đến sau thời gian chờ của hook (hook sẽ ghi lại `timeout`) hoặc trả lời sai câu hỏi kiểm tra của nó.
 
-Bảng điều khiển **Settings → Jev** cũng hiển thị **FailproofAI Cloud connection**: tổ chức nào máy báo cáo và liệu khóa của nó có mang Jev không. Nó được đọc từ các tệp của máy thân, không có lệnh gọi mạng.
+Bảng điều khiển **Settings → Jev** cũng hiển thị **FailproofAI Cloud connection**: tổ chức nào mà máy báo cáo vào và liệu khóa của nó có mang Jev. Nó được đọc từ các tệp của chính máy, không có lệnh gọi mạng.
 
-## Xác minh một lệnh gọi thực
+## Xác minh một cuộc gọi thực tế
 
-Bắt đầu một phiên mới trong agent được hook. Yêu cầu nó sử dụng công cụ đọc tệp của nó trên `README.md` và báo cáo tiêu đề. Xác nhận rằng phiên chứa lệnh gọi công cụ đó, sau đó chạy `failproofai jev status` lại: số lượng lệnh gọi được đánh giá gần đây của nó sẽ tăng. Mở **Policies → Activity** trong [bảng điều khiển cục bộ](/vi/reference/local-dashboard#review-policy-activity) để kiểm tra phán quyết Jev và chế độ của lệnh gọi đó. Trong Cloud, trang **Policies** của tổ chức hiển thị kết quả Jev cho hoạt động được gửi. Ở chế độ quan sát, phán quyết được ghi lại là **would-have** và kết quả chính sách vẫn quyết định lệnh gọi. Sự xóa chỉ xuất hiện khi chính sách có thể xem xét được so khớp và Jev xóa các kiểm tra được đặt tên của nó.
+Bắt đầu một phiên mới trong agent được gating. Yêu cầu nó sử dụng công cụ đọc tệp của nó trên `README.md` và báo cáo tiêu đề. Xác nhận rằng phiên chứa lệnh gọi công cụ đó, sau đó chạy lại `failproofai jev status`: số lượng cuộc gọi được đánh giá gần đây của nó sẽ tăng. Mở **Policies → Activity** trong [bảng điều khiển cục bộ](/vi/reference/local-dashboard#review-policy-activity) để kiểm tra bản án Jev của lệnh gọi đó và chế độ. Trong Cloud, trang **Policies** của tổ chức hiển thị kết quả Jev cho hoạt động được cung cấp. Ở chế độ quan sát, bản án được ghi lại là **would-have** và kết quả chính sách vẫn quyết định lệnh gọi. Một sự thanh toán chỉ xuất hiện khi một chính sách có thể xem xét khớp và Jev xóa các kiểm tra được đặt tên của nó.
 
-## Những gì đạt được trang chính sách
+## Những gì đến trang chính sách
 
-Máy đã gửi hoạt động hook của nó đến FailproofAI Cloud (`events:add`). Với Jev bật, bản ghi mỗi lệnh gọi được cổng cũng nói đánh giá nào chạy, Jev quyết định, chính sách nào nó xóa, tại sao nó quay lại khi nó làm, độ trễ và mô hình trả lời — quyết định, mã và tên, không bao giờ lệnh hoặc lời nhắc của bạn. Trên trang **Policies** của tổ chức bạn:
+Máy đã gửi hoạt động hook của nó tới FailproofAI Cloud (`events:add`). Với Jev bật, bản ghi của mỗi cuộc gọi được gating cũng nói nhà đánh giá nào đã chạy, Jev quyết định gì, chính sách nào nó xóa, tại sao nó quay lại khi nó làm, độ trễ của nó và mô hình đã trả lời — quyết định, mã và tên, không bao giờ là lệnh hoặc lời nhắc của bạn. Trên trang **Policies** của tổ chức bạn:
 
-- một lệnh gọi phán quyết của Jev quyết định (chế độ thực thi) được ghi cho **Jev**, và khi kiểm tra quyết định đến từ một gói, bản ghi cũng đặt tên gói đó và phiên bản của nó;
-- ở chế độ quan sát, phủ nhận hoặc cảnh báo của Jev xuất hiện là **would-have**, bên cạnh các bản phát hành bạn đang quan sát;
-- các chính sách Jev xóa, hoặc sẽ xóa ở chế độ quan sát, được tính mỗi chính sách.
+- một cuộc gọi mà bản án của chính Jev quyết định (chế độ thực thi) được quy cho **Jev**, và khi kiểm tra quyết định đến từ một gói, bản ghi cũng đặt tên cho gói đó và phiên bản của nó;
+- ở chế độ quan sát, việc từ chối hoặc cảnh báo của Jev xuất hiện là một **would-have**, bên cạnh các triển khai bạn đang quan sát;
+- các chính sách Jev xóa hoặc sẽ xóa ở chế độ quan sát, được tính trên mỗi chính sách.
 
 ## Khi Jev không thể trả lời
 
-Mỗi cái trong số này quay lại kết quả chính sách của bạn cho lệnh gọi đó, và được ghi lại với lý do của nó:
+Mỗi một trong những điều này đều quay lại kết quả của chính sách của bạn cho lệnh gọi đó, và được ghi lại với lý do của nó:
 
 | Lý do | Nguyên nhân |
 | --- | --- |
 | `out-of-credits` | Tổ chức bạn đã sử dụng phân bổ kế hoạch của nó. |
-| `http-401`, `http-403` | Khóa được thu hồi, hoặc không mang `jev:evaluate`. Kết nối lại với khóa mang nó. |
-| `http-429` | FailproofAI Cloud đang giới hạn tốc độ Jev cho tổ chức bạn. Cho đến khi thời gian chờ mà nó yêu cầu kết thúc (của nó `Retry-After`, tối đa 60 giây), máy không gửi nó gì và mọi lệnh gọi quay lại ngay lập tức. Các lệnh gọi được giữ lại theo cách đó được ghi lại là `http-429`, hoặc là `rate-limited` khi giới hạn tốc độ của máy nó giữ chúng trước. |
-| `http-429` (giới hạn hàng ngày) | Tổ chức bạn đã sử dụng các lệnh gọi Jev hàng ngày của nó: **10,000 mỗi ngày UTC**, trừ khi ai vận hành FailproofAI Cloud của bạn đặt giới hạn khác. Mọi lệnh gọi quay lại cho đến khi số lượng đặt lại lúc 00:00 UTC; máy vẫn hỏi lại nhiều nhất một lần một phút, vì vậy nó nhận được đặt lại trong khoảng một phút. `failproofai jev test` nói "Daily Jev limit for this org reached; resets at 00:00 UTC." |
-| `http-422` | Jev từ chối yêu cầu của lệnh gọi này, thường vì lệnh gọi công cụ giữ văn bản dày đặc (base64, hex, mã được làm cho nhỏ gọn) vượt quá ngân sách token của Jev. Lệnh gọi đó quay lại mỗi lần; nó không phải là một mất điện. |
-| `http-502` | Jev không có sẵn ngay bây giờ. |
-| `http-503` | Cloud này không thể phục vụ Jev cho tổ chức bạn: không cổng mô hình, tổ chức chưa cấp phép, hoặc cổng hạ. Hỏi quản trị viên của bạn; hook hỏi lại nhiều nhất một lần một phút. |
+| `http-401`, `http-403` | Khóa đã bị thu hồi, hoặc không mang `jev:evaluate`. Kết nối lại với một khóa có. |
+| `http-429` | FailproofAI Cloud đang giới hạn tốc độ Jev cho tổ chức bạn. Cho đến khi lần chờ nó yêu cầu kết thúc (nó `Retry-After`, tối đa 60 giây), máy không gửi cho nó gì và mọi cuộc gọi đều quay lại ngay lập tức. Các cuộc gọi được giữ lại theo cách đó được ghi lại là `http-429`, hoặc `rate-limited` khi giới hạn tốc độ của chính máy giữ chúng trước. |
+| `http-429` (giới hạn hàng ngày) | Tổ chức bạn đã sử dụng các cuộc gọi Jev hàng ngày của nó: **10,000 trên một ngày UTC**, trừ khi người vận hành FailproofAI Cloud của bạn đã đặt một giới hạn khác. Mọi cuộc gọi đều quay lại cho đến khi số lượng được đặt lại lúc 00:00 UTC; máy vẫn hỏi lại nhiều nhất một lần một phút, vì vậy nó chọn lại trong vòng một phút. `failproofai jev test` nói "Daily Jev limit for this org reached; resets at 00:00 UTC." |
+| `http-422` | Jev từ chối yêu cầu của cuộc gọi này, thường vì lệnh gọi công cụ chứa văn bản dày đặc (base64, hex, mã nhỏ nhất) vượt quá ngân sách token của Jev. Cuộc gọi đó quay lại mỗi lần; nó không phải là một sự cố. |
+| `http-502` | Jev hiện không khả dụng. |
+| `http-503` | Cloud này không thể phục vụ Jev cho tổ chức bạn: không có cổng mô hình, tổ chức chưa được cung cấp, hoặc cổng đang ngừng hoạt động. Hỏi quản trị viên của bạn; hook hỏi lại nhiều nhất một lần một phút. |
 | `http-404` | FailproofAI Cloud này chưa phục vụ Jev. |
 | `timeout` | Không có câu trả lời trong `timeoutMs` (mặc định 3000). |
-| `model-mismatch` | Phiên bản Jev khác với 1.13 trả lời. |
+| `model-mismatch` | Một phiên bản Jev khác ngoài 1.13 đã trả lời. |
 
-## Nơi khóa sống, và nơi nó đi
+## Khóa sống ở đâu, và nó đi đâu
 
-- Khóa được lưu trữ một lần, trong `~/.failproofai/credentials.json` (`0600`, trong thư mục chỉ có chủ sở hữu), bên cạnh các thông tin FailproofAI Cloud khác. `jev.json` không chứa khóa cho tuyến đường này; một khóa được viết ở đó làm cấu hình không hợp lệ.
-- Nếu `credentials.json` mang **bất kỳ** quyền nào cho bất kỳ ai khác ngoài bạn (nhóm hoặc khác, đọc hoặc viết), hoặc thư mục của nó có thể được **viết** bởi bất kỳ ai khác ngoài bạn, nó bị **từ chối**, không được đọc, và Jev ở trạng thái tắt cho đến khi bạn sửa nó: `chmod 600` trên tệp, `chmod 700` trên thư mục (hoặc kết nối lại, viết lại tệp ở `0600` và làm thư mục chỉ chủ sở hữu). Thư mục mà những người khác chỉ có thể đọc là được; một cái mà họ có thể viết để họ hoán đổi tệp.
-- Khóa chỉ tính trong khi kết nối mà nó đến là trên máy: chính sách hoặc thông tin xác thực báo cáo cho cùng FailproofAI Cloud **với cùng khóa**, trong cùng một tệp. Khóa Jev bị bỏ lại mà không có khóa được bỏ qua, và Jev ở trạng thái tắt. Điều đó xảy ra khi failproofai cũ của `config --disconnect` để khóa Jev tại chỗ (nó không biết loại bỏ nó), hoặc khi failproofai cũ của `config --token` kết nối với khóa khác, có thể trên FailproofAI Cloud thuộc về tổ chức khác. Để bật Jev lại, kết nối lại với khóa **machine**.
-- Khóa chỉ được gửi đến nguồn gốc Cloud được xác minh dựa vào. `jev.json` chỉ vào bất cứ nơi khác được từ chối.
-- **Một agent trên máy có thể đọc nó.** `credentials.json` chỉ là chủ sở hữu, và agent chạy như chủ sở hữu đó. Đọc các tệp failproofai của riêng nó được cho phép với mục đích (chỉ thay đổi chúng bị chặn, bởi `block-failproofai-commands`), vì vậy thứ duy nhất giữa agent và tệp này là `block-read-outside-cwd` — một chính sách **có thể xem xét** — và từ phiên bắt đầu trong thư mục nhà của bạn, không có gì. Khóa có `jev:evaluate` chi tiêu phân bổ Jev của tổ chức bạn (lên đến giới hạn hàng ngày) từ bất cứ nơi nó được sử dụng, vì vậy coi khóa máy giống như bất kỳ thông tin xác thực chi tiêu nào: nếu agent có thể đã đọc nó, vô hiệu hóa nó trên trang Khóa và kết nối lại với cái mới.
-- Chỉ các tệp toàn cầu của bạn quyết định điều này. Kho lưu trữ không thể bật Cloud Jev, chỉ nó ở nơi khác hoặc cung cấp khóa của nó, và `FAILPROOFAI_JEV_API_KEY` bị bỏ qua cho tuyến đường này.
-- Cho mỗi lệnh gọi Jev đánh giá, một yêu cầu đi đến FailproofAI Cloud, mang những gì [trang mang khóa của riêng bạn](/vi/reference/jev-providers#what-leaves-the-machine) liệt kê (bí mật được chỉnh sửa). FailproofAI Cloud chuyển tiếp nó đến TypeSafe và không ghi nhật ký hoặc giữ nó.
+- Khóa được lưu trữ một lần, trong `~/.failproofai/credentials.json` (`0600`, trong một thư mục chỉ chủ sở hữu), bên cạnh các thông tin đăng nhập FailproofAI Cloud khác. `jev.json` không giữ khóa cho tuyến đường này; một cái được viết ở đó làm cho cấu hình không hợp lệ.
+- Nếu `credentials.json` mang **bất kỳ** quyền cho bất kỳ ai khác ngoài bạn (nhóm hoặc khác, đọc hoặc viết), hoặc thư mục của nó có thể được **viết** bởi bất kỳ ai ngoài bạn, nó được **từ chối**, không được đọc, và Jev tắt cho đến khi bạn sửa nó: `chmod 600` trên tệp, `chmod 700` trên thư mục (hoặc kết nối lại, được viết lại tệp ở `0600` và làm cho thư mục chỉ chủ sở hữu). Một thư mục mà những người khác chỉ có thể đọc là tốt; một cái mà họ có thể viết cho phép họ hoán đổi tệp.
+- Khóa chỉ được tính toán khi kết nối mà nó đến từ trên máy: chính sách hoặc thông tin đăng nhập báo cáo cho cùng một FailproofAI Cloud **với cùng một khóa**, trong cùng một tệp. Một khóa Jev bị bỏ lại mà không có một cái bị bỏ qua, và Jev vẫn tắt. Điều đó xảy ra khi failproofai cũ hơn của `config --disconnect` để lại khóa Jev tại chỗ (nó không biết xóa nó), hoặc khi failproofai cũ hơn của `config --token` kết nối với khóa khác, trên FailproofAI Cloud có thể thuộc về tổ chức khác. Để bật Jev trở lại, kết nối lại với khóa **machine**.
+- Khóa chỉ được gửi tới nguồn gốc Cloud mà nó đã được xác minh lại. Một `jev.json` chỉ đến nơi khác bị từ chối.
+- **Một agent trên máy có thể đọc nó.** `credentials.json` chỉ chủ sở hữu, và agent chạy với chủ sở hữu đó. Đọc các tệp của failproofai được cho phép có mục đích (chỉ thay đổi chúng bị chặn, bởi `block-failproofai-commands`), vì vậy điều duy nhất giữa agent và tệp này là `block-read-outside-cwd` — một chính sách **có thể xem xét** — và từ một phiên bắt đầu trong thư mục chính của bạn, không có gì. Một khóa với `jev:evaluate` chi tiêu cho phép Jev của tổ chức bạn (cho đến giới hạn hàng ngày) từ bất kỳ nơi nó được sử dụng, nên xử lý khóa máy giống như bất kỳ thông tin đăng nhập chi tiêu nào: nếu một agent có thể đã đọc nó, hãy vô hiệu hóa nó trên trang Khóa và kết nối lại với một cái mới.
+- Chỉ các tệp toàn cầu của bạn quyết định điều này. Một kho lưu trữ không thể bật Cloud Jev, chỉ nó đến nơi khác hoặc cung cấp khóa của nó, và `FAILPROOFAI_JEV_API_KEY` bị bỏ qua cho tuyến đường này.
+- Đối với mỗi cuộc gọi Jev đánh giá, một yêu cầu sẽ đi tới FailproofAI Cloud, mang những gì trang [mang khóa của riêng bạn](/vi/reference/jev-providers#what-leaves-the-machine) liệt kê (bí mật được sửa đổi). FailproofAI Cloud chuyển tiếp nó tới TypeSafe và không ghi lại hoặc giữ nó.
 
-## Tắt nó
+## Tắt nó đi
 
 | Lệnh | Kết quả |
 | --- | --- |
-| `failproofai jev setup --mode off` | Giữ cấu hình; Jev không được hỏi. **Đây là công tắc kéo dài:** kết nối lại không bao giờ viết lại `jev.json` hiện tại, vì vậy Jev ở trạng thái tắt cho đến khi bạn bật nó lại bằng `--mode observe`. |
-| `failproofai jev remove` | Xóa `~/.failproofai/jev.json`; Jev ở trạng thái tắt — cho đến `failproofai config --token` tiếp theo với khóa mang `jev:evaluate`, tìm thấy không `jev.json` và bật Jev lại ở chế độ quan sát (trừ khi nó chạy với `--no-transcripts`). Để giữ nó tắt, sử dụng `--mode off`. |
-| `failproofai config --disconnect` | Ngắt kết nối máy: khóa bị loại bỏ, và `jev.json` cũng được loại bỏ khi nó đặt tên FailproofAI Cloud và không được tắt. `jev.json` cho điểm cuối của riêng bạn ở lại, và một cái được tắt ở lại, vì vậy Jev ở trạng thái tắt khi bạn kết nối lại. |
+| `failproofai jev setup --mode off` | Giữ cấu hình; Jev không được hỏi. **Đây là công tắc kéo dài:** kết nối lại không bao giờ viết lại `jev.json` hiện có, vì vậy Jev vẫn tắt cho đến khi bạn bật lại nó bằng `--mode observe`. |
+| `failproofai jev remove` | Xóa `~/.failproofai/jev.json`; Jev tắt — cho đến `failproofai config --token` tiếp theo với một khóa mang `jev:evaluate`, tìm thấy không `jev.json` và bật Jev lại ở chế độ quan sát (trừ khi nó chạy với `--no-transcripts`). Để giữ nó tắt, hãy sử dụng `--mode off`. |
+| `failproofai config --disconnect` | Ngắt kết nối máy: khóa bị xóa, và cũng là `jev.json` khi nó đặt tên FailproofAI Cloud và không bị tắt. Một `jev.json` cho điểm cuối của riêng bạn vẫn ở, và cũng là một cái bị tắt, nên Jev vẫn tắt khi bạn kết nối lại. |
 
-Từ lệnh gọi công cụ tiếp theo, hook chạy chính sách regex chính xác như trước đây.
+Từ lệnh gọi công cụ tiếp theo, các hook chạy chính sách regex chính xác như trước đây.

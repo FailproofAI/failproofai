@@ -1,43 +1,43 @@
 ---
 title: "Phân tích tâm trạng"
-description: "Tìm các tin nhắn thất vọng, bối rối và sửa chữa bằng điểm tâm trạng Jev."
+description: "Tìm các tin nhắn thể hiện sự chán nản, nhầm lẫn và chỉnh sửa bằng điểm tâm trạng Jev."
 icon: "smile"
 ---
 
-Jev đánh giá mỗi tin nhắn mà một người gửi cho agents của bạn từ 0 đến 100 cho bốn cảm xúc — **tức giận**, **thất vọng**, **vui vẻ** và **bối rối** — và ba tín hiệu về hiệu suất của agent:
+Jev chấm điểm mỗi tin nhắn mà người dùng gửi cho các agent của bạn từ 0 đến 100 cho bốn cảm xúc — **tức giận**, **chán nản**, **vui vẻ** và **nhầm lẫn** — và ba tín hiệu về hiệu suất của agent:
 
-- **Correcting**: người đó nói rằng agent đã làm sai điều gì đó.
-- **Resolved**: người đó xác nhận rằng agent đã giải quyết được vấn đề của họ.
-- **Doubtful**: người đó đặt câu hỏi về tính chính xác của câu trả lời của agent hoặc liệu nó có thực sự hoạt động hay không.
+- **Chỉnh sửa**: người dùng nói rằng agent đã làm sai điều gì đó.
+- **Đã giải quyết**: người dùng xác nhận rằng agent đã giải quyết vấn đề của họ.
+- **Nghi ngờ**: người dùng đặt câu hỏi về tính chính xác của câu trả lời của agent hoặc liệu nó có thực sự hoạt động không.
 
-Sử dụng phân tích tâm trạng để tìm các cuộc trò chuyện nơi mọi người đang mất kiên nhẫn, các agents mà họ liên tục sửa chữa, và các câu trả lời có hiệu quả tốt. Đây là tính năng chấm điểm Jev được tích hợp sẵn; bạn không cần phải tạo một đánh giá. Để tạo câu hỏi trả lời cố định riêng của bạn, [tạo một đánh giá Jev](/vi/evaluations/jev).
+Sử dụng phân tích tâm trạng để tìm những cuộc trò chuyện nơi mọi người đang mất kiên nhẫn, những agent mà họ liên tục chỉnh sửa, và những trả lời hiệu quả. Đây là tính năng chấm điểm Jev tích hợp sẵn; bạn không cần tạo bất kỳ đánh giá nào. Để tạo câu hỏi trả lời cố định của riêng bạn, [hãy tạo một đánh giá Jev](/vi/evaluations/jev).
 
 <Note>
-  Tâm trạng được tắt cho đến khi một admin bật nó cho tổ chức. Jev thực hiện một yêu cầu chấm điểm cho mỗi tin nhắn và nhận tin nhắn đó cùng với câu trả lời của agent trước nó. Chấm điểm sử dụng ngân sách mô hình của tổ chức bạn.
+  Tâm trạng tắt cho đến khi quản trị viên bật nó cho tổ chức. Jev thực hiện một yêu cầu chấm điểm cho mỗi tin nhắn và nhận tin nhắn đó cùng với phản hồi của agent trước đó. Chấm điểm sử dụng ngân sách mô hình của tổ chức của bạn.
 </Note>
 
-## Bật nó lên
+## Bật tính năng này
 
 1. Đi tới **Administration → Settings**.
-2. Dưới **Human input sentiment**, chuyển nó **on** và lưu.
+2. Ở mục **Human input sentiment**, bật nó **on** và lưu.
 
-Các tin nhắn từ ngày cuối cùng sẽ được chấm điểm trước. Sau đó, các tin nhắn mới sẽ được chấm điểm trong vòng một hoặc hai phút sau khi đến.
+Các tin nhắn từ ngày hôm trước được chấm điểm trước tiên. Sau đó, các tin nhắn mới được chấm điểm trong vòng một hoặc hai phút kể từ khi chúng đến.
 
 ## Tìm một cuộc trò chuyện để xem xét
 
-Mở **Observe → Sentiment**. Lọc theo thời gian, môi trường, agent hoặc ID phiên. Tiêu đề đếm các tin nhắn và phiên, hiển thị bao nhiêu tin nhắn được **flagged**, và đặt tên cho tín hiệu hàng đầu. Một tin nhắn được gắn cờ khi điểm tức giận, thất vọng, sửa chữa, bối rối hoặc nghi ngờ đạt 35 trên 100.
+Mở **Observe → Sentiment**. Lọc theo thời gian, môi trường, agent hoặc ID phiên. Tiêu đề hiển thị số lượng tin nhắn và phiên, chỉ ra có bao nhiêu tin nhắn được **đánh dấu**, và nêu tên tín hiệu hàng đầu. Một tin nhắn được đánh dấu khi điểm tức giận, chán nản, chỉnh sửa, nhầm lẫn hoặc nghi ngờ đạt 35 trên 100.
 
-![Bảng điều khiển Sentiment hiển thị số lượng tin nhắn và phiên, các tin nhắn được gắn cờ, và điểm số Jev theo thời gian.](/images/dashboard/sentiment-overview.png)
+![Bảng điều khiển Sentiment hiển thị số lượng tin nhắn và phiên, các tin nhắn được đánh dấu, và điểm Jev theo thời gian.](/images/dashboard/sentiment-overview.png)
 
-Sử dụng **Score over time** để so sánh các tín hiệu. Chọn các điểm số để hiển thị, sau đó chọn một điểm để xem các tin nhắn trong khoảng thời gian đó. Bảng **By agent** hiển thị nơi tín hiệu tập trung. Trong **Messages**, sắp xếp theo điểm âm mạnh nhất hoặc chọn một điểm duy nhất. Mở một tin nhắn trong phiên của nó để đọc cuộc trò chuyện xung quanh trước khi quyết định điều gì đã thất bại.
+Sử dụng **Score over time** để so sánh các tín hiệu. Chọn các điểm để hiển thị, sau đó chọn một điểm để xem các tin nhắn trong khoảng thời gian đó. Bảng **By agent** hiển thị nơi tín hiệu tập trung. Trong **Messages**, sắp xếp theo điểm âm mạnh nhất hoặc chọn một điểm duy nhất. Mở một tin nhắn trong phiên của nó để đọc cuộc trò chuyện xung quanh trước khi quyết định điều gì không thành công.
 
-![Danh sách tin nhắn Sentiment được sắp xếp theo điểm âm mạnh nhất, với liên kết đến từng phiên nguồn.](/images/dashboard/sentiment-messages.png)
+![Danh sách tin nhắn Sentiment được sắp xếp theo điểm âm mạnh nhất, với một liên kết đến mỗi phiên nguồn.](/images/dashboard/sentiment-messages.png)
 
-## Những tin nhắn nào được chấm điểm
+## Tin nhắn nào được chấm điểm
 
 Chỉ những tin nhắn mà một người viết:
 
-- Các tin nhắn mà agents tùy chỉnh của bạn ghi lại là đầu vào của con người bằng SDK.
-- Các prompt được nhập vào Claude Code, Codex, OpenCode, pi, Hermes và OpenClaw, khi các bản ghi lịch sử phiên được gửi (mặc định). Các công việc theo lịch trình, hướng dẫn được tiêm vào, chuyển giao giữa các sub-agent và văn bản khác mà runtime của agent viết không được chấm điểm. Cũng không chấm điểm các lần chạy không tương tác như `claude -p`, `codex exec` và `hermes -z`: một kịch bản đã viết những prompt đó, chứ không phải một người.
+- Tin nhắn mà các agent tùy chỉnh của bạn ghi lại dưới dạng đầu vào con người bằng SDK.
+- Các lời nhắc được nhập vào Claude Code, Codex, OpenCode, pi, Hermes và OpenClaw khi bảng điểm phiên được gửi (mặc định). Các công việc theo lịch trình, hướng dẫn được chèn vào, các cuộc chuyển giao giữa các agent con và văn bản khác mà thời gian chạy của agent viết không được chấm điểm. Cũng không có các lần chạy không tương tác như `claude -p`, `codex exec` và `hermes -z`: một tập lệnh đã viết những lời nhắc đó, không phải một người.
 
-Chấm điểm đánh giá các từ riêng của người đó. Một hướng dẫn ngắn gọn, thẳng thừng như "fix it" không được tính là tức giận, và đặt câu hỏi không được tính là bối rối. Một yêu cầu mới không phải là một sửa chữa, và lời cảm ơn riêng lẻ không được tính là đã giải quyết.
+Chấm điểm đánh giá các từ của chính người dùng. Một hướng dẫn ngắn gọn, thẳng thắn như "fix it" không được tính là sự tức giận, và đặt câu hỏi không được tính là sự nhầm lẫn. Một yêu cầu mới không phải là một sửa chữa, và lời cảm ơn một mình không được tính là đã giải quyết.

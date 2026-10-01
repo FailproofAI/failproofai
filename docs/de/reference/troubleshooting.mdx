@@ -1,6 +1,6 @@
 ---
 title: "Fehlerbehebung"
-description: "Diagnose fehlender Sitzungen, fehlender Richtlinien, fehlgeschlagener Übertragungen und blockierter Agent-Aktionen."
+description: "Diagnose fehlender Sitzungen, fehlender Richtlinien, fehlgeschlagener Übertragungen und blockierter Agenten-Aktionen."
 icon: "wrench"
 ---
 
@@ -8,9 +8,9 @@ icon: "wrench"
   <Accordion title="Keine Sitzungen in der Cloud sichtbar">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne **Administration → Keys** und bestätige, dass der Maschinenschlüssel aktiv ist und `events:add` besitzt. Öffne dann **Observe → Events**, erweitere den Zeitbereich und entferne Umgebungs- und Agent-Filter. Falls Events vorhanden sind, suche nach der Sitzungs-ID und prüfe **Observe → Sessions** für die Gruppierung. Falls keine Events vorhanden sind, diagnostiziere den Failproof-Daemon über die CLI.
+        Öffne **Administration → Schlüssel** und bestätige, dass der Maschinenschlüssel aktiv ist und über `events:add` verfügt. Öffne dann **Beobachten → Ereignisse**, erweitere den Zeitraum und entferne Umgebungs- und Agenten-Filter. Falls Ereignisse vorhanden sind, suche nach der Sitzungs-ID und prüfe anschließend **Beobachten → Sitzungen** auf Gruppierungen. Falls keine Ereignisse vorhanden sind, diagnostiziere den Failproof-Daemon über die CLI.
 
-        ![Der Live-Events-Stream mit den primären Filtern und eingehenden Agent-Events.](/images/dashboard/events-stream-current.png)
+        ![Der Live-Ereignisstream mit seinen primären Filtern und aktuell eingehenden Agenten-Ereignissen.](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +21,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        Stelle sicher, dass die Erfassung aktiviert ist, der konfigurierte Schlüssel `events:add` besitzt und der Dashboard-Filter mit der ausgesendeten Umgebung übereinstimmt.
+        Stelle sicher, dass die Erfassung aktiviert ist, der konfigurierte Schlüssel über `events:add` verfügt und der Dashboard-Filter zur ausgegebenen Umgebung passt.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python-SDK-Events verbleiben auf der Festplatte">
+  <Accordion title="Python-SDK-Ereignisse verbleiben auf der Festplatte">
     <Tabs>
       <Tab title="Dashboard">
-        Entferne Filter unter **Observe → Events** und suche nach der genauen SDK-Sitzungs-ID. Falls nichts erscheint, untersuche den SDK-Spool und den Failproof-Daemon auf dem Quellrechner.
+        Entferne Filter unter **Beobachten → Ereignisse** und suche nach der genauen SDK-Sitzungs-ID. Falls nichts angezeigt wird, untersuche den SDK-Spool und den Failproof-Daemon auf dem Quellrechner.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +36,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        Stelle sicher, dass ein Daemon läuft und verbunden ist — das SDK spoolt unabhängig davon, ob einer vorhanden ist. Das Spool-Verzeichnis muss **nicht** vorab existieren (der Writer erstellt es), und keine Umgebungsvariable wählt es aus: `$FAILPROOFAI_HOME/custom-agents`, andernfalls `~/.failproofai/custom-agents`, ist das einzige Stammverzeichnis, und `configure(base_dir=...)` ist die einzige Überschreibungsmöglichkeit. Falls der Prozess per `SIGKILL` oder OOM-Kill beendet wurde, gingen alle noch in der Warteschlange befindlichen Daten verloren — verarbeite `SIGTERM`, um dies einzugrenzen.
+        Stelle sicher, dass ein Daemon läuft und verbunden ist — das SDK schreibt in den Spool, unabhängig davon, ob ein Daemon vorhanden ist. Das Spool-Verzeichnis muss **nicht** vorab existieren (der Writer erstellt es), und keine Umgebungsvariable wählt es aus: `$FAILPROOFAI_HOME/custom-agents`, andernfalls `~/.failproofai/custom-agents`, ist das einzige Stammverzeichnis, und `configure(base_dir=...)` ist die einzige Überschreibungsmöglichkeit. Falls der Prozess per `SIGKILL` oder OOM-Kill beendet wurde, gehen alle noch in der Warteschlange befindlichen Daten verloren — verwende `SIGTERM`, um dies zu begrenzen.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Der Rechner erhält keine Richtlinien">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne **Admin → enforcement**, wähle den Rechner aus und vergleiche seine zugewiesene, gemeldete und vorherige Version. Bestätige, dass der Deployment-Scope den Rechner einschließt und sein Schlüssel `policies:pull` besitzt. Die Ereigniserfassung kann funktionieren, auch wenn die Richtlinienübertragung fehlschlägt.
+        Öffne **Admin → Durchsetzung**, wähle den Rechner aus und vergleiche die zugewiesenen, gemeldeten und vorherigen Versionen. Bestätige, dass der Bereitstellungsbereich den Rechner einschließt und sein Schlüssel über `policies:pull` verfügt. Die Datenaufnahme kann funktionieren, auch wenn die Richtlinienübertragung es nicht tut.
 
       </Tab>
       <Tab title="CLI">
@@ -53,38 +53,14 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        Stelle sicher, dass Maschinen-ID und Label mit dem Dashboard-Ziel übereinstimmen. Verbinde dich erneut mit einem richtlinienfähigen Schlüssel, falls die vorhandenen Anmeldedaten nur die Ereigniserfassung erlauben.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Eine selbst gehostete Cloud mit privater Zertifizierungsstelle empfängt keine Events oder Richtlinien">
-    <Tabs>
-      <Tab title="Dashboard">
-        Der Rechner ist verbunden und seine Hooks funktionieren, aber **Observe → Events** bleibt leer und **Admin → enforcement** zeigt das Deployment nie als angewendet an. Die CLI und der Failproof-Daemon vertrauen Zertifikaten auf unterschiedliche Weise. Die CLI läuft auf Node und berücksichtigt `NODE_EXTRA_CA_CERTS`. `failproofaid`, das Events sendet und Richtlinien abruft, vertraut den mitgelieferten Zertifikaten sowie dem Vertrauensspeicher des Betriebssystems und ignoriert `NODE_EXTRA_CA_CERTS`. Installiere deine Zertifizierungsstelle im Systemspeicher des Rechners.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        # Debian / Ubuntu
-        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
-        sudo update-ca-certificates
-        # RHEL / Fedora
-        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
-        # macOS
-        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
-
-        # then restart the daemon, which loads trusted certificates at start
-        sudo systemctl restart failproofaid@$USER                           # Linux
-        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
-        ```
-
-        Das Daemon-Log nennt die Ursache: `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer` unter Linux. `SSL_CERT_FILE` oder `SSL_CERT_DIR` in der Dienstumgebung ersetzt den Systemspeicher für den Daemon; die mitgelieferten Zertifikate bleiben weiterhin gültig. Batches, die während der nicht vertrauenswürdigen Zertifizierungsstelle fehlgeschlagen sind, werden in `~/.failproofai/state/failed` aufbewahrt und automatisch wiederholt — ungefähr stündlich und beim Neustart des Daemons.
+        Stelle sicher, dass Rechner-ID und -Bezeichnung mit dem Dashboard-Ziel übereinstimmen. Verbinde dich erneut mit einem richtlinienfähigen Schlüssel, falls die vorhandenen Anmeldedaten nur die Ereignisaufnahme erlauben.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Eine Aktion wird abgelehnt, weil der Daemon nicht verfügbar ist">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne **Admin → enforcement** und prüfe den letzten Zeitpunkt der Aktivität und die gemeldete Version des Rechners. Falls der Rechner veraltet ist, behandle dies als lokales Daemon-Problem. Schwäche die eingesetzte Richtlinie nicht allein deshalb ab, um einen nicht verfügbaren Daemon zu umgehen.
+        Öffne **Admin → Durchsetzung** und prüfe den Zeitpunkt der letzten Aktivität und die gemeldete Version des Rechners. Falls der Rechner veraltet ist, behandle dies als lokales Daemon-Problem. Schwäche die bereitgestellte Richtlinie nicht allein dazu ab, einen nicht verfügbaren Daemon zu umgehen.
 
       </Tab>
       <Tab title="CLI">
@@ -95,18 +71,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        Starte `failproofaid` neu oder aktualisiere es; führe die Konfiguration erneut aus, wenn die Protokollversionen von CLI und Daemon voneinander abweichen. Der konfigurierte Daemon-Pfad schlägt absichtlich geschlossen fehl.
+        Starte `failproofaid` neu oder aktualisiere es; führe die Konfiguration erneut aus, wenn sich die Protokollversionen von CLI und Daemon unterscheiden. Der konfigurierte Daemon-Pfad schlägt by design geschlossen fehl.
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Eine benutzerdefinierte Richtlinie wird nicht geladen">
     <Tabs>
       <Tab title="Dashboard">
-        Für eine Cloud-erstellte Richtlinie öffne **Admin → policy editor**, wähle den Entwurf aus und überprüfe Validierungsfehler vor der Veröffentlichung. Für eine lokale Richtlinie validiere sie über die CLI und öffne anschließend **Observe → policy** nach einer Testaktionen, um sicherzustellen, dass Entscheidungen ankommen.
+        Für eine Cloud-erstellte Richtlinie öffne **Admin → Richtlinien-Editor**, wähle den Entwurf aus und prüfe Validierungsfehler vor der Veröffentlichung. Für eine lokale Richtlinie verwende die CLI zur Validierung und öffne dann **Beobachten → Richtlinie** nach einer Testaktionm um zu bestätigen, dass Entscheidungen ankommen.
 
       </Tab>
       <Tab title="CLI">
-        Stelle sicher, dass der Dateiname auf `policies.js`, `policies.mjs` oder `policies.ts` endet, das Modul `customPolicies.add(...)` aufruft und Imports von der Richtliniendatei aus auflösbar sind.
+        Stelle sicher, dass der Dateiname auf `policies.js`, `policies.mjs` oder `policies.ts` endet, das Modul `customPolicies.add(...)` aufruft und Importe aus der Richtliniendatei aufgelöst werden.
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -118,11 +94,11 @@ icon: "wrench"
   <Accordion title="Ein Audit liefert keine Ergebnisse">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne **Analyze → audits**, wähle den Durchlauf aus und prüfe, ob die Modellanalyse ausgeführt wurde. Vergleiche dann Scope und Zeitfenster mit **Observe → sessions** und öffne repräsentative Traces aus dieser Gruppe.
+        Öffne **Analysieren → Audits**, wähle den Durchlauf aus und prüfe, ob die Modellanalyse ausgeführt wurde. Vergleiche dann Umfang und Zeitfenster mit **Beobachten → Sitzungen** und öffne repräsentative Traces aus dieser Population.
 
-        Ein Ergebnis von null ist nur dann aussagekräftig, wenn die Analyse erfolgreich durchgeführt wurde. Falls die Analyse übersprungen wurde oder fehlgeschlagen ist, produziert der Durchlauf keine Ergebnisse und hält das nicht analysierte Zeitfenster für einen künftigen erfolgreichen Durchlauf offen. Falls die Modellanalyse deaktiviert ist, produziert das Audit ebenfalls keine Ergebnisse, da der deterministische Anmeldedaten- und PII-Scan zwar Statistiken erfasst, aber keine Ergebnisse mehr meldet.
+        Ein Nullergebnis ist nur dann aussagekräftig, wenn die Analyse erfolgreich abgeschlossen wurde. Falls die Analyse übersprungen oder fehlgeschlagen ist, liefert der Durchlauf keine Ergebnisse und hält das nicht analysierte Zeitfenster für einen zukünftigen erfolgreichen Durchlauf offen. Falls die Modellanalyse deaktiviert ist, liefert das Audit ebenfalls keine Ergebnisse, da der deterministische Anmeldedaten- und PII-Scan zwar Statistiken erfasst, aber keine Ergebnisse mehr meldet.
 
-        ![Das Audit-Formular, in dem Umgebung, Agent, Kadenz und Sweepfenster die Sitzungspopulation definieren.](/images/dashboard/audit-new.png)
+        ![Das Audit-Formular, in dem Umgebung, Agent, Rhythmus und Sweep-Zeitfenster die Sitzungspopulation definieren.](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -134,31 +110,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        Falls der Durchlauf in der Warteschlange verbleibt, warte auf freie Audit-Agent-Kapazität oder bitte den Deployment-Operator, die Audit-Flotte zu prüfen. Ein in der Warteschlange befindliches Audit wird wiederholt; es wird nicht sofort übersprungen.
+        Falls der Durchlauf in der Warteschlange verblieben ist, warte auf freie Audit-Agent-Kapazität oder bitte den Bereitstellungsverantwortlichen, die Audit-Flotte zu prüfen. Ein Audit in der Warteschlange wird wiederholt; es wird nicht sofort übersprungen.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Online-Evaluierungen werden nicht automatisch ausgeführt">
+  <Accordion title="Online-Auswertungen werden nicht automatisch ausgeführt">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne eine abgeschlossene Sitzung und prüfe, ob eine manuelle Evaluierung erfolgreich ist. Die gehostete Cloud bietet derzeit keine Evaluierungs-Endpunkt-Steuerung im Dashboard; der Serverbetreiber muss diese konfigurieren.
+        Öffne eine abgeschlossene Sitzung und prüfe, ob eine manuelle Auswertung erfolgreich ist. Hosted Cloud verfügt derzeit über keine Steuerung des Evaluator-Endpunkts im Dashboard; der Server-Betreiber muss diesen konfigurieren.
       </Tab>
       <Tab title="CLI">
-        Überprüfe den Evaluator selbst und untersuche anschließend aktuelle Evaluierungszustände:
+        Überprüfe zunächst den Evaluator selbst und prüfe dann die aktuellen Auswertungszustände:
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        Stelle bei selbst gehosteter Cloud sicher, dass `EVALUATOR_ENDPOINT` auf dem Server vorhanden ist und `EVALUATOR_TOKEN` mit dem Evaluator übereinstimmt. Die automatische Evaluierung ist deaktiviert, wenn der Endpunkt fehlt.
+        Stelle bei selbst gehostetem Cloud sicher, dass `EVALUATOR_ENDPOINT` auf dem Server vorhanden ist und `EVALUATOR_TOKEN` zum Evaluator passt. Automatische Auswertungen sind deaktiviert, wenn der Endpunkt fehlt.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Die Cloud-CLI-Authentifizierung zielt auf die falsche Organisation">
+  <Accordion title="Cloud-CLI-Authentifizierung zielt auf die falsche Organisation">
     <Tabs>
       <Tab title="Dashboard">
-        Verwende den Organisationsumschalter und bestätige den erwarteten Slug und die Berechtigungen, bevor du die Ergebnisse mit der CLI vergleichst.
+        Verwende den Organisations-Umschalter und bestätige den erwarteten Slug und die Berechtigungen, bevor du die Ergebnisse mit der CLI vergleichst.
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -167,18 +143,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        Im API-Schlüssel-Modus gib `fp --org <slug> --api-key <key> ...` an oder setze `AGENTEYE_ORG`. Der gespeicherte Organisationsstatus menschlicher Sitzungen wird bei API-Schlüssel-Anfragen absichtlich ignoriert.
+        Im API-Schlüssel-Modus verwende `fp --org <slug> --api-key <key> ...` oder setze `AGENTEYE_ORG`. Der gespeicherte Organisationsstatus menschlicher Sitzungen wird bei API-Schlüssel-Anfragen absichtlich ignoriert.
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Eine Richtlinie blockiert valide Arbeit">
+  <Accordion title="Eine Richtlinie blockiert gültige Arbeit">
     <Tabs>
       <Tab title="Dashboard">
-        Öffne **Observe → policy**, bewahre die Entscheidung und die verknüpfte Sitzung auf und identifiziere die Falsch-Positiv-Bedingung. Öffne dann **Admin → enforcement** und setze die betroffenen Rechner auf die vorherige Version zurück. Erstelle eine präzisere Version im **Policy editor**, teste sie auf einem kleinen Scope und erweitere sie erst, wenn valide Arbeit erfolgreich ausgeführt wird.
+        Öffne **Beobachten → Richtlinie**, sichere die Entscheidung und die verknüpfte Sitzung und identifiziere den Falsch-Positiv-Zustand. Öffne dann **Admin → Durchsetzung** und setze die betroffenen Rechner auf die vorherige Version zurück. Erstelle eine präzisere Version im **Richtlinien-Editor**, teste sie in einem kleinen Umfang und erweitere sie erst, wenn gültige Arbeit erfolgreich ausgeführt wird.
 
       </Tab>
       <Tab title="CLI">
-        Cloud-Deployment-Rollbacks sind ausschließlich über das Dashboard möglich. Eine lokale Sitzungspause deaktiviert Cloud-verwaltete Richtlinien nicht. Falls das Dashboard nicht verfügbar ist, erfasse den Rechner- und Deployment-Zustand und stelle den Dashboard-Zugang wieder her, anstatt die blockierte Aktion wiederholt zu versuchen.
+        Das Cloud-Bereitstellungs-Rollback ist ausschließlich über das Dashboard möglich. Eine lokale Sitzungspause deaktiviert Cloud-verwaltete Richtlinien nicht. Falls das Dashboard nicht verfügbar ist, erfasse den Rechner- und Bereitstellungsstatus und stelle den Dashboard-Zugang wieder her, anstatt die blockierte Aktion wiederholt zu versuchen.
 
         ```bash
         failproofai config --status
@@ -186,25 +162,6 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Ein Fehler zeigt eine Referenz an">
-    <Tabs>
-      <Tab title="Dashboard">
-        Fehler im Dashboard enden mit einer kurzen Referenz, zum Beispiel `ref 4bf92f35`. Sie identifiziert genau diese eine Anfrage, und der Support kann damit herausfinden, was auf dem Server passiert ist. Kopiere sie genau so in deinen Bericht, wie sie erscheint.
-
-        Falls eine gesamte Seite nicht geladen werden kann, zeigt die Fehlerseite stattdessen einen `digest` an. Füge diesen ebenfalls hinzu.
-      </Tab>
-      <Tab title="CLI">
-        Lesbare `fp`-Fehler enden mit derselben `ref`. Mit `--json` enthält das Fehlerobjekt die vollständige `request_id`:
-
-        ```bash
-        fp --json sessions --since 24h
-        ```
-      </Tab>
-      <Tab title="Daemon">
-        Wenn ein Upload fehlschlägt, nennt das Daemon-Log eine `request_id` und eine `batch_id`: unter Linux `sudo journalctl -u failproofaid@$USER | grep batch_id`. Jeder Versuch erhält eine eigene `request_id`; die `batch_id` bleibt über alle Wiederholungsversuche hinweg gleich und verknüpft so die Versuche eines Batches miteinander. Füge beide in deinen Bericht ein.
-      </Tab>
-    </Tabs>
-  </Accordion>
 </AccordionGroup>
 
-Wenn du den Support kontaktierst, gib die CLI-Version, das Harness, die Umgebung, die relevante Sitzungs- oder Deployment-ID, alle `ref`- oder `request_id`-Angaben aus dem Fehler sowie die Ausgabe von `failproofai config --status` ohne Secrets an.
+Füge beim Kontaktieren des Supports die CLI-Version, das Harness, die Umgebung, die relevante Sitzungs- oder Bereitstellungs-ID sowie die Ausgabe von `failproofai config --status` mit entfernten Geheimnissen bei.

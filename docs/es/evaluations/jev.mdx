@@ -1,28 +1,28 @@
 ---
 title: "Evaluaciones Jev"
-description: "Usa Jev para puntuar una sesión finalizada comparándola con una pregunta de respuestas conocidas."
+description: "Usa Jev para puntuar una sesión finalizada en función de una pregunta con respuestas conocidas."
 icon: "list-checks"
 ---
 
-Una evaluación Jev lee una **sesión finalizada** y asigna una puntuación de 0 a 1. Úsala cuando la respuesta se conoce de antemano, como "¿El cliente expresó urgencia?" o "¿Qué tan frustrado estaba el cliente?". Te ayuda a encontrar patrones entre ejecuciones; no detiene una llamada a herramienta. Para decisiones tomadas **antes** de que se ejecute una herramienta, usa [políticas Jev](/es/policies/jev).
+Una evaluación Jev lee una **sesión finalizada** y le asigna una puntuación de 0 a 1. Úsala cuando la respuesta se conoce de antemano, por ejemplo: "¿Expresó el cliente urgencia?" o "¿Qué tan frustrado estaba el cliente?". Te ayuda a identificar patrones entre ejecuciones; no detiene una llamada a herramienta. Para decisiones tomadas **antes** de que se ejecute una herramienta, usa las [políticas Jev](/es/policies/jev).
 
-## Crear una en el dashboard
+## Crea una en el panel
 
 1. Abre **Analyze → eval authoring** y selecciona **new eval**.
-2. Describe una pregunta y sus posibles respuestas. Por ejemplo: "¿El agente prometió un reembolso antes de consultar la política de reembolsos? Responde sí o no." Selecciona **draft** y verifica que el resultado sea una puntuación de clasificador.
-3. [Pruébala](/es/evaluations/test) en sesiones recientes y luego [despliégala](/es/evaluations/deploy). Las nuevas sesiones completadas recibirán una puntuación; usa [backfill](/es/evaluations/deploy#score-sessions-you-already-have) si también necesitas el historial.
+2. Describe una pregunta y sus posibles respuestas. Por ejemplo: "¿Prometió el agente un reembolso antes de verificar la política de reembolsos? Responde sí o no." Selecciona **draft** y verifica que el resultado sea una puntuación de clasificador.
+3. [Pruébala](/es/evaluations/test) en sesiones recientes y luego [despliégala](/es/evaluations/deploy). Las nuevas sesiones completadas serán puntuadas; usa [backfill](/es/evaluations/deploy#score-sessions-you-already-have) si también necesitas el historial.
 
-![El formulario compartido de autoría de evaluaciones, donde describes una pregunta de respuesta fija, revisas el borrador y despliegas tras las pruebas. El ejemplo mostrado es una evaluación de código; una pregunta Jev usa el mismo flujo de autoría.](/images/dashboard/eval-authoring-draft.png)
+![El formulario compartido de creación de evaluaciones, donde describes una pregunta de respuesta fija, revisas el borrador y lo despliegas tras las pruebas. El ejemplo mostrado es una evaluación de código; una pregunta Jev utiliza el mismo flujo de creación.](/images/dashboard/eval-authoring-draft.png)
 
-El asistente puede elegir entre código, clasificación Jev y un [juez](/es/evaluations/judge). Verifica su elección antes de desplegar. Jev proporciona una puntuación sin razonamiento en prosa; elige un juez cuando necesites una explicación. Consulta la [referencia de evaluaciones Jev](/es/reference/jev-evaluations) para conocer los tipos de preguntas y los límites de puntuación.
+El asistente puede elegir entre código, clasificación Jev y un [juez](/es/evaluations/judge). Revisa su elección antes de desplegar. Jev entrega una puntuación sin razonamiento en prosa; elige un juez cuando necesites una explicación. Consulta la [referencia de evaluaciones Jev](/es/reference/jev-evaluations) para conocer los tipos de preguntas y los límites de puntuación.
 
-## Leer las puntuaciones
+## Lee las puntuaciones
 
-Abre **Observe → Evaluations** para visualizar los resultados por agente y por tiempo. Desde una terminal, el Cloud CLI puede leer los mismos resultados:
+Abre **Observe → Evaluations** para visualizar el resultado por agente y por tiempo. Desde una terminal, el Cloud CLI puede leer los mismos resultados:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-El Cloud CLI lee los resultados; la autoría y el despliegue se realizan en el dashboard. Consulta la [referencia del Cloud CLI](/es/reference/cloud-cli#evaluations) para conocer los filtros disponibles.
+El Cloud CLI lee resultados; la creación y el despliegue se realizan en el panel. Consulta la [referencia del Cloud CLI](/es/reference/cloud-cli#evaluations) para ver los filtros disponibles.

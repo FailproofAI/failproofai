@@ -751,7 +751,6 @@
               {
                 "group": "Get a policy",
                 "pages": [
-                  "ko/policies/authority",
                   "ko/policies/editor",
                   "ko/policies/packs"
                 ]

@@ -1,16 +1,16 @@
 ---
 title: "故障排查"
-description: "诊断会话缺失、策略缺失、传输失败以及代理操作被阻止等问题。"
+description: "诊断会话缺失、策略缺失、事件投递失败以及 Agent 操作被阻止等问题。"
 icon: "wrench"
 ---
 
 <AccordionGroup>
-  <Accordion title="云端未显示任何会话">
+  <Accordion title="Cloud 中未显示任何会话">
     <Tabs>
-      <Tab title="控制台">
-        打开 **Administration → Keys**，确认机器密钥处于活动状态且具有 `events:add` 权限。然后打开 **Observe → Events**，扩大时间范围，并清除环境和代理过滤器。如果事件存在，搜索会话 ID，然后在 **Observe → Sessions** 中检查分组情况。如果不存在任何事件，请通过 CLI 诊断 Failproof 守护进程。
+      <Tab title="仪表盘">
+        打开 **Administration → Keys**，确认机器密钥处于活跃状态且具备 `events:add` 权限。然后打开 **Observe → Events**，拉大时间范围并清除环境和 Agent 过滤条件。如果事件已存在，请搜索会话 ID，再到 **Observe → Sessions** 查看分组情况。如果没有任何事件，请通过 CLI 对 Failproof 守护进程进行诊断。
 
-        ![显示主要过滤器及近期代理事件的实时事件流。](/images/dashboard/events-stream-current.png)
+        ![实时 Events 流，显示主要筛选条件及最新到达的 Agent 事件。](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +21,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        确认捕获已启用、配置的密钥具有 `events:add` 权限，以及控制台过滤器与发出的环境相匹配。
+        确认采集功能已启用、所配置的密钥具有 `events:add` 权限，并且仪表盘中的过滤条件与实际发出的环境相匹配。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python SDK 事件仍保留在磁盘上">
+  <Accordion title="Python SDK 事件仍留在磁盘上">
     <Tabs>
-      <Tab title="控制台">
-        清除 **Observe → Events** 中的过滤器，并搜索确切的 SDK 会话 ID。如果没有显示任何内容，请在源机器上检查 SDK 缓冲区和 Failproof 守护进程。
+      <Tab title="仪表盘">
+        清除 **Observe → Events** 中的过滤条件，并精确搜索 SDK 会话 ID。如果仍未显示，请在源机器上检查 SDK 的缓冲目录和 Failproof 守护进程。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +36,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        确认守护进程正在运行并已连接——无论是否有守护进程，SDK 都会进行缓冲。缓冲目录**不需要**预先存在（写入器会自动创建），也没有环境变量可以选择它：`$FAILPROOFAI_HOME/custom-agents`，否则为 `~/.failproofai/custom-agents`，这是唯一的根目录，`configure(base_dir=...)` 是唯一的覆盖方式。如果进程被 `SIGKILL` 或 OOM 终止，仍在队列中的数据将会丢失——请处理 `SIGTERM` 信号来限制这种情况。
+        确认守护进程正在运行并已连接——无论是否有守护进程，SDK 都会进行缓冲写入。缓冲目录**无需**预先创建（写入器会自动创建），且没有任何环境变量可以选择该目录：唯一的根路径为 `$FAILPROOFAI_HOME/custom-agents`，否则为 `~/.failproofai/custom-agents`，唯一的覆盖方式是 `configure(base_dir=...)`。如果进程被 `SIGKILL` 或 OOM 终止，仍在队列中的数据将丢失——请通过处理 `SIGTERM` 来限制此类损失。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="机器未收到策略">
     <Tabs>
-      <Tab title="控制台">
-        打开 **Admin → enforcement**，选择该机器，并比较其已分配、已报告和先前的版本。确认部署范围包含该机器，且其密钥具有 `policies:pull` 权限。即使策略传输失败，事件摄取也可以正常工作。
+      <Tab title="仪表盘">
+        打开 **Admin → enforcement**，选择目标机器，对比其已分配版本、已上报版本和上一个版本。确认部署范围包含该机器，且其密钥具有 `policies:pull` 权限。即使策略下发失败，事件采集仍可正常工作。
 
       </Tab>
       <Tab title="CLI">
@@ -53,38 +53,14 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        确认机器 ID 和标签与控制台目标匹配。如果现有凭证仅授予事件摄取权限，请使用具有策略功能的密钥重新连接。
+        确认机器 ID 和标签与仪表盘目标一致。如果现有凭据仅授予了事件采集权限，请使用具备策略权限的密钥重新连接。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="使用私有证书颁发机构的自托管云端无法接收事件或策略">
+  <Accordion title="因守护进程不可用导致操作被拒绝">
     <Tabs>
-      <Tab title="控制台">
-        机器已连接且其钩子正常工作，但 **Observe → Events** 保持空白，**Admin → enforcement** 也从未显示其部署已应用。CLI 和 Failproof 守护进程对证书的信任方式不同。CLI 运行在 Node 上并遵循 `NODE_EXTRA_CA_CERTS`。负责发送事件和拉取策略的 `failproofaid` 信任与其捆绑的证书以及操作系统的信任存储，并忽略 `NODE_EXTRA_CA_CERTS`。请在机器的系统存储中安装您的 CA 证书。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        # Debian / Ubuntu
-        sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
-        sudo update-ca-certificates
-        # RHEL / Fedora
-        sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/ && sudo update-ca-trust
-        # macOS
-        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-ca.pem
-
-        # then restart the daemon, which loads trusted certificates at start
-        sudo systemctl restart failproofaid@$USER                           # Linux
-        sudo launchctl kickstart -k system/ai.failproof.failproofaid.$USER  # macOS
-        ```
-
-        守护进程的日志会记录原因：在 Linux 上使用 `sudo journalctl -u failproofaid@$USER | grep UnknownIssuer`。服务环境中的 `SSL_CERT_FILE` 或 `SSL_CERT_DIR` 会替换守护进程的系统存储，捆绑的证书仍然适用。在 CA 不受信任期间失败的批次会保存在 `~/.failproofai/state/failed` 中，并自动重试，大约每小时一次，守护进程重启时也会重试。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="由于守护进程不可用导致操作被拒绝">
-    <Tabs>
-      <Tab title="控制台">
-        打开 **Admin → enforcement**，检查机器的最后在线时间和已报告的版本。如果机器状态陈旧，请将其视为本地守护进程问题。不要仅为绕过不可用的守护进程而削弱已部署的策略。
+      <Tab title="仪表盘">
+        打开 **Admin → enforcement**，查看机器的最后在线时间和已上报版本。如果机器状态过时，应将其视为本地守护进程问题。不要仅为了绕过不可用的守护进程而降低已部署策略的限制级别。
 
       </Tab>
       <Tab title="CLI">
@@ -95,18 +71,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        重启或更新 `failproofaid`；当 CLI 与守护进程协议版本不同时，重新运行配置。配置的守护进程路径设计上采用失败关闭模式。
+        重启或更新 `failproofaid`；当 CLI 与守护进程的协议版本不一致时，重新运行配置。所配置的守护进程路径在设计上采用失败关闭（fail-closed）策略。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="自定义策略未加载">
+  <Accordion title="自定义策略未能加载">
     <Tabs>
-      <Tab title="控制台">
-        对于云端编写的策略，打开 **Admin → policy editor**，选择草稿，并在发布前查看验证错误。对于本地策略，使用 CLI 验证后，在测试操作后打开 **Observe → policy** 确认决策已到达。
+      <Tab title="仪表盘">
+        对于在 Cloud 中编写的策略，请打开 **Admin → policy editor**，选择草稿，在发布前检查验证错误。对于本地策略，请使用 CLI 进行验证，然后在执行一次测试操作后，打开 **Observe → policy** 确认决策已到达。
 
       </Tab>
       <Tab title="CLI">
-        确认文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾，模块调用了 `customPolicies.add(...)`，并且导入可以从策略文件中解析。
+        确认文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾，模块调用了 `customPolicies.add(...)`，且策略文件中的导入均可正常解析。
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -117,12 +93,12 @@ icon: "wrench"
   </Accordion>
   <Accordion title="审计未返回任何发现">
     <Tabs>
-      <Tab title="控制台">
-        打开 **Analyze → audits**，选择运行记录，并检查模型分析是否已执行。然后将其范围和时间窗口与 **Observe → sessions** 进行比较，并打开该群体中具有代表性的追踪记录。
+      <Tab title="仪表盘">
+        打开 **Analyze → audits**，选择本次运行，检查模型分析是否已执行。然后将其范围和时间窗口与 **Observe → sessions** 进行对比，并打开该总体中的代表性追踪记录。
 
-        只有在分析成功运行时，零结果才有意义。如果分析被跳过或失败，该次运行不会产生任何发现，并保持未分析的时间窗口开放，等待未来成功运行。如果模型分析被禁用，审计同样不会产生任何发现，因为确定性凭证和 PII 扫描仅记录统计数据，不再提出发现。
+        只有在分析成功执行的前提下，零结果才有意义。如果分析被跳过或失败，本次运行将不产生任何发现，且未分析的时间窗口将保持开放，等待下次成功运行。如果模型分析被禁用，审计同样不会产生任何发现，因为确定性凭据和 PII 扫描仅记录统计数据，不再触发发现。
 
-        ![审计表单，其中环境、代理、节奏和扫描窗口定义了会话群体。](/images/dashboard/audit-new.png)
+        ![审计表单，通过环境、Agent、频率和扫描窗口定义会话总体。](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -134,31 +110,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        如果运行一直处于排队状态，请等待审计代理容量释放，或请部署运维人员检查审计集群。排队的审计会自动重试，不会立即被跳过。
+        如果运行一直处于排队状态，请等待审计 Agent 容量释放，或联系部署运维人员检查审计集群。排队中的审计会自动重试，不会立即跳过。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="在线评估未自动运行">
     <Tabs>
-      <Tab title="控制台">
-        打开一个已完成的会话，检查手动评估是否成功。托管云端目前在控制台中没有评估器端点控制；服务器运维人员必须自行配置。
+      <Tab title="仪表盘">
+        打开一个已完成的会话，检查手动评估是否可以成功执行。Hosted Cloud 目前在仪表盘中不提供评估器端点的控制选项，需由服务器运维人员进行配置。
       </Tab>
       <Tab title="CLI">
-        先验证评估器本身，然后检查近期的评估状态：
+        先验证评估器本身，再查看近期的评估状态：
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        在自托管云端上，确认服务器上存在 `EVALUATOR_ENDPOINT`，且 `EVALUATOR_TOKEN` 与评估器匹配。当端点缺失时，自动评估将被禁用。
+        对于自托管 Cloud，请确认服务器上已设置 `EVALUATOR_ENDPOINT`，且 `EVALUATOR_TOKEN` 与评估器匹配。若端点不存在，自动评估将被禁用。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="云端 CLI 认证指向了错误的组织">
+  <Accordion title="Cloud CLI 身份验证指向了错误的组织">
     <Tabs>
-      <Tab title="控制台">
-        使用组织切换器，在与 CLI 结果比较之前确认预期的 slug 和权限。
+      <Tab title="仪表盘">
+        使用组织切换器，在与 CLI 结果进行对比前，确认预期的 slug 和权限。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -167,18 +143,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        在 API 密钥模式下，指定 `fp --org <slug> --api-key <key> ...` 或设置 `AGENTEYE_ORG`。对于 API 密钥请求，已保存的用户会话组织状态会被有意忽略。
+        在 API 密钥模式下，请指定 `fp --org <slug> --api-key <key> ...` 或设置 `AGENTEYE_ORG`。对于 API 密钥请求，已保存的人工会话组织状态会被有意忽略。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="策略阻止了正常工作">
+  <Accordion title="策略阻止了合法操作">
     <Tabs>
-      <Tab title="控制台">
-        打开 **Observe → policy**，保存决策和关联的会话，并识别误报条件。然后打开 **Admin → enforcement**，将受影响的机器回滚到先前的版本。在 **Policy editor** 中创建更精细的版本，在小范围内测试，仅在正常工作成功后才扩大范围。
+      <Tab title="仪表盘">
+        打开 **Observe → policy**，保存该决策及其关联的会话，找出误报条件。然后打开 **Admin → enforcement**，将受影响的机器回滚至上一个版本。在 **Policy editor** 中创建一个更精确的版本，先在小范围内测试，确认合法操作可以正常通过后再扩大范围。
 
       </Tab>
       <Tab title="CLI">
-        云端部署回滚仅限控制台操作。本地会话暂停不会禁用云端管理的策略。如果控制台不可用，请记录机器和部署状态，恢复控制台访问，而不是反复重试被阻止的操作。
+        Cloud 部署的回滚操作仅支持通过仪表盘进行。本地会话暂停不会禁用 Cloud 管理的策略。如果仪表盘不可用，请记录机器和部署状态，优先恢复仪表盘访问，而不是反复重试被阻止的操作。
 
         ```bash
         failproofai config --status
@@ -186,25 +162,6 @@ icon: "wrench"
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="错误中显示了 ref">
-    <Tabs>
-      <Tab title="控制台">
-        控制台中的错误末尾会附带一个简短的引用标识，例如 `ref 4bf92f35`。它标识了该特定请求，支持团队可以用它来精确定位服务器上发生的情况。请将其原样复制到您的报告中。
-
-        如果整个页面加载失败，错误页面会显示 `digest`。请一并提供。
-      </Tab>
-      <Tab title="CLI">
-        可读的 `fp` 错误末尾同样带有相同的 `ref`。使用 `--json` 时，错误对象包含完整的 `request_id`：
-
-        ```bash
-        fp --json sessions --since 24h
-        ```
-      </Tab>
-      <Tab title="守护进程">
-        当上传失败时，守护进程的日志会记录 `request_id` 和 `batch_id`：在 Linux 上使用 `sudo journalctl -u failproofaid@$USER | grep batch_id`。每次尝试都有自己的 `request_id`；`batch_id` 在重试过程中保持不变，因此它将同一批次的多次尝试关联在一起。请两者都提供。
-      </Tab>
-    </Tabs>
-  </Accordion>
 </AccordionGroup>
 
-联系支持时，请提供 CLI 版本、测试环境、运行环境、相关的会话或部署 ID、错误中的任何 `ref` 或 `request_id`，以及移除敏感信息后的 `failproofai config --status` 输出。
+联系支持时，请提供 CLI 版本、测试框架、环境、相关会话或部署 ID，以及去除敏感信息后的 `failproofai config --status` 输出内容。

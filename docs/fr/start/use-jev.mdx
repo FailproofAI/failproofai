@@ -1,14 +1,14 @@
 ---
 title: "Utiliser Jev"
-description: "Configurer les évaluations Jev pour les sessions terminées ou les politiques Jev pour l'examen des appels d'outils en direct."
+description: "Configurez les évaluations Jev pour les sessions terminées ou les politiques Jev pour l'examen des appels d'outils en direct."
 icon: "sparkles"
 ---
 
-Jev intervient à deux moments lors d'une exécution d'agent : noter une session terminée par rapport à des réponses connues, ou examiner un appel d'outil dans le contexte de ce que vous avez demandé à l'agent.
+Jev intervient à deux moments dans l'exécution d'un agent : noter une session terminée par rapport à des réponses connues, ou examiner un appel d'outil dans le contexte de ce que vous avez demandé à l'agent de faire.
 
 <Tabs>
   <Tab title="Évaluations Jev">
-    Utilisez une évaluation Jev lorsqu'une session terminée peut être notée par rapport à une question avec quelques réponses connues, comme « Le client a-t-il demandé un remboursement ? Répondez par oui ou non. » Cela vous aide à identifier des tendances entre les sessions.
+    Utilisez une évaluation Jev lorsqu'une session terminée peut être notée par rapport à une question avec quelques réponses connues, par exemple « Le client a-t-il demandé un remboursement ? Répondez par oui ou non. » Cela vous aide à identifier des tendances entre les sessions.
 
     ## Créer une évaluation
 
@@ -16,7 +16,7 @@ Jev intervient à deux moments lors d'une exécution d'agent : noter une session
 
     ![Le formulaire partagé de création d'évaluation où vous décrivez une question, examinez le brouillon et le déployez. Cette capture d'écran montre un brouillon de code ; utilisez une question à réponse fixe pour Jev.](/images/dashboard/eval-authoring-draft.png)
 
-    ## Lire les scores
+    ## Consulter les scores
 
     Après la fin d'une nouvelle session, ouvrez **Observer → Évaluations** ou utilisez le CLI Cloud :
 
@@ -28,9 +28,9 @@ Jev intervient à deux moments lors d'une exécution d'agent : noter une session
     Le CLI lit les scores ; la création d'une évaluation Jev utilise actuellement le tableau de bord. Consultez [les évaluations Jev](/fr/evaluations/jev) pour les types de questions et des exemples.
   </Tab>
   <Tab title="Politiques Jev">
-    Utilisez l'examen par politique Jev lorsqu'une politique basée sur la correspondance de chaînes a besoin du contexte de votre requête pour déterminer si un appel d'outil est sûr. Commencez en mode **observer** afin de pouvoir inspecter les réponses de Jev pendant que vos politiques installées continuent de décider chaque appel.
+    Utilisez l'examen des politiques Jev lorsqu'une politique par correspondance de chaînes a besoin du contexte de votre requête pour déterminer si un appel d'outil est sûr. Commencez en mode **observe** pour pouvoir inspecter les réponses de Jev pendant que vos politiques installées continuent de traiter chaque appel.
 
-    Les vérifications de Jev proviennent d'un pack ; Failproof AI n'en fournit aucun. Jusqu'à ce que vous les installiez, Jev ne pose aucune question, même s'il est configuré :
+    Les vérifications de Jev proviennent d'un pack ; Failproof AI n'en fournit aucun. Tant que vous ne les installez pas, Jev ne pose aucune question, même s'il est configuré :
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
@@ -38,7 +38,7 @@ Jev intervient à deux moments lors d'une exécution d'agent : noter une session
 
     ## Configurer Cloud Jev
 
-    Dans le tableau de bord Cloud, ouvrez **Administration → Clés** et créez une clé avec le profil **machine**. Utilisez-la avec `failproofai config` comme indiqué dans le [démarrage rapide](/fr/start/quickstart). Sur une machine sans configuration Jev existante, cela active Cloud Jev en mode observer. Vérifiez la connexion avec :
+    Dans le tableau de bord Cloud, ouvrez **Administration → Clés** et créez une clé avec le préréglage **machine**. Utilisez-la avec `failproofai config` comme indiqué dans le [démarrage rapide](/fr/start/quickstart). Sur une machine sans configuration Jev existante, cela active Cloud Jev en mode observe. Vérifiez la connexion avec :
 
     ```bash
     failproofai jev status
@@ -47,9 +47,9 @@ Jev intervient à deux moments lors d'une exécution d'agent : noter une session
 
     ## Utiliser votre propre point de terminaison
 
-    Dans le tableau de bord local, ouvrez **Paramètres → Jev**. Choisissez le fournisseur, collez son jeton, sélectionnez **observer**, et activez Jev.
+    Dans le tableau de bord local, ouvrez **Paramètres → Jev**. Choisissez le fournisseur, collez son jeton, sélectionnez **observe**, et activez Jev.
 
-    ![Le panneau de paramètres Jev local avec un fournisseur, un champ de jeton et le mode observer sélectionné.](/images/dashboard/jev-settings.png)
+    ![Le panneau des paramètres Jev local avec un fournisseur, un champ de jeton et le mode observe sélectionné.](/images/dashboard/jev-settings.png)
 
     Ou configurez et testez votre point de terminaison depuis un terminal :
 
@@ -58,6 +58,6 @@ Jev intervient à deux moments lors d'une exécution d'agent : noter une session
     failproofai jev test
     ```
 
-    Demandez à un agent connecté d'utiliser son outil de lecture de fichiers sur `README.md`. Confirmez que cet appel d'outil apparaît dans la session, puis inspectez-le sous **Politiques → Activité** dans le tableau de bord local. Une fois que les résultats en mode observer semblent corrects, [les politiques Jev](/fr/policies/jev) explique dans quels cas les appliquer. Pour les détails sur les fournisseurs et la configuration, consultez la [référence d'intégration](/fr/reference/jev).
+    Demandez à un agent connecté d'utiliser son outil de lecture de fichiers sur `README.md`. Confirmez que cet appel d'outil apparaît dans la session, puis inspectez-le sous **Politiques → Activité** dans le tableau de bord local. Une fois que les résultats en mode observe semblent corrects, [les politiques Jev](/fr/policies/jev) explique quand appliquer l'enforcement. Pour les détails du fournisseur et la configuration, consultez la [référence d'intégration](/fr/reference/jev).
   </Tab>
 </Tabs>

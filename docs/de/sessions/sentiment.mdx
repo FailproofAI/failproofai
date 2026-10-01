@@ -1,6 +1,6 @@
 ---
-title: "Stimmungsanalyse"
-description: "Finden Sie frustrierte, verwirrte und korrigierende Nachrichten mit Jev-Stimmungswerten."
+title: "Sentimentanalyse"
+description: "Finden Sie frustrierte, verwirrte und korrigierende Nachrichten mithilfe von Jev-Sentiment-Scores."
 icon: "smile"
 ---
 
@@ -10,34 +10,34 @@ Jev bewertet jede Nachricht, die eine Person an Ihre Agenten sendet, auf einer S
 - **Gelöst**: Die Person bestätigt, dass der Agent ihr Problem gelöst hat.
 - **Zweifelnd**: Die Person hinterfragt, ob die Antwort des Agenten korrekt ist oder ob er die Aufgabe wirklich erledigt hat.
 
-Nutzen Sie die Stimmungsanalyse, um Gespräche zu finden, in denen Personen die Geduld verlieren, Agenten die wiederholt korrigiert werden, und Antworten, die gut ankommen. Dies ist eine integrierte Jev-Bewertung; Sie müssen keine eigene Auswertung erstellen. Für eigene Fragen mit festen Antworten können Sie [eine Jev-Auswertung erstellen](/de/evaluations/jev).
+Verwenden Sie die Sentimentanalyse, um Gespräche zu finden, in denen Menschen die Geduld verlieren, Agenten, die ständig korrigiert werden, und Antworten, die gut ankommen. Dabei handelt es sich um die integrierte Jev-Bewertung – Sie müssen keine eigene Evaluation erstellen. Für Ihre eigene Frage mit fester Antwort können Sie eine [Jev-Evaluation erstellen](/de/evaluations/jev).
 
 <Note>
-  Die Stimmungsanalyse ist deaktiviert, bis ein Administrator sie für die Organisation einschaltet. Jev stellt pro Nachricht eine Bewertungsanfrage und erhält diese Nachricht zusammen mit der vorausgehenden Agentenantwort. Die Bewertung verbraucht das Modellbudget Ihrer Organisation.
+  Das Sentiment ist deaktiviert, bis ein Administrator es für die Organisation einschaltet. Jev stellt pro Nachricht eine Bewertungsanfrage und erhält dabei die Nachricht zusammen mit der vorherigen Agentenantwort. Die Bewertung verwendet das Modellbudget Ihrer Organisation.
 </Note>
 
-## Einschalten
+## Aktivierung
 
-1. Navigieren Sie zu **Verwaltung → Einstellungen**.
-2. Unter **Stimmungsanalyse für menschliche Eingaben** schalten Sie die Option **ein** und speichern Sie.
+1. Gehen Sie zu **Administration → Einstellungen**.
+2. Aktivieren Sie unter **Sentiment für menschliche Eingaben** den Schalter und speichern Sie.
 
-Nachrichten vom letzten Tag werden zuerst bewertet. Danach werden neue Nachrichten innerhalb von ein bis zwei Minuten nach ihrem Eingang bewertet.
+Nachrichten des letzten Tages werden zuerst bewertet. Danach werden neue Nachrichten innerhalb ein bis zwei Minuten nach Eingang bewertet.
 
 ## Ein Gespräch zur Überprüfung finden
 
-Öffnen Sie **Beobachten → Stimmung**. Filtern Sie nach Zeitraum, Umgebung, Agent oder Sitzungs-ID. Die Kopfzeile zeigt die Anzahl der Nachrichten und Sitzungen, wie viele Nachrichten **markiert** sind, und nennt das wichtigste Signal. Eine Nachricht wird markiert, wenn ein Wert für wütend, frustriert, korrigierend, verwirrt oder zweifelnd 35 von 100 erreicht.
+Öffnen Sie **Beobachten → Sentiment**. Filtern Sie nach Zeitraum, Umgebung, Agent oder Session-ID. Die Kopfzeile zeigt die Anzahl der Nachrichten und Sessions, wie viele Nachrichten **markiert** sind, und nennt das stärkste Signal. Eine Nachricht wird markiert, wenn ein Wut-, Frustrations-, Korrektur-, Verwirrung- oder Zweifel-Score den Wert 35 von 100 erreicht.
 
-![Das Stimmungs-Dashboard mit Nachrichten- und Sitzungszählern, markierten Nachrichten und Jev-Werten im Zeitverlauf.](/images/dashboard/sentiment-overview.png)
+![Das Sentiment-Dashboard mit Nachrichten- und Session-Zählern, markierten Nachrichten und Jev-Scores über die Zeit.](/images/dashboard/sentiment-overview.png)
 
-Verwenden Sie **Wert im Zeitverlauf**, um Signale zu vergleichen. Wählen Sie die anzuzeigenden Werte aus und klicken Sie dann auf einen Punkt, um die Nachrichten dieses Zeitabschnitts zu sehen. Die Tabelle **Nach Agent** zeigt, wo ein Signal konzentriert ist. Unter **Nachrichten** können Sie nach dem stärksten negativen Wert sortieren oder einen einzelnen Wert auswählen. Öffnen Sie eine Nachricht in ihrer Sitzung, um das umliegende Gespräch zu lesen, bevor Sie entscheiden, was schiefgelaufen ist.
+Verwenden Sie **Score über Zeit**, um Signale zu vergleichen. Wählen Sie die anzuzeigenden Scores aus und klicken Sie dann auf einen Punkt, um die Nachrichten des jeweiligen Zeitraums zu sehen. Die Tabelle **Nach Agent** zeigt, wo ein Signal gehäuft auftritt. Sortieren Sie unter **Nachrichten** nach dem stärksten negativen Score oder wählen Sie einen einzelnen Score aus. Öffnen Sie eine Nachricht in ihrer Session, um das umgebende Gespräch zu lesen, bevor Sie entscheiden, was schiefgelaufen ist.
 
-![Die Stimmungs-Nachrichtenliste, sortiert nach dem stärksten negativen Wert, mit einem Link zur jeweiligen Quellsitzung.](/images/dashboard/sentiment-messages.png)
+![Die Sentiment-Nachrichtenliste, sortiert nach dem stärksten negativen Score, mit einem Link zur jeweiligen Quell-Session.](/images/dashboard/sentiment-messages.png)
 
 ## Welche Nachrichten bewertet werden
 
-Nur Nachrichten, die eine Person verfasst hat:
+Nur Nachrichten, die eine Person geschrieben hat:
 
-- Nachrichten, die Ihre benutzerdefinierten Agenten als menschliche Eingaben mit dem SDK aufzeichnen.
-- Eingabeaufforderungen, die in Claude Code, Codex, OpenCode, pi, Hermes und OpenClaw eingegeben werden, wenn Sitzungstranskripte gesendet werden (Standardeinstellung). Geplante Aufgaben, eingefügte Anweisungen, Übergaben an Unteragenten und andere Texte, die die eigene Laufzeitumgebung des Agenten schreibt, werden nicht bewertet. Ebenso wenig nicht-interaktive Ausführungen wie `claude -p`, `codex exec` und `hermes -z`: Diese Eingabeaufforderungen wurden von einem Skript erstellt, nicht von einer Person.
+- Nachrichten, die Ihre benutzerdefinierten Agenten als menschliche Eingabe mit dem SDK erfassen.
+- Prompts, die in Claude Code, Codex, OpenCode, pi, Hermes und OpenClaw eingegeben werden, sofern Session-Transkripte gesendet werden (Standardeinstellung). Geplante Jobs, injizierte Anweisungen, Sub-Agenten-Übergaben und andere Texte, die die eigene Laufzeit des Agenten erzeugt, werden nicht bewertet. Ebenso wenig nicht-interaktive Ausführungen wie `claude -p`, `codex exec` und `hermes -z`: Diese Prompts wurden von einem Skript geschrieben, nicht von einer Person.
 
-Die Bewertung beurteilt die eigenen Worte der Person. Eine kurze, knappe Anweisung wie „fix it" wird nicht als Wut gewertet, und das Stellen einer Frage wird nicht als Verwirrung gewertet. Eine neue Anfrage gilt nicht als Korrektur, und ein bloßes Dankeschön zählt nicht als gelöst.
+Die Bewertung beurteilt die eigenen Worte der Person. Eine kurze, knappe Anweisung wie „fix it" wird nicht als Wut gewertet, und das Stellen einer Frage gilt nicht als Verwirrung. Eine neue Anfrage ist keine Korrektur, und bloßes Bedanken zählt nicht als gelöst.

@@ -1,43 +1,43 @@
 ---
-title: "Analisi del sentimento"
-description: "Trova messaggi frustrati, confusi e correttivi con i punteggi di sentimento Jev."
+title: "Analisi del sentiment"
+description: "Trova messaggi frustrati, confusi e correttivi con i punteggi Jev sentiment."
 icon: "smile"
 ---
 
-Jev assegna a ogni messaggio che una persona invia ai tuoi agenti un punteggio da 0 a 100 per quattro emozioni — **arrabbiato**, **frustrato**, **felice** e **confuso** — e tre segnali su come sta andando l'agente:
+Jev assegna a ogni messaggio inviato da una persona ai tuoi agenti un punteggio da 0 a 100 per quattro emozioni — **arrabbiato**, **frustrato**, **felice** e **confuso** — e tre segnali su come sta andando l'agente:
 
 - **Correcting**: la persona dice che l'agente ha sbagliato qualcosa.
 - **Resolved**: la persona conferma che l'agente ha risolto il suo problema.
-- **Doubtful**: la persona mette in dubbio se la risposta dell'agente è vera, o se ha davvero funzionato.
+- **Doubtful**: la persona mette in dubbio se la risposta dell'agente è vera, o se ha davvero fatto il lavoro.
 
-Usa l'analisi del sentimento per trovare conversazioni in cui le persone stanno perdendo pazienza, agenti che continuano a essere corretti, e risposte che vanno a buon fine. Questo è il punteggio Jev integrato; non hai bisogno di creare una valutazione. Per la tua domanda a risposta fissa personale, [crea una valutazione Jev](/it/evaluations/jev).
+Usa l'analisi del sentiment per trovare conversazioni dove le persone stanno perdendo pazienza, agenti che continuano a essere corretti, e risposte che funzionano bene. Questo è il punteggio Jev integrato; non hai bisogno di creare una valutazione. Per la tua domanda con risposta fissa, [crea una valutazione Jev](/it/evaluations/jev).
 
 <Note>
-  Il sentimento è disattivato finché un amministratore non lo attiva per l'organizzazione. Jev effettua una richiesta di punteggio per messaggio e riceve quel messaggio con la risposta dell'agente prima di essa. Il punteggio utilizza il budget del modello della tua organizzazione.
+  Il sentiment è disattivato finché un amministratore non lo attiva per l'organizzazione. Jev effettua una richiesta di punteggio per messaggio e riceve quel messaggio con la risposta dell'agente prima. Il punteggio utilizza il budget del modello della tua organizzazione.
 </Note>
 
 ## Attivalo
 
 1. Vai a **Administration → Settings**.
-2. Sotto **Human input sentiment**, attivalo **on** e salva.
+2. In **Human input sentiment**, attivalo **on** e salva.
 
-I messaggi dell'ultimo giorno vengono punteggiati per primi. Dopodiché, i nuovi messaggi vengono punteggiati entro un minuto o due dall'arrivo.
+I messaggi dell'ultimo giorno vengono punteggiati per primi. Dopo di ciò, i nuovi messaggi vengono punteggiati entro uno o due minuti dall'arrivo.
 
-## Trova una conversazione da revisionare
+## Trova una conversazione da rivedere
 
-Apri **Observe → Sentiment**. Filtra per tempo, ambiente, agente o ID di sessione. L'intestazione conta i messaggi e le sessioni, mostra quanti messaggi sono **flagged**, e nomina il segnale principale. Un messaggio è contrassegnato quando un punteggio arrabbiato, frustrato, correttivo, confuso o dubbioso raggiunge 35 su 100.
+Apri **Observe → Sentiment**. Filtra per ora, ambiente, agente o ID sessione. L'intestazione conta i messaggi e le sessioni, mostra quanti messaggi sono **flagged**, e nomina il segnale principale. Un messaggio è flagged quando un punteggio arrabbiato, frustrato, correttivo, confuso o dubbioso raggiunge 35 su 100.
 
-![Il dashboard Sentiment che mostra i conteggi di messaggi e sessioni, messaggi contrassegnati e punteggi Jev nel tempo.](/images/dashboard/sentiment-overview.png)
+![Il dashboard Sentiment che mostra i conteggi di messaggi e sessioni, i messaggi flagged, e i punteggi Jev nel tempo.](/images/dashboard/sentiment-overview.png)
 
-Usa **Score over time** per confrontare i segnali. Scegli i punteggi da mostrare, poi seleziona un punto per vedere i messaggi di quel bucket di tempo. La tabella **By agent** mostra dove un segnale è concentrato. In **Messages**, ordina per il punteggio negativo più forte o seleziona un singolo punteggio. Apri un messaggio nella sua sessione per leggere la conversazione circostante prima di decidere cosa è fallito.
+Usa **Score over time** per confrontare i segnali. Scegli i punteggi da mostrare, quindi seleziona un punto per vedere i messaggi di quel bucket temporale. La tabella **By agent** mostra dove un segnale è concentrato. In **Messages**, ordina per il punteggio negativo più forte o seleziona un singolo punteggio. Apri un messaggio nella sua sessione per leggere la conversazione circostante prima di decidere cosa è andato male.
 
-![L'elenco dei messaggi Sentiment ordinato per il punteggio negativo più forte, con un collegamento a ogni sessione di origine.](/images/dashboard/sentiment-messages.png)
+![L'elenco dei messaggi Sentiment ordinato per il punteggio negativo più forte, con un link a ogni sessione di origine.](/images/dashboard/sentiment-messages.png)
 
 ## Quali messaggi vengono punteggiati
 
-Solo i messaggi che una persona ha scritto:
+Solo i messaggi scritti da una persona:
 
 - Messaggi che i tuoi agenti personalizzati registrano come input umano con l'SDK.
-- Prompt digitati in Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando vengono inviate trascrizioni di sessione (impostazione predefinita). I job pianificati, le istruzioni iniettate, i passaggi tra sub-agenti e altro testo che il runtime dell'agente stesso scrive non vengono punteggiati. Nemmeno le esecuzioni non interattive come `claude -p`, `codex exec` e `hermes -z`: uno script ha scritto quei prompt, non una persona.
+- Prompt digitati in Claude Code, Codex, OpenCode, pi, Hermes e OpenClaw, quando i trascritti di sessione vengono inviati (il default). I lavori pianificati, le istruzioni iniettate, i passaggi tra sub-agenti e altri testi che il runtime dell'agente stesso scrive non vengono punteggiati. Nemmeno le esecuzioni non interattive come `claude -p`, `codex exec` e `hermes -z`: uno script ha scritto questi prompt, non una persona.
 
-Il punteggio valuta le parole stesse della persona. Un'istruzione breve e diretta come "fix it" non è contata come rabbia, e fare una domanda non è contata come confusione. Una nuova richiesta non è una correzione, e i ringraziamenti da soli non contano come risolto.
+Il punteggio giudica le proprie parole della persona. Un'istruzione breve e diretta come "fix it" non viene contata come rabbia, e fare una domanda non viene contata come confusione. Una nuova richiesta non è una correzione, e i ringraziamenti da soli non contano come risolti.

@@ -1,19 +1,19 @@
 ---
 title: "Duygu analizi"
-description: "Jev duygu puanları ile hayal kırıklığına uğramış, kafası karışmış ve düzeltme mesajlarını bulun."
+description: "Jev duygu puanlarıyla hayal kırıklığına uğramış, kafası karışmış ve düzeltici mesajları bulun."
 icon: "smile"
 ---
 
-Jev, bir kişinin ajanlarınıza gönderdiği her mesajı 0 ile 100 arasında dört duygu için puanlandırır — **öfkeli**, **hayal kırıklığına uğramış**, **mutlu** ve **kafası karışmış** — ve ajanın ne kadar iyi performans gösterdiğini gösteren üç sinyal:
+Jev, kişinin ajanlarınıza gönderdiği her mesajı dört duygu için 0 ile 100 arasında puanlandırır — **kızgın**, **hayal kırıklığına uğramış**, **mutlu** ve **kafası karışmış** — ve ajanın durumu hakkında üç sinyal:
 
-- **Düzeltme**: kişi ajanın bir şeyi yanlış yaptığını söyler.
-- **Çözüldü**: kişi ajanın sorunlarını çözdüğünü onaylar.
-- **Şüpheli**: kişi ajanın cevabının doğru olup olmadığını veya gerçekten işi yaptığını sorgulamaktadır.
+- **Düzeltici**: kişi ajanın bir şeyler yanlış yaptığını söylüyor.
+- **Çözüldü**: kişi ajanın sorunu çözdüğünü doğruluyor.
+- **Şüpheli**: kişi ajanın cevabının doğru olup olmadığını veya işi gerçekten yapıp yapmadığını sorguluyor.
 
-Duygu analizini, insanların sabırını kaybettikleri konuşmaları, onları düzeltmeye devam ettikleri ajanları ve iyi karşılanan yanıtları bulmak için kullanın. Bu yerleşik Jev puanlandırmasıdır; bir değerlendirme yazmanıza gerek yoktur. Kendi sabit cevap sorunuz için [bir Jev eval oluşturun](/tr/evaluations/jev).
+Duygu analizini, insanların sabrının tükendiği konuşmaları, sıkça düzeltilen ajanları ve iyi sonuç veren yanıtları bulmak için kullanın. Bu, yerleşik Jev puanlamadır; bir değerlendirme yazmanız gerekmez. Kendi sabit cevap sorularınız için, [bir Jev değerlendirmesi oluşturun](/tr/evaluations/jev).
 
 <Note>
-  Duygu, bir yönetici kuruluş için açana kadar kapalıdır. Jev, mesaj başına bir puanlama isteği yapar ve bu mesajı ajan yanıtından önce alır. Puanlama, kuruluşunuzun model bütçesini kullanır.
+  Duygu, bir yönetici organizasyon için açana kadar kapalıdır. Jev mesaj başına bir puanlama isteği yapar ve söz konusu mesajı alır, ardından ajan yanıtı gelir. Puanlama, kuruluşunuzun model bütçesini kullanır.
 </Note>
 
 ## Açın
@@ -21,23 +21,23 @@ Duygu analizini, insanların sabırını kaybettikleri konuşmaları, onları d�
 1. **Yönetim → Ayarlar**'a gidin.
 2. **İnsan girdisi duygusu** altında, bunu **açın** ve kaydedin.
 
-Son günün mesajları önce puanlandırılır. Bundan sonra yeni mesajlar gelişlerinden bir veya iki dakika içinde puanlandırılır.
+Son günün mesajları önce puanlandırılır. Bundan sonra, yeni mesajlar geldikten bir iki dakika içinde puanlandırılır.
 
 ## İncelemek için bir konuşma bulun
 
-**Gözle → Duygu**'yu açın. Zaman, ortam, ajan veya oturum ID'sine göre filtreleyin. Başlık mesaj ve oturum sayısını sayar, kaç mesajın **işaretlendiği** gösterir ve en önemli sinyali adlandırır. Öfkeli, hayal kırıklığına uğramış, düzeltme, kafası karışmış veya şüpheli puan 100 üzerinden 35'e ulaştığında bir mesaj işaretlenir.
+**Gözle → Duygu** seçeneğini açın. Zaman, ortam, ajan veya oturum kimliğine göre filtreleyin. Başlık mesaj ve oturum sayılarını, kaç mesajın **işaretlendiği** gösterir ve en üst sinyali adlandırır. Kızgın, hayal kırıklığına uğramış, düzeltici, kafası karışmış veya şüpheli puan 100 üzerinden 35'e ulaştığında bir mesaj işaretlenir.
 
-![Duygu panosu, mesaj ve oturum sayıları, işaretli mesajlar ve zaman içinde Jev puanlarını gösteriyor.](/images/dashboard/sentiment-overview.png)
+![Duygu panosu mesaj ve oturum sayılarını, işaretli mesajları ve zaman içinde Jev puanlarını gösteriyor.](/images/dashboard/sentiment-overview.png)
 
-Sinyalleri karşılaştırmak için **Zaman içinde puan** kullanın. Gösterilecek puanları seçin, ardından o zaman diliminin mesajlarını görmek için bir noktayı seçin. **Ajan başına** tablosu bir sinyalin nerede yoğunlaştığını gösterir. **Mesajlar**'da en güçlü negatif puana göre sıralayın veya tek bir puan seçin. Neyin başarısız olduğuna karar vermeden önce çevreleyen konuşmayı okumak için bir mesajı oturumunda açın.
+Sinyalleri karşılaştırmak için **Zaman içinde puan** kullanın. Gösterilecek puanları seçin, sonra bu zaman demetinin mesajlarını görmek için bir nokta seçin. **Ajan başına** tablosu bir sinyalin nerede yoğunlaştığını gösterir. **Mesajlar**'da, en güçlü negatif puana göre sıralayın veya tek bir puan seçin. Başarısızlığa karar vermeden önce çevreleyen konuşmayı okumak için bir mesajı oturumunda açın.
 
-![Duygu mesaj listesi en güçlü negatif puana göre sıralanmış ve her kaynak oturumunun bağlantısı.](/images/dashboard/sentiment-messages.png)
+![Duygu mesaj listesi en güçlü negatif puana göre sıralanmış, her kaynak oturumuna bir bağlantı ile.](/images/dashboard/sentiment-messages.png)
 
 ## Hangi mesajlar puanlandırılır
 
 Yalnızca bir kişinin yazdığı mesajlar:
 
 - Özel ajanlarınızın SDK ile insan girdisi olarak kaydettiği mesajlar.
-- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler; oturum transkriptleri gönderildiğinde (varsayılan). Zamanlanmış işler, enjekte edilen talimatlar, alt ajan devralmalar ve ajanın kendi çalışma zamanının yazdığı diğer metinler puanlandırılmaz. "claude -p", "codex exec" ve "hermes -z" gibi etkileşimli olmayan çalışmalar da: bir komut dosyası bu komut istemlerini yazdı, bir kişi değil.
+- Claude Code, Codex, OpenCode, pi, Hermes ve OpenClaw'a yazılan istemler; oturum dökümü gönderildiğinde (varsayılan). Planlanmış işler, enjekte edilen talimatlar, alt ajan devralmalar ve ajanın kendi çalışma zamanının yazdığı diğer metinler puanlanmaz. Etkileşimli olmayan çalıştırmalar da puanlanmaz: `claude -p`, `codex exec` ve `hermes -z` — bir komut dosyası bu istemleri yazıyor, bir kişi değil.
 
-Puanlama, kişinin kendi sözlerini yargılar. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve soru sormak da karışıklık olarak sayılmaz. Yeni bir istek düzeltme değildir ve tek başına teşekkür çözüldü olarak sayılmaz.
+Puanlama kişinin kendi sözlerini değerlendirir. "Düzelt" gibi kısa, sert bir talimat öfke olarak sayılmaz ve soru sormak da kafa karışıklığı olarak sayılmaz. Yeni bir istek düzeltme değildir ve kendi başında teşekkürler çözüldü olarak sayılmaz.

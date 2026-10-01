@@ -4,25 +4,25 @@ description: "Usa Jev per valutare una sessione completata rispetto a una domand
 icon: "list-checks"
 ---
 
-Una valutazione Jev legge una **sessione completata** e fornisce un punteggio da 0 a 1. Usala quando la risposta è nota in anticipo, ad esempio "Il cliente ha espresso urgenza?" oppure "Quanto era frustrato il cliente?" Ti aiuta a trovare pattern tra le esecuzioni; non interrompe una chiamata a tool. Per decisioni prese **prima** dell'esecuzione di un tool, usa le [politiche Jev](/it/policies/jev).
+Una valutazione Jev legge una **sessione completata** e assegna un punteggio da 0 a 1. Usala quando la risposta è nota in anticipo, ad esempio "Il cliente ha espresso urgenza?" oppure "Quanto era frustrato il cliente?" Ti aiuta a trovare schemi tra le esecuzioni; non interrompe una chiamata di strumento. Per le decisioni prese **prima** che uno strumento venga eseguito, usa le [politiche Jev](/it/policies/jev).
 
-## Creane una nella dashboard
+## Crearne una nel dashboard
 
 1. Apri **Analyze → eval authoring** e seleziona **new eval**.
 2. Descrivi una domanda e le sue possibili risposte. Ad esempio: "L'agente ha promesso un rimborso prima di controllare la politica sui rimborsi? Rispondi sì o no." Seleziona **draft** e verifica che il risultato sia un punteggio di classificazione.
-3. [Testala](/it/evaluations/test) su sessioni recenti, quindi [distribuiscila](/it/evaluations/deploy). Le nuove sessioni completate vengono valutate; esegui il [backfill](/it/evaluations/deploy#score-sessions-you-already-have) se hai bisogno anche della cronologia.
+3. [Testala](/it/evaluations/test) su sessioni recenti, quindi [distribuiscila](/it/evaluations/deploy). Le nuove sessioni completate vengono valutate; [esegui il backfill](/it/evaluations/deploy#score-sessions-you-already-have) se hai bisogno anche della cronologia.
 
-![Il modulo di authoring eval condiviso, dove descrivi una domanda con risposta fissa, rivedi il draft e distribuisci dopo aver testato. L'esempio mostrato è una valutazione di codice; una domanda Jev utilizza lo stesso flusso di authoring.](/images/dashboard/eval-authoring-draft.png)
+![Il modulo di authoring eval condiviso, dove descrivi una domanda con risposta fissa, rivedi la bozza e distribuisci dopo i test. L'esempio mostrato è una valutazione del codice; una domanda Jev utilizza lo stesso flusso di authoring.](/images/dashboard/eval-authoring-draft.png)
 
-L'assistente può scegliere tra codice, classificazione Jev e un [judge](/it/evaluations/judge). Verifica la sua scelta prima di distribuire. Jev fornisce un punteggio senza ragionamento in prosa; scegli un judge quando hai bisogno di una spiegazione. Consulta il [riferimento delle valutazioni Jev](/it/reference/jev-evaluations) per i tipi di domanda e i limiti dei punteggi.
+L'assistente può scegliere tra codice, classificazione Jev e un [giudice](/it/evaluations/judge). Verifica la sua scelta prima di distribuire. Jev assegna un punteggio senza ragionamento in prosa; scegli un giudice quando hai bisogno di una spiegazione. Consulta il [riferimento per le valutazioni Jev](/it/reference/jev-evaluations) per i tipi di domande e i limiti di punteggio.
 
 ## Leggi i punteggi
 
-Apri **Observe → Evaluations** per creare un grafico del risultato per agente e tempo. Da un terminale, Cloud CLI può leggere gli stessi risultati:
+Apri **Observe → Evaluations** per tracciare il risultato per agente e ora. Da un terminale, Cloud CLI può leggere gli stessi risultati:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI legge i risultati; l'authoring e la distribuzione avvengono nella dashboard. Consulta il [riferimento di Cloud CLI](/it/reference/cloud-cli#evaluations) per i filtri.
+Cloud CLI legge i risultati; l'authoring e la distribuzione avvengono nel dashboard. Consulta il [riferimento Cloud CLI](/it/reference/cloud-cli#evaluations) per i filtri.

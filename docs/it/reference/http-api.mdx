@@ -1,23 +1,23 @@
 ---
 title: "HTTP API"
-description: "Autentica all'API pubblica Failproof AI Cloud `/v1` e utilizza il riferimento endpoint generato."
+description: "Autenticati all'API pubblica Failproof AI Cloud `/v1` e utilizza il riferimento endpoint generato."
 icon: "braces"
 ---
 
-L'API pubblica è servita sotto `/v1` sul tuo origin della dashboard Failproof AI.
+L'API pubblica è servita sotto `/v1` sull'origine della tua dashboard Failproof AI.
 
 ## Crea una chiave e fai una richiesta
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Administration → Keys**, seleziona **Create key** e scegli il preset di autorizzazione più restrittivo che copre l'integrazione.
-    2. Aggiungi autorizzazioni individuali solo quando necessario, crea la chiave e copia il suo segreto monouso.
+    1. Apri **Administration → Keys**, seleziona **Create key** e scegli il preset di permessi più restrittivo che copra l'integrazione.
+    2. Aggiungi singoli grant solo quando necessario, crea la chiave e copia il suo segreto monouso.
     3. Fai una richiesta di test a `/v1/sessions` e conferma che la chiave rimane attiva nella pagina Keys.
-    4. Ruota o disabilita la chiave dal suo menu di azione quando la proprietà dell'integrazione cambia.
+    4. Ruota o disabilita la chiave dal suo menu di azioni quando la proprietà dell'integrazione cambia.
 
-    ![Il cassetto della nuova chiave API con preset di autorizzazione e autorizzazioni individuali.](/images/dashboard/key-create.png)
+    ![Il nuovo drawer delle chiavi API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
 
-    Il cassetto di creazione è mostrato sopra. Il segreto monouso appare solo dopo che selezioni **create**; copialo prima di chiudere quella conferma.
+    Il drawer di creazione è mostrato sopra. Il segreto monouso appare solo dopo che hai selezionato **create**; copialo prima di chiudere quella conferma.
   </Tab>
   <Tab title="CLI">
     Crea una chiave di lettura e usala direttamente con `fp` o `curl`:
@@ -36,19 +36,19 @@ L'API pubblica è servita sotto `/v1` sul tuo origin della dashboard Failproof A
   </Tab>
 </Tabs>
 
-Le chiavi sono limitate a un'organizzazione e a un set di autorizzazioni. Una richiesta senza l'autorizzazione richiesta dall'endpoint restituisce `403` e identifica l'autorizzazione mancante.
+Le chiavi sono limitate a un'organizzazione e a un set di permessi. Una richiesta senza il permesso richiesto dall'endpoint restituisce `403` e identifica il permesso mancante.
 
 ## Selezione dell'organizzazione
 
-Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope di istanza può selezionare un'organizzazione per richiesta:
+Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope istanza può selezionare un'organizzazione per richiesta:
 
 <Tabs>
   <Tab title="Dashboard">
-    Utilizza lo switcher dell'organizzazione nell'intestazione della dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare le credenziali nell'automazione.
+    Usa il selettore di organizzazione nell'intestazione della dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare la credenziale nell'automazione.
 
   </Tab>
   <Tab title="CLI">
-    Usa `--org` prima del comando, oppure invia l'intestazione dell'organizzazione per una chiave API con scope di istanza.
+    Usa `--org` prima del comando, oppure invia l'header dell'organizzazione per una chiave API con scope istanza.
 
     ```bash
     fp orgs list
@@ -63,18 +63,12 @@ Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. 
   </Tab>
 </Tabs>
 
-Utilizza le pagine degli endpoint generati in questa sezione per i percorsi attuali, i parametri, i requisiti di autorizzazione e i codici di stato. La specifica è generata dalle annotazioni delle route del server e controllata rispetto al router `/v1`.
+Utilizza le pagine di endpoint generate in questa sezione per i percorsi attuali, i parametri, i requisiti di permesso e i codici di stato. La specifica è generata dalle annotazioni del percorso del server e verificata rispetto al router `/v1`.
 
-La specifica attuale ha una copertura completa di route, metodo, parametro, autorizzazione e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server li costruisce ancora come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato attorno a un endpoint senza uno schema di risposta.
+La specifica attuale ha una copertura completa di percorso, metodo, parametro, permesso e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server ancora li costruisce come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato intorno a un endpoint senza uno schema di risposta.
 
-Utilizza `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come identità valida senza l'autorizzazione richiesta, `404` come risorsa mancante o inaccessibile all'organizzazione, `409` come conflitto di stato e `422` come valore di campo o autorizzazione non valido. Le risposte di errore includono un messaggio leggibile; i fallimenti di autorizzazione nominano anche l'autorizzazione richiesta.
-
-## ID richiesta
-
-Ogni risposta contiene un'intestazione `X-Request-Id` e ogni corpo di errore JSON include lo stesso valore come `request_id`. Citalo quando contatti il supporto: identifica quella richiesta specifica.
-
-Puoi inviare il tuo `X-Request-Id` per correlare una richiesta con i tuoi log. Utilizza 32 caratteri esadecimali minuscoli, come un UUID v4 con i trattini rimossi. Qualsiasi altro valore viene sostituito con un nuovo ID, che viene restituito nella risposta.
+Usa `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come un'identità valida senza il permesso richiesto, `404` come una risorsa mancante o inaccessibile dall'organizzazione, `409` come un conflitto di stato, e `422` come un valore di campo o permesso non valido. Le risposte di errore includono un messaggio leggibile dall'utente; gli errori di permesso nominano anche il grant richiesto.
 
 <Warning>
-  La distribuzione dell'applicazione delle policy è intenzionalmente gestita al di fuori della superficie pubblica `/v1` ordinaria. Utilizza il flusso di lavoro di distribuzione Cloud supportato.
+  L'implementazione dell'applicazione della politica è intenzionalmente gestita al di fuori della superficie pubblica ordinaria `/v1`. Utilizza il flusso di implementazione Cloud supportato.
 </Warning>

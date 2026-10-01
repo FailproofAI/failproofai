@@ -1,44 +1,44 @@
 ---
-title: "Jev を使う"
-description: "完了したセッションの Jev 評価、またはライブのツールコールレビュー用の Jev ポリシーを設定します。"
+title: "Jev を使用する"
+description: "完了したセッションに対する Jev 評価、またはライブのツール呼び出しレビューのための Jev ポリシーをセットアップします。"
 icon: "sparkles"
 ---
 
-Jev はエージェント実行の2つのタイミングで役立ちます。完了したセッションを既知の回答と照合してスコアリングするか、あなたがエージェントに依頼した内容のコンテキストでツールコールをレビューします。
+Jev はエージェント実行の 2 つのタイミングでサポートします。完了したセッションを既知の回答に基づいてスコアリングするか、エージェントへの指示のコンテキストを踏まえてツール呼び出しをレビューします。
 
 <Tabs>
   <Tab title="Jev evals">
-    完了したセッションを「顧客は返金を求めましたか？はいかいいえで答えてください。」のように、いくつかの既知の回答がある質問に対してスコアリングできる場合に Jev eval を使用します。セッション間のパターンを発見するのに役立ちます。
+    「顧客は返金を求めましたか？はいかいいえで答えてください。」のように、いくつかの既知の回答を持つ質問に対して完了したセッションをスコアリングできる場合に Jev eval を使用します。セッション全体のパターンを発見するのに役立ちます。
 
     ## eval を作成する
 
-    Cloud ダッシュボードで **Analyze → eval authoring → new eval** を開きます。固定回答の質問を1つ入力し、**draft** を選択して、分類スコアが選ばれていることを確認します。実際のセッションで[テスト](/ja/evaluations/test)してから、デプロイします。
+    Cloud ダッシュボードで **Analyze → eval authoring → new eval** を開きます。固定回答の質問を 1 つ入力し、**draft** を選択して、分類スコアが選ばれていることを確認します。実際のセッションで[テスト](/ja/evaluations/test)した後、デプロイします。
 
-    ![質問を記述し、ドラフトを確認してデプロイする共有 eval 作成フォーム。このスクリーンショットはコードドラフトを示していますが、Jev には固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
+    ![質問を説明し、ドラフトを確認してデプロイする共有 eval 作成フォーム。このスクリーンショットにはコードのドラフトが表示されていますが、Jev には固定回答の質問を使用してください。](/images/dashboard/eval-authoring-draft.png)
 
     ## スコアを確認する
 
-    新しいセッションが完了したら、**Observe → Evaluations** を開くか、Cloud CLI を使用します：
+    新しいセッションが完了したら、**Observe → Evaluations** を開くか、Cloud CLI を使用します。
 
     ```bash
     fp evals --since 7d
     fp evals --aggregate --since 7d
     ```
 
-    CLI はスコアを読み取ります。Jev eval の作成は現在ダッシュボードで行います。質問の種類と例については [Jev evaluations](/ja/evaluations/jev) を参照してください。
+    CLI はスコアを読み取ります。Jev eval の作成は現在ダッシュボードで行います。質問タイプと例については [Jev evaluations](/ja/evaluations/jev) を参照してください。
   </Tab>
   <Tab title="Jev policies">
-    文字列マッチングポリシーがツールコールの安全性を判断するためにリクエストのコンテキストを必要とする場合に、Jev ポリシーレビューを使用します。まず **observe** モードで開始し、インストール済みのポリシーが各コールを判断する間、Jev の回答を確認できるようにします。
+    ツール呼び出しの安全性を判断するためにリクエストのコンテキストが必要な文字列マッチングポリシーには、Jev ポリシーレビューを使用します。まず **observe** モードで開始し、インストール済みのポリシーが各呼び出しを判断する間に Jev の回答を確認できるようにします。
 
-    Jev のチェックはパックから提供されますが、Failproof AI はパックを同梱しません。インストールするまで、Jev は設定されていても何も確認しません：
+    Jev のチェックはパックから提供されます。Failproof AI はパックを同梱していません。インストールするまで、Jev は設定されていても何も問い合わせません。
 
     ```bash
     failproofai policies add FailproofAI/jev-policies
     ```
 
-    ## Cloud Jev を設定する
+    ## Cloud Jev をセットアップする
 
-    Cloud ダッシュボードで **Administration → Keys** を開き、**machine** プリセットでキーを作成します。[クイックスタート](/ja/start/quickstart)に示されているように、`failproofai config` でそのキーを使用します。既存の Jev 設定がないマシンでは、observe モードで Cloud Jev が有効になります。次のコマンドで接続を確認します：
+    Cloud ダッシュボードで **Administration → Keys** を開き、**machine** プリセットでキーを作成します。[クイックスタート](/ja/start/quickstart) に示されているように、`failproofai config` でそのキーを使用します。既存の Jev 設定がないマシンでは、observe モードで Cloud Jev が有効になります。以下のコマンドで接続を確認してください。
 
     ```bash
     failproofai jev status
@@ -47,17 +47,17 @@ Jev はエージェント実行の2つのタイミングで役立ちます。完
 
     ## 独自のエンドポイントを使用する
 
-    ローカルダッシュボードで **Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付け、**observe** を選択して、Jev をオンにします。
+    ローカルダッシュボードで **Settings → Jev** を開きます。プロバイダーを選択し、トークンを貼り付け、**observe** を選択して Jev をオンにします。
 
     ![プロバイダー、トークンフィールド、および observe モードが選択されたローカル Jev 設定パネル。](/images/dashboard/jev-settings.png)
 
-    または、ターミナルからエンドポイントを設定してテストします：
+    または、ターミナルからエンドポイントを設定してテストします。
 
     ```bash
     failproofai jev --url https://api.typesafe.ai/v1 --mode observe --key-stdin < ~/typesafe.key
     failproofai jev test
     ```
 
-    フックされたエージェントに `README.md` のファイル読み取りツールを使用するよう依頼します。そのツールコールがセッションに表示されることを確認し、ローカルダッシュボードの **Policies → Activity** で確認します。observe の結果が正しく見えたら、[Jev policies](/ja/policies/jev) でいつ適用するかを説明しています。プロバイダーの詳細と設定については、[integration reference](/ja/reference/jev) を参照してください。
+    フックされたエージェントに `README.md` のファイル読み取りツールを使用するよう指示します。そのツール呼び出しがセッションに表示されていることを確認し、ローカルダッシュボードの **Policies → Activity** で詳細を確認します。observe の結果が正しく見えたら、[Jev policies](/ja/policies/jev) でいつ適用するかを確認してください。プロバイダーの詳細と設定については、[integration reference](/ja/reference/jev) を参照してください。
   </Tab>
 </Tabs>

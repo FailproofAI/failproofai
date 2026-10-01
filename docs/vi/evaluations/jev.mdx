@@ -1,28 +1,28 @@
 ---
 title: "Jev evaluations"
-description: "Use Jev to score a finished session against a question with known answers."
+description: "Sử dụng Jev để chấm điểm một phiên làm việc đã hoàn thành dựa trên một câu hỏi có câu trả lời đã biết."
 icon: "list-checks"
 ---
 
-Một đánh giá Jev đọc một **phiên làm việc đã hoàn thành** và đưa ra điểm từ 0 đến 1. Sử dụng nó khi biết trước câu trả lời, chẳng hạn như "Khách hàng có thể hiện tính khẩn cấp không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mẫu trong các lần chạy; nó không dừng lệnh gọi công cụ. Để đưa ra quyết định **trước khi** một công cụ chạy, hãy sử dụng [Jev policies](/vi/policies/jev).
+Một Jev evaluation đọc một **phiên làm việc đã hoàn thành** và cho một điểm từ 0 đến 1. Sử dụng nó khi câu trả lời đã biết trước, chẳng hạn như "Khách hàng có thể hiện sự khẩn cấp không?" hoặc "Khách hàng bực bội đến mức nào?" Nó giúp bạn tìm ra các mẫu hình trên nhiều lần chạy; nó không dừng lệnh gọi công cụ. Để đưa ra quyết định **trước khi** một công cụ chạy, sử dụng [Jev policies](/vi/policies/jev).
 
-## Tạo một đánh giá trên bảng điều khiển
+## Tạo một trong bảng điều khiển
 
 1. Mở **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả một câu hỏi và các câu trả lời có thể có của nó. Ví dụ: "Agent có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem xét rằng kết quả là một điểm phân loại.
+2. Mô tả một câu hỏi và các câu trả lời khả thi của nó. Ví dụ: "Tác nhân có hứa hoàn tiền trước khi kiểm tra chính sách hoàn tiền không? Trả lời có hoặc không." Chọn **draft** và xem lại rằng kết quả là một điểm phân loại.
 3. [Kiểm tra nó](/vi/evaluations/test) trên các phiên gần đây, sau đó [triển khai nó](/vi/evaluations/deploy). Các phiên đã hoàn thành mới sẽ được chấm điểm; [backfill](/vi/evaluations/deploy#score-sessions-you-already-have) nếu bạn cũng cần lịch sử.
 
-![Biểu mẫu eval authoring dùng chung, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem xét bản nháp và triển khai sau khi kiểm tra. Ví dụ được hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng cùng một quy trình authoring.](/images/dashboard/eval-authoring-draft.png)
+![Biểu mẫu eval authoring được chia sẻ, nơi bạn mô tả một câu hỏi có câu trả lời cố định, xem lại bản nháp và triển khai sau khi kiểm tra. Ví dụ hiển thị là một đánh giá mã; một câu hỏi Jev sử dụng cùng luồng authoring.](/images/dashboard/eval-authoring-draft.png)
 
-Trợ lý có thể chọn giữa mã, phân loại Jev và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev đưa ra điểm mà không có lý do văn bản; chọn judge khi bạn cần một lời giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
+Trợ lý có thể chọn giữa mã, phân loại Jev và một [judge](/vi/evaluations/judge). Kiểm tra lựa chọn của nó trước khi triển khai. Jev cho một điểm mà không cần lý do bằng văn bản; chọn một judge khi bạn cần một giải thích. Xem [Jev evaluation reference](/vi/reference/jev-evaluations) để biết các loại câu hỏi và giới hạn điểm.
 
 ## Đọc các điểm
 
-Mở **Observe → Evaluations** để vẽ biểu đồ kết quả theo agent và thời gian. Từ terminal, Cloud CLI có thể đọc các kết quả tương tự:
+Mở **Observe → Evaluations** để biểu đồ kết quả theo tác nhân và thời gian. Từ terminal, Cloud CLI có thể đọc cùng kết quả:
 
 ```bash
 fp evals --since 7d
 fp evals --aggregate --since 7d
 ```
 
-Cloud CLI đọc kết quả; authoring và triển khai diễn ra trên bảng điều khiển. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.
+Cloud CLI đọc kết quả; authoring và triển khai diễn ra trong bảng điều khiển. Xem [Cloud CLI reference](/vi/reference/cloud-cli#evaluations) để biết các bộ lọc.

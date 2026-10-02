@@ -12,6 +12,15 @@
  * never installed its checks: `jevChecksInstalled` below is the hook path's
  * gate for starting a review at all.
  *
+ * ## …and a FailproofAI Cloud `both` policy's own Cloud checks
+ *
+ * A `both` policy's JS half names its own Jev checks, which run on FailproofAI
+ * Cloud and never reach this machine (CONTRACT C10). While Cloud's Jev mode
+ * asks (`observe`/`enforce`), those names are reviewers too — but only as
+ * `cloud:<policyId>/<name>` (`cloudReviewerName`), which the Cloud review files
+ * that policy's own Cloud outcomes under. An installed pack's check of the same
+ * name is a different reviewer and can never clear it.
+ *
  * The names come from the MANIFEST, which is already where `authority` and
  * `reviewedBy` themselves are read from, so this adds no new trust and imports
  * no semantic module.
@@ -36,6 +45,7 @@
  */
 import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { NO_REVIEWERS, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
+import { cloudReviewerNames, readCloudAuthorityInputs, readCloudJevMode } from "./cloud-managed-policies";
 
 let cached: ReadonlySet<string> | null = null;
 let cachedContested: ReadonlyMap<string, string[]> = new Map();
@@ -179,6 +189,14 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
     cachedContested = contestedSemanticNames(packs);
   } catch {
     // See above: an unreadable manifest declares no checks.
+  }
+  try {
+    // Both reads answer "nothing" for a file they cannot use; guarded anyway,
+    // because a throw here would cost the registration pass — every policy.
+    const cloud = cloudReviewerNames(readCloudAuthorityInputs(), readCloudJevMode());
+    if (cloud.length > 0) names = new Set([...names, ...cloud]);
+  } catch {
+    // No Cloud reviewers: every `both` policy stays hard.
   }
   cached = names;
   return names;

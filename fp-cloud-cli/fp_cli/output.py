@@ -490,7 +490,7 @@ _TOP_LEVEL_GROUPS = [
     ]),
     ("ENFORCE", [
         ("policies", "Write cloud-managed policies.", "list show publish test compose enable disable delete"),
-        ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
+        ("fleet", "Deploy policies to machines.", "list show deploy jev-mode diff history rollback rename"),
         ("guardrails", "What enforcement actually blocked.", "summary timeline"),
     ]),
     ("MANAGE", [
@@ -5918,6 +5918,10 @@ def _policy_cell(ref: Any) -> Text:
     return t
 
 
+#: A policy version's kind, as `fp policies list` colours it.
+_KIND_STYLE = {"regex": theme.TEXT_DIM, "jev": theme.ACCENT, "both": theme.AMBER}
+
+
 def render_policies(items: Sequence[Any]) -> None:
     """``fp policies`` — every published VERSION, newest of each policy first.
 
@@ -5938,11 +5942,25 @@ def render_policies(items: Sequence[Any]) -> None:
             state = Text("archived", style=theme.FAINT)
         elif p.disabled:
             state = Text("disabled", style=theme.AMBER)
+        kind = getattr(p, "kind", None) or "regex"
+        names = list(getattr(p, "jev_names", None) or [])
+        desc = Text()
+        if names:
+            # The checks first: for a `jev` policy they ARE the policy, and a
+            # long description would otherwise push them off the ellipsis.
+            desc.append(", ".join(names), style=theme.ACCENT)
+            chars = getattr(p, "jev_chars", None)
+            if chars is not None:
+                desc.append(f"  {chars:,} chars", style=theme.LABEL)
+            if p.description:
+                desc.append("  ·  ", style=theme.FAINT)
+        desc.append(p.description or "", style=theme.TEXT_DIM)
         rows.append([
             Text(p.id, style=theme.TEXT),
             Text(f"v{p.version}", style=theme.TEXT_DIM),
+            Text(kind, style=_KIND_STYLE.get(kind, theme.TEXT_DIM)),
             state,
-            Text(p.description or "", style=theme.TEXT_DIM),
+            desc,
         ])
     distinct = len({p.id for p in items})
     title = Text()
@@ -5952,7 +5970,7 @@ def render_policies(items: Sequence[Any]) -> None:
     if len(rows) != distinct:
         title.append(" · ", style=theme.FAINT)
         title.append(f"{len(rows)} versions", style=theme.LABEL)
-    render_list_panel("policies", header=["policy", "version", "state", "description"],
+    render_list_panel("policies", header=["policy", "version", "kind", "state", "description"],
                       rows=rows, days=set(), order=None,
                       empty_message="no policies published — `fp policies publish <id> <file>`",
                       last_col="ellipsis", title=title)
@@ -5974,17 +5992,41 @@ def render_policy_published(p: Any, *, carriers: Optional[dict] = None,
     """
     line1 = Text(p.id, style=f"bold {theme.TEXT}")
     line1.append(f"  v{p.version}", style=f"bold {theme.ACCENT}")
+    kind = getattr(p, "kind", None) or "regex"
+    line1.append(f"  {kind}", style=_KIND_STYLE.get(kind, theme.TEXT_DIM))
     body = [line1]
     if p.description:
         body.append(Text(p.description, style=theme.TEXT))
+    names = list(getattr(p, "jev_names", None) or [])
+    if names:
+        checks = Text("jev checks  ", style=theme.LABEL)
+        checks.append(", ".join(names), style=theme.ACCENT)
+        chars = getattr(p, "jev_chars", None)
+        if chars is not None:
+            # What these checks take of the ONE Jev question budget a machine
+            # has for every check it asks — Cloud's and its installed packs'.
+            checks.append("  ·  ", style=theme.FAINT)
+            checks.append(f"{chars:,} question chars", style=theme.LABEL)
+        body.append(checks)
+    if kind == "both":
+        # Derived by the server from the kind, never sent: said so the author
+        # knows what the JavaScript's verdict now is.
+        body.append(Text("its JavaScript is reviewable by exactly these checks", style=theme.LABEL))
     body.append(Text())
 
     meta = Text()
     if source_bytes:
         meta.append(f"{source_bytes:,} bytes", style=theme.LABEL)
         meta.append("  ·  ", style=theme.FAINT)
-    meta.append("sha256 ", style=theme.LABEL)
-    meta.append((p.sha256 or "")[:12] + "…", style=theme.TEXT_DIM)
+    if p.sha256:
+        meta.append("sha256 ", style=theme.LABEL)
+        meta.append((p.sha256 or "")[:12] + "…", style=theme.TEXT_DIM)
+    semantic_sha = getattr(p, "semantic_sha256", None)
+    if semantic_sha:
+        if p.sha256:
+            meta.append("  ·  ", style=theme.FAINT)
+        meta.append("jev sha256 ", style=theme.LABEL)
+        meta.append(semantic_sha[:12] + "…", style=theme.TEXT_DIM)
     body.append(meta)
     body.append(Text())
 
@@ -6053,8 +6095,7 @@ def render_fleet(machines: Sequence[Any]) -> None:
             Text(seen or "never", style=theme.FAINT if stale else theme.TEXT_DIM),
             Text(f"{m.event_count:,}" if m.event_count else "—",
                  style=theme.TEXT_DIM if m.event_count else theme.FAINT),
-            Text("drifted" if m.drifted else ("ok" if m.deployed else "—"),
-                 style=theme.AMBER if m.drifted else (theme.SUCCESS if m.deployed else theme.FAINT)),
+            _machine_state(m),
         ])
     title = Text()
     title.append("fleet", style=f"bold {theme.ACCENT}")
@@ -6065,6 +6106,18 @@ def render_fleet(machines: Sequence[Any]) -> None:
                               "events", "state"],
                       rows=rows, days=set(), order=None,
                       empty_message="no machines have checked in yet", title=title)
+
+
+def _machine_state(m: Any) -> Text:
+    """`fp fleet list`'s state cell. Reported policy errors outrank drift: a
+    machine that says it cannot apply part of its set is not enforcing it,
+    whichever generation it is on."""
+    errors = getattr(m, "policy_errors", None) or []
+    if errors:
+        n = len(errors)
+        return Text(f"{n} error{'s' if n != 1 else ''}", style=theme.ERROR)
+    return Text("drifted" if m.drifted else ("ok" if m.deployed else "—"),
+                style=theme.AMBER if m.drifted else (theme.SUCCESS if m.deployed else theme.FAINT))
 
 
 def _compact_age(ms: Optional[int]) -> str:
@@ -6148,6 +6201,27 @@ def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> N
             act.append(f"  ·  {machine.event_count} events", style=theme.LABEL)
         field("last seen", act)
 
+    mode = (getattr(dep, "jev_mode", None) if dep is not None else None) or (
+        getattr(machine, "jev_mode", None) if machine is not None else None
+    )
+    jev = Text(mode or "local", style=theme.ACCENT if mode else theme.TEXT_DIM)
+    jev.append("  ·  set by FailproofAI Cloud" if mode else "  ·  the machine's own", style=theme.LABEL)
+    field("jev mode", jev)
+
+    errors = (getattr(machine, "policy_errors", None) or []) if machine is not None else []
+    if errors:
+        body.append(Text())
+        head = Text(f"{len(errors)} policy error{'s' if len(errors) != 1 else ''}", style=f"bold {theme.ERROR}")
+        head.append("  ·  reported by the machine — these are not enforcing", style=theme.LABEL)
+        body.append(head)
+        for e in errors:
+            line = Text("  ")
+            ver = e.get("version")
+            line.append(f"{e.get('id', '?')}{f' v{ver}' if ver is not None else ''}", style=theme.TEXT)
+            line.append(f"  {e.get('kind', '')}", style=theme.FAINT)
+            line.append(f"  {e.get('message', '')}", style=theme.TEXT_DIM)
+            body.append(line)
+
     body.append(Text())
     pols = sorted(dep.policies, key=lambda x: x.id) if dep is not None else []
     if pols:
@@ -6204,6 +6278,16 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
     footer.append(f"polic{'y' if n == 1 else 'ies'} after this change", style=theme.LABEL)
     lines.append(Text())
     lines.append(footer)
+    if getattr(plan, "jev_mode", None) is not None:
+        before = plan.jev_mode_before or "local"
+        after = plan.jev_mode_after or "local"
+        jev = Text("  jev mode  ", style=theme.LABEL)
+        if plan.jev_mode_changes:
+            jev.append(f"{before} → ", style=theme.FAINT)
+            jev.append(after, style=f"bold {theme.ACCENT}")
+        else:
+            jev.append(f"{after} (unchanged)", style=theme.TEXT_DIM)
+        lines.append(jev)
 
     head = Text(plan.machine_id, style=f"bold {theme.TEXT}")
     if plan.base is not None:
@@ -6333,7 +6417,18 @@ def deployment_applied(machine_id: str, generation: int, count: int) -> None:
     _notice_box(body, color=theme.SUCCESS, title="deployed")
 
 
-def deployment_rolled_back(machine_id: str, restored: int, generation: int) -> None:
+def deployment_rolled_back(
+    machine_id: str,
+    restored: int,
+    generation: int,
+    *,
+    jev_from: Optional[str] = None,
+    jev_to: Optional[str] = None,
+) -> None:
+    """``✓ restored the set from #R on <machine> · minted as #G``, plus the Jev
+    mode the rollback brought back when it changed — a rollback restores the
+    generation's mode too, and saying nothing is how `off` silently became
+    `enforce` again."""
     body = Text()
     body.append("✓ ", style=theme.SUCCESS)
     body.append("restored the set from ", style=theme.TEXT)
@@ -6342,7 +6437,74 @@ def deployment_rolled_back(machine_id: str, restored: int, generation: int) -> N
     body.append(machine_id, style=theme.ACCENT)
     body.append("  ·  ", style=theme.FAINT)
     body.append(f"minted as deployment #{generation}", style=theme.LABEL)
+    if jev_from is not None and jev_to is not None:
+        body.append("  ·  ", style=theme.FAINT)
+        if jev_from != jev_to:
+            body.append("jev mode ", style=theme.LABEL)
+            body.append(f"{jev_from} → ", style=theme.FAINT)
+            body.append(jev_to, style=f"bold {theme.AMBER}")
+        else:
+            body.append(f"jev mode {jev_to} (unchanged)", style=theme.LABEL)
     _notice_box(body, color=theme.SUCCESS, title="rolled back")
+
+
+def render_jev_mode_plan(rows: Sequence[dict]) -> None:
+    """The mode-only change, per machine: ``from → to``, the set untouched."""
+    out = []
+    for r in rows:
+        changed = bool(r.get("changed"))
+        mode = Text()
+        if changed:
+            mode.append(f"{r.get('from')} → ", style=theme.FAINT)
+            mode.append(str(r.get("to")), style=f"bold {theme.ACCENT}")
+        else:
+            mode.append(f"{r.get('to')} (unchanged)", style=theme.TEXT_DIM)
+        out.append([Text(str(r.get("machineId")), style=theme.TEXT), mode])
+    n = sum(1 for r in rows if r.get("changed"))
+    title = Text()
+    title.append("jev mode", style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{n} of {len(rows)} to change", style=theme.LABEL)
+    title.append(" · policy sets untouched", style=theme.FAINT)
+    render_list_panel("jev mode", header=["machine", "jev mode"], rows=out, days=set(), order=None,
+                      empty_message="no machines", title=title)
+
+
+def jev_mode_applied(rows: Sequence[dict]) -> None:
+    """``✓ jev mode observe → enforce on N machines``, and any that failed."""
+    done = [r for r in rows if r.get("changed") and not r.get("error")]
+    failed = [r for r in rows if r.get("error")]
+    for r in done:
+        body = Text()
+        body.append("✓ ", style=theme.SUCCESS)
+        body.append("jev mode ", style=theme.TEXT)
+        body.append(f"{r.get('from')} → ", style=theme.FAINT)
+        body.append(str(r.get("to")), style=f"bold {theme.ACCENT}")
+        body.append(" on ", style=theme.TEXT)
+        body.append(str(r.get("machineId")), style=theme.ACCENT)
+        if r.get("deployment") is not None:
+            body.append("  ·  ", style=theme.FAINT)
+            body.append(f"now on deployment #{r.get('deployment')}", style=theme.LABEL)
+        _notice_box(body, color=theme.SUCCESS, title="jev mode")
+    for r in failed:
+        body = Text()
+        body.append("✗ ", style=theme.ERROR)
+        body.append(str(r.get("machineId")), style=theme.ACCENT)
+        body.append("  ·  ", style=theme.FAINT)
+        body.append(str(r.get("error")), style=theme.TEXT)
+        _notice_box(body, color=theme.ERROR, title="jev mode not changed")
+
+
+def jev_mode_unchanged(machine_ids: Sequence[str], mode: str) -> None:
+    """Every machine already has the mode. Calm, like a no-op deploy."""
+    body = Text()
+    body.append("=  ", style=theme.FAINT)
+    body.append(", ".join(machine_ids) if len(machine_ids) <= 3 else f"{len(machine_ids)} machines",
+                style=theme.ACCENT)
+    body.append(f" already {'has' if len(machine_ids) == 1 else 'have'} jev mode {mode}", style=theme.TEXT)
+    body.append("  ·  ", style=theme.FAINT)
+    body.append("nothing changed", style=theme.LABEL)
+    _notice_box(body, color=theme.ACCENT, title="no change")
 
 
 def machine_renamed(machine_id: str, label: str) -> None:
@@ -6595,6 +6757,7 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
     """
     rows = []
     prev = None
+    prev_mode = "local"
     # oldest first so each row can be diffed against the one before it, then
     # reversed for display — newest first is how you read a history.
     ordered = sorted(entries, key=lambda e: e.get("deployment") or 0)
@@ -6607,6 +6770,7 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
         # as removed-and-re-added rather than moved.
         cur = {p.get("id"): (p.get("version"), p.get("effect"))
                for p in (e.get("policies") or [])}
+        mode = e.get("jevMode") or "local"
         if prev is None:
             diffs[e.get("deployment")] = [("+", i) for i in sorted(cur)]
         else:
@@ -6614,8 +6778,12 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
                 [("+", i) for i in sorted(set(cur) - set(prev))]
                 + [("-", i) for i in sorted(set(prev) - set(cur))]
                 + [("~", i) for i in sorted(set(cur) & set(prev)) if cur[i] != prev[i]]
+                # A mode-only generation (`fp fleet jev-mode`) read as "no
+                # change", which is exactly the change a rollback brings back.
+                + ([("~", f"jev {prev_mode}→{mode}")] if mode != prev_mode else [])
             )
         prev = cur
+        prev_mode = mode
 
     newest_first = sorted(entries, key=lambda e: e.get("deployment") or 0, reverse=True)
     # The shared time column: clock time, with the date folded in only when the
@@ -6636,10 +6804,14 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
             change.append(ref, style=theme.TEXT_DIM)
         if not change.plain:
             change = Text("no change", style=theme.FAINT)
+        mode = e.get("jevMode") or "local"
         rows.append([
             Text(f"#{gen}", style=theme.TEXT),
             Text(tcell or (e.get("updatedAt", "") or "-"), style=theme.TEXT_DIM),
             Text(str(len(pols)), style=theme.TEXT_DIM if pols else theme.FAINT),
+            # The mode FailproofAI Cloud set with this generation — what a
+            # rollback to it restores.
+            Text(mode, style=theme.FAINT if mode == "local" else theme.TEXT),
             change,
             Text(", ".join(pols) or "(none)", style=theme.TEXT_DIM if pols else theme.FAINT),
         ])
@@ -6647,7 +6819,7 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
     title.append(machine_id, style=f"bold {theme.ACCENT}")
     title.append(" · ", style=theme.FAINT)
     title.append(f"{len(rows)} generations", style=theme.LABEL)
-    render_list_panel("history", header=["gen", "when", "n", "change", "policies"],
+    render_list_panel("history", header=["gen", "when", "n", "jev", "change", "policies"],
                       rows=rows, days=days, order=None,
                       empty_message="no deployment history", last_col="ellipsis", title=title)
 

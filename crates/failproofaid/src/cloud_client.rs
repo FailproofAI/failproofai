@@ -1,8 +1,11 @@
 use crate::cloud_policies::{
-    DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyStore,
+    ActiveDeployment, DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyErrorEntry,
+    PolicyStore, ReconcileError,
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -10,6 +13,379 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_POLL_MS: u64 = 30_000;
 const MINIMUM_POLL_MS: u64 = 100;
+
+/// The `policyErrors` parameter's ceiling, measured URL-ENCODED — the form it
+/// actually travels in. Over it, whole entries are dropped from the end: the
+/// list is truncated, never the JSON.
+pub const MAX_POLICY_ERRORS_ENCODED_BYTES: usize = 4096;
+/// One message's ceiling, so a single pathological message cannot push every
+/// other entry out of the report.
+const MAX_POLICY_ERROR_MESSAGE_CHARS: usize = 500;
+const MAX_POLICY_ERROR_ID_CHARS: usize = 128;
+
+/// Why a poll produced no usable desired state.
+///
+/// Split because only one half is worth REPORTING back: a payload this daemon
+/// could not accept (an unknown `effect`, an unreadable body, a schema skew) is
+/// the server's to see and fix, while a refused connection or a 502 is gone by
+/// the time any report could reach anyone.
+#[derive(Debug)]
+struct PollFailure {
+    message: String,
+    reportable: bool,
+}
+
+impl PollFailure {
+    fn transport(message: String) -> Self {
+        Self {
+            message,
+            reportable: false,
+        }
+    }
+
+    fn payload(message: String) -> Self {
+        Self {
+            message,
+            reportable: true,
+        }
+    }
+}
+
+/// Compact JSON for the `policyErrors` parameter, within
+/// [`MAX_POLICY_ERRORS_ENCODED_BYTES`] once URL-encoded.
+///
+/// Long messages are shortened first (by characters, so a multi-byte message is
+/// never cut mid-codepoint), then whole entries are dropped from the end until
+/// the encoded form fits. What is sent is always a complete JSON array.
+///
+/// Every message has its local paths redacted first ([`redact_local_paths`]):
+/// the report leaves the machine, and a path names the user.
+pub fn encode_policy_errors(entries: &[PolicyErrorEntry]) -> String {
+    let home = std::env::var("HOME").ok();
+    let clipped: Vec<PolicyErrorEntry> = entries
+        .iter()
+        .map(|entry| PolicyErrorEntry {
+            id: clip(&entry.id, MAX_POLICY_ERROR_ID_CHARS),
+            version: entry.version,
+            kind: entry.kind.clone(),
+            message: clip(
+                &redact_local_paths(&entry.message, home.as_deref()),
+                MAX_POLICY_ERROR_MESSAGE_CHARS,
+            ),
+        })
+        .collect();
+    let mut keep = clipped.len();
+    loop {
+        let json = serde_json::to_string(&clipped[..keep]).unwrap_or_else(|_| "[]".to_string());
+        if keep == 0 || encoded_len(&json) <= MAX_POLICY_ERRORS_ENCODED_BYTES {
+            return json;
+        }
+        keep -= 1;
+    }
+}
+
+/// A policy error message with no local path in it (CONTRACT C9.5): the home
+/// directory becomes `~`, and any other absolute path becomes its last segment.
+///
+/// The CLI applies the same rule before it writes `errors.json`
+/// (`redactLocalPaths` in `cloud-policy-errors.ts`); this is the second copy on
+/// the way out, so a report never carries a username whichever program wrote it.
+///
+/// A path starts at a `/` that begins the text or follows whitespace, a quote,
+/// an opening bracket, `=`, `,` or `:` — but not a URL's `//host` after `:`,
+/// and never a `/` following any other character, so a URL
+/// (`https://host/path`) and a relative path (`a/b`) are left alone while
+/// `file:///tmp/x` and `open:/etc/x` are not — and runs to the next whitespace,
+/// quote, closing bracket, `,` or `;`.
+pub fn redact_local_paths(message: &str, home: Option<&str>) -> String {
+    let chars: Vec<char> = replace_home(message, home).chars().collect();
+    let mut out = String::with_capacity(chars.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let starts_path = chars[i] == '/'
+            && (i == 0 || {
+                let prev = chars[i - 1];
+                prev.is_whitespace()
+                    || matches!(prev, '"' | '\'' | '`' | '(' | '[' | '<' | '{' | '=' | ',')
+                    // `scheme://host` is a URL; `file:///path` and `x:/path` are paths.
+                    || (prev == ':'
+                        && !(chars.get(i + 1) == Some(&'/') && chars.get(i + 2) != Some(&'/')))
+            });
+        if !starts_path {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let mut end = i;
+        while end < chars.len() && !ends_path(chars[end]) {
+            end += 1;
+        }
+        let path: String = chars[i..end].iter().collect();
+        match path.trim_end_matches('/').rsplit('/').next() {
+            Some(base) if !base.is_empty() => out.push_str(base),
+            _ => out.push('/'),
+        }
+        i = end;
+    }
+    out
+}
+
+fn ends_path(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ')' | ']' | '>' | '}' | ',' | ';')
+}
+
+/// `message` with every whole-segment occurrence of `home` replaced by `~`.
+fn replace_home(message: &str, home: Option<&str>) -> String {
+    let Some(home) = home
+        .map(|h| h.trim_end_matches('/'))
+        .filter(|h| h.len() > 1)
+    else {
+        return message.to_string();
+    };
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(at) = rest.find(home) {
+        let after = &rest[at + home.len()..];
+        // `/home/al` must not match inside `/home/alice`.
+        let whole = after
+            .chars()
+            .next()
+            .is_none_or(|c| c == '/' || ends_path(c) || c == ':');
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { "~" } else { home });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+fn clip(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut out: String = value.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// The length `value` takes as a query-parameter value, encoded exactly the
+/// way the poll encodes it.
+fn encoded_len(value: &str) -> usize {
+    let mut url = Url::parse("http://x.invalid/").expect("static URL parses");
+    url.query_pairs_mut().append_pair("v", value);
+    url.query()
+        .map_or(0, |query| query.len().saturating_sub("v=".len()))
+}
+
+/// The machine's current report: the daemon's own reconcile errors first, then
+/// the CLI's. `None` — parameter omitted — only while NEITHER has ever written
+/// an error state, so a machine that never had a problem sends nothing new,
+/// and one that had a problem sends `[]` once it is fixed (which is what
+/// clears it on the server).
+///
+/// `active` is the deployment in force when the report is read: `Some(None)`
+/// for no deployment, `None` when it could not be read. The CLI's entries are
+/// kept only while they still describe it (see [`cli_entry_is_current`]);
+/// when it could not be read nothing is dropped, because "cannot tell" is not
+/// "no deployment".
+fn current_policy_errors(
+    store: &PolicyStore,
+    active: Option<Option<&ActiveDeployment>>,
+    packs: &PackDropContext,
+) -> Option<Vec<PolicyErrorEntry>> {
+    let daemon = store.read_daemon_policy_errors();
+    let cli = store.read_cli_policy_errors();
+    if daemon.is_none() && cli.is_none() {
+        return None;
+    }
+    let mut all = daemon.unwrap_or_default();
+    all.extend(
+        cli.unwrap_or_default()
+            .into_iter()
+            .filter(|entry| active.is_none_or(|active| cli_entry_is_current(entry, active, packs))),
+    );
+    Some(all)
+}
+
+/// The CLI's report that FailproofAI Cloud set a Jev mode on a machine
+/// connected for decisions only (`--no-transcripts`), where Jev never runs
+/// (CONTRACT C10.2).
+const TRANSCRIPTS_DISABLED: &str = "transcripts_disabled";
+
+/// Marks a "Cloud deploys Jev checks and sets no Jev mode" report. Only a
+/// pre-release build that still delivered Jev checks to the machine wrote it
+/// (D-FB-3); a leftover one describes a state that no longer exists.
+const NO_CLOUD_JEV_MODE: &str = "sets no Jev mode";
+
+/// The CLI's reports that FailproofAI Cloud rate-limited this machine's Jev
+/// calls, or that its circuit breaker stopped asking a failing Cloud for a
+/// while (`semantic/cloud-jev-health.ts`, review M3).
+const JEV_RATE_LIMITED: &str = "jev_rate_limited";
+const JEV_UNAVAILABLE: &str = "jev_unavailable";
+
+/// An installed pack's check FailproofAI Cloud dropped from a request: for the
+/// question budget, or because an org Cloud check has its name (Cloud wins).
+const JEV_BUDGET: &str = "jev_budget";
+const JEV_NAME_CLASH: &str = "jev_name_clash";
+
+/// Where the CLI keeps the pack-check drops, keyed by the deployment and Jev
+/// mode they happened under (`jevBudgetPath` in `cloud-policy-errors.ts`).
+const JEV_BUDGET_FILE: &str = "jev-budget.json";
+
+/// What an installed pack's drop report (`pack:<id>`, `jev_budget…` or
+/// `jev_name_clash…`) is checked against (review m2, e2e O1): the record the
+/// CLI collected the drops into, for the deployment and Jev mode they happened
+/// under, and the packs installed now. Without it a report outlived its cause
+/// until the machine's next tool call — a new deployment, or the pack
+/// uninstalled, changed nothing the poll looked at.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PackDropContext {
+    /// `jev-budget.json`'s deployment and Jev mode; `None` without a readable record.
+    record: Option<(Option<u64>, String)>,
+    /// The installed packs' ids; `None` when `installed.json` exists and cannot
+    /// be read, which drops nothing ("cannot tell" is not "not installed").
+    installed: Option<HashSet<String>>,
+}
+
+impl PackDropContext {
+    fn read(store: &PolicyStore) -> Self {
+        let installed = crate::paths::packs_dir()
+            .ok()
+            .map(|dir| dir.join("installed.json"));
+        Self::read_from(&store.root().join(JEV_BUDGET_FILE), installed.as_deref())
+    }
+
+    fn read_from(budget: &Path, installed: Option<&Path>) -> Self {
+        let json = |bytes: Vec<u8>| serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+        let record = std::fs::read(budget).ok().and_then(json).and_then(|v| {
+            let deployment = match v.get("deployment")? {
+                serde_json::Value::Null => None,
+                n => Some(n.as_u64()?),
+            };
+            Some((deployment, v.get("jevMode")?.as_str()?.to_string()))
+        });
+        let installed = installed.and_then(|path| match std::fs::read(path) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Some(HashSet::new()),
+            Err(_) => None,
+            Ok(bytes) => json(bytes).and_then(|v| {
+                Some(
+                    v.get("packs")?
+                        .as_array()?
+                        .iter()
+                        .filter_map(|p| p.get("id")?.as_str().map(str::to_string))
+                        .collect(),
+                )
+            }),
+        });
+        Self { record, installed }
+    }
+
+    /// Whether a drop report for `pack_id` still describes `active`.
+    fn is_current(&self, pack_id: &str, active: &ActiveDeployment) -> bool {
+        let Some((deployment, mode)) = &self.record else {
+            return false;
+        };
+        *deployment == Some(active.deployment)
+            && Some(mode.as_str()) == active.jev_mode.as_deref()
+            && self
+                .installed
+                .as_ref()
+                .is_none_or(|ids| ids.contains(pack_id))
+    }
+}
+
+/// Whether an entry of the CLI's `errors.json` still describes `active`.
+///
+/// The CLI rewrites that file only when a hook runs (CONTRACT C6), so after a
+/// FailproofAI Cloud-side fix — a policy removed or re-pinned, a Jev mode set
+/// or cleared — the machine would otherwise keep reporting the old problem
+/// until its next tool call, and forever once it stops making them. So:
+///
+/// - One policy's entry (`regex | jev | both`) is kept only while that policy
+///   is in the deployment at the version it names.
+/// - A machine-level entry (`kind: "daemon"`: `jevMode`, `active.json`,
+///   `pack:<id>`) is kept, except the ones the CLI reports only while Cloud
+///   has Jev ASKING on this machine (`jevMode` `observe`/`enforce`) — the same
+///   condition `recordCloudPolicyErrors` in `src/hooks/handler.ts` applies:
+///   `jev_unconfigured` (no Cloud Jev credential), `transcripts_disabled`
+///   (decisions-only connection), `jev_rate_limited` / `jev_unavailable`
+///   (Cloud Jev refused or failing), and an installed pack's `jev_budget` /
+///   `jev_name_clash` drop (FailproofAI Cloud dropped that check from a
+///   request). A drop is kept only while its record is of the active
+///   deployment and Jev mode, and its pack is still installed
+///   ([`PackDropContext`]).
+///
+/// The daemon's own entries are never filtered: they describe its last
+/// reconcile, which is of the DESIRED state, not the active one.
+fn cli_entry_is_current(
+    entry: &PolicyErrorEntry,
+    active: Option<&ActiveDeployment>,
+    packs: &PackDropContext,
+) -> bool {
+    let asks = matches!(
+        active.and_then(|a| a.jev_mode.as_deref()),
+        Some("observe" | "enforce")
+    );
+    if entry.kind == "daemon" {
+        let jev_setup = entry.message == "jev_unconfigured"
+            || entry.message.starts_with("jev_unconfigured:")
+            || entry.message == TRANSCRIPTS_DISABLED;
+        if jev_setup {
+            return asks && !entry.message.contains(NO_CLOUD_JEV_MODE);
+        }
+        if entry.id == "jevMode"
+            && (entry.message.starts_with(JEV_RATE_LIMITED)
+                || entry.message.starts_with(JEV_UNAVAILABLE))
+        {
+            return asks;
+        }
+        if let Some(pack_id) = entry.id.strip_prefix("pack:")
+            && (entry.message.starts_with(JEV_BUDGET) || entry.message.starts_with(JEV_NAME_CLASH))
+        {
+            return asks && active.is_some_and(|active| packs.is_current(pack_id, active));
+        }
+        return true;
+    }
+    let Some(active) = active else {
+        return false;
+    };
+    active
+        .policies
+        .iter()
+        .any(|p| p.id == entry.id && entry.version.is_none_or(|v| v == p.version))
+}
+
+/// A daemon error entry for a failed poll or reconcile. The version is looked
+/// up in the desired state when the error names a policy it carries.
+fn daemon_error(
+    message: String,
+    policy_id: Option<&str>,
+    desired: Option<&DesiredState>,
+) -> PolicyErrorEntry {
+    let version = policy_id.and_then(|id| {
+        desired.and_then(|d| d.policies.iter().find(|p| p.id == id).map(|p| p.version))
+    });
+    PolicyErrorEntry {
+        // A state-level error names no policy; `desired-state` says which
+        // document was refused.
+        id: policy_id.unwrap_or("desired-state").to_string(),
+        version,
+        kind: "daemon".to_string(),
+        message,
+    }
+}
+
+/// Records the daemon's error state after a poll. Errors always overwrite; a
+/// clean poll clears an EXISTING state to `[]` but never creates one, so the
+/// report stays absent on a machine that never had a problem.
+fn record_daemon_errors(store: &PolicyStore, errors: Vec<PolicyErrorEntry>) {
+    if errors.is_empty() && store.read_daemon_policy_errors().is_none() {
+        return;
+    }
+    if let Err(err) = store.write_daemon_policy_errors(&errors) {
+        eprintln!("[failproofaid] could not record the cloud policy error state: {err}");
+    }
+}
 
 #[derive(Clone)]
 pub struct CloudClient {
@@ -103,6 +479,16 @@ fn disconnected_by_config() -> bool {
         == Some("oss")
 }
 
+/// Whether the idle tick removes a Cloud deployment left on disk: only on a
+/// machine put back on OSS ([`disconnected_by_config`]) whose cloud policy
+/// directory is the DEFAULT one. The cleanup deletes four fixed filenames, and
+/// `FAILPROOFAI_CLOUD_POLICY_DIR` can name any directory — a shared one with
+/// unrelated files of those names among them — so under an override nothing is
+/// removed (review F7).
+fn oss_cleanup_applies() -> bool {
+    !crate::paths::cloud_managed_policy_dir_overridden() && disconnected_by_config()
+}
+
 /// The `cloud` object of `credentials.json`. Snake_case keys, because that is
 /// what `fp-config.ts`'s `writeCredentials` emits.
 #[derive(serde::Deserialize)]
@@ -141,19 +527,63 @@ fn host_is_loopback(url: &Url) -> bool {
         .is_ok_and(|ip| ip.is_loopback())
 }
 
+/// Where this machine's enrolment resolved to, before any HTTP client is built
+/// from it.
+///
+/// Split from [`CloudClient`] so "is this machine still enrolled?" can be asked
+/// right before a poll writes anything (see [`enrolment_withdrawn`]) without
+/// building a second client — a blocking `reqwest` client starts its own
+/// runtime thread, and the answer needs none of it.
+struct Enrolment {
+    base_url: String,
+    token: String,
+    machine_id: String,
+}
+
 impl CloudClient {
     /// Environment first, then the credential file.
     ///
     /// Env wins so CI, containers and tests keep working unchanged, and so an
     /// operator who prefers env-only configuration loses nothing.
     pub fn from_env_or_file() -> Result<Option<Self>, String> {
-        if let Some(client) = Self::from_env()? {
-            return Ok(Some(client));
+        Self::build(Enrolment::resolve())
+    }
+
+    /// The credential-file half alone; see [`Enrolment::from_file`].
+    #[cfg(test)]
+    pub fn from_file() -> Result<Option<Self>, String> {
+        Self::build(Enrolment::from_file())
+    }
+
+    fn build(enrolment: Result<Option<Enrolment>, String>) -> Result<Option<Self>, String> {
+        enrolment?
+            .map(|e| Self::new(&e.base_url, e.token, e.machine_id))
+            .transpose()
+    }
+}
+
+/// True when this machine is no longer enrolled — `config --disconnect` ran, or
+/// the credential is simply gone — as opposed to enrolled (or enrolled with an
+/// unreadable credential, which keeps its last known-good deployment).
+///
+/// Asked right before a poll persists anything. A poll can be in flight for
+/// seconds (the request, then one fetch per new artifact), and a disconnect
+/// that lands in that window used to be undone by the poll's own writes:
+/// `desired-state.json` and `active.json` came back, carrying the old org's
+/// policies and Jev mode, moments after the CLI removed them.
+fn enrolment_withdrawn() -> bool {
+    matches!(Enrolment::resolve(), Ok(None))
+}
+
+impl Enrolment {
+    fn resolve() -> Result<Option<Self>, String> {
+        if let Some(enrolment) = Self::from_env()? {
+            return Ok(Some(enrolment));
         }
         Self::from_file()
     }
 
-    pub fn from_env() -> Result<Option<Self>, String> {
+    fn from_env() -> Result<Option<Self>, String> {
         let Some(base_url) = env_value("FAILPROOFAI_CLOUD_URL") else {
             return Ok(None);
         };
@@ -161,7 +591,11 @@ impl CloudClient {
             .ok_or("FAILPROOFAI_CLOUD_TOKEN is required when FAILPROOFAI_CLOUD_URL is set")?;
         let machine_id = env_value("FAILPROOFAI_MACHINE_ID")
             .ok_or("FAILPROOFAI_MACHINE_ID is required when FAILPROOFAI_CLOUD_URL is set")?;
-        Self::new(&base_url, token, machine_id).map(Some)
+        Ok(Some(Self {
+            base_url,
+            token,
+            machine_id,
+        }))
     }
 
     /// A missing file means "not enrolled" — not an error. A malformed one IS
@@ -182,7 +616,7 @@ impl CloudClient {
     /// arrival in layout 2 — `--connect` reported success, wrote a credential
     /// the daemon never looked at, and the daemon logged "cloud-managed policy
     /// polling disabled" as though the machine had simply never enrolled.
-    pub fn from_file() -> Result<Option<Self>, String> {
+    fn from_file() -> Result<Option<Self>, String> {
         // `mode: "oss"` outranks every credential file below it. Checked HERE
         // rather than at the call site because `from_file` has three exits (the
         // override, `credentials.json`, and the layout-1 fallback) and a veto
@@ -232,7 +666,11 @@ impl CloudClient {
         if cloud.token.is_empty() {
             return Err(format!("empty token in {}", path.display()));
         }
-        Self::new(&cloud.url, cloud.token, cloud.machine_id).map(Some)
+        Ok(Some(Self {
+            base_url: cloud.url,
+            token: cloud.token,
+            machine_id: cloud.machine_id,
+        }))
     }
 
     fn from_legacy_file() -> Result<Option<Self>, String> {
@@ -260,9 +698,15 @@ impl CloudClient {
         if stored.token.is_empty() {
             return Err(format!("empty token in {}", path.display()));
         }
-        Self::new(&stored.url, stored.token, stored.machine_id).map(Some)
+        Ok(Some(Self {
+            base_url: stored.url,
+            token: stored.token,
+            machine_id: stored.machine_id,
+        }))
     }
+}
 
+impl CloudClient {
     fn new(base_url: &str, token: String, machine_id: String) -> Result<Self, String> {
         let mut base_url =
             Url::parse(base_url).map_err(|err| format!("invalid FAILPROOFAI_CLOUD_URL: {err}"))?;
@@ -339,16 +783,31 @@ impl CloudClient {
     /// as 0: a machine that cannot say what it is enforcing must not be recorded
     /// as enforcing deployment zero, and absent has to stay distinguishable from
     /// "reported nothing" on the far side.
-    pub fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
+    ///
+    /// `policy_errors` is the machine's error report, already encoded as the
+    /// compact JSON list (see [`encode_policy_errors`]); `None` omits the
+    /// parameter, which the server reads as "leave what you have stored".
+    fn poll_desired_state(
+        &self,
+        applied: Option<u64>,
+        policy_errors: Option<&str>,
+    ) -> Result<DesiredState, PollFailure> {
         let mut url = self
             .base_url
             .join("enforcement/v1/desired-state")
-            .map_err(|err| format!("failed to build desired-state URL: {err}"))?;
+            .map_err(|err| {
+                PollFailure::transport(format!("failed to build desired-state URL: {err}"))
+            })?;
         url.query_pairs_mut()
             .append_pair("machineId", &self.machine_id);
         if let Some(deployment) = applied {
             url.query_pairs_mut()
                 .append_pair("appliedDeployment", &deployment.to_string());
+        }
+        // Additive, like `appliedDeployment`: `DesiredQuery` on the server is
+        // not `deny_unknown_fields`, so a server that predates it ignores it.
+        if let Some(errors) = policy_errors {
+            url.query_pairs_mut().append_pair("policyErrors", errors);
         }
         self.client
             .get(url)
@@ -356,13 +815,13 @@ impl CloudClient {
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|err| {
-                format!(
+                PollFailure::transport(format!(
                     "desired-state request failed: {}",
                     fpai_collect::error_chain(&err)
-                )
+                ))
             })?
             .json::<serde_json::Value>()
-            .map_err(|err| format!("invalid desired-state response: {err}"))
+            .map_err(|err| PollFailure::payload(format!("invalid desired-state response: {err}")))
             .and_then(|raw| {
                 // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
                 // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
@@ -381,19 +840,20 @@ impl CloudClient {
                 match version {
                     Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION) => {}
                     Some(v) => {
-                        return Err(format!(
+                        return Err(PollFailure::payload(format!(
                             "server sent desired-state schemaVersion {v} but this daemon \
                              speaks {DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
-                        ));
+                        )));
                     }
                     None => {
-                        return Err(
-                            "desired-state response has no schemaVersion field".to_string()
-                        );
+                        return Err(PollFailure::payload(
+                            "desired-state response has no schemaVersion field".to_string(),
+                        ));
                     }
                 }
-                serde_json::from_value::<DesiredState>(raw)
-                    .map_err(|err| format!("invalid desired-state response: {err}"))
+                serde_json::from_value::<DesiredState>(raw).map_err(|err| {
+                    PollFailure::payload(format!("invalid desired-state response: {err}"))
+                })
             })
     }
 
@@ -411,15 +871,38 @@ impl CloudClient {
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|err| {
-                format!(
-                    "artifact request failed: {}",
-                    fpai_collect::error_chain(&err)
-                )
+                // An HTTP answer (a 404, a 403) is the server's to see; a
+                // request that never got one is not — see
+                // `ARTIFACT_TRANSPORT_FAILURE`.
+                let chain = fpai_collect::error_chain(&err);
+                if err.status().is_some() {
+                    format!("artifact request failed: {chain}")
+                } else {
+                    format!("{ARTIFACT_TRANSPORT_FAILURE}: {chain}")
+                }
             })?
             .bytes()
             .map(|bytes| bytes.to_vec())
-            .map_err(|err| format!("failed to read artifact response: {err}"))
+            .map_err(|err| {
+                format!("{ARTIFACT_TRANSPORT_FAILURE}: failed to read the response: {err}")
+            })
     }
+}
+
+/// How an artifact fetch that never got an HTTP answer begins: a refused
+/// connection, a timeout, a body cut off mid-read.
+///
+/// Such a failure is not recorded in the daemon's error state, exactly like a
+/// transport failure of the poll itself. Recording it turned a network blip
+/// between the desired-state GET and an artifact GET into a policy error that
+/// rode the next poll and cleared on the one after — a fleet page flickering
+/// "error" for a minute over nothing anyone could act on. The previous
+/// deployment stays in force either way, and the next poll retries.
+const ARTIFACT_TRANSPORT_FAILURE: &str = "artifact request did not complete";
+
+/// Whether a reconcile error is a transport failure of an artifact fetch.
+fn transient_fetch_failure(err: &ReconcileError) -> bool {
+    matches!(err, ReconcileError::Fetch { message, .. } if message.starts_with(ARTIFACT_TRANSPORT_FAILURE))
 }
 
 /// One maintenance lane that re-resolves enrolment on every tick.
@@ -447,17 +930,11 @@ pub fn spawn_maintenance(
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
         while !shutdown.load(Ordering::Relaxed) {
-            let cloud = match CloudClient::from_env_or_file() {
-                Ok(client) => client,
-                Err(err) => {
-                    eprintln!("[failproofaid] cloud enrolment error: {err}");
-                    None
-                }
-            };
+            let cloud = CloudClient::from_env_or_file();
 
             // Log only on transition, so a disconnected machine does not print
             // a line every 30 seconds forever.
-            let enrolled = cloud.is_some();
+            let enrolled = matches!(cloud, Ok(Some(_)));
             if last_state != Some(enrolled) {
                 eprintln!(
                     "[failproofaid] cloud-managed policy polling {}",
@@ -466,16 +943,7 @@ pub fn spawn_maintenance(
                 last_state = Some(enrolled);
             }
 
-            if let Some(cloud) = cloud.as_ref() {
-                poll_once(&store, cloud);
-            }
-
-            // Runs whether or not cloud is reachable: poll failures never
-            // discard the last known-good deployment, and local tampering is
-            // still repaired while the cloud is offline or unconfigured.
-            if let Err(err) = store.repair_active_from_cache() {
-                eprintln!("[failproofaid] cloud policy integrity error: {err}");
-            }
+            maintenance_tick(&store, cloud, &enrolment_withdrawn, &oss_cleanup_applies);
             wait_until_shutdown(
                 &shutdown,
                 if enrolled {
@@ -488,7 +956,72 @@ pub fn spawn_maintenance(
     })
 }
 
-fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
+/// One pass of the maintenance lane, given what enrolment resolved to.
+///
+/// - **Enrolled:** poll, then repair from the cache. The repair runs whether or
+///   not the poll reached the server: a poll failure never discards the last
+///   known-good deployment, and local tampering is still repaired while the
+///   control plane is unreachable.
+/// - **Credential unreadable** (`Err`): repair only. The machine was enrolled
+///   and still is as far as anyone said; a broken file is not a disconnect.
+/// - **Not enrolled** (`Ok(None)`): NOTHING is rebuilt. `repair_active_from_cache`
+///   reconstructs `active.json` from `desired-state.json`, which is the right
+///   answer to a lost pointer on an enrolled machine and exactly the wrong one
+///   after `config --disconnect`: it put the old org's JS policies, Jev checks
+///   and Jev mode back within one interval, on a machine whose owner had left.
+///   And when the operator explicitly put the machine back on OSS
+///   (`mode: "oss"`), any Cloud deployment still on disk — written by a poll
+///   that was in flight during the disconnect, or left by an older CLI that did
+///   not remove `desired-state.json` — is removed, so a disconnected machine is
+///   provably unmanaged rather than unmanaged by timing. Not in a directory
+///   `FAILPROOFAI_CLOUD_POLICY_DIR` chose ([`oss_cleanup_applies`]).
+///
+/// The two predicates are parameters so a test can drive every branch without
+/// touching the process's HOME.
+fn maintenance_tick(
+    store: &PolicyStore,
+    cloud: Result<Option<CloudClient>, String>,
+    withdrawn: &dyn Fn() -> bool,
+    back_on_oss: &dyn Fn() -> bool,
+) {
+    match cloud {
+        Ok(Some(cloud)) => {
+            poll_once_guarded(store, &cloud, withdrawn);
+            if !withdrawn() {
+                repair(store, withdrawn);
+            }
+        }
+        Err(err) => {
+            eprintln!("[failproofaid] cloud enrolment error: {err}");
+            repair(store, &|| false);
+        }
+        Ok(None) => {
+            if back_on_oss() {
+                match store.clear_deployment() {
+                    Ok(0) => {}
+                    Ok(removed) => eprintln!(
+                        "[failproofaid] this machine is disconnected from FailproofAI Cloud; \
+                         removed {removed} leftover cloud policy file(s)"
+                    ),
+                    Err(err) => eprintln!(
+                        "[failproofaid] could not remove the cloud policy files of a disconnected machine: {err}"
+                    ),
+                }
+            }
+        }
+    }
+}
+
+fn repair(store: &PolicyStore, withdrawn: &dyn Fn() -> bool) {
+    if let Err(err) = store.repair_active_from_cache_unless(withdrawn) {
+        eprintln!("[failproofaid] cloud policy integrity error: {err}");
+    }
+}
+
+/// One poll and its reconcile. `withdrawn` is asked right before anything is
+/// persisted — the reconcile's writes and the daemon's error state — so a
+/// disconnect that lands while the request is in flight is not undone by it.
+fn poll_once_guarded(store: &PolicyStore, cloud: &CloudClient, withdrawn: &dyn Fn() -> bool) {
     // Read BEFORE the request, so what we report is what was in force when we
     // asked. Reading after would race this poll's own reconcile and could claim
     // a deployment the server is about to be told about anyway — reporting the
@@ -498,29 +1031,76 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
     // already distinguishes "no deployment" from "cannot tell", and collapsing
     // the second into the first is how a machine ends up recorded as enforcing
     // something it is not.
-    let applied = match store.read_active() {
-        Ok(active) => active.map(|a| a.deployment),
+    let active = match store.read_active() {
+        Ok(active) => Some(active),
         Err(err) => {
             eprintln!("[failproofaid] could not read the active deployment to report it: {err}");
             None
         }
     };
-    match cloud.desired_state(applied) {
+    let applied = active
+        .as_ref()
+        .and_then(|a| a.as_ref().map(|a| a.deployment));
+    // Every poll carries the current report once there is one to carry — the
+    // previous poll's reconcile outcome plus whatever the CLI last wrote that
+    // still describes the deployment in force.
+    let report = current_policy_errors(
+        store,
+        active.as_ref().map(Option::as_ref),
+        &PackDropContext::read(store),
+    )
+    .map(|errors| encode_policy_errors(&errors));
+    match cloud.poll_desired_state(applied, report.as_deref()) {
         Ok(desired) => {
-            match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
-                Ok(outcome)
-                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 =>
-                {
+            match store.reconcile_unless(
+                &desired,
+                &|policy: &DesiredPolicy| cloud.artifact(policy),
+                withdrawn,
+            ) {
+                Ok(outcome) => {
+                    if outcome.activated || outcome.downloaded > 0 || outcome.repaired > 0 {
+                        eprintln!(
+                            "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
+                            outcome.deployment, outcome.downloaded, outcome.repaired
+                        );
+                    }
+                    record_daemon_errors(store, Vec::new());
+                }
+                Err(ReconcileError::Withdrawn) => {
+                    // Nothing was written, and nothing is recorded either: an
+                    // error state would describe a deployment this machine no
+                    // longer has.
                     eprintln!(
-                        "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
-                        outcome.deployment, outcome.downloaded, outcome.repaired
+                        "[failproofaid] this machine was disconnected while a poll was in flight; \
+                         its result was discarded"
                     );
                 }
-                Ok(_) => {}
-                Err(err) => eprintln!("[failproofaid] cloud policy reconcile error: {err}"),
+                Err(err) => {
+                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    if !transient_fetch_failure(&err) && !withdrawn() {
+                        record_daemon_errors(
+                            store,
+                            vec![daemon_error(
+                                err.to_string(),
+                                err.policy_id(),
+                                Some(&desired),
+                            )],
+                        );
+                    }
+                }
             }
         }
-        Err(err) => eprintln!("[failproofaid] cloud policy poll error: {err}"),
+        Err(failure) => {
+            eprintln!(
+                "[failproofaid] cloud policy poll error: {}",
+                failure.message
+            );
+            // A payload this daemon refused is reported; a transport failure is
+            // not, and leaves the recorded state as it was.
+            if failure.reportable && !withdrawn() {
+                record_daemon_errors(store, vec![daemon_error(failure.message, None, None)]);
+            }
+        }
     }
 }
 
@@ -552,6 +1132,14 @@ mod tests {
     use super::*;
     // Only the fixtures construct an effect explicitly.
     use crate::cloud_policies::PolicyEffect;
+
+    impl CloudClient {
+        /// The poll without an error report, for the tests that predate it.
+        fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
+            self.poll_desired_state(applied, None)
+                .map_err(|failure| failure.message)
+        }
+    }
 
     // std::env::set_var is process-global, so these must not interleave with
     // each other or with anything else reading the same variables — including
@@ -872,6 +1460,881 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    // ── Cloud Jev policies + the policyErrors report (CONTRACT C4/C5) ───────
+
+    fn error(id: &str, message: &str) -> PolicyErrorEntry {
+        PolicyErrorEntry {
+            id: id.into(),
+            version: Some(1),
+            kind: "jev".into(),
+            message: message.into(),
+        }
+    }
+
+    #[test]
+    fn the_report_is_compact_json_under_four_kib_encoded_and_truncates_the_list() {
+        assert_eq!(encode_policy_errors(&[]), "[]");
+        let one = encode_policy_errors(&[error("p", "bad sha")]);
+        assert_eq!(
+            one,
+            r#"[{"id":"p","version":1,"kind":"jev","message":"bad sha"}]"#
+        );
+
+        // Far more than fits: the list is cut, the JSON never is.
+        let many: Vec<_> = (0..200)
+            .map(|i| {
+                error(
+                    &format!("policy-{i}"),
+                    &"é needs encoding & more ".repeat(20),
+                )
+            })
+            .collect();
+        let encoded = encode_policy_errors(&many);
+        assert!(encoded_len(&encoded) <= MAX_POLICY_ERRORS_ENCODED_BYTES);
+        let parsed: Vec<PolicyErrorEntry> =
+            serde_json::from_str(&encoded).expect("still a complete JSON array");
+        assert!(!parsed.is_empty() && parsed.len() < many.len());
+        assert_eq!(parsed[0].id, "policy-0", "truncated from the END");
+        assert!(
+            parsed[0].message.chars().count() <= MAX_POLICY_ERROR_MESSAGE_CHARS,
+            "one long message cannot crowd out the rest"
+        );
+    }
+
+    #[test]
+    fn the_report_is_omitted_until_either_side_has_an_error_state() {
+        let root = std::env::temp_dir().join(format!("failproofaid-report-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default()),
+            None,
+            "never had one: omit"
+        );
+        // A clean poll on such a machine does not create a state either.
+        record_daemon_errors(&store, Vec::new());
+        assert!(!store.daemon_errors_path().exists());
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default()),
+            None
+        );
+
+        record_daemon_errors(&store, vec![daemon_error("bad".into(), Some("p"), None)]);
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        // Fixed: the state is now `[]`, which is what clears the server.
+        record_daemon_errors(&store, Vec::new());
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default()),
+            Some(vec![])
+        );
+
+        fs::write(
+            store.cli_errors_path(),
+            r#"{"errors":[{"id":"q","version":2,"kind":"both","message":"m"}]}"#,
+        )
+        .unwrap();
+        let merged = current_policy_errors(&store, None, &PackDropContext::default()).unwrap();
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "q");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn daemon_errors_name_the_policy_and_its_version_when_they_can() {
+        let desired: DesiredState = serde_json::from_str(
+            r#"{"schemaVersion":2,"deployment":1,
+                "policies":[{"id":"j","version":4,"sha256":"aa","artifactUrl":"/a"}]}"#,
+        )
+        .unwrap();
+        let named = daemon_error("m".into(), Some("j"), Some(&desired));
+        assert_eq!((named.id.as_str(), named.version), ("j", Some(4)));
+        assert_eq!(named.kind, "daemon");
+        let state = daemon_error("m".into(), None, None);
+        assert_eq!((state.id.as_str(), state.version), ("desired-state", None));
+    }
+
+    /// The report reaches the wire as the `policyErrors` parameter, and is
+    /// absent when there is nothing to say.
+    #[test]
+    fn the_poll_carries_policy_errors_when_given() {
+        for report in [
+            Some(r#"[{"id":"p","version":1,"kind":"jev","message":"x y"}]"#),
+            None,
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let captured = Arc::new(std::sync::Mutex::new(String::new()));
+            let sink = captured.clone();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 8192];
+                let read = stream.read(&mut request).unwrap();
+                *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+                let body = br#"{"schemaVersion":2,"deployment":7,"policies":[]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+            });
+            let cloud =
+                CloudClient::new(&format!("http://{address}"), "t".into(), "machine-1".into())
+                    .unwrap();
+            cloud.poll_desired_state(Some(7), report).unwrap();
+            server.join().unwrap();
+            let request = captured.lock().unwrap().clone();
+            let first_line = request.lines().next().unwrap_or_default().to_string();
+            if report.is_some() {
+                assert!(
+                    first_line.contains("policyErrors=%5B%7B%22id%22%3A%22p%22"),
+                    "URL-encoded compact JSON expected: {first_line}"
+                );
+                assert!(first_line.contains("appliedDeployment=7"));
+            } else {
+                assert!(!first_line.contains("policyErrors"), "{first_line}");
+            }
+        }
+    }
+
+    /// A payload the daemon refuses is reportable; a transport failure is not.
+    #[test]
+    fn only_payload_failures_are_reportable() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let cloud =
+            CloudClient::new(&format!("http://127.0.0.1:{port}"), "t".into(), "m".into()).unwrap();
+        assert!(!cloud.poll_desired_state(None, None).unwrap_err().reportable);
+        assert!(PollFailure::payload("x".into()).reportable);
+    }
+
+    /// End to end over HTTP: a server that still names Jev checks
+    /// (`semanticPolicies`, retired by CONTRACT C10) gets exactly one request —
+    /// the poll. Nothing is fetched for them, and only the Jev MODE lands.
+    #[test]
+    fn a_server_still_naming_jev_checks_is_not_fetched_from() {
+        let sha = "ab".repeat(32);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let named = sha.clone();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]).to_string();
+            assert!(request.contains("desired-state"), "{request}");
+            let body = format!(r#"{{"schemaVersion":2,"deployment":3,"policies":[],"semanticPolicies":[{{"id":"j","version":1,"sha256":"{named}","artifactUrl":"/enforcement/v1/artifacts/{named}"}}],"jevMode":"enforce"}}"#).into_bytes();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            stream.write_all(&body).unwrap();
+            // The listener is dropped here: a second request would be refused.
+        });
+        let cloud =
+            CloudClient::new(&format!("http://{address}"), "tok".into(), "m".into()).unwrap();
+        let desired = cloud.desired_state(None).unwrap();
+        server.join().unwrap();
+        let root = std::env::temp_dir().join(format!("fpaid-jev-http-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+        store
+            .reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy))
+            .unwrap();
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.jev_mode.as_deref(), Some("enforce"));
+        assert!(active.policies.is_empty());
+        let text = fs::read_to_string(store.active_manifest_path()).unwrap();
+        assert!(!text.contains("semanticPolicies"), "{text}");
+        assert_eq!(
+            fs::read_dir(root.join("artifacts")).unwrap().count(),
+            0,
+            "nothing Jev-related is written to the machine"
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
+    // ── Disconnect sticks (review M2) ────────────────────────────────────────
+
+    use crate::cloud_policies::cloud_jev_tests::{jev_state, serve, temp_store};
+
+    /// A store holding a `both` policy's JS half with `jevMode: observe`.
+    fn deployed_store(name: &str) -> PolicyStore {
+        let store = temp_store(name);
+        store.reconcile(&jev_state(12), &serve).unwrap();
+        store
+    }
+
+    /// Exactly what `config --disconnect` removes
+    /// (`clearActiveCloudManagedPolicies` in `cloud-managed-policies.ts`).
+    fn disconnect_like_the_cli(store: &PolicyStore) {
+        for path in [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// Enrolled, and nothing answers: a port that was bound and released.
+    fn offline_client() -> CloudClient {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        CloudClient::new(&format!("http://127.0.0.1:{port}"), "t".into(), "m".into()).unwrap()
+    }
+
+    fn no_cloud_state(store: &PolicyStore) -> bool {
+        [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ]
+        .iter()
+        .all(|path| !path.exists())
+    }
+
+    /// The review's M2 scenario: after `config --disconnect` the old org's
+    /// JS policies and Jev mode used to be rebuilt from the cache
+    /// within one interval. Now nothing reappears, tick after tick.
+    #[test]
+    fn a_disconnected_machine_stays_empty_across_maintenance_ticks() {
+        let store = deployed_store("disconnect-sticks");
+        disconnect_like_the_cli(&store);
+        for tick in 0..3 {
+            maintenance_tick(&store, Ok(None), &|| true, &|| true);
+            assert!(
+                no_cloud_state(&store),
+                "cloud state reappeared on tick {tick}"
+            );
+        }
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// An older CLI removed only `active.json`. Unenrolled, the daemon does not
+    /// rebuild it from the leftover snapshot; put back on OSS, it removes the
+    /// snapshot too, so nothing ever can.
+    #[test]
+    fn an_unenrolled_machine_never_rebuilds_from_a_leftover_snapshot() {
+        let store = deployed_store("leftover-snapshot");
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(&store, Ok(None), &|| true, &|| false);
+        assert!(!store.active_manifest_path().exists());
+        assert!(
+            store.desired_state_path().exists(),
+            "a credential that merely vanished is not an explicit disconnect; nothing is deleted"
+        );
+
+        maintenance_tick(&store, Ok(None), &|| true, &|| true);
+        assert!(no_cloud_state(&store));
+        maintenance_tick(&store, Ok(None), &|| true, &|| true);
+        assert!(no_cloud_state(&store));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The other half, which must not regress: an ENROLLED machine that cannot
+    /// reach the control plane still rebuilds a lost `active.json` — Jev mode
+    /// included — and a transport failure records no error state.
+    #[test]
+    fn a_connected_machine_that_is_offline_still_repairs() {
+        let store = deployed_store("offline-repairs");
+        let good = store.read_active().unwrap().unwrap();
+        assert_eq!(good.jev_mode.as_deref(), Some("observe"));
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(&store, Ok(Some(offline_client())), &|| false, &|| false);
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        assert!(!store.daemon_errors_path().exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A credential file that cannot be read is not a disconnect: the machine
+    /// keeps (and repairs) its last known-good deployment.
+    #[test]
+    fn an_unreadable_credential_still_repairs() {
+        let store = deployed_store("broken-credential");
+        let good = store.read_active().unwrap().unwrap();
+        fs::remove_file(store.active_manifest_path()).unwrap();
+
+        maintenance_tick(
+            &store,
+            Err("invalid credentials in credentials.json".into()),
+            &|| false,
+            &|| true,
+        );
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn a_withdrawn_enrolment_cannot_run_post_poll_repair() {
+        let store = deployed_store("withdrawn-before-repair");
+        fs::remove_file(store.active_manifest_path()).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener); // Guaranteed refused connection: no remote or host service.
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+
+        maintenance_tick(&store, Ok(Some(cloud)), &|| true, &|| false);
+        assert!(store.read_active().unwrap().is_none());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A poll in flight when `config --disconnect` runs: the server answers,
+    /// every artifact is fetched, and then nothing is written — no snapshot, no
+    /// pointer, no error state.
+    #[test]
+    fn a_disconnect_during_a_poll_discards_its_result() {
+        let desired = jev_state(12);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let body_state = serde_json::to_vec(&desired).unwrap();
+        // Detached: it serves until the test process exits.
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                let body = if request.starts_with("GET /enforcement/v1/desired-state") {
+                    body_state.clone()
+                } else {
+                    let sha = request
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|path| path.rsplit('/').next())
+                        .unwrap_or_default()
+                        .to_string();
+                    let probe = DesiredPolicy {
+                        id: "x".into(),
+                        version: 1,
+                        sha256: sha,
+                        artifact_url: String::new(),
+                        effect: PolicyEffect::Enforce,
+                        authority: None,
+                        reviewed_by: None,
+                    };
+                    serve(&probe).unwrap_or_default()
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(&body);
+            }
+        });
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+
+        let store = temp_store("disconnect-mid-poll");
+        poll_once_guarded(&store, &cloud, &|| true);
+        assert!(no_cloud_state(&store));
+
+        // Still enrolled, the same poll applies it.
+        poll_once_guarded(&store, &cloud, &|| false);
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 12);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    // ── A stale CLI report is not sent (e2e observation 3) ──────────────────
+
+    fn entry(id: &str, version: Option<u64>, kind: &str, message: &str) -> PolicyErrorEntry {
+        PolicyErrorEntry {
+            id: id.into(),
+            version,
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+
+    fn write_cli_errors(store: &PolicyStore, errors: &[PolicyErrorEntry]) {
+        let file = serde_json::json!({ "errors": errors });
+        fs::write(store.cli_errors_path(), serde_json::to_vec(&file).unwrap()).unwrap();
+    }
+
+    /// Written only by a pre-release build that delivered Jev checks (D-FB-3).
+    const NO_MODE_NO_FILE: &str = "jev_unconfigured: FailproofAI Cloud sets no Jev mode for this machine and it has \
+         no jev.json, so its FailproofAI Cloud Jev checks are never asked";
+    const PACK_DROP: &str = "jev_budget: dropped acme-x";
+
+    /// `errors.json` is rewritten only when a hook runs, so a Cloud-side fix
+    /// used to leave the fleet page showing the old problem until the next
+    /// tool call. Entries about a policy no longer deployed, or deployed at
+    /// another version, are not sent; the daemon's own entries always are.
+    #[test]
+    fn cli_errors_about_policies_no_longer_in_force_are_not_reported() {
+        // `no-prod-db@3` (both), Jev mode observe.
+        let store = deployed_store("stale-report");
+        write_cli_errors(
+            &store,
+            &[
+                entry("no-prod-db", Some(3), "both", "policy did not load"),
+                entry("no-prod-db", Some(2), "both", "an older version's problem"),
+                entry("no-prod-db", None, "both", "no version named"),
+                entry(
+                    "secrets-in-output",
+                    Some(1),
+                    "jev",
+                    "a Jev-only policy is not the machine's",
+                ),
+                entry("removed-policy", Some(1), "regex", "failed to load"),
+                entry("active.json", None, "daemon", "cannot read the manifest"),
+                entry("pack:acme/pack", None, "daemon", PACK_DROP),
+                entry("jevMode", None, "daemon", "jev_unconfigured"),
+                entry("jevMode", None, "daemon", TRANSCRIPTS_DISABLED),
+                entry("jevMode", None, "daemon", NO_MODE_NO_FILE),
+            ],
+        );
+        store
+            .write_daemon_policy_errors(&[entry(
+                "removed-policy",
+                Some(1),
+                "daemon",
+                "sha mismatch",
+            )])
+            .unwrap();
+
+        let active = store.read_active().unwrap();
+        // The pack's drop was recorded under this deployment and mode, and it is installed.
+        let packs = PackDropContext {
+            record: Some((Some(12), "observe".into())),
+            installed: Some(HashSet::from(["acme/pack".to_string()])),
+        };
+        let sent = current_policy_errors(&store, Some(active.as_ref()), &packs).unwrap();
+        let sent: Vec<(&str, Option<u64>, &str)> = sent
+            .iter()
+            .map(|e| (e.id.as_str(), e.version, e.message.as_str()))
+            .collect();
+        assert_eq!(
+            sent,
+            vec![
+                // The daemon's own: its last reconcile, of the DESIRED state.
+                ("removed-policy", Some(1), "sha mismatch"),
+                ("no-prod-db", Some(3), "policy did not load"),
+                ("no-prod-db", None, "no version named"),
+                ("active.json", None, "cannot read the manifest"),
+                // Cloud sets observe: Jev asks, so its setup reports are current,
+                // and a pre-release "Cloud sets no Jev mode" one is not.
+                ("pack:acme/pack", None, PACK_DROP),
+                ("jevMode", None, "jev_unconfigured"),
+                ("jevMode", None, TRANSCRIPTS_DISABLED),
+            ]
+        );
+
+        // Nothing is deployed any more: only machine-level entries remain.
+        let sent = current_policy_errors(&store, Some(None), &PackDropContext::default()).unwrap();
+        assert_eq!(
+            sent.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["removed-policy", "active.json"]
+        );
+
+        // The deployment could not be read: "cannot tell" drops nothing.
+        assert_eq!(
+            current_policy_errors(&store, None, &PackDropContext::default())
+                .unwrap()
+                .len(),
+            11
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The Jev entries the CLI reports only while Cloud has Jev asking — the
+    /// same condition as `recordCloudPolicyErrors` in `src/hooks/handler.ts`.
+    #[test]
+    fn jev_setup_reports_are_kept_only_while_cloud_has_jev_asking() {
+        let base = deployed_active();
+        let with = |mode: Option<&str>| {
+            let mut active = base.clone();
+            active.jev_mode = mode.map(str::to_string);
+            active
+        };
+        let unconfigured = entry("jevMode", None, "daemon", "jev_unconfigured");
+        let detail = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "jev_unconfigured: the FailproofAI Cloud Jev credential is refused — too open",
+        );
+        let transcripts = entry("jevMode", None, "daemon", TRANSCRIPTS_DISABLED);
+        let pack = entry("pack:acme/pack", None, "daemon", PACK_DROP);
+        let legacy = entry("jevMode", None, "daemon", NO_MODE_NO_FILE);
+        let unknown_mode = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "unknown Jev mode \"loud\" ignored",
+        );
+        let manifest = entry("active.json", None, "daemon", "EACCES");
+
+        // Cloud's mode → [unconfigured, detail, transcripts, pack, legacy] kept?
+        let cases: [(Option<&str>, [bool; 5]); 4] = [
+            (Some("enforce"), [true, true, true, true, false]),
+            (Some("observe"), [true, true, true, true, false]),
+            // Cloud switched Jev off: nothing about Jev is reported.
+            (Some("off"), [false, false, false, false, false]),
+            // No Cloud mode: the machine's own jev.json decides, and Cloud's
+            // Jev checks are never asked from here — nothing to report.
+            (None, [false, false, false, false, false]),
+        ];
+        for (mode, expected) in cases {
+            let active = with(mode);
+            // The pack's drop is recorded under this very deployment and mode.
+            let packs = PackDropContext {
+                record: Some((Some(active.deployment), mode.unwrap_or("-").into())),
+                installed: Some(HashSet::from(["acme/pack".to_string()])),
+            };
+            let kept = [&unconfigured, &detail, &transcripts, &pack, &legacy]
+                .map(|e| cli_entry_is_current(e, Some(&active), &packs));
+            assert_eq!(kept, expected, "mode {mode:?}");
+            // Machine-level entries that are not about the Jev state stay.
+            assert!(cli_entry_is_current(&unknown_mode, Some(&active), &packs));
+            assert!(cli_entry_is_current(&manifest, Some(&active), &packs));
+        }
+        // No deployment: no Jev state, no policy.
+        let none = PackDropContext::default();
+        assert!(!cli_entry_is_current(&unconfigured, None, &none));
+        assert!(!cli_entry_is_current(&transcripts, None, &none));
+        assert!(!cli_entry_is_current(&pack, None, &none));
+        assert!(!cli_entry_is_current(
+            &entry("no-prod-db", Some(3), "both", "m"),
+            None,
+            &none
+        ));
+        assert!(cli_entry_is_current(&manifest, None, &none));
+    }
+
+    /// Review m2 / e2e O1: an installed pack's drop report is sent only while
+    /// its record is of the active deployment and Jev mode, and its pack is
+    /// still installed — so a redeploy, a mode change or an uninstall clears it
+    /// at the next poll, not at the machine's next tool call.
+    #[test]
+    fn pack_drop_reports_follow_their_record_and_the_installed_packs() {
+        let mut active = deployed_active();
+        active.jev_mode = Some("enforce".into());
+        let budget = entry("pack:acme/pack", None, "daemon", PACK_DROP);
+        let clash = entry(
+            "pack:acme/pack",
+            None,
+            "daemon",
+            "jev_name_clash: acme-x (the FailproofAI Cloud check is used)",
+        );
+        let ctx =
+            |deployment: Option<u64>, mode: &str, installed: Option<&[&str]>| PackDropContext {
+                record: Some((deployment, mode.into())),
+                installed: installed.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
+            };
+        let d = active.deployment;
+        let cases: [(PackDropContext, bool); 7] = [
+            (ctx(Some(d), "enforce", Some(&["acme/pack"])), true),
+            // Recorded under an older deployment: Cloud redeployed since.
+            (ctx(Some(d - 1), "enforce", Some(&["acme/pack"])), false),
+            (ctx(None, "enforce", Some(&["acme/pack"])), false),
+            // Recorded under another mode.
+            (ctx(Some(d), "observe", Some(&["acme/pack"])), false),
+            // The pack was uninstalled.
+            (ctx(Some(d), "enforce", Some(&["other/pack"])), false),
+            (ctx(Some(d), "enforce", Some(&[])), false),
+            // The installed packs cannot be read: that is not "uninstalled".
+            (ctx(Some(d), "enforce", None), true),
+        ];
+        for (packs, expected) in cases {
+            assert_eq!(
+                cli_entry_is_current(&budget, Some(&active), &packs),
+                expected,
+                "{packs:?}"
+            );
+            assert_eq!(
+                cli_entry_is_current(&clash, Some(&active), &packs),
+                expected,
+                "{packs:?}"
+            );
+        }
+        // No record at all (the CLI keeps none, or `config --disconnect` removed it).
+        assert!(!cli_entry_is_current(
+            &budget,
+            Some(&active),
+            &PackDropContext::default()
+        ));
+        // Cloud's mode no longer asks: gone whatever the record says.
+        let mut off = active.clone();
+        off.jev_mode = Some("off".into());
+        assert!(!cli_entry_is_current(
+            &budget,
+            Some(&off),
+            &ctx(Some(d), "off", None)
+        ));
+    }
+
+    /// Review M3: `jev_rate_limited` and `jev_unavailable` describe calls made
+    /// under a Cloud mode that asks, and go with it.
+    #[test]
+    fn jev_health_reports_are_kept_only_while_cloud_has_jev_asking() {
+        let base = deployed_active();
+        let limited = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "jev_rate_limited: 7 calls fell back to regex in the last 10 min",
+        );
+        let unavailable = entry(
+            "jevMode",
+            None,
+            "daemon",
+            "jev_unavailable: FailproofAI Cloud Jev failed 3 or more calls in a row (last: timeout)",
+        );
+        for (mode, kept) in [
+            (Some("enforce"), true),
+            (Some("observe"), true),
+            (Some("off"), false),
+            (None, false),
+        ] {
+            let mut active = base.clone();
+            active.jev_mode = mode.map(str::to_string);
+            let packs = PackDropContext::default();
+            assert_eq!(
+                cli_entry_is_current(&limited, Some(&active), &packs),
+                kept,
+                "{mode:?}"
+            );
+            assert_eq!(
+                cli_entry_is_current(&unavailable, Some(&active), &packs),
+                kept,
+                "{mode:?}"
+            );
+        }
+        assert!(!cli_entry_is_current(
+            &limited,
+            None,
+            &PackDropContext::default()
+        ));
+    }
+
+    /// `jev-budget.json` and `installed.json` as the CLI writes them.
+    #[test]
+    fn pack_drop_context_reads_the_clis_files() {
+        let dir = std::env::temp_dir().join(format!("fpd-packdrop-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let budget = dir.join("jev-budget.json");
+        let installed = dir.join("installed.json");
+
+        // Neither file: no record, and no pack installed.
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: None,
+                installed: Some(HashSet::new())
+            }
+        );
+        fs::write(
+            &budget,
+            r#"{"machineId":"m","deployment":7,"jevMode":"enforce","dropped":[{"packId":"acme/pack","name":"x","clash":true}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            &installed,
+            r#"{"schemaVersion":1,"packs":[{"id":"acme/pack"},{"id":"b/c"},{"nope":1}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: Some((Some(7), "enforce".into())),
+                installed: Some(HashSet::from(["acme/pack".to_string(), "b/c".to_string()])),
+            }
+        );
+        // A null deployment is kept as such; an unreadable installed.json filters nothing.
+        fs::write(
+            &budget,
+            r#"{"machineId":"m","deployment":null,"jevMode":"observe","dropped":[]}"#,
+        )
+        .unwrap();
+        fs::write(&installed, "not json").unwrap();
+        assert_eq!(
+            PackDropContext::read_from(&budget, Some(&installed)),
+            PackDropContext {
+                record: Some((None, "observe".into())),
+                installed: None
+            }
+        );
+        // A record missing its mode is no record.
+        fs::write(&budget, r#"{"deployment":7}"#).unwrap();
+        assert_eq!(PackDropContext::read_from(&budget, None).record, None);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The deployment of `deployed_store`, without touching disk.
+    fn deployed_active() -> ActiveDeployment {
+        let store = deployed_store("stale-report-active");
+        let active = store.read_active().unwrap().unwrap();
+        fs::remove_dir_all(store.root()).ok();
+        active
+    }
+
+    /// Wired into the poll: what reaches the server is the filtered report.
+    #[test]
+    fn the_poll_sends_only_the_entries_that_describe_the_active_deployment() {
+        let store = deployed_store("stale-report-poll");
+        write_cli_errors(
+            &store,
+            &[
+                entry("no-prod-db", Some(3), "both", "current"),
+                entry("removed-policy", Some(1), "regex", "stale"),
+                entry("jevMode", None, "daemon", NO_MODE_NO_FILE),
+            ],
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let captured = Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = captured.clone();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 8192];
+            let read = stream.read(&mut request).unwrap();
+            *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+            // The same deployment, so the reconcile has nothing to fetch.
+            let body = serde_json::to_vec(&jev_state(12)).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+        });
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+        poll_once_guarded(&store, &cloud, &|| false);
+        server.join().unwrap();
+
+        let request = captured.lock().unwrap().clone();
+        let target = request
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or_default()
+            .to_string();
+        let url = Url::parse(&format!("http://x.invalid{target}")).unwrap();
+        let report = url
+            .query_pairs()
+            .find(|(key, _)| key == "policyErrors")
+            .map(|(_, value)| value.to_string())
+            .expect("the report is sent");
+        let report: Vec<PolicyErrorEntry> = serde_json::from_str(&report).unwrap();
+        assert_eq!(
+            report,
+            vec![entry("no-prod-db", Some(3), "both", "current")]
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    // ── Review n1: a fetch that never got an answer is not an error state ───
+
+    #[test]
+    fn an_artifact_fetch_that_never_got_an_answer_is_not_recorded() {
+        let request = jev_state(1).policies[0].clone();
+        let message = offline_client().artifact(&request).unwrap_err();
+        assert!(message.starts_with(ARTIFACT_TRANSPORT_FAILURE), "{message}");
+        assert!(transient_fetch_failure(&ReconcileError::Fetch {
+            policy_id: "no-prod-db".into(),
+            message,
+        }));
+
+        // An HTTP answer is the server's to see, and stays reported.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+        let message = cloud.artifact(&request).unwrap_err();
+        server.join().unwrap();
+        assert!(message.starts_with("artifact request failed"), "{message}");
+        assert!(!transient_fetch_failure(&ReconcileError::Fetch {
+            policy_id: "no-prod-db".into(),
+            message,
+        }));
+        assert!(!transient_fetch_failure(&ReconcileError::NoVerifiedCopy {
+            policy_id: "no-prod-db".into(),
+        }));
+    }
+
+    // ── C9.5: no local paths on the wire ────────────────────────────────────
+
+    /// The same cases as `cloud-policy-errors` in the CLI's vitest suite
+    /// (`redactLocalPaths`), so the two copies of the rule cannot drift.
+    #[test]
+    fn policy_error_messages_carry_no_local_paths() {
+        let home = Some("/home/alice");
+        for (input, expected) in [
+            (
+                "path missing: /home/alice/.failproofai/policies/cloud-policies/artifacts/ab.mjs",
+                "path missing: ~/.failproofai/policies/cloud-policies/artifacts/ab.mjs",
+            ),
+            (
+                "Cannot find module '/tmp/fp-load-1/x.mjs' imported from /opt/app/y.mjs",
+                "Cannot find module 'x.mjs' imported from y.mjs",
+            ),
+            (
+                "jev.json is too open (chmod 600 /home/alice/.failproofai/jev.json)",
+                "jev.json is too open (chmod 600 ~/.failproofai/jev.json)",
+            ),
+            (
+                "/home/alice2/notes.txt is not home",
+                "notes.txt is not home",
+            ),
+            ("home is /home/alice", "home is ~"),
+            ("dir=/var/lib/fp/, done", "dir=fp, done"),
+            (
+                "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
+                "GET https://cloud.example/enforcement/v1/artifacts/ab failed; a/b stays",
+            ),
+            ("the root / itself", "the root / itself"),
+            // After `:` too (review F6), but never a URL's `//host`.
+            (
+                "import failed: file:///tmp/fp-load-1/x.mjs not found",
+                "import failed: file:x.mjs not found",
+            ),
+            ("open:/etc/fp/x failed", "open:x failed"),
+            (
+                "at file:///home/alice/.failproofai/x.mjs:3",
+                "at file://~/.failproofai/x.mjs:3",
+            ),
+            (
+                "see http://localhost:8080/a/b and ssh://git@host/r",
+                "see http://localhost:8080/a/b and ssh://git@host/r",
+            ),
+            ("a bare scheme:// stays", "a bare scheme:// stays"),
+        ] {
+            assert_eq!(redact_local_paths(input, home), expected, "{input}");
+            // Applied twice (CLI, then daemon): the second pass changes nothing.
+            assert_eq!(redact_local_paths(expected, home), expected, "{input}");
+        }
+        assert_eq!(redact_local_paths("/home/alice/x", None), "x");
+
+        let encoded =
+            encode_policy_errors(&[error("guard", "path missing: /var/lib/fp/artifacts/ab.mjs")]);
+        assert!(encoded.contains("path missing: ab.mjs"), "{encoded}");
+        assert!(!encoded.contains("/var/lib"), "{encoded}");
+    }
+
     #[test]
     fn rejects_cross_origin_artifacts_before_sending_the_token() {
         let cloud =
@@ -882,6 +2345,8 @@ mod tests {
             sha256: "0".repeat(64),
             artifact_url: "https://evil.example/artifact".into(),
             effect: PolicyEffect::Enforce,
+            authority: None,
+            reviewed_by: None,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }
@@ -1035,6 +2500,48 @@ mod tests {
             ("config.json", r#"{"mode":{"kind":"oss"}}"#),
         ]);
         assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    /// The OSS cleanup deletes four fixed filenames, so it runs only in the
+    /// DEFAULT cloud policy directory: an operator's `FAILPROOFAI_CLOUD_POLICY_DIR`
+    /// may be shared with unrelated files of those names (review F7).
+    #[test]
+    fn the_oss_cleanup_never_runs_in_an_overridden_policy_dir() {
+        struct DirOverride;
+        impl Drop for DirOverride {
+            fn drop(&mut self) {
+                unsafe { std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV) };
+            }
+        }
+        let _lock = lock_env();
+        let _guard = with_home(&[("config.json", r#"{"mode":{"kind":"oss"}}"#)]);
+        let _override = DirOverride;
+        let store = deployed_store("oss-cleanup-override");
+        let names = [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ];
+        fs::write(store.cli_errors_path(), r#"{"errors":[]}"#).unwrap();
+        fs::write(store.daemon_errors_path(), r#"{"errors":[]}"#).unwrap();
+        assert!(names.iter().all(|path| path.exists()));
+
+        unsafe { std::env::set_var(crate::paths::CLOUD_POLICY_DIR_ENV, store.root()) };
+        assert!(!oss_cleanup_applies());
+        maintenance_tick(&store, Ok(None), &|| true, &oss_cleanup_applies);
+        assert!(
+            names.iter().all(|path| path.exists()),
+            "nothing is removed from an overridden directory"
+        );
+
+        // The default directory: the cleanup applies, as before.
+        unsafe { std::env::remove_var(crate::paths::CLOUD_POLICY_DIR_ENV) };
+        assert!(oss_cleanup_applies());
+        maintenance_tick(&store, Ok(None), &|| true, &oss_cleanup_applies);
+        assert!(no_cloud_state(&store));
+        fs::remove_dir_all(store.root()).ok();
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
 

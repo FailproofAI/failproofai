@@ -19,7 +19,15 @@ vi.mock("../../src/hooks/policy-registry", () => ({
   getPoliciesForEvent: vi.fn(() => []),
 }));
 vi.mock("../../src/hooks/custom-hooks-loader", () => ({ loadAllCustomHooks: vi.fn() }));
-vi.mock("../../src/hooks/cloud-managed-policies", () => ({ readActiveCloudManagedPolicies: vi.fn(() => []) }));
+// Every reader of `active.json` stubbed, for the same isolation reason as
+// `pack-manifest` below; the pure helpers stay real.
+vi.mock("../../src/hooks/cloud-managed-policies", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/cloud-managed-policies")>()),
+  readActiveCloudManagedPolicies: vi.fn(() => []),
+  readCloudJevMode: vi.fn(() => null),
+  readCloudJevState: vi.fn(() => ({ jevMode: null, deployment: null, errors: [] })),
+  readCloudAuthorityInputs: vi.fn(() => []),
+}));
 vi.mock("../../src/hooks/hook-activity-store", () => ({ persistHookActivity: vi.fn() }));
 vi.mock("../../src/hooks/policy-evaluator", () => ({ evaluatePolicies: vi.fn() }));
 vi.mock("../../src/hooks/hook-telemetry", () => ({

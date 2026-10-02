@@ -173,10 +173,17 @@ export interface JevConnectOutcome {
    */
   optIn?: true;
   /**
+   * A `--no-transcripts` connection removed this `jev.json`: it named the
+   * FailproofAI Cloud provider and was not switched off (the rule `config
+   * --disconnect` uses), so Jev through FailproofAI Cloud stays off here.
+   * Set with `optIn`.
+   */
+  removedCloudConfig?: string;
+  /**
    * A `--no-transcripts` connection found a `jev.json` already in place that
-   * keeps Jev running through FailproofAI Cloud, in this mode. It is left
-   * alone like any existing file (never overwritten), but a connection that
-   * asked for decisions only is told that Jev still sends more than that.
+   * keeps Jev running through FailproofAI Cloud, in this mode, and could not
+   * remove it (see `removedCloudConfig`). A connection that asked for
+   * decisions only is told that Jev still sends more than that.
    */
   stillOn?: "observe" | "enforce";
   /**
@@ -348,7 +355,9 @@ writeCloudCredentials(creds);
       writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
       // Loaded here and nowhere earlier: a connect whose key does not carry Jev
       // pulls in none of the Jev modules.
-      const { cloudJevRunningMode, existingJevConfig, writeCloudJevConfigIfAbsent } = await import("./jev-cloud-connection");
+      const { cloudJevRunningMode, existingJevConfig, removeCloudJevConfig, writeCloudJevConfigIfAbsent } = await import(
+        "./jev-cloud-connection"
+      );
       if (input.sessions === true) {
         outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
       } else {
@@ -356,15 +365,27 @@ writeCloudCredentials(creds);
         // sends each checked tool call and the recent prompt to FailproofAI
         // Cloud, and someone who just asked for decisions only has not asked
         // for that. The key is stored all the same, so opting in later is one
-        // command with no key to paste; jev.json is not written. One that is
-        // already there is somebody's decision and is reported as ever — and
-        // when it keeps Jev on through FailproofAI Cloud, that is said too, or
-        // "Decisions only." would be the last word while Jev keeps sending.
-        const existing = existingJevConfig(input.url);
-        const stillOn = existing ? cloudJevRunningMode() : null;
-        outcome.jev = existing
-          ? { ok: true, config: existing, ...(stillOn ? { stillOn } : {}) }
-          : { ok: true, optIn: true };
+        // command with no key to paste; jev.json is not written.
+        //
+        // And a jev.json naming the FailproofAI Cloud provider — left by an
+        // earlier connect with transcripts on — is removed, by exactly the rule
+        // `config --disconnect` uses (`removeCloudJevConfig`: the Cloud's file,
+        // not switched off). Kept, it went on sending this machine's tool calls
+        // to FailproofAI Cloud with no Cloud mode set (e2e-c10 O2, user
+        // decision). A BYOK file is its owner's and stays, reported as ever; so
+        // does a Cloud file switched off, the owner's opt-out.
+        const removal = removeCloudJevConfig();
+        if (removal.status === "removed") {
+          outcome.jev = { ok: true, optIn: true, removedCloudConfig: removal.path };
+        } else {
+          const existing = existingJevConfig(input.url);
+          // Still sending (the removal failed): said, or "Decisions only."
+          // would be the last word while Jev keeps sending.
+          const stillOn = existing ? cloudJevRunningMode() : null;
+          outcome.jev = existing
+            ? { ok: true, config: existing, ...(stillOn ? { stillOn } : {}) }
+            : { ok: true, optIn: true };
+        }
       }
     } else if (known) {
       // Introspect ANSWERED, and the key does not carry Jev. This connection
@@ -425,6 +446,11 @@ function jevLines(outcome: ConnectOutcome): string[] {
   if (jev.unconfirmed) return ["  Jev       could not confirm the key's Jev permission; left as it was."];
   if (!jev.ok) {
     return [`  Jev       not through FailproofAI Cloud: ${jev.reason ?? `that key does not carry \`${PERMISSION_JEV}\``}.`];
+  }
+  if (jev.optIn && jev.removedCloudConfig) {
+    return [
+      `  Jev       removed ${jev.removedCloudConfig}, which sent each checked tool call and the recent prompt to FailproofAI Cloud: Jev via FailproofAI Cloud stays off on this machine (--no-transcripts). To switch it on: \`failproofai jev setup --provider failproofai\`.`,
+    ];
   }
   if (jev.optIn) {
     // One line, and nothing that reads as "on": this connection asked for

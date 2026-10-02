@@ -485,22 +485,21 @@ export function readCloudAuthorityInputs(agent: AgentIdentity | null = null): Cl
     const raw = readActiveJson();
     if (raw === undefined) return [];
     const manifest = parseManifest(raw);
-    return manifest.policies.flatMap((policy) =>
-      typeof policy.id === "string" &&
-      agentTargetsMatch(parseAgentTargets(policy.agentTargets, manifest.schemaVersion), agent)
-        ? [
-            {
-              id: policy.id,
-              effect: policy.effect === "observe" ? "observe" : "enforce",
-              ...(parseAgentTargets(policy.agentTargets, manifest.schemaVersion)
-                ? { agentTargets: parseAgentTargets(policy.agentTargets, manifest.schemaVersion) }
-                : {}),
-              ...authorityFieldsOf(policy as unknown as Record<string, unknown>),
-            } satisfies CloudAuthorityInput,
-          ]
-        : [],
-    );
+    return manifest.policies.flatMap((policy) => {
+      if (typeof policy.id !== "string") return [];
+      const targets = parseAgentTargets(policy.agentTargets, manifest.schemaVersion);
+      if (!agentTargetsMatch(targets, agent)) return [];
+      return [{
+        id: policy.id,
+        effect: policy.effect === "observe" ? "observe" : "enforce",
+        ...(targets ? { agentTargets: targets } : {}),
+        ...authorityFieldsOf(policy as unknown as Record<string, unknown>),
+      } satisfies CloudAuthorityInput];
+    });
   } catch {
+    // A malformed selector invalidates the entire active manifest for the JS
+    // loader too. Do not keep reviewers from a partial set of that manifest:
+    // Cloud's JS has not loaded, and a subset would claim otherwise.
     return [];
   }
 }

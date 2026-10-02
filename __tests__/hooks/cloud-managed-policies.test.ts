@@ -179,6 +179,20 @@ describe("agent-scoped assignments", () => {
       expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
     }
   });
+
+  it("a malformed target invalidates the whole manifest, including its reviewer set", () => {
+    const root = scoped([{ integration: "hermes" }]);
+    const activePath = join(root, "active.json");
+    const active = JSON.parse(readFileSync(activePath, "utf8"));
+    active.policies.push({
+      ...active.policies[0],
+      id: "malformed",
+      agentTargets: [{ integration: "hermes", instanceId: "wrong" }],
+    });
+    writeFileSync(activePath, JSON.stringify(active));
+    expect(readCloudAuthorityInputs(hermesWork)).toEqual([]);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+  });
 });
 
 describe("clearActiveCloudManagedPolicies", () => {

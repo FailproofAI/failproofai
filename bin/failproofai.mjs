@@ -146,7 +146,22 @@ if (hookIdx >= 0) {
     )
       ? cliArg
       : "claude";
+  const scopeIdx = args.indexOf("--agent-scope");
+  const scopeArg = scopeIdx >= 0 ? args[scopeIdx + 1] : undefined;
+  const scopeHint = scopeIdx < 0
+    ? undefined
+    : scopeArg === "user" || scopeArg === "project" || scopeArg === "local"
+      ? scopeArg
+      : null;
   try {
+    const { runtimeAgentSettingsPath } = await import("../src/hooks/agent-roster");
+    // An empty path is deliberate: it means the originating hook could not
+    // prove which installed scope fired. Forward it rather than omitting the
+    // field and letting the warm worker infer a different profile from its own
+    // environment.
+    const agentSettingsPath = (scopeHint === null
+      ? null
+      : runtimeAgentSettingsPath(cli, process.cwd(), undefined, scopeHint)) ?? "";
     // Daemon-aware path — inert (and this whole block skipped) on every
     // machine until `failproofai config` has installed failproofaid AND
     // written the daemonConfigured marker (Stage 4). Until then this is
@@ -155,7 +170,6 @@ if (hookIdx >= 0) {
     if (isDaemonConfigured()) {
       const { readStdinPayload } = await import("../src/hooks/read-stdin");
       const { evaluateHookEvent } = await import("../src/hooks/handler");
-      const { runtimeAgentSettingsPath } = await import("../src/hooks/agent-roster");
       const stdinRead = await readStdinPayload();
 
       const attempt = await attemptDaemonHook({
@@ -166,7 +180,7 @@ if (hookIdx >= 0) {
         // process is spawned fresh, at that location, by the calling agent
         // CLI's own hook mechanism. See daemon-client.ts / PROTOCOL.md.
         cwd: process.cwd(),
-        agentSettingsPath: runtimeAgentSettingsPath(cli, process.cwd()) ?? undefined,
+        agentSettingsPath,
       });
 
       // On a daemon-configured machine the daemon is the ONLY evaluator. Every
@@ -210,7 +224,7 @@ if (hookIdx >= 0) {
     }
 
     const { handleHookEvent } = await import("../src/hooks/handler");
-    const exitCode = await handleHookEvent(eventType, cli);
+    const exitCode = await handleHookEvent(eventType, cli, agentSettingsPath);
     // handleHookEvent already flushes its own telemetry before returning; this
     // is the normal, reliable exit.
     await exitAfterFlush(exitCode);

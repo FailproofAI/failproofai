@@ -335,6 +335,8 @@ it("filters a targeted Cloud JS policy before import and runs it only for its se
     id: "agentScope", kind: "daemon",
     message: expect.stringContaining("agent_scope_unresolved"),
   }));
+  const ambiguous = await evaluateHookEvent("PreToolUse", "claude", input, { agentSettingsPath: "" });
+  expect(ambiguous.evaluation?.decision).toBe("allow");
 });
 
 async function registeredAfterOneEvent(): Promise<Map<string, RegisteredPolicy>> {

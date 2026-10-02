@@ -325,6 +325,12 @@ fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
     }
 }
 
+/// Pre-C11 callers omit the field entirely. Their profile is UNKNOWN, not
+/// whatever the daemon worker's long-lived environment happens to name.
+fn worker_agent_settings_path(settings_path: Option<&str>) -> Option<&str> {
+    Some(settings_path.unwrap_or(""))
+}
+
 fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
     if request.protocol_version() != PROTOCOL_VERSION {
         return ServerMessage::Error {
@@ -354,7 +360,7 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                 &cli,
                 &stdin,
                 cwd.as_deref(),
-                agent_settings_path.as_deref(),
+                worker_agent_settings_path(agent_settings_path.as_deref()),
             ) {
                 Ok(outcome) => ServerMessage::HookResult {
                     protocol_version: PROTOCOL_VERSION,
@@ -391,7 +397,7 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                 &integration,
                 &stdin,
                 cwd.as_deref(),
-                agent_settings_path.as_deref(),
+                worker_agent_settings_path(agent_settings_path.as_deref()),
             ) {
                 Ok(outcome) => match outcome.evaluation {
                     Some(evaluation)
@@ -734,6 +740,16 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&project_dir).ok();
+    }
+
+    #[test]
+    fn an_older_hook_without_agent_identity_must_not_borrow_the_workers_profile() {
+        assert_eq!(worker_agent_settings_path(None), Some(""));
+        assert_eq!(worker_agent_settings_path(Some("")), Some(""));
+        assert_eq!(
+            worker_agent_settings_path(Some("/opt/agent/config.yaml")),
+            Some("/opt/agent/config.yaml"),
+        );
     }
 
     #[test]

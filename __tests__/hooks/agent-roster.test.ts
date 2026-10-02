@@ -37,8 +37,33 @@ describe("runtime agent identity", () => {
     expect(runtimeAgentSettingsPath("claude", nested, user)).toBe(projectSettings);
     writeFileSync(userSettings, '{"hooks":"failproofai --hook PreToolUse"}');
     expect(runtimeAgentSettingsPath("claude", nested, user)).toBeNull();
+    expect(runtimeAgentSettingsPath("claude", nested, user, "project")).toBe(projectSettings);
+    expect(runtimeAgentSettingsPath("claude", nested, user, "user")).toBe(userSettings);
+    const localSettings = join(project, ".claude", "settings.local.json");
+    writeFileSync(localSettings, '{"hooks":"failproofai --hook PreToolUse"}');
+    expect(runtimeAgentSettingsPath("claude", nested, user, "local")).toBe(localSettings);
+    expect(runtimeAgentSettingsPath("claude", nested, user, "project")).toBe(projectSettings);
     rmSync(projectSettings);
+    rmSync(localSettings);
     expect(runtimeAgentSettingsPath("claude", nested, user)).toBe(userSettings);
+  });
+
+  it("counts Pi's relative project extension when deciding whether two scopes are ambiguous", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpai-pi-scopes-"));
+    roots.push(root);
+    const user = join(root, "user");
+    const project = join(root, "repo");
+    const projectSettings = join(project, ".pi", "settings.json");
+    const userSettings = join(user, ".pi", "agent", "settings.json");
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    mkdirSync(join(user, ".pi", "agent"), { recursive: true });
+    writeFileSync(projectSettings, '{"packages":["../pi-extension"]}');
+    expect(runtimeAgentSettingsPath("pi", project, user)).toBe(projectSettings);
+    writeFileSync(userSettings, '{"packages":["/opt/failproofai/pi-extension"]}');
+    expect(runtimeAgentSettingsPath("pi", project, user)).toBeNull();
+    // A package-level Pi extension cannot stamp which settings file loaded
+    // it. Without that proof an exact-profile assignment matches neither.
+    expect(readRuntimeAgentIdentity("pi", runtimeAgentSettingsPath("pi", project, user))).toBeNull();
   });
 
   it("resolves a named profile from the invoking hook's config path", () => {

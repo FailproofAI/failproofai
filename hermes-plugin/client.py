@@ -86,9 +86,10 @@ def evaluate_policy(
         "event": event,
         "payload": dict(payload),
         "cwd": cwd,
+        # An unknown profile is explicit. Omitting this field would let a new
+        # daemon's warm worker attribute the call to its own Hermes home.
+        "agentSettingsPath": agent_settings_path or "",
     }
-    if agent_settings_path:
-        request["agentSettingsPath"] = agent_settings_path
     try:
         body = json.dumps(
             request,

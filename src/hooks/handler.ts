@@ -1302,7 +1302,11 @@ export async function evaluateHookEvent(
  * kept unchanged so nothing about the one-shot (non-daemon) path regresses.
  * Internally now just a thin wrapper around `evaluateHookEvent`.
  */
-export async function handleHookEvent(eventType: string, cli: IntegrationType = "claude"): Promise<number> {
+export async function handleHookEvent(
+  eventType: string,
+  cli: IntegrationType = "claude",
+  agentSettingsPath?: string,
+): Promise<number> {
   const MAX_STDIN_BYTES = 1_048_576; // 1 MB
   const stdinRead = await readStdinPayload(MAX_STDIN_BYTES);
   if (stdinRead.readError) {
@@ -1334,7 +1338,10 @@ export async function handleHookEvent(eventType: string, cli: IntegrationType = 
     });
   }
 
-  const result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
+  const result = await evaluateHookEvent(
+    eventType, cli, stdinRead.payload,
+    agentSettingsPath === undefined ? undefined : { agentSettingsPath },
+  );
 
   // Say it out loud, once a session, when the collector is holding batches the
   // server definitively refused.

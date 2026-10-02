@@ -88,6 +88,8 @@ describe("hooks/daemon-client", () => {
       expect(req.protocolVersion).toBe(1);
       expect(req.hookEvent).toBe("PreToolUse");
       expect(req.cli).toBe("claude");
+      // An unresolved source is sent explicitly, never re-inferred by the daemon.
+      expect(req.agentSettingsPath).toBe("");
       socket.end(
         encodeFrame({
           type: "hookResult",
@@ -104,6 +106,7 @@ describe("hooks/daemon-client", () => {
       cli: "claude",
       stdin: "{}",
       cwd: "/repo",
+      agentSettingsPath: "",
     });
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   });

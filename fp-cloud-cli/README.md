@@ -176,8 +176,10 @@ show` and `fp fleet history` display the assigned scope; `--json` includes
 `agentTargets` on each targeted policy. A machine must report agent-scoping
 support before accepting a new target. When its identity cannot be resolved,
 a targeted policy does not match; unscoped policy remains in force.
-If multiple installed hook scopes could have produced a call, the machine
-reports `agent_scope_unresolved` rather than guessing which profile ran it.
+Newly installed shell hooks carry their settings scope. Reinstall older hooks
+to add the hint; without it, or for an integration that cannot report the
+source of multiple installed scopes, the machine reports
+`agent_scope_unresolved` rather than guessing which profile ran the call.
 
 **A deploy REPLACES a machine's whole policy set.** The server takes the full
 list and does not merge, so `fleet deploy` reads what the machine currently runs,

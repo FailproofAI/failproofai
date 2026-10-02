@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +11,14 @@ import {
 import { cloudPoliciesDir } from "../../src/hooks/fp-home";
 
 const roots: string[] = [];
+let originalHome: string | undefined;
+
+beforeEach(() => {
+  originalHome = process.env.FAILPROOFAI_HOME;
+  const home = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-home-"));
+  roots.push(home);
+  process.env.FAILPROOFAI_HOME = home;
+});
 
 function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
   const root = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-test-"));
@@ -34,11 +42,18 @@ function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
 
 afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
-  delete process.env.FAILPROOFAI_HOME;
+  if (originalHome === undefined) delete process.env.FAILPROOFAI_HOME;
+  else process.env.FAILPROOFAI_HOME = originalHome;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("cloud-managed policy active deployment", () => {
+  it("ignores even an intact manifest after explicit OSS disconnect", () => {
+    fixture();
+    writeFileSync(join(process.env.FAILPROOFAI_HOME!, "config.json"), JSON.stringify({ mode: { kind: "oss" } }));
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+  });
+
   it("returns only hash-verified artifacts from active.json", () => {
     const { policyPath, sha256 } = fixture();
     expect(readActiveCloudManagedPolicies()).toEqual([

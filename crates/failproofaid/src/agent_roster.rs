@@ -2,7 +2,7 @@
 //! user's machine. Paths remain local; only opaque IDs and bounded labels
 //! are sent to Cloud. No process-list guesses or telemetry project IDs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -162,7 +162,6 @@ fn profiles_at(home: &Path) -> Vec<AgentProfile> {
         }
     }
     out.sort_by(|a, b| (&a.integration, &a.settings_path).cmp(&(&b.integration, &b.settings_path)));
-    out.truncate(64);
     out
 }
 
@@ -232,61 +231,95 @@ fn refresh_unlocked(path: &Path, home: &Path) -> io::Result<AgentRoster> {
         .as_ref()
         .map(|r| r.agents.as_slice())
         .unwrap_or_default();
-    let mut by_path = HashMap::new();
-    let mut by_inode = HashMap::new();
-    for entry in previous {
-        by_path.insert((&entry.integration, &entry.settings_path), entry);
-        if let Some(fingerprint) = &entry.fingerprint {
-            by_inode.insert((&entry.integration, fingerprint), entry);
-        }
-    }
-    let mut agents = profiles_at(home);
+    // Match against the bounded discovery walk before imposing the 64-row
+    // upload cap. Truncating discovered profiles first and filling from them
+    // evicted an old exact-profile ID whenever an earlier-sorting config
+    // appeared, even while that old profile's hook was still active.
+    let mut discovered: Vec<Option<AgentProfile>> =
+        profiles_at(home).into_iter().map(Some).collect();
+    let mut agents = Vec::with_capacity(64);
     let mut active_ids = HashSet::new();
-    for entry in &mut agents {
-        let old = by_path
-            .get(&(&entry.integration, &entry.settings_path))
-            .copied()
-            .or_else(|| {
-                entry
-                    .fingerprint
-                    .as_ref()
-                    .and_then(|fp| by_inode.get(&(&entry.integration, fp)).copied())
-            });
-        entry.instance_id = match old {
-            Some(old) if active_ids.insert(old.instance_id.clone()) => old.instance_id.clone(),
-            _ => {
-                let id = new_instance_id()?;
-                active_ids.insert(id.clone());
-                id
-            }
-        };
-        entry.last_seen_at = old.and_then(|old| old.last_seen_at);
-        entry.hook_installed |= old.is_some_and(|old| {
-            old.hook_installed
-                && old.last_seen_at.is_some_and(|at| {
-                    current_millis().is_ok_and(|now| now.saturating_sub(at) < RECENT_SIGHTING_MS)
-                })
-        });
-    }
+    let exact_paths: HashSet<(&str, &str)> = previous
+        .iter()
+        .map(|entry| (entry.integration.as_str(), entry.settings_path.as_str()))
+        .collect();
+    let now = current_millis().ok();
     for old in previous {
-        if agents.len() >= 64 {
-            break;
-        }
-        if active_ids.insert(old.instance_id.clone()) {
-            // Keep old names on the operator roster for historical
-            // assignments. A project profile is found on hook-time sighting,
-            // not by scanning arbitrary project directories; keep it hooked
-            // while recently active, and otherwise mark it stale.
-            let mut stale = old.clone();
-            stale.hook_installed = old.hook_installed
-                && old.last_seen_at.is_some_and(|at| {
-                    current_millis().is_ok_and(|now| now.saturating_sub(at) < RECENT_SIGHTING_MS)
+        // Exact path wins over a matching directory inode; a copied or
+        // hard-linked config must not steal another profile's stable ID.
+        let match_at = discovered
+            .iter()
+            .position(|item| {
+                item.as_ref().is_some_and(|candidate| {
+                    candidate.integration == old.integration
+                        && candidate.settings_path == old.settings_path
                 })
+            })
+            .or_else(|| {
+                old.fingerprint.as_ref().and_then(|fingerprint| {
+                    discovered.iter().position(|item| {
+                        item.as_ref().is_some_and(|candidate| {
+                            candidate.integration == old.integration
+                                && candidate.fingerprint.as_ref() == Some(fingerprint)
+                                && !exact_paths.contains(&(
+                                    candidate.integration.as_str(),
+                                    candidate.settings_path.as_str(),
+                                ))
+                        })
+                    })
+                })
+            });
+        let recent = old.hook_installed
+            && old.last_seen_at.is_some_and(|at| {
+                now.is_some_and(|now| now.saturating_sub(at) < RECENT_SIGHTING_MS)
+            });
+        let mut entry = if let Some(index) = match_at {
+            let mut candidate = discovered[index]
+                .take()
+                .expect("matched profile is present");
+            candidate.last_seen_at = old.last_seen_at;
+            candidate.hook_installed |= recent;
+            candidate
+        } else {
+            // A project profile is learned from hook-time sightings, not by
+            // traversing every project. Keep its identity even when stale:
+            // an existing deployment may still name this exact ID.
+            let mut stale = old.clone();
+            stale.hook_installed = recent
                 && Path::new(&old.settings_path)
                     .parent()
                     .is_some_and(Path::exists);
-            agents.push(stale);
+            stale
+        };
+        if active_ids.insert(old.instance_id.clone()) {
+            entry.instance_id = old.instance_id.clone();
+        } else {
+            // Do not keep duplicate IDs in a corrupt roster.
+            loop {
+                let replacement = new_instance_id()?;
+                if active_ids.insert(replacement.clone()) {
+                    entry.instance_id = replacement;
+                    break;
+                }
+            }
         }
+        agents.push(entry);
+    }
+    // New discoveries take ONLY free slots. At capacity a new profile is
+    // unresolved until explicitly retired capacity exists; it may never
+    // silently evict a profile an existing Cloud assignment still targets.
+    for mut entry in discovered.into_iter().flatten() {
+        if agents.len() >= 64 {
+            break;
+        }
+        loop {
+            let id = new_instance_id()?;
+            if active_ids.insert(id.clone()) {
+                entry.instance_id = id;
+                break;
+            }
+        }
+        agents.push(entry);
     }
     agents.sort_by(|a, b| {
         (&a.integration, &a.settings_path).cmp(&(&b.integration, &b.settings_path))
@@ -447,6 +480,78 @@ mod tests {
             refresh(&path, &home).unwrap().agents[0].hook_installed,
             "a recently active project profile is not in user-home discovery"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn full_roster_preserves_an_exact_target_when_an_earlier_profile_appears() {
+        let root = std::env::temp_dir().join(format!("fpai-roster-{}", new_instance_id().unwrap()));
+        let home = root.join("home");
+        let path = root.join("fpai/agents/roster.json");
+        fs::create_dir_all(&home).unwrap();
+        let now = current_millis().unwrap();
+        let mut prior = Vec::new();
+        for index in 0..64u32 {
+            let settings = root.join(format!("projects/p{index:02}/.codex/hooks.json"));
+            fs::create_dir_all(settings.parent().unwrap()).unwrap();
+            prior.push(AgentProfile {
+                instance_id: format!("agt_{index:032x}"),
+                integration: "codex".into(),
+                settings_path: settings.to_string_lossy().into_owned(),
+                profile_label: format!("p{index:02}"),
+                scope: "project".into(),
+                hook_installed: true,
+                last_seen_at: Some(now - 61_000),
+                fingerprint: None,
+            });
+        }
+        let assigned = prior[63].clone();
+        write(
+            &path,
+            &AgentRoster {
+                schema_version: 1,
+                generation: 1,
+                agents: prior,
+            },
+        )
+        .unwrap();
+
+        let claude = home.join(".claude/settings.json");
+        fs::create_dir_all(claude.parent().unwrap()).unwrap();
+        fs::write(claude, "failproofai").unwrap();
+        let refreshed = refresh(&path, &home).unwrap();
+        assert_eq!(refreshed.agents.len(), 64);
+        assert_eq!(refreshed.generation, 1);
+        assert!(
+            refreshed
+                .agents
+                .iter()
+                .all(|entry| entry.integration == "codex"),
+            "a new earlier-sorting integration must wait for free capacity"
+        );
+        assert_eq!(
+            refreshed
+                .agents
+                .iter()
+                .find(|entry| entry.settings_path == assigned.settings_path)
+                .unwrap()
+                .instance_id,
+            assigned.instance_id,
+        );
+
+        // The retained profile must still be found and refreshed at hook
+        // time; the old implementation dropped it and refused the sighting
+        // because the new discovery had filled the 64th slot.
+        record_sighting(&path, &home, "codex", Path::new(&assigned.settings_path)).unwrap();
+        let after_hook = read(&path).unwrap().unwrap();
+        let target = after_hook
+            .agents
+            .iter()
+            .find(|entry| entry.settings_path == assigned.settings_path)
+            .unwrap();
+        assert_eq!(target.instance_id, assigned.instance_id);
+        assert!(target.hook_installed);
+        assert!(target.last_seen_at.unwrap() >= now);
         fs::remove_dir_all(root).unwrap();
     }
 }

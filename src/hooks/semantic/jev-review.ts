@@ -386,6 +386,8 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
 
   /** Set when the answer came from T5's cache (a hit carries the original `usage` and no real latency). */
   let cached = false;
+  /** A local inert allow or a cached reply cannot prove Cloud is healthy now. */
+  let reachedCloud = false;
   const transport: JevTransport = async (request, signal) => {
     const response = await throttled(request, signal);
     cached = servedFromCache(response);
@@ -419,6 +421,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   const answered = evaluated
     .then((outcome): JevReview => {
       const hit = cached && outcome.status === "ok";
+      reachedCloud = outcome.status === "ok" && !hit && outcome.via !== "none";
       const review = toReview(outcome, hit);
       // The machine's own pack checks Cloud dropped from this request
       // (CONTRACT C10.5), reported for the deployment it happened under. Only
@@ -476,7 +479,12 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   if (!cloud) return handle(raced);
   return handle(
     raced.then((review) => {
-      recordCloudJevResult(healthScope, classifyCloudJevReview(review), review.kind === "fallback" ? review.reason : null, probe);
+      recordCloudJevResult(
+        healthScope,
+        classifyCloudJevReview(review, { reachedCloud }),
+        review.kind === "fallback" ? review.reason : null,
+        probe,
+      );
       reportCloudJevHealth();
       return review;
     }),

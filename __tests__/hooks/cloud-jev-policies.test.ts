@@ -1169,6 +1169,9 @@ describe("M3 FailproofAI Cloud Jev health: a circuit breaker and a report", () =
     const { classifyCloudJevReview } = await import("@/src/hooks/semantic/cloud-jev-health");
     const fb = (reason: string) => ({ kind: "fallback" as const, reason, latencyMs: null, model: null });
     expect(classifyCloudJevReview({ kind: "not-consulted" } as never)).toBe("neutral");
+    const answered = { kind: "answered" } as never;
+    expect(classifyCloudJevReview(answered)).toBe("answered");
+    expect(classifyCloudJevReview(answered, { reachedCloud: false })).toBe("neutral");
     for (const code of ["timeout", "network", "malformed", "model-mismatch", "upstream-error", "error", "http-500", "http-502", "http-503", "http-504"]) {
       expect(classifyCloudJevReview(fb(code)), code).toBe("failed");
     }
@@ -1277,7 +1280,19 @@ describe("M3 FailproofAI Cloud Jev health: a circuit breaker and a report", () =
     const both: CloudJs = { id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-x"], verdict: "deny" };
     deploy({ policies: [both], jevMode: "enforce" });
     const seen = stubFetch(() => ({ status: 502, body: { error: "upstream_error" } }));
-    for (let i = 0; i < 3; i++) await hook(`echo ${i}`, `s${i}`);
+    for (let i = 0; i < 3; i++) {
+      await hook(`echo ${i}`, `s${i}`);
+      if (i === 1) {
+        // TodoWrite is decided locally, without a Cloud request. Its empty
+        // allow is not proof Cloud recovered between the second and third 502.
+        const { evaluateHookEvent } = await import("@/src/hooks/handler");
+        await evaluateHookEvent("PreToolUse", "claude", JSON.stringify({
+          hook_event_name: "PreToolUse", tool_name: "TodoWrite",
+          tool_input: { todos: [] }, session_id: "inert", cwd: project,
+        }));
+        expect(seen).toHaveLength(2);
+      }
+    }
     expect(seen).toHaveLength(3);
     const unavailable = () => readErrors().errors.filter((e) => String(e.message).startsWith("jev_unavailable"));
     expect(unavailable()).toEqual([
@@ -1297,6 +1312,26 @@ describe("M3 FailproofAI Cloud Jev health: a circuit breaker and a report", () =
     // Every hook keeps the report while it lasts.
     await hook("pwd", "s5");
     expect(unavailable()).toHaveLength(1);
+  });
+
+  it("a cached answer cannot reset a Cloud failure streak", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    const seen = stubFetch((call) => ({
+      body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([]) },
+    }));
+    await hook("git status", "cached-session");
+    const h = await import("@/src/hooks/semantic/cloud-jev-health");
+    const { loadJevConfigForCloudMode } = await import("@/src/hooks/semantic/jev-config");
+    const cfg = loadJevConfigForCloudMode("enforce").config;
+    const scope = JSON.stringify([cfg?.baseUrl ?? null, MACHINE]);
+    h.recordCloudJevResult(scope, "failed", "timeout", false);
+    h.recordCloudJevResult(scope, "failed", "timeout", false);
+
+    await hook("git status", "cached-session");
+    expect(seen).toHaveLength(1);
+    h.recordCloudJevResult(scope, "failed", "timeout", false);
+    expect(h.cloudJevGate(scope)).toEqual({ ask: false });
   });
 
   it("through the hook: a 429 is reported as jev_rate_limited, never opens the breaker, and an answer clears it", async () => {

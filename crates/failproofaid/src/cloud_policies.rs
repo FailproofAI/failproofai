@@ -704,6 +704,19 @@ impl PolicyStore {
     /// active.json is left unchanged either way, so the worker keeps its last
     /// known-good decision set.
     pub fn repair_active_from_cache(&self) -> Result<usize, ReconcileError> {
+        self.repair_active_from_cache_unless(&|| false)
+    }
+
+    /// A repair after a Cloud poll must use the same enrolment guard as the
+    /// poll itself. A disconnect may remove both state files after we read
+    /// desired-state.json; that snapshot must not restore the old deployment.
+    pub fn repair_active_from_cache_unless(
+        &self,
+        withdrawn: &dyn Fn() -> bool,
+    ) -> Result<usize, ReconcileError> {
+        if withdrawn() {
+            return Ok(0);
+        }
         // A corrupted `desired-state.json` must not disable repair.
         //
         // `self.read_desired()?` propagated any parse error straight out,
@@ -729,15 +742,26 @@ impl PolicyStore {
             Err(err) => return Err(err),
         };
         if let Some(desired) = desired {
-            let outcome = self.reconcile(&desired, &|policy: &DesiredPolicy| {
-                Err(format!(
-                    "no verified cached bytes remain for {}; cloud refetch required",
-                    policy.id
-                ))
-            })?;
-            return Ok(outcome.repaired + usize::from(outcome.activated));
+            let outcome = self.reconcile_unless(
+                &desired,
+                &|policy: &DesiredPolicy| {
+                    Err(format!(
+                        "no verified cached bytes remain for {}; cloud refetch required",
+                        policy.id
+                    ))
+                },
+                withdrawn,
+            );
+            return match outcome {
+                Ok(outcome) => Ok(outcome.repaired + usize::from(outcome.activated)),
+                Err(ReconcileError::Withdrawn) => Ok(0),
+                Err(err) => Err(err),
+            };
         }
 
+        if withdrawn() {
+            return Ok(0);
+        }
         let Some(active) = self.read_active()? else {
             return Ok(0);
         };
@@ -750,6 +774,9 @@ impl PolicyStore {
 
         let mut repaired = 0;
         for policy in &active.policies {
+            if withdrawn() {
+                return Ok(repaired);
+            }
             validate_policy_identity(&policy.id)?;
             validate_sha256(&policy.sha256)?;
             let deployment_path = safe_join_relative(&self.root, &policy.path)?;
@@ -1286,6 +1313,41 @@ mod tests {
         );
         // active.json is untouched, so the worker keeps its last known-good set.
         assert!(store.read_active().unwrap().is_some());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn disconnect_during_cached_repair_cannot_restore_its_removed_deployment() {
+        use std::cell::Cell;
+
+        let store = temp_store("disconnect-mid-repair");
+        let bytes = b"export default 'verified';\n";
+        let state = desired(4, "guard", bytes);
+        store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+
+        let checks = Cell::new(0);
+        let withdrawn = || {
+            let count = checks.get();
+            checks.set(count + 1);
+            if count == 0 {
+                return false; // after the snapshot read, before activation
+            }
+            fs::remove_file(store.desired_state_path()).ok();
+            fs::remove_file(store.active_manifest_path()).ok();
+            true
+        };
+        assert_eq!(
+            store.repair_active_from_cache_unless(&withdrawn).unwrap(),
+            0
+        );
+        assert!(
+            checks.get() >= 2,
+            "the repair must recheck enrolment at activation"
+        );
+        assert!(!store.desired_state_path().exists());
+        assert!(!store.active_manifest_path().exists());
         fs::remove_dir_all(store.root()).ok();
     }
 

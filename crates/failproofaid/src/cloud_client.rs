@@ -987,11 +987,13 @@ fn maintenance_tick(
     match cloud {
         Ok(Some(cloud)) => {
             poll_once_guarded(store, &cloud, withdrawn);
-            repair(store);
+            if !withdrawn() {
+                repair(store, withdrawn);
+            }
         }
         Err(err) => {
             eprintln!("[failproofaid] cloud enrolment error: {err}");
-            repair(store);
+            repair(store, &|| false);
         }
         Ok(None) => {
             if back_on_oss() {
@@ -1010,8 +1012,8 @@ fn maintenance_tick(
     }
 }
 
-fn repair(store: &PolicyStore) {
-    if let Err(err) = store.repair_active_from_cache() {
+fn repair(store: &PolicyStore, withdrawn: &dyn Fn() -> bool) {
+    if let Err(err) = store.repair_active_from_cache_unless(withdrawn) {
         eprintln!("[failproofaid] cloud policy integrity error: {err}");
     }
 }
@@ -1774,6 +1776,20 @@ mod tests {
             &|| true,
         );
         assert_eq!(store.read_active().unwrap().unwrap(), good);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn a_withdrawn_enrolment_cannot_run_post_poll_repair() {
+        let store = deployed_store("withdrawn-before-repair");
+        fs::remove_file(store.active_manifest_path()).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener); // Guaranteed refused connection: no remote or host service.
+        let cloud = CloudClient::new(&format!("http://{address}"), "t".into(), "m".into()).unwrap();
+
+        maintenance_tick(&store, Ok(Some(cloud)), &|| true, &|| false);
+        assert!(store.read_active().unwrap().is_none());
         fs::remove_dir_all(store.root()).ok();
     }
 

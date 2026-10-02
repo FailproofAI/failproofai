@@ -120,8 +120,11 @@ const FAILURES: ReadonlySet<string> = new Set(["timeout", "network", "malformed"
  *   machine aborted (the regex decided first), its own config, and Cloud
  *   refusing THIS request (4xx): Cloud answered, so it is up.
  */
-export function classifyCloudJevReview(review: JevReview): CloudJevResult {
-  if (review.kind === "answered") return "answered";
+export function classifyCloudJevReview(
+  review: JevReview,
+  opts: { reachedCloud: boolean } = { reachedCloud: true },
+): CloudJevResult {
+  if (review.kind === "answered") return opts.reachedCloud ? "answered" : "neutral";
   if (review.kind !== "fallback") return "neutral";
   const code = review.reason;
   if (code === "http-429" || code === "rate-limited") return "rate-limited";

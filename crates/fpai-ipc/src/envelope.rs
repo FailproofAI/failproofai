@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// enum below. A daemon-configured client fails closed on a mismatch and uses
 /// the distinct failure category only to explain how to repair the skew.
 /// There is no protocol negotiation.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -158,7 +158,7 @@ mod tests {
     fn hook_request_cwd_is_optional() {
         let json = serde_json::json!({
             "type": "hook",
-            "protocolVersion": 1,
+            "protocolVersion": PROTOCOL_VERSION,
             "hookEvent": "Stop",
             "cli": "codex",
             "stdin": "{}"
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn unknown_message_type_fails_to_deserialize() {
-        let json = serde_json::json!({ "type": "bogus", "protocolVersion": 1 });
+        let json = serde_json::json!({ "type": "bogus", "protocolVersion": PROTOCOL_VERSION });
         let result: Result<ClientMessage, _> = serde_json::from_value(json);
         assert!(result.is_err());
     }

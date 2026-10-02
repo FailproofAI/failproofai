@@ -105,7 +105,10 @@ can set a new target. You can select an exact profile only if that machine
 reported it with a hook installed and it is not stale. If the inventory is
 temporarily unavailable, existing targets remain assigned; they are not
 silently broadened to all agents. Reinstall older shell hooks to provide the
-profile hint used by new installations. If the running agent's profile cannot
+profile hint used by new installations. After upgrading the CLI, run
+`failproofai config` to update and restart its daemon too: an older daemon
+cannot evaluate new profile-scoped calls and the hook refuses the mismatch.
+If the running agent's profile cannot
 be identified (for example, when several settings scopes are installed but
 the hook does not report which one ran), **targeted assignments do not match**;
 unscoped policies still apply. Look for `agent_scope_unresolved` under that

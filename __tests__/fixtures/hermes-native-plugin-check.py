@@ -431,7 +431,7 @@ class ClientTests(unittest.TestCase):
                         body = json.dumps(
                             {
                                 "type": "policyResult",
-                                "protocolVersion": 1,
+                                "protocolVersion": 2,
                                 "decision": "instruct",
                                 "policyNames": ["custom/write-route"],
                                 "reason": "Use the approved route.",
@@ -460,7 +460,7 @@ class ClientTests(unittest.TestCase):
             self.assertEqual(verdict.decision, "instruct")
             self.assertEqual(verdict.tool_name, "Write")
 
-    def test_client_rejects_protocol_mismatch(self) -> None:
+    def test_client_rejects_a_v1_daemon_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             socket_path = Path(tmp) / "daemon.sock"
             ready = threading.Event()
@@ -478,7 +478,7 @@ class ClientTests(unittest.TestCase):
                         body = json.dumps(
                             {
                                 "type": "policyResult",
-                                "protocolVersion": 99,
+                                "protocolVersion": 1,
                                 "decision": "allow",
                                 "policyNames": [],
                                 "matchedPolicies": [],

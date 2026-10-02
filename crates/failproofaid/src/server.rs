@@ -775,6 +775,37 @@ mod tests {
     }
 
     #[test]
+    fn old_hook_protocol_cannot_evaluate_a_scoped_agent() {
+        let socket_path = temp_socket_path("old-scoped-hook");
+        let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Hook {
+                protocol_version: 1,
+                hook_event: "PreToolUse".into(),
+                cli: "claude".into(),
+                stdin: "{}".into(),
+                cwd: None,
+                agent_settings_path: Some("/home/agent/claude/settings.json".into()),
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::Error {
+                protocol_version,
+                message,
+            } => {
+                assert_eq!(protocol_version, PROTOCOL_VERSION);
+                assert!(message.contains("protocol version mismatch"));
+            }
+            other => panic!("old protocol was evaluated: {other:?}"),
+        }
+    }
+
+    #[test]
     fn bind_replaces_a_stale_socket_file() {
         let socket_path = temp_socket_path("stale");
         // Simulate a leftover file from a crashed daemon: not even a valid

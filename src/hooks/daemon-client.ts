@@ -56,6 +56,8 @@ export interface DaemonHookRequest {
    * hazard.
    */
   cwd?: string;
+  /** Settings path of the originating agent profile, not the daemon's. */
+  agentSettingsPath?: string;
 }
 
 export interface DaemonHookResponse {
@@ -98,6 +100,7 @@ export interface DaemonPolicyEvaluationRequest {
   event: string;
   payload: Record<string, unknown>;
   cwd?: string;
+  agentSettingsPath?: string;
 }
 
 export type DaemonPolicyEvaluationAttempt =
@@ -304,6 +307,7 @@ export async function attemptDaemonHook(
       cli: req.cli,
       stdin: req.stdin,
       cwd: req.cwd,
+      agentSettingsPath: req.agentSettingsPath,
     },
     opts,
   );
@@ -354,6 +358,7 @@ export async function attemptDaemonPolicyEvaluation(
       event: req.event,
       payload: req.payload,
       cwd: req.cwd,
+      agentSettingsPath: req.agentSettingsPath,
     },
     opts,
   );

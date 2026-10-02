@@ -160,6 +160,25 @@ fp fleet jev-mode --all enforce   # the mode alone, every machine with a deploym
 fp fleet show ci-runner-01    # its Jev mode, and any policy errors it reported
 ```
 
+Published policy versions do not contain agent-routing code. Each assignment
+can instead target every agent (the default), an integration including future
+profiles, or a particular profile reported by that machine. The same target
+applies to the regex and Jev parts of a `both` policy:
+
+```bash
+fp fleet deploy ci-runner-01 --add no-prod-db --target no-prod-db=hermes
+fp fleet deploy ci-runner-01 --target no-prod-db=hermes/agt_1234567890abcdef
+fp fleet deploy ci-runner-01 --all-agents no-prod-db  # explicitly remove targeting
+```
+
+Repeat `--target` for multiple alternatives on one assignment. `fp fleet
+show` and `fp fleet history` display the assigned scope; `--json` includes
+`agentTargets` on each targeted policy. A machine must report agent-scoping
+support before accepting a new target. When its identity cannot be resolved,
+a targeted policy does not match; unscoped policy remains in force.
+If multiple installed hook scopes could have produced a call, the machine
+reports `agent_scope_unresolved` rather than guessing which profile ran it.
+
 **A deploy REPLACES a machine's whole policy set.** The server takes the full
 list and does not merge, so `fleet deploy` reads what the machine currently runs,
 applies your `--add`/`--remove`, prints the complete resulting set, and writes
@@ -277,4 +296,3 @@ working as an opt-out if it is ever switched back on. See
 cd fp-cloud-cli
 uv run --extra dev pytest
 ```
-

@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { cloudPoliciesDir, configFile } from "./fp-home";
+import { agentTargetsMatch, parseAgentTargets, type AgentIdentity, type AgentTarget } from "./agent-targets";
 import { authorityFieldsOf } from "./policy-authority";
 import type { PolicyAuthority } from "./policy-types";
 
@@ -22,10 +23,10 @@ import type { PolicyAuthority } from "./policy-types";
  * enforced while every other signal says the machine is healthy. Reproduced
  * exactly that way while syncing this with AgentEye#559.
  *
- * 1 is accepted for files a pre-rename beta daemon left behind; 2 is what is
- * written now.
+ * 1 is accepted for files a pre-rename beta daemon left behind; 2 is
+ * unscoped and 3 is targeted. An old hook must reject 3.
  */
-const ACCEPTED_ACTIVE_SCHEMA_VERSIONS: readonly number[] = [1, 2];
+const ACCEPTED_ACTIVE_SCHEMA_VERSIONS: readonly number[] = [1, 2, 3];
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const POLICY_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
@@ -59,6 +60,7 @@ export interface CloudManagedPolicyArtifact {
   authority?: PolicyAuthority;
   /** The semantic policies that must all be asked and none answer `deny`; see `authority`. */
   reviewedBy?: string[];
+  agentTargets?: AgentTarget[];
 }
 
 interface ActiveManifest {
@@ -72,6 +74,7 @@ interface ActiveManifest {
     path: string;
     authority?: unknown;
     reviewedBy?: unknown;
+    agentTargets?: unknown;
   }>;
 }
 
@@ -340,6 +343,16 @@ function readActiveRaw(): Record<string, unknown> | null {
   return record;
 }
 
+/** Schema 3 means at least one machine assignment is targeted, including a
+ * Jev-only one whose JS policies array is empty. Never reads any artifact. */
+export function readCloudAgentScopeRequired(): boolean {
+  try {
+    return readActiveRaw()?.schemaVersion === 3;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Cloud's Jev mode from `active.json`, or null — no deployment, no mode, or a
  * file that cannot be read (which is then simply not a mode: the local
@@ -401,6 +414,7 @@ export interface CloudAuthorityInput {
   effect?: PolicyEffect;
   authority?: PolicyAuthority;
   reviewedBy?: string[];
+  agentTargets?: AgentTarget[];
 }
 
 /** A name {@link cloudReviewerName} already made (a Jev check name can contain neither `:` nor `/`). */
@@ -466,16 +480,21 @@ export function cloudReviewerNames(policies: ReadonlyArray<CloudAuthorityInput>,
  * reviewer set, which is rebuilt on every event. Never throws: an unreadable
  * manifest has no assignments here (the JS reader reports it).
  */
-export function readCloudAuthorityInputs(): CloudAuthorityInput[] {
+export function readCloudAuthorityInputs(agent: AgentIdentity | null = null): CloudAuthorityInput[] {
   try {
     const raw = readActiveJson();
     if (raw === undefined) return [];
-    return parseManifest(raw).policies.flatMap((policy) =>
-      typeof policy.id === "string"
+    const manifest = parseManifest(raw);
+    return manifest.policies.flatMap((policy) =>
+      typeof policy.id === "string" &&
+      agentTargetsMatch(parseAgentTargets(policy.agentTargets, manifest.schemaVersion), agent)
         ? [
             {
               id: policy.id,
               effect: policy.effect === "observe" ? "observe" : "enforce",
+              ...(parseAgentTargets(policy.agentTargets, manifest.schemaVersion)
+                ? { agentTargets: parseAgentTargets(policy.agentTargets, manifest.schemaVersion) }
+                : {}),
               ...authorityFieldsOf(policy as unknown as Record<string, unknown>),
             } satisfies CloudAuthorityInput,
           ]
@@ -486,7 +505,7 @@ export function readCloudAuthorityInputs(): CloudAuthorityInput[] {
   }
 }
 
-export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
+export function readActiveCloudManagedPolicies(agent: AgentIdentity | null = null): CloudManagedPolicyArtifact[] {
   const root = cloudManagedPolicyRoot();
 
   // Parsed once per change of the file (`readActiveJson`). Each JS artifact is
@@ -500,9 +519,13 @@ export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
   }
   if (raw === undefined) return [];
   const manifest = parseManifest(raw);
+  // Scope before reading or importing any artifact: a foreign agent must not
+  // execute policy code even to discover that it does not apply.
+  const applicable = manifest.policies.filter((policy) =>
+    agentTargetsMatch(parseAgentTargets(policy.agentTargets, manifest.schemaVersion), agent));
   const seen = new Set<string>();
 
-  return manifest.policies.map((policy) => {
+  return applicable.map((policy) => {
     if (!POLICY_ID_RE.test(policy.id) || policy.id === "." || policy.id === "..") {
       throw new Error(`unsafe cloud-managed policy id ${JSON.stringify(policy.id)}`);
     }
@@ -536,6 +559,9 @@ export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
       sha256: policy.sha256,
       path,
       deployment: manifest.deployment,
+      ...(parseAgentTargets(policy.agentTargets, manifest.schemaVersion)
+        ? { agentTargets: parseAgentTargets(policy.agentTargets, manifest.schemaVersion) }
+        : {}),
       // Unlike `effect`, a malformed authority is dropped rather than refused:
       // dropping it makes this policy `hard`, the default that keeps enforcing,
       // while refusing would take the whole deployment down over an optional

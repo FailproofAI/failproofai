@@ -129,6 +129,7 @@ interface CloudJs {
   reviewedBy?: string[];
   effect?: "enforce" | "observe";
   verdict?: "allow" | "deny";
+  agentTargets?: Array<{ integration: string; instanceId?: string }>;
 }
 
 /** Write a deployment exactly as the daemon materialises it: JS artifacts, the Jev mode, nothing else Jev. */
@@ -146,6 +147,7 @@ function deploy(opts: { policies?: CloudJs[]; jevMode?: string; deployment?: num
       effect: p.effect ?? "enforce",
       ...(p.authority ? { authority: p.authority } : {}),
       ...(p.reviewedBy ? { reviewedBy: p.reviewedBy } : {}),
+      ...(p.agentTargets ? { agentTargets: p.agentTargets } : {}),
     };
   });
   // Written by rename, as the daemon does: a new deployment is a new inode.
@@ -153,7 +155,7 @@ function deploy(opts: { policies?: CloudJs[]; jevMode?: string; deployment?: num
   writeFileSync(
     tmp,
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: policies.some((p) => p.agentTargets) ? 3 : 2,
       deployment: opts.deployment ?? 43,
       policies,
       ...(opts.jevMode !== undefined ? { jevMode: opts.jevMode } : {}),
@@ -294,6 +296,47 @@ async function hook(command = "ls", sessionId = "cloud-jev-policies") {
   );
 }
 
+it("filters a targeted Cloud JS policy before import and runs it only for its selected profile", async () => {
+  const work = "agt_1234567890abcdef";
+  const personal = "agt_abcdef1234567890";
+  const workPath = join(home, "profiles", "work", "settings.json");
+  const personalPath = join(home, "profiles", "personal", "settings.json");
+  mkdirSync(join(home, "agents"), { recursive: true });
+  const rosterPath = join(home, "agents", "roster.json");
+  writeFileSync(rosterPath, JSON.stringify({
+    schemaVersion: 1, generation: 1,
+    agents: [
+      { instanceId: work, integration: "claude", settingsPath: workPath },
+      { instanceId: personal, integration: "claude", settingsPath: personalPath },
+    ],
+  }), { mode: 0o600 });
+  chmodSync(rosterPath, 0o600);
+  deploy({ policies: [{
+    id: "scoped", version: 1, hooks: ["scoped-deny"], verdict: "deny",
+    agentTargets: [{ integration: "claude", instanceId: work }],
+  }] });
+  const { evaluateHookEvent } = await import("@/src/hooks/handler");
+  const input = JSON.stringify({
+    hook_event_name: "PreToolUse", tool_name: "Bash",
+    tool_input: { command: "ls" }, session_id: "scope-1", cwd: project,
+  });
+  const other = await evaluateHookEvent("PreToolUse", "claude", input, { agentSettingsPath: personalPath });
+  const { getAllPolicies } = await import("@/src/hooks/policy-registry");
+  expect(getAllPolicies().some((policy) => policy.name === "cloud/scoped@1/scoped-deny")).toBe(false);
+  expect(other.evaluation?.decision).toBe("allow");
+  const selected = await evaluateHookEvent("PreToolUse", "claude", input, { agentSettingsPath: workPath });
+  expect(getAllPolicies().some((policy) => policy.name === "cloud/scoped@1/scoped-deny")).toBe(true);
+  expect(selected.evaluation?.decision).toBe("deny");
+  const unknown = await evaluateHookEvent("PreToolUse", "claude", input, {
+    agentSettingsPath: join(home, "profiles", "missing", "settings.json"),
+  });
+  expect(unknown.evaluation?.decision).toBe("allow");
+  expect(readErrors().errors).toContainEqual(expect.objectContaining({
+    id: "agentScope", kind: "daemon",
+    message: expect.stringContaining("agent_scope_unresolved"),
+  }));
+});
+
 async function registeredAfterOneEvent(): Promise<Map<string, RegisteredPolicy>> {
   await hook();
   const { getAllPolicies } = await import("@/src/hooks/policy-registry");
@@ -358,8 +401,32 @@ describe("C10.2 gating: jevMode × Cloud Jev credential × decisions-only × BYO
     for (const c of seen) {
       expect(c.url).toBe(CLOUD_ENDPOINT);
       expect(Object.keys(c.body.questions)).toEqual(["injection"]);
-      expect(c.body.cloud).toMatchObject({ v: 1, machineId: MACHINE, intentMode: "v1", localPolicies: [] });
+      // C11: the running hook sends v2 even when no local profile is known;
+      // Cloud then runs only unscoped checks, never every scoped check.
+      expect(c.body.cloud).toMatchObject({ v: 2, machineId: MACHINE, intentMode: "v1", localPolicies: [] });
+      expect(c.body.cloud?.agent).toBeUndefined();
     }
+  });
+
+  it("sends the daemon-rostered profile identity, not telemetry's agent id, with a Cloud v2 call", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    const { runtimeAgentSettingsPath } = await import("@/src/hooks/agent-roster");
+    mkdirSync(join(home, "agents"), { recursive: true });
+    const rosterPath = join(home, "agents", "roster.json");
+    writeFileSync(rosterPath, JSON.stringify({
+      schemaVersion: 1, generation: 1,
+      agents: [{ integration: "claude", instanceId: "agt_1234567890abcdef",
+        settingsPath: runtimeAgentSettingsPath("claude", project),
+        profileLabel: "default", scope: "user", hookInstalled: true }],
+    }), { mode: 0o600 });
+    chmodSync(rosterPath, 0o600);
+    const seen = stubFetch(cloudReplies);
+    await hook("cat README.md");
+    expect(seen[0]?.body.cloud).toMatchObject({
+      v: 2,
+      agent: { integration: "claude", instanceId: "agt_1234567890abcdef" },
+    });
   });
 
   it("a known tool with no side effects is not sent: Cloud's selection of it is empty by construction", async () => {

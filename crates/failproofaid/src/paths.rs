@@ -214,6 +214,12 @@ pub fn failproofai_home() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".failproofai"))
 }
 
+/// The owner-only agent/profile inventory. Matches `agentRosterFile()` in
+/// `fp-home.ts`; config paths never leave this file for Cloud.
+pub fn agent_roster_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("agents").join("roster.json"))
+}
+
 /// The on-disk layout this binary speaks. Mirrors `LAYOUT_VERSION` in
 /// `src/hooks/fp-home.ts`, and the parity test below asserts the two agree —
 /// every path in this file is only correct for one layout, so a mismatch here is
@@ -529,6 +535,11 @@ mod tests {
                 "workerSocket()",
             ),
             ("lock_path", lock_path().unwrap(), "daemonLock()"),
+            (
+                "agent_roster_path",
+                agent_roster_path().unwrap(),
+                "agentRosterFile()",
+            ),
             (
                 "cloud_managed_policy_dir",
                 cloud_managed_policy_dir().unwrap(),

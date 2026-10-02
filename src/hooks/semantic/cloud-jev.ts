@@ -43,6 +43,7 @@ import type {
   SemanticPolicy,
   SemanticVerdict,
 } from "./types";
+import type { AgentIdentity } from "../agent-targets";
 
 /** The `cloud` block's version (CONTRACT C10.3). */
 export const CLOUD_BLOCK_VERSION = 1;
@@ -74,8 +75,9 @@ export const REDACTED_TARGET_WORD = "\u0000redacted";
 
 /** The `cloud` block of a request (CONTRACT C10.3). */
 export interface CloudJevBlock {
-  v: 1;
+  v: 1 | 2;
   machineId: string;
+  agent?: AgentIdentity;
   intentMode: IntentMode;
   facts: Facts;
   targetScan: { groups: string[][]; complete: boolean };
@@ -109,6 +111,8 @@ export type CloudSemanticOutcome =
 export interface CloudSemanticOptions extends SemanticOptions {
   /** This machine's FailproofAI Cloud machine id, from `credentials.json`. */
   machineId: string;
+  /** Explicit null = v2 request with unresolved identity (no scoped checks). */
+  agent?: AgentIdentity | null;
 }
 
 // ── The request ──────────────────────────────────────────────────────────────
@@ -247,11 +251,12 @@ function cloudFacts(facts: Facts): Facts {
  * clear and every softening of an overridable check — Cloud is then stricter
  * than the local decider, never laxer.
  */
-export function buildCloudBlock(prepared: PreparedCall, input: SemanticInput, machineId: string): CloudJevBlock {
+export function buildCloudBlock(prepared: PreparedCall, input: SemanticInput, machineId: string, agent?: AgentIdentity | null): CloudJevBlock {
   const scan = scanTargets(input.toolInput);
   const block: CloudJevBlock = {
-    v: CLOUD_BLOCK_VERSION,
+    v: agent === undefined ? CLOUD_BLOCK_VERSION : 2,
     machineId,
+    ...(agent ? { agent } : {}),
     intentMode: prepared.intent,
     facts: cloudFacts(prepared.facts),
     targetScan: cloudTargetScan(input.toolInput, scan),
@@ -313,13 +318,13 @@ function namingReadings(
 }
 
 /** The request sent to FailproofAI Cloud: today's, the global questions always, and the block. */
-export function buildCloudRequest(prepared: PreparedCall, input: SemanticInput, machineId: string): JevRequest {
+export function buildCloudRequest(prepared: PreparedCall, input: SemanticInput, machineId: string, agent?: AgentIdentity | null): JevRequest {
   const own = prepared.compiled.request;
   return {
     model: own.model,
     state: own.state,
     questions: { ...own.questions, ...cloudGlobalQuestions(prepared.intent, prepared.userSaid.length) },
-    cloud: buildCloudBlock(prepared, input, machineId) as unknown as Record<string, unknown>,
+    cloud: buildCloudBlock(prepared, input, machineId, agent) as unknown as Record<string, unknown>,
   };
 }
 
@@ -564,7 +569,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
   let request: JevRequest;
   try {
     prepared = prepareSemantic(input, opts);
-    request = buildCloudRequest(prepared, input, opts.machineId);
+    request = buildCloudRequest(prepared, input, opts.machineId, opts.agent);
   } catch (err) {
     return {
       status: "degraded",

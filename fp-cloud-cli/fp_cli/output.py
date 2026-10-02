@@ -6150,6 +6150,17 @@ def _epoch_age(ms: Optional[int]) -> str:
     return _relative_age(datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat())
 
 
+def _agent_target_label(targets: Any) -> str:
+    """One assignment's scope, unscoped only when the field is absent."""
+    if not targets:
+        return "all agents"
+    return ", ".join(
+        f"{target['integration']}/{target['instanceId']}"
+        if target.get("instanceId") else f"all {target['integration']}"
+        for target in targets
+    )
+
+
 def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> None:
     """``fp fleet show`` — what a machine is told to run, and whether it has it.
 
@@ -6230,13 +6241,14 @@ def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> N
         # padded to the header's width — otherwise the effect column steps left
         # by one on every row and the table reads as misaligned.
         vwidth = max(3, max(len(f"v{p.version}") for p in pols))
-        head = Text(f"  {'policy'.ljust(width)}   {'ver'.ljust(vwidth)}  effect", style=theme.LABEL)
+        head = Text(f"  {'policy'.ljust(width)}   {'ver'.ljust(vwidth)}  effect    agents", style=theme.LABEL)
         body.append(head)
         for p in pols:
             row = Text("  ")
             row.append(p.id.ljust(width), style=theme.TEXT)
             row.append(f"   {f'v{p.version}'.ljust(vwidth)}  ", style=theme.TEXT_DIM)
             row.append_text(_effect(p.effect))
+            row.append("    " + _agent_target_label(getattr(p, "agent_targets", None)), style=theme.TEXT_DIM)
             body.append(row)
     else:
         body.append(Text("  no policies deployed", style=theme.FAINT))
@@ -6257,18 +6269,24 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
     lines = []
     for p in plan.added:
         t = Text("  + ", style=theme.SUCCESS); t.append_text(_policy_cell(p))
-        t.append("  "); t.append_text(_effect(p.effect)); lines.append(t)
+        t.append("  "); t.append_text(_effect(p.effect))
+        t.append("  " + _agent_target_label(getattr(p, "agent_targets", None)), style=theme.TEXT_DIM)
+        lines.append(t)
     for was, now in plan.changed:
         t = Text("  ~ ", style=theme.AMBER); t.append_text(_policy_cell(now))
         t.append("  "); t.append_text(_effect(now.effect))
-        t.append(f"   (was v{was.version} {was.effect})", style=theme.FAINT); lines.append(t)
+        t.append("  " + _agent_target_label(getattr(now, "agent_targets", None)), style=theme.TEXT_DIM)
+        t.append(f"   (was v{was.version} {was.effect}; {_agent_target_label(getattr(was, 'agent_targets', None))})", style=theme.FAINT)
+        lines.append(t)
     for p in plan.removed:
         t = Text("  - ", style=theme.ERROR)
         t.append(p.id, style=theme.TEXT_DIM); t.append(f" v{p.version}", style=theme.FAINT)
         lines.append(t)
     for p in plan.unchanged:
         t = Text("  = ", style=theme.FAINT); t.append_text(_policy_cell(p))
-        t.append("  "); t.append_text(_effect(p.effect)); lines.append(t)
+        t.append("  "); t.append_text(_effect(p.effect))
+        t.append("  " + _agent_target_label(getattr(p, "agent_targets", None)), style=theme.TEXT_DIM)
+        lines.append(t)
     if not lines:
         lines = [Text("  (no policies)", style=theme.FAINT)]
 
@@ -6768,16 +6786,22 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
         # that STOPPED BLOCKING, and it rendered as "no change". It also split a
         # version bump into a "+x" and a "-x" for the same policy, which reads
         # as removed-and-re-added rather than moved.
-        cur = {p.get("id"): (p.get("version"), p.get("effect"))
+        cur = {p.get("id"): (p.get("version"), p.get("effect"),
+                            tuple(sorted(
+                                (t.get("integration") or "", t.get("instanceId") or "")
+                                for t in (p.get("agentTargets") or [])
+                            )))
                for p in (e.get("policies") or [])}
+        scope = {p.get("id"): _agent_target_label(p.get("agentTargets"))
+                 for p in (e.get("policies") or [])}
         mode = e.get("jevMode") or "local"
         if prev is None:
-            diffs[e.get("deployment")] = [("+", i) for i in sorted(cur)]
+            diffs[e.get("deployment")] = [("+", f"{i} → {scope[i]}") for i in sorted(cur)]
         else:
             diffs[e.get("deployment")] = (
-                [("+", i) for i in sorted(set(cur) - set(prev))]
+                [("+", f"{i} → {scope[i]}") for i in sorted(set(cur) - set(prev))]
                 + [("-", i) for i in sorted(set(prev) - set(cur))]
-                + [("~", i) for i in sorted(set(cur) & set(prev)) if cur[i] != prev[i]]
+                + [("~", f"{i} → {scope[i]}") for i in sorted(set(cur) & set(prev)) if cur[i] != prev[i]]
                 # A mode-only generation (`fp fleet jev-mode`) read as "no
                 # change", which is exactly the change a rollback brings back.
                 + ([("~", f"jev {prev_mode}→{mode}")] if mode != prev_mode else [])

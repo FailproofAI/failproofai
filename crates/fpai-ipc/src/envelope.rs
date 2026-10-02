@@ -36,6 +36,11 @@ pub enum ClientMessage {
         /// own `cwd` does not vary per request and must never be used to
         /// resolve project config or custom policies).
         cwd: Option<String>,
+        /// Exact settings path selected by the originating integration (e.g.
+        /// HERMES_HOME). The daemon worker must not use its own environment
+        /// to guess which profile called it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_settings_path: Option<String>,
     },
     /// Structured policy evaluation for native in-process integrations.
     /// Unlike `Hook`, this does not expose CLI-specific stdout/stderr shapes:
@@ -47,6 +52,8 @@ pub enum ClientMessage {
         event: String,
         payload: serde_json::Value,
         cwd: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_settings_path: Option<String>,
     },
 }
 
@@ -138,6 +145,7 @@ mod tests {
             cli: "claude".to_string(),
             stdin: "{}".to_string(),
             cwd: Some("/repo".to_string()),
+            agent_settings_path: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json["type"], "hook");
@@ -170,6 +178,7 @@ mod tests {
             event: "pre_tool_call".to_string(),
             payload: serde_json::json!({"tool_name": "terminal"}),
             cwd: Some("/repo".to_string()),
+            agent_settings_path: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json["type"], "policyEvaluation");

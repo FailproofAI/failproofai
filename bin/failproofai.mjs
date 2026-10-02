@@ -155,6 +155,7 @@ if (hookIdx >= 0) {
     if (isDaemonConfigured()) {
       const { readStdinPayload } = await import("../src/hooks/read-stdin");
       const { evaluateHookEvent } = await import("../src/hooks/handler");
+      const { runtimeAgentSettingsPath } = await import("../src/hooks/agent-roster");
       const stdinRead = await readStdinPayload();
 
       const attempt = await attemptDaemonHook({
@@ -165,6 +166,7 @@ if (hookIdx >= 0) {
         // process is spawned fresh, at that location, by the calling agent
         // CLI's own hook mechanism. See daemon-client.ts / PROTOCOL.md.
         cwd: process.cwd(),
+        agentSettingsPath: runtimeAgentSettingsPath(cli, process.cwd()) ?? undefined,
       });
 
       // On a daemon-configured machine the daemon is the ONLY evaluator. Every

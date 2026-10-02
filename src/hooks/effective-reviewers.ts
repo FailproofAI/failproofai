@@ -46,11 +46,13 @@
 import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { NO_REVIEWERS, SEMANTIC_REVIEWER_NAMES } from "./policy-authority";
 import { cloudReviewerNames, readCloudAuthorityInputs, readCloudJevMode } from "./cloud-managed-policies";
+import type { AgentIdentity } from "./agent-targets";
 
 let cached: ReadonlySet<string> | null = null;
 let cachedContested: ReadonlyMap<string, string[]> = new Map();
 /** The agent the current registration pass is for; see {@link forgetEffectiveReviewerNames}. */
 let reviewerCli: string | undefined;
+let reviewerAgent: AgentIdentity | null = null;
 
 /**
  * The packs whose Jev checks take part for `cli`, filtered the way the regex
@@ -193,7 +195,7 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   try {
     // Both reads answer "nothing" for a file they cannot use; guarded anyway,
     // because a throw here would cost the registration pass — every policy.
-    const cloud = cloudReviewerNames(readCloudAuthorityInputs(), readCloudJevMode());
+    const cloud = cloudReviewerNames(readCloudAuthorityInputs(reviewerAgent), readCloudJevMode());
     if (cloud.length > 0) names = new Set([...names, ...cloud]);
   } catch {
     // No Cloud reviewers: every `both` policy stays hard.
@@ -262,7 +264,8 @@ export function reviewerNamesFor(
  * runs before it registers anything — so a pack installed under a long-lived
  * warm worker is picked up on the next event rather than at the next restart.
  */
-export function forgetEffectiveReviewerNames(cli?: string): void {
+export function forgetEffectiveReviewerNames(cli?: string, agent: AgentIdentity | null = null): void {
   cached = null;
   reviewerCli = cli;
+  reviewerAgent = agent;
 }

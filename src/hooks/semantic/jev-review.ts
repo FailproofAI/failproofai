@@ -52,6 +52,7 @@
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { cloudReviewerName } from "../cloud-managed-policies";
+import type { AgentIdentity } from "../agent-targets";
 import { recordJevBudgetDrops } from "../cloud-policy-errors";
 import { normalizePolicyName } from "../policy-registry";
 import { effectiveAuthority, type PolicyAuthority, type RegisteredPolicy } from "../policy-types";
@@ -171,7 +172,7 @@ export interface JevCallContext {
    * to Cloud with this machine's id, and the deployment it was made under
    * scopes the answer cache (a new deployment can change Cloud's checks).
    */
-  cloud?: { machineId: string; deployment: number | null; mode: "observe" | "enforce" };
+  cloud?: { machineId: string; deployment: number | null; mode: "observe" | "enforce"; agent?: AgentIdentity | null };
   /**
    * A session pause is active. It suspends local policy, so no installed
    * pack's check is asked; FailproofAI Cloud's checks are exempt from a pause
@@ -413,6 +414,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     ? evaluateCloudSemantic(input, {
         ...options,
         machineId: cloud.machineId,
+        agent: cloud.agent,
         // Paused: no installed pack's check is sent, only the globals, and
         // Cloud's own checks are selected and decided on Cloud as ever.
         ...(call.localPaused ? { policies: [] } : {}),

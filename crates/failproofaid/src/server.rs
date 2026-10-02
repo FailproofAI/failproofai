@@ -307,6 +307,24 @@ pub fn handle_connection(stream: UnixStream, worker: &Worker) -> io::Result<()> 
         .map_err(|e| io::Error::other(format!("failed to write response: {e}")))
 }
 
+fn record_agent_sighting(integration: &str, settings_path: Option<&str>) {
+    let Some(settings_path) = settings_path else {
+        return;
+    };
+    let (Ok(roster), Some(home)) = (crate::agent_roster::roster_path(), std::env::var_os("HOME"))
+    else {
+        return;
+    };
+    if let Err(err) = crate::agent_roster::record_sighting(
+        &roster,
+        std::path::Path::new(&home),
+        integration,
+        std::path::Path::new(settings_path),
+    ) {
+        eprintln!("[failproofaid] could not record an agent hook sighting: {err}");
+    }
+}
+
 fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
     if request.protocol_version() != PROTOCOL_VERSION {
         return ServerMessage::Error {
@@ -327,26 +345,38 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
             cli,
             stdin,
             cwd,
+            agent_settings_path,
             ..
-        } => match worker.call(&hook_event, &cli, &stdin, cwd.as_deref()) {
-            Ok(outcome) => ServerMessage::HookResult {
-                protocol_version: PROTOCOL_VERSION,
-                exit_code: outcome.exit_code,
-                stdout: outcome.stdout,
-                stderr: outcome.stderr,
-            },
-            Err(err) => ServerMessage::Error {
-                protocol_version: PROTOCOL_VERSION,
-                message: format!("worker call failed: {err}"),
-            },
-        },
+        } => {
+            record_agent_sighting(&cli, agent_settings_path.as_deref());
+            match worker.call(
+                &hook_event,
+                &cli,
+                &stdin,
+                cwd.as_deref(),
+                agent_settings_path.as_deref(),
+            ) {
+                Ok(outcome) => ServerMessage::HookResult {
+                    protocol_version: PROTOCOL_VERSION,
+                    exit_code: outcome.exit_code,
+                    stdout: outcome.stdout,
+                    stderr: outcome.stderr,
+                },
+                Err(err) => ServerMessage::Error {
+                    protocol_version: PROTOCOL_VERSION,
+                    message: format!("worker call failed: {err}"),
+                },
+            }
+        }
         ClientMessage::PolicyEvaluation {
             integration,
             event,
             payload,
             cwd,
+            agent_settings_path,
             ..
         } => {
+            record_agent_sighting(&integration, agent_settings_path.as_deref());
             let stdin = match serde_json::to_string(&payload) {
                 Ok(value) => value,
                 Err(err) => {
@@ -356,7 +386,13 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                     };
                 }
             };
-            match worker.call(&event, &integration, &stdin, cwd.as_deref()) {
+            match worker.call(
+                &event,
+                &integration,
+                &stdin,
+                cwd.as_deref(),
+                agent_settings_path.as_deref(),
+            ) {
                 Ok(outcome) => match outcome.evaluation {
                     Some(evaluation)
                         if matches!(
@@ -539,6 +575,7 @@ mod tests {
                 cli: "claude".to_string(),
                 stdin: "{}".to_string(),
                 cwd: None,
+                agent_settings_path: None,
             },
         )
         .unwrap();
@@ -566,6 +603,7 @@ mod tests {
                     "tool_input": {"command": "echo hi"}
                 }),
                 cwd: None,
+                agent_settings_path: None,
             },
         )
         .unwrap();
@@ -635,6 +673,7 @@ mod tests {
                 cli: "claude".to_string(),
                 stdin,
                 cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
             },
         )
         .unwrap();
@@ -671,6 +710,7 @@ mod tests {
                     "tool_input": { "command": "sudo rm -rf /" }
                 }),
                 cwd: Some(project_dir.to_string_lossy().to_string()),
+                agent_settings_path: None,
             },
         )
         .unwrap();

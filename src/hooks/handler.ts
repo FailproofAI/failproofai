@@ -62,6 +62,7 @@ import {
   readActiveCloudManagedPolicies,
   readCloudJevMode,
   readCloudJevState,
+  readCloudAgentScopeRequired,
   type CloudManagedPolicyArtifact,
   type CloudPolicyError,
 } from "./cloud-managed-policies";
@@ -78,6 +79,8 @@ import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } fro
 import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
+import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "./agent-roster";
+import type { AgentIdentity } from "./agent-targets";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -184,6 +187,8 @@ export interface EvaluateHookEventOptions {
    * written for.
    */
   fallbackCwd?: string;
+  /** Config selected by the hook process (may differ from the worker's env). */
+  agentSettingsPath?: string;
   /**
    * The warm worker's hook into its request queue. Called at most once, and
    * only on the two-tier path, at the point this evaluation stops reading the
@@ -296,6 +301,7 @@ interface CloudJevRoute {
   machineId: string;
   deployment: number | null;
   mode: "observe" | "enforce";
+  agent: AgentIdentity | null;
 }
 
 /**
@@ -315,7 +321,7 @@ interface CloudJevRoute {
  * unreadable directory above it and a path that is not a file are all null
  * there too.
  */
-async function readJevConfig(): Promise<{
+async function readJevConfig(agent?: AgentIdentity | null): Promise<{
   config: JevConfig;
   defaultMode: TwoTierReview["mode"];
   /** Set when FailproofAI Cloud's mode asks: the review goes to Cloud. */
@@ -337,7 +343,7 @@ async function readJevConfig(): Promise<{
       return {
         config: resolved.config,
         defaultMode: DEFAULT_JEV_MODE,
-        cloud: { machineId: resolved.machineId, deployment: cloud.deployment, mode: cloud.jevMode },
+        cloud: { machineId: resolved.machineId, deployment: cloud.deployment, mode: cloud.jevMode, agent: agent ?? null },
       };
     }
     if (!existsSync(jevConfigFile())) return null;
@@ -386,10 +392,12 @@ async function recordCloudPolicyErrors(input: {
   manifestError: string | null;
   jsPolicies: CloudManagedPolicyArtifact[];
   jsFailures: LoadAllResult["cloudFailures"] | undefined;
+  agentScopeUnresolved?: boolean;
 }): Promise<void> {
   try {
     const jev = readCloudJevState();
-    const managed = input.manifestError !== null || input.jsPolicies.length > 0 || jev.jevMode !== null || jev.errors.length > 0;
+    const managed = input.manifestError !== null || input.jsPolicies.length > 0 || jev.jevMode !== null ||
+      jev.errors.length > 0 || input.agentScopeUnresolved === true;
     // An unmanaged machine never reads further. A managed machine whose
     // deployment just emptied still writes, so a stale report is cleared.
     if (!managed && !existsSync(cloudPolicyErrorsPath())) return;
@@ -425,6 +433,7 @@ async function recordCloudPolicyErrors(input: {
         jevProblem,
         budgetDrops,
         health,
+        agentScopeUnresolved: input.agentScopeUnresolved,
       }),
     );
   } catch (err) {
@@ -443,6 +452,7 @@ async function startTwoTier(
   cli: IntegrationType,
   opts: EvaluateHookEventOptions | undefined,
   activePause: ActivePause | null,
+  agent: AgentIdentity | null,
 ): Promise<TwoTierReview | null> {
   if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
@@ -458,7 +468,7 @@ async function startTwoTier(
   // must not switch off what the org assigned centrally).
   if (activePause && !cloudAsks) return null;
   if (!cloudAsks && !jevChecksInstalled()) return null;
-  const loaded = await readJevConfig();
+  const loaded = await readJevConfig(agent);
   if (!loaded) return null;
   // Paused, and the config is not Cloud's after all (read in between): the
   // local path has nothing left to ask.
@@ -653,6 +663,9 @@ export async function evaluateHookEvent(
       rawHookEventName: eventType,
       cli,
     };
+    const runtimeAgent = readRuntimeAgentIdentity(
+      cli, opts?.agentSettingsPath ?? runtimeAgentSettingsPath(cli, session.cwd),
+    );
 
     let config: HooksConfig;
     let customHooksList: CustomHook[] = [];
@@ -699,7 +712,7 @@ export async function evaluateHookEvent(
     } else {
       // Load enabled policies (merge across project/local/global scopes)
       config = readMergedHooksConfig(session.cwd);
-      clearPolicies(cli);
+      clearPolicies(cli, runtimeAgent);
 
       // A session pause suspends LOCAL policy only, for a bounded time. Cloud
       // assignments are exempt below for the same reason `disabledCustomPolicies`
@@ -764,7 +777,7 @@ export async function evaluateHookEvent(
       /** Why the Cloud JS half did not load at all, for `errors.json`. */
       let cloudManifestError: string | null = null;
       try {
-        cloudManagedPolicies = readActiveCloudManagedPolicies();
+        cloudManagedPolicies = readActiveCloudManagedPolicies(runtimeAgent);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         cloudManifestError = msg;
@@ -1005,6 +1018,7 @@ export async function evaluateHookEvent(
         manifestError: cloudManifestError,
         jsPolicies: cloudManagedPolicies,
         jsFailures: loadResult.cloudFailures,
+        agentScopeUnresolved: runtimeAgent === null && readCloudAgentScopeRequired(),
       });
 
       // Fail closed on enforcement this machine was told it had and does not.
@@ -1096,7 +1110,7 @@ export async function evaluateHookEvent(
     // starts HERE, before any regex policy runs, and evaluatePolicies combines
     // the two (see semantic/combine.ts). Otherwise this is null and the call
     // below is exactly the regex-only evaluation it always was.
-    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause);
+    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause, runtimeAgent);
     // On the two-tier path the registry is read for the activity row BEFORE
     // evaluating, because evaluatePolicies may hand the registry back to the
     // warm worker's queue (`releaseRegistry`) while it waits on Jev, and the

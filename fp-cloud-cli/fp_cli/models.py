@@ -821,6 +821,9 @@ class PolicyRef:
     id: str
     version: int
     effect: str = "enforce"
+    #: None means every agent; a nonempty selector list narrows this
+    #: machine's assignment, never the immutable published policy version.
+    agent_targets: Optional[List[Dict[str, str]]] = None
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "PolicyRef":
@@ -828,14 +831,23 @@ class PolicyRef:
             id=str(d.get("id", "")),
             version=_as_int(d.get("version"), 0),
             effect=str(d.get("effect") or "enforce"),
+            agent_targets=[dict(target) for target in d["agentTargets"]]
+            if isinstance(d.get("agentTargets"), list) else None,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"id": self.id, "version": self.version, "effect": self.effect}
+        out: Dict[str, Any] = {"id": self.id, "version": self.version, "effect": self.effect}
+        if self.agent_targets is not None:
+            out["agentTargets"] = self.agent_targets
+        return out
 
     @property
     def label(self) -> str:
-        return f"{self.id}@{self.version}:{self.effect}"
+        scope = "" if not self.agent_targets else " → " + ", ".join(
+            f"{t['integration']}/{t['instanceId']}" if t.get("instanceId") else f"all {t['integration']}"
+            for t in self.agent_targets
+        )
+        return f"{self.id}@{self.version}:{self.effect}{scope}"
 
 
 @dataclass

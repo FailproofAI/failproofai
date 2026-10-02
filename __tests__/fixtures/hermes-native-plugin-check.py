@@ -451,10 +451,12 @@ class ClientTests(unittest.TestCase):
                     event="pre_tool_call",
                     payload={"tool_name": "write_file", "tool_input": {"path": "/tmp/a"}},
                     cwd="/tmp",
+                    agent_settings_path="/tmp/hermes-work/config.yaml",
                 )
             thread.join(timeout=2)
             self.assertEqual(received["type"], "policyEvaluation")
             self.assertEqual(received["integration"], "hermes")
+            self.assertEqual(received["agentSettingsPath"], "/tmp/hermes-work/config.yaml")
             self.assertEqual(verdict.decision, "instruct")
             self.assertEqual(verdict.tool_name, "Write")
 

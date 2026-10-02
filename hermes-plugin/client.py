@@ -75,6 +75,7 @@ def evaluate_policy(
     event: str,
     payload: Mapping[str, Any],
     cwd: str | None,
+    agent_settings_path: str | None = None,
     connect_timeout_ms: int = 250,
     evaluation_timeout_ms: int = 12_000,
 ) -> PolicyVerdict:
@@ -86,6 +87,8 @@ def evaluate_policy(
         "payload": dict(payload),
         "cwd": cwd,
     }
+    if agent_settings_path:
+        request["agentSettingsPath"] = agent_settings_path
     try:
         body = json.dumps(
             request,

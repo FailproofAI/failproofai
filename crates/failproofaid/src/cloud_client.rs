@@ -1,18 +1,25 @@
 use crate::cloud_policies::{
     ActiveDeployment, DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyErrorEntry,
-    PolicyStore, ReconcileError,
+    PolicyStore, ReconcileError, SCOPED_DESIRED_STATE_SCHEMA_VERSION,
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::agent_roster::{self, AgentRoster};
+
 const DEFAULT_POLL_MS: u64 = 30_000;
 const MINIMUM_POLL_MS: u64 = 100;
+const AGENT_INVENTORY_HEARTBEAT: Duration = Duration::from_secs(15 * 60);
+static AGENT_INVENTORY_REPORTS: LazyLock<Mutex<HashMap<String, (u64, Instant)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The `policyErrors` parameter's ceiling, measured URL-ENCODED — the form it
 /// actually travels in. Over it, whole entries are dropped from the end: the
@@ -838,11 +845,12 @@ impl CloudClient {
                 // which to upgrade.
                 let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
                 match version {
-                    Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION) => {}
+                    Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION)
+                        || v == u64::from(SCOPED_DESIRED_STATE_SCHEMA_VERSION) => {}
                     Some(v) => {
                         return Err(PollFailure::payload(format!(
                             "server sent desired-state schemaVersion {v} but this daemon \
-                             speaks {DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
+                             speaks {DESIRED_STATE_SCHEMA_VERSION} or {SCOPED_DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
                         )));
                     }
                     None => {
@@ -855,6 +863,72 @@ impl CloudClient {
                     PollFailure::payload(format!("invalid desired-state response: {err}"))
                 })
             })
+    }
+
+    /// The roster is a full snapshot, independent of policy reconciliation.
+    /// A failed upload never discards the already-active assignment.
+    fn report_agent_roster(&self, roster: &AgentRoster) -> Result<(), String> {
+        let token_digest = Sha256::digest(self.token.as_bytes());
+        let key = format!(
+            "{}:{}:{}",
+            self.base_url,
+            self.machine_id,
+            token_digest
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+        if AGENT_INVENTORY_REPORTS.lock().is_ok_and(|reports| {
+            reports.get(&key).is_some_and(|(generation, at)| {
+                *generation == roster.generation && at.elapsed() < AGENT_INVENTORY_HEARTBEAT
+            })
+        }) {
+            return Ok(());
+        }
+        let mut url = self
+            .base_url
+            .join("enforcement/v1/machines/")
+            .map_err(|err| format!("invalid machine inventory URL: {err}"))?;
+        url.path_segments_mut()
+            .map_err(|()| "machine inventory URL cannot be a base".to_string())?
+            .pop_if_empty()
+            .push(&self.machine_id)
+            .push("agents");
+        let agents: Vec<_> = roster
+            .agents
+            .iter()
+            .map(|agent| {
+                serde_json::json!({
+                    "instanceId": agent.instance_id,
+                    "integration": agent.integration,
+                    "profileLabel": agent.profile_label,
+                    "scope": agent.scope,
+                    "hookInstalled": agent.hook_installed,
+                    "lastSeenAt": agent.last_seen_at,
+                })
+            })
+            .collect();
+        let body = serde_json::json!({
+            "schemaVersion": 1,
+            "generation": roster.generation,
+            "agents": agents,
+        });
+        self.client
+            .put(url)
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|err| {
+                format!(
+                    "agent inventory report failed: {}",
+                    fpai_collect::error_chain(&err)
+                )
+            })?;
+        if let Ok(mut reports) = AGENT_INVENTORY_REPORTS.lock() {
+            reports.insert(key, (roster.generation, Instant::now()));
+        }
+        Ok(())
     }
 
     fn artifact(&self, policy: &DesiredPolicy) -> Result<Vec<u8>, String> {
@@ -930,6 +1004,11 @@ pub fn spawn_maintenance(
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
         while !shutdown.load(Ordering::Relaxed) {
+            if let (Ok(path), Some(home)) = (agent_roster::roster_path(), std::env::var_os("HOME"))
+                && let Err(err) = agent_roster::refresh(&path, Path::new(&home))
+            {
+                eprintln!("[failproofaid] could not refresh agent inventory: {err}");
+            }
             let cloud = CloudClient::from_env_or_file();
 
             // Log only on transition, so a disconnected machine does not print
@@ -1052,6 +1131,14 @@ fn poll_once_guarded(store: &PolicyStore, cloud: &CloudClient, withdrawn: &dyn F
     .map(|errors| encode_policy_errors(&errors));
     match cloud.poll_desired_state(applied, report.as_deref()) {
         Ok(desired) => {
+            // The GET created/checked-in the machine row the PUT requires.
+            // Do not let a roster network outage interrupt local enforcement.
+            if let Ok(path) = agent_roster::roster_path()
+                && let Ok(Some(roster)) = agent_roster::read(&path)
+                && let Err(err) = cloud.report_agent_roster(&roster)
+            {
+                eprintln!("[failproofaid] {err}");
+            }
             match store.reconcile_unless(
                 &desired,
                 &|policy: &DesiredPolicy| cloud.artifact(policy),
@@ -1826,6 +1913,7 @@ mod tests {
                         effect: PolicyEffect::Enforce,
                         authority: None,
                         reviewed_by: None,
+                        agent_targets: None,
                     };
                     serve(&probe).unwrap_or_default()
                 };
@@ -2347,6 +2435,7 @@ mod tests {
             effect: PolicyEffect::Enforce,
             authority: None,
             reviewed_by: None,
+            agent_targets: None,
         };
         assert!(cloud.artifact(&policy).unwrap_err().contains("outside"));
     }
@@ -2657,5 +2746,89 @@ mod tests {
         }
         assert!(CloudClient::from_file().unwrap().is_none());
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn inventory_upload_is_bounded_to_opaque_metadata_and_skips_unchanged_snapshots() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "c11-roster-{}-{}",
+            std::process::id(),
+            address.port()
+        ));
+        let home = root.join("home");
+        let settings = home.join(".hermes/config.yaml");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(&settings, "plugins: failproofai").unwrap();
+        let roster_path = root.join("agents/roster.json");
+        let roster = agent_roster::refresh(&roster_path, &home).unwrap();
+        let generation = roster.generation;
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut received = Vec::new();
+            loop {
+                let mut buf = [0u8; 4096];
+                let len = stream.read(&mut buf).unwrap();
+                assert!(len > 0, "request closed before the JSON body arrived");
+                received.extend_from_slice(&buf[..len]);
+                let Some(at) = received.windows(4).position(|window| window == b"\r\n\r\n") else {
+                    continue;
+                };
+                let headers = String::from_utf8_lossy(&received[..at]).to_ascii_lowercase();
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                if received.len() >= at + 4 + length {
+                    break;
+                }
+            }
+            let request = String::from_utf8(received).unwrap();
+            assert!(
+                request.starts_with("PUT /enforcement/v1/machines/machine/agents HTTP/1.1"),
+                "{request}"
+            );
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer token")
+            );
+            let body: serde_json::Value =
+                serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+            assert_eq!(body["schemaVersion"], 1);
+            assert_eq!(body["generation"], generation);
+            assert_eq!(body["agents"][0]["integration"], "hermes");
+            assert!(
+                body["agents"][0]["instanceId"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("agt_")
+            );
+            assert!(
+                body.to_string().find("settingsPath").is_none(),
+                "paths stay local"
+            );
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .unwrap();
+        });
+        let client = CloudClient::new(
+            &format!("http://{address}"),
+            "token".into(),
+            "machine".into(),
+        )
+        .unwrap();
+        client.report_agent_roster(&roster).unwrap();
+        server.join().unwrap();
+        // No server is listening now. This must still succeed from the
+        // in-process generation cache, and must not make another PUT.
+        client.report_agent_roster(&roster).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }

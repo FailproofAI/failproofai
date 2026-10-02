@@ -351,12 +351,13 @@ export function runDisconnectCommand(): CommandResult {
   // machine that had deliberately left its organisation went on being governed
   // by whatever deployment was current when it left, indefinitely, while
   // `--status` reported it as unconnected.
-  const stoppedManaged = clearActiveCloudManagedPolicies();
   // Back to OSS. Leaving mode = "cloud" with no credentials would describe a
   // machine that does not exist, and every cloud code path keys off this flag
   // rather than off "is a token lying around" precisely so that a disconnected
   // machine is provably silent instead of silent-by-happenstance.
   updateConfig({ mode: "oss" });
+  const sharedPolicyRoot = process.env.FAILPROOFAI_CLOUD_POLICY_DIR !== undefined;
+  const stoppedManaged = clearActiveCloudManagedPolicies();
 
   const jevLines =
     jevConfig.status === "removed"
@@ -392,11 +393,12 @@ export function runDisconnectCommand(): CommandResult {
   const lines = [
     "Disconnected from FailproofAI Cloud.",
     "",
-    stoppedManaged
+    stoppedManaged || (sharedPolicyRoot && !!existing)
       ? "  Cloud-managed policies stop being enforced and stop being refreshed, and any Jev mode\n" +
         "  FailproofAI Cloud set goes with them (its Jev checks never ran on this machine).\n" +
         "  Local builtin, custom and convention policies are unaffected."
       : "  Local builtin, custom and convention policies are unaffected.",
+    ...(sharedPolicyRoot ? ["  An overridden Cloud policy directory was left untouched; OSS mode ignores its old deployment."] : []),
     ...jevLines,
   ];
   if (removedIngest) {

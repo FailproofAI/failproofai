@@ -1578,6 +1578,10 @@ describe("surfaces", () => {
   });
 
   it("config --disconnect's clear takes the Jev mode, the snapshot, both error reports and the budget record with active.json", async () => {
+    // The default directory is owned by the CLI. An overridden directory may
+    // be shared and must not be cleaned up on disconnect.
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    cloudRoot = join(home, "policies", "cloud-policies");
     deploy({ jevMode: "enforce" });
     writeFileSync(errorsFile(), JSON.stringify({ errors: [] }));
     writeFileSync(join(cloudRoot, "daemon-errors.json"), JSON.stringify({ errors: [] }));

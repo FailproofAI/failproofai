@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { cloudPoliciesDir } from "./fp-home";
+import { cloudPoliciesDir, configFile } from "./fp-home";
 import { authorityFieldsOf } from "./policy-authority";
 import type { PolicyAuthority } from "./policy-types";
 
@@ -80,6 +80,24 @@ export function cloudManagedPolicyRoot(): string {
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR ??
     cloudPoliciesDir()
   );
+}
+
+/**
+ * An explicit disconnect vetoes an old deployment even when an operator's
+ * overridden policy directory is shared and therefore cannot be cleaned up.
+ * Missing or unreadable config does not veto older enrolled machines; this
+ * mirrors the daemon's `disconnected_by_config` rule.
+ */
+function disconnectedByConfig(): boolean {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(configFile(), "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const mode = (raw as { mode?: unknown }).mode;
+    return !!mode && typeof mode === "object" && !Array.isArray(mode) &&
+      (mode as { kind?: unknown }).kind === "oss";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -171,6 +189,10 @@ export function resolveManagedPath(root: string, candidate: string): string {
  * Returns true when a manifest was actually removed.
  */
 export function clearActiveCloudManagedPolicies(): boolean {
+  // An override can point to a shared directory with unrelated files named
+  // active.json or errors.json. Never delete from a path the CLI does not own.
+  // `mode: oss` independently stops the hook from reading retained artifacts.
+  if (process.env.FAILPROOFAI_CLOUD_POLICY_DIR !== undefined) return false;
   const root = cloudManagedPolicyRoot();
   // The snapshot first, so nothing can rebuild the pointer from it in between.
   // The error reports go too: they describe a deployment this machine no
@@ -285,6 +307,10 @@ let activeJsonCache: { path: string; version: string; value: unknown } | null = 
  * call tries again). Callers must not mutate what it returns.
  */
 function readActiveJson(): unknown {
+  if (disconnectedByConfig()) {
+    activeJsonCache = null;
+    return undefined;
+  }
   const path = resolve(cloudManagedPolicyRoot(), "active.json");
   const version = fileVersion(path);
   if (version === null) {

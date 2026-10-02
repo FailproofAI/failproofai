@@ -1,13 +1,14 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   clearActiveCloudManagedPolicies,
   readActiveCloudManagedPolicies,
 } from "../../src/hooks/cloud-managed-policies";
+import { cloudPoliciesDir } from "../../src/hooks/fp-home";
 
 const roots: string[] = [];
 
@@ -33,6 +34,7 @@ function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
 
 afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+  delete process.env.FAILPROOFAI_HOME;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -118,7 +120,21 @@ describe("clearActiveCloudManagedPolicies", () => {
     // every tool call — so a machine that had deliberately left its
     // organisation went on being governed by whatever deployment was current
     // when it left, indefinitely, while `--status` called it unconnected.
-    const { policyPath } = fixture();
+    const home = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-home-"));
+    roots.push(home);
+    process.env.FAILPROOFAI_HOME = home;
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    const managedRoot = cloudPoliciesDir();
+    mkdirSync(managedRoot, { recursive: true });
+    const bytes = "export default 'managed';\n";
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const artifact = join(managedRoot, "artifact.mjs");
+    writeFileSync(artifact, bytes);
+    writeFileSync(join(managedRoot, "active.json"), JSON.stringify({
+      schemaVersion: 2,
+      deployment: 12,
+      policies: [{ id: "guard", version: 3, sha256, path: "artifact.mjs" }],
+    }));
     expect(readActiveCloudManagedPolicies()).toHaveLength(1);
 
     expect(clearActiveCloudManagedPolicies()).toBe(true);
@@ -126,7 +142,7 @@ describe("clearActiveCloudManagedPolicies", () => {
     expect(readActiveCloudManagedPolicies()).toEqual([]);
     // The artifacts themselves stay: large, hash-verified on use, and inert
     // once nothing points at them — so a reconnect is cheap and works offline.
-    expect(existsSync(policyPath)).toBe(true);
+    expect(existsSync(artifact)).toBe(true);
   });
 
   it("reports nothing removed when no deployment was active", () => {
@@ -134,6 +150,17 @@ describe("clearActiveCloudManagedPolicies", () => {
     roots.push(root);
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
     expect(clearActiveCloudManagedPolicies()).toBe(false);
+  });
+
+  it("does not delete unrelated files from an overridden, potentially shared directory", () => {
+    const { root } = fixture();
+    const names = ["active.json", "desired-state.json", "errors.json", "daemon-errors.json", "jev-budget.json"];
+    for (const name of names.slice(1)) writeFileSync(join(root, name), `shared ${name}`);
+    const original = names.map((name) => readFileSync(join(root, name), "utf8"));
+
+    expect(clearActiveCloudManagedPolicies()).toBe(false);
+    expect(names.map((name) => readFileSync(join(root, name), "utf8"))).toEqual(original);
+    expect(readActiveCloudManagedPolicies()).toHaveLength(1);
   });
 });
 

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   clearActiveCloudManagedPolicies,
   readActiveCloudManagedPolicies,
+  readCloudAuthorityInputs,
 } from "../../src/hooks/cloud-managed-policies";
 import { cloudPoliciesDir } from "../../src/hooks/fp-home";
 
@@ -125,6 +126,72 @@ describe("policy effect", () => {
       }),
     );
     expect(() => readActiveCloudManagedPolicies()).toThrow(/unknown effect/);
+  });
+});
+
+describe("agent-scoped assignments", () => {
+  const hermesWork = { integration: "hermes" as const, instanceId: "agt_1234567890abcdef" };
+  const hermesOther = { integration: "hermes" as const, instanceId: "agt_abcdef1234567890" };
+  const codex = { integration: "codex" as const, instanceId: "agt_0000000000000000" };
+
+  function scoped(targets: unknown, schemaVersion = 3): string {
+    const { root, sha256 } = fixture();
+    writeFileSync(join(root, "active.json"), JSON.stringify({
+      schemaVersion,
+      deployment: 12,
+      policies: [{
+        id: "guard", version: 3, sha256,
+        path: "deployments/12/guard.mjs",
+        agentTargets: targets,
+        authority: "reviewable",
+        reviewedBy: ["check"],
+      }],
+    }));
+    return root;
+  }
+
+  it("filters before touching the artifact and before registering a reviewer", () => {
+    const root = scoped([{ integration: "hermes", instanceId: hermesWork.instanceId }]);
+    // A mismatched profile must not even read this file; importing it would
+    // execute code from a deployment that is not assigned to that profile.
+    rmSync(join(root, "deployments", "12", "guard.mjs"));
+    expect(readActiveCloudManagedPolicies(hermesOther)).toEqual([]);
+    expect(readCloudAuthorityInputs(hermesOther)).toEqual([]);
+    expect(readActiveCloudManagedPolicies(codex)).toEqual([]);
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow();
+  });
+
+  it("matches integration-wide targets including profiles added later", () => {
+    scoped([{ integration: "hermes" }, { integration: "codex", instanceId: codex.instanceId }]);
+    expect(readActiveCloudManagedPolicies(hermesWork)).toHaveLength(1);
+    expect(readActiveCloudManagedPolicies(hermesOther)).toHaveLength(1);
+    expect(readActiveCloudManagedPolicies(codex)).toHaveLength(1);
+    expect(readCloudAuthorityInputs(hermesWork)).toHaveLength(1);
+  });
+
+  it("rejects scope in schema two and malformed or empty selectors", () => {
+    scoped([{ integration: "hermes" }], 2);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+    for (const targets of [[], [{ integration: "stranger" }], [{ integration: "hermes", instanceId: "bad" }],
+      [{ integration: "hermes" }, { integration: "hermes" }]]) {
+      scoped(targets);
+      expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+    }
+  });
+
+  it("a malformed target invalidates the whole manifest, including its reviewer set", () => {
+    const root = scoped([{ integration: "hermes" }]);
+    const activePath = join(root, "active.json");
+    const active = JSON.parse(readFileSync(activePath, "utf8"));
+    active.policies.push({
+      ...active.policies[0],
+      id: "malformed",
+      agentTargets: [{ integration: "hermes", instanceId: "wrong" }],
+    });
+    writeFileSync(activePath, JSON.stringify(active));
+    expect(readCloudAuthorityInputs(hermesWork)).toEqual([]);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
   });
 });
 

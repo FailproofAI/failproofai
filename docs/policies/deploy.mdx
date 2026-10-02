@@ -70,6 +70,50 @@ A machine appears under **Admin → enforcement** once it is connected to Cloud.
   </Step>
 </Steps>
 
+## Target an agent on a machine
+
+Published policy versions do not contain agent-routing rules. By default, an assignment
+applies to **all agents on its machine**. When deploying a version, you can instead
+target an integration (including profiles added later) or a particular profile
+reported by that machine. The choice belongs to the machine's assignment: the
+same published version can target different agents on different machines.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. In **Admin → enforcement**, expand the machine and select **edit**.
+    2. On the policy's **agents** control, keep **all agents**, select **all hermes profiles** (for example), or search for a reported profile by its label and `agt_` ID. You can select multiple alternatives; a call matches if it belongs to any one of them.
+    3. Review the target listed for **each** assignment in the deployment plan, apply the change, then check the machine's reported deployment after its next check-in. History and rollback retain the selected targets.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push --target no-force-push=hermes
+    fp fleet deploy <machine-id> --target no-force-push=hermes/agt_1234567890abcdef
+    fp fleet deploy <machine-id> --all-agents no-force-push
+    ```
+
+    `--target POLICY=INTEGRATION[/agt_ID]` sets one policy's scope. Repeat
+    `--target` for more alternatives on the same assignment. Use `--all-agents POLICY`
+    to clear that assignment's targeting. `fp fleet show` and `fp fleet history`
+    display the selected scope. Review the complete replacement plan before
+    applying, especially when deploying from a script.
+  </Tab>
+</Tabs>
+
+The machine must have recently reported support for agent targeting before you
+can set a new target. You can select an exact profile only if that machine
+reported it with a hook installed and it is not stale. If the inventory is
+temporarily unavailable, existing targets remain assigned; they are not
+silently broadened to all agents. Reinstall older shell hooks to provide the
+profile hint used by new installations. After upgrading the CLI, run
+`failproofai config` to update and restart its daemon too: an older daemon
+cannot evaluate new profile-scoped calls and the hook refuses the mismatch.
+If the running agent's profile cannot
+be identified (for example, when several settings scopes are installed but
+the hook does not report which one ran), **targeted assignments do not match**;
+unscoped policies still apply. Look for `agent_scope_unresolved` under that
+machine's policy errors.
+
 ## Deploy Jev checks
 
 A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy.
@@ -86,6 +130,12 @@ An effect applies to JavaScript only. To trial Jev checks without them deciding 
 A `both` policy deployed with `:observe` sends only its JavaScript, which is observed. Its Jev checks are not asked while it is observed, as with an observe pack.
 
 A `both` policy's JavaScript can be cleared only by its own checks' answers from FailproofAI Cloud. An installed pack's check of the same name never clears it. If FailproofAI Cloud cannot be reached, or sets no mode that asks, the policy stays **hard**: every deny of its JavaScript stands.
+
+Agent targeting works for Jev-only policies too. For a `both` policy, the
+assignment's one target governs **both** its local JavaScript and its Cloud Jev
+checks; a call outside that target runs neither half. Keep the machine's Jev
+mode in `observe` while trialing scoped checks, just as you would for an
+unscoped Jev rollout.
 
 A machine reports what stops it from asking, and `fp fleet show <machine-id>` lists it under policy errors:
 

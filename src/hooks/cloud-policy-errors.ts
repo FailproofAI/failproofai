@@ -220,6 +220,8 @@ export interface CloudPolicyErrorInputs {
   budgetDrops?: ReadonlyArray<CloudPolicyError>;
   /** FailproofAI Cloud Jev rate-limited or unavailable here (`semantic/cloud-jev-health.ts`). */
   health?: ReadonlyArray<CloudPolicyError>;
+  /** Schema-3 deployment, but the running hook could not identify its agent. */
+  agentScopeUnresolved?: boolean;
 }
 
 /**
@@ -245,6 +247,12 @@ export function collectCloudPolicyErrors(input: CloudPolicyErrorInputs): CloudPo
   const out: CloudPolicyError[] = [];
   if (input.manifestError) {
     out.push({ id: "active.json", version: null, kind: "daemon", message: `Cloud policies could not be loaded: ${input.manifestError}` });
+  }
+  if (input.agentScopeUnresolved) {
+    out.push({
+      id: "agentScope", version: null, kind: "daemon",
+      message: "agent_scope_unresolved: this hook's agent profile is unknown; targeted Cloud policies did not match",
+    });
   }
   for (const policy of input.jsPolicies) {
     const failure = input.jsFailures?.get(policy.id);

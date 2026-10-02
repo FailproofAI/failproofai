@@ -4,6 +4,7 @@
 
 ### Added
 
+- `fp fleet deploy --target POLICY=INTEGRATION[/agt_ID]` scopes a machine's assignment; repeat the flag to include multiple alternatives. `--all-agents POLICY` explicitly clears its scope. Deploy plans, show, history, rollback and JSON readback retain assignment targets.
 - `fp policies publish <id> --kind regex|jev|both [--source f.mjs] [--semantic f.json]`: a
   FailproofAI Cloud policy can carry Jev checks — `jev` (declarations only, no JavaScript) or
   `both` (JavaScript reviewable by exactly its own checks; the server derives the authority).

@@ -37,6 +37,7 @@ from ..enforcement import (
     version_kinds,
 )
 from ..errors import ApiError, AuthError, FpCliError, NotFoundError
+from ..models import PolicyRef
 from . import _write
 
 _KEY_MODE_REASON = (
@@ -162,6 +163,14 @@ def fleet_deploy(
         None, "--set",
         help="REPLACE the whole set with exactly these. Cannot be combined with --add/--remove.",
     ),
+    targets: Optional[List[str]] = typer.Option(
+        None, "--target",
+        help="Scope one assigned policy: POLICY=INTEGRATION or POLICY=INTEGRATION/agt_ID. Repeat to OR selectors.",
+    ),
+    all_agents: Optional[List[str]] = typer.Option(
+        None, "--all-agents",
+        help="Clear one policy's targeting back to every agent on this machine.",
+    ),
     create: bool = typer.Option(
         False, "--create",
         help="Allow deploying to a machine id that has not checked in yet (pre-staging).",
@@ -221,12 +230,12 @@ def fleet_deploy(
     deny_in_key_mode(state, "fleet deploy", _KEY_MODE_REASON)
     cctx = require_auth(state)
 
-    if not add and not remove and replace is None and jev_mode is None:
+    if not add and not remove and replace is None and jev_mode is None and not targets and not all_agents:
         # Exit 2 for the same reason `--set` with `--add` is: no flag
         # combination was given that this command can act on. Both are the
         # caller's command line, not the server's answer.
         raise click.UsageError(
-            "nothing to do — pass --add, --remove, --set, or --jev-mode. "
+            "nothing to do — pass --add, --remove, --set, --target, --all-agents, or --jev-mode. "
             "`fp fleet show <machine>` prints the current set."
         )
 
@@ -261,6 +270,8 @@ def fleet_deploy(
             jev_mode=jev_mode,
             current_jev_mode=current.jev_mode if current else None,
             kinds=version_kinds(published),
+            targets=targets or (),
+            all_agents=all_agents or (),
         )
     except RefUsageError as exc:
         # Exit 2, like every other bad flag value in this CLI (`--since`,
@@ -600,6 +611,9 @@ def fleet_rollback(
     mode_before = (current.jev_mode if current else None) or "local"
     mode_target = (target.get("jevMode") or "local") if target is not None else None
     consequence = "this REPLACES the machine's current set with the one from that generation"
+    if target is not None:
+        refs = [PolicyRef.from_dict(ref).label for ref in (target.get("policies") or [])]
+        consequence += "; assignments: " + ("; ".join(refs) if refs else "no policies")
     if mode_target is not None and mode_target != mode_before:
         consequence += f", and its Jev mode: jev mode {mode_before} → {mode_target}"
     if not _write.confirm_destructive(

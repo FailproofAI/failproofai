@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { daemonSocket as daemonSocketPath } from "./fp-home";
 import { readConfig } from "./fp-config";
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 /**
  * Reaching the daemon and getting an answer out of it are two different
@@ -56,6 +56,8 @@ export interface DaemonHookRequest {
    * hazard.
    */
   cwd?: string;
+  /** Settings path of the originating agent profile, not the daemon's. */
+  agentSettingsPath?: string;
 }
 
 export interface DaemonHookResponse {
@@ -98,6 +100,7 @@ export interface DaemonPolicyEvaluationRequest {
   event: string;
   payload: Record<string, unknown>;
   cwd?: string;
+  agentSettingsPath?: string;
 }
 
 export type DaemonPolicyEvaluationAttempt =
@@ -304,6 +307,7 @@ export async function attemptDaemonHook(
       cli: req.cli,
       stdin: req.stdin,
       cwd: req.cwd,
+      agentSettingsPath: req.agentSettingsPath,
     },
     opts,
   );
@@ -338,9 +342,9 @@ function isStringArray(value: unknown): value is string[] {
 
 /**
  * Attempts the structured request used by native in-process integrations.
- * A matching protocol version is not sufficient: pre-native v1 daemons speak
- * `hook` but cannot deserialize `policyEvaluation`, so only a complete,
- * well-shaped `policyResult` proves this capability exists.
+ * A matching protocol version is not sufficient: a broken or partial daemon
+ * may speak `hook` but not `policyEvaluation`, so only a complete, well-shaped
+ * `policyResult` proves this capability exists.
  */
 export async function attemptDaemonPolicyEvaluation(
   req: DaemonPolicyEvaluationRequest,
@@ -354,6 +358,7 @@ export async function attemptDaemonPolicyEvaluation(
       event: req.event,
       payload: req.payload,
       cwd: req.cwd,
+      agentSettingsPath: req.agentSettingsPath,
     },
     opts,
   );

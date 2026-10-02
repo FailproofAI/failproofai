@@ -8,6 +8,7 @@
 import type { HookEventType } from "./types";
 import type { PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
 import { effectiveReviewerNames, forgetEffectiveReviewerNames } from "./effective-reviewers";
+import type { AgentIdentity } from "./agent-targets";
 import { resolvePolicyAuthority, type AuthorityDeclaration } from "./policy-authority";
 
 const REGISTRY_KEY = "__FAILPROOFAI_POLICY_REGISTRY__";
@@ -126,14 +127,14 @@ export function getPoliciesForEvent(
 }
 
 /** `cli`: the agent this pass registers for, which scopes the Jev reviewer set. */
-export function clearPolicies(cli?: string): void {
+export function clearPolicies(cli?: string, agent: AgentIdentity | null = null): void {
   const g = globalThis as GlobalWithRegistry;
   g[REGISTRY_KEY] = [];
   setIndexCache(null);
   // The reviewer set describes the policies that are about to be registered, so
   // it is rebuilt with them. Dropping it here is also what keeps one read per
   // evaluation instead of one per policy.
-  forgetEffectiveReviewerNames(cli);
+  forgetEffectiveReviewerNames(cli, agent);
 }
 
 /**

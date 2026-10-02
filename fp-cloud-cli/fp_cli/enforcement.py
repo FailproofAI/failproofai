@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .errors import ApiError
@@ -49,11 +49,17 @@ JEV_MODES = ("off", "observe", "enforce", "local")
 
 #: The server's (and the machine's) cap on Jev declarations per policy version.
 MAX_JEV_DECLARATIONS = 24
+AGENT_INTEGRATIONS = frozenset({
+    "claude", "codex", "copilot", "cursor", "opencode", "pi",
+    "hermes", "openclaw", "factory", "devin", "antigravity", "goose",
+})
+AGENT_ID = re.compile(r"^agt_[0-9a-f]{16,32}$")
 
 #: `id`, `id@3`, `id:observe`, `id@3:observe`. The id charset mirrors the
 #: server's `safe_identifier`, so a ref this accepts is one the server will too
 #: — a rejection should come from the policy not existing, not from parsing.
 _REF = re.compile(r"^(?P<id>[A-Za-z0-9._-]{1,128})(?:@(?P<version>\d+))?(?:[:](?P<effect>[a-z]+))?$")
+_POLICY_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 class RefError(ValueError):
@@ -215,7 +221,10 @@ def resolve_ref(
         )
     if effect is None:
         effect = existing.effect if existing else "enforce"
-    return PolicyRef(id=pid, version=version, effect=effect)
+    return PolicyRef(
+        id=pid, version=version, effect=effect,
+        agent_targets=existing.agent_targets if existing else None,
+    )
 
 
 def plan_deploy(
@@ -231,6 +240,8 @@ def plan_deploy(
     jev_mode: Optional[str] = None,
     current_jev_mode: Optional[str] = None,
     kinds: Optional[Dict[Tuple[str, int], str]] = None,
+    targets: Sequence[str] = (),
+    all_agents: Sequence[str] = (),
 ) -> DeployPlan:
     """Compute the full resulting set, plus the diff to show before writing.
 
@@ -274,6 +285,34 @@ def plan_deploy(
             ref = resolve_ref(token, latest=latest, current=current_map, disabled=disabled)
             result_map[ref.id] = ref
 
+    grouped: Dict[str, List[Dict[str, str]]] = {}
+    for token in targets:
+        if "=" not in token:
+            raise RefUsageError(f"--target {token!r} must be POLICY=INTEGRATION[/agt_ID]")
+        pid, selector = token.split("=", 1)
+        if not _POLICY_ID.fullmatch(pid):
+            raise RefUsageError(f"--target policy id {pid!r} is invalid")
+        integration, _, instance_id = selector.partition("/")
+        if integration not in AGENT_INTEGRATIONS or ("/" in selector and not AGENT_ID.fullmatch(instance_id)):
+            raise RefUsageError(f"--target {token!r} has an unknown integration or invalid profile ID")
+        entry = {"integration": integration}
+        if instance_id:
+            entry["instanceId"] = instance_id
+        collection = grouped.setdefault(pid, [])
+        if entry in collection or len(collection) == 32:
+            raise RefUsageError("--target has a duplicate selector or more than 32 selectors for a policy")
+        collection.append(entry)
+    clears = set(all_agents)
+    if clears.intersection(grouped):
+        raise RefUsageError("--all-agents and --target cannot name the same policy")
+    for pid in clears:
+        if not _POLICY_ID.fullmatch(pid):
+            raise RefUsageError(f"--all-agents policy id {pid!r} is invalid")
+    for pid in grouped.keys() | clears:
+        if pid not in result_map:
+            raise RefUsageError(f"{pid!r} is not in the resulting set — add or keep it before targeting")
+        result_map[pid] = dataclass_replace(result_map[pid], agent_targets=grouped.get(pid))
+
     result = sorted(result_map.values(), key=lambda p: p.id)
     for ref in result:
         if ref.effect == "observe" and (kinds or {}).get((ref.id, ref.version)) == "jev":
@@ -287,7 +326,7 @@ def plan_deploy(
         was = current_map.get(pid)
         if was is None:
             added.append(ref)
-        elif (was.version, was.effect) != (ref.version, ref.effect):
+        elif (was.version, was.effect, was.agent_targets) != (ref.version, ref.effect, ref.agent_targets):
             changed.append((was, ref))
         else:
             unchanged.append(ref)

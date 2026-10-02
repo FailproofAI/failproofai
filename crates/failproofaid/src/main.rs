@@ -1,3 +1,4 @@
+mod agent_roster;
 mod audit_lane;
 mod cloud_client;
 pub mod cloud_policies;

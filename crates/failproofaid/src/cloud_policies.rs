@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 /// shape is precisely what a schema version exists to prevent — see the note at
 /// the emit site in AgentEye's `enforcement.rs`.
 pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
+pub const SCOPED_DESIRED_STATE_SCHEMA_VERSION: u32 = 3;
 
 /// What this daemon ACCEPTS when reading.
 ///
@@ -36,7 +37,11 @@ pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
 /// would silently stop enforcing cloud policy until a poll re-materialised
 /// everything. The field aliases on `ActiveDeployment` exist for the same
 /// files and the same reason.
-pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, DESIRED_STATE_SCHEMA_VERSION];
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[
+    1,
+    DESIRED_STATE_SCHEMA_VERSION,
+    SCOPED_DESIRED_STATE_SCHEMA_VERSION,
+];
 const MANAGED_FILE_MODE: u32 = 0o600;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -141,6 +146,7 @@ impl From<LegacyDesiredPolicy> for DesiredPolicy {
             effect: old.effect,
             authority: None,
             reviewed_by: None,
+            agent_targets: None,
         }
     }
 }
@@ -169,6 +175,54 @@ pub struct DesiredPolicy {
     /// verbatim; the CLI decides which of them this machine can actually ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_by: Option<Vec<String>>,
+    /// Only schema 3 may carry this. Absent means all agents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_targets: Option<Vec<AgentTarget>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentTarget {
+    pub integration: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+}
+
+const INTEGRATIONS: &[&str] = &[
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "opencode",
+    "pi",
+    "hermes",
+    "openclaw",
+    "factory",
+    "devin",
+    "antigravity",
+    "goose",
+];
+
+fn valid_instance_id(id: &str) -> bool {
+    let Some(hex) = id.strip_prefix("agt_") else {
+        return false;
+    };
+    (16..=32).contains(&hex.len())
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn validate_targets(targets: &[AgentTarget]) -> bool {
+    if !(1..=32).contains(&targets.len()) {
+        return false;
+    }
+    let mut seen = HashSet::new();
+    targets.iter().all(|target| {
+        INTEGRATIONS.contains(&target.integration.as_str())
+            && target.instance_id.as_deref().is_none_or(valid_instance_id)
+            && seen.insert(target)
+    })
 }
 
 /// What an assignment does when it matches.
@@ -235,6 +289,8 @@ pub struct ActivePolicy {
     pub authority: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_by: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_targets: Option<Vec<AgentTarget>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -610,11 +666,12 @@ impl PolicyStore {
                 path: self.relative_to_root(&artifact_path)?,
                 authority: policy.authority.clone(),
                 reviewed_by: policy.reviewed_by.clone(),
+                agent_targets: policy.agent_targets.clone(),
             });
         }
 
         let active = ActiveDeployment {
-            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            schema_version: desired.schema_version,
             deployment: desired.deployment,
             policies: active_policies,
             jev_mode: desired.jev_mode.clone(),
@@ -956,6 +1013,15 @@ fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> 
     }
     let mut ids = HashSet::new();
     for policy in &desired.policies {
+        if let Some(targets) = &policy.agent_targets
+            && (desired.schema_version < SCOPED_DESIRED_STATE_SCHEMA_VERSION
+                || !validate_targets(targets))
+        {
+            return Err(ReconcileError::InvalidDesiredState(format!(
+                "policy {} has invalid agentTargets for schema {}",
+                policy.id, desired.schema_version
+            )));
+        }
         validate_policy_identity(&policy.id)?;
         validate_sha256(&policy.sha256)?;
         if policy.artifact_url.trim().is_empty() {
@@ -1161,6 +1227,7 @@ mod tests {
                 effect: PolicyEffect::Observe,
                 authority: None,
                 reviewed_by: None,
+                agent_targets: None,
             }],
             jev_mode: None,
         };
@@ -1196,6 +1263,7 @@ mod tests {
                 effect: PolicyEffect::Enforce,
                 authority: None,
                 reviewed_by: None,
+                agent_targets: None,
             }],
             jev_mode: None,
         }
@@ -1576,6 +1644,7 @@ pub(crate) mod cloud_jev_tests {
                 effect: PolicyEffect::Enforce,
                 authority: Some("reviewable".into()),
                 reviewed_by: Some(vec!["acme-prod-db".into()]),
+                agent_targets: None,
             }],
             jev_mode: Some("observe".into()),
         }
@@ -2100,9 +2169,9 @@ mod pre_rename_state_tests {
         );
     }
 
-    /// Both schema versions are readable, and only from disk does 1 arise.
+    /// Legacy disk files, unscoped responses and scoped responses are readable.
     #[test]
-    fn both_schema_versions_are_accepted() {
+    fn supported_schema_versions_are_accepted() {
         assert!(
             SUPPORTED_SCHEMA_VERSIONS.contains(&1),
             "a beta daemon's files are v1"
@@ -2112,6 +2181,7 @@ mod pre_rename_state_tests {
             "what we write must be readable"
         );
         assert_eq!(DESIRED_STATE_SCHEMA_VERSION, 2, "the server emits 2");
+        assert!(SUPPORTED_SCHEMA_VERSIONS.contains(&SCOPED_DESIRED_STATE_SCHEMA_VERSION));
 
         // The version the server actually sends must validate.
         let desired: DesiredState = serde_json::from_str(
@@ -2134,6 +2204,89 @@ mod pre_rename_state_tests {
         );
     }
 
+    #[test]
+    fn scoped_assignments_require_schema_three_and_round_trip_to_active_manifest() {
+        let store = PolicyStore::new(std::env::temp_dir().join(format!(
+            "failproofaid-agent-scoped-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        )));
+        let bytes = b"export default 'scoped';\n";
+        let mut state = scoped_fixture(bytes);
+        state.deployment = 42;
+        state.policies[0].agent_targets = Some(vec![AgentTarget {
+            integration: "hermes".into(),
+            instance_id: Some("agt_1234567890abcdef".into()),
+        }]);
+        assert!(
+            validate_desired_state(&state).is_err(),
+            "schema 2 must never ignore the scope"
+        );
+        state.schema_version = SCOPED_DESIRED_STATE_SCHEMA_VERSION;
+        store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.schema_version, 3);
+        assert_eq!(
+            active.policies[0].agent_targets,
+            state.policies[0].agent_targets
+        );
+        let text = fs::read_to_string(store.root().join("active.json")).unwrap();
+        assert!(text.contains("\"agentTargets\""));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn malformed_scopes_never_activate() {
+        let mut state = scoped_fixture(b"guard");
+        state.schema_version = SCOPED_DESIRED_STATE_SCHEMA_VERSION;
+        for targets in [
+            vec![],
+            vec![AgentTarget {
+                integration: "unknown".into(),
+                instance_id: None,
+            }],
+            vec![AgentTarget {
+                integration: "codex".into(),
+                instance_id: Some("wrong".into()),
+            }],
+            vec![
+                AgentTarget {
+                    integration: "codex".into(),
+                    instance_id: None,
+                },
+                AgentTarget {
+                    integration: "codex".into(),
+                    instance_id: None,
+                },
+            ],
+        ] {
+            state.policies[0].agent_targets = Some(targets);
+            assert!(validate_desired_state(&state).is_err());
+        }
+        state.policies[0].agent_targets = None;
+        assert!(validate_desired_state(&state).is_ok());
+    }
+
+    fn scoped_fixture(bytes: &[u8]) -> DesiredState {
+        DesiredState {
+            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            deployment: 1,
+            policies: vec![DesiredPolicy {
+                id: "guard".into(),
+                version: 1,
+                sha256: sha256_hex(bytes),
+                artifact_url: "/enforcement/v1/artifacts/guard".into(),
+                effect: PolicyEffect::Enforce,
+                authority: None,
+                reviewed_by: None,
+                agent_targets: None,
+            }],
+            jev_mode: None,
+        }
+    }
+
     /// The new spelling is what we WRITE, and must keep round-tripping — an
     /// alias that quietly became the canonical name would be its own bug.
     #[test]
@@ -2149,6 +2302,7 @@ mod pre_rename_state_tests {
                 effect: PolicyEffect::Observe,
                 authority: None,
                 reviewed_by: None,
+                agent_targets: None,
             }],
             jev_mode: None,
         };

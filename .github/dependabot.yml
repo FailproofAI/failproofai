@@ -71,3 +71,65 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+
+  # The TypeScript SDK's integration fixtures — the first `npm` entry in this
+  # file, and it exists to turn things OFF. Fifteen real consumer projects, each
+  # pinning every direct dependency exactly, each holding one framework major on
+  # purpose: the major is in the directory name (`ai-4`, `mastra-0`,
+  # `langchain-0.3`), and even the current-major ones are paired, `nextjs`
+  # holding `ai@7.0.111` to stay the twin of `ai-7` whose trace
+  # `nextjs.test.ts` compares every route against. A major bump here does not
+  # update a fixture; it deletes the release the fixture exists to hold and
+  # drops a supported version from the matrix silently.
+  #
+  # `open-pull-requests-limit: 0` switches off VERSION updates. It does NOT
+  # switch off security updates — those are explicitly exempt from the limit —
+  # so it alone would have stopped neither #838 nor #867, both of which arrived
+  # as security PRs in the `npm_and_yarn` group.
+  #
+  # `versions: [">= 0"]` is what stops them, and the spelling is load-bearing.
+  # `update-types: ["version-update:semver-major"]` reads like the right way to
+  # say "never bump a major here" and is silently inert against exactly the PRs
+  # this entry exists to prevent: in dependabot-core,
+  # `Config::IgnoreCondition#ignored_versions` opens with
+  #
+  #     return versions if security_updates_only
+  #
+  # so on a security update only the explicit `versions:` list is consulted and
+  # `update_types` is never read at all. An ignore with no `versions:` returns an
+  # empty list there and blocks nothing. (Name matching is unaffected —
+  # `UpdateConfig#ignored_versions_for` selects conditions by wildcard on the
+  # name before this, regardless of update kind, so `"*"` does apply.)
+  #
+  # `>= 0` is dependabot's own ALL_VERSIONS constant, so this ignores every
+  # version of every dependency in these directories — which sounds larger than
+  # it is, because for these fixtures a security PR can only ever propose moving
+  # a pin. The frameworks pin their transitive deps EXACTLY (`ai@4.3.19`
+  # requires `jsondiffpatch@0.6.0`, not `^0.6.0`), which is what makes the
+  # lockfiles reproducible and is why #837 found `npm update` reporting all five
+  # affected fixtures already up to date while the advisories stood against
+  # them. There is no in-range fix for dependabot to offer. Its record here is
+  # two PRs, both the forbidden move, one of which did not install:
+  # `@mastra/mcp@0.14.5` peers on `@mastra/core@">=0.20.1-0 <0.25.0-0"`, so #867
+  # failed `ERESOLVE`, and because the shard's global setup installs every
+  # fixture before any test runs, that one fixture took down three shards whole.
+  #
+  # What this does NOT suppress is the part that actually drives remediation.
+  # Dependabot ALERTS come from the dependency graph, not from this file: they
+  # keep arriving, stay visible in the security tab, and are how `undici` in
+  # `ai-5` (#869) and the five overrides in #837 were found and fixed by hand
+  # with `overrides` — case 1 of `SECURITY.md`'s fixture triage. Only the PRs
+  # stop, and an advisory with no in-range fix lands in that document's accepted
+  # table, as two already have.
+  - package-ecosystem: npm
+    directories:
+      - "/sdk/typescript/integration/fixtures/*"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      # Both keys deliberately: `versions` is the one security updates honor,
+      # and dropping it back to `update-types` alone would make this inert.
+      - dependency-name: "*"
+        versions: [">= 0"]

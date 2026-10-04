@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const line = (obj: Record<string, unknown>): string => JSON.stringify(obj);
@@ -195,6 +195,7 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
   let originalHome: string | undefined;
   let fakeHome: string;
   let findCodexTranscript: typeof import("@/lib/codex-sessions").findCodexTranscript;
+  let _getCacheFilePath: typeof import("@/lib/codex-sessions")._getCacheFilePath;
 
   beforeEach(async () => {
     originalHome = process.env.HOME;
@@ -206,7 +207,7 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, homedir: () => fakeHome };
     });
-    ({ findCodexTranscript } = await import("@/lib/codex-sessions"));
+    ({ findCodexTranscript, _getCacheFilePath } = await import("@/lib/codex-sessions"));
   });
 
   afterEach(() => {
@@ -245,6 +246,28 @@ describe("lib/codex-sessions: findCodexTranscript", () => {
 
     const result = findCodexTranscript(sid);
     expect(result).toBe(file);
+  });
+
+  it("writes the session cache atomically and leaves no .tmp files", () => {
+    const sid = "019dd672-cccc-7a30-8671-deadbeefcafe";
+    const today = new Date();
+    const y = String(today.getUTCFullYear());
+    const m = String(today.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(today.getUTCDate()).padStart(2, "0");
+    const dir = join(fakeHome, ".codex", "sessions", y, m, d);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `rollout-${sid}.jsonl`);
+    writeFileSync(file, "{}\n");
+
+    expect(findCodexTranscript(sid)).toBe(file);
+
+    const cachePath = _getCacheFilePath();
+    expect(existsSync(cachePath)).toBe(true);
+    const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as Record<string, string>;
+    expect(parsed[sid]).toBe(file);
+
+    const leftovers = readdirSync(dirname(cachePath)).filter((name) => name.endsWith(".tmp"));
+    expect(leftovers).toEqual([]);
   });
 });
 

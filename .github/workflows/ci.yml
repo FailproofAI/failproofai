@@ -100,6 +100,13 @@ jobs:
               MISMATCH=1
             fi
           fi
+          # The Hermes plugin manifest ships in the npm tarball and is what
+          # `hermes plugins list` reports; publish.yml bumps it with the rest.
+          PLUGIN_VERSION=$(grep -m1 '^version: ' hermes-plugin/plugin.yaml | sed -E 's/^version: *//')
+          if [ "$PLUGIN_VERSION" != "$ROOT_VERSION" ]; then
+            echo "::error file=hermes-plugin/plugin.yaml::Version mismatch: hermes-plugin/plugin.yaml has $PLUGIN_VERSION, expected $ROOT_VERSION"
+            MISMATCH=1
+          fi
           if [ "$MISMATCH" -eq 1 ]; then
             echo "::error::Version mismatch detected across package.json files"
             exit 1

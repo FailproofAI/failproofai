@@ -354,7 +354,15 @@ normal native path does not parse CLI stdout and does not spawn a process per ev
 The contract is pinned to upstream Hermes 0.21.3 / commit
 `4d55ca91656ac5f83e1506679b7f81e0238e5e16`: plugin manifest v2, `PluginState.data_dir`,
 keyword hook payloads, and `pre_tool_call` correlation IDs are all present there.
-Callbacks accept `**kwargs` for additive compatibility.
+Callbacks accept `**kwargs` for additive compatibility. Hermes 0.20.0 (2026.8.3) is
+supported too and verified live: its `PluginContext` lacks `get_config` and `state`
+(added in 0.20.1), and a `register()` that raised there was logged as "Failed to load
+plugin" and left **zero** hooks — every tool call unchecked. The plugin now falls back
+to reading `plugins.entries.<id>.settings` then `.config` through the host's
+`hermes_cli.config` loader, and to
+`get_hermes_home()/plugin-data/agent-plugin-failproofai-5296f299` (Hermes'
+`_portable_skill_namespace`) for the ledger, so an upgrade keeps the same `instructions.db`. `register()` never raises and registers each
+hook independently; a ledger that cannot open degrades only `instruct()`.
 
 **Platform independence & subagents.** The gateway is one Hermes process and
 `pre_tool_call` fires on the *tool event*, not the source — so a single install
@@ -368,17 +376,48 @@ internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_ca
 
 | Hermes plugin hook | Canonical (`HERMES_EVENT_MAP`) | Effect | Notes |
 |--------------------|--------------------------------|--------|-------|
-| `pre_tool_call`    | `PreToolUse`                   | ✅ block | Deny always blocks. Instruct blocks once for model-visible delivery, then the next API iteration may proceed. |
+| `pre_tool_call`    | `PreToolUse`                   | ✅ block | Deny always blocks. Instruct lets the call run and hands its reminder to the `tool_execution` middleware below; it blocks once only on a host without that middleware. |
+| `tool_execution` middleware | plugin-local      | annotate | Wraps the real call (`ctx.register_middleware`, unchanged in 0.20.0 / 0.21.x / main) and puts an instruct reminder at the START of the call's own result: first JSON key `failproof_policy_reminder`, else a leading `[FailproofAI policy reminder (...)]` line or text block. |
 | `post_tool_call`   | `PostToolUse`                  | observation | Return value is ignored by Hermes. |
-| `pre_llm_call`     | plugin-local                  | context | Adds the stable instruction protocol hint to the current turn. |
+| `pre_llm_call`     | plugin-local                  | context | Adds the stable protocol hint (`failproof_policy_reminder` = operator rule on a call that ran, never to be quoted to the user; a FailproofAI block = do not run that action by any route; `FailproofAI policy guidance` = held once) to the current turn. |
 | `on_session_start` | `SessionStart`                 | observation | Forwarded to the evaluator. |
 | `on_session_end`   | `SessionEnd`                   | observation + cleanup | Forwarded, then clears that session's instruction ledger. |
 | `on_session_reset` / `on_session_finalize` | plugin-local | cleanup | Clears stale per-session retry state. |
 | `subagent_stop`    | `SubagentStop`                 | observation | Not a gate. |
 | `pre_verify`       | *(not installed)*              | none | Hermes exposes a bounded turn-end gate, but FailproofAI does not map it yet. |
 
-**Bounded `instruct()` delivery.** The first matching instruction in a
-profile/session/task/turn/policy/tool scope is persisted to the profile-local SQLite
+**`instruct()` delivery: a reminder on the result, not a block.** Blocking a
+correct call to deliver a reminder made the model treat it as an error and route
+around it (seen in unattended cron jobs on Hermes 0.20.0), so with the
+`tool_execution` middleware the call runs and the reminder is placed first in its
+result, where it also survives the 1,500-char head Hermes keeps of a large result.
+Where `pre_tool_call` runs relative to the middleware differs by path, and the
+plugin handles both: in the agent loop it runs INSIDE `next_call` (on 0.21.x on a
+hook worker thread that runs in a copy of the caller's context — so the frame stack
+is a `ContextVar`, not a thread-local); in `model_tools.handle_function_call`
+(`execute_code` inner calls, direct dispatch) it runs BEFORE the middleware, so the
+reminder is handed off by call identity (session, task, tool_call_id, tool, args
+digest) and claimed when the call's frame opens. `execute_code` inner calls
+(empty `tool_call_id`) hand their reminder to the outer `execute_code` result —
+the one the model reads — and leave their own result untouched, because the
+script may print, write or send it; only with no open outer frame does the inner
+result carry it. A model-issued call (a subagent's) never propagates to its parent.
+
+A reminder (same policy + reason) is attached once per Hermes session + turn
+(bounded LRU); when the full reminder would take the result past 7,500 chars it
+gets a compact one (policy names + 160 chars of the reason). Observer hooks wait
+at most 2 s. No hook raises: `pre_tool_call` blocks on any
+internal error (0.20.0/0.21.x read a raise as ALLOW), observers log and return, and
+the middleware falls back to the plain result. `evaluation_timeout_ms` is one
+deadline for connect + send + read, capped at 25 s (0.21.x abandons a hook after
+30 s, then blocks every call for 60 s). `register()` writes `heartbeat.json` (pid,
+Hermes version, home, profile, plugin path/version, hooks + middleware accepted,
+`register_ok`) beside `instructions.db`.
+
+**Fallback: bounded block-once.** Only on a host with no `tool_execution`
+middleware: the first matching instruction in a
+profile/session/task/turn/policy scope (deliberately NOT the tool, so moving the
+work to `execute_code` is not held again) is persisted to the profile-local SQLite
 ledger before `pre_tool_call` returns a block. Re-entry with the same
 `api_request_id` remains blocked, which prevents sibling calls from consuming the
 permit. A later API request acknowledges the instruction and proceeds. At most two
@@ -423,8 +462,9 @@ claims were corrected against upstream `hermes-agent` @ `5771a6e`.
    (`agent/shell_hooks.py:325`).
 3. **"No additional-context channel" was false.** Native `pre_llm_call` callbacks
    consume `{"context": str}`. The plugin uses that channel for a stable protocol
-   hint, while each concrete `instruct()` reason is delivered through the blocked
-   `pre_tool_call` result that Hermes inserts into model-visible history.
+   hint, while each concrete `instruct()` reason rides at the start of the tool
+   result through the `tool_execution` middleware (the blocked `pre_tool_call`
+   result only on a host without it).
 
 Hermes still lacks `UserPromptSubmit` (only per-LLM-call `pre_llm_call`),
 `PreCompact`/`Notification`, etc. In exchange it has capabilities others lack
@@ -441,6 +481,9 @@ prose: this table is exactly the artifact that drifted.
 `block-read-outside-cwd`) fire; `write_file`'s `content`, `patch`'s `old_string`/`new_string`,
 and `search_files`' `pattern`/`path` are already canonical (so Grep needs no entry), and
 `terminal`'s `command` is canonical too (Bash policies like `block-sudo` are live-verified).
+Hermes 0.21.x renamed `process`/`cronjob`/`todo` to `process_manage`/`cronjob_manage`/
+`todo_list`; the map sends the new names to what the old ones produce, so one policy
+matches both versions.
 
 For production users the recommended Hermes install is:
 ```bash
@@ -1358,6 +1401,9 @@ When bumping the version, update both root `package.json` and the
 `[workspace.package]` version in root `Cargo.toml`, then refresh `Cargo.lock`. The CLI and
 native daemon must report the same version. The CI version-consistency check also compares
 any `packages/*/package.json` files against root; that directory does not currently exist.
+`hermes-plugin/plugin.yaml`'s `version:` moves with them too (it is what `hermes plugins
+list` reports): `publish.yml` rewrites it in both "Set publish version" steps and in the
+post-release bump, and the same CI check compares it against root.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and

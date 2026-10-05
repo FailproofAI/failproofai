@@ -353,7 +353,11 @@ jobs:
         if: needs.preflight.outputs.publish_version != needs.preflight.outputs.pkg_version
         env:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
-        run: npm version "$PUBLISH_VERSION" --no-git-tag-version
+        run: |
+          npm version "$PUBLISH_VERSION" --no-git-tag-version
+          # The Hermes plugin manifest ships in the tarball; `hermes plugins
+          # list` shows its version, so it carries the published one too.
+          perl -pi -e 's/^version: .*/version: '"$PUBLISH_VERSION"'/' hermes-plugin/plugin.yaml
 
       # Retried, because `bun --bun next build` is a demonstrated flake and this
       # is a release. On 2026-08-19 it took a SIGSEGV inside bun 1.3.14 during
@@ -550,7 +554,8 @@ jobs:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
         run: |
           npm version "$PUBLISH_VERSION" --no-git-tag-version
-          echo "Updated package.json to $PUBLISH_VERSION"
+          perl -pi -e 's/^version: .*/version: '"$PUBLISH_VERSION"'/' hermes-plugin/plugin.yaml
+          echo "Updated package.json and hermes-plugin/plugin.yaml to $PUBLISH_VERSION"
 
       # The four @failproofai/failproofaid-<platform> packages, from the same
       # binaries the release gets. They MUST publish before the root package
@@ -742,8 +747,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # The publish-version step may have left package.json modified.
-          git checkout -- package.json
+          # The publish-version step may have left package.json and the Hermes
+          # plugin manifest modified.
+          git checkout -- package.json hermes-plugin/plugin.yaml
           git fetch origin main
           git checkout main
 
@@ -771,7 +777,16 @@ jobs:
           # `--locked` build.
           cargo update --workspace --offline || cargo update --workspace
 
-          git add package.json Cargo.toml Cargo.lock
+          # The Hermes plugin manifest's version moves with package.json for
+          # the same reason, checked by the same `ci.yml` job. It shipped as
+          # 1.0.6-beta.0 in every release through 1.0.9 before this line existed.
+          perl -pi -e 's/^version: .*/version: '"$NEXT_VERSION"'/' hermes-plugin/plugin.yaml
+          if ! grep -qx "version: $NEXT_VERSION" hermes-plugin/plugin.yaml; then
+            echo "::error file=hermes-plugin/plugin.yaml::Failed to bump the Hermes plugin version to '$NEXT_VERSION'"
+            exit 1
+          fi
+
+          git add package.json Cargo.toml Cargo.lock hermes-plugin/plugin.yaml
           git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
 
           # Authenticated as the version-bot App, which bypasses the ruleset's

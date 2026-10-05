@@ -98,11 +98,13 @@ def evaluate_policy(
     if len(body) > MAX_REQUEST_BYTES:
         raise EvaluationError("policy request exceeds the 1 MiB limit")
 
+    # One deadline covers connect, send and read: evaluation_timeout_ms is the
+    # longest a tool call can wait here. Connect is bounded by both budgets.
+    deadline = time.monotonic() + max(evaluation_timeout_ms, 1) / 1000
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(max(connect_timeout_ms, 1) / 1000)
+            sock.settimeout(min(max(connect_timeout_ms, 1) / 1000, _remaining_timeout(deadline)))
             sock.connect(str(daemon_socket_path()))
-            deadline = time.monotonic() + max(evaluation_timeout_ms, 1) / 1000
             sock.settimeout(_remaining_timeout(deadline))
             try:
                 sock.sendall(struct.pack(">I", len(body)) + body)

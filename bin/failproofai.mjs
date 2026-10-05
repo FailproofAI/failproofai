@@ -34,6 +34,15 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 
 const args = process.argv.slice(2);
 
+// --no-color: the flag spelling of NO_COLOR=1. Applied HERE, above SUBCOMMANDS
+// and every dispatch, because it works by setting the env var every painter
+// already gates on - and because stripping it now means no subcommand's own
+// flag parser ever has to know it exists.
+{
+  const { applyNoColorFlag } = await import("../src/hooks/tui");
+  applyNoColorFlag(args);
+}
+
 // ── one noun for policies ──────────────────────────────────────────────────
 // `policies`, `policy` and `pack` were three commands for one idea, two of them
 // a single letter apart and doing unrelated things. They are now three
@@ -497,6 +506,7 @@ async function runCli() {
       footer: [
         "failproofai <command> [options]     failproofai help <command> for detail",
         "docs.befailproof.ai   discord.befailproof.ai   -h this screen   -v version",
+        "--no-color for plain output (same as NO_COLOR=1)",
       ],
     });
     process.exit(0);
@@ -1968,6 +1978,7 @@ async function runCli() {
               ["--scope <scope>", "user, project or local. Default: user. --uninstall also takes all."],
               ["--beta", "Include beta policies. On --uninstall, only those."],
               ["--custom, -c <path>", "Custom policy file; repeat for several. Bare on --uninstall, clears every explicit path."],
+              ["--no-color", "Plain output, no colour. Same as NO_COLOR=1; works on every command."],
             ],
           },
           {

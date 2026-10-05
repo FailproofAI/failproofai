@@ -156,6 +156,25 @@ export function colorsEnabled(out: TTYOut): boolean {
 }
 
 /**
+ * `--no-color`, the flag spelling of NO_COLOR=1 (https://no-color.org). Sets
+ * the env var - which every paint() call above already gates on - and strips
+ * the flag from argv so no subcommand's own flag parser ever sees it. Called
+ * ONCE by the bin, above SUBCOMMANDS and every dispatch. Returns whether the
+ * flag was present, for tests and for any caller that wants to know.
+ */
+export function applyNoColorFlag(args: string[]): boolean {
+  let found = false;
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (args[i] === "--no-color") {
+      args.splice(i, 1);
+      found = true;
+    }
+  }
+  if (found) process.env.NO_COLOR = "1";
+  return found;
+}
+
+/**
  * The raw ANSI opening sequence for a brand role, for callers that assemble
  * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`).
  * That file previously hardcoded its own 256-colour palette — a green and a

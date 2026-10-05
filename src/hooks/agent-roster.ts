@@ -10,6 +10,10 @@ import { agentRosterFile } from "./fp-home";
 import { validAgentIdentity, type AgentIdentity } from "./agent-targets";
 import type { HookScope, IntegrationType } from "./types";
 
+/** `MAX_AGENTS` / `MAX_ROSTER_BYTES` in the daemon's `agent_roster.rs`. */
+export const MAX_ROSTER_AGENTS = 256;
+export const MAX_ROSTER_BYTES = 4_000_000;
+
 const USER_SETTINGS: Partial<Record<IntegrationType, string>> = {
   claude: ".claude/settings.json",
   codex: ".codex/hooks.json",
@@ -116,11 +120,11 @@ export function readRuntimeAgentIdentity(cli: IntegrationType, settingsPath: str
   try {
     const path = agentRosterFile();
     const stat = lstatSync(path);
-    if (!stat.isFile() || (stat.mode & 0o077) !== 0 || stat.size > 256_000) return null;
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0 || stat.size > MAX_ROSTER_BYTES) return null;
     const roster: unknown = JSON.parse(readFileSync(path, "utf8"));
     if (!roster || typeof roster !== "object" || Array.isArray(roster)) return null;
     const data = roster as Record<string, unknown>;
-    if (data.schemaVersion !== 1 || !Array.isArray(data.agents) || data.agents.length > 64) return null;
+    if (data.schemaVersion !== 1 || !Array.isArray(data.agents) || data.agents.length > MAX_ROSTER_AGENTS) return null;
     const absolute = resolve(settingsPath);
     const agent = data.agents.find((entry: unknown) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;

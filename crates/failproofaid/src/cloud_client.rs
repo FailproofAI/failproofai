@@ -18,6 +18,20 @@ use crate::agent_roster::{self, AgentRoster};
 const DEFAULT_POLL_MS: u64 = 30_000;
 const MINIMUM_POLL_MS: u64 = 100;
 const AGENT_INVENTORY_HEARTBEAT: Duration = Duration::from_secs(15 * 60);
+/// How often a full roster may skip the heartbeat to ask Cloud which IDs it
+/// still protects, while a hooked profile waits for a slot.
+const AGENT_CAPACITY_REPORT: Duration = Duration::from_secs(60);
+const MAX_INVENTORY_REPLY_BYTES: usize = 1 << 20;
+
+/// What one roster report did.
+enum RosterReport {
+    /// Cloud already holds this snapshot recently enough; nothing was sent.
+    Skipped,
+    /// Sent. `Some` when Cloud answered for this snapshot with the IDs it
+    /// protects; `None` for another generation or a Cloud that predates
+    /// `protectedInstanceIds` (then nothing is ever reclaimed).
+    Sent(Option<agent_roster::Reclaimable>),
+}
 static AGENT_INVENTORY_REPORTS: LazyLock<Mutex<HashMap<String, (u64, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -867,7 +881,13 @@ impl CloudClient {
 
     /// The roster is a full snapshot, independent of policy reconciliation.
     /// A failed upload never discards the already-active assignment.
-    fn report_agent_roster(&self, roster: &AgentRoster) -> Result<(), String> {
+    ///
+    /// `capacity` asks again sooner than the heartbeat.
+    fn report_agent_roster(
+        &self,
+        roster: &AgentRoster,
+        capacity: bool,
+    ) -> Result<RosterReport, String> {
         let token_digest = Sha256::digest(self.token.as_bytes());
         let key = format!(
             "{}:{}:{}",
@@ -878,12 +898,17 @@ impl CloudClient {
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>()
         );
+        let fresh_for = if capacity {
+            AGENT_CAPACITY_REPORT
+        } else {
+            AGENT_INVENTORY_HEARTBEAT
+        };
         if AGENT_INVENTORY_REPORTS.lock().is_ok_and(|reports| {
             reports.get(&key).is_some_and(|(generation, at)| {
-                *generation == roster.generation && at.elapsed() < AGENT_INVENTORY_HEARTBEAT
+                *generation == roster.generation && at.elapsed() < fresh_for
             })
         }) {
-            return Ok(());
+            return Ok(RosterReport::Skipped);
         }
         let mut url = self
             .base_url
@@ -913,7 +938,8 @@ impl CloudClient {
             "generation": roster.generation,
             "agents": agents,
         });
-        self.client
+        let response = self
+            .client
             .put(url)
             .bearer_auth(&self.token)
             .json(&body)
@@ -928,7 +954,25 @@ impl CloudClient {
         if let Ok(mut reports) = AGENT_INVENTORY_REPORTS.lock() {
             reports.insert(key, (roster.generation, Instant::now()));
         }
-        Ok(())
+        // The reply is a generation and at most a few hundred opaque IDs.
+        let reply: serde_json::Value = response
+            .bytes()
+            .ok()
+            .filter(|body| body.len() <= MAX_INVENTORY_REPLY_BYTES)
+            .and_then(|body| serde_json::from_slice(&body).ok())
+            .unwrap_or_default();
+        if reply["generation"].as_u64() != Some(roster.generation) {
+            return Ok(RosterReport::Sent(None));
+        }
+        // A malformed list reclaims nothing rather than everything.
+        let protected = reply["protectedInstanceIds"].as_array().and_then(|ids| {
+            ids.iter()
+                .map(|id| id.as_str().map(str::to_owned))
+                .collect::<Option<HashSet<_>>>()
+        });
+        Ok(RosterReport::Sent(protected.map(|ids| {
+            agent_roster::Reclaimable::from_report(roster, &ids)
+        })))
     }
 
     fn artifact(&self, policy: &DesiredPolicy) -> Result<Vec<u8>, String> {
@@ -1097,6 +1141,36 @@ fn repair(store: &PolicyStore, withdrawn: &dyn Fn() -> bool) {
     }
 }
 
+/// Report the roster and, while a hooked profile waits for a slot, reclaim one
+/// right away: the protected list must describe the snapshot Cloud holds NOW,
+/// so it is never kept for a later tick or used after another report. When
+/// asking frees nothing, forced reports stop until the roster changes.
+fn report_and_reclaim(cloud: &CloudClient, path: &Path, home: &Path, roster: &AgentRoster) {
+    let wanted = agent_roster::needs_capacity(path);
+    let force = agent_roster::should_force_capacity_report(path, roster.generation);
+    let reclaimable = match cloud.report_agent_roster(roster, force) {
+        Ok(RosterReport::Sent(Some(reclaimable))) if wanted => reclaimable,
+        Ok(RosterReport::Sent(None)) if wanted => {
+            agent_roster::capacity_stalled(path, roster.generation);
+            return;
+        }
+        Ok(_) => return,
+        Err(err) => {
+            eprintln!("[failproofaid] {err}");
+            return;
+        }
+    };
+    match agent_roster::reclaim(path, home, &reclaimable) {
+        Ok(next) if next.generation != roster.generation => {
+            if let Err(err) = cloud.report_agent_roster(&next, false) {
+                eprintln!("[failproofaid] {err}");
+            }
+        }
+        Ok(_) => agent_roster::capacity_stalled(path, roster.generation),
+        Err(err) => eprintln!("[failproofaid] could not reclaim agent roster capacity: {err}"),
+    }
+}
+
 /// One poll and its reconcile. `withdrawn` is asked right before anything is
 /// persisted — the reconcile's writes and the daemon's error state — so a
 /// disconnect that lands while the request is in flight is not undone by it.
@@ -1134,10 +1208,10 @@ fn poll_once_guarded(store: &PolicyStore, cloud: &CloudClient, withdrawn: &dyn F
             // The GET created/checked-in the machine row the PUT requires.
             // Do not let a roster network outage interrupt local enforcement.
             if let Ok(path) = agent_roster::roster_path()
+                && let Some(home) = std::env::var_os("HOME")
                 && let Ok(Some(roster)) = agent_roster::read(&path)
-                && let Err(err) = cloud.report_agent_roster(&roster)
             {
-                eprintln!("[failproofaid] {err}");
+                report_and_reclaim(cloud, &path, Path::new(&home), &roster);
             }
             match store.reconcile_unless(
                 &desired,
@@ -2814,8 +2888,20 @@ mod tests {
                 body.to_string().find("settingsPath").is_none(),
                 "paths stay local"
             );
+            let reply = serde_json::json!({
+                "generation": generation,
+                "changed": true,
+                "protectedInstanceIds": [],
+            })
+            .to_string();
             stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                        reply.len()
+                    )
+                    .as_bytes(),
+                )
                 .unwrap();
         });
         let client = CloudClient::new(
@@ -2824,11 +2910,260 @@ mod tests {
             "machine".into(),
         )
         .unwrap();
-        client.report_agent_roster(&roster).unwrap();
+        let report = client.report_agent_roster(&roster, false).unwrap();
         server.join().unwrap();
+        assert!(
+            matches!(report, RosterReport::Sent(Some(r)) if r.is_empty()),
+            "a hooked profile is never reclaimable"
+        );
         // No server is listening now. This must still succeed from the
-        // in-process generation cache, and must not make another PUT.
-        client.report_agent_roster(&roster).unwrap();
+        // in-process generation cache, and must not make another PUT, even
+        // when capacity is wanted inside the shorter capacity interval.
+        let skipped = |capacity| {
+            matches!(
+                client.report_agent_roster(&roster, capacity),
+                Ok(RosterReport::Skipped)
+            )
+        };
+        assert!(skipped(false));
+        assert!(skipped(true));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Serve one PUT with `reply` as the JSON body.
+    fn reply_once(reply: &'static str) -> (std::net::SocketAddr, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_millis(500)))
+                .unwrap();
+            let mut buf = [0u8; 65_536];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                        reply.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        (address, server)
+    }
+
+    #[test]
+    fn only_a_well_formed_answer_for_this_snapshot_can_reclaim_anything() {
+        let roster = AgentRoster {
+            schema_version: 1,
+            generation: 7,
+            agents: Vec::new(),
+        };
+        for (machine, reply, usable) in [
+            (
+                "m-ok",
+                r#"{"generation":7,"protectedInstanceIds":["agt_0123456789abcdef"]}"#,
+                true,
+            ),
+            // An older Cloud: no list, so nothing is ever reclaimed.
+            ("m-old", r#"{"generation":7,"changed":true}"#, false),
+            // Cloud holds another snapshot; its list describes that one.
+            (
+                "m-gen",
+                r#"{"generation":8,"protectedInstanceIds":[]}"#,
+                false,
+            ),
+            (
+                "m-bad",
+                r#"{"generation":7,"protectedInstanceIds":["agt_0123456789abcdef",3]}"#,
+                false,
+            ),
+        ] {
+            let (address, server) = reply_once(reply);
+            let client =
+                CloudClient::new(&format!("http://{address}"), "token".into(), machine.into())
+                    .unwrap();
+            let report = client.report_agent_roster(&roster, true).unwrap();
+            server.join().unwrap();
+            assert_eq!(
+                matches!(report, RosterReport::Sent(Some(_))),
+                usable,
+                "{reply}"
+            );
+        }
+    }
+
+    /// Serve `count` roster PUTs, answering each for the generation it
+    /// carried; return their bodies.
+    fn roster_cloud(
+        count: usize,
+        protected: Option<Vec<String>>,
+    ) -> (
+        std::net::SocketAddr,
+        std::thread::JoinHandle<Vec<serde_json::Value>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let mut bodies = Vec::new();
+            for _ in 0..count {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut received = Vec::new();
+                let body = loop {
+                    let mut buf = [0u8; 65_536];
+                    let len = stream.read(&mut buf).unwrap();
+                    assert!(len > 0);
+                    received.extend_from_slice(&buf[..len]);
+                    let Some(at) = received.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let headers = String::from_utf8_lossy(&received[..at]).to_ascii_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    if received.len() >= at + 4 + length {
+                        break serde_json::from_slice::<serde_json::Value>(
+                            &received[at + 4..at + 4 + length],
+                        )
+                        .unwrap();
+                    }
+                };
+                let mut reply = serde_json::json!({ "generation": body["generation"] });
+                if let Some(ids) = &protected {
+                    reply["protectedInstanceIds"] = serde_json::json!(ids);
+                }
+                let reply = reply.to_string();
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                            reply.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+                bodies.push(body);
+            }
+            bodies
+        });
+        (address, server)
+    }
+
+    /// A full roster of 256 unhooked project profiles; entry 0 is the oldest.
+    fn full_stale_roster(root: &Path) -> (std::path::PathBuf, std::path::PathBuf, AgentRoster) {
+        let home = root.join("home");
+        let path = root.join("agents/roster.json");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let agents: Vec<_> = (0..agent_roster::MAX_AGENTS)
+            .map(|index| {
+                serde_json::json!({
+                    "instanceId": format!("agt_{index:032x}"),
+                    "integration": "codex",
+                    "settingsPath": root.join(format!("gone/p{index:03}/.codex/hooks.json")),
+                    "profileLabel": format!("p{index:03}"),
+                    "scope": "project",
+                    "hookInstalled": true,
+                    "lastSeenAt": now - (400 - index as i64) * 86_400_000,
+                })
+            })
+            .collect();
+        fs::write(
+            &path,
+            serde_json::json!({"schemaVersion":1,"generation":1,"agents":agents}).to_string(),
+        )
+        .unwrap();
+        let roster = agent_roster::refresh(&path, &home).unwrap();
+        assert!(roster.agents.iter().all(|agent| !agent.hook_installed));
+        (home, path, roster)
+    }
+
+    #[test]
+    fn a_waiting_profile_is_admitted_in_the_tick_that_asks_cloud() {
+        let root = std::env::temp_dir().join(format!("c11-reclaim-{}", std::process::id()));
+        let (home, path, roster) = full_stale_roster(&root);
+        let fresh = root.join("new/.claude/settings.json");
+        fs::create_dir_all(fresh.parent().unwrap()).unwrap();
+        agent_roster::record_sighting(&path, &home, "claude", &fresh).unwrap();
+        let protected = format!("agt_{:032x}", 0);
+        // Two PUTs: the forced report Cloud answers, then the reclaimed roster.
+        let (address, server) = roster_cloud(2, Some(vec![protected.clone()]));
+        let client = CloudClient::new(
+            &format!("http://{address}"),
+            "token".into(),
+            "m-glue".into(),
+        )
+        .unwrap();
+        report_and_reclaim(&client, &path, &home, &roster);
+        let bodies = server.join().unwrap();
+        let after = agent_roster::read(&path).unwrap().unwrap();
+        assert_eq!(bodies[0]["generation"], roster.generation);
+        assert_eq!(bodies[1]["generation"], after.generation);
+        let ids: HashSet<_> = after
+            .agents
+            .iter()
+            .map(|a| a.instance_id.as_str())
+            .collect();
+        assert!(ids.contains(protected.as_str()), "an assigned ID stays");
+        assert!(
+            !ids.contains(format!("agt_{:032x}", 1).as_str()),
+            "oldest unassigned goes"
+        );
+        assert!(
+            after
+                .agents
+                .iter()
+                .any(|a| a.settings_path == fresh.to_string_lossy())
+        );
+        assert!(!agent_roster::needs_capacity(&path));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_cloud_that_frees_nothing_is_not_asked_again_until_the_roster_changes() {
+        let root = std::env::temp_dir().join(format!("c11-stall-{}", std::process::id()));
+        let (home, path, roster) = full_stale_roster(&root);
+        let fresh = root.join("new/.claude/settings.json");
+        fs::create_dir_all(fresh.parent().unwrap()).unwrap();
+        agent_roster::record_sighting(&path, &home, "claude", &fresh).unwrap();
+        // An older Cloud: no protectedInstanceIds, so nothing may be reclaimed.
+        let (address, server) = roster_cloud(1, None);
+        let client = CloudClient::new(
+            &format!("http://{address}"),
+            "token".into(),
+            "m-stall".into(),
+        )
+        .unwrap();
+        report_and_reclaim(&client, &path, &home, &roster);
+        server.join().unwrap();
+        assert_eq!(agent_roster::read(&path).unwrap().unwrap(), roster);
+        assert!(agent_roster::needs_capacity(&path));
+        assert!(!agent_roster::should_force_capacity_report(
+            &path,
+            roster.generation
+        ));
+        assert!(agent_roster::should_force_capacity_report(
+            &path,
+            roster.generation + 1
+        ));
+        // Nothing is listening now: a forced report would fail; this is
+        // served from the heartbeat cache instead.
+        assert!(matches!(
+            client.report_agent_roster(&roster, false),
+            Ok(RosterReport::Skipped)
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 }

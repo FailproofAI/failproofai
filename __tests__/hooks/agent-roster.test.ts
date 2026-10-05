@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "../../src/hooks/agent-roster";
+import { MAX_ROSTER_AGENTS, readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "../../src/hooks/agent-roster";
 import { agentTargetsMatch, parseAgentTargets } from "../../src/hooks/agent-targets";
 
 const roots: string[] = [];
@@ -93,6 +93,35 @@ describe("runtime agent identity", () => {
     const exact = parseAgentTargets([{ integration: "hermes", instanceId: "agt_1234567890abcdef" }], 3);
     expect(agentTargetsMatch(exact, readRuntimeAgentIdentity("hermes", path))).toBe(true);
     expect(agentTargetsMatch(exact, null)).toBe(false);
+  });
+
+  it("resolves a profile admitted to a full roster, and only up to the daemon's ceiling", () => {
+    const root = mkdtempSync(join(tmpdir(), "fpai-agent-roster-"));
+    roots.push(root);
+    process.env.FAILPROOFAI_HOME = root;
+    const rosterPath = join(root, "agents", "roster.json");
+    mkdirSync(join(root, "agents"));
+    const settings = (index: number) => join(root, "projects", `p${index}`, ".codex", "hooks.json");
+    const agents = Array.from({ length: MAX_ROSTER_AGENTS }, (_, index) => ({
+      integration: "codex", instanceId: `agt_${index.toString(16).padStart(32, "0")}`,
+      settingsPath: settings(index), profileLabel: `p${index}`, scope: "project", hookInstalled: index > 0,
+    }));
+    const write = (list: unknown[]) => {
+      writeFileSync(rosterPath, JSON.stringify({ schemaVersion: 1, generation: 9, agents: list }));
+      chmodSync(rosterPath, 0o600);
+    };
+    // The last slot went to a newly installed profile after a reclaim.
+    write(agents);
+    const latest = settings(MAX_ROSTER_AGENTS - 1);
+    const identity = readRuntimeAgentIdentity("codex", latest);
+    expect(identity).toEqual({ integration: "codex", instanceId: agents[MAX_ROSTER_AGENTS - 1].instanceId });
+    expect(agentTargetsMatch(parseAgentTargets([{ integration: "codex" }], 3), identity)).toBe(true);
+    const exact = parseAgentTargets([{ integration: "codex", instanceId: agents[1].instanceId }], 3);
+    expect(agentTargetsMatch(exact, readRuntimeAgentIdentity("codex", settings(1)))).toBe(true);
+    expect(agentTargetsMatch(exact, identity)).toBe(false);
+    // Past the daemon's ceiling the file is not one the daemon wrote.
+    write([...agents, { ...agents[0], instanceId: "agt_ffffffffffffffff", settingsPath: settings(MAX_ROSTER_AGENTS) }]);
+    expect(readRuntimeAgentIdentity("codex", latest)).toBeNull();
   });
 
   it("withholds a scoped identity if the roster is unreadable or not owner-only", () => {

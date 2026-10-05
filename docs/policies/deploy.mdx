@@ -114,6 +114,20 @@ the hook does not report which one ran), **targeted assignments do not match**;
 unscoped policies still apply. Look for `agent_scope_unresolved` under that
 machine's policy errors.
 
+Each machine keeps up to 256 profiles in its roster. A profile's ID never
+changes while it is listed. When the roster is full and a new profile with a
+FailproofAI hook appears (its hook runs, or its config carries the hook), the
+daemon makes room by dropping one profile that meets all of these:
+
+- it has no hook installed;
+- no assignment names it;
+- FailproofAI Cloud would not accept it as a new target.
+
+The daemon prefers a profile no longer found on the machine, then the one
+unused longest. It never drops a profile an exact target uses, so those
+targets stay valid. If no profile can be dropped, the new profile has no ID
+yet, and targeted assignments do not match it until a slot frees up.
+
 ## Deploy Jev checks
 
 A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy.

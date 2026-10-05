@@ -118,6 +118,32 @@ That splits an alert in one of these lockfiles into two cases:
    the scanner does not read these lockfiles, so an `[[IgnoredVulns]]` entry for one
    would filter nothing and be reported as an unused ignore.
 
+**Dependabot no longer opens PRs against these lockfiles at all**, and the reason
+is that it could only ever propose the case-2 move. It has no in-range fix to
+offer here: the pinned frameworks pin *their* transitive deps exactly, which is
+the same fact that makes an override the only lever in case 1. Its record was two
+PRs, #838 and #867, the same three pins both times, the second failing `ERESOLVE`
+on `@mastra/mcp@0.14.5`'s peer range and taking three CI shards down with it.
+
+[`.github/dependabot.yml`](.github/dependabot.yml) therefore carries an `npm`
+entry for `/sdk/typescript/integration/fixtures/*` with
+`open-pull-requests-limit: 0` and an ignore of `versions: [">= 0"]` for every
+dependency. Both are needed and neither is the obvious spelling:
+security-update PRs are exempt from the limit, and an
+`update-types: ["version-update:semver-major"]` ignore — which reads like the
+right way to forbid a major — is **inert** against them, because
+dependabot-core's `Config::IgnoreCondition#ignored_versions` returns the explicit
+`versions` list and never reads `update_types` when
+`security_updates_only`. `__tests__/ci/fixture-dependabot-pins.test.ts` asserts
+that specifically, along with the glob covering every fixture on disk.
+
+None of this touches the part that drives remediation. **Alerts come from the
+dependency graph, not from that file**: they keep arriving and stay visible in the
+security tab, which is how every fixture advisory so far was actually found and
+fixed — the five overrides in #837 and `undici` in `ai-5` in #869, all by hand
+under case 1. Only the PRs stop. So the procedure above is unchanged; what changed
+is that reaching case 2 no longer costs a rejected PR and a red CI run first.
+
 ### Accepted, with no fix available
 
 | Advisory | Package | Fixtures | Why it stays |

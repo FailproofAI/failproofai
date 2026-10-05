@@ -356,6 +356,34 @@ describe("publish.yml", () => {
     expect(bump.run).toContain("git add package.json Cargo.toml Cargo.lock");
   });
 
+  it("moves the Hermes plugin manifest's version with package.json", () => {
+    // hermes-plugin/plugin.yaml ships in the tarball and is the version
+    // `hermes plugins list` shows. Nothing moved it, so every release from
+    // 1.0.6-beta.0 through 1.0.9 reported itself as 1.0.6-beta.0.
+    const bump = wf.jobs.publish.steps.find(
+      (s: Record<string, any>) => s.name === "Bump version for next development cycle",
+    );
+    expect(bump.run).toContain("git add package.json Cargo.toml Cargo.lock hermes-plugin/plugin.yaml");
+    // The publish-version step below rewrites it in this same job, so it has
+    // to be restored before `git checkout main` like package.json.
+    expect(bump.run).toContain("git checkout -- package.json hermes-plugin/plugin.yaml");
+    // Both tarballs (the release asset and the npm package) carry the
+    // version being published, not the ref's.
+    for (const job of ["cli-tarball", "publish"]) {
+      const step = wf.jobs[job].steps.find(
+        (s: Record<string, any>) => s.name === "Set publish version in package.json",
+      );
+      expect(step.run, job).toContain("hermes-plugin/plugin.yaml");
+    }
+    const consistency = workflow("ci.yml").jobs.quality.steps.find(
+      (s: Record<string, any>) => s.name === "Check version consistency",
+    );
+    expect(consistency.run).toContain("hermes-plugin/plugin.yaml");
+    const manifest = parse(readFileSync(resolve(ROOT, "hermes-plugin/plugin.yaml"), "utf8"));
+    const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+    expect(manifest.version).toBe(pkg.version);
+  });
+
   it("serializes overlapping runs", () => {
     // Two entry points can fire for one version. Without this, both pass the
     // preflight's "already published" check before either publishes, and the

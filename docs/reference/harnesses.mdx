@@ -34,7 +34,7 @@ Each integration normalizes its native hook event names, tool names, and tool-in
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` and session events are observational. |
 | OpenCode | `PreToolUse` | Post-tool and lifecycle events are observational; current stop handling is guidance for a later turn rather than a verified gate. |
 | Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool and lifecycle events are observational; stop guidance applies to a later turn. |
-| Hermes | `PreToolUse` | A native plugin delivers `instruct()` as one bounded, model-visible interruption before permitting a later API iteration. Post-tool, session, and subagent-stop verdicts are not gates. |
+| Hermes | `PreToolUse` | `deny()` blocks. `instruct()` does not stop the call: it runs, and the guidance is placed at the start of its result. Post-tool, session, and subagent-stop verdicts are not gates. |
 | OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, and compaction events are observational. |
 | Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool and subagent-stop verdicts are observational. |
 | Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks do not run in every permission mode; post-tool and session events are observational. |
@@ -51,8 +51,8 @@ command. Installation links every default and named Hermes profile's
 symlink cannot be created), enables it in that profile's `config.yaml`, and
 migrates only legacy FailproofAI shell-hook entries. Because the plugin is
 linked, `npm install -g failproofai@latest` updates it with no reinstall. This
-avoids a process spawn on each hook and lets `instruct()` reach the model
-through Hermes' native blocked-tool result.
+avoids a process spawn on each hook. The plugin supports Hermes 0.20.0 and
+later.
 
 Legacy shell hooks (installed by 1.0.5 and earlier) do **not** check Hermes
 cron jobs: each cron run builds its own hook scope, which the native plugin
@@ -63,12 +63,30 @@ exits non-zero; run `failproofai config` to update the daemon, then
 `failproofai update` again. Cron jobs load the plugin on their next run; restart
 running gateways and interactive sessions to load it there.
 
-The first matching instruction blocks the pending call. The same API request
-stays blocked; a later model iteration may retry. A persistent, profile-scoped
-ledger and a per-turn cap prevent an advisory instruction from becoming an
-unbounded loop. `deny()` remains a hard block. Run `failproofai config --status`
-to detect a disabled, incomplete, duplicated, or newly unconfigured profile, or
-one still on legacy shell hooks (reported as "Hermes cron jobs are not checked").
+On Hermes, `deny()` blocks the call and `instruct()` does not: the call runs,
+and the guidance is placed at the start of its result — as the first key,
+`failproof_policy_reminder`, of a JSON result, or as a leading
+`[FailproofAI policy reminder (...)]` line — so the model reads it with the
+output, and scripts that parse the result keep working. A policy's reminder is
+shown once per turn, and kept short on a large result. Use `deny()` when an
+action must not happen at all: `instruct()` no longer stops the action first.
+Tool calls made from an `execute_code` script put their reminder on the
+`execute_code` result the model reads; the script's own copy of the result is
+left untouched. The model is told never to quote a reminder in its replies.
+
+A Hermes build without plugin middleware falls back to holding the matching
+call once with "FailproofAI policy guidance"; the next model response may
+repeat it, or do the same work with another tool, without being held again.
+
+Tool names are matched across Hermes versions: `process_manage`,
+`cronjob_manage`, and `todo_list` (Hermes 0.21) are treated like `process`,
+`cronjob`, and `todo` (Hermes 0.20). Each time Hermes loads the plugin it writes
+`heartbeat.json` in the profile's
+`plugin-data/agent-plugin-failproofai-5296f299/` directory, recording the
+Hermes version, the plugin's path and version, and the hooks Hermes accepted.
+Run `failproofai config --status` to detect a disabled, incomplete, duplicated,
+or newly unconfigured profile, or one still on legacy shell hooks (reported as
+"Hermes cron jobs are not checked").
 
 ## Install capture and policy hooks
 

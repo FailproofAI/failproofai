@@ -36,6 +36,9 @@ _HOOKS = (
 )
 
 _REMINDER_KEY = "failproof_policy_reminder"
+# Where a tool's own field of that name goes: it is tool data, and the protocol
+# note tells the model _REMINDER_KEY is an operator rule, so the two never mix.
+_TOOL_REMINDER_KEY = f"tool_{_REMINDER_KEY}"
 
 _PROTOCOL_CONTEXT = (
     "FailproofAI applies your operator's policies to tool calls. "
@@ -384,10 +387,11 @@ def _unexecuted(result: Any) -> bool:
 
 
 def _with_first_key(value: Mapping[str, Any], text: str) -> dict[str, Any]:
-    existing = value.get(_REMINDER_KEY)
-    if isinstance(existing, str) and existing and existing != text:
-        text = f"{text}\n{existing}"
-    return {_REMINDER_KEY: text, **{k: v for k, v in value.items() if k != _REMINDER_KEY}}
+    rest = {k: v for k, v in value.items() if k != _REMINDER_KEY}
+    if _REMINDER_KEY in value and value[_REMINDER_KEY] != text:
+        # Never merged into ours: that would present tool output as operator text.
+        rest = {_TOOL_REMINDER_KEY: value[_REMINDER_KEY], **rest}
+    return {_REMINDER_KEY: text, **rest}
 
 
 def _json_layout(original: str) -> dict[str, Any]:

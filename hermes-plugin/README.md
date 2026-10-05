@@ -77,7 +77,9 @@ There is no cloud request and no new CLI process in the tool-call path.
   result:
   - a JSON object result gets `"failproof_policy_reminder"` as its first key
     (the rest is unchanged, so `json.loads` consumers such as `execute_code`
-    scripts keep working);
+    scripts keep working). A field of that name the tool returned itself is
+    moved to `"tool_failproof_policy_reminder"`, never merged into the
+    reminder;
   - other text gets a leading `[FailproofAI policy reminder (<policies>)] ...`
     line (an `Error...` result keeps that prefix and gets the line at its end);
   - a list of content blocks or a multimodal envelope gets a leading text block,

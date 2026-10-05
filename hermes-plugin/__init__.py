@@ -69,12 +69,18 @@ _OBSERVE_TIMEOUT_MS = 2_000
 # A reminder is attached once per (session, turn) for the same policy and reason.
 _DELIVERED_LIMIT = 1024
 
-# Hermes persists a result over its smallest threshold (8,000 chars) and shows
-# the model only a 1,500-char preview. When the full reminder would take the
-# result past this size it is shortened instead, so the reminder never pushes a
-# result over that threshold and never fills the preview of one already past it.
+# Hermes saves a result to a file once it passes 15% of the model's context
+# window (at 4 chars per token, clamped to 8,000-100,000 chars; read_file is
+# never saved) and shows the model a 1,500-char preview. When the full reminder
+# would take a result past 7,500 chars it is compacted to a bounded size (each
+# policy name, each reason and the number of reminders are capped), so it stays
+# inside that preview. It is always attached: on a model whose threshold is the
+# 8,000 floor, a result just under it may be saved because of the reminder, and
+# the reminder is then the head of the preview the model reads.
 _FULL_REMINDER_MAX_CHARS = 7_500
 _COMPACT_REASON_CHARS = 160
+_COMPACT_POLICY_CHARS = 80
+_COMPACT_MAX_REMINDERS = 3
 
 
 def _bounded_int(value: object, default: int, minimum: int, maximum: int) -> int:
@@ -283,9 +289,13 @@ class _ReminderHandoff:
             self._entries[key] = (now, reminders)
 
     def take(self, key: tuple[str, ...]) -> list[_Reminder]:
+        now = time.monotonic()
         with self._lock:
             entry = self._entries.pop(key, None)
-        return entry[1] if entry is not None else []
+        # An entry past its TTL belonged to a call that never reached its frame.
+        if entry is None or now - entry[0] > _HANDOFF_TTL_SECONDS:
+            return []
+        return entry[1]
 
     def pending(self) -> bool:
         # Lets the middleware skip hashing every call's arguments.
@@ -305,26 +315,33 @@ def _call_key(
     return (_string(session_id), _string(task_id), _string(tool_call_id), _string(tool_name), digest)
 
 
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
 def _reason(reminder: _Reminder, compact: bool) -> str:
-    if compact and len(reminder.reason) > _COMPACT_REASON_CHARS:
-        return reminder.reason[:_COMPACT_REASON_CHARS].rstrip() + "…"
-    return reminder.reason
+    return _clip(reminder.reason, _COMPACT_REASON_CHARS) if compact else reminder.reason
+
+
+def _policies(reminder: _Reminder, compact: bool) -> str:
+    # Custom policy names have no length limit, so the compact form caps them too.
+    return _clip(reminder.policies, _COMPACT_POLICY_CHARS) if compact else reminder.policies
+
+
+def _reminder_lines(reminders: tuple[_Reminder, ...], compact: bool, line: Callable[[str, str], str]) -> str:
+    shown = reminders[:_COMPACT_MAX_REMINDERS] if compact else reminders
+    lines = [line(_policies(r, compact), _reason(r, compact)) for r in shown]
+    if len(shown) < len(reminders):
+        lines.append(f"(+{len(reminders) - len(shown)} more FailproofAI policy reminders)")
+    return "\n".join(lines) + " — the tool call ran; apply this when you use its result."
 
 
 def _reminder_text(reminders: tuple[_Reminder, ...], compact: bool = False) -> str:
-    body = "\n".join(
-        f"FailproofAI policy reminder ({reminder.policies}): {_reason(reminder, compact)}"
-        for reminder in reminders
-    )
-    return f"{body} — the tool call ran; apply this when you use its result."
+    return _reminder_lines(reminders, compact, lambda p, r: f"FailproofAI policy reminder ({p}): {r}")
 
 
 def _reminder_prefix(reminders: tuple[_Reminder, ...], compact: bool = False) -> str:
-    body = "\n".join(
-        f"[FailproofAI policy reminder ({reminder.policies})] {_reason(reminder, compact)}"
-        for reminder in reminders
-    )
-    return f"{body} — the tool call ran; apply this when you use its result."
+    return _reminder_lines(reminders, compact, lambda p, r: f"[FailproofAI policy reminder ({p})] {r}")
 
 
 def _result_chars(result: Any) -> int:
@@ -361,12 +378,33 @@ class _TurnDeliveries:
         if not session_id or not turn_id:
             return
         with self._lock:
+            self._mark_locked(session_id, turn_id, reminders)
+
+    def _mark_locked(self, session_id: str, turn_id: str, reminders: tuple[_Reminder, ...]) -> None:
+        for reminder in reminders:
+            key = self._key(session_id, turn_id, reminder)
+            self._seen[key] = None
+            self._seen.move_to_end(key)
+        while len(self._seen) > self._limit:
+            self._seen.popitem(last=False)
+
+    def claim(self, session_id: str, turn_id: str, reminders: tuple[_Reminder, ...]) -> tuple[_Reminder, ...]:
+        """The reminders not yet delivered in this turn, marked delivered in the
+        same step, so two calls running at once cannot both take one."""
+        if not session_id or not turn_id:
+            return reminders
+        with self._lock:
+            fresh = tuple(r for r in reminders if self._key(session_id, turn_id, r) not in self._seen)
+            self._mark_locked(session_id, turn_id, fresh)
+            return fresh
+
+    def release(self, session_id: str, turn_id: str, reminders: tuple[_Reminder, ...]) -> None:
+        """Undo a claim whose reminders found no carrier, so a later call delivers them."""
+        if not session_id or not turn_id:
+            return
+        with self._lock:
             for reminder in reminders:
-                key = self._key(session_id, turn_id, reminder)
-                self._seen[key] = None
-                self._seen.move_to_end(key)
-            while len(self._seen) > self._limit:
-                self._seen.popitem(last=False)
+                self._seen.pop(self._key(session_id, turn_id, reminder), None)
 
 
 def _unexecuted(result: Any) -> bool:
@@ -657,6 +695,11 @@ class FailproofAIPlugin:
         except Exception as exc:
             return self._fallback(exc)
 
+        if verdict.decision in ("allow", "deny"):
+            # An identical earlier call that never reached its frame (another
+            # plugin blocked it) left a reminder under this call's key; this
+            # call's own verdict replaces it.
+            self._drop_handoff(session_id, task_id, tool_call_id, tool_name, payload["tool_input"])
         if verdict.decision == "allow":
             return None
         if verdict.decision == "deny":
@@ -710,6 +753,14 @@ class FailproofAIPlugin:
                 "continue; repeating the same call is allowed."
             ),
         }
+
+    def _drop_handoff(self, session_id: str, task_id: str, tool_call_id: str, tool_name: str,
+                      tool_input: Mapping[str, Any]) -> None:
+        try:
+            if self._handoff.pending():
+                self._handoff.take(_call_key(session_id, task_id, tool_call_id, tool_name, tool_input))
+        except Exception as exc:
+            logger.warning("FailproofAI could not clear a stale reminder handoff: %s", exc)
 
     def _innermost_frame(self) -> _ReminderFrame | None:
         frames = self._frames.get()
@@ -821,12 +872,12 @@ class FailproofAIPlugin:
             # untouched, so nothing it prints, writes or sends can carry it.
             return result
         session, turn = _string(session_id), _string(turn_id)
-        fresh = self._delivered.unseen(session, turn, reminders)
+        fresh = self._delivered.claim(session, turn, reminders)
         if not fresh:
             return result
         annotated = _attach_reminders(result, fresh)
-        if annotated is not result:
-            self._delivered.mark(session, turn, fresh)
+        if annotated is result:
+            self._delivered.release(session, turn, fresh)
         return annotated
 
     def _observe(self, event: str, payload: Mapping[str, Any]) -> None:

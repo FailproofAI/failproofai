@@ -94,11 +94,16 @@ There is no cloud request and no new CLI process in the tool-call path.
   (`ctx.register_middleware`, present unchanged in 0.20.0, 0.21.x and main).
 
   A policy's reminder (same policy and reason) is attached once per Hermes
-  session + turn; a later turn gets it again. When the full reminder would take
-  the result past 7,500 characters it is shortened to the policy names and the
-  first 160 characters of the reason, so it never pushes a result over Hermes'
-  8,000-character persistence threshold and never fills the 1,500-character
-  preview of a result already past it.
+  session + turn, also when calls run in parallel; a later turn gets it again.
+  Hermes saves a result to a file once it passes 15% of the model's context
+  window (4 characters per token, clamped to 8,000–100,000 characters;
+  `read_file` is never saved) and shows the model a 1,500-character preview.
+  When the full reminder would take the result past 7,500 characters it is
+  compacted: at most three reminders, each policy name cut to 80 characters and
+  each reason to 160, so it always fits inside that preview. It is always
+  attached: on a model whose threshold is the 8,000 floor, a result just under
+  it may be saved because of the reminder, which is then the head of the
+  preview.
 
   `instruct` therefore no longer stops the action first on Hermes: use `deny`
   when an action must not happen at all.

@@ -1058,6 +1058,47 @@ class MiddlewareTests(unittest.TestCase):
             handoff.put(plugin._call_key("", "t", "", "terminal", {"n": index}), reminder)
         self.assertLessEqual(len(handoff._entries), plugin._HANDOFF_LIMIT)
 
+    def test_an_expired_handoff_is_not_delivered_even_with_no_later_put(self) -> None:
+        handoff = plugin._ReminderHandoff()
+        key = plugin._call_key("", "t", "", "terminal", {"command": "a"})
+        with patch.object(plugin.time, "monotonic", return_value=1_000.0):
+            handoff.put(key, plugin._Reminder("p", "r"))
+        with patch.object(plugin.time, "monotonic", return_value=1_000.0 + plugin._HANDOFF_TTL_SECONDS + 1):
+            self.assertEqual(handoff.take(key), [])
+
+    def test_a_blocked_direct_call_does_not_remind_a_later_allowed_identical_call(self) -> None:
+        # The first call's pre_tool_call queues a reminder, then another plugin
+        # blocks it before its middleware runs. The same call later evaluates
+        # allow and must come back plain.
+        instance = self.pre.__self__
+        with patch.object(plugin, "evaluate_policy", return_value=instruct_verdict("old guidance")):
+            self.assertIsNone(self.pre(tool_name="terminal", args={"command": "x"}, task_id="t"))
+        self.assertEqual(len(instance._handoff._entries), 1)
+        with patch.object(plugin, "evaluate_policy", return_value=make_verdict("allow")):
+            hook, result = self.direct_call("terminal", TERMINAL_RESULT, args={"command": "x"})
+        self.assertIsNone(hook)
+        self.assertEqual(result, TERMINAL_RESULT)
+        self.assertEqual(instance._handoff._entries, {})
+
+    def test_concurrent_calls_in_one_turn_claim_a_reminder_once(self) -> None:
+        seen = plugin._TurnDeliveries()
+        reminder = (plugin._Reminder("p", "r"),)
+        start = threading.Barrier(8)
+        got: list[tuple] = []
+
+        def claim() -> None:
+            start.wait(timeout=5)
+            got.append(seen.claim("s", "turn", reminder))
+
+        threads = [threading.Thread(target=claim) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+        self.assertEqual(sorted(len(g) for g in got), [0] * 7 + [1])
+        seen.release("s", "turn", reminder)
+        self.assertEqual(seen.claim("s", "turn", reminder), reminder)
+
     def test_execute_code_inner_reminders_reach_only_the_outer_result(self) -> None:
         # The model reads the outer result; the script's own copy stays exactly
         # what the tool returned, so a script that prints or forwards it cannot
@@ -1262,7 +1303,7 @@ class HardeningTests(unittest.TestCase):
         with patch.object(self.instance, "_frames", BrokenFrames()):
             self.assertEqual(self.calls.mw(tool_name="terminal", args={}, next_call=lambda a: "ok"), "ok")
         with patch.object(plugin, "evaluate_policy", return_value=instruct_verdict()), patch.object(
-            plugin._TurnDeliveries, "unseen", side_effect=RuntimeError("lru broken")
+            plugin._TurnDeliveries, "claim", side_effect=RuntimeError("lru broken")
         ):
             _, result = self.calls.agent_call("terminal", TERMINAL_RESULT)
         self.assertEqual(result, TERMINAL_RESULT)
@@ -1373,6 +1414,24 @@ class HardeningTests(unittest.TestCase):
         self.assertIn("…", json.loads(over)[REMINDER_KEY])
         self.assertLess(len(over), 7_500)
         self.assertEqual(list(json.loads(over))[0], REMINDER_KEY)
+
+    def test_the_compact_reminder_is_bounded_for_long_names_and_many_policies(self) -> None:
+        reminders = tuple(plugin._Reminder("n" * 1_000 + str(i), self.LONG_REASON.strip()) for i in range(5))
+        note = json.loads(plugin._attach_reminders(json.dumps({"output": "x" * 7_490}), reminders))[REMINDER_KEY]
+        self.assertLess(len(note), 1_000)
+        self.assertEqual(note.count("FailproofAI policy reminder ("), plugin._COMPACT_MAX_REMINDERS)
+        self.assertIn("(+2 more FailproofAI policy reminders)", note)
+
+    def test_a_result_just_under_8000_chars_still_gets_its_reminder(self) -> None:
+        # The defined boundary: delivery wins. On a model whose save threshold
+        # is the 8,000 floor this result may then be saved, and the reminder is
+        # the head of the preview the model reads.
+        for reason in ("r", self.LONG_REASON.strip()):
+            for size in (7_900, 7_990, 8_000):
+                annotated = plugin._attach_reminders("z" * size, (plugin._Reminder("p", reason),))
+                self.assertTrue(annotated.startswith("[FailproofAI policy reminder (p)]"))
+                self.assertTrue(annotated.endswith("z" * size))
+                self.assertLess(len(annotated) - size, 400)
 
     def test_a_result_already_past_the_threshold_gets_the_compact_reminder(self) -> None:
         reminders = (plugin._Reminder("p", self.LONG_REASON.strip()),)

@@ -404,8 +404,13 @@ script may print, write or send it; only with no open outer frame does the inner
 result carry it. A model-issued call (a subagent's) never propagates to its parent.
 
 A reminder (same policy + reason) is attached once per Hermes session + turn
-(bounded LRU); when the full reminder would take the result past 7,500 chars it
-gets a compact one (policy names + 160 chars of the reason). Observer hooks wait
+(bounded LRU, claimed atomically so parallel calls cannot both take it). Hermes
+saves a result to a file past 15% of the model's context window (4 chars/token,
+clamped to 8,000–100,000; `read_file` never; `tools/budget_config.py`), so 8,000
+is only the floor. Past 7,500 chars the reminder is compacted to a bounded size
+(≤3 reminders, policy names ≤80 chars, reasons ≤160) and is always attached. An
+`execute_code` handoff expires after 60 s on read, and an allow/deny verdict for
+the same call drops any handoff an earlier, blocked identical call left. Observer hooks wait
 at most 2 s. No hook raises: `pre_tool_call` blocks on any
 internal error (0.20.0/0.21.x read a raise as ALLOW), observers log and return, and
 the middleware falls back to the plain result. `evaluation_timeout_ms` is one

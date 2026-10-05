@@ -100,6 +100,15 @@ describe("sleep-polling-loop", () => {
   it("matches `sleep 60`", () => {
     expect(sleepPollingLoop.detect(bash("sleep 60"), {})).not.toBeNull();
   });
+  it("matches `sleep 30s` - the explicit-seconds form the regex used to drop", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 30s"), {})).not.toBeNull();
+  });
+  it("matches `sleep 45s`", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 45s"), {})).not.toBeNull();
+  });
+  it("still does not match `sleep 1s`", () => {
+    expect(sleepPollingLoop.detect(bash("sleep 1s"), {})).toBeNull();
+  });
   it("matches `sleep 5m`", () => {
     expect(sleepPollingLoop.detect(bash("sleep 5m"), {})).not.toBeNull();
   });

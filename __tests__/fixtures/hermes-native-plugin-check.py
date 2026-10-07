@@ -110,7 +110,7 @@ def serve_verdicts(socket_path: Path, responses: list[dict[str, object]], receiv
                     deadline = time.monotonic() + 2
                     length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
                     received.append(json.loads(client._read_exact(connection, length, deadline)))
-                    body = json.dumps({"type": "policyResult", "protocolVersion": 1, **response}).encode()
+                    body = json.dumps({"type": "policyResult", "protocolVersion": client.PROTOCOL_VERSION, **response}).encode()
                     connection.sendall(struct.pack(">I", len(body)) + body)
 
     thread = threading.Thread(target=server, daemon=True)

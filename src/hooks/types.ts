@@ -87,6 +87,10 @@ export const CODEX_TOOL_MAP: Record<string, string> = {
 // specific tools (skill_view, cronjob, browser_*, memory, session_search,
 // clarify, process) pass through unchanged so they still appear in the audit,
 // just unmatched by builtin policies.
+//
+// Hermes 0.21.x renamed three tools (process -> process_manage, cronjob ->
+// cronjob_manage, todo -> todo_list). The new names map to what the old ones
+// produce, so a policy written for one Hermes version still fires on the other.
 export const HERMES_TOOL_MAP: Record<string, string> = {
   terminal: "Bash",
   bash: "Bash",
@@ -97,6 +101,9 @@ export const HERMES_TOOL_MAP: Record<string, string> = {
   web_extract: "WebFetch",
   search_files: "Grep",
   todo: "TodoWrite",
+  todo_list: "TodoWrite",
+  process_manage: "process",
+  cronjob_manage: "cronjob",
 };
 
 // Hermes tool-INPUT key canonicalization, keyed by the *canonical* tool name

@@ -1,5 +1,5 @@
 name: failproofai
-version: 1.0.6-beta.0
+version: 1.0.11-beta.0
 description: Real-time FailproofAI policy enforcement for Hermes
 manifest_version: 2
 api_version: 1
@@ -26,7 +26,7 @@ config_schema:
   evaluation_timeout_ms:
     type: int
     default: 12000
-    description: Maximum total time allowed for one policy evaluation.
+    description: Maximum total time one policy evaluation may take, connect included (capped at 25000).
   instruction_ttl_seconds:
     type: int
     default: 3600

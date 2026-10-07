@@ -23,7 +23,11 @@ class InstructionAction:
 
 
 class InstructionLedger:
-    def __init__(self, path: Path, *, ttl_seconds: int = 3600, max_rounds: int = 2) -> None:
+    def __init__(
+        self, path: Path | None, *, ttl_seconds: int = 3600, max_rounds: int = 2
+    ) -> None:
+        # None means the host gave no usable state directory; every use then
+        # raises LedgerError, which callers already treat as degraded state.
         self.path = path
         self.ttl_seconds = max(60, int(ttl_seconds))
         self.max_rounds = max(0, int(max_rounds))
@@ -31,7 +35,9 @@ class InstructionLedger:
         self._initialized = False
 
     def _connect(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path is None:
+            raise LedgerError("instruction state directory is unavailable")
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path, timeout=0.25, isolation_level=None)
         connection.execute("PRAGMA busy_timeout = 250")
         connection.execute("PRAGMA journal_mode = WAL")
@@ -70,7 +76,7 @@ class InstructionLedger:
                         ON instruction_deliveries(profile, session_id, task_id, turn_id, expires_at_ms)
                         """
                     )
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 raise LedgerError(f"could not initialize instruction state: {exc}") from exc
             self._initialized = True
 

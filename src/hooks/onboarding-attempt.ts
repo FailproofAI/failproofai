@@ -185,7 +185,9 @@ export function attemptHintLines(attempt: OnboardingAttempt): string[] {
   const action =
     attempt.reason === "unsupported_platform"
       ? "Check for a failproofai update — this platform may be supported by a newer release."
-      : "Run `failproofai config` when you are ready.";
+      : attempt.reason === "needs_root"
+        ? "Run `failproofai config` when you can use sudo, or `failproofai config --no-daemon` to skip the service."
+        : "Run `failproofai config` when you are ready.";
   return [
     ``,
     `[failproofai] Setup is not finished — ${detail}.`,

@@ -231,16 +231,21 @@ const FOURTEEN_ENABLED = [
 // touches the developer's real config.
 let fileHome: string;
 let realHome: string | undefined;
+let realUserProfile: string | undefined;
 /** Must match the path built inside the hooks-config mock factory above. */
 const WIZARD_TEST_CONFIG_DIR = resolve(tmpdir(), `fpai-wizard-cfg-${process.pid}`);
 beforeAll(() => {
   realHome = process.env.HOME;
+  realUserProfile = process.env.USERPROFILE;
   fileHome = mkdtempSync(resolve(tmpdir(), "fpai-cfg-"));
   process.env.HOME = fileHome;
+  process.env.USERPROFILE = fileHome;
 });
 afterAll(() => {
   if (realHome === undefined) delete process.env.HOME;
   else process.env.HOME = realHome;
+  if (realUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = realUserProfile;
   try {
     rmSync(fileHome, { recursive: true, force: true });
   } catch {
@@ -599,18 +604,23 @@ describe("configure-wizard orchestration", () => {
 
 describe("first-run redirect", () => {
   let origHome: string | undefined;
+  let origUserProfile: string | undefined;
   let tmp: string;
 
   beforeEach(() => {
     origHome = process.env.HOME;
+    origUserProfile = process.env.USERPROFILE;
     delete process.env.FAILPROOFAI_NO_FIRST_RUN;
     tmp = mkdtempSync(resolve(tmpdir(), "fpai-firstrun-"));
     process.env.HOME = tmp;
+    process.env.USERPROFILE = tmp;
   });
 
   afterEach(() => {
     if (origHome === undefined) delete process.env.HOME;
     else process.env.HOME = origHome;
+    if (origUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = origUserProfile;
     try {
       rmSync(tmp, { recursive: true, force: true });
     } catch {
@@ -1324,6 +1334,67 @@ describe("configure-wizard daemon integration", () => {
       connect: true,
     }).join("\n");
     expect(connected).toContain("transcripts");
+  });
+
+  // ── --no-daemon ───────────────────────────────────────────────────────────
+
+  it("--no-daemon: skips installDaemonService and primeElevation, applies successfully", async () => {
+    // Container / rootless-CI path: the caller knows no service manager is
+    // available and opts out of daemon installation. Hooks still write and
+    // policies still enforce in-process.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(primeElevation).not.toHaveBeenCalled();
+    expect(installHooks).toHaveBeenCalledTimes(1);
+  });
+
+  it("--no-daemon: sets daemonConfigured=false so hooks enforce in-process", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("not-installed");
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    expect(result.daemonInstalled).toBeFalsy();
+    expect(readGlobalConfig().daemonConfigured).toBeUndefined();
+    expect(readFpConfig().daemon.configured).toBe(false);
+  });
+
+  it("--no-daemon: leaves an already-running daemon untouched", async () => {
+    // \"don't install\" is not \"tear down what is there\": a machine that
+    // already has failproofaid should keep it. Only the INSTALL step is
+    // skipped, not the detection of a healthy existing service.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(daemonServiceStatus).mockReturnValue("running");
+    vi.mocked(probeDaemonEndToEnd).mockResolvedValue(true);
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO(), { noDaemon: true });
+
+    expect(result.applied).toBe(true);
+    // Already-running daemon: daemonInstalled should be true (it was already there)
+    expect(result.daemonInstalled).toBe(true);
+    expect(installDaemonService).not.toHaveBeenCalled();
+    expect(uninstallDaemonService).not.toHaveBeenCalled();
+  });
+
+  it("--no-daemon: needs_root abort text mentions --no-daemon as an alternative", async () => {
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(primeElevation).mockReturnValue(false);
+    const stdout = mkTtyStdout();
+    drive(HAPPY);
+
+    await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
+
+    const written = vi.mocked(stdout.write).mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("--no-daemon");
   });
 });
 describe("scope", () => {

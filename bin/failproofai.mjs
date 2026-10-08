@@ -2232,6 +2232,7 @@ async function runCli() {
             entries: [
               ["(bare)", "Guided setup: agents, daemon, cloud"],
               ["--token <key>", "Set up and connect to Cloud, asking nothing"],
+              ["--no-daemon", "Skip daemon install; enforce in-process instead"],
               ["--status", "Connection, daemon version and pause state"],
               ["--pause [<time>]", "Pause enforcement for one session"],
               ["--resume [--all]", "End a pause early"],
@@ -2247,6 +2248,10 @@ async function runCli() {
               "Cloud. It chooses NO policies — take some with:",
               "",
               "    failproofai policies add <owner>/<repo>",
+              "",
+              "Use --no-daemon on containers or any environment where a system service",
+              "cannot be installed. Hooks enforce in-process; the background audit",
+              "schedule is not available, but policies still run on every tool call.",
             ],
           },
           {
@@ -2492,6 +2497,7 @@ async function runCli() {
         machineId: valueFor("--machine-id"),
         machineLabel: valueFor("--machine-label"),
         noTranscripts: args.includes("--no-transcripts"),
+        noDaemon: args.includes("--no-daemon"),
       },
     );
     await warnTokenOnArgv();

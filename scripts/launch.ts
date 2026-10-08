@@ -91,12 +91,26 @@ export function launch(mode: "dev" | "start"): void {
     }
     cmdArgs = [serverJsPath];
   } else {
-    cmd = "bunx";
-    // `next dev` with no -H listens on every interface too, so dev gets the same
-    // default. Skipped when the caller already passed one through, so an
-    // explicit -H in remainingArgs still wins.
-    const hasHostFlag = remainingArgs.some((a) => a === "-H" || a === "--hostname" || a.startsWith("--hostname="));
-    cmdArgs = ["--bun", "next", "dev", ...(hasHostFlag ? [] : ["-H", bindHost]), ...remainingArgs];
+    // Use the local next binary directly to avoid a Windows-specific Bun bug
+    // where `bunx --bun next dev` misinterprets the absolute path of the local
+    // `next` package (e.g. D:/Projects/...) as a scoped npm package name
+    // (@D:/Projects/...) and tries to git-clone it.
+    const isWindows = process.platform === "win32";
+    if (isWindows) {
+      cmd = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), "../node_modules/.bin/next.cmd");
+      // `next dev` with no -H listens on every interface too, so dev gets the same
+      // default. Skipped when the caller already passed one through, so an
+      // explicit -H in remainingArgs still wins.
+      const hasHostFlag = remainingArgs.some((a) => a === "-H" || a === "--hostname" || a.startsWith("--hostname="));
+      cmdArgs = ["dev", ...(hasHostFlag ? [] : ["-H", bindHost]), ...remainingArgs];
+    } else {
+      cmd = "bunx";
+      // `next dev` with no -H listens on every interface too, so dev gets the same
+      // default. Skipped when the caller already passed one through, so an
+      // explicit -H in remainingArgs still wins.
+      const hasHostFlag = remainingArgs.some((a) => a === "-H" || a === "--hostname" || a.startsWith("--hostname="));
+      cmdArgs = ["--bun", "next", "dev", ...(hasHostFlag ? [] : ["-H", bindHost]), ...remainingArgs];
+    }
   }
 
   // In `start` (the shipped standalone server) we pipe + filter the child's

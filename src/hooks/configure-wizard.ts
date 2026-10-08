@@ -134,6 +134,17 @@ export interface WizardAnswers {
   machineLabel?: string;
   /** Record decisions only, no session transcripts. */
   noTranscripts?: boolean;
+  /**
+   * Skip daemon installation entirely.
+   *
+   * Containers, rootless environments and CI machines that cannot install a
+   * system service use this. Hooks are wired and policies enforced in-process;
+   * `daemonConfigured` is explicitly set to false so the hook path stays in
+   * in-process mode rather than failing closed against a socket nothing listens
+   * on. `--no-daemon` is not allowed on platforms where the daemon is
+   * unsupported (Windows) — those abort before this flag is ever read.
+   */
+  noDaemon?: boolean;
 }
 
 /**
@@ -784,6 +795,12 @@ export async function runConfigureWizard(
   // single prompt is asked: completing setup anyway used to leave e.g. a
   // Windows machine reading as configured while enforcing in-process with no
   // fail-closed guarantee, which is worse than not being set up at all.
+  //
+  // --no-daemon is NOT an escape hatch for unsupported platforms: the platform
+  // gate is a hard invariant about what the binary can do, not about which
+  // steps the caller wants to run. A container user on Linux who cannot install
+  // a service is the target; a Windows host where failproofaid simply does not
+  // exist is a different category and keeps aborting.
   if (!isDaemonSupportedPlatform()) {
     stdout.write(
       `failproofai requires failproofaid, its background policy daemon, which runs on\n` +
@@ -872,7 +889,13 @@ export async function runConfigureWizard(
    * unloads before it writes.
    */
   const daemonBroken = daemonState === "running" && daemonSkew === null && !daemonAnswers;
-  let daemonWanted = daemonSupported && !daemonAlreadyRunning;
+  // --no-daemon: the caller has opted out of service installation for this
+  // machine (containers, rootless CI, privilege-less environments). We skip
+  // every daemon step and leave daemonConfigured at false so the hook path
+  // stays in in-process mode. An already-running daemon is left untouched —
+  // "don't install" is not "tear down what is there".
+  const skipDaemon = answers.noDaemon === true;
+  let daemonWanted = daemonSupported && !daemonAlreadyRunning && !skipDaemon;
   // A healthy daemon can still be running a service definition written before
   // FAILPROOFAI_CLI_CMD existed, and nothing else on the machine will ever
   // rewrite it: upgrading the npm package does not touch /etc/systemd/system.
@@ -880,7 +903,14 @@ export async function runConfigureWizard(
   // be brought up to date, so it is the moment to do it.
   let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
 
-  if (daemonWanted) {
+  if (skipDaemon && !daemonAlreadyRunning) {
+    // --no-daemon acknowledged: no service will be installed. Hooks will
+    // enforce in-process. Cloud-managed policies still work — the daemon
+    // is only needed for the background audit schedule and fail-closed mode.
+    stdout.write(
+      "Skipping daemon installation (--no-daemon). Hooks will enforce in-process.\n\n",
+    );
+  } else if (daemonWanted) {
     // Say what is about to happen. Nothing else.
     //
     // This block explained the warm-worker architecture to somebody who is
@@ -910,6 +940,7 @@ export async function runConfigureWizard(
       stdout.write(
         "\nCould not get root, so setup stopped before changing anything.\n\n" +
           "  Re-run once you can use sudo:   failproofai config\n" +
+          `  Or skip daemon install:         failproofai config --no-daemon\n` +
           `  Check what it needs:            ${daemonStatusCommand() ?? "n/a"}\n\n`,
       );
       void emit("configure_aborted", { reason: "needs_root" });
@@ -1453,6 +1484,12 @@ export async function runConfigureWizard(
     // longer referenced by anything. Keeps the previous version for an
     // offline rollback.
     pruneOldDaemonBinaries();
+  } else if (skipDaemon) {
+    // Explicitly mark daemon as NOT configured so the hook path stays in
+    // in-process mode rather than reading a stale daemonConfigured: true from
+    // a previous install and failing closed against a socket nobody is
+    // listening on.
+    setDaemonConfigured(false);
   }
 
   // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so

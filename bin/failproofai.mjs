@@ -640,6 +640,9 @@ async function runCli() {
     // never block a command on reporting
   }
 
+  // True once the setup wizard has run in this process. It opens with the
+  // logomark, so the dashboard launch at the end must not draw a second one.
+  let setupWizardRan = false;
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
   // `|| layoutWasReset` stood here, with `force: layoutWasReset` below, because a
   // migration used to delete the home's policy config while leaving the agent
@@ -659,7 +662,7 @@ async function runCli() {
       const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
       // `audit` runs its own scan immediately after this returns; firing the
       // post-setup audit too would scan the whole history twice in a row.
-      await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
+      setupWizardRan = await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }
@@ -1985,7 +1988,7 @@ async function runCli() {
   // Dashboard launch — always production mode. Runs on every bare `failproofai`
   // (first-run onboarding, if any, already ran above).
   const { launch } = await import("../scripts/launch");
-  launch("start");
+  launch("start", { logo: !setupWizardRan });
 }
 
 // ── Import CliError for use in the guard above ────────────────────────────────

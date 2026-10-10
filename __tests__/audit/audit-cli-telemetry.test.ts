@@ -113,7 +113,8 @@ describe("failproofai audit telemetry", () => {
       total_hits: 2,
       findings: 0,
     });
-    expect(h.launch).toHaveBeenCalledWith("start");
+    // Audit's hand-off prints its own lines, so the dashboard starts with no launch screen.
+    expect(h.launch).toHaveBeenCalledWith("start", { screen: false });
     expect(exitInfo).toBeNull(); // happy path never exits — launch() keeps the process alive
   });
 

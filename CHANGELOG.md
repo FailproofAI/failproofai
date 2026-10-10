@@ -19,6 +19,7 @@
 - A new backfill request no longer replaces one still waiting for the daemon: requests merge, keeping the wider window, and are written atomically (#PR)
 - A hook from an agent that `failproofai config` does not trace is logged once per session and evaluated as usual, never allowed because of the selection (#PR)
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#PR)
+- New terminal look for the CLI, the dashboard launch screen: bare `failproofai` prints it once the dashboard is actually listening, with its address, the policies that are on, the agents traced and the cloud connection, plus one warning when policies are not enforcing or the dashboard is reachable from other machines. A server that fails to start says why in one line (a taken port is named as such), Next.js's own startup lines are gone, piped output carries no colour codes, and `failproofai audit` hands off to the dashboard without the logomark or the screen (#PR)
 
 ## 1.0.10 — 2026-10-05
 

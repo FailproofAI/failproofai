@@ -694,7 +694,7 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // bundled standalone dashboard and the process stays up serving it.
   openWhenReady(DASHBOARD_PORT, "/audit");
   const { launch } = await import("../../scripts/launch");
-  launch("start");
+  launch("start", { screen: false });
   // Intentionally no process.exit(): launch() keeps this process alive running
   // the dashboard until the user stops it.
 }

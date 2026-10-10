@@ -319,6 +319,74 @@ export function integrationsInstalledAt(scope: HookScope, cwd?: string): Integra
   });
 }
 
+/**
+ * Why the policies on this machine are not enforcing, or `null` when they are.
+ *
+ * ONE answer for every screen that warns about it — `failproofai policies`, the
+ * dashboard launch screen — so two screens can never disagree about whether
+ * this machine is protected. The redesign shows one generic warning whatever
+ * the cause (decision D18); the cause is returned anyway, for tests and so a
+ * screen that wants the specific fix can have it.
+ *
+ * Cheap enough for the launch path on purpose: it reads files and imports no
+ * policy file and probes no daemon.
+ *
+ * Deliberately NOT causes, because each needs its own words:
+ *  - A refused pack and a down daemon on a daemon-configured machine. Both
+ *    FAIL CLOSED: they DENY tool calls rather than let them through, so "not
+ *    enforcing" would tell the user the opposite of what is happening.
+ *  - A session pause. It belongs to one session, not to the machine, and
+ *    `config --status` lists it.
+ */
+export type NotEnforcingReason = "no-hooks" | "no-policies" | "observe-only";
+
+export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
+  const wired = deduplicateScopes(HOOK_SCOPES, cwd).some((scope) => hooksInstalledInSettings(scope, cwd));
+  if (!wired) return "no-hooks";
+
+  const config = readMergedHooksConfig(cwd);
+  const disabled = new Set(config.disabledCustomPolicies ?? []);
+  let observing = false;
+
+  // Installed packs: a policy enforces when its pack is not observe-only, it
+  // was taken at install, and nobody switched it off afterwards.
+  try {
+    for (const pack of readInstalledPacks().packs) {
+      const taken = pack.enabled ?? pack.policies.map((policy) => policy.name);
+      const on = taken.filter((name) => !disabled.has(`pack:${pack.id}@${pack.version}:${name}`));
+      if (on.length === 0) continue;
+      if (pack.effect === "observe") observing = true;
+      else return null;
+    }
+  } catch {
+    // An unreadable manifest is reported by the listing itself.
+  }
+
+  // Cloud-managed policies, pushed from a deployment.
+  try {
+    for (const artifact of readActiveCloudManagedPolicies()) {
+      if (artifact.effect === "observe") observing = true;
+      else return null;
+    }
+  } catch {
+    // No deployment, or an unreadable one: nothing enforces from there.
+  }
+
+  // A configured custom policy file, or convention files on disk. Loading them
+  // to ask what they hold would import user code on every launch, so their
+  // presence counts: the listing below reports a file that fails to load.
+  if (configuredCustomPolicyPaths(config).length > 0) return null;
+  const projectDir = resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies");
+  if (discoverPolicyFiles(projectDir).length > 0 || discoverPolicyFiles(customPoliciesDir()).length > 0) {
+    return null;
+  }
+
+  // A machine still on the pre-pack migration shim runs its legacy builtins.
+  if (config.enabledPolicies.length > 0 && !hasInstalledRegexPacks()) return null;
+
+  return observing ? "observe-only" : "no-policies";
+}
+
 function safeSettingsPath(
   integration: Integration,
   scope: HookScope,

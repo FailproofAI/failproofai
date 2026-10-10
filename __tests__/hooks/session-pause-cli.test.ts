@@ -90,7 +90,8 @@ describe("--pause", () => {
   it("always says the pause expires on its own, and that cloud keeps enforcing", () => {
     const out = runPauseCommand({ action: "pause", sessionId: "s1", cwd: "/tmp/p", now: NOW }).lines.join("\n");
     expect(out).toMatch(/resumes at/);
-    expect(out).toMatch(/Cloud-managed policies keep enforcing/);
+    // Review m7: FailproofAI Cloud's Jev checks are exempt from a pause too (2a6f8fb0).
+    expect(out).toMatch(/Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing/);
   });
 });
 

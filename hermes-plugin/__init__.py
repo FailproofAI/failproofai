@@ -102,6 +102,21 @@ def _profile_name() -> str:
     return "default"
 
 
+def _profile_settings_path(profile: str) -> str | None:
+    """Evidence of the profile running this plugin, not a transcript guess."""
+    configured = os.environ.get("HERMES_HOME", "").strip()
+    if configured:
+        selected = Path(configured).expanduser() / "config.yaml"
+    elif profile == "default":
+        selected = Path.home() / ".hermes" / "config.yaml"
+    elif re.fullmatch(r"[A-Za-z0-9._-]{1,80}", profile):
+        selected = Path.home() / ".hermes" / "profiles" / profile / "config.yaml"
+    else:
+        return None
+    # An unresolvable profile does not acquire some other profile's ID.
+    return str(selected.absolute()) if selected.is_file() else None
+
+
 def _string(value: object) -> str:
     return value if isinstance(value, str) else ""
 
@@ -660,6 +675,7 @@ class FailproofAIPlugin:
             event=event,
             payload=payload,
             cwd=cwd,
+            agent_settings_path=_profile_settings_path(self.profile),
             connect_timeout_ms=self.connect_timeout_ms,
             evaluation_timeout_ms=timeout_ms or self.evaluation_timeout_ms,
         )

@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 /// shape is precisely what a schema version exists to prevent — see the note at
 /// the emit site in AgentEye's `enforcement.rs`.
 pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
+pub const SCOPED_DESIRED_STATE_SCHEMA_VERSION: u32 = 3;
 
 /// What this daemon ACCEPTS when reading.
 ///
@@ -36,7 +37,11 @@ pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
 /// would silently stop enforcing cloud policy until a poll re-materialised
 /// everything. The field aliases on `ActiveDeployment` exist for the same
 /// files and the same reason.
-pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, DESIRED_STATE_SCHEMA_VERSION];
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[
+    1,
+    DESIRED_STATE_SCHEMA_VERSION,
+    SCOPED_DESIRED_STATE_SCHEMA_VERSION,
+];
 const MANAGED_FILE_MODE: u32 = 0o600;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -52,7 +57,29 @@ pub struct DesiredState {
     pub schema_version: u32,
     pub deployment: u64,
     pub policies: Vec<DesiredPolicy>,
+    /// `off | observe | enforce` when FailproofAI Cloud sets this machine's
+    /// Jev mode. With `observe`/`enforce` the CLI sends every gated tool call's
+    /// metadata to FailproofAI Cloud, which asks the machine's deployed Jev
+    /// checks and returns their verdict; `off` switches Jev off. Absent means
+    /// Cloud does not override (the server stores its `local` choice as NULL
+    /// and emits nothing), and the machine's own `jev.json` decides. Any other
+    /// value rejects the whole state rather than being guessed at, like an
+    /// unknown `effect`.
+    ///
+    /// Jev checks themselves never reach the machine (CONTRACT C10): they live
+    /// on FailproofAI Cloud. A `semanticPolicies` key from a server that still
+    /// sends one is ignored here, like any other field this build does not know.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev_mode: Option<String>,
 }
+
+/// The Jev modes FailproofAI Cloud may set. `local` is the server's word for
+/// "stop overriding" and is never sent — it is stored as NULL.
+pub const JEV_MODES: &[&str] = &["off", "observe", "enforce"];
+
+/// The authorities an assignment may declare. Mirrors `PolicyAuthority` in the
+/// CLI's `policy-types.ts`.
+pub const AUTHORITIES: &[&str] = &["hard", "reviewable"];
 
 /// A `desired-state.json` as a PRE-RENAME daemon wrote it — disk only.
 ///
@@ -103,6 +130,8 @@ impl From<LegacyDesiredState> for DesiredState {
             schema_version: old.schema_version,
             deployment: old.generation,
             policies: old.policies.into_iter().map(DesiredPolicy::from).collect(),
+            // A pre-rename daemon predates the Cloud Jev mode.
+            jev_mode: None,
         }
     }
 }
@@ -115,6 +144,9 @@ impl From<LegacyDesiredPolicy> for DesiredPolicy {
             sha256: old.sha256,
             artifact_url: old.artifact_url,
             effect: old.effect,
+            authority: None,
+            reviewed_by: None,
+            agent_targets: None,
         }
     }
 }
@@ -132,6 +164,65 @@ pub struct DesiredPolicy {
     /// one that keeps enforcing.
     #[serde(default)]
     pub effect: PolicyEffect,
+    /// `hard | reviewable`, derived by the SERVER from the policy's kind: a
+    /// `both` policy's JS half is `reviewable` by its own Jev checks. Carried
+    /// verbatim into `active.json`, where the CLI already reads it
+    /// (`cloud-managed-policies.ts`) — code inside the artifact cannot grant
+    /// itself this. Absent means hard.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    /// The Jev check names that may clear this policy's verdict. Carried
+    /// verbatim; the CLI decides which of them this machine can actually ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<Vec<String>>,
+    /// Only schema 3 may carry this. Absent means all agents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_targets: Option<Vec<AgentTarget>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentTarget {
+    pub integration: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+}
+
+const INTEGRATIONS: &[&str] = &[
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "opencode",
+    "pi",
+    "hermes",
+    "openclaw",
+    "factory",
+    "devin",
+    "antigravity",
+    "goose",
+];
+
+fn valid_instance_id(id: &str) -> bool {
+    let Some(hex) = id.strip_prefix("agt_") else {
+        return false;
+    };
+    (16..=32).contains(&hex.len())
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn validate_targets(targets: &[AgentTarget]) -> bool {
+    if !(1..=32).contains(&targets.len()) {
+        return false;
+    }
+    let mut seen = HashSet::new();
+    targets.iter().all(|target| {
+        INTEGRATIONS.contains(&target.integration.as_str())
+            && target.instance_id.as_deref().is_none_or(valid_instance_id)
+            && seen.insert(target)
+    })
 }
 
 /// What an assignment does when it matches.
@@ -164,7 +255,19 @@ pub struct ActiveDeployment {
     #[serde(alias = "generation")]
     pub deployment: u64,
     pub policies: Vec<ActivePolicy>,
+    /// Carried from `DesiredState::jev_mode` in the same atomic write as the
+    /// policies. Skipped when unset, so a deployment with no Cloud Jev mode
+    /// writes the exact `active.json` it wrote before this field existed, and
+    /// defaulted on read, so a file written before it still parses under
+    /// `deny_unknown_fields`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev_mode: Option<String>,
 }
+
+/// The `active.json` key a pre-release build of this branch wrote when it
+/// still delivered Jev checks to the machine (removed by CONTRACT C10). Dropped
+/// on read — see [`PolicyStore::read_active`] — and never written.
+const RETIRED_ACTIVE_KEYS: &[&str] = &["semanticPolicies"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -180,6 +283,14 @@ pub struct ActivePolicy {
     /// re-consult cloud to know whether a policy may act.
     #[serde(default)]
     pub effect: PolicyEffect,
+    /// Carried through from `DesiredPolicy::authority`; skipped when absent so
+    /// a hard policy's entry is byte-identical to what it has always been.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_targets: Option<Vec<AgentTarget>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,6 +318,9 @@ pub enum ReconcileError {
     NoVerifiedCopy {
         policy_id: String,
     },
+    /// The machine stopped being enrolled while this reconcile was running
+    /// (`config --disconnect` during a poll). Nothing was persisted.
+    Withdrawn,
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -232,11 +346,99 @@ impl std::fmt::Display for ReconcileError {
                 f,
                 "cloud policy {policy_id} has no verified artifact or deployment copy"
             ),
+            Self::Withdrawn => write!(
+                f,
+                "this machine stopped being enrolled while the deployment was being applied; nothing was written"
+            ),
         }
     }
 }
 
 impl std::error::Error for ReconcileError {}
+
+impl ReconcileError {
+    /// The policy an error is about, when it is about one.
+    pub fn policy_id(&self) -> Option<&str> {
+        match self {
+            Self::HashMismatch { policy_id, .. }
+            | Self::Fetch { policy_id, .. }
+            | Self::NoVerifiedCopy { policy_id } => Some(policy_id),
+            _ => None,
+        }
+    }
+}
+
+// ── Error report (the `policyErrors` poll parameter) ─────────────────────────
+//
+// What this machine could not apply from its deployment, reported to
+// FailproofAI Cloud on the poll it already makes. Two writers, two files, one
+// wire list: the CLI writes `errors.json` (what it could not LOAD or RUN — a
+// JS policy that failed to import, a Cloud Jev mode this machine cannot act on
+// because it has no Cloud Jev credential (`jev_unconfigured`) or was connected
+// for decisions only (`transcripts_disabled`), an installed pack's Jev check
+// FailproofAI Cloud dropped for the question budget), and the daemon keeps its
+// own reconcile errors in `daemon-errors.json`. Neither ever writes the other's
+// file, so there is no read-modify-write race between two processes.
+
+/// One reported problem. The wire shape is exactly this, compact JSON.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyErrorEntry {
+    pub id: String,
+    pub version: Option<u64>,
+    /// `regex | jev | both | daemon`.
+    pub kind: String,
+    pub message: String,
+}
+
+/// The kinds the wire accepts. An entry naming any other is dropped on read.
+pub const POLICY_ERROR_KINDS: &[&str] = &["regex", "jev", "both", "daemon"];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PolicyErrorFile {
+    pub errors: Vec<PolicyErrorEntry>,
+}
+
+/// Lenient: the file is written by another program (the CLI) and read by this
+/// one on its own schedule, so an entry this build cannot read is skipped, not
+/// fatal — the rest of the report still reaches the server.
+fn parse_policy_error_file(bytes: &[u8]) -> Option<Vec<PolicyErrorEntry>> {
+    let raw: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let list = raw.get("errors")?.as_array()?;
+    Some(
+        list.iter()
+            .filter_map(|value| serde_json::from_value::<PolicyErrorEntry>(value.clone()).ok())
+            .filter(|entry| POLICY_ERROR_KINDS.contains(&entry.kind.as_str()))
+            .collect(),
+    )
+}
+
+impl PolicyStore {
+    /// The CLI's report, or None when it has never written one (or wrote
+    /// something unreadable — which is then simply not reported, never guessed).
+    pub fn read_cli_policy_errors(&self) -> Option<Vec<PolicyErrorEntry>> {
+        parse_policy_error_file(&fs::read(self.cli_errors_path()).ok()?)
+    }
+
+    /// The daemon's own persisted reconcile error state, or None when it has
+    /// never had one.
+    pub fn read_daemon_policy_errors(&self) -> Option<Vec<PolicyErrorEntry>> {
+        parse_policy_error_file(&fs::read(self.daemon_errors_path()).ok()?)
+    }
+
+    /// Persists the daemon's error state, only when it changed.
+    pub fn write_daemon_policy_errors(
+        &self,
+        errors: &[PolicyErrorEntry],
+    ) -> Result<(), ReconcileError> {
+        if self.read_daemon_policy_errors().as_deref() == Some(errors) {
+            return Ok(());
+        }
+        let file = PolicyErrorFile {
+            errors: errors.to_vec(),
+        };
+        write_atomic(&self.daemon_errors_path(), &serde_json::to_vec(&file)?)
+    }
+}
 
 impl From<io::Error> for ReconcileError {
     fn from(value: io::Error) -> Self {
@@ -320,7 +522,19 @@ impl PolicyStore {
             return Ok(None);
         }
         let bytes = fs::read(path)?;
-        Ok(Some(serde_json::from_slice(&bytes)?))
+        // A file a pre-release build wrote may still name the Jev checks that
+        // build delivered (`semanticPolicies`, CONTRACT C10 retired it). Under
+        // `deny_unknown_fields` that key would make the whole deployment
+        // unreadable — a machine enforcing nothing until a poll rewrote the file
+        // — so it is dropped here, before the strict parse, and nothing else is
+        // loosened. The file keeps it until the next write; nothing reads it.
+        let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        if let Some(object) = value.as_object_mut() {
+            for key in RETIRED_ACTIVE_KEYS {
+                object.remove(*key);
+            }
+        }
+        Ok(Some(serde_json::from_value(value)?))
     }
 
     pub fn read_desired(&self) -> Result<Option<DesiredState>, ReconcileError> {
@@ -353,6 +567,25 @@ impl PolicyStore {
         &self,
         desired: &DesiredState,
         fetcher: &impl ArtifactFetcher,
+    ) -> Result<ReconcileOutcome, ReconcileError> {
+        self.reconcile_unless(desired, fetcher, &|| false)
+    }
+
+    /// [`reconcile`](Self::reconcile), abandoned with
+    /// [`ReconcileError::Withdrawn`] — before `desired-state.json` or
+    /// `active.json` is written — when `withdrawn()` says the machine is no
+    /// longer enrolled.
+    ///
+    /// Asked after every artifact is fetched and verified, because that is the
+    /// slow part: a poll is a request and then one fetch per new artifact, and a
+    /// `config --disconnect` landing in that window used to be undone by this
+    /// function's own writes. Artifacts already written are content-addressed
+    /// and inert once nothing names them, so abandoning after them costs nothing.
+    pub fn reconcile_unless(
+        &self,
+        desired: &DesiredState,
+        fetcher: &impl ArtifactFetcher,
+        withdrawn: &dyn Fn() -> bool,
     ) -> Result<ReconcileOutcome, ReconcileError> {
         validate_desired_state(desired)?;
         // active.json is a derived local pointer, not authority. If it was
@@ -420,57 +653,37 @@ impl PolicyStore {
 
         for policy in &desired.policies {
             let artifact_path = self.artifact_path(&policy.sha256);
-
-            if !file_matches_hash(&artifact_path, &policy.sha256)? {
-                // Present-but-wrong and absent are different events, and the
-                // metric is worth keeping honest: one means somebody or
-                // something modified a verified file, the other is a first
-                // download.
-                let existed = artifact_path.exists();
-                let bytes = fetcher
-                    .fetch(policy)
-                    .map_err(|message| ReconcileError::Fetch {
-                        policy_id: policy.id.clone(),
-                        message,
-                    })?;
-                verify_bytes(policy, &bytes)?;
-                write_atomic(&artifact_path, &bytes)?;
-                if existed {
-                    repaired += 1;
-                } else {
-                    downloaded += 1;
-                }
+            match self.ensure_artifact(&artifact_path, policy, fetcher)? {
+                Ensured::Present => {}
+                Ensured::Downloaded => downloaded += 1,
+                Ensured::Repaired => repaired += 1,
             }
-
-            let deployment_path = artifact_path;
-
-            let relative_path = deployment_path
-                .strip_prefix(&self.root)
-                .map_err(|_| {
-                    ReconcileError::InvalidDesiredState(
-                        "deployment path escaped policy root".into(),
-                    )
-                })?
-                .to_string_lossy()
-                .into_owned();
             active_policies.push(ActivePolicy {
                 id: policy.id.clone(),
                 version: policy.version,
                 effect: policy.effect,
                 sha256: policy.sha256.clone(),
-                path: relative_path,
+                path: self.relative_to_root(&artifact_path)?,
+                authority: policy.authority.clone(),
+                reviewed_by: policy.reviewed_by.clone(),
+                agent_targets: policy.agent_targets.clone(),
             });
         }
 
         let active = ActiveDeployment {
-            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            schema_version: desired.schema_version,
             deployment: desired.deployment,
             policies: active_policies,
+            jev_mode: desired.jev_mode.clone(),
         };
         let manifest_bytes = serde_json::to_vec_pretty(&active)?;
         // The per-deployment `manifest.json` is gone with `deployments/<n>/`. It
         // duplicated `active.json` for a directory that no longer exists, and a
         // second copy of the pointer is a second thing that can disagree.
+
+        if withdrawn() {
+            return Err(ReconcileError::Withdrawn);
+        }
 
         // Persist the cloud snapshot before switching active.json. A crash in
         // between is recoverable: the maintenance loop reconstructs the active
@@ -517,6 +730,9 @@ impl PolicyStore {
                 }
             }
         }
+        if activated {
+            self.remove_semantic_leftovers();
+        }
 
         Ok(ReconcileOutcome {
             deployment: desired.deployment,
@@ -545,6 +761,19 @@ impl PolicyStore {
     /// active.json is left unchanged either way, so the worker keeps its last
     /// known-good decision set.
     pub fn repair_active_from_cache(&self) -> Result<usize, ReconcileError> {
+        self.repair_active_from_cache_unless(&|| false)
+    }
+
+    /// A repair after a Cloud poll must use the same enrolment guard as the
+    /// poll itself. A disconnect may remove both state files after we read
+    /// desired-state.json; that snapshot must not restore the old deployment.
+    pub fn repair_active_from_cache_unless(
+        &self,
+        withdrawn: &dyn Fn() -> bool,
+    ) -> Result<usize, ReconcileError> {
+        if withdrawn() {
+            return Ok(0);
+        }
         // A corrupted `desired-state.json` must not disable repair.
         //
         // `self.read_desired()?` propagated any parse error straight out,
@@ -570,15 +799,26 @@ impl PolicyStore {
             Err(err) => return Err(err),
         };
         if let Some(desired) = desired {
-            let outcome = self.reconcile(&desired, &|policy: &DesiredPolicy| {
-                Err(format!(
-                    "no verified cached bytes remain for {}; cloud refetch required",
-                    policy.id
-                ))
-            })?;
-            return Ok(outcome.repaired + usize::from(outcome.activated));
+            let outcome = self.reconcile_unless(
+                &desired,
+                &|policy: &DesiredPolicy| {
+                    Err(format!(
+                        "no verified cached bytes remain for {}; cloud refetch required",
+                        policy.id
+                    ))
+                },
+                withdrawn,
+            );
+            return match outcome {
+                Ok(outcome) => Ok(outcome.repaired + usize::from(outcome.activated)),
+                Err(ReconcileError::Withdrawn) => Ok(0),
+                Err(err) => Err(err),
+            };
         }
 
+        if withdrawn() {
+            return Ok(0);
+        }
         let Some(active) = self.read_active()? else {
             return Ok(0);
         };
@@ -591,6 +831,9 @@ impl PolicyStore {
 
         let mut repaired = 0;
         for policy in &active.policies {
+            if withdrawn() {
+                return Ok(repaired);
+            }
             validate_policy_identity(&policy.id)?;
             validate_sha256(&policy.sha256)?;
             let deployment_path = safe_join_relative(&self.root, &policy.path)?;
@@ -618,9 +861,120 @@ impl PolicyStore {
         Ok(repaired)
     }
 
+    /// Removes this machine's Cloud deployment: `desired-state.json` FIRST,
+    /// then `active.json`, then both error reports. Returns how many files were
+    /// actually removed.
+    ///
+    /// For a machine that has been put back on OSS (see `maintenance_tick`), and
+    /// the same order `config --disconnect` uses: with the snapshot gone first,
+    /// nothing can rebuild the pointer from it in between. Artifacts stay — they
+    /// are content-addressed, verified on use and inert once nothing names them.
+    pub fn clear_deployment(&self) -> io::Result<usize> {
+        let mut removed = 0;
+        for path in [
+            self.desired_state_path(),
+            self.active_manifest_path(),
+            self.cli_errors_path(),
+            self.daemon_errors_path(),
+        ] {
+            match fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(removed)
+    }
+
     fn artifact_path(&self, sha256: &str) -> PathBuf {
         self.root.join("artifacts").join(format!("{sha256}.mjs"))
     }
+
+    /// Removes `artifacts/<sha256>.json`: Jev check declarations a pre-release
+    /// build of this branch delivered to the machine. Since CONTRACT C10 Jev
+    /// checks live only on FailproofAI Cloud and nothing writes or reads these,
+    /// but they held an org's check text. Run after an activation, like the
+    /// layout-2 cleanup above; best-effort, and only files named exactly like
+    /// one (64 lowercase hex + `.json`) — the JS artifacts are `.mjs`.
+    fn remove_semantic_leftovers(&self) {
+        let Ok(entries) = fs::read_dir(self.root.join("artifacts")) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".json")) else {
+                continue;
+            };
+            if stem.len() != 64 || !stem.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                continue;
+            }
+            match fs::remove_file(entry.path()) {
+                Ok(()) => tracing::info!("removed a pre-release Jev check artifact"),
+                Err(err) => {
+                    tracing::warn!(?err, "could not remove a pre-release Jev check artifact")
+                }
+            }
+        }
+    }
+
+    /// Where `errors.json` lives: the CLI's report of what it could not load
+    /// from the active deployment (see `read_cli_policy_errors`).
+    pub fn cli_errors_path(&self) -> PathBuf {
+        self.root.join("errors.json")
+    }
+
+    /// Where the daemon persists its OWN reconcile error state, so a restart
+    /// neither forgets an error the server is still showing nor starts
+    /// reporting on a machine that never had one.
+    pub fn daemon_errors_path(&self) -> PathBuf {
+        self.root.join("daemon-errors.json")
+    }
+
+    /// Makes `path` hold bytes hashing to `request.sha256`, fetching and
+    /// verifying them when it does not. Nothing unverified is ever written.
+    fn ensure_artifact(
+        &self,
+        path: &Path,
+        request: &DesiredPolicy,
+        fetcher: &impl ArtifactFetcher,
+    ) -> Result<Ensured, ReconcileError> {
+        if file_matches_hash(path, &request.sha256)? {
+            return Ok(Ensured::Present);
+        }
+        // Present-but-wrong and absent are different events, and the metric is
+        // worth keeping honest: one means somebody or something modified a
+        // verified file, the other is a first download.
+        let existed = path.exists();
+        let bytes = fetcher
+            .fetch(request)
+            .map_err(|message| ReconcileError::Fetch {
+                policy_id: request.id.clone(),
+                message,
+            })?;
+        verify_bytes(request, &bytes)?;
+        write_atomic(path, &bytes)?;
+        Ok(if existed {
+            Ensured::Repaired
+        } else {
+            Ensured::Downloaded
+        })
+    }
+
+    fn relative_to_root(&self, path: &Path) -> Result<String, ReconcileError> {
+        Ok(path
+            .strip_prefix(&self.root)
+            .map_err(|_| {
+                ReconcileError::InvalidDesiredState("deployment path escaped policy root".into())
+            })?
+            .to_string_lossy()
+            .into_owned())
+    }
+}
+
+enum Ensured {
+    Present,
+    Downloaded,
+    Repaired,
 }
 
 /// Starts the maintenance-lane integrity loop. It performs one pass
@@ -659,6 +1013,15 @@ fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> 
     }
     let mut ids = HashSet::new();
     for policy in &desired.policies {
+        if let Some(targets) = &policy.agent_targets
+            && (desired.schema_version < SCOPED_DESIRED_STATE_SCHEMA_VERSION
+                || !validate_targets(targets))
+        {
+            return Err(ReconcileError::InvalidDesiredState(format!(
+                "policy {} has invalid agentTargets for schema {}",
+                policy.id, desired.schema_version
+            )));
+        }
         validate_policy_identity(&policy.id)?;
         validate_sha256(&policy.sha256)?;
         if policy.artifact_url.trim().is_empty() {
@@ -673,6 +1036,24 @@ fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> 
                 policy.id
             )));
         }
+        // Refused rather than dropped, like an unknown `effect`: the server
+        // derives this from the policy's kind, so a value outside the two it
+        // can produce is a stale or forged payload, not a typo to shrug off.
+        if let Some(authority) = &policy.authority
+            && !AUTHORITIES.contains(&authority.as_str())
+        {
+            return Err(ReconcileError::InvalidDesiredState(format!(
+                "policy {} has authority {authority:?} (expected one of {AUTHORITIES:?})",
+                policy.id
+            )));
+        }
+    }
+    if let Some(mode) = &desired.jev_mode
+        && !JEV_MODES.contains(&mode.as_str())
+    {
+        return Err(ReconcileError::InvalidDesiredState(format!(
+            "jevMode {mode:?} is not one of {JEV_MODES:?}"
+        )));
     }
     Ok(())
 }
@@ -844,7 +1225,11 @@ mod tests {
                 sha256: "aa".into(),
                 path: "deployments/9/g.mjs".into(),
                 effect: PolicyEffect::Observe,
+                authority: None,
+                reviewed_by: None,
+                agent_targets: None,
             }],
+            jev_mode: None,
         };
         let round_tripped: ActiveDeployment =
             serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
@@ -876,7 +1261,11 @@ mod tests {
                 sha256: sha256_hex(bytes),
                 artifact_url: format!("https://cloud.invalid/{id}/{deployment}"),
                 effect: PolicyEffect::Enforce,
+                authority: None,
+                reviewed_by: None,
+                agent_targets: None,
             }],
+            jev_mode: None,
         }
     }
 
@@ -992,6 +1381,41 @@ mod tests {
         );
         // active.json is untouched, so the worker keeps its last known-good set.
         assert!(store.read_active().unwrap().is_some());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn disconnect_during_cached_repair_cannot_restore_its_removed_deployment() {
+        use std::cell::Cell;
+
+        let store = temp_store("disconnect-mid-repair");
+        let bytes = b"export default 'verified';\n";
+        let state = desired(4, "guard", bytes);
+        store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+
+        let checks = Cell::new(0);
+        let withdrawn = || {
+            let count = checks.get();
+            checks.set(count + 1);
+            if count == 0 {
+                return false; // after the snapshot read, before activation
+            }
+            fs::remove_file(store.desired_state_path()).ok();
+            fs::remove_file(store.active_manifest_path()).ok();
+            true
+        };
+        assert_eq!(
+            store.repair_active_from_cache_unless(&withdrawn).unwrap(),
+            0
+        );
+        assert!(
+            checks.get() >= 2,
+            "the repair must recheck enrolment at activation"
+        );
+        assert!(!store.desired_state_path().exists());
+        assert!(!store.active_manifest_path().exists());
         fs::remove_dir_all(store.root()).ok();
     }
 
@@ -1163,6 +1587,448 @@ mod tests {
 }
 
 #[cfg(test)]
+pub(crate) mod cloud_jev_tests {
+    //! Cloud Jev mode and `both` policies on the daemon (CONTRACT C5 as amended
+    //! by C10): the machine receives a `both` policy's JS half with its derived
+    //! `authority`/`reviewedBy`, and the Cloud Jev MODE — never the Jev checks
+    //! themselves, which live on FailproofAI Cloud. The fixtures are
+    //! `pub(crate)` for the maintenance-lane tests in `cloud_client.rs`.
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    pub(crate) fn temp_store(name: &str) -> PolicyStore {
+        let root = std::env::temp_dir().join(format!(
+            "fpaid-cloud-jev-{name}-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        PolicyStore::new(root)
+    }
+
+    const JS: &[u8] = b"export default 'regex half';\n";
+
+    /// Review m8: `artifacts/<sha>.json` files left by the pre-release
+    /// on-machine delivery hold an org's check text. The next activation
+    /// removes them, and only them: the JS artifacts are `.mjs`.
+    #[test]
+    fn an_activation_removes_pre_release_jev_check_artifacts() {
+        let store = temp_store("semantic-leftovers");
+        let artifacts = store.root().join("artifacts");
+        fs::create_dir_all(&artifacts).unwrap();
+        let leftover = artifacts.join(format!("{}.json", "a1".repeat(32)));
+        let not_a_digest = artifacts.join("notes.json");
+        fs::write(&leftover, b"[{\"name\":\"acme-x\"}]").unwrap();
+        fs::write(&not_a_digest, b"{}").unwrap();
+        store.reconcile(&jev_state(12), &serve).unwrap();
+        assert!(!leftover.exists());
+        assert!(
+            not_a_digest.exists(),
+            "only digest-named declaration files go"
+        );
+        assert!(store.artifact_path(&sha256_hex(JS)).exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A `both` policy's JS half (reviewable by its own Cloud check) under a
+    /// Cloud Jev mode.
+    pub(crate) fn jev_state(deployment: u64) -> DesiredState {
+        DesiredState {
+            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            deployment,
+            policies: vec![DesiredPolicy {
+                id: "no-prod-db".into(),
+                version: 3,
+                sha256: sha256_hex(JS),
+                artifact_url: format!("/enforcement/v1/artifacts/{}", sha256_hex(JS)),
+                effect: PolicyEffect::Enforce,
+                authority: Some("reviewable".into()),
+                reviewed_by: Some(vec!["acme-prod-db".into()]),
+                agent_targets: None,
+            }],
+            jev_mode: Some("observe".into()),
+        }
+    }
+
+    pub(crate) fn serve(request: &DesiredPolicy) -> Result<Vec<u8>, String> {
+        if sha256_hex(JS) == request.sha256 {
+            return Ok(JS.to_vec());
+        }
+        Err(format!("no such artifact {}", request.sha256))
+    }
+
+    /// `active.json` exactly as a daemon from before Cloud Jev wrote it
+    /// (`to_vec_pretty` of the old struct).
+    const TODAYS_ACTIVE: &str = r#"{
+  "schemaVersion": 2,
+  "deployment": 42,
+  "policies": [
+    {
+      "id": "block-curl",
+      "version": 3,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "path": "artifacts/732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30.mjs",
+      "effect": "enforce"
+    }
+  ]
+}"#;
+
+    /// `desired-state.json` exactly as a daemon from before Cloud Jev wrote it.
+    const TODAYS_DESIRED: &str = r#"{
+  "schemaVersion": 2,
+  "deployment": 42,
+  "policies": [
+    {
+      "id": "block-curl",
+      "version": 3,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "artifactUrl": "/enforcement/v1/artifacts/732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "effect": "observe"
+    }
+  ]
+}"#;
+
+    /// Today's machines must write the files they always wrote: every new field
+    /// is optional on read and skipped when empty on write.
+    #[test]
+    fn todays_active_json_round_trips_byte_identical() {
+        let parsed: ActiveDeployment = serde_json::from_str(TODAYS_ACTIVE).unwrap();
+        assert_eq!(parsed.jev_mode, None);
+        assert_eq!(parsed.policies[0].authority, None);
+        let written = String::from_utf8(serde_json::to_vec_pretty(&parsed).unwrap()).unwrap();
+        assert_eq!(written, TODAYS_ACTIVE);
+    }
+
+    #[test]
+    fn todays_desired_state_round_trips_byte_identical() {
+        let parsed: DesiredState = serde_json::from_str(TODAYS_DESIRED).unwrap();
+        assert_eq!(parsed.jev_mode, None);
+        assert_eq!(parsed.policies[0].reviewed_by, None);
+        let written = String::from_utf8(serde_json::to_vec_pretty(&parsed).unwrap()).unwrap();
+        assert_eq!(written, TODAYS_DESIRED);
+    }
+
+    /// And a reconcile of a deployment with no Cloud Jev mode and no `both`
+    /// policy still writes the old shape, byte for byte.
+    #[test]
+    fn a_deployment_with_no_jev_writes_no_new_keys() {
+        let store = temp_store("no-jev");
+        let mut state = jev_state(5);
+        state.jev_mode = None;
+        state.policies[0].authority = None;
+        state.policies[0].reviewed_by = None;
+        store.reconcile(&state, &serve).unwrap();
+        let active = fs::read_to_string(store.active_manifest_path()).unwrap();
+        for key in ["semanticPolicies", "jevMode", "authority", "reviewedBy"] {
+            assert!(!active.contains(key), "{key} must be skipped: {active}");
+        }
+        let desired = fs::read_to_string(store.desired_state_path()).unwrap();
+        for key in ["semanticPolicies", "jevMode", "authority", "reviewedBy"] {
+            assert!(!desired.contains(key), "{key} must be skipped: {desired}");
+        }
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn the_wire_carries_the_mode_and_the_both_fields_in_camel_case() {
+        let json = r#"{"schemaVersion":2,"deployment":43,
+            "policies":[{"id":"no-prod-db","version":3,"sha256":"aa","artifactUrl":"/a",
+                         "effect":"enforce","authority":"reviewable","reviewedBy":["prod-db-write-intent"]}],
+            "jevMode":"observe"}"#;
+        let parsed: DesiredState = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.policies[0].authority.as_deref(), Some("reviewable"));
+        assert_eq!(
+            parsed.policies[0].reviewed_by.as_deref(),
+            Some(&["prod-db-write-intent".to_string()][..])
+        );
+        assert_eq!(parsed.jev_mode.as_deref(), Some("observe"));
+    }
+
+    /// A server that still sends Jev checks (`semanticPolicies`, retired by
+    /// CONTRACT C10) is not obeyed: the list is ignored like any unknown field,
+    /// nothing is fetched for it, and nothing Jev-related reaches the disk.
+    #[test]
+    fn semantic_policies_from_a_server_are_ignored_and_never_fetched() {
+        let json = format!(
+            r#"{{"schemaVersion":2,"deployment":44,
+                "policies":[{{"id":"no-prod-db","version":3,"sha256":"{js}","artifactUrl":"/a",
+                             "effect":"enforce","authority":"reviewable","reviewedBy":["acme-prod-db"]}}],
+                "semanticPolicies":[{{"id":"no-prod-db","version":3,"sha256":"{other}","artifactUrl":"/b"}}],
+                "jevMode":"enforce"}}"#,
+            js = sha256_hex(JS),
+            other = sha256_hex(b"[]"),
+        );
+        let parsed: DesiredState = serde_json::from_str(&json).unwrap();
+        let store = temp_store("retired-semantic");
+        let fetched = std::cell::RefCell::new(Vec::new());
+        store
+            .reconcile(&parsed, &|request: &DesiredPolicy| {
+                fetched.borrow_mut().push(request.sha256.clone());
+                serve(request)
+            })
+            .unwrap();
+        assert_eq!(fetched.into_inner(), vec![sha256_hex(JS)]);
+        let active = fs::read_to_string(store.active_manifest_path()).unwrap();
+        let desired = fs::read_to_string(store.desired_state_path()).unwrap();
+        for text in [&active, &desired] {
+            assert!(!text.contains("semanticPolicies"), "{text}");
+            assert!(text.contains("\"jevMode\": \"enforce\""), "{text}");
+            assert!(text.contains("\"reviewedBy\""), "{text}");
+        }
+        let names: Vec<_> = fs::read_dir(store.root().join("artifacts"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![format!("{}.mjs", sha256_hex(JS))]);
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// An `active.json` left by a pre-release build that still delivered Jev
+    /// checks carries `semanticPolicies`. It must stay readable under
+    /// `deny_unknown_fields` — or the machine would enforce nothing until a
+    /// poll — with the key ignored, and repair must not trip over it either.
+    #[test]
+    fn a_leftover_semantic_policies_key_in_active_json_is_ignored_safely() {
+        let store = temp_store("leftover-semantic");
+        store.reconcile(&jev_state(8), &serve).unwrap();
+        let good = store.read_active().unwrap().unwrap();
+
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.active_manifest_path()).unwrap()).unwrap();
+        raw["semanticPolicies"] = serde_json::json!([
+            {"id": "no-prod-db", "version": 3, "sha256": "ab".repeat(32), "path": "artifacts/gone.json"}
+        ]);
+        fs::write(
+            store.active_manifest_path(),
+            serde_json::to_vec_pretty(&raw).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        // Repair reads it too, and finds nothing to rebuild — the named Jev
+        // artifact is not a thing the daemon checks any more.
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        // With the snapshot gone, the active.json-only branch reads it as well.
+        fs::remove_file(store.desired_state_path()).unwrap();
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        // Any OTHER unknown key is still refused: only the retired one is dropped.
+        raw["somethingNew"] = serde_json::json!(1);
+        fs::write(
+            store.active_manifest_path(),
+            serde_json::to_vec(&raw).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(store.read_active(), Err(ReconcileError::Json(_))));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The JS half, the derived authority and the Jev mode, in one atomic write.
+    #[test]
+    fn a_both_policy_and_the_jev_mode_activate_in_one_write() {
+        let store = temp_store("both");
+        let outcome = store.reconcile(&jev_state(7), &serve).unwrap();
+        assert!(outcome.activated);
+        assert_eq!(outcome.downloaded, 1, "the JS half only");
+
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.jev_mode.as_deref(), Some("observe"));
+        assert_eq!(active.policies[0].authority.as_deref(), Some("reviewable"));
+        assert_eq!(
+            active.policies[0].reviewed_by.as_deref(),
+            Some(&["acme-prod-db".to_string()][..])
+        );
+        let text = fs::read_to_string(store.active_manifest_path()).unwrap();
+        for key in ["\"jevMode\"", "\"authority\"", "\"reviewedBy\""] {
+            assert!(text.contains(key), "{key} missing: {text}");
+        }
+        assert!(!text.contains("semanticPolicies"), "{text}");
+        // A second identical poll changes nothing and downloads nothing.
+        let again = store.reconcile(&jev_state(7), &serve).unwrap();
+        assert!(!again.activated);
+        assert_eq!(again.downloaded, 0);
+
+        // A mode-only change (the C9.1 route) is a new deployment that flips.
+        let mut enforce = jev_state(8);
+        enforce.jev_mode = Some("enforce".into());
+        assert!(store.reconcile(&enforce, &serve).unwrap().activated);
+        assert_eq!(
+            store.read_active().unwrap().unwrap().jev_mode.as_deref(),
+            Some("enforce")
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn the_mode_and_the_authority_are_validated() {
+        let store = temp_store("validate");
+        validate_desired_state(&jev_state(1)).expect("a both policy is valid");
+        for mode in ["off", "observe", "enforce"] {
+            let mut ok = jev_state(1);
+            ok.jev_mode = Some(mode.into());
+            validate_desired_state(&ok).unwrap_or_else(|e| panic!("{mode}: {e}"));
+        }
+        for mode in ["local", "OBSERVE", "shadow", ""] {
+            let mut bad = jev_state(1);
+            bad.jev_mode = Some(mode.into());
+            assert!(
+                validate_desired_state(&bad).is_err(),
+                "jevMode {mode:?} must reject the state"
+            );
+        }
+
+        let mut hard = jev_state(1);
+        hard.policies[0].authority = Some("hard".into());
+        validate_desired_state(&hard).expect("hard is an authority");
+        let mut bad_authority = jev_state(1);
+        bad_authority.policies[0].authority = Some("soft".into());
+        assert!(validate_desired_state(&bad_authority).is_err());
+
+        // And a rejected state never reaches disk.
+        assert!(store.reconcile(&bad_authority, &serve).is_err());
+        assert!(!store.active_manifest_path().exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A lost `active.json` is rebuilt from the snapshot with its Jev mode and
+    /// the `both` fields.
+    #[test]
+    fn repair_from_cache_keeps_the_mode_and_the_both_fields() {
+        let store = temp_store("repair-mode");
+        store.reconcile(&jev_state(9), &serve).unwrap();
+        let good = store.read_active().unwrap().unwrap();
+
+        fs::remove_file(store.active_manifest_path()).unwrap();
+        assert_eq!(store.repair_active_from_cache().unwrap(), 1);
+        assert_eq!(store.read_active().unwrap().unwrap(), good);
+        assert_eq!(good.jev_mode.as_deref(), Some("observe"));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// A disconnect that lands while a poll is in flight (review M2): the
+    /// reconcile is abandoned before it persists anything, so neither the
+    /// snapshot nor the pointer comes back, and a machine that had a deployment
+    /// keeps exactly the files it had.
+    #[test]
+    fn a_withdrawn_enrolment_persists_nothing() {
+        let store = temp_store("withdrawn");
+        assert!(matches!(
+            store.reconcile_unless(&jev_state(4), &serve, &|| true),
+            Err(ReconcileError::Withdrawn)
+        ));
+        assert!(!store.desired_state_path().exists());
+        assert!(!store.active_manifest_path().exists());
+
+        store.reconcile(&jev_state(4), &serve).unwrap();
+        let active = fs::read(store.active_manifest_path()).unwrap();
+        let snapshot = fs::read(store.desired_state_path()).unwrap();
+        let mut next = jev_state(5);
+        next.jev_mode = Some("enforce".into());
+        assert!(matches!(
+            store.reconcile_unless(&next, &serve, &|| true),
+            Err(ReconcileError::Withdrawn)
+        ));
+        assert_eq!(fs::read(store.active_manifest_path()).unwrap(), active);
+        assert_eq!(fs::read(store.desired_state_path()).unwrap(), snapshot);
+        // Still enrolled: the same state applies.
+        assert!(
+            store
+                .reconcile_unless(&next, &serve, &|| false)
+                .unwrap()
+                .activated
+        );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// `clear_deployment` removes what `config --disconnect` removes, snapshot
+    /// first, and leaves nothing a repair could rebuild the pointer from.
+    #[test]
+    fn clear_deployment_leaves_nothing_to_rebuild_from() {
+        let store = temp_store("clear");
+        store.reconcile(&jev_state(4), &serve).unwrap();
+        store
+            .write_daemon_policy_errors(&[PolicyErrorEntry {
+                id: "desired-state".into(),
+                version: None,
+                kind: "daemon".into(),
+                message: "x".into(),
+            }])
+            .unwrap();
+        fs::write(store.cli_errors_path(), br#"{"errors":[]}"#).unwrap();
+
+        assert_eq!(store.clear_deployment().unwrap(), 4);
+        for path in [
+            store.desired_state_path(),
+            store.active_manifest_path(),
+            store.cli_errors_path(),
+            store.daemon_errors_path(),
+        ] {
+            assert!(!path.exists(), "{} survived", path.display());
+        }
+        // The content-addressed artifacts stay: inert, and a reconnect is cheap.
+        assert_eq!(
+            fs::read_dir(store.root().join("artifacts"))
+                .unwrap()
+                .count(),
+            1
+        );
+        assert_eq!(store.clear_deployment().unwrap(), 0);
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        assert!(!store.active_manifest_path().exists());
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn error_files_are_read_leniently_and_written_only_on_change() {
+        let store = temp_store("errors");
+        assert_eq!(store.read_cli_policy_errors(), None);
+        assert_eq!(store.read_daemon_policy_errors(), None);
+
+        fs::create_dir_all(store.root()).unwrap();
+        fs::write(
+            store.cli_errors_path(),
+            br#"{"errors":[
+                {"id":"no-prod-db","version":3,"kind":"both","message":"reviewedBy names acme-x, which is not deployed"},
+                {"id":"x","version":null,"kind":"daemon","message":"jev_unconfigured"},
+                {"id":"y","version":1,"kind":"nonsense","message":"dropped: unknown kind"},
+                {"id":"z","message":"dropped: no kind"}
+            ]}"#,
+        )
+        .unwrap();
+        let cli = store.read_cli_policy_errors().unwrap();
+        assert_eq!(cli.len(), 2);
+        assert_eq!(cli[1].version, None);
+
+        fs::write(store.cli_errors_path(), b"not json").unwrap();
+        assert_eq!(store.read_cli_policy_errors(), None);
+
+        let entry = PolicyErrorEntry {
+            id: "desired-state".into(),
+            version: None,
+            kind: "daemon".into(),
+            message: "boom".into(),
+        };
+        store
+            .write_daemon_policy_errors(std::slice::from_ref(&entry))
+            .unwrap();
+        let first = fs::metadata(store.daemon_errors_path())
+            .unwrap()
+            .modified()
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        store
+            .write_daemon_policy_errors(std::slice::from_ref(&entry))
+            .unwrap();
+        let second = fs::metadata(store.daemon_errors_path())
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(first, second, "an unchanged state must not be rewritten");
+        assert_eq!(store.read_daemon_policy_errors().unwrap(), vec![entry]);
+        fs::remove_dir_all(store.root()).ok();
+    }
+}
+
+#[cfg(test)]
 mod pre_rename_state_tests {
     use super::*;
 
@@ -1303,9 +2169,9 @@ mod pre_rename_state_tests {
         );
     }
 
-    /// Both schema versions are readable, and only from disk does 1 arise.
+    /// Legacy disk files, unscoped responses and scoped responses are readable.
     #[test]
-    fn both_schema_versions_are_accepted() {
+    fn supported_schema_versions_are_accepted() {
         assert!(
             SUPPORTED_SCHEMA_VERSIONS.contains(&1),
             "a beta daemon's files are v1"
@@ -1315,6 +2181,7 @@ mod pre_rename_state_tests {
             "what we write must be readable"
         );
         assert_eq!(DESIRED_STATE_SCHEMA_VERSION, 2, "the server emits 2");
+        assert!(SUPPORTED_SCHEMA_VERSIONS.contains(&SCOPED_DESIRED_STATE_SCHEMA_VERSION));
 
         // The version the server actually sends must validate.
         let desired: DesiredState = serde_json::from_str(
@@ -1337,6 +2204,89 @@ mod pre_rename_state_tests {
         );
     }
 
+    #[test]
+    fn scoped_assignments_require_schema_three_and_round_trip_to_active_manifest() {
+        let store = PolicyStore::new(std::env::temp_dir().join(format!(
+            "failproofaid-agent-scoped-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        )));
+        let bytes = b"export default 'scoped';\n";
+        let mut state = scoped_fixture(bytes);
+        state.deployment = 42;
+        state.policies[0].agent_targets = Some(vec![AgentTarget {
+            integration: "hermes".into(),
+            instance_id: Some("agt_1234567890abcdef".into()),
+        }]);
+        assert!(
+            validate_desired_state(&state).is_err(),
+            "schema 2 must never ignore the scope"
+        );
+        state.schema_version = SCOPED_DESIRED_STATE_SCHEMA_VERSION;
+        store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.schema_version, 3);
+        assert_eq!(
+            active.policies[0].agent_targets,
+            state.policies[0].agent_targets
+        );
+        let text = fs::read_to_string(store.root().join("active.json")).unwrap();
+        assert!(text.contains("\"agentTargets\""));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    #[test]
+    fn malformed_scopes_never_activate() {
+        let mut state = scoped_fixture(b"guard");
+        state.schema_version = SCOPED_DESIRED_STATE_SCHEMA_VERSION;
+        for targets in [
+            vec![],
+            vec![AgentTarget {
+                integration: "unknown".into(),
+                instance_id: None,
+            }],
+            vec![AgentTarget {
+                integration: "codex".into(),
+                instance_id: Some("wrong".into()),
+            }],
+            vec![
+                AgentTarget {
+                    integration: "codex".into(),
+                    instance_id: None,
+                },
+                AgentTarget {
+                    integration: "codex".into(),
+                    instance_id: None,
+                },
+            ],
+        ] {
+            state.policies[0].agent_targets = Some(targets);
+            assert!(validate_desired_state(&state).is_err());
+        }
+        state.policies[0].agent_targets = None;
+        assert!(validate_desired_state(&state).is_ok());
+    }
+
+    fn scoped_fixture(bytes: &[u8]) -> DesiredState {
+        DesiredState {
+            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            deployment: 1,
+            policies: vec![DesiredPolicy {
+                id: "guard".into(),
+                version: 1,
+                sha256: sha256_hex(bytes),
+                artifact_url: "/enforcement/v1/artifacts/guard".into(),
+                effect: PolicyEffect::Enforce,
+                authority: None,
+                reviewed_by: None,
+                agent_targets: None,
+            }],
+            jev_mode: None,
+        }
+    }
+
     /// The new spelling is what we WRITE, and must keep round-tripping — an
     /// alias that quietly became the canonical name would be its own bug.
     #[test]
@@ -1350,7 +2300,11 @@ mod pre_rename_state_tests {
                 sha256: "a".into(),
                 path: "deployments/9/p.mjs".into(),
                 effect: PolicyEffect::Observe,
+                authority: None,
+                reviewed_by: None,
+                agent_targets: None,
             }],
+            jev_mode: None,
         };
         let text = serde_json::to_string(&state).unwrap();
         assert!(

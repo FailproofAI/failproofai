@@ -381,6 +381,7 @@ impl Worker {
         cli: &str,
         stdin: &str,
         cwd: Option<&str>,
+        agent_settings_path: Option<&str>,
     ) -> Result<HookOutcome, WorkerError> {
         self.ensure_started()?;
 
@@ -407,6 +408,7 @@ impl Worker {
             "cli": cli,
             "stdin": stdin,
             "cwd": cwd,
+            "agentSettingsPath": agent_settings_path,
         });
         write_message(&mut stream, &request).map_err(|e| WorkerError::Io(io::Error::other(e)))?;
 
@@ -518,7 +520,7 @@ mod tests {
         // only thing on disk that could be mistaken for readiness.
         let worker = Worker::new(socket_path.clone(), WorkerCommand::shell("exit 0"));
         let err = worker
-            .call("PreToolUse", "claude", "{}", None)
+            .call("PreToolUse", "claude", "{}", None, None)
             .expect_err("a worker that never bound must not report ready");
         assert!(
             err.to_string()

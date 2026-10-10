@@ -334,6 +334,13 @@ export interface LoadAllResult {
    * Only present for a path more than one pack resolved to.
    */
   packAliases: Map<string, string[]>;
+  /**
+   * Import failures of FailproofAI Cloud JS policies, keyed by Cloud policy id
+   * (every id behind a shared artifact). Fail-open like the rest of the Cloud
+   * read — nothing denies over them — but reported to Cloud in `errors.json`,
+   * so a deployment that is not actually enforcing says so.
+   */
+  cloudFailures?: Map<string, PolicyLoadFailure>;
 }
 
 export function customPolicyId(file: string, name: string): string {
@@ -456,8 +463,12 @@ export async function loadAllCustomHooks(
   // codebase exists to remove. It is also announced, so an operator can give the
   // two policies distinguishable source instead of living with the merge.
   const cloudManagedByPath = new Map<string, CloudManagedPolicyArtifact>();
+  /** Every Cloud policy id behind each artifact path, for `cloudFailures`. */
+  const cloudIdsByPath = new Map<string, string[]>();
+  const cloudFailures = new Map<string, PolicyLoadFailure>();
   for (const policy of opts?.cloudManagedPolicies ?? []) {
     const key = resolve(policy.path);
+    cloudIdsByPath.set(key, [...(cloudIdsByPath.get(key) ?? []), policy.id]);
     const existing = cloudManagedByPath.get(key);
     if (!existing) {
       cloudManagedByPath.set(key, policy);
@@ -660,6 +671,9 @@ export async function loadAllCustomHooks(
         if (failure && pack) {
           for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, failure);
         }
+        if (failure && cloudManaged) {
+          for (const id of cloudIdsByPath.get(absPath) ?? [cloudManaged.id]) cloudFailures.set(id, failure);
+        }
         for (const hook of getCustomHooks().slice(hooksBefore)) {
           const tagged = hook as CustomHook & {
             __policyId?: string;
@@ -680,6 +694,10 @@ export async function loadAllCustomHooks(
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
+      if (cloudManaged) {
+        const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
+        for (const id of cloudIdsByPath.get(absPath) ?? [cloudManaged.id]) cloudFailures.set(id, missing);
+      }
       if (pack) {
         const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
         for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, missing);
@@ -830,5 +848,5 @@ export async function loadAllCustomHooks(
     const winner = packByPath.get(path);
     if (winner && ids.length > 1) packAliases.set(winner.id, ids);
   }
-  return { hooks: allHooks, conventionSources, packFailures, packAliases };
+  return { hooks: allHooks, conventionSources, packFailures, packAliases, cloudFailures };
 }

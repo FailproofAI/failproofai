@@ -153,6 +153,12 @@ function isMarkedHook(hook: unknown): boolean {
   return cmd.includes("failproofai") && cmd.includes("--hook");
 }
 
+/** A hook names its installing settings scope, avoiding a cwd-based guess
+ * when user and project/local hooks both exist for the same integration. */
+function agentScopeSuffix(scope?: HookScope): string {
+  return ` --agent-scope ${scope ?? "user"}`;
+}
+
 function stripLegacyVersion(settings: Record<string, unknown>): boolean {
   if ("version" in settings) {
     delete settings.version;
@@ -284,7 +290,7 @@ export const claudeCode: Integration = {
         : `"${binaryPath}" --hook ${eventType}`;
     return {
       type: "command",
-      command,
+      command: command + agentScopeSuffix(scope),
       // Claude reads `timeout` in SECONDS per https://code.claude.com/docs/en/hooks
       // ("Seconds before canceling. Defaults: 600 for command ...; 60 for agent"),
       // NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h. (#482-class unit fix)
@@ -463,7 +469,7 @@ export const codex: Integration = {
       // Codex reads `timeout` in SECONDS (the field is literally `timeout`,
       // default 600 per https://developers.openai.com/codex/hooks) — same unit as
       // Claude/Cursor/Copilot. 60 = 60s.
-      command,
+      command: command + agentScopeSuffix(scope),
       timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
@@ -628,8 +634,8 @@ export const copilot: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli copilot`;
     return {
       type: "command",
-      bash: cmd,
-      powershell: cmd,
+      bash: cmd + agentScopeSuffix(scope),
+      powershell: cmd + agentScopeSuffix(scope),
       timeoutSec: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
@@ -772,7 +778,7 @@ export const cursor: Integration = {
     // use 30 and 10), NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h.
     return {
       type: "command",
-      command,
+      command: command + agentScopeSuffix(scope),
       timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
     };
@@ -965,12 +971,13 @@ function canonicalizeToolInput(canonicalToolName, args) {
 
 const FAILPROOFAI_BIN = ${escapedBin};
 const USE_NPX = ${useNpx};
+const AGENT_SCOPE = ${JSON.stringify(scope)};
 
 function runFailproofai(eventName, payload, directory) {
   const cmd = USE_NPX ? "npx" : FAILPROOFAI_BIN;
   const args = USE_NPX
-    ? ["-y", "failproofai", "--hook", eventName, "--cli", "opencode"]
-    : ["--hook", eventName, "--cli", "opencode"];
+    ? ["-y", "failproofai", "--hook", eventName, "--cli", "opencode", "--agent-scope", AGENT_SCOPE]
+    : ["--hook", eventName, "--cli", "opencode", "--agent-scope", AGENT_SCOPE];
   const r = spawnSync(cmd, args, {
     input: JSON.stringify(payload),
     encoding: "utf8",
@@ -2444,7 +2451,7 @@ export const factory: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli factory`;
     return {
       type: "command",
-      command,
+      command: command + agentScopeSuffix(scope),
       // droid reads `timeout` in SECONDS (verified against droid v0.171.0). 30s.
       timeout: 30,
       [FAILPROOFAI_HOOK_MARKER]: true,
@@ -2577,7 +2584,7 @@ export const devin: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli devin`;
     return {
       type: "command",
-      command,
+      command: command + agentScopeSuffix(scope),
       // Devin reads `timeout` in SECONDS like Claude. 60 = 60s.
       timeout: 60,
       [FAILPROOFAI_HOOK_MARKER]: true,
@@ -2722,7 +2729,7 @@ export const antigravity: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli antigravity`;
     return {
       type: "command",
-      command,
+      command: command + agentScopeSuffix(scope),
       // Antigravity reads `timeout` in SECONDS (verified agy v1.1.2). 30s.
       timeout: 30,
       [FAILPROOFAI_HOOK_MARKER]: true,
@@ -2910,7 +2917,7 @@ export const goose: Integration = {
         : `"${binaryPath}" --hook ${eventType} --cli goose`;
     // Open Plugins command entry: { type, command } only (Goose applies its own
     // timeout; no marker field — see isGooseFailproofaiHook).
-    return { type: "command", command };
+    return { type: "command", command: command + agentScopeSuffix(scope) };
   },
 
   isFailproofaiHook: isGooseFailproofaiHook,

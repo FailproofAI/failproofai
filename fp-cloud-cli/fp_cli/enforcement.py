@@ -28,20 +28,38 @@ re-reads rather than reporting a success that erased somebody.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, replace as dataclass_replace
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .errors import ApiError
 from .models import PolicyRef, PolicyVersion
 
 VALID_EFFECTS = ("enforce", "observe")
 
+#: What a policy version carries: JavaScript (`regex`), Jev checks (`jev`), or
+#: JavaScript reviewable by its own Jev checks (`both`).
+VALID_KINDS = ("regex", "jev", "both")
+
+#: The Jev modes a deployment may set. `local` stops FailproofAI Cloud
+#: overriding the machine's own mode (the server stores it as no value).
+JEV_MODES = ("off", "observe", "enforce", "local")
+
+#: The server's (and the machine's) cap on Jev declarations per policy version.
+MAX_JEV_DECLARATIONS = 24
+AGENT_INTEGRATIONS = frozenset({
+    "claude", "codex", "copilot", "cursor", "opencode", "pi",
+    "hermes", "openclaw", "factory", "devin", "antigravity", "goose",
+})
+AGENT_ID = re.compile(r"^agt_[0-9a-f]{16,32}$")
+
 #: `id`, `id@3`, `id:observe`, `id@3:observe`. The id charset mirrors the
 #: server's `safe_identifier`, so a ref this accepts is one the server will too
 #: — a rejection should come from the policy not existing, not from parsing.
 _REF = re.compile(r"^(?P<id>[A-Za-z0-9._-]{1,128})(?:@(?P<version>\d+))?(?:[:](?P<effect>[a-z]+))?$")
+_POLICY_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 class RefError(ValueError):
@@ -102,13 +120,34 @@ class DeployPlan:
     removed: List[PolicyRef]
     changed: List[Tuple[PolicyRef, PolicyRef]]
     unchanged: List[PolicyRef]
+    #: `--jev-mode` as given (`off|observe|enforce|local`), or None when the
+    #: command said nothing about Jev — which the server reads as "keep it".
+    jev_mode: Optional[str] = None
+    #: The mode FailproofAI Cloud sets on the machine now (None = local).
+    jev_mode_before: Optional[str] = None
+
+    @property
+    def jev_mode_after(self) -> Optional[str]:
+        """What the machine's Cloud-set mode will be (None = local)."""
+        if self.jev_mode is None:
+            return self.jev_mode_before
+        return None if self.jev_mode == "local" else self.jev_mode
+
+    @property
+    def jev_mode_changes(self) -> bool:
+        return self.jev_mode is not None and self.jev_mode_after != self.jev_mode_before
+
+    @property
+    def set_changes(self) -> bool:
+        """Whether the POLICY SET changes — anything added, removed or moved."""
+        return bool(self.added or self.removed or self.changed)
 
     @property
     def is_noop(self) -> bool:
-        return not (self.added or self.removed or self.changed)
+        return not (self.set_changes or self.jev_mode_changes)
 
     def to_dict(self) -> Dict[str, object]:
-        return {
+        out: Dict[str, object] = {
             "machineId": self.machine_id,
             "base": self.base,
             "result": [p.to_dict() for p in self.result],
@@ -118,6 +157,14 @@ class DeployPlan:
             "unchanged": [p.to_dict() for p in self.unchanged],
             "noop": self.is_noop,
         }
+        if self.jev_mode is not None:
+            # `local` on both sides: the wire word, not the stored NULL.
+            out["jevMode"] = {
+                "from": self.jev_mode_before or "local",
+                "to": self.jev_mode_after or "local",
+                "changed": self.jev_mode_changes,
+            }
+        return out
 
 
 def latest_versions(policies: Iterable[PolicyVersion]) -> Dict[str, int]:
@@ -174,7 +221,10 @@ def resolve_ref(
         )
     if effect is None:
         effect = existing.effect if existing else "enforce"
-    return PolicyRef(id=pid, version=version, effect=effect)
+    return PolicyRef(
+        id=pid, version=version, effect=effect,
+        agent_targets=existing.agent_targets if existing else None,
+    )
 
 
 def plan_deploy(
@@ -187,13 +237,28 @@ def plan_deploy(
     replace: Optional[Sequence[str]] = None,
     latest: Optional[Dict[str, int]] = None,
     disabled: Optional[set] = None,
+    jev_mode: Optional[str] = None,
+    current_jev_mode: Optional[str] = None,
+    kinds: Optional[Dict[Tuple[str, int], str]] = None,
+    targets: Sequence[str] = (),
+    all_agents: Sequence[str] = (),
 ) -> DeployPlan:
     """Compute the full resulting set, plus the diff to show before writing.
 
     `replace` (`--set`) is exclusive with `add`/`remove`: mixing "these exactly"
     with "these as well" has no single obvious reading, and guessing one would
     be guessing about somebody's fleet.
+
+    `jev_mode` is `--jev-mode`; `current_jev_mode` what Cloud sets now (None =
+    local). `kinds` maps `(id, version)` to the version's kind, so an `observe`
+    effect on a Jev-only version — which the server refuses, because a Jev
+    rollout is observed through the Jev MODE — is refused here, before a plan is
+    drawn and confirmed for a write that cannot happen.
     """
+    if jev_mode is not None and jev_mode not in JEV_MODES:
+        raise RefUsageError(
+            f"--jev-mode {jev_mode!r} is not one of {', '.join(JEV_MODES)}"
+        )
     latest = latest or {}
     current_list = list(current or [])
     current_map = {p.id: p for p in current_list}
@@ -220,13 +285,48 @@ def plan_deploy(
             ref = resolve_ref(token, latest=latest, current=current_map, disabled=disabled)
             result_map[ref.id] = ref
 
+    grouped: Dict[str, List[Dict[str, str]]] = {}
+    for token in targets:
+        if "=" not in token:
+            raise RefUsageError(f"--target {token!r} must be POLICY=INTEGRATION[/agt_ID]")
+        pid, selector = token.split("=", 1)
+        if not _POLICY_ID.fullmatch(pid):
+            raise RefUsageError(f"--target policy id {pid!r} is invalid")
+        integration, _, instance_id = selector.partition("/")
+        if integration not in AGENT_INTEGRATIONS or ("/" in selector and not AGENT_ID.fullmatch(instance_id)):
+            raise RefUsageError(f"--target {token!r} has an unknown integration or invalid profile ID")
+        entry = {"integration": integration}
+        if instance_id:
+            entry["instanceId"] = instance_id
+        collection = grouped.setdefault(pid, [])
+        if entry in collection or len(collection) == 32:
+            raise RefUsageError("--target has a duplicate selector or more than 32 selectors for a policy")
+        collection.append(entry)
+    clears = set(all_agents)
+    if clears.intersection(grouped):
+        raise RefUsageError("--all-agents and --target cannot name the same policy")
+    for pid in clears:
+        if not _POLICY_ID.fullmatch(pid):
+            raise RefUsageError(f"--all-agents policy id {pid!r} is invalid")
+    for pid in grouped.keys() | clears:
+        if pid not in result_map:
+            raise RefUsageError(f"{pid!r} is not in the resulting set — add or keep it before targeting")
+        result_map[pid] = dataclass_replace(result_map[pid], agent_targets=grouped.get(pid))
+
     result = sorted(result_map.values(), key=lambda p: p.id)
+    for ref in result:
+        if ref.effect == "observe" and (kinds or {}).get((ref.id, ref.version)) == "jev":
+            raise RefUsageError(
+                f"{ref.id}@{ref.version} is a Jev policy, and an effect does not apply to Jev "
+                "checks — deploy it as enforce and use --jev-mode observe to watch Jev without "
+                "it deciding anything"
+            )
     added, removed, changed, unchanged = [], [], [], []
     for pid, ref in sorted(result_map.items()):
         was = current_map.get(pid)
         if was is None:
             added.append(ref)
-        elif (was.version, was.effect) != (ref.version, ref.effect):
+        elif (was.version, was.effect, was.agent_targets) != (ref.version, ref.effect, ref.agent_targets):
             changed.append((was, ref))
         else:
             unchanged.append(ref)
@@ -242,7 +342,71 @@ def plan_deploy(
         removed=removed,
         changed=changed,
         unchanged=unchanged,
+        jev_mode=jev_mode,
+        jev_mode_before=current_jev_mode,
     )
+
+
+def jev_mode_after(mode: str) -> Optional[str]:
+    """What a `--jev-mode`/`jev-mode` word leaves stored: `local` is None (Cloud stops overriding)."""
+    return None if mode == "local" else mode
+
+
+def version_kinds(policies: Iterable[PolicyVersion]) -> Dict[Tuple[str, int], str]:
+    """`{(id, version): kind}` for every published version."""
+    return {(p.id, p.version): p.kind for p in policies}
+
+
+def resolve_kind(kind: Optional[str], *, has_source: bool, has_semantic: bool) -> str:
+    """The kind a publish is, checked against what it was given.
+
+    Explicit wins; otherwise it follows from the inputs — JavaScript alone is
+    `regex` (what `publish` has always done), declarations alone `jev`, both
+    together `both`. A kind that contradicts its inputs is a usage error: a
+    `jev` policy has no JavaScript, and `regex` has no declarations.
+    """
+    if kind is None:
+        kind = "both" if (has_source and has_semantic) else ("jev" if has_semantic else "regex")
+    if kind not in VALID_KINDS:
+        raise RefUsageError(f"--kind {kind!r} is not one of {', '.join(VALID_KINDS)}")
+    if kind == "regex" and has_semantic:
+        raise RefUsageError("--kind regex takes no --semantic; use --kind both for JavaScript plus Jev checks")
+    if kind == "jev" and has_source:
+        raise RefUsageError("--kind jev takes no JavaScript source; use --kind both for JavaScript plus Jev checks")
+    if kind in ("jev", "both") and not has_semantic:
+        raise RefUsageError(f"--kind {kind} needs --semantic <file.json> with its Jev declarations")
+    return kind
+
+
+def parse_semantic(text: str, *, what: str = "--semantic") -> List[Any]:
+    """The Jev declarations in a `--semantic` file: a JSON array of declaration
+    objects (a `{"semantic": [...]}` wrapper is accepted too).
+
+    Deliberately a SHAPE check only — 1 to 24 objects, each with a name. What a
+    declaration may say (modes, probes, caps, reserved names) is checked by the
+    server, and authoritatively by each machine's own parser; a third copy of
+    those rules here is a third thing to drift. The server's refusal names the
+    declaration and the rule.
+    """
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        raise RefUsageError(f"{what} is not valid JSON: {exc}")
+    if isinstance(value, dict) and isinstance(value.get("semantic"), list):
+        value = value["semantic"]
+    if not isinstance(value, list):
+        raise RefUsageError(f"{what} must be a JSON array of Jev declarations")
+    if not value:
+        raise RefUsageError(f"{what} holds no Jev declarations")
+    if len(value) > MAX_JEV_DECLARATIONS:
+        raise RefUsageError(
+            f"{what} holds {len(value)} Jev declarations; a policy version carries at most "
+            f"{MAX_JEV_DECLARATIONS}"
+        )
+    for i, entry in enumerate(value):
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+            raise RefUsageError(f"{what} declaration #{i} is not an object with a name")
+    return value
 
 
 def check_race(base: Optional[int], returned: int) -> None:

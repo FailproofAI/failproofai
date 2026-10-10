@@ -50,7 +50,7 @@ failproofai policies add FailproofAI/jev-policies
 failproofai jev setup --provider failproofai
 ```
 
-It does not turn Jev **off** either. If the machine's `jev.json` already runs Jev through FailproofAI Cloud, it is left as it is, and the output says that Jev still sends each checked tool call and the recent prompt, and that `failproofai jev setup --mode off` switches it off.
+It also turns Jev through FailproofAI Cloud **off**. A `jev.json` that runs Jev through FailproofAI Cloud (left by an earlier connection with transcripts on) is removed, by the same rule `config --disconnect` uses, and the output says Jev via FailproofAI Cloud stays off on this machine. A `jev.json` for your own Jev endpoint is left as it is, and so is a FailproofAI Cloud one you switched off (`--mode off`).
 
 <Warning>
 Connecting **never overwrites** an existing `~/.failproofai/jev.json`. If you already use your own Jev endpoint, it keeps being used, and the output says the file was left as configured — and, when that file leaves Jev off (refused, or switched off), says so and how to fix it. To switch that machine to FailproofAI Cloud, run `failproofai jev setup --provider failproofai`.
@@ -67,6 +67,22 @@ failproofai jev setup --mode off       # keep the config, stop asking Jev
 ```
 
 The same switch is in the local dashboard: **Settings → Jev** has an on/off switch and observe/enforce. It rewrites the mode and nothing else. Hooks read the config on every tool call, so a change applies from the next one, with no restart.
+
+FailproofAI Cloud can also set a machine's mode, per machine, from the fleet page or with `fp fleet jev-mode <machine> observe|enforce|off`. A mode set there **overrides `jev.json`**, for as long as the machine stays connected. `failproofai config --disconnect` removes it together with the Cloud policies. `local` hands the choice back to the machine.
+
+- `off`: no Jev at all, whatever `jev.json` says.
+- `observe` or `enforce`: every checked tool call goes to FailproofAI Cloud over the machine's FailproofAI Cloud connection. `jev.json` is not used, even if it names another provider. FailproofAI Cloud asks its Jev checks for that machine together with the checks of the packs installed there. The Cloud checks run on FailproofAI Cloud, and nothing of them is installed on the machine. In `enforce`, Jev's own deny checks block calls as well as clearing the regex verdicts they review.
+
+`failproofai jev status` then says `Jev checks run on FailproofAI Cloud (mode: enforce)`. It also names the checks that review each `both` policy. The fleet page shows why a machine with a mode cannot ask:
+
+- `transcripts_disabled`: the machine was connected with `--no-transcripts`, which never switches Jev on.
+- `jev_unconfigured`: the machine's key does not carry `jev:evaluate`.
+- `jev_rate_limited`: FailproofAI Cloud refused some of the machine's calls for the organization's Jev rate limit, and those calls were decided by the regex policies alone.
+- `jev_unavailable`: several calls in a row failed, so the machine skips FailproofAI Cloud's Jev for a minute at a time. It retries on its own.
+
+If FailproofAI Cloud does not answer within 5 seconds, the regex policies decide alone, as for any Jev outage. After 3 failures in a row the machine stops asking for a minute at a time, so a Cloud outage does not slow every tool call.
+
+A session pause (`failproofai config --pause`) does not stop FailproofAI Cloud's Jev checks, just as it does not stop Cloud-managed policies. It does pause the Jev checks of packs installed on the machine.
 
 ## Check what it is doing
 
@@ -112,7 +128,7 @@ Every one of these falls back to your policies' result for that call, and is rec
 | `http-502` | Jev is unavailable right now. |
 | `http-503` | This Cloud cannot serve Jev for your org: no model gateway, an org not provisioned yet, or the gateway is down. Ask your admin; hooks ask again at most once a minute. |
 | `http-404` | This FailproofAI Cloud does not serve Jev yet. |
-| `timeout` | No answer within `timeoutMs` (default 3000). |
+| `timeout` | No answer within `timeoutMs` (default 3000). While FailproofAI Cloud sets the machine's Jev mode, the wait is 5000 ms and `jev.json`'s `timeoutMs` is not used. |
 | `model-mismatch` | A Jev version other than 1.13 answered. |
 
 ## Where the key lives, and where it goes

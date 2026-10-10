@@ -157,6 +157,9 @@ export const credentialsFile = (home?: string) => atHome(home, "credentials.json
  */
 export const jevConfigFile = (home?: string) => atHome(home, "jev.json");
 
+/** Owner-only inventory maintained by failproofaid. Paths stay on this machine. */
+export const agentRosterFile = (home?: string) => atHome(home, "agents", "roster.json");
+
 // ── Daemon binaries ──────────────────────────────────────────────────────────
 
 export const binDir = (home?: string) => atHome(home, "bin");
@@ -646,6 +649,9 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // history the user was already told about. Kept OUT of `auditSessionFile`
   // precisely so both survive a sign-out.
   { path: auditMachineFile, class: "identity" },
+  // Profile IDs are stable across restarts and renames. A reset that deleted
+  // this file would make Cloud's exact-profile assignments match nobody.
+  { path: agentRosterFile, class: "identity" },
 
   // ── May be dropped: rebuilt on demand ──
   // NOTE: `auditDir` itself is deliberately absent. Layout 4 made it MIXED — it

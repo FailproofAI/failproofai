@@ -1,15 +1,25 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   clearActiveCloudManagedPolicies,
   readActiveCloudManagedPolicies,
+  readCloudAuthorityInputs,
 } from "../../src/hooks/cloud-managed-policies";
+import { cloudPoliciesDir } from "../../src/hooks/fp-home";
 
 const roots: string[] = [];
+let originalHome: string | undefined;
+
+beforeEach(() => {
+  originalHome = process.env.FAILPROOFAI_HOME;
+  const home = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-home-"));
+  roots.push(home);
+  process.env.FAILPROOFAI_HOME = home;
+});
 
 function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
   const root = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-test-"));
@@ -33,10 +43,18 @@ function fixture(policyBytes = Buffer.from("export default 'managed';\n")) {
 
 afterEach(() => {
   delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+  if (originalHome === undefined) delete process.env.FAILPROOFAI_HOME;
+  else process.env.FAILPROOFAI_HOME = originalHome;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("cloud-managed policy active deployment", () => {
+  it("ignores even an intact manifest after explicit OSS disconnect", () => {
+    fixture();
+    writeFileSync(join(process.env.FAILPROOFAI_HOME!, "config.json"), JSON.stringify({ mode: { kind: "oss" } }));
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+  });
+
   it("returns only hash-verified artifacts from active.json", () => {
     const { policyPath, sha256 } = fixture();
     expect(readActiveCloudManagedPolicies()).toEqual([
@@ -111,6 +129,72 @@ describe("policy effect", () => {
   });
 });
 
+describe("agent-scoped assignments", () => {
+  const hermesWork = { integration: "hermes" as const, instanceId: "agt_1234567890abcdef" };
+  const hermesOther = { integration: "hermes" as const, instanceId: "agt_abcdef1234567890" };
+  const codex = { integration: "codex" as const, instanceId: "agt_0000000000000000" };
+
+  function scoped(targets: unknown, schemaVersion = 3): string {
+    const { root, sha256 } = fixture();
+    writeFileSync(join(root, "active.json"), JSON.stringify({
+      schemaVersion,
+      deployment: 12,
+      policies: [{
+        id: "guard", version: 3, sha256,
+        path: "deployments/12/guard.mjs",
+        agentTargets: targets,
+        authority: "reviewable",
+        reviewedBy: ["check"],
+      }],
+    }));
+    return root;
+  }
+
+  it("filters before touching the artifact and before registering a reviewer", () => {
+    const root = scoped([{ integration: "hermes", instanceId: hermesWork.instanceId }]);
+    // A mismatched profile must not even read this file; importing it would
+    // execute code from a deployment that is not assigned to that profile.
+    rmSync(join(root, "deployments", "12", "guard.mjs"));
+    expect(readActiveCloudManagedPolicies(hermesOther)).toEqual([]);
+    expect(readCloudAuthorityInputs(hermesOther)).toEqual([]);
+    expect(readActiveCloudManagedPolicies(codex)).toEqual([]);
+    expect(readActiveCloudManagedPolicies()).toEqual([]);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow();
+  });
+
+  it("matches integration-wide targets including profiles added later", () => {
+    scoped([{ integration: "hermes" }, { integration: "codex", instanceId: codex.instanceId }]);
+    expect(readActiveCloudManagedPolicies(hermesWork)).toHaveLength(1);
+    expect(readActiveCloudManagedPolicies(hermesOther)).toHaveLength(1);
+    expect(readActiveCloudManagedPolicies(codex)).toHaveLength(1);
+    expect(readCloudAuthorityInputs(hermesWork)).toHaveLength(1);
+  });
+
+  it("rejects scope in schema two and malformed or empty selectors", () => {
+    scoped([{ integration: "hermes" }], 2);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+    for (const targets of [[], [{ integration: "stranger" }], [{ integration: "hermes", instanceId: "bad" }],
+      [{ integration: "hermes" }, { integration: "hermes" }]]) {
+      scoped(targets);
+      expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+    }
+  });
+
+  it("a malformed target invalidates the whole manifest, including its reviewer set", () => {
+    const root = scoped([{ integration: "hermes" }]);
+    const activePath = join(root, "active.json");
+    const active = JSON.parse(readFileSync(activePath, "utf8"));
+    active.policies.push({
+      ...active.policies[0],
+      id: "malformed",
+      agentTargets: [{ integration: "hermes", instanceId: "wrong" }],
+    });
+    writeFileSync(activePath, JSON.stringify(active));
+    expect(readCloudAuthorityInputs(hermesWork)).toEqual([]);
+    expect(() => readActiveCloudManagedPolicies(hermesWork)).toThrow(/agentTargets/);
+  });
+});
+
 describe("clearActiveCloudManagedPolicies", () => {
   it("stops enforcement while leaving the verified artifacts on disk", () => {
     // `--disconnect` cleared the credential, which ends POLLING. Every artifact
@@ -118,7 +202,21 @@ describe("clearActiveCloudManagedPolicies", () => {
     // every tool call — so a machine that had deliberately left its
     // organisation went on being governed by whatever deployment was current
     // when it left, indefinitely, while `--status` called it unconnected.
-    const { policyPath } = fixture();
+    const home = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-home-"));
+    roots.push(home);
+    process.env.FAILPROOFAI_HOME = home;
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    const managedRoot = cloudPoliciesDir();
+    mkdirSync(managedRoot, { recursive: true });
+    const bytes = "export default 'managed';\n";
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const artifact = join(managedRoot, "artifact.mjs");
+    writeFileSync(artifact, bytes);
+    writeFileSync(join(managedRoot, "active.json"), JSON.stringify({
+      schemaVersion: 2,
+      deployment: 12,
+      policies: [{ id: "guard", version: 3, sha256, path: "artifact.mjs" }],
+    }));
     expect(readActiveCloudManagedPolicies()).toHaveLength(1);
 
     expect(clearActiveCloudManagedPolicies()).toBe(true);
@@ -126,7 +224,7 @@ describe("clearActiveCloudManagedPolicies", () => {
     expect(readActiveCloudManagedPolicies()).toEqual([]);
     // The artifacts themselves stay: large, hash-verified on use, and inert
     // once nothing points at them — so a reconnect is cheap and works offline.
-    expect(existsSync(policyPath)).toBe(true);
+    expect(existsSync(artifact)).toBe(true);
   });
 
   it("reports nothing removed when no deployment was active", () => {
@@ -134,6 +232,17 @@ describe("clearActiveCloudManagedPolicies", () => {
     roots.push(root);
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR = root;
     expect(clearActiveCloudManagedPolicies()).toBe(false);
+  });
+
+  it("does not delete unrelated files from an overridden, potentially shared directory", () => {
+    const { root } = fixture();
+    const names = ["active.json", "desired-state.json", "errors.json", "daemon-errors.json", "jev-budget.json"];
+    for (const name of names.slice(1)) writeFileSync(join(root, name), `shared ${name}`);
+    const original = names.map((name) => readFileSync(join(root, name), "utf8"));
+
+    expect(clearActiveCloudManagedPolicies()).toBe(false);
+    expect(names.map((name) => readFileSync(join(root, name), "utf8"))).toEqual(original);
+    expect(readActiveCloudManagedPolicies()).toHaveLength(1);
   });
 });
 

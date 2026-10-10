@@ -97,7 +97,7 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
       ...active.map((p) => [p.sessionId, describe(p, now).trim()] as [string, string]),
     ];
     const trailer = stack(
-      note("Cloud-managed policies keep enforcing regardless.", renderOpts),
+      note("Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing regardless.", renderOpts),
       nextStep("failproofai config --resume", "Resume early with:", renderOpts),
     );
     return {
@@ -173,7 +173,7 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
         : `Enforcement paused · ${formatDuration(durationMs)} · resumes at ${until}`,
       "",
       "  Builtin, custom and convention policies are suspended for this session.",
-      "  Cloud-managed policies keep enforcing.",
+      "  Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing.",
       "",
       "It lifts on its own — no action needed. To end it early:",
       "  failproofai config --resume",

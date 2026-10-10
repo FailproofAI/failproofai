@@ -280,6 +280,12 @@ describe("planAgents", () => {
     expect(plan.seen).toEqual(["claude"]);
   });
 
+  it("keeps a saved empty selection: an unattended re-run puts nothing back", () => {
+    const plan = planAgents({ detected: ["claude"], saved: { selected: [], seen: ["claude"] }, hooked: [] });
+    expect(defaultSelection(plan)).toEqual([]);
+    expect(agentsCollapsedLines(kit, plan, [], false, c)).toEqual(["AGENTS", "▲ Tracing no agents.  ·  failproofai config"]);
+  });
+
   it("defaults to every agent only when nothing is detected, hooked or saved", () => {
     expect(defaultSelection(planAgents({ detected: [], hooked: [] }))).toHaveLength(INTEGRATION_TYPES.length);
     expect(defaultSelection(planAgents({ detected: ["claude"], hooked: [] }))).toEqual(["claude"]);
@@ -614,6 +620,14 @@ describe("headless runs", () => {
     const result = await runConfigureWizard(headlessIO());
     expect(result.mode).toBe("cloud");
     expect(connectToCloud).not.toHaveBeenCalled();
+  });
+
+  it("hooks nothing on a re-run whose saved selection is empty", async () => {
+    updateConfig({ agents: { selected: [], seen: ["claude"] } });
+    const result = await runConfigureWizard(headlessIO());
+    expect(result.applied).toBe(true);
+    expect(installHooks).not.toHaveBeenCalled();
+    expect(readFpConfig().agents?.selected).toEqual([]);
   });
 
   it("takes --agents as given and skips the step", async () => {

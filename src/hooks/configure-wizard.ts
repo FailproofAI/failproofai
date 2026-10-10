@@ -274,6 +274,9 @@ export function planAgents(input: {
  * nothing there would leave setup finished and nothing guarded.
  */
 export function defaultSelection(plan: AgentPlan): IntegrationType[] {
+  // A saved answer stands even when it is empty: removing every agent's hooks
+  // saves an empty selection, and an unattended re-run must not put them back.
+  if (plan.mode === "rerun") return plan.initial;
   return plan.initial.length > 0 ? plan.initial : [...plan.order];
 }
 
@@ -359,6 +362,10 @@ export function agentsCollapsedLines(
   const n = selected.length;
   const tracing = `Tracing ${n} ${n === 1 ? "agent" : "agents"}`;
   const lines = [kit.head("Agents")];
+  if (n === 0) {
+    lines.push(kit.caution("Tracing no agents.", "failproofai config"));
+    return lines;
+  }
   if (added.length === 0 && removed.length === 0) {
     const list = selected.map((id) => getIntegration(id).displayName).join(", ");
     lines.push(...wrapAfterGlyph(c.guide("✓"), `${tracing}: ${list}`, kit.cols));
@@ -1206,7 +1213,9 @@ export async function runConfigureWizard(
   // off policies the user had turned on, and setup must never reduce
   // protection. Setup chooses no policies of its own any more.
   const policies = readScopedHooksConfig("user", cwd).enabledPolicies ?? [];
-  await transient("Installing hooks…", () =>
+  // Nothing to hook is a real answer (a saved empty selection), and handing
+  // installHooks an empty list is not a way to say it.
+  if (selected.length > 0) await transient("Installing hooks…", () =>
     installHooks(
       policies,
       "user",

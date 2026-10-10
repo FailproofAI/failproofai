@@ -801,6 +801,11 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         }
     };
 
+    // Initialize the additive lane before announcing this deployment. TLS
+    // client construction can be slow; doing it after the startup milestone
+    // widens the config-snapshot race for a credential rotated at startup.
+    let otlp_tasks = fpai_collect::otlp::tasks(home.clone(), ingest.clone(), &cfg.settings.otlp);
+
     eprintln!(
         "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
         cfg.settings.sessions, cfg.settings.hooks, cfg.settings.hooks_verbosity, ingest.url,
@@ -1264,7 +1269,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         !HARNESS_KEYS.contains(&source) && source != "claude-subagent"
             || cfg.settings.sessions_for(source)
     });
-    tasks.extend(fpai_collect::otlp::tasks(home, ingest, &cfg.settings.otlp));
+    tasks.extend(otlp_tasks);
 
     tasks.extend([
         // Latency: delivers a batch within milliseconds of it being published.

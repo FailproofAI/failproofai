@@ -164,6 +164,54 @@ describe("colour tiers", () => {
   });
 });
 
+describe("the 2026-10 roles", () => {
+  const INK3_24 = "38;2;118;127;139"; // #767f8b
+  const TRACK_24 = "38;2;62;67;76"; // #3e434c
+  const ERR_24 = "38;2;240;113;120"; // #f07178
+
+  it("paints ink3 and track in their designed greys at 24-bit", () => {
+    expect(withEnv(TRUECOLOR, () => paint(true).ink3("x"))).toBe(`\x1B[${INK3_24}mx\x1B[0m`);
+    expect(withEnv(TRUECOLOR, () => paint(true).track("x"))).toBe(`\x1B[${TRACK_24}mx\x1B[0m`);
+  });
+
+  it("keeps both greys as the dim ATTRIBUTE below 24-bit, never a fixed colour", () => {
+    // A cube grey fights every theme that is not ours, and the basic tier's
+    // bright black (90) IS the background in Solarized Dark.
+    for (const env of [ANSI256, BASIC]) {
+      expect(withEnv(env, () => paint(true).ink3("x"))).toBe("\x1B[2mx\x1B[0m");
+      expect(withEnv(env, () => paint(true).track("x"))).toBe("\x1B[2mx\x1B[0m");
+    }
+  });
+
+  it("leaves ink2 in the terminal's own foreground at every tier", () => {
+    // The designed #a7adb6 is about 2.2:1 on a light ground and nothing detects
+    // which ground we are on, so descriptions are never painted.
+    for (const env of [TRUECOLOR, ANSI256, BASIC]) {
+      expect(withEnv(env, () => paint(true).ink2("Block sudo"))).toBe("Block sudo");
+    }
+  });
+
+  it("paints err as a red at every tier, and not the brand pink's neighbour at 256", () => {
+    expect(withEnv(TRUECOLOR, () => paint(true).err("x"))).toBe(`\x1B[${ERR_24}mx\x1B[0m`);
+    // 204 is nearest by distance but differs from pink's 168 only in red.
+    expect(withEnv(ANSI256, () => paint(true).err("x"))).toBe("\x1B[38;5;203mx\x1B[0m");
+    expect(withEnv(ANSI256, () => paint(true).err("x"))).not.toContain("38;5;204");
+    expect(withEnv(BASIC, () => paint(true).err("x"))).toBe("\x1B[31mx\x1B[0m");
+  });
+
+  it("routes the new roles through brandAnsi too, so no caller hard-codes them", () => {
+    expect(withEnv(TRUECOLOR, () => brandAnsi("err"))).toBe(`\x1B[${ERR_24}m`);
+    expect(withEnv(ANSI256, () => brandAnsi("ink3"))).toBe("\x1B[2m");
+    expect(withEnv(BASIC, () => brandAnsi("track"))).toBe("\x1B[2m");
+  });
+
+  it("emits ZERO escapes for the new roles when colour is off", () => {
+    const c = withEnv(TRUECOLOR, () => paint(false));
+    const painted = [c.ink2("a"), c.ink3("b"), c.track("c"), c.err("d")].join("");
+    expect(painted).toBe("abcd");
+  });
+});
+
 describe("the logomark follows the tier", () => {
   const tty = { isTTY: true, columns: 80, write: vi.fn(() => true) } as unknown as TTYOut;
 

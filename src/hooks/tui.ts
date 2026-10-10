@@ -126,11 +126,11 @@ interface Hue {
    * xterm-256 index for the middle tier, verified as the nearest cube entry by
    * Euclidean distance rather than eyeballed.
    *
-   * Optional because `dim` has no honest answer: its `basic` is SGR 2, an
-   * ATTRIBUTE that steps down whatever foreground the user's theme is already
-   * using, and the cube's nearest grey (243, #767676) is a fixed colour that
-   * fights every theme that is not ours. So dim keeps the attribute at all
-   * three tiers and this stays undefined.
+   * Optional because the greys (`dim`, `ink3`, `track`) have no honest answer:
+   * their `basic` is SGR 2, an ATTRIBUTE that steps down whatever foreground the
+   * user's theme is already using, and the cube's nearest grey (243, #767676)
+   * is a fixed colour that fights every theme that is not ours. So a grey keeps
+   * the attribute below 24-bit and this stays undefined.
    */
   c256?: number;
   basic: string;
@@ -149,6 +149,23 @@ const HUES = {
   pink: { rgb: [228, 88, 125], c256: 168, basic: "95" }, // #e4587d — selection, enabled, the mark, the brand
   warn: { rgb: [227, 179, 65], c256: 179, basic: "33" },
   dim: { rgb: [107, 118, 132], basic: "2" },
+  // The 2026-10 screen language's two greys. Both are the designed hex at 24-bit
+  // and the SGR 2 ATTRIBUTE below it, for the reason `dim` gives above: a fixed
+  // cube grey fights every theme that is not ours, and the basic tier's "bright
+  // black" (90) is the BACKGROUND colour in Solarized Dark, so a label drawn in
+  // it would vanish.
+  //
+  // There is no `ink2`: descriptions use the terminal's own foreground at every
+  // tier. The designed #a7adb6 is tuned for a dark ground, nothing here can tell
+  // which ground it is on, and on a light one it measures about 2.2:1 — half of
+  // what today's dim descriptions get. `paint().ink2` is therefore the identity.
+  ink3: { rgb: [118, 127, 139], basic: "2" }, // #767f8b — kv labels, heading meta, key hints
+  track: { rgb: [62, 67, 76], basic: "2" }, // #3e434c — the empty part of a progress bar, never text
+  // A state, never branding: the ✕ on a failed line. 203 rather than 204, which
+  // is the nearest cube entry by distance but differs from the brand pink's 168
+  // only in its red channel and reads as pink at that tier — the one deliberate,
+  // eyeballed exception to the nearest-entry rule above.
+  err: { rgb: [240, 113, 120], c256: 203, basic: "31" }, // #f07178
 } satisfies Record<string, Hue>;
 
 export function colorsEnabled(out: TTYOut): boolean {
@@ -237,6 +254,13 @@ export function paint(on: boolean) {
     // to `pink` there, at which point it is deleted.
     softPink: mk(HUES.pink),
     warn: mk(HUES.warn),
+    // The 2026-10 roles. `ink2` is the terminal's own foreground on purpose —
+    // see the note on HUES — so it is the identity at every tier, and exists
+    // so a call site says which role it means rather than leaving text bare.
+    ink2: (s: string): string => s,
+    ink3: mk(HUES.ink3),
+    track: mk(HUES.track),
+    err: mk(HUES.err),
   };
 }
 

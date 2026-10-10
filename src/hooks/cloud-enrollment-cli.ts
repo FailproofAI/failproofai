@@ -14,7 +14,6 @@ import {
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import {
-  daemonRestartCommand,
   daemonServiceStatus,
   daemonStatusCommand,
   daemonVersionSkew,
@@ -399,15 +398,14 @@ export function runDisconnectCommand(): CommandResult {
     ...jevLines,
   ];
   if (removedIngest) {
-    // Named honestly. The collector manager starts once for the daemon's
-    // lifetime (`main.rs`) and the uploader caches its bearer key at
-    // construction, so nothing already running notices this file disappear —
-    // "stop being sent" was true only of the NEXT daemon start. Telling the
-    // user the step that makes it true beats a claim that quietly is not.
+    // A running failproofaid notices on its own: its collector manager polls
+    // the collector config, which includes this credential, and stops the
+    // collector within one interval once it is gone (`spawn_collector_manager`
+    // in main.rs). This line used to say to restart the daemon, written when
+    // the manager started once per daemon lifetime and cached the key.
     lines.push(
-      "  No new hook activity or transcripts will be queued. A running failproofaid",
-      "  keeps the key it started with, so restart it to stop the current process",
-      `  sending: ${daemonRestartCommand() ?? "restart failproofaid"}`,
+      "  No new hook activity or transcripts will be queued, and a running failproofaid",
+      "  stops sending within a few seconds: it notices the key is gone.",
     );
   }
   return { exitCode: 0, lines };

@@ -428,16 +428,16 @@ describe("--disconnect means disconnect", () => {
     expect(r.lines.join("\n")).toMatch(/No new hook activity or transcripts will be queued/);
   });
 
-  it("names the restart rather than claiming a running daemon already stopped", async () => {
-    // It used to print "Hook activity and transcripts stop being sent", which
-    // was not true yet: the collector manager starts once for the daemon's
-    // lifetime (`main.rs`) and the uploader caches its bearer key at
-    // construction, so a running failproofaid never notices the credential
-    // file disappear. The claim only became true at the next daemon start.
+  it("says a running daemon stops on its own, without sending anyone to restart it", async () => {
+    // It once said "restart it to stop the current process sending", true when
+    // the collector manager started once per daemon lifetime and cached the
+    // key. The manager now polls the collector config, which includes the
+    // ingest credential, and stops the collector within one interval once it
+    // is gone, so the restart advice sent people to do work that was not needed.
     await runConnectCommand({ ...base, machineId: "m-1" });
     const text = runDisconnectCommand().lines.join("\n");
-    expect(text).toMatch(/restart it to stop the current process/);
-    expect(text).not.toMatch(/transcripts stop being sent/);
+    expect(text).toMatch(/stops sending within a few seconds/);
+    expect(text).not.toMatch(/restart it/);
   });
 
   it("stops ENFORCING cloud-managed policies, not just refreshing them", async () => {

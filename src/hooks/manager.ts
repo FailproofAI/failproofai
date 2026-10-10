@@ -1132,6 +1132,13 @@ export interface PoliciesScreen {
   custom: PoliciesScreenRow[];
   convention: Array<{ scope: string; rows: PoliciesScreenRow[] }>;
   cloud: { deployment: number; rows: PoliciesScreenRow[] } | null;
+  /**
+   * Builtins this build enforces itself because no pack is installed: the
+   * migration shim (`handler.ts` registers `enabledPolicies` when
+   * `hasInstalledRegexPacks()` is false). Listed so the screen does not show
+   * nothing for a machine enforcing all of them.
+   */
+  legacy?: Array<{ name: string; description: string }>;
 }
 
 /**
@@ -1182,7 +1189,8 @@ export function renderPoliciesScreen(
     screen.refused.length === 0 &&
     screen.custom.length === 0 &&
     screen.convention.length === 0 &&
-    !screen.cloud;
+    !screen.cloud &&
+    !screen.legacy?.length;
   if (screen.attention || empty) out.push("");
   if (screen.attention) {
     const { failed, text, fix } = screen.attention;
@@ -1242,6 +1250,16 @@ export function renderPoliciesScreen(
     const column = columnFor(rows.filter((row) => row.description).map((row) => row.name));
     out.push("", kit.head(heading, meta), ...kit.rows(items, column));
   };
+  // A count, not the names: since packs carry the policies, this screen lists
+  // no builtin by name (#738 pins that), but it must not draw a machine that is
+  // enforcing thirty of them as if nothing were there.
+  if (screen.legacy?.length) {
+    out.push(
+      "",
+      kit.head("Built in", `${screen.legacy.length} on, from before packs`),
+      `${INDENT}Move them into a pack:  ${kit.cmd(`failproofai policies add ${CORE_SOURCE}`)}`,
+    );
+  }
   if (screen.custom.length > 0) plain("Custom policies", undefined, screen.custom);
   for (const { scope, rows } of screen.convention) plain("Convention policies", scope, rows);
   if (screen.cloud) plain("Cloud-managed", `deployment ${screen.cloud.deployment}`, screen.cloud.rows);
@@ -1517,10 +1535,18 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     };
   }
 
+  // The same test the hook path uses to decide it enforces these itself.
+  const legacy = hasInstalledRegexPacks()
+    ? []
+    : BUILTIN_POLICIES.filter((p) => config.enabledPolicies.includes(p.name)).map((p) => ({
+        name: p.name,
+        description: p.description,
+      }));
+
   printBlock(
     process.stdout,
     renderPoliciesScreen(
-      { packs, refused, attention, custom, convention, cloud },
+      { packs, refused, attention, custom, convention, cloud, legacy },
       // Descriptions are shortened only for a terminal; a pipe keeps every word.
       { ...optsFor(process.stdout), fit: Boolean(process.stdout.isTTY), all },
     ),

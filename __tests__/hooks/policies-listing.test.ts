@@ -435,6 +435,31 @@ describe("renderPoliciesScreen", () => {
     cloud: null,
   };
 
+  it("counts the builtins this build enforces itself when no pack is installed, naming none", async () => {
+    // The migration shim: handler.ts registers enabledPolicies when no regex
+    // pack is installed. Without this section the screen showed nothing for a
+    // machine enforcing all of them, while config --status counted them.
+    const { renderPoliciesScreen } = await import("@/src/hooks/manager");
+    const lines = renderPoliciesScreen(
+      {
+        ...SCREEN,
+        packs: [],
+        attention: null,
+        legacy: [
+          { name: "block-sudo", description: "Block sudo" },
+          { name: "block-rm-rf", description: "Block recursive force deletes" },
+        ],
+      },
+      { version: "1.0.11", cols: 104, color: false },
+    );
+    expect(lines).toEqual([
+      "failproof ai  v1.0.11  ·  Policies",
+      "",
+      "BUILT IN  2 on, from before packs",
+      "  Move them into a pack:  failproofai policies add FailproofAI/policies",
+    ]);
+  });
+
   function withTruecolor<T>(fn: () => T): T {
     const before = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM, NO_COLOR: process.env.NO_COLOR };
     process.env.COLORTERM = "truecolor";

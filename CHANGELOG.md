@@ -19,6 +19,7 @@
 
 ### Fixes
 
+- `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now lists them under BUILT IN, with the command that moves them into a pack (#PR)
 - `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#PR)
 - A config change that landed while the daemon was restarting its collector after a backfill was recorded as already running and never applied. `failproofai config` re-adding an agent hits exactly that, writing its backfill request and then the selection, so the agent stayed off until some unrelated edit (#PR)
 - `failproofai backfill 6m` (no `--since`) silently ran the default 30 days. Stray words are refused now, with the option they probably meant (#PR)

@@ -1779,7 +1779,7 @@ async function runCli() {
           ["--disconnect", "Stop pulling policies and sending activity"],
           ["--no-transcripts", "Send policy decisions only, not session transcripts"],
           ["--url <url>", "Use a self-hosted cloud (or FAILPROOFAI_CLOUD_URL)"],
-          ["--machine-label <name>", "Rename a connected machine (never runs setup)"],
+          ["--machine-label <name>", "Rename this machine; with --token, set up under it"],
           ["--machine-id <id>", "Machine id for --connect (default: a stable id)"],
         ],
         // The key never goes on the command line: config itself warns that argv

@@ -360,3 +360,91 @@ describe("promptText validation errors stay within the terminal", () => {
     expect(rows.length).toBeGreaterThan(1);
   });
 });
+
+// ── the 2026-10 field ────────────────────────────────────────────────────────
+//
+// `field: true` draws `  <label>  › <value>`, the shape the redesign's text
+// fields take, with a refusal as a `✕` line under the field. Drawn in ONE write
+// per keystroke, ending on the field so the cursor sits where the typing is.
+describe("promptText as a 2026-10 field", () => {
+  const drive = (opts: { message: string; hint?: string; validate?: (v: string) => string | null }) => {
+    const writes: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: 80,
+      write: vi.fn((s: string) => { writes.push(s); return true; }),
+    } as unknown as TTYOut;
+    let onKey: ((s: string | undefined, k: unknown) => void) | undefined;
+    const stdin = {
+      isTTY: true,
+      isRaw: false,
+      setRawMode: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      on: vi.fn((ev: string, fn: never) => { if (ev === "keypress") onKey = fn; }),
+      removeListener: vi.fn(),
+      listenerCount: vi.fn(() => 0),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      addListener: vi.fn(),
+    } as unknown as TTYIn;
+    const result = promptText({ ...opts, field: true, stdin, stdout });
+    const type = (text: string) => {
+      for (const ch of text) onKey?.(ch, { name: ch });
+    };
+    const press = (name: string) => onKey?.(undefined, { name });
+    return { writes, result, type, press };
+  };
+  const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+  it("draws the label on a ten-column field with a › before the value", () => {
+    const { writes, type } = drive({ message: "email" });
+    type("you@x.io");
+    expect(plain(writes[writes.length - 1])).toBe("\r\x1b[2K  email     › you@x.io");
+  });
+
+  it("shows the hint as a placeholder only while the field is empty", () => {
+    const { writes, type } = drive({ message: "email", hint: "you@yourdomain.com" });
+    expect(plain(writes[0])).toBe("\r\x1b[2K  email     ›   you@yourdomain.com");
+    type("a");
+    expect(plain(writes[writes.length - 1])).not.toContain("yourdomain");
+  });
+
+  it("puts a refusal under the field as a ✕ line, in the same write, and ends on the field", () => {
+    const { writes, type, press } = drive({
+      message: "email",
+      validate: () => "That doesn't look like an email address.",
+    });
+    type("nope");
+    press("return");
+    expect(plain(writes[writes.length - 1])).toBe(
+      "\n\x1b[2K✕ That doesn't look like an email address.\x1b[1A\r\x1b[2K  email     › nope",
+    );
+  });
+
+  it("clears the refusal as soon as the value changes", () => {
+    const { writes, type, press } = drive({ message: "email", validate: (v) => (v.includes("@") ? null : "No.") });
+    type("nope");
+    press("return");
+    type("@");
+    // Down to the refusal's row, clear it, back up, then the field.
+    expect(plain(writes[writes.length - 1])).toBe("\x1b[1B\x1b[2K\x1b[1A\r\x1b[2K  email     › nope@");
+  });
+
+  it("moves past a refusal still showing when cancelled, so the next line starts clean", async () => {
+    const { writes, type, press, result } = drive({ message: "email", validate: () => "No." });
+    type("x");
+    press("return");
+    press("escape");
+    await expect(result).resolves.toBeNull();
+    expect(writes[writes.length - 1]).toBe("\n\n");
+  });
+
+  it("returns what was typed, as the spine form does", async () => {
+    const { type, press, result } = drive({ message: "code" });
+    type("123456");
+    press("return");
+    await expect(result).resolves.toBe("123456");
+  });
+});

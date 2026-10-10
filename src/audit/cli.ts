@@ -8,11 +8,11 @@
  *   failproofai audit --status       What this machine is scheduled to do.
  *   failproofai audit -h, --help     Show usage.
  *
- * `runAudit()` is a pure local function (no network, no account). We run it,
- * render the same four progress stages the dashboard's RunProgress shows,
- * pre-warm the dashboard cache (~/.failproofai/audit-dashboard.json), then start
- * the bundled dashboard server and open the browser to /audit — which renders
- * instantly from that cache.
+ * `runAudit()` is a pure local function (no network, no account). We run it
+ * behind a progress screen — a bar per agent, fed by `runAudit`'s progress
+ * callback, and running counts of what was found — pre-warm the dashboard cache
+ * (~/.failproofai/audit-dashboard.json), then start the bundled dashboard server
+ * and open the browser to /audit, which renders instantly from that cache.
  *
  * A bare `failproofai audit` does a full scan (all CLIs, all history); the
  * scheduling flags above write config and never scan. Scan-shaping flags
@@ -25,6 +25,7 @@
  * an exit code. See `runScheduledAudit`.
  */
 import { runAudit } from "./index";
+import { getDetectorByName } from "./detectors";
 import { hasInstalledPacks } from "../hooks/pack-manifest";
 import { CORE_SOURCE } from "../hooks/pack-store";
 import { acquireAuditLock, type AuditLockInfo } from "./audit-lock";
@@ -35,7 +36,13 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
-import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, optsFor, screenKit } from "../hooks/tui";
+import {
+  INDENT,
+  optsFor,
+  screenKit,
+  type ScreenKitOpts,
+  type TTYOut,
+} from "../hooks/tui";
 import { version } from "../../package.json";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -53,10 +60,17 @@ const DASHBOARD_PORT = 8020;
 export const EXIT_AUDIT_ALREADY_RUNNING = 75;
 
 /**
- * Mirror of `app/audit/_components/run-progress.tsx`'s `STAGES`. Kept identical
- * so the CLI and the dashboard's in-progress view tell the same story — the
- * dashboard even renders a mock `$ failproofai audit` terminal, and this is the
- * real thing. `audit-cli.test.ts` guards against drift between the two.
+ * Mirror of `app/audit/_components/run-progress.tsx`'s `STAGES`: the four
+ * time-driven stages the dashboard animates while its own run is in flight.
+ *
+ * The CLI no longer animates them. By decision D16 of the 2026-10 redesign it
+ * draws real progress instead — a bar per agent from `runAudit`'s progress
+ * callback, and running counts of what was found — so the screen moves when the
+ * scan does rather than on a timer. What the two still share is these words:
+ * the CLI labels the one phase it has no bars for, listing transcripts, with
+ * the first stage's label, and the per-agent bars stand for the middle two.
+ * `audit-cli.test.ts` keeps this list identical to the dashboard's, so a stage
+ * renamed there is renamed here too.
  */
 export const AUDIT_STAGES: ReadonlyArray<{ label: string; detail: string }> = [
   { label: "discovering transcripts", detail: "walking ~/.claude, ~/.codex, ~/.cursor, …" },
@@ -107,34 +121,21 @@ export function helpText(): string {
   return ["", ...lines, ""].join("\n") + "\n";
 }
 
-// ── ANSI helpers ────────────────────────────────────────────────────────────
-// Colours come from the shared brand palette in hooks/tui.ts, so `audit` reads
-// as the same product as `config`. This file used to define its own 256-colour
-// set (a green and a blue that appear nowhere in the brand). The palette has
-// two accents rather than three, so success and command/URL text share the
-// teal — the glyph (✓) and the surrounding copy already distinguish them.
-const RESET = ANSI_RESET;
-const DIM = ANSI_DIM;
-const BOLD = ANSI_BOLD;
-const PINK = brandAnsi("pink");
-const GREEN = brandAnsi("guide"); // success — brand teal
-const CYAN = brandAnsi("guide"); // commands & URLs — brand teal
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-function colorOn(): boolean {
-  if (process.env.NO_COLOR && process.env.NO_COLOR !== "") return false;
-  if (process.env.FORCE_COLOR === "0") return false;
-  if (process.env.FORCE_COLOR) return true;
-  return !!process.stdout.isTTY;
-}
-
-/** Wrap `s` in an ANSI code when color is enabled, else return it bare. */
-function c(code: string, s: string): string {
-  return colorOn() ? `${code}${s}${RESET}` : s;
-}
+// ── Colour ──────────────────────────────────────────────────────────────────
+// Every line below is built by `screenKit()` from the shared palette in
+// hooks/tui.ts, and coloured on exactly the terms every other screen is:
+// `optsFor(stdout)` — a terminal, and no NO_COLOR. `FORCE_COLOR` is not read
+// here, as it is read nowhere else; audit used to be the one screen that
+// honoured it, so `FORCE_COLOR=1 failproofai audit | less -R` was the one
+// place colour reached a pipe.
 
 function num(n: number): string {
   return n.toLocaleString("en-US");
+}
+
+/** `1 session`, `1,284 sessions`. */
+function counted(n: number, one: string, many = `${one}s`): string {
+  return `${num(n)} ${n === 1 ? one : many}`;
 }
 
 /**
@@ -150,145 +151,253 @@ function die(message: string): never {
   process.exit(1);
 }
 
-// ── Progress animation ───────────────────────────────────────────────────────
+// ── The audit screen ─────────────────────────────────────────────────────────
 
-interface Progress {
-  /** Mark every stage done and stop the timers. */
-  finish(): void;
-  /** Stop the timers without marking done (used on error). */
-  fail(): void;
+/** What the audit screen is drawn from: everything `runAudit` has reported so far. */
+export interface AuditScreenState {
+  /**
+   * The agents with sessions to scan, in scan order, and how far each has got.
+   * `null` until every agent's transcripts have been listed.
+   */
+  agents: Array<{ cli: string; total: number; done: number }> | null;
+  /** How many policies each tool call is replayed against. */
+  policies: number;
+  /** Hits so far, by policy or detector name. */
+  hits: Record<string, number>;
+}
+
+export interface AuditScreenOpts extends ScreenKitOpts {
+  /** The finished scan. With it the screen is the final one: every bar done, the summary in place of the key hint. */
+  result?: AuditResult;
+  /** The scan stopped without a result: the screen as far as it got, with no key hint. */
+  stopped?: boolean;
+}
+
+/** The "found" rows, in order. */
+const FOUND_LABELS = ["would block", "would warn", "audit only"] as const;
+
+/**
+ * Which "found" row a finding counts under, as an index into `FOUND_LABELS`:
+ * what the policy would do if it were on.
+ *
+ * Every `warn-*` builtin instructs, so it would warn. `sanitize-*` denies, but
+ * on PostToolUse, after the call has already run: it can tell the agent about a
+ * secret and stop nothing, so it would warn too — filing it under "would block"
+ * is the over-count #669 took out of the block numbers. Every other builtin
+ * (`block-*`, `protect-*`, `prefer-*`) denies before the call, so it would
+ * block. Deliberately not `severityForBuiltin`: that is the score's heuristic,
+ * and it files `protect-env-vars` and `prefer-package-manager` under warn
+ * although both deny. The audit-only detectors have no runtime policy at all,
+ * so they get a row of their own rather than a "would".
+ */
+function foundRow(name: string): number {
+  if (getDetectorByName(name)) return 2;
+  const short = name.slice(name.indexOf("/") + 1);
+  return short.startsWith("warn-") || short.startsWith("sanitize-") ? 1 : 0;
 }
 
 /**
- * Render the four audit stages with a live spinner, redrawing in place. Like the
- * dashboard's RunProgress, the stages are time-driven (runAudit emits no phase
- * events) and the last stage is *held* until `finish()` is called, so it never
- * claims "done" before the real work resolves. TTY-only — the caller picks the
- * plain-text path when stdout isn't a terminal.
+ * `7: block-env-files 4, block-sudo 2, …` — the total, then the names that
+ * make it up, most hits first.
+ *
+ * A name is whole or absent, never cut: when `room` runs out the list ends on
+ * `…`, and the first name is always shown, however narrow the terminal.
  */
-function startProgress(): Progress {
-  const n = AUDIT_STAGES.length;
-  let stage = 0;
-  let tick = 0;
-  let done = false;
-  let printed = false;
-
-  const lineFor = (i: number): string => {
-    const s = AUDIT_STAGES[i];
-    if (done || i < stage) return `  ${c(GREEN, "✓")} ${c(DIM, s.label)}`;
-    if (i === stage) {
-      return `  ${c(PINK, SPINNER[tick % SPINNER.length])} ${s.label}  ${c(DIM, s.detail)}`;
-    }
-    return `  ${c(DIM, "○")} ${c(DIM, s.label)}`;
-  };
-
-  const render = (): void => {
-    const lines = Array.from({ length: n }, (_, i) => lineFor(i));
-    // Move the cursor back up over the previously-drawn block, then clear and
-    // rewrite each line in place.
-    if (printed) process.stdout.write(`\x1b[${n}A`);
-    process.stdout.write(lines.map((l) => `\x1b[2K${l}`).join("\n") + "\n");
-    printed = true;
-  };
-
-  render();
-  const spinTimer = setInterval(() => {
-    tick++;
-    render();
-  }, 90);
-  // Advance through stages on a fixed cadence, holding on the last one until
-  // finish() flips `done`.
-  const stageTimer = setInterval(() => {
-    if (stage < n - 1) {
-      stage++;
-      render();
-    }
-  }, 1100);
-
-  const stop = (): void => {
-    clearInterval(spinTimer);
-    clearInterval(stageTimer);
-  };
-
-  return {
-    finish() {
-      stop();
-      done = true;
-      render();
-    },
-    fail() {
-      stop();
-      process.stdout.write("\n");
-    },
-  };
-}
-
-/** Run the audit, showing animated progress on a TTY or a single line elsewhere. */
-async function runWithProgress(opts: RunAuditOptions): Promise<AuditResult> {
-  if (!process.stdout.isTTY) {
-    process.stdout.write("  scanning your agent session history — this can take a moment…\n");
-    return runAudit(opts);
+function foundValue(items: Array<[string, number]>, room: number): string {
+  if (items.length === 0) return num(0);
+  const total = items.reduce((sum, [, n]) => sum + n, 0);
+  items.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  let text = `${num(total)}: `;
+  for (let i = 0; i < items.length; i += 1) {
+    const piece = `${i > 0 ? ", " : ""}${items[i][0]} ${num(items[i][1])}`;
+    // Room for the `, …` this item would have to end on, unless it is the last.
+    const tail = i < items.length - 1 ? 3 : 0;
+    if (i > 0 && text.length + piece.length + tail > room) return `${text}, …`;
+    text += piece;
   }
-  const progress = startProgress();
-  try {
-    const result = await runAudit(opts);
-    progress.finish();
-    return result;
-  } catch (err) {
-    progress.fail();
-    throw err;
-  }
-}
-
-// ── Output ───────────────────────────────────────────────────────────────────
-
-function printHeader(): void {
-  process.stdout.write(`\n  ${c(PINK, "🛡  failproofai audit")}  ${c(DIM, "· beta")}\n\n`);
-  process.stdout.write(`  ${c(DIM, "starting audit…")}\n\n`);
+  return text;
 }
 
 /**
- * The post-run summary lines (no leading indent, no trailing newlines). Pure so
- * it's unit-testable; `printSummary` handles the indentation + stdout.
+ * The `failproofai audit` screen, as lines. Pure, so it is asserted at any
+ * width and colour tier without a terminal.
+ *
+ * Live, it is the design's progress screen: a bar per agent with sessions to
+ * scan, and what the scan has found so far. Given the result it finishes in
+ * place — every bar done, the headings in the past tense, and the summary where
+ * the key hint was — so the screen that stays in scrollback is the one the scan
+ * was drawn on.
  */
-export function buildSummary(result: AuditResult): string[] {
+export function buildAuditScreen(state: AuditScreenState, opts: AuditScreenOpts = {}): string[] {
+  const k = screenKit(opts);
+  const result = opts.result;
+  const out = [k.header("Audit"), ""];
+
+  if (state.agents === null) {
+    // Still listing transcripts: the one phase with no bars to draw, named in
+    // the dashboard's own words for it. A finished scan that never said what it
+    // found has no rows to draw, and is left to its summary.
+    if (!result) out.push(k.head("Scanning history", AUDIT_STAGES[0].label));
+  } else if (state.agents.length > 0) {
+    const agents = result ? state.agents.map((a) => ({ ...a, done: a.total })) : state.agents;
+    out.push(
+      k.head(
+        result ? "Scanned history" : "Scanning history",
+        `${counted(agents.length, "agent")}, ${counted(state.policies, "policy", "policies")}`,
+      ),
+    );
+    // The bar gives up width before the counts do: it is decoration, and the
+    // counts are the facts. Thirty cells where there is room, ten at the least.
+    const nameCol = Math.max(10, ...agents.map((a) => a.cli.length + 2));
+    const widest = Math.max(...agents.map((a) => `${num(a.total)} of ${counted(a.total, "session")}`.length));
+    const barWidth = Math.max(10, Math.min(30, k.cols - INDENT.length - nameCol - 2 - widest));
+    for (const a of agents) {
+      const tally =
+        a.done >= a.total ? k.ok(counted(a.total, "session")) : `${num(a.done)} of ${counted(a.total, "session")}`;
+      out.push(`${INDENT}${a.cli.padEnd(nameCol)}${k.bar(barWidth, a.total > 0 ? a.done / a.total : 1)}  ${tally}`);
+    }
+
+    // The result's own counts once there is one — they are what the dashboard
+    // shows — and the running tally until then.
+    const hits = result ? Object.fromEntries(result.results.map((r) => [r.name, r.hits])) : state.hits;
+    const groups: Array<Array<[string, number]>> = FOUND_LABELS.map(() => []);
+    for (const [name, n] of Object.entries(hits)) {
+      if (n > 0) groups[foundRow(name)].push([name.slice(name.indexOf("/") + 1), n]);
+    }
+    // The column `kv` starts these values at: its widest label (or nine), plus two.
+    const valueCol = INDENT.length + Math.max(9, ...FOUND_LABELS.map((label) => label.length)) + 2;
+    const room = opts.fit ? k.cols - valueCol : Number.POSITIVE_INFINITY;
+    out.push(
+      "",
+      k.head(result ? "Found" : "Found so far"),
+      ...k.kv(FOUND_LABELS.map((label, i): [string, string] => [label, foundValue(groups[i], room)])),
+    );
+  }
+
+  // One blank line before the closing block, never two: with nothing to scan
+  // there are no blocks above it, only the header's own gap.
+  const closing = result ? buildSummary(result, opts) : opts.stopped ? [] : [k.keys(["ctrl+c stop"])];
+  if (out[out.length - 1] !== "") out.push("");
+  out.push(...closing);
+  while (out[out.length - 1] === "") out.pop();
+  return out;
+}
+
+/**
+ * The finished scan in at most two sentences: what was read, then how much of
+ * what it found your policies already cover. Pure; the audit screen ends on it.
+ *
+ * "Covered", not "blocked": a policy that is on may warn rather than block, and
+ * what is counted is patterns a policy you have switched on already answers.
+ */
+export function buildSummary(result: AuditResult, opts: ScreenKitOpts = {}): string[] {
+  const k = screenKit(opts);
   const sessions = result.transcripts.scanned;
   const events = result.eventsScanned;
   const projects = result.projectsScanned.length;
-  const enabledRows = result.results.filter((r) => r.source === "builtin" && r.enabledInConfig);
-  const slippingRows = result.results.filter((r) => !(r.source === "builtin" && r.enabledInConfig));
+  const covered = result.results.filter((r) => r.source === "builtin" && r.enabledInConfig).length;
+  const slipping = result.results.length - covered;
 
-  const lines: string[] = [];
-  lines.push(
-    `${c(GREEN, "✓ audit complete")}  ${c(DIM, "·")}  ` +
-      `${c(BOLD, num(events))} tool call${events === 1 ? "" : "s"} across ` +
-      `${num(sessions)} session${sessions === 1 ? "" : "s"}` +
-      (projects > 0 ? ` ${c(DIM, "·")} ${num(projects)} project${projects === 1 ? "" : "s"}` : ""),
-  );
-
+  const lines = [
+    k.ok(
+      `Scanned ${counted(events, "tool call")} across ${counted(sessions, "session")}` +
+        (projects > 0 ? ` in ${counted(projects, "project")}` : "") +
+        ".",
+    ),
+  ];
   if (result.totals.hits === 0) {
-    // Only call it a "clean run" when we actually scanned something — for zero
-    // events the caller prints "no agent sessions found yet" guidance instead.
-    if (events > 0) lines.push(c(DIM, "clean run — nothing flagged. nice."));
+    // Only when something was actually read. With no tool calls at all the
+    // caller says what to do instead, and "nothing was flagged" would read as
+    // a clean bill of health for a history that was never there.
+    if (events > 0) lines.push(`${INDENT}Nothing was flagged.`);
     return lines;
   }
-
-  const parts: string[] = [];
-  if (slippingRows.length > 0) {
-    parts.push(
-      `${c(PINK, String(slippingRows.length))} ${slippingRows.length === 1 ? "pattern" : "patterns"} slipping through`,
+  const patterns = (n: number): string => `${num(n)} ${n === 1 ? "pattern is" : "patterns are"}`;
+  if (slipping > 0 && covered > 0) {
+    lines.push(
+      `${INDENT}${patterns(slipping)} slipping through, and ${num(covered)} ${covered === 1 ? "is" : "are"} already covered by your policies.`,
     );
+  } else if (slipping > 0) {
+    lines.push(`${INDENT}${patterns(slipping)} slipping through.`);
+  } else if (covered > 0) {
+    lines.push(`${INDENT}${patterns(covered)} already covered by your policies.`);
   }
-  if (enabledRows.length > 0) {
-    parts.push(`${c(GREEN, String(enabledRows.length))} already blocked by your policies`);
-  }
-  if (parts.length > 0) lines.push(parts.join(`  ${c(DIM, "·")}  `));
   return lines;
 }
 
-function printSummary(result: AuditResult): void {
-  process.stdout.write("\n");
-  for (const line of buildSummary(result)) process.stdout.write(`  ${line}\n`);
+// ── Progress ─────────────────────────────────────────────────────────────────
+
+/**
+ * Run the audit behind its screen, and return once the finished screen is on
+ * the terminal.
+ *
+ * On a terminal that takes colour the screen is live: it redraws in place as
+ * `runAudit` reports, at most every 100 ms and ONE write per frame, through the
+ * kit's `live()`. The spinner it replaces wrote its cursor-up and its lines as
+ * separate chunks, and advanced on a timer that knew nothing about the scan.
+ *
+ * Piped, or under NO_COLOR, nothing is drawn while the scan runs: the finished
+ * screen prints once, with no escapes and no frames.
+ */
+async function runWithProgress(opts: RunAuditOptions): Promise<AuditResult> {
+  const out: TTYOut = process.stdout;
+  const render = optsFor(out);
+  const animate = !!out.isTTY && render.color;
+  // Prose may be shortened to fit a terminal, never a pipe (decision D9).
+  const view: AuditScreenOpts = { ...render, fit: !!out.isTTY };
+  const state: AuditScreenState = { agents: null, policies: 0, hits: {} };
+  const region = animate ? screenKit(view).live(out) : null;
+  // The width is read per frame, so a terminal resized mid-scan gets frames
+  // that fit it.
+  const frame = (extra: AuditScreenOpts = {}): string[] => [
+    "",
+    ...buildAuditScreen(state, { ...view, cols: out.columns || view.cols, ...extra }),
+  ];
+
+  region?.draw(frame);
+  let result: AuditResult;
+  try {
+    result = await runAudit({
+      ...opts,
+      onProgress: (progress) => {
+        if (progress.kind === "discovered") {
+          state.policies = progress.policies;
+          state.agents = progress.agents
+            .filter((a) => a.transcripts > 0)
+            .map((a) => ({ cli: a.cli, total: a.transcripts, done: 0 }));
+        } else {
+          const agent = state.agents?.find((a) => a.cli === progress.cli);
+          if (agent) agent.done += 1;
+          for (const [name, n] of Object.entries(progress.hitsByName)) {
+            state.hits[name] = (state.hits[name] ?? 0) + n;
+          }
+        }
+        region?.draw(frame);
+      },
+    });
+  } catch (err) {
+    // Left as far as it got, without the key hint: nothing is running now.
+    region?.done(frame({ stopped: true }));
+    throw err;
+  }
+  const finished = frame({ result });
+  if (region) region.done(finished);
+  else out.write(finished.join("\n") + "\n");
+  return result;
+}
+
+/** A block printed under the screen: a blank line above it and one below. */
+function printAfter(lines: string[]): void {
+  process.stdout.write(`\n${lines.join("\n")}\n\n`);
+}
+
+/**
+ * The closing line when there was nothing to read. What changes that is using
+ * the agent: the audit reads each agent's own history, which exists with or
+ * without failproofai's hooks.
+ */
+function nothingToScan(k: ReturnType<typeof screenKit>): string {
+  return `Run it again after using your agent:  ${k.cmd("failproofai audit")}`;
 }
 
 // ── Audit telemetry ──────────────────────────────────────────────────────────
@@ -428,13 +537,15 @@ export async function runScheduledAudit(): Promise<number> {
  * `~/.failproofai/audit-dashboard.json` so the dashboard renders instantly, and
  * immediately shows the user what's slipping through.
  *
- * Shows the same animated stages as `failproofai audit`. The scan runs to
- * completion; Ctrl+C interrupts it the usual way (default SIGINT). Best-effort:
- * never throws, never exits the process; the caller boots the dashboard
- * afterward. Opt out with `FAILPROOFAI_NO_AUTO_AUDIT=1`.
+ * Shows the same screen as `failproofai audit`. The scan runs to completion;
+ * Ctrl+C interrupts it the usual way (the screen gives the cursor back and lets
+ * the SIGINT through). Best-effort: never throws, never exits the process; the
+ * caller boots the dashboard afterward. Opt out with
+ * `FAILPROOFAI_NO_AUTO_AUDIT=1`.
  */
 export async function runPostSetupAudit(): Promise<void> {
   if (process.env.FAILPROOFAI_NO_AUTO_AUDIT === "1") return;
+  const k = screenKit(optsFor(process.stdout));
 
   // Take the same cross-process cache lock the scheduled run, `failproofai
   // audit` and the dashboard re-run take. This onboarding scan writes the very
@@ -446,9 +557,7 @@ export async function runPostSetupAudit(): Promise<void> {
   // the telemetry source below and the lock source declared in audit-lock.ts.
   const attempt = acquireAuditLock("onboarding");
   if (!attempt.ok) {
-    process.stdout.write(
-      `\n  ${c(DIM, "an audit is already running — the dashboard will show its result.")}\n\n`,
-    );
+    printAfter(["Another audit is already running. The dashboard will show its result."]);
     return;
   }
 
@@ -459,10 +568,8 @@ export async function runPostSetupAudit(): Promise<void> {
     // that follows is awaited.
     void trackHookEvent(instanceId, "cli_audit_started", { source: "onboarding" });
 
-    process.stdout.write(
-      `\n  ${c(PINK, "✦")} ${c(BOLD, "failproofai audit now running")}  ${c(DIM, "· ctrl+c to stop")}\n\n`,
-    );
-
+    // No line of its own before the scan: the screen opens with its own header
+    // and closes on its own key hint.
     let result: AuditResult;
     try {
       result = await runWithProgress({});
@@ -474,9 +581,7 @@ export async function runPostSetupAudit(): Promise<void> {
         error_type: err instanceof Error ? err.name : "unknown",
         error_message: sanitizeErrorMessage(err),
       });
-      process.stdout.write(
-        `  ${c(PINK, "!")} ${c(DIM, "audit couldn't finish — run")} ${c(CYAN, "failproofai audit")} ${c(DIM, "later.")}\n\n`,
-      );
+      printAfter([k.fail("The audit could not finish.", "failproofai audit")]);
       return;
     }
 
@@ -486,23 +591,18 @@ export async function runPostSetupAudit(): Promise<void> {
     await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("onboarding", result));
 
     if (result.eventsScanned === 0) {
-      process.stdout.write(
-        `\n  ${c(DIM, "no agent sessions to audit yet — come back after using your agent.")}\n\n`,
-      );
+      printAfter([nothingToScan(k)]);
       return;
     }
     writeDashboardCache({}, result);
-    printSummary(result);
-    process.stdout.write("\n");
     // The audit says what ALREADY happened; nothing here says how to stop it
     // happening again. This is the first thing a new machine runs, and setup
     // installs no policies by design, so without this the whole first session
     // ends on a count of findings and no way to act on it.
     if (!hasInstalledPacks()) {
-      process.stdout.write(
-        `  ${c(DIM, "none of this is being enforced yet. take ours, or anyone's:")}\n` +
-          `    ${c(CYAN, `failproofai policies add ${CORE_SOURCE}`)}\n\n`,
-      );
+      printAfter([k.caution("None of this is enforced yet.", `failproofai policies add ${CORE_SOURCE}`)]);
+    } else {
+      process.stdout.write("\n");
     }
   } finally {
     attempt.lock.release();
@@ -628,9 +728,8 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // stall on a flaky network for no reliability gain.
   void trackHookEvent(instanceId, "cli_audit_started", { source: "cli" });
 
-  printHeader();
-
-  // Full scan: all CLIs, all history, per-transcript cache on.
+  // Full scan: all CLIs, all history, per-transcript cache on. The screen opens
+  // with its own header, so nothing is printed ahead of it.
   const opts: RunAuditOptions = {};
 
   let result: AuditResult;
@@ -648,32 +747,23 @@ export async function runAuditCli(args: string[]): Promise<void> {
     die(`Audit failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  printSummary(result);
-
   // Await before the empty-history branch below, which calls process.exit(0) and
   // would otherwise drop this event. On the dashboard path launch() keeps the
   // process alive, but awaiting makes delivery reliable on every exit path.
   // Bounded (5s) and never throws.
   await trackHookEvent(instanceId, "cli_audit_completed", auditCompletedProps("cli", result));
 
-  // No sessions on disk — guide the user instead of opening an empty dashboard.
+  const k = screenKit(optsFor(process.stdout));
+
+  // Nothing to read — say what changes that instead of opening an empty dashboard.
   if (result.eventsScanned === 0) {
-    process.stdout.write(
-      `\n  ${c(DIM, "no agent sessions found yet.")}\n` +
-        `  install hooks with ${c(CYAN, "failproofai policies --install")} ` +
-        `${c(DIM, "and come back after using your agent.")}\n\n`,
-    );
+    printAfter([nothingToScan(k)]);
     process.exit(0);
   }
 
   // Pre-warm the dashboard cache — the /audit page reads this file directly, so
   // the page renders our result instantly with no in-browser re-run.
   const persisted = writeDashboardCache(opts, result);
-  if (!persisted) {
-    process.stdout.write(
-      `\n  ${c(PINK, "!")} ${c(DIM, "couldn't save the audit cache; the dashboard may show an empty state.")}\n`,
-    );
-  }
 
   // Released here, not in a `finally`: the lock covers the SCAN, and launch()
   // below keeps this process alive for as long as the user leaves the dashboard
@@ -682,12 +772,15 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // empty-history exit) are covered by the handle's own process-exit hook.
   attempt.lock.release();
 
+  // The hand-off: where the audit is, and how to stop the server that shows it.
+  // No logomark here — the design keeps it to bare `failproofai` and `config`.
   const url = `http://localhost:${DASHBOARD_PORT}/audit`;
-  process.stdout.write(
-    `\n  ${c(DIM, "starting the dashboard…")}\n` +
-      `  ${c(PINK, "✦")} ${c(BOLD, "here's your audit")}  ${c(DIM, "→")}  ${c(CYAN, url)}\n` +
-      `  ${c(DIM, "(opening in your browser — press Ctrl+C to stop the server)")}\n\n`,
-  );
+  printAfter([
+    ...(persisted ? [] : [k.caution("Could not save the audit, so the dashboard may show nothing.")]),
+    k.ok(`The audit is ready:  ${k.cmd(url)}`),
+    "",
+    k.keys(["ctrl+c stop the dashboard"]),
+  ]);
 
   // Open the page once the server answers (best-effort, detached), then start
   // the server. `launch("start")` blocks-by-keeping-alive — it spawns the

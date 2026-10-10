@@ -181,8 +181,39 @@ export interface AuditResult {
   enabledBuiltinNames: string[];
 }
 
+/**
+ * What `runAudit()` reports while it runs, for a caller drawing live progress.
+ *
+ * Two kinds, in this order: ONE `discovered` once every agent's transcripts
+ * are listed, then one `transcript` per transcript as each finishes — a cache
+ * hit, a scan, a scan that failed and a task that was skipped alike, so the
+ * per-agent counts always reach their totals. Transcripts finish in whatever
+ * order the scan pool completes them, not in discovery order.
+ */
+export type AuditProgress =
+  | {
+      kind: "discovered";
+      /** Every agent the audit covers, in scan order, with how many transcripts it has to scan (0 included). */
+      agents: Array<{ cli: IntegrationType; transcripts: number }>;
+      /** How many policies each tool call is replayed against: the builtins that can fire on a tool event. */
+      policies: number;
+    }
+  | {
+      kind: "transcript";
+      cli: IntegrationType;
+      /** This transcript's hits, by policy or detector name. Empty when it found nothing or could not be scanned. */
+      hitsByName: Record<string, number>;
+    };
+
 /** CLI-supplied options for `runAudit()`. Set by `bin/failproofai.mjs`. */
 export interface RunAuditOptions {
+  /**
+   * Called as the audit progresses. Optional, and only `failproofai audit`'s
+   * own screen passes it: the dashboard and the scheduled run do not, and the
+   * result is the same either way. A callback that throws is ignored — a
+   * progress display must never change what an audit finds.
+   */
+  onProgress?: (progress: AuditProgress) => void;
   /** Restrict to one or more CLIs. Default: all 7. */
   clis?: IntegrationType[];
   /** Restrict to sessions whose cwd matches one of these paths. */

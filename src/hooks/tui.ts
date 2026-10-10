@@ -201,10 +201,10 @@ export function colorsEnabled(out: TTYOut): boolean {
 
 /**
  * The raw ANSI opening sequence for a brand role, for callers that assemble
- * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`).
- * That file previously hardcoded its own 256-colour palette — a green and a
- * blue that appear nowhere in the brand — so `audit` looked like a different
- * product from `config`. Routing it here
+ * their own strings instead of using `paint()`'s wrappers (the help prose in
+ * `bin/failproofai.mjs`). `src/audit/cli.ts` was the first: it hardcoded its
+ * own 256-colour palette — a green and a blue that appear nowhere in the brand
+ * — so `audit` looked like a different product from `config`. Routing it here
  * keeps HUES the single source of truth: change a hue once and every surface
  * follows. Paints at the deepest tier the terminal admits to; the caller still
  * decides *whether* to colour at all.
@@ -561,12 +561,24 @@ const WINDOW = 12; // visible rows before a list scrolls; 12 reproduces every fr
  * the terminal to hold what it has until the reset rather than painting each
  * chunk as it lands. Terminals that do not implement it ignore an unknown
  * private mode, so it costs nothing where it does not help.
+ *
+ * `frame` is for a caller that has to change a terminal mode alongside a frame
+ * — hide the cursor on the first, show it on the last — inside the SAME write,
+ * and for a last frame that must not be cut: lines are truncated so each one is
+ * exactly one row and the next cursor-up lands where it should, but a frame
+ * nothing will repaint stays in scrollback, where a cut is permanent.
  */
-function repaint(out: TTYOut, region: Region, lines: string[]): void {
+function repaint(
+  out: TTYOut,
+  region: Region,
+  lines: string[],
+  frame: { lead?: string; tail?: string; cut?: boolean } = {},
+): void {
   const cols = out.columns || 80;
-  const body = lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n";
+  const cut = frame.cut ?? true;
+  const body = lines.map((l) => (l === "" || !cut ? l : truncate(l, cols))).join("\n") + "\n";
   const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
-  out.write(`${ESC}[?2026h${clear}${body}${ESC}[?2026l`);
+  out.write(`${ESC}[?2026h${frame.lead ?? ""}${clear}${body}${frame.tail ?? ""}${ESC}[?2026l`);
   region.lastCount = lines.length;
 }
 
@@ -983,6 +995,15 @@ export interface PromptTextOptions {
    * the scrollback of every recording of that session.
    */
   mask?: boolean;
+  /**
+   * Draw the 2026-10 field instead of the spine prompt: `  <message>  › <value>`
+   * — the label in the terminal's own ink at a ten-column label, a pink `›`, the
+   * hint in the label grey, and a refusal as a `✕` line under the field that is
+   * cleared again as soon as the value changes. `prefix` is ignored. For the
+   * screens that have moved to the new language; the spine form stays for the
+   * rest until they move.
+   */
+  field?: boolean;
   /** Return an error string to reject and re-ask, or null to accept. */
   validate?: (value: string) => string | null;
   stdin?: TTYIn;
@@ -1047,9 +1068,38 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
 
   return new Promise((resolve) => {
     let value = "";
+    // Whether a field's `✕` line is on the row under it right now.
+    let refused = false;
+    /**
+     * The field form, in ONE write per keystroke. The refusal goes on the row
+     * under the field and the field is drawn LAST, so the cursor ends where the
+     * typing is — the spine form moves back up after its error line and leaves
+     * the cursor at the end of the error instead. A refusal still on screen is
+     * cleared the moment the value changes, so a corrected answer never sits
+     * above the complaint about the old one.
+     */
+    const drawField = (cols: number, shown: string, error?: string) => {
+      const hint = hintText && value.length === 0 ? `  ${c.ink3(hintText)}` : "";
+      const line = truncate(`${INDENT}${opts.message.padEnd(10)}${c.pink("›")} ${shown}${hint}`, cols - 1);
+      if (error) {
+        const refusal = truncate(`${c.err("✕")} ${error}`, cols - 1);
+        stdout.write(`\n\x1b[2K${refusal}\x1b[1A\r\x1b[2K${line}`);
+        refused = true;
+        return;
+      }
+      // Down, clear, back up: the row under the field exists, because the
+      // refusal being cleared was written there.
+      const clearRefusal = refused ? "\x1b[1B\x1b[2K\x1b[1A" : "";
+      stdout.write(`${clearRefusal}\r\x1b[2K${line}`);
+      refused = false;
+    };
     const draw = (error?: string) => {
       const cols = stdout.columns || 80;
       const shown = opts.mask ? "•".repeat(value.length) : value;
+      if (opts.field) {
+        drawField(cols, shown, error);
+        return;
+      }
       // The hint is a PLACEHOLDER — an example of what belongs here — so it
       // steps aside as soon as there is a real answer to look at. Keeping both
       // on one line put the example and the input side by side, which is the
@@ -1080,7 +1130,10 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
       stdin.removeListener("keypress", onKey);
       stdin.setRawMode?.(wasRaw ?? false);
       stdin.pause();
-      stdout.write("\n");
+      // Past a field's refusal, when one is still showing (a cancel right after
+      // it), so whatever prints next starts on a clean row instead of on top of
+      // the complaint.
+      stdout.write(refused ? "\n\n" : "\n");
     };
 
     function onKey(str: string | undefined, key: readline.Key): void {
@@ -2278,8 +2331,93 @@ export function screenKit(opts: ScreenKitOpts = {}) {
     return out;
   };
 
+  /**
+   * A block that redraws in place: a progress screen.
+   *
+   * Every frame is ONE write, through the same atomic `repaint` the prompts use,
+   * and frames are held to one per 100 ms — the design's progress tempo — with
+   * the newest always landing. `build` runs only for a frame that is actually
+   * drawn, so a caller can ask after every event it hears about.
+   *
+   * The cursor is hidden while the block is live and shown again when it ends:
+   * on `done`, on exit, and on SIGINT or SIGTERM. A signal is re-raised once the
+   * cursor is back, so Ctrl+C still stops the command exactly as it did before
+   * anything was listening for it. TTY only: everywhere else the caller prints
+   * its last screen once, with no frames.
+   */
+  const live = (out: TTYOut) => {
+    const region: Region = { lastCount: 0 };
+    const every = 100;
+    let lastAt = 0;
+    let pending: (() => string[]) | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let hidden = false;
+    let over = false;
+
+    const showAgain = (): void => {
+      out.write(`${ESC}[?25h`);
+    };
+    const release = (): void => {
+      process.removeListener("exit", showAgain);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+    };
+    const onSignal = (signal: NodeJS.Signals): void => {
+      over = true;
+      if (timer) clearTimeout(timer);
+      release();
+      showAgain();
+      process.kill(process.pid, signal);
+    };
+    const flush = (): void => {
+      timer = null;
+      const build = pending;
+      pending = null;
+      if (!build || over) return;
+      lastAt = Date.now();
+      let lead = "";
+      if (!hidden) {
+        hidden = true;
+        lead = `${ESC}[?25l`;
+        process.once("exit", showAgain);
+        process.on("SIGINT", onSignal);
+        process.on("SIGTERM", onSignal);
+      }
+      repaint(out, region, build(), { lead });
+    };
+
+    return {
+      /** Ask for a frame; it is drawn now, or as soon as the tempo allows. */
+      draw(build: () => string[]): void {
+        if (over) return;
+        pending = build;
+        if (timer) return;
+        const wait = lastAt + every - Date.now();
+        if (wait <= 0) {
+          flush();
+          return;
+        }
+        timer = setTimeout(flush, wait);
+        timer.unref?.();
+      },
+      /**
+       * Draw the last frame at once and give the cursor back. Never cut: nothing
+       * repaints it, so it stays in scrollback exactly as written.
+       */
+      done(lines: string[]): void {
+        if (over) return;
+        over = true;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        pending = null;
+        release();
+        repaint(out, region, lines, { cut: false, tail: hidden ? `${ESC}[?25h` : "" });
+      },
+    };
+  };
+
   return {
     cols, sep, cmd, on, off, failed, selected, unselected, meta,
-    header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage,
+    header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage, live,
   };
 }

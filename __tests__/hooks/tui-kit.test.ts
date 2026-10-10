@@ -1218,3 +1218,142 @@ describe("pickers in the 2026-10 language", () => {
     expect(notAsked.result).toBeNull();
   });
 });
+
+describe("screenKit().live — a block that redraws in place", () => {
+  const fakeTty = (columns = 40) => {
+    const writes: string[] = [];
+    const out = {
+      isTTY: true,
+      columns,
+      write: vi.fn((chunk: string) => {
+        writes.push(chunk);
+        return true;
+      }),
+    } as unknown as TTYOut;
+    return { out, writes };
+  };
+  /** The listeners `live` added for an event, by diffing against what was there. */
+  const added = (event: "exit" | "SIGINT" | "SIGTERM", before: Function[]) =>
+    process.listeners(event).filter((l) => !before.includes(l)) as Array<(...args: unknown[]) => void>;
+
+  it("draws every frame as ONE write, held in synchronized output, with the cursor hidden from the first", () => {
+    const { out, writes } = fakeTty();
+    const region = screenKit().live(out);
+    region.draw(() => ["one", "two"]);
+    expect(writes).toEqual(["\x1B[?2026h\x1B[?25lone\ntwo\n\x1B[?2026l"]);
+    region.done(["done"]);
+  });
+
+  it("draws at most every 100 ms, and the newest frame is the one that lands", () => {
+    vi.useFakeTimers();
+    try {
+      const { out, writes } = fakeTty();
+      const region = screenKit().live(out);
+      region.draw(() => ["frame 1"]);
+      region.draw(() => ["frame 2"]);
+      region.draw(() => ["frame 3"]);
+      expect(writes).toHaveLength(1);
+      vi.advanceTimersByTime(99);
+      expect(writes).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(writes).toHaveLength(2);
+      // Cleared the one row the first frame drew, then the newest frame.
+      expect(writes[1]).toBe("\x1B[?2026h\x1B[1A\x1B[Jframe 3\n\x1B[?2026l");
+      region.done(["done"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("builds only the frames it draws", () => {
+    vi.useFakeTimers();
+    try {
+      const { out } = fakeTty();
+      const region = screenKit().live(out);
+      const build = vi.fn(() => ["x"]);
+      region.draw(build);
+      for (let i = 0; i < 50; i += 1) region.draw(build);
+      vi.advanceTimersByTime(100);
+      expect(build).toHaveBeenCalledTimes(2);
+      region.done(["done"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cuts a live frame to the terminal so its rows stay countable, and never the last one", () => {
+    const { out, writes } = fakeTty(10);
+    const region = screenKit().live(out);
+    region.draw(() => ["0123456789abcdef"]);
+    expect(writes[0]).toContain("0123456789\n");
+    expect(writes[0]).not.toContain("abcdef");
+    region.done(["0123456789abcdef"]);
+    // The last frame stays in scrollback, so it is written whole.
+    expect(writes[1]).toContain("0123456789abcdef\n");
+  });
+
+  it("ends in ONE write that clears the live frame, draws the last one and shows the cursor", () => {
+    const { out, writes } = fakeTty();
+    const region = screenKit().live(out);
+    region.draw(() => ["a", "b", "c"]);
+    region.done(["final"]);
+    expect(writes[1]).toBe("\x1B[?2026h\x1B[3A\x1B[Jfinal\n\x1B[?25h\x1B[?2026l");
+    // Nothing draws after the end.
+    region.draw(() => ["late"]);
+    region.done(["later"]);
+    expect(writes).toHaveLength(2);
+  });
+
+  it("gives the cursor back on exit and on SIGINT/SIGTERM, and lets the signal through", () => {
+    const before = {
+      exit: process.listeners("exit"),
+      SIGINT: process.listeners("SIGINT"),
+      SIGTERM: process.listeners("SIGTERM"),
+    };
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const { out, writes } = fakeTty();
+      const region = screenKit().live(out);
+      // Nothing is registered until something is drawn.
+      expect(added("SIGINT", before.SIGINT)).toHaveLength(0);
+      region.draw(() => ["scanning"]);
+
+      const [onExit] = added("exit", before.exit);
+      expect(onExit).toBeTypeOf("function");
+      onExit();
+      expect(writes[writes.length - 1]).toBe("\x1B[?25h");
+
+      const [onSigint] = added("SIGINT", before.SIGINT);
+      expect(added("SIGTERM", before.SIGTERM)).toHaveLength(1);
+      onSigint("SIGINT");
+      expect(writes[writes.length - 1]).toBe("\x1B[?25h");
+      // Re-raised once the cursor is back, with every hook of ours removed, so
+      // the default disposition stops the command as it always did.
+      expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+      expect(added("SIGINT", before.SIGINT)).toHaveLength(0);
+      expect(added("SIGTERM", before.SIGTERM)).toHaveLength(0);
+      expect(added("exit", before.exit)).toHaveLength(0);
+      // And the block is over: a frame after the signal draws nothing.
+      const count = writes.length;
+      region.draw(() => ["after"]);
+      expect(writes).toHaveLength(count);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it("removes every hook when it ends normally", () => {
+    const before = {
+      exit: process.listeners("exit"),
+      SIGINT: process.listeners("SIGINT"),
+      SIGTERM: process.listeners("SIGTERM"),
+    };
+    const { out } = fakeTty();
+    const region = screenKit().live(out);
+    region.draw(() => ["scanning"]);
+    region.done(["done"]);
+    expect(added("exit", before.exit)).toHaveLength(0);
+    expect(added("SIGINT", before.SIGINT)).toHaveLength(0);
+    expect(added("SIGTERM", before.SIGTERM)).toHaveLength(0);
+  });
+});

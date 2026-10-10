@@ -138,8 +138,10 @@ describe("audit --no-schedule", () => {
     runScheduleOff();
 
     expect(readConfig().audit.auto).toBe(false);
-    // Signing out is a separate decision, and the command says so — the session
-    // file is untouched, so re-enabling later costs no second round of OTP.
+    // Signing out is a separate decision — the session file is untouched, so
+    // re-enabling later costs no second round of OTP. (The command no longer
+    // says so in a line of its own: the redesign removes explanatory lines,
+    // decision D6.)
     expect(readAuth()?.user.email).toBe("you@example.com");
     expect(stdout()).toContain("off");
   });
@@ -162,9 +164,34 @@ describe("audit --no-schedule", () => {
 describe("audit --status", () => {
   it("reports off, with no email, on a fresh machine", () => {
     runScheduleStatus();
-    expect(stdout()).toContain("scheduled audit");
-    expect(stdout()).toContain("off");
-    expect(stdout()).toContain("signed out");
+    // Was a `scheduled audit  off` row before the 2026-10 screen language: the
+    // heading now says what the block is about, and states read as words.
+    expect(stdout()).toMatch(/^ {2}scans +○ Off$/m);
+    expect(stdout()).toMatch(/^ {2}reports to +Signed out$/m);
+  });
+
+  it("is a screen in the new language: the Audit header, one heading, aligned rows", () => {
+    runScheduleStatus();
+    const lines = stdout().split("\n");
+    expect(lines[1]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Audit$/);
+    expect(lines).toContain("SCHEDULE");
+    // Every value starts on one column, whatever its label.
+    const rows = lines.filter((l) => /^ {2}(scans|reports to|daemon|last result) /.test(l));
+    expect(rows.length).toBe(4);
+    const column = (l: string) => l.search(/(?<=\S {2,})\S/);
+    expect(new Set(rows.map(column)).size).toBe(1);
+    // No spine, no logomark, no hand-padded title.
+    expect(stdout()).not.toMatch(/[│◆◇└▀▄█]/u);
+    expect(stdout()).not.toContain("failproofai audit ");
+  });
+
+  it("states a schedule that is on with the on glyph and its interval", async () => {
+    writeAuth(SESSION);
+    await runScheduleOn("1");
+    out = [];
+    runScheduleStatus();
+    expect(stdout()).toMatch(/^ {2}scans +● Every day$/m);
+    expect(stdout()).toMatch(/^ {2}reports to +you@example\.com$/m);
   });
 
   it("reports on, the interval, and where reports go", async () => {
@@ -190,6 +217,19 @@ describe("audit --status", () => {
     // The exact state `report-harm.ts` reports as "signed-out". Silence about
     // it would look like the feature failing.
     expect(stdout()).toMatch(/scans continue/i);
+    // A ▲ with the command that fixes it, rather than a pink row.
+    expect(stdout()).toContain(
+      "▲ Scans continue, but digests are paused until you sign in.  ·  failproofai audit --schedule",
+    );
+  });
+
+  it("names a schedule that predates the consent stamp, with the fix", () => {
+    // `audit.auto` set by a release where it only meant "scan locally": signed
+    // in, scheduled, and still sending nothing until somebody opts in.
+    writeAuth(SESSION);
+    updateConfig({ audit: { auto: true } });
+    runScheduleStatus();
+    expect(stdout()).toContain("▲ Scans continue, but digests need a fresh opt-in.  ·  failproofai audit --schedule");
   });
 
   it("never throws on a home with no schedule, cache or machine file", () => {
@@ -237,8 +277,10 @@ describe("daemon reporting", () => {
   });
 
   it("--status names the repair for every state the daemon can be in", () => {
+    // `running` is matched without case since the redesign, which capitalises
+    // a state: `● Running`.
     for (const [status, expected] of [
-      ["running", /running/],
+      ["running", /running/i],
       ["stopped", /failproofai config/],
       ["not-installed", /not installed/],
       ["condition-failed", /binary is missing/],
@@ -248,6 +290,74 @@ describe("daemon reporting", () => {
       runScheduleStatus();
       expect(stdout(), status).toMatch(expected);
     }
+  });
+
+  it("--status gives the daemon a row and, when it needs fixing, one ▲ with the fix", () => {
+    daemonStatus.value = "stopped";
+    runScheduleStatus();
+    expect(stdout()).toMatch(/^ {2}daemon +○ Stopped$/m);
+    expect(stdout()).toContain("▲ The daemon is stopped.  ·  failproofai config");
+
+    out = [];
+    daemonStatus.value = "running";
+    runScheduleStatus();
+    expect(stdout()).toMatch(/^ {2}daemon +● Running$/m);
+    expect(stdout()).not.toContain("▲");
+  });
+
+  it("warns on stderr in the new language when nothing will run the schedule", async () => {
+    daemonStatus.value = "not-installed";
+    writeAuth(SESSION);
+    await runScheduleOn("7");
+    expect(stderr()).toContain(
+      "▲ The daemon is not installed, so nothing will run on the timer yet.  ·  failproofai config",
+    );
+  });
+});
+
+describe("audit --schedule, the screen", () => {
+  it("states the result, then what each report sends, then where to look next", async () => {
+    writeAuth(SESSION);
+    await runScheduleOn("7");
+    const lines = stdout().split("\n");
+    expect(lines[1]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Audit$/);
+    expect(stdout()).toContain("✓ Scheduled audits to report to you@example.com every 7 days.\n");
+    expect(stdout()).toContain("See when the next scan runs:  failproofai audit --status");
+    expect(stdout()).not.toMatch(/[│◆◇└▀▄█]/u);
+  });
+
+  it("keeps the disclosure of what leaves the machine — the consent stamp certifies it was read", async () => {
+    // `reportsConsentedAt` records that a person READ this line before anything
+    // was sent, so it is part of the consent, not fine print, and the one
+    // explanatory line the redesign keeps (decision D6). Removing it changes
+    // what every stamp already written means.
+    writeAuth(SESSION);
+    await runScheduleOn("7");
+    expect(stdout()).toContain(
+      "\n  Each report sends finding counts, redacted example commands and this machine's name.\n",
+    );
+    expect(readConfig().audit.reportsConsentedAt).toEqual(expect.any(Number));
+  });
+
+  it("says every day, not every 1 days", async () => {
+    writeAuth(SESSION);
+    await runScheduleOn("1");
+    expect(stdout()).toContain("every day.");
+  });
+});
+
+describe("audit --no-schedule, the screen", () => {
+  it("opens with the Audit header and states the result as a sentence", async () => {
+    writeAuth(SESSION);
+    await runScheduleOn("7");
+    out = [];
+    runScheduleOff();
+    expect(stdout()).toMatch(/^\nfailproof ai {2}v\S+ {2}· {2}Audit\n\n✓ Turned off scheduled audits\.\n\n$/);
+  });
+
+  it("says plainly when there was nothing to turn off", () => {
+    runScheduleOff();
+    expect(stdout()).toContain("\nScheduled audits were already off.\n");
   });
 });
 

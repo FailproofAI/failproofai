@@ -29,13 +29,14 @@
  * on a real machine: the CLI reported success, and the actual failure sat in the
  * journal for twenty minutes while batches parked.
  */
-import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { failproofaiHome } from "./fp-home";
 import { readConfig } from "./fp-config";
 import { readIngestCredential } from "./collector-config";
 import { daemonServiceStatus, isDaemonSupportedPlatform } from "./daemon-service";
+import { backfillRequestPath, writeBackfillRequest } from "./backfill-request";
 
 /** Default window. `--since` widens it. */
 export const DEFAULT_BACKFILL_DAYS = 30;
@@ -54,14 +55,7 @@ export interface BackfillResult {
   lines: string[];
 }
 
-/**
- * `~/.failproofai/state/backfill-request.json` — mirrored from the daemon's
- * `paths::backfill_request_path()`. Two processes, one path; the comment there
- * says why that is written down twice rather than derived.
- */
-export function backfillRequestPath(home?: string): string {
-  return join(failproofaiHome(home), "state", "backfill-request.json");
-}
+export { backfillRequestPath };
 
 /**
  * Where each agent CLI keeps its transcripts, so the command can say what it is
@@ -205,14 +199,9 @@ export function runBackfillCommand(opts: BackfillOptions = {}): BackfillResult {
   }
 
   try {
-    const path = backfillRequestPath();
-    mkdirSync(dirname(path), { recursive: true });
-    // Whole-file write of a small JSON object: the daemon deletes it before
-    // acting, so a partially-written file can only ever be read once, and an
-    // unparseable one is discarded rather than retried.
-    writeFileSync(path, `${JSON.stringify({ sinceMs, requestedAtMs: now }, null, 2)}\n`, {
-      mode: 0o600,
-    });
+    // Merged with anything still pending rather than written over it, and
+    // atomically: see backfill-request.ts.
+    writeBackfillRequest({ kind: "user", sinceMs, requestedAtMs: now });
   } catch (err) {
     return {
       exitCode: 2,

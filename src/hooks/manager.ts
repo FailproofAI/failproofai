@@ -351,7 +351,12 @@ export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
   // Installed packs: a policy enforces when its pack is not observe-only, it
   // was taken at install, and nobody switched it off afterwards.
   try {
-    for (const pack of readInstalledPacks().packs) {
+    const installed = readInstalledPacks();
+    // A pack that failed to load FAILS CLOSED: the calls it covers are denied,
+    // which is the opposite of "not enforcing" (see the doc comment above). An
+    // observe pack that fails does not deny, so it does not count.
+    if (installed.errors.some((error) => error.effect !== "observe")) return null;
+    for (const pack of installed.packs) {
       const taken = pack.enabled ?? pack.policies.map((policy) => policy.name);
       const on = taken.filter((name) => !disabled.has(`pack:${pack.id}@${pack.version}:${name}`));
       if (on.length === 0) continue;
@@ -385,6 +390,44 @@ export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
   if (config.enabledPolicies.length > 0 && !hasInstalledRegexPacks()) return null;
 
   return observing ? "observe-only" : "no-policies";
+}
+
+/**
+ * How many policies enforce on this machine, for the line that says so.
+ *
+ * Counted the same way `notEnforcingReason` decides, so the two never disagree:
+ * pack policies that are taken and not switched off, cloud-managed policies, and
+ * the legacy builtins of a machine still on the migration shim — observe-only
+ * ones excluded. Custom policy files cannot be counted without importing them,
+ * so their presence is reported on its own.
+ */
+export function enforcingPolicyCount(cwd?: string): { count: number; custom: boolean } {
+  const config = readMergedHooksConfig(cwd);
+  const disabled = new Set(config.disabledCustomPolicies ?? []);
+  let count = 0;
+  try {
+    for (const pack of readInstalledPacks().packs) {
+      if (pack.effect === "observe") continue;
+      const taken = pack.enabled ?? pack.policies.map((policy) => policy.name);
+      count += taken.filter((name) => !disabled.has(`pack:${pack.id}@${pack.version}:${name}`)).length;
+    }
+  } catch {
+    // An unreadable manifest counts nothing, as it enforces nothing.
+  }
+  try {
+    for (const artifact of readActiveCloudManagedPolicies()) {
+      if (artifact.effect !== "observe") count++;
+    }
+  } catch {
+    // No deployment.
+  }
+  if (!hasInstalledRegexPacks()) count += config.enabledPolicies.length;
+  const projectDir = resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies");
+  const custom =
+    configuredCustomPolicyPaths(config).length > 0 ||
+    discoverPolicyFiles(projectDir).length > 0 ||
+    discoverPolicyFiles(customPoliciesDir()).length > 0;
+  return { count, custom };
 }
 
 function safeSettingsPath(

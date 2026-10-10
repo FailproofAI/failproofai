@@ -414,7 +414,7 @@ writeCloudCredentials(creds);
  * this machine now, and — the one case worth a second line — why an existing
  * `jev.json` was not touched.
  */
-function jevLines(outcome: ConnectOutcome): string[] {
+export function jevLines(outcome: ConnectOutcome): string[] {
   const jev = outcome.jev;
   if (!jev) return [];
   if (jev.unconfirmed === "cleared") {

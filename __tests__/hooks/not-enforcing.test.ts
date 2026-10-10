@@ -122,4 +122,44 @@ describe("notEnforcingReason", () => {
     writeFileSync(join(project, ".failproofai", "policies", "team-policies.mjs"), "throw new Error('must not be imported');\n");
     expect(await reason()).toBeNull();
   });
+
+  it("never calls a machine with a refused pack not enforcing: that pack denies", async () => {
+    wireClaude();
+    installPack({ sha256: "0".repeat(64) });
+    expect(await reason()).toBeNull();
+  });
+
+  it("does not count a refused observe pack, which denies nothing", async () => {
+    wireClaude();
+    installPack({ sha256: "0".repeat(64), effect: "observe" });
+    expect(await reason()).toBe("no-policies");
+  });
+});
+
+describe("enforcingPolicyCount", () => {
+  async function count() {
+    const { enforcingPolicyCount } = await import("@/src/hooks/manager");
+    return enforcingPolicyCount(project);
+  }
+
+  it("counts the policies a pack enforces, leaving out what was switched off", async () => {
+    installPack();
+    expect(await count()).toEqual({ count: 2, custom: false });
+    writeFileSync(
+      join(home, "policies-config.json"),
+      JSON.stringify({ enabledPolicies: [], disabledCustomPolicies: ["pack:acme/finance@1.2.0:require-note"] }),
+    );
+    expect(await count()).toEqual({ count: 1, custom: false });
+  });
+
+  it("counts nothing from an observe-only pack", async () => {
+    installPack({ effect: "observe" });
+    expect((await count()).count).toBe(0);
+  });
+
+  it("reports custom policy files without importing them", async () => {
+    mkdirSync(join(project, ".failproofai", "policies"), { recursive: true });
+    writeFileSync(join(project, ".failproofai", "policies", "team-policies.mjs"), "throw new Error('must not be imported');\n");
+    expect(await count()).toEqual({ count: 0, custom: true });
+  });
 });

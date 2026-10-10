@@ -4,6 +4,7 @@
 
 ### Features
 
+- `failproofai config` v2: after sudo, one API-key field (Tab for open source; Enter keeps a saved key, which is checked in the background), then which agents failproofai traces. That one remembered list drives hooks, collection and backfill. Every agent is listed: the detected ones are ticked on a first run, a re-run opens on the last answer with newly detected agents ticked, and an upgraded machine opens on what is protected today. Nothing is written until the last question is answered, and the run ends with what was written and whether anything is enforcing. Tab never disconnects a connected machine; `--disconnect` does. An agent traced again starts fresh in the collector instead of resuming old cursors (#PR)
 - A new API-key prompt for `failproofai config`: one masked field, Tab for open source, a saved key shown at once and checked in the background, a spinner while a key is checked, and a refused key kept in the field to retry. A tab or newline inside a paste no longer switches mode or submits halfway (#PR)
 - Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#PR)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#PR)
@@ -13,6 +14,8 @@
 
 ### Fixes
 
+- A new backfill request no longer replaces one still waiting for the daemon: requests merge, keeping the wider window, and are written atomically (#PR)
+- A hook from an agent that `failproofai config` does not trace is logged once per session and evaluated as usual, never allowed because of the selection (#PR)
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#PR)
 
 ## 1.0.10 — 2026-10-05

@@ -1117,6 +1117,319 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
   });
 }
 
+/**
+ * Run something that writes straight to the terminal — `sudo -v` and its
+ * password prompt — then erase whatever it wrote, so the step around it can
+ * collapse to one line.
+ *
+ * The rows are reserved FIRST: `reserve` newlines then back up, so that what
+ * the child prints never scrolls the screen. A scroll would move the saved
+ * cursor position off the line it was saved on, and the erase would then land
+ * below the prompt instead of on it. Three failed sudo attempts print about
+ * six lines, so ten is enough room. Without a terminal it just runs.
+ */
+export function collapseAfter<T>(stdout: TTYOut, reserve: number, run: () => T): T {
+  if (!stdout.isTTY) return run();
+  stdout.write(`${"\n".repeat(reserve)}${ESC}[${reserve}A${ESC}7`);
+  try {
+    return run();
+  } finally {
+    stdout.write(`${ESC}8${ESC}[J`);
+  }
+}
+
+// ── the cloud-key prompt ─────────────────────────────────────────────────────
+
+/** What `promptCloudKey` resolves when Tab is pressed: no new connection. */
+export const OPEN_SOURCE: unique symbol = Symbol("failproofai.open-source");
+export type OpenSource = typeof OPEN_SOURCE;
+
+/**
+ * What a key check found, in words the prompt prints as they are. `ok` with a
+ * `line` is a key that works for part of what it was asked: the caller says
+ * which part, as a `▲` line after the prompt collapses. `usable` marks a SAVED
+ * key that could not be checked (offline, a timeout) rather than one that was
+ * refused, so Enter can still keep it.
+ */
+export type KeyVerdict = { ok: true; line?: string } | { ok: false; line: string; usable?: boolean };
+
+export type CloudKeyAnswer =
+  | { kind: "typed"; key: string; note?: string }
+  | { kind: "saved"; verified: boolean };
+
+export interface CloudKeyPromptOptions {
+  /** The heading, e.g. "Connect to cloud". */
+  message: string;
+  /** Grey text after the heading: where the key will be sent. */
+  meta?: string;
+  /** What Tab does, for the key hints: "use open source instead", or "skip". */
+  tabHint: string;
+  /** The `✕` line for Enter on an empty field with no saved key to use. */
+  emptyError: string;
+  /** A key already on this machine: drawn at once, checked in the background. */
+  saved?: { masked: string; check: () => Promise<KeyVerdict> };
+  /** Checks a typed key. Never called for one shorter than `minLength`. */
+  check: (key: string) => Promise<KeyVerdict>;
+  minLength?: number;
+  /** The lines the prompt collapses to once answered. */
+  collapsed?: (answer: CloudKeyAnswer | OpenSource) => string[];
+  stdin?: TTYIn;
+  stdout?: TTYOut;
+}
+
+/**
+ * One masked `API key ›` field, with Tab as the way out to open source.
+ *
+ * Its own prompt rather than options on `promptText`, which keeps a one-row
+ * rule its other callers depend on. This one needs rows above and below the
+ * field: a saved key's state, a spinner while a key is checked, and a `✕` line
+ * that keeps the typed key in place so Enter can retry it.
+ *
+ * Three rules hold for every state:
+ *  - Tab inside a paste is part of the paste. A pasted key arrives as keys,
+ *    so a tab in it would otherwise switch to open source halfway through.
+ *    Bracketed paste is switched on for exactly this, and Enter inside a paste
+ *    (a copied trailing newline) never submits either.
+ *  - Keys are ignored while a typed key is being checked, Esc excepted: a
+ *    check can take ten seconds and leaving must stay possible.
+ *  - The terminal is put back on every way out: cursor, raw mode and paste
+ *    mode, including a process exit while the prompt is open.
+ */
+export function promptCloudKey(opts: CloudKeyPromptOptions): Promise<CloudKeyAnswer | OpenSource | null> {
+  const stdin: TTYIn = opts.stdin ?? process.stdin;
+  const stdout: TTYOut = opts.stdout ?? process.stdout;
+  // Nobody is there to type a key. The wizard never asks without a terminal;
+  // this answers the same way a cancel would rather than hang on a pipe.
+  if (!stdin.isTTY || !stdout.isTTY) return Promise.resolve(null);
+
+  const c = paint(colorsEnabled(stdout));
+  const kit = screenKit({ cols: stdout.columns || 80, color: colorsEnabled(stdout) });
+  const minLength = opts.minLength ?? 8;
+  const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  const region: Region = { lastCount: 0 };
+
+  let typed = "";
+  let inPaste = false;
+  // The saved key's state: being checked, works, could not be checked, or
+  // refused — and a refused key is treated as no saved key at all.
+  let savedState: "checking" | "works" | "unchecked" | "refused" | "none" = opts.saved ? "checking" : "none";
+  let savedLine = "";
+  let enterWaiting = false;
+  let checkingTyped = false;
+  let fieldError = "";
+  let refusedOnce = false;
+  let frame = 0;
+  let spinning = false;
+  let settled = false;
+  let spinDelay: ReturnType<typeof setTimeout> | null = null;
+  let spinTimer: ReturnType<typeof setInterval> | null = null;
+
+  const savedUsable = (): boolean => savedState === "checking" || savedState === "works" || savedState === "unchecked";
+
+  const spinGlyph = (): string => (spinning ? c.ink3(spinnerFrames[frame % spinnerFrames.length]) : " ");
+
+  const build = (): string[] => {
+    const lines: string[] = [promptHeading(c, opts.message, opts.meta)];
+    if (opts.saved) {
+      if (savedState === "checking") lines.push(`  ${spinGlyph()} Checking your saved key ${opts.saved.masked}…`);
+      else if (savedState === "works") lines.push(kit.ok(savedLine));
+      else if (savedState === "unchecked" || savedState === "refused") lines.push(kit.caution(savedLine));
+    }
+    lines.push(`${INDENT}${"API key".padEnd(10)}${c.pink("› ")}${"•".repeat(typed.length)}`);
+    if (checkingTyped) {
+      lines.push(`  ${spinGlyph()} Checking the key…`);
+      return lines;
+    }
+    if (fieldError) lines.push(kit.fail(fieldError));
+    // "type to replace it", not the reference's "type a new key to replace it":
+    // the reference is drawn at 104 columns, and at 80 the longer line is cut
+    // through the Tab hint, which is the only place Tab is mentioned.
+    const hints =
+      fieldError && refusedOnce
+        ? ["enter try again", `tab ${opts.tabHint}`, "esc cancel"]
+        : savedUsable() && typed.length === 0
+          ? ["enter use saved key", "type to replace it", `tab ${opts.tabHint}`]
+          : ["enter connect", `tab ${opts.tabHint}`, "esc cancel"];
+    lines.push("", kit.keys(hints));
+    return lines;
+  };
+
+  const draw = (): void => {
+    if (!settled) repaint(stdout, region, build());
+  };
+
+  const stopSpinner = (): void => {
+    if (spinDelay) clearTimeout(spinDelay);
+    if (spinTimer) clearInterval(spinTimer);
+    spinDelay = null;
+    spinTimer = null;
+    spinning = false;
+  };
+  // 150 ms before the first frame, so a check that answers at once never
+  // flashes a spinner; 80 ms a frame after that.
+  const startSpinner = (): void => {
+    stopSpinner();
+    spinDelay = setTimeout(() => {
+      spinning = true;
+      draw();
+      spinTimer = setInterval(() => {
+        frame++;
+        draw();
+      }, 80);
+      spinTimer.unref?.();
+    }, 150);
+    spinDelay.unref?.();
+  };
+
+  const restoreTerminal = (): void => {
+    stdout.write(`${ESC}[?2004l`);
+    showCursor(stdout);
+  };
+
+  return new Promise((resolve) => {
+    const wasRaw = stdin.isRaw;
+    const finish = (answer: CloudKeyAnswer | OpenSource | null): void => {
+      if (settled) return;
+      stopSpinner();
+      stdin.removeListener("keypress", onKey);
+      stdin.setRawMode?.(wasRaw ?? false);
+      stdin.pause();
+      process.removeListener("exit", restoreTerminal);
+      const lines =
+        answer === null
+          ? [promptHeading(c, opts.message), c.ink3("cancelled")]
+          : (opts.collapsed?.(answer) ?? [promptHeading(c, opts.message)]);
+      repaint(stdout, region, lines);
+      settled = true;
+      restoreTerminal();
+      resolve(answer);
+    };
+
+    const keepSaved = (): void => {
+      if (savedState === "checking") {
+        // Enter waits for a check still in flight, and says so by spinning.
+        enterWaiting = true;
+        return;
+      }
+      finish({ kind: "saved", verified: savedState === "works" });
+    };
+
+    const submit = (): void => {
+      if (typed.length === 0) {
+        if (savedUsable()) return keepSaved();
+        fieldError = opts.emptyError;
+        refusedOnce = false;
+        return draw();
+      }
+      if (typed.length < minLength) {
+        fieldError = "That looks too short to be a key.";
+        refusedOnce = false;
+        return draw();
+      }
+      checkingTyped = true;
+      fieldError = "";
+      startSpinner();
+      draw();
+      const key = typed;
+      opts.check(key).then(
+        (verdict) => {
+          if (settled) return;
+          checkingTyped = false;
+          stopSpinner();
+          if (verdict.ok) return finish({ kind: "typed", key, note: verdict.line });
+          fieldError = verdict.line;
+          refusedOnce = true;
+          draw();
+        },
+        (err: unknown) => {
+          if (settled) return;
+          checkingTyped = false;
+          stopSpinner();
+          fieldError = `Couldn't check the key: ${err instanceof Error ? err.message : String(err)}`;
+          refusedOnce = true;
+          draw();
+        },
+      );
+    };
+
+    function onKey(str: string | undefined, key: readline.Key): void {
+      if (!key || settled) return;
+      if ((key.ctrl && (key.name === "c" || key.name === "d")) || key.name === "escape") return finish(null);
+      if (key.name === "paste-start") {
+        inPaste = true;
+        return;
+      }
+      if (key.name === "paste-end") {
+        inPaste = false;
+        return draw();
+      }
+      if (checkingTyped || enterWaiting) return;
+      if (key.name === "tab") {
+        if (!inPaste) finish(OPEN_SOURCE);
+        return;
+      }
+      if (key.name === "return" || key.name === "enter") {
+        if (!inPaste) submit();
+        return;
+      }
+      if (key.name === "backspace") {
+        typed = typed.slice(0, -1);
+        if (fieldError) fieldError = "";
+        return draw();
+      }
+      // A key is never whitespace, so a copied newline or space is dropped
+      // rather than becoming part of what gets sent.
+      if (str && !key.ctrl && !key.meta) {
+        const clean = str.replace(/\s+/g, "");
+        if (!clean) return;
+        typed += clean;
+        if (fieldError) fieldError = "";
+        if (!inPaste) draw();
+      }
+    }
+
+    process.once("exit", restoreTerminal);
+    readline.emitKeypressEvents(stdin);
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    hideCursor(stdout);
+    stdout.write(`${ESC}[?2004h`);
+    stdin.on("keypress", onKey);
+    if (opts.saved) startSpinner();
+    draw();
+
+    opts.saved?.check().then(
+      (verdict) => {
+        if (settled) return;
+        if (verdict.ok) {
+          savedState = "works";
+          savedLine = verdict.line ?? `Your saved key works: ${opts.saved?.masked}`;
+        } else {
+          savedState = verdict.usable ? "unchecked" : "refused";
+          savedLine = verdict.line;
+        }
+        if (!checkingTyped) stopSpinner();
+        if (enterWaiting) {
+          enterWaiting = false;
+          if (savedUsable()) return keepSaved();
+        }
+        draw();
+      },
+      (err: unknown) => {
+        if (settled) return;
+        savedState = "unchecked";
+        savedLine = `Couldn't check your saved key: ${err instanceof Error ? err.message : String(err)}`;
+        if (!checkingTyped) stopSpinner();
+        if (enterWaiting) {
+          enterWaiting = false;
+          return keepSaved();
+        }
+        draw();
+      },
+    );
+  });
+}
+
 // ── the kit ──────────────────────────────────────────────────────────────────
 /**
  * The block builders every PRINTED surface is assembled from.

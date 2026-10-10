@@ -4,6 +4,7 @@
 
 ### Features
 
+- A new API-key prompt for `failproofai config`: one masked field, Tab for open source, a saved key shown at once and checked in the background, a spinner while a key is checked, and a refused key kept in the field to retry. A tab or newline inside a paste no longer switches mode or submits halfway (#PR)
 - Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#PR)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#PR)
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#PR)

@@ -430,9 +430,6 @@ async fn deliver_loop(relay: Arc<Relay>, sd: Shutdown) -> Result<(), TaskError> 
 }
 
 pub fn tasks(home: PathBuf, ingest: Ingest, settings: &OtlpSettings) -> Vec<TaskSpec> {
-    if !settings.enabled {
-        return Vec::new();
-    }
     let relay = match Relay::new(&home, &ingest) {
         Ok(relay) => Arc::new(relay),
         Err(err) => {
@@ -442,12 +439,17 @@ pub fn tasks(home: PathBuf, ingest: Ingest, settings: &OtlpSettings) -> Vec<Task
     };
     let delivery = relay.clone();
     let port = settings.port;
-    vec![
-        TaskSpec::new("otlp-relay", move |sd| listen(relay.clone(), port, sd)),
-        TaskSpec::new("otlp-delivery", move |sd| {
-            deliver_loop(delivery.clone(), sd)
-        }),
-    ]
+    // SDK exporters opt in by publishing raw OTLP batches. Delivery needs no
+    // TCP listener; an untouched machine has no batches and sends nothing.
+    let mut tasks = vec![TaskSpec::new("otlp-delivery", move |sd| {
+        deliver_loop(delivery.clone(), sd)
+    })];
+    if settings.enabled {
+        tasks.push(TaskSpec::new("otlp-relay", move |sd| {
+            listen(relay.clone(), port, sd)
+        }));
+    }
+    tasks
 }
 
 #[cfg(test)]

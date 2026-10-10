@@ -146,3 +146,52 @@ fn relay_starts_and_stops_on_config_reload_without_daemon_restart() {
     wait(|| TcpStream::connect(("127.0.0.1", port)).is_err());
     ping(&daemon);
 }
+
+#[test]
+fn sdk_spool_delivers_without_opening_a_tcp_listener() {
+    let capture = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let origin_port = capture.local_addr().unwrap().port();
+    let reserved = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let relay_port = reserved.local_addr().unwrap().port();
+    drop(reserved);
+    let daemon = start(relay_port, false);
+    std::fs::write(
+        daemon.home.join("credentials.json"),
+        format!(
+            r#"{{"ingest":{{"url":"http://127.0.0.1:{origin_port}/v1/events","key":"test"}}}}"#
+        ),
+    )
+    .unwrap();
+    let spool = daemon.home.join("state/spool-otlp");
+    std::fs::create_dir_all(&spool).unwrap();
+    // Exact shared SDK format: metadata line followed by ExportTraceServiceRequest JSON.
+    let batch = spool.join("otlp-sdk-contract.jsonl");
+    std::fs::write(&batch, b"{\"path\":\"/v1/traces\",\"content_type\":\"application/json\",\"encoding\":null}\n{\"resourceSpans\":[]}").unwrap();
+    capture.set_nonblocking(true).unwrap();
+    let start = Instant::now();
+    let mut stream = loop {
+        if let Ok((stream, _)) = capture.accept() {
+            break stream;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(20),
+            "SDK batch never reached capture server"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut request = vec![0; 4096];
+    let read = stream.read(&mut request).unwrap();
+    let request = String::from_utf8_lossy(&request[..read]).to_lowercase();
+    assert!(request.starts_with("post /v1/traces "));
+    assert!(request.contains("authorization: bearer test"));
+    assert!(request.contains("content-type: application/json"));
+    stream
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+        .unwrap();
+    wait(|| !batch.exists());
+    assert!(TcpStream::connect(("127.0.0.1", relay_port)).is_err());
+    ping(&daemon);
+}

@@ -16,7 +16,7 @@ failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-The supported agents are `claude`, `codex`, `gemini`, and `copilot` (VS Code). If VS Code has not been launched on the machine, setup skips Copilot and tells you why.
+The supported agents are `claude`, `codex`, `gemini`, and `copilot` (VS Code). Copilot setup requires a VS Code executable or an installed Copilot extension. A leftover settings directory alone is not enough; setup skips Copilot when neither is found.
 
 `--local` sends to the local relay instead of directly to Cloud. Gemini CLI and Copilot use the relay automatically because their settings cannot store the authentication header.
 

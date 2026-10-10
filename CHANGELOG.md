@@ -4,6 +4,7 @@
 
 ### Features
 
+- `policies show <owner>/<repo> --releases` and the empty `policies add` picker are drawn in the new look (#PR)
 - `flush`, `migrate`, `update` and `uninstall` results are drawn in the new look: the header names the command, and a failure opens with ✕ and its fix indented under it (#PR)
 - `failproofai backfill` re-sends only the agents failproofai traces, counts sessions with the same readers the audit uses (all twelve agents, where the old survey knew seven), and takes `--agents` for a subset. A name that is not an agent, an untraced agent, or a daemon of another version is refused before anything is written. `config` takes `--oss` and `--agents`, `config --status` counts agents found but not traced, and `harness` says when an agent's extra paths are idle because it is not traced (#PR)
 - New terminal look for the CLI, the dashboard launch screen: bare `failproofai` prints it once the dashboard is actually listening, with its address, the policies that are on, the agents traced and the cloud connection, plus one warning when policies are not enforcing or the dashboard is reachable from other machines. A server that fails to start says why in one line (a taken port is named as such), Next.js's own startup lines are gone, piped output carries no colour codes, and `failproofai audit` hands off to the dashboard without the logomark or the screen (#PR)

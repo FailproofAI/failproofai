@@ -57,6 +57,7 @@ import {
   note,
   nextStep,
   optsFor,
+  paint,
   rows as kitRows,
   rule,
   screenKit,
@@ -739,20 +740,14 @@ export async function runPolicyPicker(
   }
 
   if (packs.length === 0) {
-    return ok(
-      stack(
-        emptyState(
-          {
-            what: "No policies are installed yet.",
-            hint: "Take ours, or anyone's:",
-            cmd: "failproofai policies add FailproofAI/policies",
-          },
-          opts,
-        ),
-        note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
-        note("Look first:      failproofai policies show <owner>/<repo>", opts),
-      ),
-    );
+    // The same three doors the policies screen's empty state offers.
+    const kit = screenKit(opts);
+    return ok([
+      "No policies are installed yet.",
+      `  Turn on ours:  ${kit.cmd("failproofai policies add FailproofAI/policies")}`,
+      `  Or anyone's:   ${kit.cmd("failproofai policies add <owner>/<repo>")}`,
+      `  Look first:    ${kit.cmd("failproofai policies show <owner>/<repo>")}`,
+    ]);
   }
 
   // One row per policy across every pack. The pack id leads the section heading
@@ -3020,20 +3015,15 @@ async function listReleases(source: string): Promise<PackCliResult> {
     return Number.NEGATIVE_INFINITY;
   };
   const releases = [...raw].sort((a, b) => when(b) - when(a));
+  const kit = screenKit(opts);
   if (releases.length === 0) {
-    return ok(
-      stack(
-        title(`${spec.owner}/${spec.repo}`, "no releases", opts),
-        emptyState(
-          {
-            what: "This repository has published no releases, so there is nothing to install.",
-            hint: "Its author publishes one with:",
-            cmd: "failproofai publish",
-          },
-          opts,
-        ),
-      ),
-    );
+    return ok([
+      kit.header(`${spec.owner}/${spec.repo}`),
+      "",
+      kit.head("Releases", "no releases"),
+      "This repository has published no releases, so there is nothing to install.",
+      `  Its author publishes one with:  ${kit.cmd("failproofai publish")}`,
+    ]);
   }
 
   // Which of them is on THIS machine — the question somebody runs this to
@@ -3092,26 +3082,22 @@ async function listReleases(source: string): Promise<PackCliResult> {
       flags,
     ]);
   }
-  return ok(
-    stack(
-      title(`${spec.owner}/${spec.repo}`, `${rows.length} release${rows.length === 1 ? "" : "s"}`, opts),
-      table(
-        { head: ["version", "published", "commit", "policies", "default", ""], rows },
-        opts,
-      ),
-      // `—` is load-bearing: it means "this release did not say", which is what
-      // a release published before this format did, and what anybody else's
-      // hand-made release does. Filling those in would cost a manifest download
-      // each, and a listing that silently costs a hundred downloads is worse
-      // than one with gaps in it.
-      note("— means the release did not record it.", opts),
-      nextStep(
-        `failproofai policies add ${spec.owner}/${spec.repo}@${newest ?? "<tag>"}`,
-        "Install a particular one with:",
-        opts,
-      ),
-    ),
-  );
+  return ok([
+    kit.header(`${spec.owner}/${spec.repo}`),
+    "",
+    // The id stays in the header: `head` uppercases, and an id is case-sensitive.
+    kit.head("Releases", `${rows.length} release${rows.length === 1 ? "" : "s"}`),
+    // Columns, so it stays a table: the kit's rows are two-column.
+    ...table({ head: ["version", "published", "commit", "policies", "default", ""], rows }, opts),
+    // `—` is load-bearing: it means "this release did not say", which is what
+    // a release published before this format did, and what anybody else's
+    // hand-made release does. Filling those in would cost a manifest download
+    // each, and a listing that silently costs a hundred downloads is worse than
+    // one with gaps in it.
+    `  ${paint(opts.color).ink3("— means the release did not record it.")}`,
+    "",
+    `Install a particular one with:  ${kit.cmd(`failproofai policies add ${spec.owner}/${spec.repo}@${newest ?? "<tag>"}`)}`,
+  ]);
 }
 
 /** `2 hours ago`, `6 days ago`. Coarse on purpose — the question is "how stale",

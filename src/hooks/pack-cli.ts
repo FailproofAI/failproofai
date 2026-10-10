@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { INTEGRATION_TYPES } from "./types";
 import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
-import { detectInstalledClis } from "./integrations";
+import { detectInstalledClis, getIntegration } from "./integrations";
 import {
   packParamsProblem,
   parsePackIdentity,
@@ -59,6 +59,7 @@ import {
   optsFor,
   rows as kitRows,
   rule,
+  screenKit,
   stack,
   table,
   title,
@@ -777,10 +778,9 @@ export async function runPolicyPicker(
 
   const before = new Set(rows.filter((r) => r.checked).map((r) => r.value));
   const picked = await multiSelect<string>({
-    message: "Which policies should be on?",
+    message: "Choose policies",
     choices: rows,
     summaryNoun: "policies",
-    hint: "space toggles · ctrl+a all · ↵ confirm · what is on now is ticked",
     stdin,
     stdout,
   });
@@ -2612,7 +2612,7 @@ async function pickClis(
 ): Promise<string[] | null> {
   const detected = new Set(detectInstalledClis());
   const choices: MultiChoice<string>[] = INTEGRATION_TYPES.map((id) => ({
-    label: id,
+    label: getIntegration(id).displayName,
     value: id,
     checked: true,
     hint: detected.has(id) ? "installed here" : "",
@@ -2621,8 +2621,9 @@ async function pickClis(
     message: "Which agents should this pack guard?",
     choices,
     minSelected: 1,
+    minMessage: "Pick at least one agent.",
     summaryNoun: "agents",
-    hint: `space toggles · ctrl+a all · ↵ confirm · ${detected.size} detected on this machine`,
+    meta: (checked) => `${checked.length} of ${choices.length} selected  ·  ${detected.size} found on this machine`,
     stdin: io.stdin,
     stdout: io.stdout,
   });
@@ -2710,21 +2711,18 @@ async function pickFromSource(
       });
     }
   }
-  const on = preview.policies.filter((p) => p.defaultEnabled).length;
-  // Said BEFORE the list, because the list cannot say it: a pack's Jev checks are
-  // not rows here, and they arrive whole. Somebody ticking boxes should know
-  // that is part of what they are agreeing to.
+  const kit = screenKit(optsFor(io.stdout));
+  const lead = ["", kit.header(`Add ${preview.id}@${preview.version}`), ""];
+  // Said BEFORE the list because the list cannot say it: Jev checks are not
+  // rows here, and they arrive whole with the pack.
   if (preview.semantic.length > 0) {
-    io.stdout.write(
-      `\n  This pack also brings ${semanticPhrase(preview.semantic.length)} (not selectable), ` +
-        `${howJevAsksChecks(preview)}.\n  See: failproofai policies show ${source}\n\n`,
-    );
+    lead.push(`Also brings ${semanticPhrase(preview.semantic.length)}, ${howJevAsksChecks(preview)}.`, "");
   }
+  io.stdout.write(lead.join("\n") + "\n");
   const picked = await multiSelect<string>({
-    message: `${preview.id}@${preview.version} — which of these should be on?`,
+    message: "Choose policies",
     choices: rows,
     summaryNoun: "policies",
-    hint: `space toggles · ctrl+a all · ↵ confirm · ${on} of ${rows.length} are the publisher's defaults`,
     stdin: io.stdin,
     stdout: io.stdout,
   });

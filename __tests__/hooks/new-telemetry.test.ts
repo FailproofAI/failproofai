@@ -28,16 +28,6 @@ vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
 
-vi.mock("../../src/hooks/install-prompt", async () => {
-  const actual = await vi.importActual<typeof import("../../src/hooks/install-prompt")>(
-    "../../src/hooks/install-prompt",
-  );
-  return {
-    ...actual,
-    promptPolicySelection: vi.fn(() => Promise.resolve(["block-sudo"])),
-  };
-});
-
 vi.mock("../../src/hooks/integrations", () => ({
   detectInstalledClis: vi.fn(() => ["claude"]),
   getIntegration: vi.fn((id: string) => ({

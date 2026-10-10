@@ -4,6 +4,7 @@
 
 ### Features
 
+- Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#PR)
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#PR)
 
 ## 1.0.10 — 2026-10-05

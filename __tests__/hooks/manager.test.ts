@@ -33,12 +33,6 @@ vi.mock("../../src/hooks/safe-config-write", async () => {
   };
 });
 
-vi.mock("../../src/hooks/install-prompt", () => ({
-  promptPolicySelection: vi.fn(() =>
-    Promise.resolve(["block-sudo", "block-env-files", "sanitize-jwt"]),
-  ),
-}));
-
 vi.mock("../../src/hooks/hooks-config", () => ({
   readHooksConfig: vi.fn(() => ({ enabledPolicies: [] })),
   // listHooks resolves the project root by walking up to the nearest
@@ -194,12 +188,10 @@ describe("hooks/manager", () => {
       vi.mocked(readScopedHooksConfig).mockReturnValue({ enabledPolicies: ["block-sudo"] });
 
       const { installHooks } = await import("../../src/hooks/manager");
-      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
 
       await installHooks();
 
-      expect(promptPolicySelection).not.toHaveBeenCalled();
       // Written back UNCHANGED — not re-derived, not defaulted, not widened.
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         { enabledPolicies: ["block-sudo"] },
@@ -214,11 +206,9 @@ describe("hooks/manager", () => {
 
       const { installHooks } = await import("../../src/hooks/manager");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
-      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
 
       await installHooks(["all"]);
 
-      expect(promptPolicySelection).not.toHaveBeenCalled();
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
         { enabledPolicies: expect.arrayContaining(["block-sudo", "block-rm-rf", "sanitize-jwt"]) },
         "user",

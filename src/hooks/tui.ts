@@ -41,6 +41,12 @@ export interface SelectOneOptions<T> {
   choices: SelectChoice<T>[];
   /** Static info lines rendered under the question (e.g. a review summary). */
   body?: string[];
+  /** Grey text after the heading — what the list is, e.g. "9 found on this machine". */
+  meta?: string;
+  /** The lines the prompt collapses to once answered, instead of `✓ <label>`. */
+  collapsed?: (value: T) => string[];
+  /** Let space pick the row as well as enter, for a menu that always took both. */
+  spaceSelects?: boolean;
   stdin?: TTYIn;
   stdout?: TTYOut;
 }
@@ -88,7 +94,23 @@ export interface MultiSelectOptions<T> {
   message: string;
   choices: MultiChoice<T>[];
   minSelected?: number;
+  /** What `✕` says when enter is pressed with fewer than `minSelected` ticked. */
+  minMessage?: string;
+  /** Replaces the key hints at the foot. Rarely right: the default IS the design. */
   hint?: string;
+  /**
+   * Grey text after the heading, redrawn on every toggle. Defaults to
+   * "n of m selected"; a function gets what is ticked now; `null` shows none.
+   */
+  meta?: string | null | ((checked: T[]) => string);
+  /**
+   * A tag after a row's name, already coloured — "will be added", "new on this
+   * machine" — recomputed on every toggle, so it can describe the change a
+   * toggle would make. Shown instead of the row's hint when present.
+   */
+  tag?: (value: T, checked: boolean) => string | undefined;
+  /** The lines the prompt collapses to once answered, instead of `✓ <summary>`. */
+  collapsed?: (values: T[]) => string[];
   /** Noun used when collapsing many selections to a count (e.g. "assistants"). */
   summaryNoun?: string;
   stdin?: TTYIn;
@@ -112,6 +134,10 @@ const RADIO_ON = "●";
 const RADIO_OFF = "○";
 export const CHECK_ON = "◼";
 export const CHECK_OFF = "◻";
+// The redesign's boxes: ■ ticked, □ not. Two new names rather than new values
+// for the two above, which install-prompt.ts still draws its own menus with.
+const CHECK_SELECTED = "■";
+const CHECK_EMPTY = "□";
 export const CARET = "❯";
 /** The return key, as the multi-select hints already spell it. */
 export const CARET_RETURN = "↵";
@@ -520,7 +546,7 @@ export function outro(
 
 type Region = { lastCount: number };
 
-const WINDOW = 8; // visible rows before the checklist scrolls
+const WINDOW = 12; // visible rows before a list scrolls; 12 reproduces every frame in the redesign
 
 /**
  * Redraw the region as ONE atomic frame.
@@ -611,8 +637,10 @@ interface PromptSpec<R> {
   /** Static info lines rendered under the question. */
   body?: string[];
   choices: Array<{ label: string; section?: string }>;
-  /** Row content after the gutter, e.g. "● Label  hint". */
+  /** A whole row, cursor gutter included: " › ■ name  hint". */
   renderRow: (index: number, active: boolean, budget: number) => string;
+  /** Grey text after the heading, re-read on every frame. */
+  meta?: () => string | null | undefined;
   /** Extra line(s) above the footer (e.g. a min-selected warning). */
   warnLine?: () => string | null;
   /** When set, ← resolves `BACK` so the caller can step backwards. */
@@ -622,8 +650,19 @@ interface PromptSpec<R> {
   footer: string;
   /** Handle non-navigation keys. `{done}` finishes, `"redraw"` repaints. */
   onKey: (key: readline.Key, cursor: number) => { done: R } | "redraw" | undefined;
-  /** One-line ◇ summary for the collapsed log entry. */
+  /** The answer, said once the prompt collapses: `✓ <this>`. */
   summaryFor: (result: R | null) => string;
+  /** The collapsed lines, when a caller says the answer its own way. */
+  collapsed?: (result: R) => string[];
+}
+
+/**
+ * A prompt's heading: the question in bold UPPERCASE, with grey meta after it —
+ * the same shape as `screenKit().head`, so a picker and the screen around it
+ * read as one page.
+ */
+function promptHeading(c: ReturnType<typeof paint>, message: string, meta?: string | null): string {
+  return c.bold(message.toUpperCase()) + (meta ? `  ${c.ink3(meta)}` : "");
 }
 
 function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
@@ -634,8 +673,8 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
 
   const build = (): string[] => {
     const cols = stdout.columns || 80;
-    const lines: string[] = [c.dim(BAR), `${c.guide(STEP_ACTIVE)}  ${c.bold(p.message)}`];
-    for (const b of p.body ?? []) lines.push(`${c.dim(BAR)}  ${c.dim(b)}`);
+    const lines: string[] = [promptHeading(c, p.message, p.meta?.())];
+    for (const b of p.body ?? []) lines.push(`${INDENT}${c.ink2(b)}`);
 
     const rows = displayRows(choices);
     let cursorRow = 0;
@@ -645,22 +684,25 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
     const { start, end } = viewport(rows, cursorRow, WINDOW);
     const above = rows.slice(0, start).filter((r) => r.kind === "item").length;
     const below = rows.slice(end).filter((r) => r.kind === "item").length;
-    if (above > 0) lines.push(`${c.dim(BAR)}    ${c.dim(`↑ ${above} more`)}`);
+    if (above > 0) lines.push(`   ${c.ink2(`↑ ${above} more`)}`);
 
-    const budget = Math.max(6, cols - nameCol - 10);
+    // The room a row's hint has: the terminal, less the 3-column cursor gutter,
+    // the name column and the gap after it. A checklist's box takes two more,
+    // which its renderRow subtracts itself.
+    const budget = Math.max(6, cols - nameCol - 6);
     for (let ri = start; ri < end; ri++) {
       const row = rows[ri];
       if (row.kind === "header") {
-        lines.push(`${c.dim(BAR)}  ${c.dim(row.text)}`);
+        lines.push(`${INDENT}${c.bold(row.text)}`);
       } else {
-        lines.push(`${c.dim(BAR)}  ${p.renderRow(row.index, row.index === cursor, budget)}`);
+        lines.push(p.renderRow(row.index, row.index === cursor, budget));
       }
     }
-    if (below > 0) lines.push(`${c.dim(BAR)}    ${c.dim(`↓ ${below} more`)}`);
+    if (below > 0) lines.push(`   ${c.ink2(`↓ ${below} more`)}`);
 
     const warn = p.warnLine?.();
-    if (warn) lines.push(`${c.dim(BAR)}  ${warn}`);
-    lines.push(`${c.dim(BAR)}  ${c.dim(p.footer)}`);
+    if (warn) lines.push(warn);
+    lines.push("", c.ink3(p.footer));
     return lines;
   };
 
@@ -675,12 +717,16 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
     // `resolve(result)`, so pressing ← never settled the promise and the wizard
     // stopped responding entirely. `selectOne` fell through to `String(value)`
     // and rendered the literal text `Symbol(failproofai.back)`.
-    const summary = (result as unknown) === BACK ? "back" : p.summaryFor(result);
-    repaint(stdout, region, [
-      c.dim(BAR),
-      `${c.dim(STEP_DONE)}  ${p.message}`,
-      `${c.dim(BAR)}  ${c.dim(summary)}`,
-    ]);
+    const heading = promptHeading(c, p.message);
+    const lines =
+      (result as unknown) === BACK
+        ? [heading, c.ink3("back")]
+        : result === null
+          ? [heading, c.ink3(p.summaryFor(null))]
+          : p.collapsed
+            ? p.collapsed(result)
+            : [heading, `${c.guide("✓")} ${p.summaryFor(result)}`];
+    repaint(stdout, region, lines);
   };
 
   return new Promise<R | null>((resolve) => {
@@ -775,22 +821,23 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | Back | null
     c,
     body: opts.body,
     choices,
+    meta: () => opts.meta,
     renderRow: (index, active, budget) => {
       const choice = choices[index];
-      const dot = active ? c.pink(RADIO_ON) : c.dim(RADIO_OFF);
-      const rawLabel = choice.label.padEnd(nameCol);
-      const label = active ? c.pinkBold(rawLabel) : rawLabel;
+      const rawLabel = choice.hint ? choice.label.padEnd(nameCol) : choice.label;
+      const label = active ? c.bold(rawLabel) : rawLabel;
       const hint = choice.hint
-        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        ? `  ${c.ink2(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
         : "";
-      return `${dot} ${label}${hint}`;
+      return `${active ? c.pink(" › ") : "   "}${label}${hint}`;
     },
     allowBack: opts.allowBack,
-    footer: opts.allowBack
-      ? "↑/↓ navigate · enter to select · ← back · esc to cancel"
-      : "↑/↓ navigate · enter to select · esc to cancel",
+    footer: ["↑↓ move", "enter select", ...(opts.allowBack ? ["← back"] : []), "esc cancel"].join("  ·  "),
     onKey: (key, cursor) =>
-      key.name === "return" ? { done: choices[cursor].value } : undefined,
+      key.name === "return" || (opts.spaceSelects && key.name === "space")
+        ? { done: choices[cursor].value }
+        : undefined,
+    collapsed: opts.collapsed,
     summaryFor: (value) =>
       value === null
         ? "cancelled"
@@ -825,27 +872,40 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
     message: opts.message,
     c,
     choices,
+    meta: () => {
+      if (opts.meta === null) return null;
+      if (typeof opts.meta === "string") return opts.meta;
+      if (typeof opts.meta === "function") {
+        return opts.meta(choices.filter((_, i) => checked[i]).map((ch) => ch.value));
+      }
+      // Selector rows ("Everything available") are not one of the things counted.
+      const counted = choices.map((ch, i) => (ch.summaryExclude ? null : checked[i])).filter((v) => v !== null);
+      return `${counted.filter(Boolean).length} of ${counted.length} selected`;
+    },
     renderRow: (index, active, budget) => {
       const choice = choices[index];
-      const caret = active ? c.pink(CARET) : " ";
-      // Locked rows use the teal guide hue rather than selection pink, so they
+      // Locked rows use the mint guide hue rather than selection pink, so they
       // read as "already true" instead of "you picked this"; an unchecked
-      // locked row is a dim empty box — nothing there yet.
+      // locked row is an empty grey box — nothing there yet.
       const box = choice.locked
         ? checked[index]
-          ? c.guide(CHECK_ON)
-          : c.dim(CHECK_OFF)
+          ? c.guide(CHECK_SELECTED)
+          : c.ink3(CHECK_EMPTY)
         : checked[index]
-          ? c.pink(CHECK_ON)
-          : c.dim(CHECK_OFF);
-      const rawLabel = choice.label.padEnd(nameCol);
-      const label = active ? c.pinkBold(rawLabel) : checked[index] ? rawLabel : c.dim(rawLabel);
-      const hint = choice.hint
-        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
-        : "";
-      return `${caret} ${box} ${label}${hint}`;
+          ? c.pink(CHECK_SELECTED)
+          : c.ink3(CHECK_EMPTY);
+      const tag = opts.tag?.(choice.value, checked[index]);
+      const rawLabel = tag || choice.hint ? choice.label.padEnd(nameCol) : choice.label;
+      const label = active ? c.bold(rawLabel) : checked[index] ? rawLabel : c.ink2(rawLabel);
+      const trail = tag
+        ? `  ${tag}`
+        : choice.hint
+          ? `  ${c.ink2(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget - 2)))}`
+          : "";
+      return `${active ? c.pink(" › ") : "   "}${box} ${label}${trail}`;
     },
-    warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),
+    warnLine: () =>
+      warn ? `${c.err("✕")} ${opts.minMessage ?? `Select at least ${minSelected}.`}` : null,
     allowBack: opts.allowBack,
     // Reads the SAME `checked` array the prompt is driving, so what the caller
     // learns is exactly what was on screen when ← was pressed.
@@ -854,9 +914,10 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
       : undefined,
     footer:
       opts.hint ??
-      (opts.allowBack
-        ? "↑/↓ move · space select · ctrl+a all · ← back · enter confirm"
-        : "↑/↓ move · space select · ctrl+a all · enter confirm"),
+      ["↑↓ move", "space toggle", "a all", ...(opts.allowBack ? ["← back"] : []), "enter confirm", "esc cancel"].join(
+        "  ·  ",
+      ),
+    collapsed: opts.collapsed,
     onKey: (key, cursor) => {
       if (key.name === "space") {
         if (choices[cursor]?.locked) return "redraw"; // always on — not a choice
@@ -864,7 +925,9 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
         warn = false;
         return "redraw";
       }
-      if (key.ctrl && key.name === "a") {
+      // Plain `a`, as the redesign's hints spell it; ctrl+a stays as an alias,
+      // since GNU screen swallows it as its command prefix anyway.
+      if (key.name === "a") {
         const allOn = choices.every((ch, i) => checked[i] || ch.locked);
         for (let i = 0; i < checked.length; i++) {
           checked[i] = choices[i]?.locked ? true : !allOn;

@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   type TTYIn,
   multiSelect,
+  selectOne,
   INDENT,
   CHIP_WIDTH,
   brandAnsi,
@@ -755,8 +756,9 @@ describe("a repaint is one atomic frame", () => {
     const written = await drawTwice();
     // The cursor-up-and-clear must never arrive on its own — that lone write is
     // precisely the blank frame.
+    // Case-insensitive: the redesign prints the question as an UPPERCASE heading.
     const clearOnly = written.filter(
-      (c) => /\u001b\[\d+A\u001b\[J/.test(c) && !c.includes("pick"),
+      (c) => /\u001b\[\d+A\u001b\[J/.test(c) && !/pick/i.test(c),
     );
     expect(clearOnly).toEqual([]);
   });
@@ -1064,5 +1066,124 @@ describe("screenKit — the 2026-10 building blocks", () => {
   it("defaults the header's version to this build's", async () => {
     const { version } = await import("../../package.json");
     expect(screenKit().header()).toBe(`failproof ai  v${version}`);
+  });
+});
+
+
+describe("pickers in the 2026-10 language", () => {
+  const plainText = (s: string) => s.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+
+  /** Drive a prompt through a real PassThrough, sending `keys` after the first frame. */
+  const drive = async <R,>(start: (io: { stdin: TTYIn; stdout: TTYOut }) => Promise<R>, keys: string[], columns = 100) => {
+    const written: string[] = [];
+    const stdout = { isTTY: true, columns, write: (chunk: string) => { written.push(chunk); return true; } } as unknown as TTYOut;
+    const stdin = new PassThrough() as unknown as TTYIn & PassThrough;
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (on: boolean) => void }).setRawMode = () => {};
+    const pending = start({ stdin: stdin as unknown as TTYIn, stdout });
+    for (const k of keys) stdin.write(k);
+    const result = await pending;
+    // Cursor show/hide go out as writes of their own, which strip to nothing.
+    const frames = written.map(plainText).filter((f) => f.trim() !== "");
+    return { result, frames, last: frames[frames.length - 1] ?? "", all: frames.join("") };
+  };
+
+  const POLICIES = ["block-sudo", "block-rm-rf", "block-env-files"].map((name, i) => ({
+    label: name,
+    value: name,
+    hint: `Description ${i}`,
+    checked: i === 0,
+  }));
+
+  it("draws the heading in UPPERCASE with a live count, a › cursor and ■ □ boxes", async () => {
+    const { frames } = await drive(
+      (io) => multiSelect<string>({ message: "Choose policies", choices: POLICIES, ...io }),
+      ["\u001b"],
+    );
+    const first = frames[0];
+    expect(first).toContain("CHOOSE POLICIES  1 of 3 selected");
+    expect(first).toContain(" › ■ block-sudo");
+    expect(first).toContain("   □ block-rm-rf");
+    expect(first).toContain("↑↓ move  ·  space toggle  ·  a all  ·  enter confirm  ·  esc cancel");
+    // No spine glyphs from the old flow.
+    expect(first).not.toMatch(/[│◆◇❯◼◻]/);
+  });
+
+  it("toggles everything with a plain `a`, and keeps ctrl+a as an alias", async () => {
+    const plainA = await drive((io) => multiSelect<string>({ message: "pick", choices: POLICIES, ...io }), ["a", "\r"]);
+    expect(plainA.result).toEqual(["block-sudo", "block-rm-rf", "block-env-files"]);
+    const ctrlA = await drive((io) => multiSelect<string>({ message: "pick", choices: POLICIES, ...io }), ["\u0001", "\r"]);
+    expect(ctrlA.result).toEqual(["block-sudo", "block-rm-rf", "block-env-files"]);
+  });
+
+  it("says the caller's minimum with ✕ and stays put", async () => {
+    const none = POLICIES.map((p) => ({ ...p, checked: false }));
+    const { all } = await drive(
+      (io) => multiSelect<string>({ message: "Which agents should failproofai trace?", choices: none, minSelected: 1, minMessage: "pick at least one agent", ...io }),
+      ["\r", "\u001b"],
+    );
+    expect(all).toContain("✕ pick at least one agent");
+  });
+
+  it("recomputes a row's tag on every toggle", async () => {
+    const { frames } = await drive(
+      (io) =>
+        multiSelect<string>({
+          message: "pick",
+          choices: POLICIES,
+          tag: (value, on) => (value === "block-rm-rf" && on ? "will be added" : undefined),
+          ...io,
+        }),
+      ["\u001b[B", " ", "\u001b"],
+    );
+    expect(frames[0]).not.toContain("will be added");
+    expect(frames.some((f) => f.includes("block-rm-rf") && f.includes("will be added"))).toBe(true);
+  });
+
+  it("collapses to `✓ <summary>` under the heading, or to the caller's own lines", async () => {
+    const plain = await drive((io) => multiSelect<string>({ message: "Choose policies", choices: POLICIES, ...io }), ["\r"]);
+    expect(plain.last).toContain("CHOOSE POLICIES");
+    expect(plain.last).toContain("✓ block-sudo");
+    const custom = await drive(
+      (io) => multiSelect<string>({ message: "Choose policies", choices: POLICIES, collapsed: (v) => ["AGENTS", `✓ Tracing ${v.length} agents`], ...io }),
+      ["\r"],
+    );
+    expect(custom.last).toContain("✓ Tracing 1 agents");
+  });
+
+  it("shows twelve rows before it scrolls, and says how many more are below", async () => {
+    const many = Array.from({ length: 15 }, (_, i) => ({ label: `policy-${i}`, value: `p${i}` }));
+    const { frames } = await drive((io) => multiSelect<string>({ message: "pick", choices: many, ...io }), ["\u001b"]);
+    expect(frames[0]).toContain("policy-11");
+    expect(frames[0]).not.toContain("policy-12");
+    expect(frames[0]).toContain("↓ 3 more");
+  });
+
+  it("selectOne: grey meta after the heading, a bold cursor row, and the redesign's key hints", async () => {
+    const { frames, result } = await drive(
+      (io) =>
+        selectOne<string>({
+          message: "Choose agents",
+          meta: "9 found on this machine",
+          choices: [
+            { label: "All 9 agents", value: "all" },
+            { label: "Claude Code", value: "claude" },
+          ],
+          ...io,
+        }),
+      ["\u001b[B", "\r"],
+    );
+    expect(frames[0]).toContain("CHOOSE AGENTS  9 found on this machine");
+    expect(frames[0]).toContain(" › All 9 agents");
+    expect(frames[0]).toContain("↑↓ move  ·  enter select  ·  esc cancel");
+    expect(result).toBe("claude");
+  });
+
+  it("selectOne picks on space only when the caller asks for it", async () => {
+    const choices = [{ label: "A", value: "a" }, { label: "B", value: "b" }];
+    const asked = await drive((io) => selectOne<string>({ message: "pick", choices, spaceSelects: true, ...io }), [" "]);
+    expect(asked.result).toBe("a");
+    const notAsked = await drive((io) => selectOne<string>({ message: "pick", choices, ...io }), [" ", "\u001b"]);
+    expect(notAsked.result).toBeNull();
   });
 });

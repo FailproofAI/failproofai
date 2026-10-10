@@ -28,6 +28,7 @@ import {
   readCredentialsRaw,
   writeCredentials,
   DEFAULT_CONFIG,
+  isAgentTraced,
 } from "../../src/hooks/fp-config";
 
 let home: string;
@@ -286,5 +287,64 @@ describe("credentials.json preserves keys this build does not own", () => {
 
     expect(raw.extra).toBe(1);
     expect(credentials.cloud?.token).toBe("t");
+  });
+});
+
+
+describe("config.json agents: the remembered answer to \"which agents should failproofai trace?\"", () => {
+  it("is absent on a machine that never chose, and writes no key — absent means every agent", () => {
+    writeConfig(structuredClone(DEFAULT_CONFIG), {});
+    expect(readFile(configFile()).agents).toBeUndefined();
+    expect(readConfig().agents).toBeUndefined();
+    expect(isAgentTraced("goose")).toBe(true);
+  });
+
+  it("round-trips selected and seen", () => {
+    writeConfig({ ...structuredClone(DEFAULT_CONFIG), agents: { selected: ["claude", "codex"], seen: ["claude", "codex", "goose"] } }, {});
+    expect(readFile(configFile()).agents).toEqual({ selected: ["claude", "codex"], seen: ["claude", "codex", "goose"] });
+    expect(readConfig().agents).toEqual({ selected: ["claude", "codex"], seen: ["claude", "codex", "goose"] });
+  });
+
+  it("survives every unrelated update — the wizard's own connect step writes twice after it", () => {
+    seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents: { selected: ["claude"], seen: ["claude", "goose"] } });
+    updateConfig({ mode: "cloud" });
+    updateConfig({ collector: { sessions: true } });
+    expect(readFile(configFile()).agents).toEqual({ selected: ["claude"], seen: ["claude", "goose"] });
+  });
+
+  it("is replaced by a patch that names it and removed by null, pruning the table", () => {
+    seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents: { selected: ["claude"], seen: ["claude"] } });
+    updateConfig({ agents: { selected: ["codex"], seen: ["claude", "codex"] } });
+    expect(readFile(configFile()).agents).toEqual({ selected: ["codex"], seen: ["claude", "codex"] });
+    updateConfig({ agents: null });
+    expect(readFile(configFile()).agents).toBeUndefined();
+    expect(readConfig().agents).toBeUndefined();
+  });
+
+  it("keeps an unknown sibling a newer build wrote inside the agents table", () => {
+    seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents: { selected: ["claude"], seen: [], future_knob: 1 } });
+    updateConfig({ agents: { selected: ["claude", "codex"], seen: ["claude", "codex"] } });
+    expect(readFile(configFile()).agents.future_knob).toBe(1);
+  });
+
+  it("reads a garbage value as no selection, so a broken file never switches tracing off", () => {
+    for (const agents of ["all", ["claude"], { selected: "claude" }, { seen: ["claude"] }, null]) {
+      seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents });
+      expect(readConfig().agents).toBeUndefined();
+      expect(isAgentTraced("claude")).toBe(true);
+    }
+  });
+
+  it("keeps the names as written — the daemon is the one that warns about an unknown id — minus non-strings and repeats", () => {
+    seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents: { selected: ["claude", 3, "claude", "", "future-agent"], seen: "x" } });
+    expect(readConfig().agents).toEqual({ selected: ["claude", "future-agent"], seen: [] });
+  });
+
+  it("answers isAgentTraced from the selection once there is one", () => {
+    seedConfig({ mode: { kind: "oss" }, audit: { auto: false, interval_days: 7 }, agents: { selected: ["claude"], seen: ["claude", "goose"] } });
+    expect(isAgentTraced("claude")).toBe(true);
+    expect(isAgentTraced("goose")).toBe(false);
+    // An empty selection is a real choice, not "no selection".
+    expect(isAgentTraced("claude", { ...readConfig(), agents: { selected: [], seen: [] } })).toBe(false);
   });
 });

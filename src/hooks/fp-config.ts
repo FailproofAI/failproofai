@@ -368,6 +368,23 @@ export interface FpConfig {
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
+  /**
+   * Which agents failproofai traces: the remembered answer to `failproofai
+   * config`'s "which agents should failproofai trace?".
+   *
+   * `selected` drives every per-agent thing at once — which CLIs get hooks,
+   * which harnesses the daemon's collector reads, and which `backfill` re-sends.
+   * `seen` is every agent that was detected at the last setup, which is how a
+   * newly installed agent is recognised and offered as "new on this machine".
+   * Ids are the integration ids (`claude`, `codex`, …).
+   *
+   * ABSENT means today's behaviour, everything, and that is what every machine
+   * set up before this existed has. So `writeConfig` emits nothing in that case,
+   * and the daemon — which reads `agents.selected` from this same file — keeps
+   * collecting every harness. The direction matters: an unreadable or missing
+   * selection must never quietly switch tracing OFF.
+   */
+  agents?: { selected: string[]; seen: string[] };
 }
 
 /**
@@ -441,6 +458,26 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
     if (paths.length > 0) out[name] = { extraPaths: paths };
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * `agents` → the in-memory shape. Kept as written (strings only, de-duplicated
+ * in order): the daemon owns the list of real agent ids and warns about an
+ * unknown one, so dropping it here would hide that warning behind a value the
+ * CLI had already rewritten — the same reasoning as {@link readSources}.
+ *
+ * `undefined` unless `selected` is an array, because absent means everything
+ * and a garbage value must fail in that direction too.
+ */
+function readAgents(raw: unknown): FpConfig["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const ids = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? [...new Set(v.filter((e): e is string => typeof e === "string" && e.trim() !== ""))]
+      : [];
+  const table = raw as Record<string, unknown>;
+  if (!Array.isArray(table.selected)) return undefined;
+  return { selected: ids(table.selected), seen: ids(table.seen) };
 }
 
 /**
@@ -552,6 +589,7 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
             ? audit.reports_consented_at
             : undefined,
       },
+      agents: readAgents(parsed.agents),
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -598,6 +636,8 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["audit", "auto"],
   ["audit", "interval_days"],
   ["audit", "reports_consented_at"],
+  ["agents", "selected"],
+  ["agents", "seen"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -708,6 +748,12 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
         ? {}
         : { reports_consented_at: config.audit.reportsConsentedAt }),
     },
+    // Written ONLY when a selection exists — absent means "every agent", and a
+    // machine that never chose keeps a file byte-identical to what this
+    // function wrote before the field existed.
+    ...(config.agents
+      ? { agents: { selected: config.agents.selected, seen: config.agents.seen } }
+      : {}),
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left
@@ -726,6 +772,8 @@ export function updateConfig(patch: {
   collector?: Partial<FpConfig["collector"]>;
   telemetry?: Partial<FpConfig["telemetry"]>;
   audit?: Partial<FpConfig["audit"]>;
+  /** Replace the agent selection; `null` removes it (back to "every agent"). */
+  agents?: FpConfig["agents"] | null;
 }): FpConfig {
   // `readConfigRaw`, not `readConfig` — this is the function EVERY mutation path
   // goes through (the wizard, `harness add-path`, `healDaemonFlag`, the telemetry
@@ -738,9 +786,23 @@ export function updateConfig(patch: {
     collector: { ...current.collector, ...patch.collector },
     telemetry: { ...current.telemetry, ...patch.telemetry },
     audit: { ...current.audit, ...patch.audit },
+    // Carried forward when the patch does not name it. Every other mutation
+    // path goes through here — the wizard's own connect step among them — and
+    // a selection dropped by an unrelated write would silently turn tracing
+    // back on for every agent the user switched off.
+    agents: patch.agents === undefined ? current.agents : (patch.agents ?? undefined),
   };
   writeConfig(next, raw);
   return next;
+}
+
+/**
+ * Whether failproofai traces this agent: hooked, collected and backfilled.
+ * True for every agent when no selection has been saved, which is today's
+ * behaviour and what every machine set up before the selection existed has.
+ */
+export function isAgentTraced(id: string, config: FpConfig = readConfig()): boolean {
+  return !config.agents || config.agents.selected.includes(id);
 }
 
 // ── credentials.json ─────────────────────────────────────────────────────────

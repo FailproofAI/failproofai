@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,33 @@ from opentelemetry.trace import Link, SpanKind, Status, StatusCode
 
 import failproofai_sdk
 from failproofai_sdk.integrations import _core
+
+
+def test_module_and_exporter_import_without_opentelemetry():
+    package_root = Path(failproofai_sdk.__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", f"""
+import importlib.abc
+import sys
+sys.path.insert(0, {str(package_root)!r})
+class AbsentOpenTelemetry(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "opentelemetry" or fullname.startswith("opentelemetry."):
+            raise ModuleNotFoundError("OpenTelemetry is not installed")
+sys.meta_path.insert(0, AbsentOpenTelemetry())
+from failproofai_sdk.integrations.otel import OtelSpanExporter
+import failproofai_sdk
+assert failproofai_sdk.OtelSpanExporter is OtelSpanExporter
+exporter = OtelSpanExporter()
+assert exporter.force_flush()
+exporter.shutdown()
+assert not any(name.startswith("opentelemetry") for name in sys.modules)
+print("Imported OTEL module and exporter without OpenTelemetry")
+"""],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "without OpenTelemetry" in result.stdout
 
 
 @pytest.fixture(autouse=True)

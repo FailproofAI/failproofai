@@ -156,6 +156,23 @@ describe("managed OTEL settings", () => {
     expect(() => editAgentConfig("[broken", "codex", writes)).toThrow();
   });
 
+  it("local Codex omits headers from all exporters and restores original config bytes", async () => {
+    const path = agentConfigPath("codex", home);
+    const before = '# kept\n[otel] # old config\nexporter = { otlp-http = { endpoint="https://old/v1/logs", protocol="json", headers={Authorization="Bearer old"} } }\n[other]\nkey="kept"\n';
+    seed(path, before);
+    const enabled = await runOtelCommand(["enable", "codex", "--local"], options());
+    expect(enabled.exitCode, enabled.lines.join("\n")).toBe(0);
+    const text = readFileSync(path, "utf8");
+    const parsed = parseAgentConfig(text, "codex").otel as Record<string, { "otlp-http": Record<string, unknown> }>;
+    for (const name of ["exporter", "trace_exporter", "metrics_exporter"]) {
+      expect(parsed[name]["otlp-http"]).not.toHaveProperty("headers");
+      expect(parsed[name]["otlp-http"].endpoint).toContain("http://127.0.0.1:4318/v1/");
+    }
+    expect(text).not.toContain("headers");
+    expect((await runOtelCommand(["disable", "codex"], options())).exitCode).toBe(0);
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
   it.each(["gemini", "copilot"] as const)("writes %s with automatic auth-free relay and restores JSONC byte-equal", async agent => {
     const path = agentConfigPath(agent, home);
     const before = '{\n// user comment\n"editor.fontSize": 13,\n"telemetry": {"unknown": 42},\n}\n';
@@ -278,6 +295,17 @@ describe("opt-in, one path and status", () => {
     expect(identity.kind === "ok" && identity.identity.otelIngest).toBeUndefined();
   });
 
+  it("status uses recorded relay mode, not a loopback Cloud hostname", async () => {
+    process.env.FAILPROOFAI_INGEST_URL = "http://127.0.0.1:18765/v1/events";
+    await runOtelCommand(["enable", "codex"], options());
+    let line = (await runOtelCommand(["status"], options())).lines.find(line => line.startsWith("Codex:"));
+    expect(line).toContain("destination: Cloud (http://127.0.0.1:18765)");
+    expect(line).not.toContain("local relay");
+    await runOtelCommand(["enable", "codex", "--local"], options());
+    line = (await runOtelCommand(["status"], options())).lines.find(line => line.startsWith("Codex:"));
+    expect(line).toContain("destination: local relay (http://127.0.0.1:4318)");
+  });
+
   it("reports unmanaged OTEL and warns but writes when org ingest is off", async () => {
     seed(agentConfigPath("codex", home), '[otel]\nexporter = { "otlp-http" = { endpoint="http://external/v1/logs", protocol="json" } }\n');
     expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Codex: on, not managed");
@@ -330,5 +358,22 @@ describe("opt-in, one path and status", () => {
     expect(result.stdout).toContain("otel");
     expect(result.stdout.toLowerCase()).toContain("usage");
     expect(result.stdout.toLowerCase()).toContain("notes");
+  });
+
+  it.each([
+    { verb: "status", flags: [] },
+    { verb: "enable", flags: ["--local", "--no-content", "--yes"] },
+    { verb: "disable", flags: [] },
+    { verb: "env", flags: ["--service", "--local"] },
+  ])("$verb help mentions only flags that verb accepts", ({ verb, flags }) => {
+    const result = spawnSync("bun", ["bin/failproofai.mjs", "otel", verb, "--help"], {
+      cwd: join(__dirname, "../.."), env: { ...process.env, HOME: home, FAILPROOFAI_TELEMETRY_DISABLED: "1" },
+      encoding: "utf8", timeout: 15000,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    for (const flag of ["--local", "--no-content", "--yes", "--service"]) {
+      if (flags.includes(flag)) expect(result.stdout).toContain(flag);
+      else expect(result.stdout).not.toContain(flag);
+    }
   });
 });

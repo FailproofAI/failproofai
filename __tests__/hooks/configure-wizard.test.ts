@@ -121,6 +121,7 @@ vi.mock("../../src/hooks/integrations", async (importOriginal) => {
 import { selectOne, multiSelect, promptText, outro, type TTYIn, type TTYOut } from "../../src/hooks/tui";
 import { connectToCloud } from "../../src/hooks/cloud-connection";
 import { validateIngestKey } from "../../src/hooks/collector-config";
+import * as otelCli from "../../src/hooks/otel-cli";
 import { installHooks } from "../../src/hooks/manager";
 import {
   isDaemonSupportedPlatform,
@@ -1389,6 +1390,28 @@ describe("connect step", () => {
       token: "a-real-looking-key",
       sessions: true,
     });
+  });
+
+  it("passes the resolved HOME into OTEL enable after the optional wizard step", async () => {
+    const enable = vi.spyOn(otelCli, "runOtelCommand").mockResolvedValue({
+      lines: ["Gemini CLI OTEL enabled"], exitCode: 0,
+    });
+    vi.mocked(selectOne)
+      .mockResolvedValueOnce("key")
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce("apply");
+    vi.mocked(multiSelect).mockResolvedValueOnce(["gemini"]);
+    try {
+      const result = await runConfigureWizard(ttyIO());
+      expect(result.applied).toBe(true);
+      expect(result.connected).toBe(true);
+      expect(enable).toHaveBeenCalledExactlyOnceWith(
+        ["enable", "gemini"],
+        expect.objectContaining({ home: fileHome }),
+      );
+    } finally {
+      enable.mockRestore();
+    }
   });
 
   it("never asks for the endpoint — only the key", async () => {

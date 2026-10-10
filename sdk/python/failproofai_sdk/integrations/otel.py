@@ -8,8 +8,6 @@ import threading
 import uuid
 from pathlib import Path
 
-from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult, BatchSpanProcessor
-
 _MAX_BYTES = 8 * 1024 * 1024
 _METADATA = b'{"path":"/v1/traces","content_type":"application/json","encoding":null}\n'
 
@@ -73,7 +71,7 @@ def _resource_span(span):
     }
 
 
-class OtelSpanExporter(SpanExporter):
+class OtelSpanExporter:
     """Exports standard spans durably to the daemon's raw OTLP spool, never HTTP."""
 
     def __init__(self, *, spool_dir=None):
@@ -82,6 +80,7 @@ class OtelSpanExporter(SpanExporter):
         self._lock = threading.Lock()
 
     def export(self, spans):
+        from opentelemetry.sdk.trace.export import SpanExportResult
         with self._lock:
             if self._stopped:
                 return SpanExportResult.FAILURE
@@ -170,6 +169,7 @@ class _Adapter:
     def install(self, **options):
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
         provider = options.get("provider") or trace.get_tracer_provider()
         if not hasattr(provider, "add_span_processor"):
             if options.get("provider") is not None:

@@ -10,6 +10,7 @@
 ### Fixes
 
 - Preserve Codex OTEL header comments, omit local Claude auth-header settings, and require an executable or Copilot extension before configuring VS Code (#880).
+- Keep Python OTEL imports lazy, honor wizard home isolation, label direct loopback destinations correctly, omit local Codex auth headers, and scope help options to each verb (#880).
 
 ### Dependencies
 

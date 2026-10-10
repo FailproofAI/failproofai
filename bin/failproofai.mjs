@@ -818,21 +818,31 @@ async function runCli() {
         disable: "failproofai otel disable <agent|all>",
         env: "failproofai otel env [--service <name>] [--local]",
       };
+      const options = {
+        enable: [
+          ["--local", "Use the loopback OTLP relay. Automatic for Gemini CLI and Copilot."],
+          ["--no-content", "Do not capture prompt text or tool details."],
+          ["--yes", "Accept switching this agent from transcript upload to OTEL."],
+        ],
+        env: [
+          ["--service <name>", "Service name for env (default: my-agent)."],
+          ["--local", "Use the loopback OTLP relay."],
+        ],
+        status: [],
+        disable: [],
+      };
+      const acceptedOptions = verb ? options[verb] : [...options.enable, options.env[0]];
       await printHelp({
         command: verb ? `otel ${verb}` : "otel",
         tagline: "opt-in OpenTelemetry from agents and apps to FailproofAI Cloud",
         sections: [
           { label: "usage", entries: (verb ? [usages[verb]] : Object.values(usages)).map(usage => [usage]) },
           { label: "agents", lines: ["claude, codex, gemini, copilot; all configures every available agent."] },
-          { label: "options", entries: [
-            ["--local", "Use the loopback OTLP relay. Automatic for Gemini CLI and Copilot."],
-            ["--no-content", "Do not capture prompt text or tool details."],
-            ["--yes", "Accept switching this agent from transcript upload to OTEL."],
-            ["--service <name>", "Service name for env (default: my-agent)."],
-          ] },
+          ...(acceptedOptions.length ? [{ label: "options", entries: acceptedOptions }] : []),
           { label: "notes", lines: [
             "Off by default. Run `failproofai config` first to configure your Cloud key.",
-            "Text capture is on unless --no-content. Disable restores only managed settings.",
+            ...(verb === "enable" || !verb ? ["Text capture is on unless --no-content."] : []),
+            "Disable restores only managed settings.",
             "An org admin must enable Settings → OpenTelemetry in Cloud.",
           ] },
         ],

@@ -731,6 +731,7 @@ export async function runConfigureWizard(
   const stdin: TTYIn = io.stdin ?? process.stdin;
   const stdout: TTYOut = io.stdout ?? process.stdout;
   const cwd = process.cwd();
+  const home = process.env.HOME || homedir();
   // No terminal means no questions — not a refusal.
   //
   // `failproofai config` IS the authorisation: somebody typed the command whose
@@ -1583,6 +1584,7 @@ export async function runConfigureWizard(
     });
     if (Array.isArray(selected)) for (const agent of selected) {
       const result = await runOtelCommand(["enable", agent], {
+        home,
         onEvent: emit,
         confirm: async message => await selectOne({
           message,

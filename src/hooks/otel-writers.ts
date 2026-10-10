@@ -185,6 +185,7 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
     ...(!local ? { OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer%20${encodeURIComponent(key)}` } : {}),
     OTEL_LOG_USER_PROMPTS: content ? "1" : "0",
     OTEL_LOG_TOOL_DETAILS: content ? "1" : "0",
+    // Tool output needs OTEL_LOG_TOOL_CONTENT; assistant responses follow OTEL_LOG_USER_PROMPTS, so omit OTEL_LOG_ASSISTANT_RESPONSES.
     OTEL_LOG_TOOL_CONTENT: content ? "1" : "0",
   };
   if (agent === "claude") {
@@ -196,7 +197,9 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
     return Object.entries(env).map(([k, value]) => ({ path: ["env", k], value }));
   }
   if (agent === "codex") {
-    const exporter = (signal: string) => ({ "otlp-http": { endpoint: `${endpoint}/v1/${signal}`, protocol: "json", headers: auth } });
+    const exporter = (signal: string) => ({ "otlp-http": {
+      endpoint: `${endpoint}/v1/${signal}`, protocol: "json", ...(!local ? { headers: auth } : {}),
+    } });
     return Object.entries({
       exporter: exporter("logs"), trace_exporter: exporter("traces"), metrics_exporter: exporter("metrics"),
       log_user_prompt: content,

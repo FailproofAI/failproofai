@@ -281,7 +281,7 @@ async function status(options: OtelOptions): Promise<OtelResult> {
     const dest = record?.destination ?? getSetting(parsed, agent === "claude" ? ["env", "OTEL_EXPORTER_OTLP_ENDPOINT"] :
       agent === "gemini" ? ["telemetry", "otlpEndpoint"] :
       agent === "copilot" ? ["github.copilot.chat.otel.otlpEndpoint"] : ["otel", "exporter", "otlp-http", "endpoint"]);
-    const destination = dest ? `${record?.local || String(dest).startsWith("http://127.0.0.1:") ? "local relay" : "Cloud"} (${dest})` : "none";
+    const destination = dest ? `${record?.local ? "local relay" : "Cloud"} (${dest})` : "none";
     lines.push(`${AGENT_LABELS[agent]}: ${unreadable ? "unreadable settings" : on ? managed ? "on by failproofai" : "on, not managed" : "off"} · destination: ${destination} · org: ${org}`);
   }
   let health: JsonObject = {};

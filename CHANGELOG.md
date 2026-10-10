@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11-beta.0 — 2026-10-10
+
+### Dependencies
+
+- Patch the advisories that turned the Supply Chain gate red: next 16.4.0, sharp 0.35.5, source-map-js 1.2.2 (root and the TypeScript SDK lockfile), and in the Python SDK's dev/test lockfile banks 2.5.1, langgraph-sdk 0.4.6, multidict 6.9.1, pydantic-ai-slim 2.55.0 (#873)
+
 ## 1.0.10 — 2026-10-05
 
 Action needed if you use `instruct` policies with Hermes: an `instruct` no longer stops the call it reminds about. The call runs and the reminder is placed first in its result, so a policy written to prevent an action (for example, a direct API write that should go through an approved script) must become a `deny` before you upgrade. Hermes 0.20.0 is supported again: on 1.0.9 the plugin loaded there with no hooks and every tool call ran unchecked. After upgrading, run `failproofai update` and restart each Hermes gateway profile by name. Collects 1.0.10-beta.0 to beta.1 below.

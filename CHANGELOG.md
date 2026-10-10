@@ -4,7 +4,7 @@
 
 ### Features
 
-- Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (PR pending).
+- Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (#880).
 
 ## 1.0.10 — 2026-10-05
 

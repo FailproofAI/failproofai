@@ -42,6 +42,8 @@ Replace `<key>` with your API key. Keep the secret out of shell history, screen 
 
 Cloud accepts OTLP/HTTP exports for traces, logs, and metrics, as protobuf or JSON, including gzip-compressed requests. It does not accept OTLP/gRPC.
 
+Metrics are acknowledged for exporter compatibility but are not stored or displayed. Supported agent traces and coding-agent logs become sessions; fields the agent does not export remain absent.
+
 ## Capture prompt text
 
 <Warning>

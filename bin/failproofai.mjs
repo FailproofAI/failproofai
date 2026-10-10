@@ -334,31 +334,40 @@ async function printLines(lines, ok = true) {
  * flatten the structure they were expressing.
  */
 async function printReport(command, lines, opts = {}) {
-  const { title, wrap, stack, printBlock, optsFor, INDENT, brandAnsi, ANSI_RESET } =
-    await import("../src/hooks/tui");
+  const { wrap, printBlock, optsFor, screenKit, paint: palette } = await import("../src/hooks/tui");
   const ok = opts.ok !== false;
   const stream = ok ? process.stdout : process.stderr;
   const o = optsFor(stream);
+  const kit = screenKit(o);
+  const c = palette(o.color);
   // `\`like this\`` becomes pink, and loses the backticks. These messages name
   // the command to run next more often than not, and pink is what you type
-  // everywhere else on the CLI now — the help screens, the bullets, the next
-  // steps. Applied AFTER wrapping, because an escape sequence has no width and
-  // colouring first would make every wrap measure the wrong length.
+  // everywhere. Applied AFTER wrapping, because an escape sequence has no
+  // width and colouring first would make every wrap measure the wrong length.
   const paint = (line) =>
-    o.color && (line.match(/`/g) || []).length % 2 === 0
-      ? line.replace(/`([^`]+)`/g, `${brandAnsi("pink")}$1${ANSI_RESET}`)
-      : line;
+    (line.match(/`/g) || []).length % 2 === 0 ? line.replace(/`([^`]+)`/g, (_, cmd) => c.pink(cmd)) : line;
+  // The 2026-10 shape: the header names the command, top-level lines start at
+  // column 0, and lines a module indented on purpose keep their indent. A
+  // failed run opens with ✕, so it reads as the failure it is.
+  const name = command.charAt(0).toUpperCase() + command.slice(1);
   const body = [];
+  let first = true;
   for (const line of lines) {
-    if (line.trim() === "") body.push("");
-    else if (line.startsWith(" ")) body.push(paint(`${INDENT}${line}`));
-    else {
-      for (const w of wrap(line, Math.max(20, o.cols - INDENT.length * 2))) {
-        body.push(paint(`${INDENT}${w}`));
-      }
+    if (line.trim() === "") {
+      body.push("");
+      continue;
     }
+    if (line.startsWith(" ")) {
+      body.push(paint(line));
+      continue;
+    }
+    // After a failure's ✕ line, what follows is the fix: indented under it.
+    const lead = !ok ? (first ? `${c.err("✕")} ` : "  ") : "";
+    const wrapped = wrap(line, Math.max(20, o.cols - 2));
+    wrapped.forEach((w, i) => body.push(paint(i === 0 ? `${lead}${w}` : `${lead ? "  " : ""}${w}`)));
+    first = false;
   }
-  printBlock(stream, stack(title(`failproofai ${command}`, opts.meta, o), body));
+  printBlock(stream, [kit.header(opts.meta ? `${name}  ·  ${opts.meta}` : name), "", ...body]);
 }
 
 async function printHelp(spec) {

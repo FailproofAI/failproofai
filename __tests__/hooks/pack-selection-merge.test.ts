@@ -544,14 +544,19 @@ describe("the reason the CLI prints", () => {
     // policies when you asked for one category and you take the printed set for
     // your whole answer. The first add is the contrast — same flag shape, no
     // prior record, so it really is only your selection.
+    //
+    // Since the redesign (D14) the result is one ✓ sentence, and a line of
+    // per-category counts instead of names.
     const first = await addViaCli("--category", "audit-trail");
-    expect(first).toContain("enabled (1/3, your selection): audit-log-writes");
+    expect(first).toContain("✓ Turned on 1 policy from acme/finance@1.2.0: your selection.");
+    expect(first).toMatch(/^ {2}audit trail 1$/m);
 
     const second = await addViaCli("--category", "finance");
-    expect(second).toContain("enabled (3/3, what you added, plus what was already on)");
-    // The name that came from the PRIOR record, not from this flag — the half
-    // the sentence exists to account for.
-    expect(second).toContain("audit-log-writes");
+    // Not "Turned on 3": one of the three was already on.
+    expect(second).toContain("✓ acme/finance@1.2.0 has 3 policies on: what you added, plus what was already on.");
+    // The category that came from the PRIOR record, not from this flag — the
+    // half the sentence exists to account for.
+    expect(second).toMatch(/^ {2}finance 2, audit trail 1$/m);
     expect(second).not.toContain("your selection");
   });
 
@@ -575,9 +580,23 @@ describe("the reason the CLI prints", () => {
     // publisher's opinion, "your existing selection" is yours from last time,
     // and "everything in the pack" is neither — and a reader who cannot tell
     // them apart cannot tell whose decision put these policies on their machine.
-    expect(await addViaCli()).toContain("enabled (1/3, the pack's defaults): block-big-refund");
-    expect(await addViaCli()).toContain("enabled (1/3, your existing selection): block-big-refund");
-    expect(await addViaCli("--all")).toContain("enabled (3/3, everything in the pack)");
+    //
+    // A bare re-add turned nothing on, so it does not say "Turned on" (D14).
+    expect(await addViaCli()).toContain("✓ Turned on 1 policy from acme/finance@1.2.0: the pack's defaults.");
+    expect(await addViaCli()).toContain("✓ Kept 1 policy on from acme/finance@1.2.0: your existing selection.");
+    expect(await addViaCli("--all")).toContain("✓ Turned on 3 policies from acme/finance@1.2.0: everything in the pack.");
+  });
+
+  it("never says it turned on none, and says when the pack enforces nothing", async () => {
+    // A pack whose publisher marks nothing on by default installs with nothing
+    // on. "Turned on 0 policies" would read as a failure; it is an outcome.
+    release({ policies: [POLICY_2, POLICY_3] });
+    const text = await addViaCli();
+    expect(text).toContain(
+      "✓ Installed acme/finance@1.2.0 with no policies on (the pack's defaults), so it enforces nothing.",
+    );
+    expect(text).not.toMatch(/Turned on 0/);
+    expect(text).toMatch(/^Turn on the other 2 with failproofai policies add github:acme\/finance@v1\.2\.0 --all$/m);
   });
 });
 

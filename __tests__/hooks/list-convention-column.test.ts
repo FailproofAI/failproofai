@@ -78,9 +78,10 @@ describe("listHooks — convention policy column width", () => {
 
     const row = lines.find((l) => l.includes(LONG_NAME));
     expect(row).toBeDefined();
-    // The regression: `...policies.mjs1 hook(s)` with no separator.
+    // The regression: `...policies.mjs1 hook(s)` with no separator. The count
+    // reads "1 hook" since the redesign (D14); the gutter is what is pinned.
     expect(row).not.toMatch(new RegExp(`${LONG_NAME.replace(/\./g, "\\.")}\\d`));
-    expect(row).toMatch(/\.mjs\s+1 hook\(s\)/);
+    expect(row).toMatch(/\.mjs {2,}1 hook$/);
   });
 
   it("aligns short and long filenames to the same column", async () => {
@@ -93,7 +94,7 @@ describe("listHooks — convention policy column width", () => {
 
     const columnOf = (filename: string) => {
       const row = lines.find((l) => l.includes(filename))!;
-      return row.replace(/\[[0-9;]*m/g, "").indexOf("1 hook(s)");
+      return row.replace(/\[[0-9;]*m/g, "").indexOf("1 hook");
     };
 
     expect(columnOf(LONG_NAME)).toBeGreaterThan(0);
@@ -147,10 +148,10 @@ describe("listHooks — convention policy column width", () => {
     vi.stubEnv("USERPROFILE", otherHome);
     try {
       await listHooks(tmp);
-      const headers = lines.filter((l) => l.includes("Convention Policies"));
+      // UPPERCASE heading, scope as its meta (D13, D14).
+      const headers = lines.filter((l) => l.includes("CONVENTION POLICIES"));
       expect(headers).toHaveLength(1);
-      expect(headers[0]).toContain("Project");
-      expect(headers[0]).not.toContain("Project + User");
+      expect(headers[0]).toBe("CONVENTION POLICIES  project");
     } finally {
       rmSync(otherHome, { recursive: true, force: true });
     }
@@ -172,9 +173,12 @@ describe("listHooks — convention policy column width", () => {
 
     await listHooks(tmp);
 
+    // ○ is off in the redesign's two states (D14). Positive on the glyph the
+    // row must carry, so this cannot pass by the old "OFF" label simply no
+    // longer being printed.
     const row = lines.find((line) => line.includes("custom-rule"));
-    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).toContain("OFF");
-    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).not.toContain("✓");
+    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).toMatch(/^ {2}○ custom-rule\b/);
+    expect(row?.replace(/\x1B\[[0-9;]*m/g, "")).not.toContain("●");
   });
 
   it("renders disabled convention policies as OFF while leaving siblings enabled", async () => {
@@ -192,10 +196,10 @@ describe("listHooks — convention policy column width", () => {
 
     await listHooks(tmp);
 
+    // One row per file since the redesign (D14): ● while any hook in it is on,
+    // and a count of the ones switched off. Mixed is "on, with k off".
     const row = lines.find((line) => line.includes(SHORT_NAME));
     const plain = row?.replace(/\x1B\[[0-9;]*m/g, "");
-    expect(plain).toContain("MIXED");
-    expect(plain).toContain("enabled-rule");
-    expect(plain).toContain("disabled-rule (OFF)");
+    expect(plain).toMatch(/^ {2}● team-policies\.mjs {2,}2 hooks \(1 off\)$/);
   });
 });

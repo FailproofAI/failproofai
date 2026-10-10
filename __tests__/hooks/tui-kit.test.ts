@@ -996,6 +996,22 @@ describe("screenKit — the 2026-10 building blocks", () => {
     expect(k.fail("x")).toContain("\x1B[38;2;240;113;120m✕");
   });
 
+  it("draws the row glyphs a listing needs: failed, selected and unselected", () => {
+    expect([plain.failed, plain.selected, plain.unselected]).toEqual(["✕", "■", "□"]);
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    // A state colour for a failure, the brand pink for picked, grey for not.
+    expect(k.failed).toBe("\x1B[38;2;240;113;120m✕\x1B[0m");
+    expect(k.selected).toBe(`\x1B[${PINK_24}m■\x1B[0m`);
+    expect(k.unselected).toBe("\x1B[38;2;118;127;139m□\x1B[0m");
+  });
+
+  it("paints a value's grey qualifier, and never an empty span", () => {
+    expect(plain.meta("observe")).toBe("observe");
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    expect(k.meta("observe")).toBe("\x1B[38;2;118;127;139mobserve\x1B[0m");
+    expect(k.meta("")).toBe("");
+  });
+
   it("joins key hints with a spaced dot", () => {
     expect(plain.keys(["↑↓ move", "space toggle", "enter confirm"])).toBe(
       "↑↓ move  ·  space toggle  ·  enter confirm",
@@ -1058,6 +1074,10 @@ describe("screenKit — the 2026-10 building blocks", () => {
       plain.bar(5, 0.5),
       plain.on,
       plain.off,
+      plain.failed,
+      plain.selected,
+      plain.unselected,
+      plain.meta("observe"),
       plain.cmd("failproofai config"),
     ].join("\n");
     expect(all).not.toContain("\x1B");

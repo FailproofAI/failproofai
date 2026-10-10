@@ -24,27 +24,14 @@ import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
-import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
+import { customPoliciesDir } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
-import {
-  chip,
-  note,
-  nextStep,
-  optsFor,
-  printBlock,
-  rule,
-  stack,
-  table,
-  title,
-  warning,
-  type ChipState,
-  type TableRow,
-} from "./tui";
+import { INDENT, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -1109,26 +1096,192 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   }
 }
 
+/** A row in one of the listing's plain sections: custom, convention, cloud. */
+export interface PoliciesScreenRow {
+  state: "on" | "off" | "failed";
+  name: string;
+  description: string;
+  /** Grey qualifier after the description — `observe` on a cloud policy. */
+  tag?: string;
+}
+
 /**
- * List all available policies with their per-scope enabled status.
- * Layout adapts to the number of installed scopes:
- *   0 scopes: compact "not installed" summary
- *   1 scope:  table with header + checkmarks, beta policies in a separate section
- *   2+ scopes: column table with per-scope status, beta policies in a separate section
+ * Everything `failproofai policies` draws, gathered by {@link listHooks} and
+ * drawn by {@link renderPoliciesScreen}.
  *
- * Also shows:
- *   - Configured policyParams values beneath each policy
- *   - Warnings for unknown policyParams keys
- *   - Custom Hooks section if customPoliciesPath is set
+ * Split in two so the drawing is a pure function of this value: it can be
+ * asserted with colour on and off, at any width and with any version, without
+ * a terminal, a home directory or a pack on disk.
  */
-export async function listHooks(cwd?: string): Promise<void> {
+export interface PoliciesScreen {
+  /** Installed packs that loaded, in `installed.json` order. */
+  packs: Array<{
+    id: string;
+    version: string;
+    /** Where it was fetched from — shown only when it is not the repository the id names. */
+    source: string;
+    observe: boolean;
+    /** Jev checks this pack brings that Jev asks. Zero for an observe pack, whose checks are never asked. */
+    jevChecks: number;
+    policies: Array<{ name: string; description: string; category: string; on: boolean }>;
+  }>;
+  /** Packs that are installed and refused to load. */
+  refused: Array<{ id: string | null; reason: string }>;
+  /** The one line that needs attention, already chosen by severity. */
+  attention: { failed: boolean; text: string; fix?: string } | null;
+  custom: PoliciesScreenRow[];
+  convention: Array<{ scope: string; rows: PoliciesScreenRow[] }>;
+  cloud: { deployment: number; rows: PoliciesScreenRow[] } | null;
+}
+
+/**
+ * The policies screen (decision D14: "the policies list exactly as designed").
+ *
+ * Packs say where their policies come from once, as `pack` rows at the top,
+ * and every policy is ● on or ○ off. Off policies fold into one "○ n more off"
+ * line per category; `all` lists every one instead.
+ *
+ * Where the design is silent on a real machine, a pack row carries a grey tag
+ * rather than a new state: `observe` for a pack that evaluates and blocks
+ * nothing, so it can never read as enforcing; its Jev checks; the source it
+ * came from when that is not the repository its self-declared id names; and
+ * `failed to load` with the reason for a pack that is installed and refused.
+ */
+export function renderPoliciesScreen(
+  screen: PoliciesScreen,
+  opts: ScreenKitOpts & { all?: boolean } = {},
+): string[] {
+  const kit = screenKit(opts);
+  const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+  const glyph = (state: PoliciesScreenRow["state"]): string =>
+    state === "on" ? kit.on : state === "off" ? kit.off : kit.failed;
+  const out: string[] = [kit.header("Policies")];
+
+  const kvRows: Array<[string, string]> = [];
+  for (const pack of screen.packs) {
+    const tags: string[] = [];
+    if (pack.observe) tags.push("observe");
+    if (pack.jevChecks > 0) tags.push(count(pack.jevChecks, "Jev check", "Jev checks"));
+    // The id is whatever the manifest claims; the source is the repository this
+    // CLI actually fetched it from. Equal on every ordinary install, so the row
+    // is exactly the design's — and when they differ, saying so is the point.
+    const repo = pack.source.replace(/^github:/i, "").replace(/@[^@]*$/, "");
+    if (repo.toLowerCase() !== pack.id.toLowerCase()) tags.push(`from ${pack.source}`);
+    kvRows.push(["pack", `${pack.id}@${pack.version}${tags.map((t) => `${kit.sep}${kit.meta(t)}`).join("")}`]);
+  }
+  for (const pack of screen.refused) {
+    kvRows.push(["pack", `${pack.id ?? "(unnamed)"}${kit.sep}${kit.meta(`failed to load: ${pack.reason}`)}`]);
+  }
+  const total = screen.packs.reduce((n, pack) => n + pack.policies.length, 0);
+  const enabled = screen.packs.reduce((n, pack) => n + pack.policies.filter((p) => p.on).length, 0);
+  if (total > 0) kvRows.push(["enabled", `${enabled} of ${total}`]);
+  if (kvRows.length > 0) out.push("", ...kit.kv(kvRows));
+
+  const empty =
+    screen.packs.length === 0 &&
+    screen.refused.length === 0 &&
+    screen.custom.length === 0 &&
+    screen.convention.length === 0 &&
+    !screen.cloud;
+  if (screen.attention || empty) out.push("");
+  if (screen.attention) {
+    const { failed, text, fix } = screen.attention;
+    out.push(failed ? kit.fail(text, fix) : kit.caution(text, fix));
+  }
+  if (empty) {
+    // Ours first is a convenience, not a channel: a screen that named only ours
+    // would read as the place policies come from.
+    out.push(
+      `${INDENT}Turn on ours:  ${kit.cmd(`failproofai policies add ${CORE_SOURCE}`)}`,
+      `${INDENT}Or anyone's:   ${kit.cmd("failproofai policies add <owner>/<repo>")}`,
+    );
+  }
+
+  // Category headings name their pack only when two packs could each have a
+  // category of the same name. A pack of Jev checks alone has no categories, so
+  // the shipped FailproofAI/policies + FailproofAI/jev-policies pairing still
+  // reads exactly as designed.
+  const sectioned = screen.packs.filter((pack) => pack.policies.length > 0);
+  const prefixed = sectioned.length > 1;
+  let folded = 0;
+  const sections: Array<{ heading: string; meta: string; items: Array<[string, string?]> }> = [];
+  for (const pack of sectioned) {
+    // First appearance orders the categories, and a category is gathered
+    // wherever it appears: "Dangerous Commands" comes back after "Infra
+    // Commands" in our own pack, and two headings for it would read as two.
+    for (const category of [...new Set(pack.policies.map((p) => p.category))]) {
+      const inCategory = pack.policies.filter((p) => p.category === category);
+      const on = inCategory.filter((p) => p.on).length;
+      const shown = opts.all ? inCategory : inCategory.filter((p) => p.on);
+      const items: Array<[string, string?]> = shown.map((p) => [
+        `${p.on ? kit.on : kit.off} ${p.name}`,
+        p.description,
+      ]);
+      const hidden = inCategory.length - shown.length;
+      if (hidden > 0) items.push([`${kit.off} ${hidden} more off`]);
+      folded += hidden;
+      sections.push({ heading: prefixed ? `${pack.id} · ${category}` : category, meta: `${on} of ${inCategory.length}`, items });
+    }
+  }
+  // One description column for every pack section, so they line up down the
+  // screen: at least the design's 32 for the name, always two spaces past the
+  // longest one shown.
+  const columnFor = (names: string[]): number => Math.max(34, ...names.map((name) => name.length + 4));
+  const packColumn = columnFor(
+    sectioned.flatMap((pack) => pack.policies.filter((p) => opts.all || p.on).map((p) => p.name)),
+  );
+  for (const section of sections) {
+    out.push("", kit.head(section.heading, section.meta), ...kit.rows(section.items, packColumn));
+  }
+
+  const plain = (heading: string, meta: string | undefined, rows: PoliciesScreenRow[]): void => {
+    const items = rows.map((row): [string, string] => [
+      `${glyph(row.state)} ${row.name}`,
+      row.tag ? `${row.description}${kit.sep}${kit.meta(row.tag)}` : row.description,
+    ]);
+    const column = columnFor(rows.filter((row) => row.description).map((row) => row.name));
+    out.push("", kit.head(heading, meta), ...kit.rows(items, column));
+  };
+  if (screen.custom.length > 0) plain("Custom policies", undefined, screen.custom);
+  for (const { scope, rows } of screen.convention) plain("Convention policies", scope, rows);
+  if (screen.cloud) plain("Cloud-managed", `deployment ${screen.cloud.deployment}`, screen.cloud.rows);
+
+  if (folded > 0) out.push("", `See all ${total} with ${kit.cmd("failproofai policies --all")}`);
+  return out;
+}
+
+/**
+ * `failproofai policies`: every policy on this machine and whether it is on.
+ *
+ * Gathers the screen and draws it with {@link renderPoliciesScreen}. At most
+ * one line asks for attention, the most severe first: a pack that will not load
+ * and so DENIES what it covers, then the machine not enforcing at all
+ * ({@link notEnforcingReason}, the same answer the launch screen gives), then a
+ * custom policy file that is not running, hooks in more than one scope, and an
+ * unknown `policyParams` key.
+ *
+ * `all` lists every policy instead of folding the off ones.
+ */
+export async function listHooks(cwd?: string, { all = false }: { all?: boolean } = {}): Promise<void> {
   const config = readMergedHooksConfig(cwd);
   const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
-  const opts = optsFor(process.stdout);
 
   // Determine which scopes have hooks installed (deduplicate when paths overlap, e.g. cwd === home)
   const uniqueScopes = deduplicateScopes(HOOK_SCOPES, cwd);
   const installedScopes = uniqueScopes.filter((s) => hooksInstalledInSettings(s, cwd));
+
+  // One read of the pack store for the whole listing. It never throws by
+  // contract; the guard is for a listing never being the thing that turns an
+  // unreadable manifest into a broken command.
+  const packRead: Pick<ReturnType<typeof readInstalledPacks>, "packs" | "errors"> = (() => {
+    try {
+      const read = readInstalledPacks();
+      return { packs: read?.packs ?? [], errors: read?.errors ?? [] };
+    } catch {
+      return { packs: [], errors: [] };
+    }
+  })();
+  const packErrors = packRead.errors;
 
   // Names a `policyParams` key may legitimately use: every policy an installed
   // pack carries. Previously the compiled catalog, which no longer describes
@@ -1143,7 +1296,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   // helper rather than a third copy of the `pack/<id>/<name>` format.
   const knownPolicyNames = new Set<string>();
   try {
-    for (const pack of readInstalledPacks().packs) {
+    for (const pack of packRead.packs) {
       for (const policy of pack.policies) {
         knownPolicyNames.add(policy.name);
         knownPolicyNames.add(packPolicyParamKey(pack.id, policy.name));
@@ -1153,157 +1306,14 @@ export async function listHooks(cwd?: string): Promise<void> {
     // Unreadable manifest: skip the typo warning rather than invent one.
   }
 
-  const groups: Array<string[] | null> = [];
-  const packCount = (() => {
-    try {
-      return readInstalledPacks().packs.reduce(
-        (n, pack) => n + (pack.enabled ?? pack.policies.map((p) => p.name)).length,
-        0,
-      );
-    } catch {
-      return 0;
-    }
-  })();
-  // `installedScopes` is about HOOKS — whether any agent CLI is wired to call
-  // us — and it says nothing about whether policies exist. Reporting it as
-  // "not installed" above a listing of an installed pack was a flat
-  // contradiction, and it hid the state that actually matters: a machine can
-  // hold thirty-eight policies and enforce none of them, because nothing is
-  // calling failproofai at all. That is the worst of the three states and it
-  // used to read like the emptiest.
-  const packsPresent = (() => {
-    try {
-      return readInstalledPacks().packs.length > 0;
-    } catch {
-      return false;
-    }
-  })();
-  const subtitle =
-    installedScopes.length > 0
-      ? `${installedScopes.join(" + ")} · ${packCount} on`
-      : packsPresent
-        ? `${packCount} on · NOT ENFORCING`
-        : "nothing installed";
-  groups.push(title("failproofai policies", subtitle, opts));
-
-  if (installedScopes.length === 0) {
-    groups.push(
-      packsPresent
-        ? warning(
-            [
-              // ONE string, not four hand-broken ones. `warning` wraps each
-              // element to the terminal, so pre-wrapped prose keeps its author's
-              // line breaks as paragraph breaks and then wraps again inside
-              // them — which at 60 columns left the word "them." alone on a
-              // line. The command stays separate because it is not prose and
-              // must never be split across a wrap.
-              "These policies are installed but NOTHING is running them. No agent " +
-                "CLI on this machine is wired to call failproofai, so every policy " +
-                "below is inert. Wire it up with:",
-              "  failproofai config",
-            ],
-            opts,
-          )
-        : nextStep(
-            "failproofai config",
-            config.enabledPolicies.length > 0
-              ? "These are configured but NOT installed — no hook is running them:"
-              : "Nothing is set up yet. Get started with:",
-            opts,
-          ),
-    );
-  }
-  // Held back to the end rather than printed here. Everything below this point
-  // is another section of the same listing, and a footer in the middle of it
-  // reads as the end of the output — while a warning at the very end is the one
-  // a reader scrolling back from their prompt actually sees.
-  const footer: Array<string[] | null> = [note(`Config: ${globalPolicyConfigFile()}`, opts)];
-
-  // A machine with hooks wired and no policies to run is the normal state right
-  // after setup — setup installs the hooks and deliberately chooses nothing —
-  // and this listing said NOTHING about how to leave it. A reader who had just
-  // finished `failproofai config` saw a header, a config path, and no next
-  // step. Ours is named in full, the same way anyone else's pack is typed,
-  // because it IS one.
-  // `packCount` counts ENABLED policies, so a pack installed with everything
-  // switched off reaches zero the same way an empty machine does — and the
-  // advice for the two could not be more different. Telling somebody who has
-  // just unticked all 39 to `policies add FailproofAI/policies` sends them to
-  // install what they already have, and doing it would change nothing: the
-  // selection is what is empty, not the shelf.
-  //
-  // Nor is it "nothing" while a refused pack fails closed (the warning above
-  // says what is denied), or while a pack's Jev checks are live with no regex
-  // policy on.
-  const { packsInstalled, jevChecks, failClosed } = (() => {
-    try {
-      const { packs, errors } = readInstalledPacks();
-      return {
-        packsInstalled: packs.length,
-        jevChecks: packs.reduce((n, p) => n + (p.effect === "observe" ? 0 : (p.semantic?.length ?? 0)), 0),
-        // The refusals `missingGuards` denies over (pack-failclosed.ts).
-        failClosed: errors.some((e) => e.effect !== "observe" && !e.semanticOnly),
-      };
-    } catch {
-      return { packsInstalled: 0, jevChecks: 0, failClosed: false };
-    }
-  })();
-  if (failClosed) {
-    // Said by the pack section's warning, where the refused pack is named.
-  } else if (packCount === 0 && packsInstalled === 0) {
-    footer.unshift(
-      nextStep(
-        `failproofai policies add ${CORE_SOURCE}`,
-        "Nothing is enforcing yet. Take ours, or anyone's:",
-        opts,
-      ),
-      note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
-      note("Look first:      failproofai policies show <owner>/<repo>", opts),
-    );
-  } else if (packCount === 0 && jevChecks > 0) {
-    footer.unshift(
-      note(
-        `No regex policy is on; ${jevChecks} Jev check${jevChecks === 1 ? "" : "s"} from ` +
-          `${packsInstalled === 1 ? "the pack" : "the packs"} above apply where Jev is configured (failproofai jev status).`,
-        opts,
-      ),
-    );
-  } else if (packCount === 0) {
-    footer.unshift(
-      nextStep(
-        "failproofai policies add",
-        `Nothing is enforcing: ${packsInstalled === 1 ? "the pack above is" : "the packs above are"} installed with everything switched off. Pick what should be on:`,
-        opts,
-      ),
-      note("Or by name:  failproofai policies add <policy>", opts),
-    );
-  }
-
-  if (installedScopes.length > 1) {
-    footer.push(
-      warning(
-        [
-          `Hooks in multiple scopes (${installedScopes.join(", ")}).`,
-          "Consider keeping one. Remove with: failproofai policies --uninstall --scope <scope>",
-        ],
-        opts,
-      ),
-    );
-  }
-
-  // Warn about unknown policyParams keys
+  // Unknown policyParams keys. The event fires whenever there is one, whether or
+  // not a more severe line takes the screen's one attention slot.
+  const unknownKeys: string[] = [];
   if (config.policyParams) {
-    const unknownKeys: string[] = [];
     for (const key of Object.keys(config.policyParams)) {
       if (knownPolicyNames.size > 0 && !knownPolicyNames.has(key)) unknownKeys.push(key);
     }
     if (unknownKeys.length > 0) {
-      footer.push(
-        warning(
-          unknownKeys.map((key) => `unknown policyParams key "${key}" — possible typo`),
-          opts,
-        ),
-      );
       try {
         await trackHookEvent(getInstanceId(), "policy_params_validation_warning", {
           unknown_keys_count: unknownKeys.length,
@@ -1313,40 +1323,31 @@ export async function listHooks(cwd?: string): Promise<void> {
     }
   }
 
-  // Explicit Custom Policies section
-  const explicitPaths = configuredCustomPolicyPaths(config);
-  if (explicitPaths.length > 0) {
-    groups.push(rule("Custom Policies", opts));
-    for (const path of explicitPaths) {
-      // Enforcement resolves configured paths from the project config root.
-      // Use the same canonical path here so the ID checked by the CLI exactly
-      // matches the ID written by the dashboard.
-      const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
-      groups.push(note(absPath, opts));
-      if (!existsSync(absPath)) {
-        groups.push(warning([`file not found: ${absPath}`], opts));
-        continue;
-      }
-      const hooks = await loadCustomHooks(absPath);
-      if (hooks.length === 0) {
-        groups.push(
-          warning(["failed to load (check ~/.failproofai/logs/hooks.log)"], opts),
-        );
-      } else {
-        groups.push(
-          table(
-            {
-              head: ["", "Name", "Description"],
-              rows: hooks.map((hook) => [
-                chip(disabledCustomSet.has(`custom:${absPath}:${hook.name}`) ? "off" : "on", opts),
-                hook.name,
-                hook.description ?? "",
-              ]),
-            },
-            opts,
-          ),
-        );
-      }
+  // Explicit custom policy files.
+  const custom: PoliciesScreenRow[] = [];
+  let customProblem: string | null = null;
+  for (const path of configuredCustomPolicyPaths(config)) {
+    // Enforcement resolves configured paths from the project config root.
+    // Use the same canonical path here so the ID checked by the CLI exactly
+    // matches the ID written by the dashboard.
+    const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
+    if (!existsSync(absPath)) {
+      custom.push({ state: "failed", name: absPath, description: "not found" });
+      customProblem ??= "A custom policy file was not found, so its policies are not running.";
+      continue;
+    }
+    const hooks = await loadCustomHooks(absPath);
+    if (hooks.length === 0) {
+      custom.push({ state: "failed", name: absPath, description: "failed to load" });
+      customProblem ??= "A custom policy file failed to load, so its policies are not running.";
+      continue;
+    }
+    for (const hook of hooks) {
+      custom.push({
+        state: disabledCustomSet.has(`custom:${absPath}:${hook.name}`) ? "off" : "on",
+        name: hook.name,
+        description: hook.description ?? "",
+      });
     }
   }
 
@@ -1359,14 +1360,14 @@ export async function listHooks(cwd?: string): Promise<void> {
   const projectDir = resolve(base, ".failproofai", "policies");
   const userDir = customPoliciesDir();
   const sameDir = userDir === projectDir;
-  const conventionDirs: { label: string; dir: string }[] = [
-    { label: sameDir ? "Project + User" : "Project", dir: projectDir },
+  const conventionDirs: { scope: string; dir: string }[] = [
+    { scope: sameDir ? "project + user" : "project", dir: projectDir },
     // Running from $HOME makes both paths identical. Listing the directory
     // twice printed every file a second time as "failed to load" — the file was
     // already imported by the first pass, so the module cache short-circuits
     // `customPolicies.add` and `loadCustomHooks` legitimately returns 0 hooks.
     // Nothing was wrong with the policy; the second listing was.
-    ...(sameDir ? [] : [{ label: "User", dir: userDir }]),
+    ...(sameDir ? [] : [{ scope: "user", dir: userDir }]),
   ];
 
   // Record of what was found, mirrored into policies-config.json below so the
@@ -1376,7 +1377,8 @@ export async function listHooks(cwd?: string): Promise<void> {
     user: [],
   };
 
-  for (const { label, dir } of conventionDirs) {
+  const convention: PoliciesScreen["convention"] = [];
+  for (const { scope, dir } of conventionDirs) {
     const files = discoverPolicyFiles(dir);
     if (files.length === 0) continue;
 
@@ -1391,127 +1393,87 @@ export async function listHooks(cwd?: string): Promise<void> {
       for (const t of targets) discovered[t].push({ file, hooks });
     };
 
-    groups.push(rule(`Convention Policies — ${label}`, opts));
-    groups.push(note(dir, opts));
-    const rows: TableRow[] = [];
+    // One row per FILE: ● while any of its hooks is on, ○ once all of them are
+    // off, and a count of the ones switched off when it is some of them.
+    const rows: PoliciesScreenRow[] = [];
     for (const file of files) {
       const filename = basename(file);
       try {
         const hooks = await loadCustomHooks(file);
         record(filename, hooks.map((h) => h.name));
         if (hooks.length === 0) {
-          rows.push({ cells: [chip("failed", opts), filename, "failed to load"] });
+          rows.push({ state: "failed", name: filename, description: "failed to load" });
           continue;
         }
-        const hookStates = hooks.map((hook) => ({
-          hook,
-          disabled: disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
-        }));
-        const disabledCount = hookStates.filter((entry) => entry.disabled).length;
-        const state: ChipState =
-          disabledCount === 0 ? "on" : disabledCount === hooks.length ? "off" : "mixed";
-        const hookSummary = hookStates
-          .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
-          .join(", ");
+        const off = hooks.filter((hook) =>
+          disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
+        ).length;
         rows.push({
-          cells: [chip(state, opts), filename, `${hooks.length} hook(s): ${hookSummary}`],
+          state: off === hooks.length ? "off" : "on",
+          name: filename,
+          description:
+            `${hooks.length} ${hooks.length === 1 ? "hook" : "hooks"}` +
+            (off > 0 && off < hooks.length ? ` (${off} off)` : ""),
         });
       } catch {
         record(filename, []);
-        rows.push({ cells: [chip("failed", opts), filename, "error"] });
+        rows.push({ state: "failed", name: filename, description: "failed to load" });
       }
     }
-    groups.push(table({ head: ["", "File", "Hooks"], rows }, opts));
+    convention.push({ scope, rows });
   }
 
   // Installed packs. They enforce on this machine exactly like every section
   // above, and until now the only way to see one was `failproofai policies` —
   // so the command that answers "what is enforcing here?" answered it with a
   // subset, for the one source a person had to go out of their way to install.
+  const packs: PoliciesScreen["packs"] = [];
   try {
-    const { packs, errors } = readInstalledPacks();
-    for (const pack of packs) {
+    for (const pack of packRead.packs) {
       const taken = pack.enabled ?? pack.policies.map((p) => p.name);
-      // The source too: the id is whatever the manifest claims, the source is
-      // the repository this CLI actually fetched it from.
-      groups.push(rule(`Pack — ${pack.id}@${pack.version} · ${pack.source}`, opts));
-      groups.push(
-        table(
-          {
-            head: ["", "Name", "Description"],
-            rows: pack.policies.map((policy) => {
-              const disabled = disabledCustomSet.has(
-                `pack:${pack.id}@${pack.version}:${policy.name}`,
-              );
-              // `observe` evaluates and discards its verdict, so a row reading
-              // ON would claim enforcement the pack deliberately is not doing.
-              const state: ChipState =
-                pack.effect === "observe"
-                  ? "observe"
-                  : !taken.includes(policy.name) || disabled
-                    ? "off"
-                    : "pack";
-              return [chip(state, opts), policy.name, policy.description];
-            }),
-          },
-          opts,
-        ),
-      );
-    }
-    if (errors.length > 0) {
-      groups.push(
-        warning(
-          errors.flatMap((err) => [
-            `pack ${err.id ?? "(unnamed)"} will not load: ${err.reason}`,
-            ...(err.effect !== "observe" && !err.semanticOnly
-              ? [
-                  "Until it loads, the tool calls its policies cover are DENIED. Fix it, or remove it with: " +
-                    `failproofai policies remove ${err.id ?? "<id>"}`,
-                ]
-              : []),
-          ]),
-          opts,
-        ),
-      );
+      packs.push({
+        id: pack.id,
+        version: pack.version,
+        source: pack.source,
+        observe: pack.effect === "observe",
+        jevChecks: pack.effect === "observe" ? 0 : (pack.semantic?.length ?? 0),
+        policies: pack.policies.map((policy) => ({
+          name: policy.name,
+          description: policy.description,
+          category: policy.category,
+          on:
+            taken.includes(policy.name) &&
+            !disabledCustomSet.has(`pack:${pack.id}@${pack.version}:${policy.name}`),
+        })),
+      });
     }
   } catch {
     // Same rule as the cloud section below: a listing must not be the thing
     // that turns an unreadable manifest into a broken command.
   }
+  const refused = packErrors.map((err) => ({ id: err.id, reason: err.reason }));
 
-  // Cloud-managed policies. These enforce on this machine exactly like the two
+  // Cloud-managed policies. These enforce on this machine exactly like the
   // sections above, but nothing here listed them — so `failproofai policies`
   // answered "what is enforcing?" with a subset, and the policies an operator
   // pushed to a fleet were the ones invisible to the person running the
-  // command on it.
-  //
-  // Read-only on purpose: these are owned by the deployment, not by local
-  // config. `--uninstall <name>` cannot switch one off, and printing them
-  // beside toggleable rows without saying so would imply it can.
+  // command on it. Read-only: they belong to the deployment, which the heading
+  // says, and `--uninstall <name>` cannot switch one off.
+  let cloud: PoliciesScreen["cloud"] = null;
   try {
-    const cloud = readActiveCloudManagedPolicies();
-    if (cloud.length > 0) {
-      groups.push(rule(`Cloud-managed — deployment ${cloud[0].deployment}`, opts));
-      groups.push(
-        table(
-          {
-            head: ["", "Policy", "Version"],
-            rows: cloud.map((artifact) => [
-              // `observe` is evaluated and then has its verdict discarded, so a
-              // row that read "ON" would claim enforcement this policy
-              // deliberately is not doing.
-              chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
-              artifact.id,
-              `v${artifact.version}`,
-            ]),
-            flex: 1,
-          },
-          opts,
-        ),
-      );
-      groups.push(
-        note("Managed from the dashboard — not switchable with `failproofai policies`.", opts),
-      );
+    const active = readActiveCloudManagedPolicies();
+    if (active.length > 0) {
+      cloud = {
+        deployment: active[0].deployment,
+        rows: active.map((artifact) => ({
+          state: "on" as const,
+          name: artifact.id,
+          description: `v${artifact.version}`,
+          // `observe` is evaluated and then has its verdict discarded, so the
+          // row says so rather than reading as plain enforcement.
+          ...(artifact.effect === "observe" ? { tag: "observe" } : {}),
+        })),
+      };
     }
   } catch {
     // A machine with no deployment, or an unreadable manifest, simply has no
@@ -1519,7 +1481,50 @@ export async function listHooks(cwd?: string): Promise<void> {
     // the thing that turns a bad manifest into a broken command.
   }
 
-  printBlock(process.stdout, stack(...groups, ...footer));
+  // The one attention line, most severe first. A refused pack that fails closed
+  // is a FAILURE, not "not enforcing": it denies the calls its policies cover
+  // (pack-failclosed.ts), so it is named before anything else.
+  const failClosed = packErrors.filter((err) => err.effect !== "observe" && !err.semanticOnly);
+  let attention: PoliciesScreen["attention"] = null;
+  if (failClosed.length > 0) {
+    const [first] = failClosed;
+    const many = failClosed.length > 1;
+    attention = {
+      failed: true,
+      text:
+        `${first.id ?? "A pack"}${many ? ` and ${failClosed.length - 1} more` : ""} failed to load, ` +
+        `so the calls ${many ? "they cover" : "it covers"} are denied.`,
+      fix: `failproofai policies remove ${first.id ?? "<id>"}`,
+    };
+  } else if (notEnforcingReason(cwd) !== null) {
+    // One generic line whatever the cause (decision D18).
+    attention = { failed: false, text: "Policies are not enforcing yet.", fix: "failproofai config" };
+  } else if (customProblem) {
+    attention = { failed: false, text: customProblem };
+  } else if (installedScopes.length > 1) {
+    attention = {
+      failed: false,
+      text: `Hooks are installed in multiple scopes: ${installedScopes.join(", ")}.`,
+      fix: "failproofai policies --uninstall --scope <scope>",
+    };
+  } else if (unknownKeys.length > 0) {
+    attention = {
+      failed: false,
+      text:
+        unknownKeys.length === 1
+          ? `Unknown policyParams key "${unknownKeys[0]}", possibly a typo.`
+          : `Unknown policyParams keys ${unknownKeys.map((key) => `"${key}"`).join(", ")}, possibly typos.`,
+    };
+  }
+
+  printBlock(
+    process.stdout,
+    renderPoliciesScreen(
+      { packs, refused, attention, custom, convention, cloud },
+      // Descriptions are shortened only for a terminal; a pipe keeps every word.
+      { ...optsFor(process.stdout), fit: Boolean(process.stdout.isTTY), all },
+    ),
+  );
 
   // Mirror what was just listed into the USER config. Safe here because
   // `failproofai policies` is a one-shot command — never do this on the hook

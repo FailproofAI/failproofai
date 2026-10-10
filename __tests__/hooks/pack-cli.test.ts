@@ -148,23 +148,29 @@ describe("our own policies, named the way anyone else's are", () => {
     },
   );
 
+  // The add result is the redesign's (D14): one ✓ sentence with the count and
+  // the reason, then how many are on per category. It names categories, not
+  // policies, so these read the count and the category back.
   it("takes one policy by name, and does not read the flag's value as the source", async () => {
     const r = await runPackCommand(["add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
-    expect(text(r)).toMatch(/enabled \(1\//);
-    expect(text(r)).toContain("block-rm-rf");
+    expect(text(r)).toMatch(/✓ Turned on 1 policy from FailproofAI\/policies@\S+: your selection\./);
+    // block-rm-rf's own category, and nothing else.
+    expect(text(r)).toMatch(/^ {2}dangerous commands 1$/m);
   });
 
   it("still takes --only, so anything scripted against it keeps working", async () => {
     const r = await runPackCommand(["add", "FailproofAI/policies", "--only", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
-    expect(text(r)).toMatch(/enabled \(1\//);
+    expect(text(r)).toMatch(/✓ Turned on 1 policy from FailproofAI\/policies@\S+: your selection\./);
   });
 
   it("takes a whole category", async () => {
     const r = await runPackCommand(["add", "FailproofAI/policies", "--category", "dangerous-commands"]);
     expect(r.exitCode).toBe(0);
-    expect(text(r)).toContain("block-sudo");
+    expect(text(r)).toMatch(/✓ Turned on \d+ policies from FailproofAI\/policies@\S+: your selection\./);
+    // Every one of them from that category, and only that category.
+    expect(text(r)).toMatch(/^ {2}dangerous commands \d+$/m);
   });
 
   it("names the categories that exist when given one that does not", async () => {
@@ -174,11 +180,25 @@ describe("our own policies, named the way anyone else's are", () => {
     expect(text(r)).toContain("dangerous-commands");
   });
 
-  it("suggests the selection flags when it did not install everything", async () => {
+  it("says how to take the rest when it did not install everything", async () => {
+    // Deliberately narrowed (D14, D6): the design closes on the one command
+    // that takes everything else; --policy and --category stay in the help.
     const r = await runPackCommand(["add", "FailproofAI/policies"]);
-    expect(text(r)).toContain("--policy");
-    expect(text(r)).toContain("--category");
-    expect(text(r)).toContain("--all");
+    expect(text(r)).toMatch(
+      /^Turn on the other \d+ with failproofai policies add FailproofAI\/policies --all$/m,
+    );
+  });
+
+  it("does not offer the rest once everything is on", async () => {
+    const r = await runPackCommand(["add", "FailproofAI/policies", "--all"]);
+    expect(text(r)).toMatch(/✓ Turned on \d+ policies from FailproofAI\/policies@\S+: everything in the pack\./);
+    expect(text(r)).not.toContain("Turn on the other");
+  });
+
+  it("opens with the header and makes the pin visible on a tagless add", async () => {
+    const r = await runPackCommand(["add", "FailproofAI/policies"]);
+    expect(r.lines[0]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Policies$/);
+    expect(text(r)).toMatch(/^ {2}Pinned to github:FailproofAI\/policies@\S+, the newest release\.$/m);
   });
 });
 

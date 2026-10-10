@@ -2173,6 +2173,13 @@ export function screenKit(opts: ScreenKitOpts = {}) {
   const cmd = (s: string): string => c.pink(s);
   const on = c.guide(RADIO_ON);
   const off = c.ink3(RADIO_OFF);
+  /** A row whose thing could not run — a file that is missing or will not load. */
+  const failed = c.err("✕");
+  /** Picked and not picked: a pack's defaults on `policies show`, a checklist row. */
+  const selected = c.pink("■");
+  const unselected = c.ink3("□");
+  /** Grey text that qualifies a value rather than being one: `observe` beside a pack. */
+  const meta = (s: string): string => tint(c.ink3, s);
 
   /** Prose shortened to `room` columns when fitting is on; untouched otherwise. */
   const prose = (s: string, room: number): string =>
@@ -2268,5 +2275,8 @@ export function screenKit(opts: ScreenKitOpts = {}) {
     return out;
   };
 
-  return { cols, sep, cmd, on, off, header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage };
+  return {
+    cols, sep, cmd, on, off, failed, selected, unselected, meta,
+    header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage,
+  };
 }

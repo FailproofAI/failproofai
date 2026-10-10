@@ -134,23 +134,34 @@ describe("top-level: --hook", () => {
 // ── policies (list / default) ─────────────────────────────────────────────────
 
 describe("policies: list (default)", () => {
+  // The listing opens with the redesign's wordmark header (D14), not with the
+  // command's name, so that header is what proves the listing rendered.
+  const HEADER = /failproof ai\s+v\S+\s+·\s+Policies/;
+
   it("lists policies and exits 0 with no args", () => {
     const result = runCli("policies");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
     expect(result.stdout).not.toContain("block-sudo");
   });
 
   it("lists policies when --list alias is used", () => {
     const result = runCli("policies", "--list");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
+  });
+
+  it("lists every policy, folding none, with --all", () => {
+    const result = runCli("policies", "--all");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(HEADER);
+    expect(result.stdout).not.toMatch(/more off/);
   });
 
   it("p shorthand lists policies", () => {
     const result = runCli("p");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
   });
 
   it("rejects unexpected positional argument", () => {

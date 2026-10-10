@@ -1169,7 +1169,9 @@ describe("hooks/manager", () => {
     // it off. What the listing renders now — packs, convention files, cloud —
     // is covered against real files in `policies-listing.test.ts`; these keep
     // the mock-level contract that survived.
-    it("says nothing is installed, without naming policies this build no longer runs", async () => {
+    it("says nothing is enforcing on an empty machine, without naming policies this build no longer runs", async () => {
+      // "nothing installed" became the redesign's generic line and next step
+      // (D14, D18) — deliberately; the half that matters here is unchanged.
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
       vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [] });
       vi.mocked(existsSync).mockReturnValue(false);
@@ -1178,15 +1180,38 @@ describe("hooks/manager", () => {
       await listHooks();
       const output = vi.mocked(console.log).mock.calls.map((c) => c[0]).join("\n");
 
-      expect(output).toContain("nothing installed");
+      expect(output).toContain("Policies are not enforcing yet.");
+      expect(output).toContain("Turn on ours:  failproofai policies add FailproofAI/policies");
       // Naming a builtin here would advertise enforcement that is not happening.
       expect(output).not.toContain("sanitize-jwt");
       expect(output).not.toContain("block-sudo");
     });
 
     it("warns when hooks exist in multiple scopes", async () => {
+      // The screen has one attention line (D14), and "not enforcing" outranks
+      // this one — so the machine gets a pack with a policy on, which leaves the
+      // scopes as the most severe thing to say.
       const { readMergedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const { readInstalledPacks } = await import("../../src/hooks/pack-manifest");
       vi.mocked(readMergedHooksConfig).mockReturnValue({ enabledPolicies: [] });
+      vi.mocked(readInstalledPacks).mockReturnValue({
+        packs: [
+          {
+            id: "acme/ops",
+            version: "1.0.0",
+            source: "github:acme/ops@v1.0.0",
+            path: "/tmp/none.mjs",
+            sha256: "0".repeat(64),
+            effect: "enforce",
+            enabled: null,
+            clis: null,
+            policies: [
+              { name: "block-prod-deploy", description: "d", category: "Ops", defaultEnabled: true, match: {} },
+            ],
+          },
+        ],
+        errors: [],
+      } as never);
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(
         JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: "failproofai --hook PreToolUse" }] }] } }),
@@ -1197,6 +1222,7 @@ describe("hooks/manager", () => {
       const output = vi.mocked(console.log).mock.calls.map((c) => c[0]).join("\n");
 
       expect(output).toMatch(/multiple scopes/i);
+      expect(output).toContain("failproofai policies --uninstall --scope <scope>");
     });
   });
 });

@@ -45,17 +45,19 @@ function cli(...args: string[]): string {
 
 describe("a machine with no policies says how to get some", () => {
   it("`policies` names the pack, in full", () => {
+    // The redesign's one generic line (D18) and the design's next step (D14).
     const out = cli("policies");
-    expect(out).toMatch(/Nothing is enforcing yet/);
-    expect(out).toContain(`failproofai policies add ${CORE_SOURCE}`);
+    expect(out).toMatch(/Policies are not enforcing yet\./);
+    expect(out).toContain(`Turn on ours:  failproofai policies add ${CORE_SOURCE}`);
   });
 
   it("`policies` points at everyone else's packs too, not only ours", () => {
     // Ours being FIRST is a convenience, not a channel. If the listing named
-    // only ours it would read as the place policies come from.
+    // only ours it would read as the place policies come from. Deliberately
+    // narrowed to the one command (D14, D6: one line per fact) — looking at a
+    // pack first is `policies show`, which `policies --help` documents.
     const out = cli("policies");
-    expect(out).toMatch(/policies add <owner>\/<repo>/);
-    expect(out).toMatch(/policies show <owner>\/<repo>/);
+    expect(out).toContain("Or anyone's:   failproofai policies add <owner>/<repo>");
   });
 
   it("offers no short name of our own anywhere in that hint", () => {

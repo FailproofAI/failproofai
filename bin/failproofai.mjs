@@ -388,7 +388,7 @@ async function runCli() {
       ["-i, -u", "Short for --install and --uninstall"],
       ["--policy, --only <a,b>", "Install only these policies from a pack"],
       ["--category <x,y>", "Install only these categories from a pack"],
-      ["--all", "Install everything in a pack"],
+      ["--all", "List every policy; with a pack, install all of it"],
       ["--cli <agent...>", "Apply to these agents only"],
       ["", "claude, codex, copilot, cursor, opencode, pi,"],
       ["", "hermes, openclaw, factory, devin, antigravity, goose"],
@@ -1690,8 +1690,9 @@ async function runCli() {
 
     // Default: list policies
     // Accept --list as a no-op alias (common intuition), reject all other unknown flags
-    // and unexpected positional args (e.g. "hi").
-    const knownListFlags = new Set(["--install", "-i", "--uninstall", "-u", "--help", "-h", "--list"]);
+    // and unexpected positional args (e.g. "hi"). --all lists every policy instead of
+    // folding the off ones into one line per category.
+    const knownListFlags = new Set(["--install", "-i", "--uninstall", "-u", "--help", "-h", "--list", "--all"]);
     const unknownListArg = subArgs.find((a) => a.startsWith("-") && !knownListFlags.has(a));
     if (unknownListArg) {
       throw new CliError(
@@ -1709,7 +1710,7 @@ async function runCli() {
 
     lastSubcommand = "list";
     const { listHooks } = await import("../src/hooks/manager");
-    await listHooks();
+    await listHooks(undefined, { all: subArgs.includes("--all") });
     await track("cli_list_invoked", {});
     process.exit(0);
   }

@@ -53,6 +53,8 @@ export function configBackupPath(path: string): string {
 
 /** Hooks for tests to simulate an interruption at the one step that matters. */
 export interface AtomicWriteDeps {
+  /** Explicit permissions for a newly credential-bearing file. */
+  mode?: number;
   rename?: (from: string, to: string) => void;
   /** Keep `<name>.failproofai-backup` of the previous version (default true). */
   backup?: boolean;
@@ -144,9 +146,9 @@ export function writeConfigFileAtomic(path: string, content: string, deps: Atomi
   let mode: number | undefined;
   try {
     // A link being replaced lends nothing: its target's mode is someone else's.
-    mode = replacingLink ? undefined : statSync(target).mode & 0o777;
+    mode = deps.mode ?? (replacingLink ? undefined : statSync(target).mode & 0o777);
   } catch {
-    mode = undefined; // a new file: the process umask decides, as writeFileSync would
+    mode = deps.mode; // otherwise the process umask decides, as writeFileSync would
   }
 
   const temporary = join(dir, `.${basename(target)}.failproofai-${process.pid}-${randomBytes(4).toString("hex")}.tmp`);

@@ -139,6 +139,14 @@ export const versionFile = (home?: string) => atHome(home, "VERSION");
 /** Non-secret configuration. World-readable by design; never holds a token. */
 export const configFile = (home?: string) => atHome(home, "config.json");
 
+export const otelAgentStateDir = (home?: string) => atHome(home, "state", "otel-agents");
+export const otelAgentStateFile = (agent: string) => {
+  if (!["claude", "codex", "gemini", "copilot"].includes(agent)) throw new Error("Unknown OTEL agent.");
+  return resolve(otelAgentStateDir(), `${agent}.json`);
+};
+export const otlpSpoolDir = (home?: string) => atHome(home, "state", "spool-otlp");
+export const otlpHealthFile = (home?: string) => atHome(home, "state", "otlp-health.json");
+
 /**
  * Every credential, owner-only.
  *
@@ -576,6 +584,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // the collector preferences, `[audit] auto`, the telemetry opt-out, and
   // `collector.sources.*.extra_paths` — the entire output of `harness add-path`.
   { path: configFile, class: "user-typed" },
+  { path: otelAgentStateDir, class: "user-typed" },
   // The builtin enable/disable set and per-policy params. `resetHome` used to
   // clear this and carry eight named keys back over; it is simply kept now.
   { path: globalPolicyConfigFile, class: "user-typed" },
@@ -602,6 +611,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // these is PERMANENT and not merely slow is `cursorsDir` below: the watermark
   // has already advanced past them, so nothing will ever read that range again.
   { path: spoolDir, class: "undelivered" },
+  { path: otlpSpoolDir, class: "undelivered" },
   { path: failedDir, class: "undelivered" },
   // The SDK spool (`events/` + `failed/`), same argument.
   { path: customAgentsDir, class: "undelivered" },
@@ -657,6 +667,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   { path: auditCacheDir, class: "derived" },
   { path: auditScheduleFile, class: "derived" },
   { path: collectorHealthFile, class: "derived" },
+  { path: otlpHealthFile, class: "derived" },
   { path: codexSessionPathsFile, class: "derived" },
   { path: shimsDir, class: "derived" },
   { path: sessionPauseDir, class: "derived" },

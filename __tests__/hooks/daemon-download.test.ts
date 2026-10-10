@@ -406,7 +406,8 @@ describe("hooks/daemon-download", () => {
     });
 
     it("ensureFailproofaidBinary prefers the package and never touches the network", async () => {
-      installPlatformPackage("linux-x64");
+      // This entry point resolves the real host, unlike the explicit-key helpers.
+      installPlatformPackage(`${process.platform}-${process.arch}`);
       // Any fetch at all fails this test: a machine that already has the
       // binary from npm must not wait on github.com to install it.
       const server = await startServer();
@@ -430,7 +431,7 @@ describe("hooks/daemon-download", () => {
     it("works on an air-gapped machine, where the download channel is switched off", async () => {
       // FAILPROOFAI_NO_DOWNLOAD gates fetching, not copying — on exactly these
       // machines npm is the only channel that can supply a daemon at all.
-      installPlatformPackage("linux-x64");
+      installPlatformPackage(`${process.platform}-${process.arch}`);
       process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
       process.env.FAILPROOFAI_DAEMON_BASE_URL = "http://127.0.0.1:1/never";
 

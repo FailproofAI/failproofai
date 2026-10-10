@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.11-beta.0 — 2026-10-10
+
+### Features
+
+- Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (#880).
+- Add optional TypeScript and Python OpenTelemetry span exporters with durable OTLP/JSON spool delivery and no hard runtime dependencies (#880).
+
+### Fixes
+
+- Preserve Codex OTEL header comments, omit local Claude auth-header settings, and require an executable or Copilot extension before configuring VS Code (#880).
+- Keep Python OTEL imports lazy, honor wizard home isolation, label direct loopback destinations correctly, omit local Codex auth headers, and scope help options to each verb (#880).
+
+### Dependencies
+
+- Update vulnerable existing build and SDK test lockfile dependencies reported by the PR's OSV scan (#880).
+
 ## 1.0.10 — 2026-10-05
 
 Action needed if you use `instruct` policies with Hermes: an `instruct` no longer stops the call it reminds about. The call runs and the reminder is placed first in its result, so a policy written to prevent an action (for example, a direct API write that should go through an approved script) must become a `deny` before you upgrade. Hermes 0.20.0 is supported again: on 1.0.9 the plugin loaded there with no hooks and every tool call ran unchecked. After upgrading, run `failproofai update` and restart each Hermes gateway profile by name. Collects 1.0.10-beta.0 to beta.1 below.

@@ -82,6 +82,49 @@ is unreachable.
 
 ### 2. Adapters
 
+#### OpenTelemetry (opt in)
+
+If your app already emits OpenTelemetry spans, send them through FailproofAI Cloud
+without replacing its framework adapters. Install OpenTelemetry separately:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-trace-base
+```
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+import { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+
+const spanProcessors: SpanProcessor[] = []; // include your existing processors
+await failproofai.instrument("otel", { spanProcessors });
+const provider = new BasicTracerProvider({ spanProcessors });
+const tracer = provider.getTracer("my-agent");
+const span = tracer.startSpan("agent", {
+  attributes: { "gen_ai.operation.name": "invoke_agent" },
+});
+span.end();
+await provider.forceFlush();
+```
+
+With no options, `instrument("otel")` creates a provider only if none is registered.
+For an existing OpenTelemetry v2 provider, add the processor before constructing
+the provider, as above. For providers exposing `addSpanProcessor`, pass `{ provider }`.
+You can also supply `new failproofai.OtelSpanExporter()` to your own span processor.
+`uninstrument("otel")` disables only FailproofAI's processor; other exporters keep working.
+
+The exporter writes OTLP/JSON export requests durably into the local relay spool
+(`$FAILPROOFAI_HOME/state/spool-otlp`, otherwise `~/.failproofai/state/spool-otlp`).
+It never sends HTTP or reads the Cloud key. Connect the daemon with `failproofai config`
+and ask an admin to enable Settings → OpenTelemetry. No local TCP listener is
+needed for SDK exports. `spoolDir` is an explicit override for tests or managed
+deployments. `configure({ baseDir })` still applies only to the existing event adapters.
+
+OTEL is never auto-enabled by a bare `instrument()`. The SDK still declares zero
+hard runtime dependencies. Your spans control content capture; do not export
+sensitive attributes unless intended. Export related spans together for complete
+agent traces; call `provider.forceFlush()` before a short-lived process exits.
+
 ```ts
 await failproofai.instrument();              // whatever it can find
 await failproofai.instrument("langchain");   // exactly one

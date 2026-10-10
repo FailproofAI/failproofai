@@ -228,6 +228,7 @@ describe("HOME_CLASSES", () => {
     fpcliDir: "fpcliDir",
     packsInstalledFile: "packsDir",
     packArtifactsDir: "packsDir",
+    otelAgentStateFile: "otelAgentStateDir",
   };
 
   /** Every exported function that returns a path inside the home. */

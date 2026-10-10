@@ -130,6 +130,12 @@ pub struct Settings {
     /// sending them.
     #[serde(default)]
     pub sessions: bool,
+    /// Absent per-agent override inherits the global sessions opt-in.
+    #[serde(default)]
+    pub agents: BTreeMap<String, AgentSettings>,
+    /// Raw OTLP relay is additive and disabled by default.
+    #[serde(default)]
+    pub otlp: OtlpSettings,
     /// Ship hook activity. Defaults to TRUE once ingest is configured — it
     /// carries decisions and tool names, never file contents, and it is the
     /// capability that justifies collecting from inside failproofai at all.
@@ -175,6 +181,33 @@ pub struct SourceSettings {
     pub extra_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AgentSettings {
+    #[serde(default)]
+    pub sessions: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OtlpSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_otlp_port")]
+    pub port: u16,
+}
+
+fn default_otlp_port() -> u16 {
+    4318
+}
+
+impl Default for OtlpSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_otlp_port(),
+        }
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -187,6 +220,8 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sessions: false,
+            agents: BTreeMap::new(),
+            otlp: OtlpSettings::default(),
             hooks: true,
             hooks_verbosity: HooksVerbosity::default(),
             redact: Redact::default(),
@@ -198,6 +233,18 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn sessions_for(&self, agent: &str) -> bool {
+        let agent = if agent == "claude-subagent" {
+            "claude"
+        } else {
+            agent
+        };
+        self.agents
+            .get(agent)
+            .and_then(|a| a.sessions)
+            .unwrap_or(self.sessions)
+    }
+
     /// Raw `extra_paths` entries for one source, env override winning whole.
     ///
     /// `FAILPROOFAI_<SOURCE>_EXTRA_PATHS`, comma-separated — the same

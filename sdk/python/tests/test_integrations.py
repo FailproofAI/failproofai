@@ -106,7 +106,7 @@ def fake(monkeypatch):
 def test_the_four_adapters_are_pre_registered():
     # Registered before their modules exist so that adding an adapter is one new
     # file, never an edit to the registry (which four agents would conflict on).
-    assert integrations.available() == ("crewai", "langchain", "llama_index", "pydantic_ai")
+    assert integrations.available() == ("crewai", "langchain", "llama_index", "otel", "pydantic_ai")
 
 
 @pytest.mark.parametrize(

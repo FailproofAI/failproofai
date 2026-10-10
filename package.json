@@ -97,7 +97,7 @@
     "eslint-config-next": "^16.3.2",
     "jsdom": "^30.0.1",
     "lucide-react": "^1.33.0",
-    "next": "^16.3.2",
+    "next": "^16.3.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.4.0",
@@ -107,7 +107,9 @@
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
+    "jsonc-parser": "^3.3.1",
     "posthog-node": "^5.50.0",
+    "smol-toml": "^1.9.1",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0"
   },
@@ -118,7 +120,8 @@
     "vite": "8.0.16",
     "undici": "7.29.1",
     "brace-expansion": "5.0.12",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2",
     "browserslist": "4.28.8"
   }
 }

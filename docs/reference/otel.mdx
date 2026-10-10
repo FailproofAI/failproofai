@@ -1,0 +1,67 @@
+---
+title: "OpenTelemetry CLI"
+description: "Opt in to OTEL for coding agents, inspect delivery, and restore your previous settings."
+icon: "radio"
+---
+
+`failproofai otel` configures optional OpenTelemetry reporting to FailproofAI Cloud. First connect your machine with `failproofai config` and ask an organisation admin to enable **Settings → OpenTelemetry**.
+
+## Enable an agent
+
+```bash
+failproofai otel enable claude
+failproofai otel enable codex --local
+failproofai otel enable gemini --no-content
+failproofai otel enable copilot
+failproofai otel enable all --yes
+```
+
+The supported agents are `claude`, `codex`, `gemini`, and `copilot` (VS Code). Copilot setup requires a VS Code executable or an installed Copilot extension. A leftover settings directory alone is not enough; setup skips Copilot when neither is found.
+
+`--local` sends to the local relay instead of directly to Cloud. Gemini CLI and Copilot use the relay automatically because their settings cannot store the authentication header.
+
+The relay listens only on your machine. Your configured FailproofAI daemon picks up the change within seconds; you do not need to restart it. If another application owns the relay port, status reports it as off and the daemon keeps running.
+
+<Warning>
+Text capture is on by default. Add `--no-content` to omit prompts and tool details. Agent versions can expose different content controls; review what your agent exports before using it with sensitive data.
+</Warning>
+
+### Choose one reporting path
+
+If transcript reporting is on for an agent, setup asks:
+
+> failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
+
+The default is No. `--yes` accepts the switch without a prompt. Other agents and policy enforcement are unaffected.
+
+## Inspect setup
+
+```bash
+failproofai otel status
+```
+
+Status shows every agent, whether its settings are managed by FailproofAI, its destination, the organisation's ingest switch, relay state, and the last relay upload result.
+
+`unknown` for the organisation switch means the server did not provide it or could not be reached. It is not an error and does not prevent configuration on an older Cloud version.
+
+If Cloud does not support OTEL yet, the relay retains rejected exports instead of discarding them. If organisation ingest is off, ask an admin to turn it on before starting your agents.
+
+## Print configuration for an application
+
+```bash
+failproofai otel env --service my-agent
+failproofai otel env --service my-agent --local
+```
+
+The output is a shell environment block for an OTLP/HTTP exporter. Cloud output includes the configured API key; treat it as a secret. Local output omits the key. To use local output, first enable a local agent so the relay is running.
+
+## Restore previous settings
+
+```bash
+failproofai otel disable claude
+failproofai otel disable all
+```
+
+Disable restores only the settings FailproofAI wrote, keeps unrelated changes, and restores each agent's prior transcript-reporting choice. When the last managed local agent is disabled, the relay stops accepting exports.
+
+Every command supports `--help`. See [OpenTelemetry in Cloud](/agenteye/opentelemetry) for application and coding-agent examples.

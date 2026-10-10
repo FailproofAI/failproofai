@@ -122,6 +122,7 @@
                 "group": "Plug in your agent",
                 "pages": [
                   "start/integrations",
+                  "agenteye/opentelemetry",
                   "start/integrations/custom-agents",
                   "start/integrations/langchain",
                   "start/integrations/crewai",
@@ -241,6 +242,7 @@
                 "expanded": false,
                 "pages": [
                   "reference/failproof-cli",
+                  "reference/otel",
                   "reference/local-dashboard",
                   "policies/local-configuration",
                   "reference/cloud-cli",

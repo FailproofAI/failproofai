@@ -1905,7 +1905,11 @@ async function runCli() {
           sessions: !args.includes("--no-transcripts"),
         });
       }
-      await printLines(result.lines, result.exitCode === 0);
+      // Through the shared presenter: a header naming what ran, and a failure
+      // opening with ✕ and its fix under it, like every other action result.
+      await printReport(wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect", result.lines, {
+        ok: result.exitCode === 0,
+      });
       await warnTokenOnArgv();
       await track("cli_cloud_enrollment", {
         action: wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect",

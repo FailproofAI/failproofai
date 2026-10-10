@@ -886,7 +886,13 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         }));
     }
 
-    if cfg.settings.sessions {
+    if cfg.settings.sessions
+        || cfg
+            .settings
+            .agents
+            .values()
+            .any(|a| a.sessions == Some(true))
+    {
         // Session transcripts, gated on the `sessions` opt-in because — unlike
         // hook activity — these carry prompts, file contents and whatever was
         // pasted into a terminal.
@@ -1251,6 +1257,14 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             );
         }
     }
+
+    // Filter only transcript tasks; hook activity and delivery are untouched.
+    tasks.retain(|task| {
+        let source = task.name.split(':').next().unwrap_or(&task.name);
+        !HARNESS_KEYS.contains(&source) && source != "claude-subagent"
+            || cfg.settings.sessions_for(source)
+    });
+    tasks.extend(fpai_collect::otlp::tasks(home, ingest, &cfg.settings.otlp));
 
     tasks.extend([
         // Latency: delivers a batch within milliseconds of it being published.

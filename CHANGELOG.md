@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11-beta.0 — 2026-10-10
+
+### Features
+
+- Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (PR pending).
+
 ## 1.0.10 — 2026-10-05
 
 Action needed if you use `instruct` policies with Hermes: an `instruct` no longer stops the call it reminds about. The call runs and the reminder is placed first in its result, so a policy written to prevent an action (for example, a direct API write that should go through an approved script) must become a `deny` before you upgrade. Hermes 0.20.0 is supported again: on 1.0.9 the plugin loaded there with no hooks and every tool call ran unchecked. After upgrading, run `failproofai update` and restart each Hermes gateway profile by name. Collects 1.0.10-beta.0 to beta.1 below.

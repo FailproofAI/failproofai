@@ -340,7 +340,7 @@ export function listPaths(harness?: string): HarnessResult {
           {
             what: "No extra capture paths configured. Every harness is watching only its default location.",
             hint: "Add one with:",
-            cmd: "failproofai harness add-path <harness> [<label>=]<path>",
+            cmd: "failproofai harness add-path <agent> [label=]<path>",
           },
           opts,
         ),
@@ -417,12 +417,12 @@ export function runHarnessCommand(argv: string[]): HarnessResult {
   switch (sub) {
     case "add-path":
       if (rest.length < 2) {
-        return fail(["Usage: failproofai harness add-path <harness> [<label>=]<path>"]);
+        return fail(["Usage: failproofai harness add-path <agent> [label=]<path>"]);
       }
       return addPath(rest[0], rest.slice(1).join(" "));
     case "remove-path":
       if (rest.length < 2) {
-        return fail(["Usage: failproofai harness remove-path <harness> <path|label>"]);
+        return fail(["Usage: failproofai harness remove-path <agent> <path | label>"]);
       }
       return removePath(rest[0], rest.slice(1).join(" "));
     case "list":
@@ -432,9 +432,9 @@ export function runHarnessCommand(argv: string[]): HarnessResult {
         sub ? `Unknown subcommand: ${sub}` : "A subcommand is required.",
         "",
         "Usage:",
-        "  failproofai harness list [<harness>]",
-        "  failproofai harness add-path <harness> [<label>=]<path>",
-        "  failproofai harness remove-path <harness> <path|label>",
+        "  failproofai harness list [agent]",
+        "  failproofai harness add-path <agent> [label=]<path>",
+        "  failproofai harness remove-path <agent> <path | label>",
       ]);
   }
 }

@@ -1,32 +1,32 @@
 // @vitest-environment node
 //
 // The top-level help used to be the reference manual: 152 lines, six screens at
-// 80x24, every flag of every command inlined. It is now ONE screen of what
-// exists, plus a `failproofai help <command>` router that dispatches straight to
-// `<command> --help`, so each command's documentation has exactly one copy.
+// 80x24, every flag of every command inlined. It is now the 2026-10 redesign's
+// index: what to do first (GET STARTED), every command by what it is for, three
+// examples — plus a `failproofai help <command>` router that dispatches straight
+// to `<command> --help`, so each command's documentation has exactly one copy.
 //
-// The thing that will regress is not the wording — it is the SIZE and the
-// LAYOUT. Both are properties nobody re-measures: the first person to add a
-// command adds a row, the screen quietly becomes two, and nothing anywhere
-// notices. So these drive the real binary and measure the rendered bytes.
+// The redesign is taller than the old one-screen index (decision D10 allows it),
+// but it still fits 80 columns: nothing on it is cut or wrapped in a default
+// terminal. What will regress is the SIZE, the LAYOUT and the COMPLETENESS —
+// a command added to the CLI and never to the index is invisible. So these
+// drive the real binary and measure the rendered text.
 //
-// A note on the measurement, because getting it wrong makes the test lie: the
-// section rules are U+2501, three bytes each, so a line's UTF-8 byte length is
-// far larger than the width it occupies on screen. Terminal columns are what
-// matters, so every width here is `String.length` on the DECODED string, and
-// the premise that those two agree — no emoji, no wide characters — is itself
-// asserted below rather than assumed.
+// Widths are `String.length` on the decoded string, because a terminal column
+// is a character, not a byte; the premise that the two agree here (no emoji, no
+// wide characters) is itself asserted below rather than assumed.
 import { describe, it, expect, afterAll } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
 
-/** The contract: one screen, in a terminal nobody has resized. */
-const MAX_LINES = 30;
+/** The redesign's index, with room for a row or two more — not a second screen's worth. */
+const MAX_LINES = 36;
 const MAX_COLUMNS = 80;
+const HEADINGS = ["GET STARTED", "SET UP", "ENFORCE", "OBSERVE", "LESS OFTEN", "EXAMPLES"];
 
 // An isolated HOME so a first-run gate, an onboarding lock, or a migration
 // resolves `~/.failproofai` under a throwaway dir rather than the developer's
@@ -63,66 +63,60 @@ function cli(...args: string[]): Run {
   };
 }
 
-/** The index, as lines, with the trailing blank `console.log` adds removed. */
-function indexLines(): string[] {
-  const run = cli("--help");
-  expect(run.exitCode).toBe(0);
-  return run.stdout.replace(/\n+$/, "").split("\n");
+// Rendered once, and asserted inside the tests below rather than here: an
+// expect at module scope makes a layout change fail the whole FILE at
+// collection, taking every unrelated routing test down with it.
+const INDEX_RUN = cli("--help");
+const INDEX = INDEX_RUN.stdout.replace(/\n+$/, "").split("\n");
+
+/** The flush-left UPPERCASE headings, in order. */
+const headings = (lines: string[]) => lines.filter((l) => /^[A-Z][A-Z ]+$/.test(l));
+
+/** The indented rows under one heading, up to the next blank line. */
+function rowsUnder(lines: string[], heading: string): string[] {
+  const at = lines.indexOf(heading);
+  if (at === -1) return [];
+  const out: string[] = [];
+  for (const line of lines.slice(at + 1)) {
+    if (line.trim() === "") break;
+    out.push(line);
+  }
+  return out;
 }
 
-/**
- * The command words the index advertises.
- *
- * The rows sit between the first section rule and the footer, which opens with
- * the `failproofai help <command>` pointer; each is `<command spec>  <desc>`,
- * separated by a run of two or more spaces. A spec may name alternatives
- * (`harness, flush, backfill`) or a command plus its flags (`policies add`,
- * `config --status`) — the command word is the first token of each
- * alternative, and `(no args)` names no command at all.
- *
- * Blank lines are SKIPPED, not a terminator. They used to be one, because the
- * sections were flush against each other and the only blank on the screen was
- * the one before the footer. The sections breathe now, so stopping at the first
- * blank would have read section one and reported the other three as commands
- * the index does not advertise.
- */
+/** The command words the index advertises: the first token of every row in the four command sections. */
 function indexCommands(lines: string[]): string[] {
-  const firstRule = lines.findIndex((l) => l.includes("━"));
-  expect(firstRule).toBeGreaterThan(-1);
-
-  const rows: string[] = [];
-  for (const line of lines.slice(firstRule)) {
-    if (line.includes("failproofai help")) break;
-    if (line.trim() === "") continue;
-    if (line.includes("━")) continue;
-    rows.push(line);
-  }
-  // Not vacuous: the loop above must actually have found the body, not stopped
-  // on the first line it saw.
-  expect(rows.length).toBeGreaterThan(5);
-
-  const commands = new Set<string>();
-  for (const row of rows) {
-    const spec = row.trim().split(/\s{2,}/)[0];
-    for (const alternative of spec.split(",")) {
-      const word = alternative.trim().split(/\s+/)[0];
-      if (!word || word.startsWith("(") || word.startsWith("-")) continue;
-      commands.add(word);
+  const words = new Set<string>();
+  for (const heading of ["SET UP", "ENFORCE", "OBSERVE", "LESS OFTEN"]) {
+    for (const row of rowsUnder(lines, heading)) {
+      const word = row.trim().split(/\s+/)[0];
+      if (word && !word.startsWith("(")) words.add(word);
     }
   }
-  return [...commands];
+  return [...words];
 }
 
-const INDEX = indexLines();
+/** The commands bin dispatches, read from its own SUBCOMMANDS list. */
+function dispatchedCommands(): string[] {
+  const source = readFileSync(BINARY, "utf8");
+  const match = source.match(/const SUBCOMMANDS = \[([^\]]+)\]/);
+  if (!match) return [];
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).filter((c) => c !== "help");
+}
+
 const INDEXED_COMMANDS = indexCommands(INDEX);
 
-describe("failproofai --help — the screen that replaced the manual", () => {
-  it(`stays inside one screen — at most ${MAX_LINES} lines`, () => {
-    // The number this replaced was 152. The slack above the current height is
-    // deliberate: a few more rows are fine, a second screen is not.
+describe("failproofai --help — the index", () => {
+  it("prints, and exits 0", () => {
+    expect(INDEX_RUN.exitCode).toBe(0);
+    expect(INDEX_RUN.stdout.trim().length).toBeGreaterThan(0);
+  });
+
+  it(`stays at most ${MAX_LINES} lines`, () => {
+    // The number this replaced was 152.
     expect(INDEX.length).toBeLessThanOrEqual(MAX_LINES);
     // Not vacuous — an empty or truncated help must not read as "small enough".
-    expect(INDEX.length).toBeGreaterThan(10);
+    expect(INDEX.length).toBeGreaterThan(25);
   });
 
   it("wraps to no terminal — every line fits 80 display columns", () => {
@@ -132,41 +126,52 @@ describe("failproofai --help — the screen that replaced the manual", () => {
     expect(tooWide).toEqual([]);
   });
 
-  it("measures those columns in characters, because the rules are multibyte", () => {
-    // The premise the width check rests on, asserted rather than trusted: the
-    // only non-ASCII character on the screen is the box rule, which is one
-    // column wide, so `String.length` IS the display width. An emoji or a
-    // full-width character here would make the check above silently wrong.
-    const exotic = [...INDEX.join("\n")].filter(
-      (ch) => ch.codePointAt(0)! > 126 && ch !== "━",
-    );
+  it("measures those columns in characters, and the only wide-byte character is the separator dot", () => {
+    // `·` is one column and two bytes, so `String.length` IS the display width.
+    // An emoji or a full-width character here would make the check above
+    // silently wrong; so would an escape code, which a pipe must never carry.
+    const text = INDEX.join("\n");
+    expect(text).not.toContain("\x1b");
+    const exotic = [...text].filter((ch) => ch.codePointAt(0)! > 126 && ch !== "·");
     expect(exotic).toEqual([]);
-
-    // And the distinction is live, not theoretical: a rule line really does
-    // carry more bytes than columns, so measuring a Buffer would have failed
-    // the 80-column check on a screen that fits perfectly.
-    const rule = INDEX.find((line) => line.includes("━"));
-    expect(rule).toBeDefined();
-    expect(Buffer.byteLength(rule!, "utf8")).toBeGreaterThan(rule!.length);
+    const header = INDEX.find((line) => line.includes("·") && line.startsWith("failproof ai"));
+    expect(header).toBeDefined();
+    expect(Buffer.byteLength(header!, "utf8")).toBeGreaterThan(header!.length);
   });
 
-  it("keeps the four sections it groups the commands into", () => {
-    const rules = INDEX.filter((line) => line.includes("━"));
-    expect(rules).toHaveLength(4);
+  it("opens with the wordmark and the version", () => {
+    const version = (JSON.parse(readFileSync(resolve(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
+    expect(INDEX.find((l) => l.trim() !== "")).toContain(`failproof ai  v${version}`);
   });
 
-  it("is the same screen from `help`, `--help` and `-h`", () => {
-    const long = cli("--help");
+  it("keeps its six sections, in order", () => {
+    expect(headings(INDEX)).toEqual(HEADINGS);
+  });
+
+  it("gets a newcomer started in three numbered steps, each ending in a command they can run", () => {
+    const steps = rowsUnder(INDEX, "GET STARTED");
+    expect(steps).toHaveLength(3);
+    steps.forEach((row, i) => {
+      expect(row).toMatch(new RegExp(`^\\s+${i + 1}\\s+\\S.*\\s{2,}failproofai\\b`));
+    });
+  });
+
+  it("says where per-command help lives, and how to print the version", () => {
+    expect(INDEX_RUN.stdout).toContain("failproofai help <command>");
+    expect(INDEX_RUN.stdout).toContain("failproofai -v");
+  });
+
+  it("is the same screen from `help`, `--help`, `-h` and `help help`", () => {
     const short = cli("-h");
     const bare = cli("help");
+    const twice = cli("help", "help");
 
-    expect(long.exitCode).toBe(0);
     expect(short.exitCode).toBe(0);
     expect(bare.exitCode).toBe(0);
-    expect(long.stdout).toContain("failproofai help <command>");
-
-    expect(short.stdout).toBe(long.stdout);
-    expect(bare.stdout).toBe(long.stdout);
+    expect(twice.exitCode).toBe(0);
+    expect(short.stdout).toBe(INDEX_RUN.stdout);
+    expect(bare.stdout).toBe(INDEX_RUN.stdout);
+    expect(twice.stdout).toBe(INDEX_RUN.stdout);
   });
 });
 
@@ -243,21 +248,22 @@ describe("failproofai help <command> — one copy of each command's help", () =>
 });
 
 describe("the index advertises nothing it cannot explain", () => {
-  it("names the commands this parse is about to check", () => {
-    // The guard against the whole suite below passing on an empty list: if the
-    // index layout changes shape, this fails loudly instead of checking nothing.
-    expect(INDEXED_COMMANDS.length).toBeGreaterThanOrEqual(10);
-    expect(INDEXED_COMMANDS).toEqual(
-      expect.arrayContaining(["config", "policies", "audit", "uninstall"]),
-    );
+  it("names every command the CLI dispatches, each once — none is undiscoverable", () => {
+    // The guard against the whole suite below passing on an empty list, and
+    // against a command that exists but is on no screen anyone reads.
+    const dispatched = dispatchedCommands();
+    expect(dispatched.length).toBeGreaterThanOrEqual(10);
+    expect([...INDEXED_COMMANDS].sort()).toEqual([...dispatched].sort());
   });
 
-  it.each(INDEXED_COMMANDS)("`help %s` reaches real help", (command) => {
+  it.each(INDEXED_COMMANDS)("`help %s` reaches real help, the same bytes as its own --help", (command) => {
     const run = cli("help", command);
+    const direct = cli(command, "--help");
 
     expect(run.exitCode).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
     expect(run.stderr).not.toContain("No help for");
+    expect(run.stdout).toBe(direct.stdout);
   });
 });
 
@@ -280,8 +286,11 @@ describe("a bare command runs, it does not describe itself", () => {
       const out = `${run.stdout ?? ""}${run.stderr ?? ""}`;
       // It has nothing to publish in an empty directory, so it must FAIL —
       // but as the command failing, not as a manual.
-      expect(out).not.toMatch(/two commands, from nothing/i);
-      expect(out).not.toMatch(/what --init does/i);
+      // Anchored on markers the help page really prints today, so this can
+      // never pass simply because the help stopped containing them.
+      expect(cli("publish", "--help").stdout).toContain("Build and release it on GitHub");
+      expect(out).not.toMatch(/^USAGE$/m);
+      expect(out).not.toContain("Build and release it on GitHub");
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
@@ -290,7 +299,8 @@ describe("a bare command runs, it does not describe itself", () => {
   it("publish --help still prints it", () => {
     const run = cli("publish", "--help");
     expect(run.exitCode).toBe(0);
-    expect(run.stdout).toMatch(/two commands, from nothing/i);
+    expect(run.stdout).toMatch(/^USAGE$/m);
+    expect(run.stdout).toContain("failproofai publish --init [file]");
   });
 
   // Behaviour changed and the screen describing it did not. `publish` now
@@ -303,8 +313,9 @@ describe("a bare command runs, it does not describe itself", () => {
     const run = cli("publish", "--help");
 
     expect(run.exitCode).toBe(0);
-    expect(run.stdout).toMatch(/--allow-private/);
-    expect(run.stdout).toMatch(/REFUSED/);
+    // One line per flag now (decision D11), and no shouting: the row says the
+    // default refusal is something you have to override, and what that costs.
+    expect(run.stdout).toMatch(/--allow-private\s+Publish to a private repo anyway; installs will fail/);
     // The stale promise, in the words it was written in.
     expect(run.stdout).not.toMatch(/still publishes/);
   });

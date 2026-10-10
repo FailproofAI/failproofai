@@ -730,7 +730,11 @@ export async function runPolicyPicker(
       `\`policies ${action}\` with no name needs a terminal to show you the list.`,
       "From a script, name what you mean:",
       `  failproofai policies ${action} <policy-name>`,
-      `  failproofai policies ${action} <owner>/<repo> [--policy a,b] [--category x,y] [--all]`,
+      // Pack-lane remove takes an id and no flags: it uninstalls the whole pack,
+      // so advertising add's selection flags here invited exactly that.
+      action === "remove"
+        ? "  failproofai policies remove <pack-id>"
+        : "  failproofai policies add <owner>/<repo> [--policy a,b] [--category x,y] [--all]",
     ]);
   }
 

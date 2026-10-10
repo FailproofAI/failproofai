@@ -43,8 +43,8 @@ describe("audit --help", () => {
     // it. Repeating the prefix on every row cost 17 of the 80 columns and was
     // what forced the descriptions down to four words a line.
     expect(text).toContain("failproofai audit");
+    expect(text).toContain("Scan your agents' history and open the results");
     for (const command of [
-      "(bare)",
       "--schedule [days]",
       "--no-schedule",
       "--status",
@@ -66,8 +66,13 @@ describe("audit --help", () => {
     expect(plain(render(false))).not.toContain("--scheduled");
   });
 
-  it("keeps the local-only promise the docs also make", () => {
-    expect(plain(render(false))).toMatch(/runs on this machine/i);
+  it("is usage, options and examples, and nothing else", () => {
+    // Decision D6 of the 2026-10 redesign removed explanatory and privacy
+    // lines from help pages; the audit's local-only promise went with them.
+    const headings = plain(render(false))
+      .split("\n")
+      .filter((l) => /^[A-Z][A-Z ]+$/.test(l));
+    expect(headings).toEqual(["USAGE", "OPTIONS", "EXAMPLES"]);
   });
 
   it.each([true, false])("aligns and fits 80 columns with color=%s", (color) => {
@@ -77,27 +82,14 @@ describe("audit --help", () => {
       expect(line.length).toBeLessThanOrEqual(80);
     }
 
-    // Every command row and every continuation line shares one description
-    // column. Derive it from the first row rather than restating a constant,
-    // so this fails on drift instead of being updated to match it.
-    const first = lines.find((l) => l.trim().startsWith("(bare)"));
-    expect(first).toBeDefined();
-    const descCol = first!.indexOf("Scan your session history");
-    expect(descCol).toBeGreaterThan(0);
-
-    const continuations = lines.filter(
-      (l) => l.startsWith(" ".repeat(descCol)) && l.trim().length > 0,
-    );
-    // A NON-VACUITY floor, not a layout assertion. The real check is the loop
-    // below — every continuation starts exactly at `descCol` — and this only
-    // proves it ran over something. Deliberately well under the count the
-    // current copy produces: pinning it to the exact number is what made this
-    // line fail twice for wording changes that improved the screen, once when
-    // dropping the `failproofai audit` prefix widened the column and again
-    // when `--email <address>` moved to a row of its own.
-    expect(continuations.length).toBeGreaterThanOrEqual(2);
-    for (const line of continuations) {
-      expect(line[descCol]).not.toBe(" ");
-    }
+    // Every option row shares one description column. Measured per row rather
+    // than against a constant, so this fails on drift instead of being updated
+    // to match it.
+    const optionRows = lines.filter((l) => /^ {2}-/.test(l));
+    // A non-vacuity floor: the loop below must have run over the real rows.
+    expect(optionRows.length).toBeGreaterThanOrEqual(4);
+    // The first character after the name's two-space gap.
+    const columns = new Set(optionRows.map((l) => l.search(/(?<=\S {2,})\S/)));
+    expect(columns.size).toBe(1);
   });
 });

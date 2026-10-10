@@ -182,11 +182,13 @@ const liveModelListReader: JevModelListReader = (url, apiKey) => readJevModelLis
 const ok = (lines: string[], json?: string): JevCliResult => ({ lines, exitCode: 0, ...(json !== undefined ? { json } : {}) });
 const fail = (lines: string[], json?: string): JevCliResult => ({ lines, exitCode: 1, ...(json !== undefined ? { json } : {}) });
 
+// The same usage rows as `jev --help`, so the usage printed after a mistake can
+// never disagree with the help page.
 export const JEV_USAGE = [
   "Usage:",
-  "  failproofai jev --url <url> [--key-stdin | --token <token>] [options]",
-  "  failproofai jev setup --provider <kind> [--key-stdin | --key-from-env] [options]",
-  "  failproofai jev setup --provider failproofai [--mode off|observe|enforce]   (FailproofAI Cloud: no key, no URL)",
+  "  failproofai jev setup --provider <kind> --key-stdin",
+  "  failproofai jev --url <url> --key-stdin",
+  "  failproofai jev setup --provider failproofai",
   "  failproofai jev status [--json]",
   "  failproofai jev test [--json]",
   "  failproofai jev models [--provider <kind>] [--url <base>] [--json]",

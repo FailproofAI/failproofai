@@ -362,11 +362,47 @@ async function printReport(command, lines, opts = {}) {
 }
 
 async function printHelp(spec) {
-  const { helpScreen, helpOptsFor, printBlock } = await import("../src/hooks/tui");
-  printBlock(process.stdout, helpScreen({ version, ...spec }, helpOptsFor(process.stdout)));
+  const { screenKit, optsFor, printBlock } = await import("../src/hooks/tui");
+  // Descriptions are prose and may be shortened to fit a terminal; nothing is
+  // ever cut in a pipe, and a command, flag or path is never cut anywhere.
+  const kit = screenKit({ ...optsFor(process.stdout), fit: !!process.stdout.isTTY });
+  printBlock(process.stdout, kit.helpPage(spec));
 }
 
 async function runCli() {
+  // One page for `policies --help` and `policies add|remove|show --help`: it
+  // carries every flag of every policies lane, so `help policies add` lands on
+  // the right page with no routing of its own. Defined here, inside runCli,
+  // so the bundle gains no top-level name.
+  const POLICIES_HELP = {
+    name: "policies",
+    usage: [
+      ["failproofai policies [--list]", "List every policy and whether it is on"],
+      ["failproofai policies add [name | owner/repo]", "Turn one on, install a pack, or pick from a list"],
+      ["failproofai policies remove [name | pack-id]", "Turn one off, uninstall a pack, or pick from a list"],
+      ["failproofai policies show <owner/repo>", "See what a pack holds"],
+      ["failproofai policies --install [names...]", "Install hooks and turn on any policies named"],
+      ["failproofai policies --uninstall [names...]", "Turn named policies off; with none, remove hooks"],
+    ],
+    options: [
+      ["-i, -u", "Short for --install and --uninstall"],
+      ["--policy, --only <a,b>", "Install only these policies from a pack"],
+      ["--category <x,y>", "Install only these categories from a pack"],
+      ["--all", "Install everything in a pack"],
+      ["--cli <agent...>", "Apply to these agents only"],
+      ["", "claude, codex, copilot, cursor, opencode, pi,"],
+      ["", "hermes, openclaw, factory, devin, antigravity, goose"],
+      ["--scope <scope>", "user, project, local (default user); all when removing"],
+      ["--beta", "Include beta policies"],
+      ["-c, --custom <file>", "Add custom policy files (repeatable); -u -c clears all"],
+      ["--releases", "With show: list its releases, and which one is here"],
+    ],
+    examples: [
+      "failproofai policies add FailproofAI/policies",
+      "failproofai policies add FailproofAI/policies --category git",
+      "failproofai policies remove block-sudo",
+    ],
+  };
   // --help / -h  (only when not inside a subcommand that handles its own --help)
   // `update` and `migrate` were missing here, so `failproofai update --help`
   // exited 1 with "Unexpected argument" — both commands had no reachable help
@@ -393,33 +429,12 @@ async function runCli() {
     // machine-facing flag would only take space from the human-facing commands.
     if (helpTopic === "hook") {
       await printHelp({
-        command: "--hook",
-        tagline: "the entry point your agent CLI spawns, once per tool call",
-        sections: [
-          {
-            label: "usage",
-            entries: [["failproofai --hook <event> [--cli <name>]"]],
-            after: [
-              "You do not run this; `failproofai config` writes it into each CLI's",
-              "hook configuration for you.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--hook <event>", "PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, Notification, PermissionRequest"],
-              ["--cli <name>", "claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose. Defaults to claude. It selects which payload shape to expect: each CLI names its events and tool arguments differently, and failproofai canonicalizes them."],
-            ],
-          },
-          {
-            label: "how it answers",
-            lines: [
-              "It reads the event as JSON on stdin and answers on stdout, in whatever",
-              "shape that CLI honours. Exit codes and response shapes differ per CLI by",
-              "necessity — see docs.befailproof.ai. Denials are reported to the agent,",
-              "never to you.",
-            ],
-          },
+        name: "hook",
+        usage: [["failproofai --hook <event> [--cli <agent>]", "Called by your agents on every tool call"]],
+        options: [
+          ["--hook <event>", "PreToolUse, PostToolUse, UserPromptSubmit, Stop and more"],
+          ["--cli <agent>", "claude (default), codex, copilot, cursor, opencode, pi,"],
+          ["", "hermes, openclaw, factory, devin, antigravity, goose"],
         ],
       });
       process.exit(0);
@@ -451,54 +466,66 @@ async function runCli() {
     if (extraArgs.length > 0) {
       throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai help\` for usage.`);
     }
-    // The index is DATA, not a template literal: one renderer draws it and the
-    // eleven `<command> --help` screens, so a row added here cannot end up in a
-    // different dialect from the screen it points at. Colour is decoration and
-    // never meaning — the column position already says which half is a command,
-    // so this reads identically under NO_COLOR, piped to a file, or on a
-    // terminal that has never heard of 24-bit.
-    await printHelp({
-      tagline: "guardrails for the coding agents on this machine",
-      sections: [
-        {
-          label: "get it running",
-          entries: [
-            ["config", "Set this machine up: agents, daemon, cloud"],
-            ["config --token <key>", "Set up and connect to Cloud, no questions asked"],
-            ["update", "Finish an npm upgrade: migrate home, match the daemon"],
-          ],
-        },
-        {
-          label: "choose what it enforces",
-          entries: [
-            ["policies", "Every policy on this machine, and whether it is on"],
-            ["policies add", "Turn one on, or install a pack: <owner>/<repo>"],
-            ["policies remove", "Turn one off, or uninstall a whole pack"],
-            ["publish", "Ship your own policies as a pack anyone can install"],
-            ["jev setup", "Let Jev judge calls with your own key, above regex"],
-          ],
-        },
-        {
-          label: "see what it caught",
-          entries: [
-            ["(no args)", "Open the policy dashboard on localhost:8020"],
-            ["audit", "Scan your agents' history, then open the audit view"],
-            ["config --status", "Cloud connection, daemon version, pause state"],
-          ],
-        },
-        // Named, not described. Everything here is real and reachable through
-        // `help <command>`; none of it is what anyone types on the first day,
-        // and a full row each is what made this screen read as a manual.
-        {
-          label: "less often",
-          lines: ["policies show, harness, flush, backfill, migrate, uninstall, config --pause"],
-        },
-      ],
-      footer: [
-        "failproofai <command> [options]     failproofai help <command> for detail",
-        "docs.befailproof.ai   discord.befailproof.ai   -h this screen   -v version",
-      ],
-    });
+    // The index and every `<command> --help` page are built from the same kit,
+    // so a row added here cannot end up in a different dialect from the page it
+    // points at. Colour is decoration and never meaning: the column already says
+    // which half is a command, so this reads the same under NO_COLOR, piped to a
+    // file, or on a terminal that has never heard of 24-bit.
+    {
+      // The index, in the design's shape: what to do first, then every command by
+      // what it is for. Composed here from the kit rather than a builder in tui.ts,
+      // so the bundle gains no top-level name (see the audit-cache note there).
+      const { screenKit, optsFor, printBlock } = await import("../src/hooks/tui");
+      const kit = screenKit({ ...optsFor(process.stdout), fit: !!process.stdout.isTTY });
+      // The command sits in the SECOND column here, so these rows never go
+      // through rows()' description slot, which is the one shortened to fit.
+      const steps = [
+        ["Set up this machine", "failproofai config"],
+        ["Turn on policies", "failproofai policies add FailproofAI/policies"],
+        ["See what your agents did", "failproofai"],
+      ];
+      const section = (heading, entries) => [
+        "",
+        kit.head(heading),
+        ...kit.rows(entries.map(([name, description]) => [name === "(no args)" ? name : kit.cmd(name), description]), 12),
+      ];
+      await printBlock(process.stdout, [
+        kit.header("Guardrails for coding agents on this machine"),
+        "",
+        kit.head("Get started"),
+        ...steps.map(([label, command], i) => `  ${i + 1}  ${label.padEnd(27)}  ${kit.cmd(command)}`),
+        ...section("Set up", [
+          ["config", "Set up hooks and the daemon, and choose cloud or open source"],
+          ["update", "Finish an npm upgrade: migrate this machine and match the daemon"],
+          ["uninstall", "Remove hooks and the daemon from this machine"],
+        ]),
+        ...section("Enforce", [
+          ["policies", "List policies, turn them on or off, install packs"],
+          ["publish", "Ship your own policies as a pack anyone can install"],
+          ["jev", "Have Jev judge tool calls on top of the regex policies"],
+        ]),
+        ...section("Observe", [
+          ["(no args)", "Open the policy dashboard on localhost:8020"],
+          ["audit", "Scan your agents' history for risky and wasteful patterns"],
+        ]),
+        ...section("Less often", [
+          ["harness", "Collect sessions from extra locations per agent"],
+          ["flush", "Send queued events to cloud now"],
+          ["backfill", "Re-send history the collector already read"],
+          ["migrate", "Bring ~/.failproofai up to this version's layout"],
+        ]),
+        "",
+        kit.head("Examples"),
+        ...kit.rows([
+          [kit.cmd("failproofai config --status"), "Check the daemon, cloud and pauses"],
+          [kit.cmd("failproofai policies add block-sudo"), "Turn on one policy"],
+          [kit.cmd("failproofai policies show acme/guards"), "Preview a pack before installing it"],
+        ]),
+        "",
+        `Run ${kit.cmd("failproofai help <command>")} for its options, ${kit.cmd("failproofai -v")} for the version.`,
+        "docs.befailproof.ai  ·  discord.befailproof.ai",
+      ]);
+    }
     process.exit(0);
   }
 
@@ -649,33 +676,15 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "flush",
-        tagline: "deliver what is already spooled, now",
-        sections: [
-          { label: "usage", entries: [["failproofai flush [--wait] [--timeout <secs>]"]] },
-          {
-            label: "why",
-            lines: [
-              "The collector is unhurried on purpose: a batch is swept once it is older",
-              "than two minutes, at most 64 per pass, on a 60-second cadence. That pacing",
-              "keeps a backlog from stampeding the server, and it is exactly wrong when",
-              "you are standing at a dashboard waiting to see your own events — \"not",
-              "delivered yet\" and \"not working\" look identical from there.",
-              "",
-              "This asks the daemon to make a pass right now, with no minimum age and no",
-              "per-pass cap. It re-sends nothing: only batches already spooled and not",
-              "yet delivered. For history the collector has already read past, use",
-              "`failproofai backfill`.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--wait", "Block until the spool drains, or --timeout elapses."],
-              ["--timeout <secs>", "How long --wait waits. Default: 60."],
-            ],
-          },
+        name: "flush",
+        usage: [["failproofai flush [options]", "Send queued events to cloud now"]],
+        options: [
+          // The queue on THIS machine: a batch set aside after repeated failures
+          // leaves it empty without having been delivered.
+          ["--wait", "Wait until the queue is empty"],
+          ["--timeout <secs>", "How long --wait waits (default 60)"],
         ],
+        optionsCol: 20,
       });
       process.exit(0);
     }
@@ -720,37 +729,14 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "backfill",
-        tagline: "re-send history the collector has already read past",
-        sections: [
-          { label: "usage", entries: [["failproofai backfill [--since <when>] [--dry-run]"]] },
-          {
-            label: "why",
-            lines: [
-              "The collector never re-reads a file it has a cursor for, which is right",
-              "until the dashboard's data is cleared, a machine is re-enrolled, or",
-              "cursors advanced before there was anywhere to send. Then the history",
-              "exists on disk and nowhere else, with no way to ask for it again.",
-              "",
-              "Re-sending is safe: redaction is deterministic, so a re-sent event hashes",
-              "identically to its first send and collapses into the row already there.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--since <when>", "How far back: `30d`, `6m`, `YYYY-MM-DD`. Default 30 days."],
-              ["--dry-run", "Report what would be re-read and change nothing."],
-            ],
-          },
-          {
-            label: "note",
-            lines: [
-              "Which streams are sent follows [collector] in ~/.failproofai/config.toml —",
-              "a backfill never sends something your config says you do not want.",
-            ],
-          },
+        name: "backfill",
+        usage: [["failproofai backfill [options]", "Re-send history the collector already read"]],
+        options: [
+          ["--since <when>", "How far back: 30d, 6m, 1y or YYYY-MM-DD (default 30d)"],
+          ["--dry-run", "Show what would be sent, send nothing"],
         ],
+        examples: ["failproofai backfill --since 6m", "failproofai backfill --dry-run"],
+        optionsCol: 20,
       });
       process.exit(0);
     }
@@ -812,80 +798,17 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "harness",
-        tagline: "capture sessions from more than one location per agent CLI",
-        sections: [
-          {
-            label: "usage",
-            entries: [
-              ["failproofai harness list [<harness>]"],
-              ["failproofai harness add-path <harness> [<label>=]<path>"],
-              ["failproofai harness remove-path <harness> <path|label>"],
-            ],
-          },
-          {
-            label: "why",
-            lines: [
-              "Each agent CLI is watched wherever its own installer put it —",
-              "~/.claude/projects, ~/.hermes/state.db, and so on. That misses every",
-              "other arrangement: a second profile, a mounted team share, a container's",
-              "home beside the host's, an agent an operator moved. Those hold real",
-              "sessions and nothing collects them.",
-            ],
-          },
-          {
-            label: "the label",
-            lines: [
-              "An entry is `<path>` or `<label>=<path>`. The label namespaces agent ids",
-              "as <label>-<agentId>, and it matters: two locations holding the same",
-              "project derive the SAME id (it comes from the cwd inside the transcript,",
-              "identical in both copies), so without a label they merge into one agent",
-              "whose sessions interleave from two machines' worth of history. Omit it",
-              "and one is derived from the folder name.",
-            ],
-          },
-          {
-            label: "harnesses",
-            lines: [
-              "claude, codex, copilot, openclaw, pi, factory, antigravity, cursor,",
-              "goose, opencode, devin, hermes",
-              "",
-              "`claude` covers subagent transcripts too — they live under the same root.",
-            ],
-          },
-          {
-            label: "notes",
-            lines: [
-              "• Session collection must be on for any of this to be read; extra paths",
-              "  live under \"collector\" in ~/.failproofai/config.json like the defaults.",
-              "• A path overlapping one already captured is REFUSED by the daemon at",
-              "  startup rather than collected twice under two ids. It says so in the",
-              "  journal.",
-              "• Two entries sharing a LABEL are refused too: they would share one",
-              "  cursor directory, whose whole map is written at once, so each would",
-              "  clobber the other's watermark and re-read from zero after a restart.",
-              "• Takes effect within seconds — the daemon re-reads config.json on an",
-              "  interval and cycles its collector. No restart, no sudo.",
-            ],
-          },
-          {
-            label: "examples",
-            lines: [
-              "failproofai harness add-path claude work=/srv/team/.claude/projects",
-              "failproofai harness add-path hermes prod=/srv/hermes-prod/state.db",
-              "failproofai harness add-path codex /mnt/other-home/.codex/sessions",
-              "failproofai harness list",
-              "failproofai harness remove-path claude work",
-              "",
-              "One home per person — label them, or both derive the same folder-name",
-              "label and the second is refused:",
-              "failproofai harness add-path openclaw user1=/srv/.openclaw-user1",
-              "failproofai harness add-path openclaw user2=/srv/.openclaw-user2",
-              "",
-              "Containers: FAILPROOFAI_<HARNESS>_EXTRA_PATHS replaces the file's entries.",
-              "FAILPROOFAI_OPENCLAW_EXTRA_PATHS=\"user1=/srv/.a,user2=/srv/.b\"",
-            ],
-          },
+        name: "harness",
+        usage: [
+          ["failproofai harness list [agent]", "Show extra capture paths"],
+          ["failproofai harness add-path <agent> [label=]<path>", "Also capture from here"],
+          ["failproofai harness remove-path <agent> <path | label>", "Stop capturing from here"],
+        ],
+        // For hermes, goose, opencode and devin the extra path is a database file.
+        examples: [
+          "failproofai harness add-path claude work=/srv/team/.claude/projects",
+          "failproofai harness add-path hermes prod=/srv/hermes-prod/state.db",
+          "failproofai harness remove-path claude work",
         ],
       });
       process.exit(0);
@@ -919,102 +842,35 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "jev",
-        tagline: "judge tool calls with Jev — FailproofAI Cloud or your own endpoint — above a hard regex floor",
-        sections: [
-          {
-            label: "usage",
-            entries: [
-              ["failproofai jev --url <url> --key-stdin [options]"],
-              ["failproofai jev setup --provider <kind> --key-stdin [options]"],
-              ["failproofai jev setup --provider failproofai [--mode <m>]"],
-              ["failproofai jev status [--json]"],
-              ["failproofai jev test [--json]"],
-              ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
-              ["failproofai jev remove"],
-            ],
-          },
-          {
-            label: "why",
-            lines: [
-              "Regex policies cannot tell `rm -rf build/` asked for from `rm -rf ~`",
-              "slipped in. Jev, TypeSafe's classifier, reads the call against what",
-              "you asked for. With a config it judges each call in parallel with",
-              "the regex policies: a hard policy's deny always stands, a reviewable",
-              "one's may be cleared, and any Jev failure falls back to regex. With",
-              "no config nothing changes — the regex policies run exactly as before.",
-            ],
-          },
-          {
-            label: "providers",
-            entries: [
-              ["typesafe", "api.typesafe.ai, model jev-1.13.0"],
-              ["openrouter", "openrouter.ai, model typesafe/jev-1.13, zero-retention routing"],
-              ["vercel", "Vercel AI Gateway, model typesafe-ai/jev"],
-              ["cloudflare", "Workers AI, model typesafe/jev; needs --account-id"],
-              ["custom", "any TypeSafe-compatible endpoint; needs --base-url"],
-              ["failproofai", "FailproofAI Cloud, on your org's plan; no key or URL of your own"],
-            ],
-            after: [
-              "--url reads the provider off the host, so it needs no --provider;",
-              "any other host is custom, with that URL as its base. It is a BASE:",
-              "/systemone is appended to it, and a URL that already names an",
-              "endpoint (/models, /chat/completions, /systemone, …) is refused",
-              "with the base it implies. `failproofai jev models` says which",
-              "model ids a base serves, and setup refuses one it does not.",
-              "",
-              "FailproofAI Cloud needs no setup here: `failproofai config --token",
-              "<key>` with a key that carries jev:evaluate (the \"machine\" preset)",
-              "turns it on in observe mode when there is no jev.json yet — except",
-              "with --no-transcripts, which only stores the key; then",
-              "`failproofai jev setup --provider failproofai` switches it on. Its",
-              "key stays in credentials.json; no --url ever selects it.",
-            ],
-          },
-          {
-            label: "setup options",
-            entries: [
-              ["--url <url>", "The endpoint. Picks the provider from its host."],
-              ["--token <token>", "The key, on the command line — history and `ps` see it."],
-              ["--provider <kind>", "Required the first time, or to switch providers."],
-              ["--key-stdin", "Read the key from stdin; on a terminal, a masked prompt."],
-              ["--key-from-env", "Store no key; read FAILPROOFAI_JEV_API_KEY per session."],
-              ["--account-id <id>", "Cloudflare account id (32 hex characters)."],
-              ["--base-url <url>", "Override the API base; `default` clears it."],
-              ["--model <id>", "Override the model id; `default` clears it."],
-              ["--mode <m>", "enforce (default), observe (log Jev, enforce regex), or off."],
-              ["--timeout-ms <n>", "Per-call budget before falling back. Default 3000."],
-            ],
-          },
-          {
-            label: "notes",
-            lines: [
-              "• Global only: ~/.failproofai/jev.json, written 0600. A copy anyone",
-              "  else can read — or one in a directory anyone else can WRITE, who",
-              "  could replace it — is refused; a repository can never set it.",
-              "• Re-running setup for the same provider keeps the key, so",
-              "  `failproofai jev setup --mode observe` just switches the mode.",
-              "• The daemon does not see your shell's environment: keep the key in",
-              "  the file on a machine set up with `failproofai config`.",
-              "• --token is the fast path, not the safe one: your shell history keeps",
-              "  it and the process list shows it. Prefer --key-stdin.",
-            ],
-          },
-          {
-            label: "examples",
-            lines: [
-              "failproofai jev --url https://api.typesafe.ai/v1 --key-stdin < ~/typesafe.key",
-              "failproofai jev --url https://openrouter.ai/api/v1 --token <token>",
-              "failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key",
-              "failproofai jev setup --provider cloudflare --account-id <id> --key-stdin",
-              "failproofai config --token <key>          (FailproofAI Cloud, observe mode)",
-              "failproofai jev setup --mode enforce      (switch the configured route's mode)",
-              "failproofai jev setup --mode off          (keep the config, stop asking Jev)",
-              "failproofai jev test",
-              "failproofai jev status",
-              "failproofai jev models",
-            ],
-          },
+        name: "jev",
+        // One row per subcommand: the design's `status | test | models | remove`
+        // runs as a shell pipeline if pasted, and the four take different flags.
+        usage: [
+          ["failproofai jev setup --provider <kind> --key-stdin", "Turn Jev on"],
+          ["failproofai jev --url <url> --key-stdin", "Turn Jev on from a URL"],
+          ["failproofai jev setup --provider failproofai", "Use FailproofAI Cloud"],
+          ["failproofai jev status [--json]", "Show config and activity"],
+          ["failproofai jev test [--json]", "Send one live request"],
+          ["failproofai jev models [--provider <kind>] [--url <base>] [--json]"],
+          ["failproofai jev remove", "Delete the config"],
+        ],
+        options: [
+          ["--provider <kind>", "typesafe openrouter vercel cloudflare custom failproofai"],
+          ["--key-stdin", "Read the API key from stdin, or a prompt on a terminal"],
+          ["--key-from-env", "Store no key; read it from FAILPROOFAI_JEV_API_KEY"],
+          ["--token <token>", "The API key on the command line; prefer --key-stdin"],
+          ["--url <url>", "The API base URL; picks the provider from its host"],
+          ["--base-url <url>", "Override the API base; default clears it"],
+          ["--mode <m>", "enforce, observe (log Jev, enforce regex) or off"],
+          ["--model <id>", "Override the model id; default clears it"],
+          ["--account-id <id>", "Cloudflare account id, 32 hex characters"],
+          ["--timeout-ms <n>", "Time per call before falling back to regex (default 3000)"],
+          ["--json", "Print JSON (status, test and models)"],
+        ],
+        examples: [
+          "failproofai jev setup --provider typesafe --key-stdin < key.txt",
+          "failproofai jev setup --mode observe",
+          "failproofai jev test",
         ],
       });
       process.exit(0);
@@ -1050,36 +906,10 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "migrate",
-        tagline: "bring ~/.failproofai up to the layout this version speaks",
-        sections: [
-          { label: "usage", entries: [["failproofai migrate [--dry-run]"]] },
-          {
-            label: "why",
-            lines: [
-              "npm cannot update an installed package on its own, so a machine can sit",
-              "on an old version for months and then jump several layouts at once. This",
-              "runs the steps for that jump in order, keyed on the LAYOUT recorded in",
-              "~/.failproofai/VERSION rather than on the npm version — so skipping",
-              "thirty releases with no layout change runs nothing at all.",
-              "",
-              "It normally happens by itself, on the first command after an upgrade.",
-              "This is for running it deliberately, and for seeing what it would do",
-              "first.",
-              "",
-              "Your settings, cloud enrolment, policy selection, your own policy files,",
-              "decision history and undelivered events are carried across, not removed.",
-              "The irreplaceable files are copied to migrations/backup-layout<n>/ before",
-              "anything runs, and every step is recorded in migrations/applied.json.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--dry-run", "Print the steps and the files it would save. Change nothing."],
-            ],
-          },
-        ],
+        name: "migrate",
+        usage: [["failproofai migrate", "Bring ~/.failproofai up to this version's layout"]],
+        options: [["--dry-run", "Show the steps, change nothing"]],
+        optionsCol: 20,
       });
       process.exit(0);
     }
@@ -1162,36 +992,10 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "update",
-        tagline: "finish an upgrade: migrate the home, match the daemon",
-        sections: [
-          {
-            label: "usage",
-            entries: [["npm install -g failproofai@latest && failproofai update [--no-daemon]"]],
-          },
-          {
-            label: "why",
-            lines: [
-              "npm replaces the CLI and nothing else. The daemon binary lives at",
-              "~/.failproofai/bin/failproofaid-<version> and stays exactly where it was,",
-              "so after an npm upgrade the two halves are different versions — and",
-              "failproofaid refuses to start against a layout it does not speak, which",
-              "is the loud version of that problem rather than the silent one.",
-              "",
-              "This does the rest of the upgrade: runs any pending layout migrations,",
-              "puts the matching daemon binary in place, and restarts the service.",
-              "Hermes profiles already using failproofai are moved to the linked",
-              "native plugin (legacy shell hooks never checked Hermes cron jobs).",
-              "Exits non-zero when any half could not be brought current.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--no-daemon", "Migrate the home only. Leaves a version-skewed daemon in place, so prefer letting it run."],
-            ],
-          },
-        ],
+        name: "update",
+        usage: [["npm i -g failproofai@latest && failproofai update"]],
+        options: [["--no-daemon", "Migrate everything but leave the daemon as is"]],
+        optionsCol: 20,
       });
       process.exit(0);
     }
@@ -1314,39 +1118,15 @@ async function runCli() {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "uninstall",
-        tagline: "remove failproofai from this machine",
-        sections: [
-          { label: "usage", entries: [["failproofai uninstall [--purge] [--dry-run] [--yes]"]] },
-          {
-            label: "what it removes",
-            lines: [
-              "• failproofai hook entries from every agent CLI that has them",
-              "• the failproofaid daemon service — ASKED on a plain uninstall (kept",
-              "  unless you say yes); always removed with --purge, which prompts for",
-              "  your password rather than printing commands to paste",
-              "• the \"require the daemon\" flag — cleared FIRST, so a partial uninstall",
-              "  can never leave this machine denying every tool call",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--purge", "Also delete ~/.failproofai — settings, credentials, audit history and the downloaded daemon binary. Off by default so a reinstall keeps your history."],
-              ["--dry-run", "Print what would be removed and change nothing."],
-              ["--yes, -y", "Skip the confirmation prompt. Required when there is no TTY."],
-            ],
-          },
-          {
-            label: "why this exists",
-            lines: [
-              "npm runs no uninstall script, so `npm rm -g failproofai` removes the",
-              "package and leaves the hook entries and the service behind. Run this",
-              "first, then:",
-              "    npm rm -g failproofai",
-            ],
-          },
+        name: "uninstall",
+        usage: [["failproofai uninstall [options]"]],
+        options: [
+          ["--purge", "Also delete ~/.failproofai: settings, keys and history"],
+          ["--dry-run", "Show what would be removed, change nothing"],
+          ["--yes, -y", "Skip confirmation, remove the daemon; needed without a TTY"],
         ],
+        examples: ["failproofai uninstall && npm rm -g failproofai"],
+        optionsCol: 20,
       });
       process.exit(0);
     }
@@ -1460,171 +1240,30 @@ async function runCli() {
     // made the one documented command the only one that did nothing.
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
       await printHelp({
-        command: "publish",
-        tagline: "ship your policies as a pack anyone can install",
-        sections: [
-          {
-            label: "two commands, from nothing",
-            entries: [
-              ["failproofai publish --init", "write a policy to start from"],
-              ["failproofai publish", "ship it"],
-            ],
-            after: [
-              "Write your policies in a git repo, run publish, answer one question,",
-              "done. It asks WHERE only when nothing tells it — no remote to read —",
-              "and works the rest out: which files hold policies, what version is",
-              "next, who you are. Every flag below overrides something it would",
-              "otherwise decide. None is required, and on a pipe or in CI the flags",
-              "are all there is: nothing prompts where nobody can answer.",
-            ],
-          },
-          {
-            label: "what --init does",
-            lines: [
-              "Asks what the pack is called, writes <name>.mjs, and stops. No network,",
-              "no git, nothing published. The file is not a template with blanks — it",
-              "is one policy that already blocks git push --force, so the first thing",
-              "you do is edit something that works. It refuses rather than overwriting",
-              "a file that exists.",
-              "",
-              "Then try it on THIS machine, before anyone else can see it:",
-              "",
-              "    failproofai policies -i -c ./<name>.mjs",
-              "",
-              "That enforces the file right now — any path, any filename. Ask your",
-              "agent to do the thing you blocked and watch it get refused. Nothing is",
-              "published and nobody else is affected.",
-            ],
-          },
-          {
-            label: "what publish does",
-            lines: [
-              "In order, stopping before it touches GitHub if anything is wrong:",
-              "",
-              "1  Finds the policy file here by CONTENT — one that imports failproofai",
-              "   and calls customPolicies.add — not by filename, so it finds",
-              "   guards.mjs and ignores an unrelated policies.mjs. Not recursive:",
-              "   publishing a fixture is worse than being asked. Two candidates and",
-              "   it lists them.",
-              "2  Reads the repo from git remote get-url origin, in the FILE's",
-              "   directory rather than yours, and decides the version (see below).",
-              "3  Finds your credential: GITHUB_TOKEN, GH_TOKEN, or gh auth login.",
-              "   Needs release-write and nothing else. Never printed.",
-              "4  Creates the repository if it does not exist — public, see below.",
-              "5  Builds the three assets, validating with the LOADER's own rules: the",
-              "   code that decides what may install on a stranger's machine. A pack",
-              "   that could never install fails here, where you can fix it.",
-              "6  Creates or reuses the release and uploads, replacing assets of the",
-              "   same name — the install URL is built from fixed names, so a stale",
-              "   copy is what somebody would fetch.",
-            ],
-          },
-          {
-            label: "how the version is decided",
-            lines: [
-              "The commit you are publishing from — its short sha, twelve",
-              "characters: a1b2c3d4e5f6. Nothing to pick, nothing to count, and it",
-              "names exactly where the bytes came from. Publish the same source",
-              "twice and you get the same version, because there is nothing to",
-              "increment.",
-              "",
-              "Twelve rather than git's seven: seven collides in a repository with",
-              "enough objects, and a version that stops being unique means two",
-              "artifacts claiming one name. The full sha is recorded beside it.",
-              "",
-              "Read from the tree in front of you, never from the repository's",
-              "releases, so a fresh clone and an air-gapped machine compute the",
-              "same answer and neither has to ask GitHub what happened before.",
-              "",
-              "It REFUSES rather than guessing, in two cases, because the version",
-              "claims to name a commit and must not be minted where that is false:",
-              "",
-              "  no git checkout        there is no commit to name",
-              "  uncommitted changes    those bytes are not in that commit",
-              "",
-              "--version overrides both, and a tag on HEAD wins over the sha —",
-              "someone who tagged v1.2.0 has SAID what this release is.",
-              "",
-              "A sha does not order. `policies show <owner>/<repo> --releases` is",
-              "where you see which came first, newest at the top.",
-            ],
-          },
-          {
-            label: "what a release records",
-            lines: [
-              "The commit you published from, when you are in a git checkout, in the",
-              "manifest and in the release notes. Provenance, not verification —",
-              "the artifact digest is still the only thing that decides whether the",
-              "bytes are the ones that were published. It answers the question a",
-              "digest cannot: which source produced them.",
-              "",
-              "Which is also how anyone installs that exact release:",
-              "",
-              "    failproofai policies add <owner>/<repo>@a1b2c3d",
-              "",
-              "and read the whole history with:",
-              "",
-              "    failproofai policies show <owner>/<repo> --releases",
-            ],
-          },
-          {
-            // This screen said "an existing private one still publishes, and
-            // warns" for as long as that was true. It is REFUSED now — exit 1,
-            // nothing created or uploaded — and `--allow-private` was named
-            // nowhere in this help, so the one documented behaviour pointed a
-            // publisher at a command that exits 1 and gave them no way through.
-            label: "the repo must be public",
-            lines: [
-              "Installs are anonymous HTTPS with no credential to offer, so a private",
-              "repository publishes to nobody. A repo created here is public for that",
-              "reason; an existing private one is REFUSED, before anything is built,",
-              "created or uploaded. --allow-private publishes to one anyway, for",
-              "somebody who will hand the three assets over another way — it still",
-              "says plainly that no `policies add` can reach them.",
-              "",
-              "Only the release matters. Installs read releases/download/<tag>/<asset>",
-              "and never touch your git tree — pushing the source is for humans.",
-            ],
-          },
-          {
-            label: "your policy files",
-            lines: [
-              "Write as many as you like — one per category reads well. Every file",
-              "here that registers policies is bundled into the single artifact a pack",
-              "has to be: only the entry is digest-pinned, and a pack importing",
-              "siblings could not honestly claim to be verified. Bundling needs bun;",
-              "without it, name one self-contained file.",
-              "",
-              "Each policy may carry category and defaultEnabled alongside the usual",
-              "fields. category is what --category selects on; defaultEnabled is what",
-              "a bare `policies add` switches on, and it defaults to false.",
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["--init [file]", "Write a starter policy and stop."],
-              ["--repo <owner>/<repo>", "Where to release it, created if missing."],
-              ["--version <version>", "Name the version, instead of the commit it was built from."],
-              ["--id <publisher/name>", "The pack's id. Defaults to --repo."],
-              ["--tag <tag>", "Release tag. Defaults to the version; v prefix ok."],
-              ["--notes <text>", "Release notes."],
-              ["--out <dir>", "Where to write the assets. Default: dist-pack."],
-              ["--effect <effect>", "enforce or observe. observe records and blocks nothing. Default: enforce."],
-              ["--dry-run", "Build the assets, publish nothing. No credential."],
-              ["--allow-private", "Publish to an already-private repo anyway. Nobody can install it."],
-            ],
-          },
-          {
-            label: "examples",
-            lines: [
-              "failproofai publish --init",
-              "failproofai publish",
-              "failproofai publish --dry-run",
-              "failproofai publish ./guards.mjs --repo me/guards --version 2.0.0",
-            ],
-          },
+        name: "publish",
+        usage: [
+          ["failproofai publish --init [file]", "Write a starter policy file"],
+          ["failproofai publish [file]", "Build and release it on GitHub"],
         ],
+        options: [
+          ["--repo <owner/repo>", "Where to release, created if missing (default: origin)"],
+          ["--version <v>", "Name the version (default: HEAD's tag, else short sha)"],
+          ["--id <publisher/name>", "The pack id (default: the repo)"],
+          ["--tag <tag>", "Release tag (default: the version, v prefix ok)"],
+          ["--notes <text>", "Release notes (default: policy counts and the commit)"],
+          ["--out <dir>", "Where to write the assets (default: dist-pack)"],
+          ["--effect <e>", "enforce (default), or observe: record without blocking"],
+          ["--min-cli-version <v>", "Oldest failproofai version that may install it"],
+          ["--dry-run", "Build the assets and publish nothing"],
+          ["--allow-private", "Publish to a private repo anyway; installs will fail"],
+          ["--entry <file>", "The policy file, same as [file]"],
+        ],
+        examples: [
+          "failproofai publish --init guards",
+          "failproofai policies -i -c ./guards.mjs",
+          "failproofai publish --repo me/guards",
+        ],
+        optionsCol: 24,
       });
       process.exit(0);
     }
@@ -1659,81 +1298,7 @@ async function runCli() {
     const subArgs = args.slice(1);
 
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
-      await printHelp({
-        command: "policies add|remove|show",
-        tagline: "choose what your agents may do",
-        sections: [
-          {
-            label: "usage",
-            // Without the `failproofai policies` prefix, which the heading two
-            // lines up already carries: repeating it costs 21 of the 80 columns
-            // on every row and pushes each description into a second line. The
-            // examples below are the copy-pasteable spelling.
-            entries: [
-              ["add", "Pick from what is installed here"],
-              ["add <name>", "Turn one policy on"],
-              ["add <owner>/<repo>", "Install someone's pack"],
-              ["remove <name>", "Turn one policy off"],
-              ["remove <pack-id>", "Uninstall a pack"],
-              ["show <owner>/<repo>", "What a pack contains, before you take it"],
-              ["show <owner>/<repo> --releases", "Every version it has published, and which one is here"],
-            ],
-          },
-          {
-            label: "a name or a source",
-            lines: [
-              "Anything with a slash is a pack source; anything without is a policy",
-              "name. Policy names cannot contain a slash, so there is nothing to guess.",
-              "",
-              "  block-sudo                               a policy",
-              "  FailproofAI/policies                     our pack, like any other",
-              "  acme/deploy-guard                        newest release, pinned",
-              "  acme/deploy-guard@a1b2c3d4e5f6           that release",
-              "  acme/deploy-guard@a1b2c3d                the release built from",
-              "                                           that commit",
-              "  github:acme/deploy-guard@a1b2c3d4e5f6    same, explicit",
-              "  https://github.com/acme/x/releases/tag/v2   the URL you copied",
-            ],
-          },
-          {
-            label: "choosing part of a pack",
-            entries: [
-              ["--policy a,b", "exactly these (comma-separated or repeated)"],
-              ["--category x,y", "whole categories (failproofai policies show <source>)"],
-              ["--all", "everything it contains"],
-            ],
-          },
-          {
-            label: "options (policy names only)",
-            entries: [
-              ["--cli <agent>...", "Agent CLI(s) to apply to; space-separated or repeated. Omit to detect installed CLIs and prompt."],
-              ["--scope user|project|local", "Config scope. Default: user."],
-              ["--beta", "Allow beta policies"],
-            ],
-          },
-          {
-            label: "examples",
-            lines: [
-              "failproofai policies add",
-              "failproofai policies add block-sudo",
-              "failproofai policies add sanitize-api-keys --scope project",
-              "failproofai policies add FailproofAI/policies --category sanitize,git",
-              "failproofai policies add acme/deploy-guard --policy block-prod-deploy",
-              "failproofai policies show acme/deploy-guard",
-              "failproofai policies remove block-sudo",
-            ],
-          },
-        ],
-        footer: [
-          "With no flags you get the pack's own defaults and are shown the rest.",
-          "Re-adding at a newer version keeps what you chose.",
-          "Agents: claude, codex, copilot, cursor, opencode, pi, hermes, openclaw,",
-          "factory, devin, antigravity, goose.",
-          "Publishing your own: failproofai publish --help",
-          "Offline: FAILPROOFAI_NO_DOWNLOAD=1 refuses to fetch; packs already",
-          "installed keep enforcing. FAILPROOFAI_PACK_BASE_URL points it at a mirror.",
-        ],
-      });
+      await printHelp(POLICIES_HELP);
       process.exit(0);
     }
 
@@ -1786,7 +1351,7 @@ async function runCli() {
       if (action === "show" && !firstPositional) {
         throw new CliError(
           "Usage: failproofai policies show <owner>/<repo>\n" +
-          "Run `failproofai policies` to see what is already installed here.",
+          "Run `failproofai policies` for what is installed here.",
         );
       }
       // One lane, one implementation. `show` is the pack lane's remote preview,
@@ -1945,63 +1510,7 @@ async function runCli() {
     const isHelp      = subArgs.includes("--help")       || subArgs.includes("-h");
 
     if (isHelp) {
-      await printHelp({
-        command: "policies",
-        tagline: "manage the policies your agents run under",
-        sections: [
-          {
-            label: "usage",
-            entries: [
-              ["(bare)", "List every policy here and whether it is on"],
-              ["add [what]", "Turn one on, take a pack, or pick from a list"],
-              ["remove <what>", "Turn one off, or uninstall a pack"],
-              ["show <owner>/<repo>", "What a pack holds, before you take it"],
-              ["--install, -i", "Wire policies into your agent CLIs"],
-              ["--uninstall, -u", "Unwire them, or strip the hooks"],
-            ],
-          },
-          {
-            label: "options",
-            entries: [
-              ["[names...]", "Policy names. Omit for the interactive picker."],
-              ["--cli <agent>...", "Agent CLI(s); space-separated or repeated. Omit to detect what is installed and prompt."],
-              ["--scope <scope>", "user, project or local. Default: user. --uninstall also takes all."],
-              ["--beta", "Include beta policies. On --uninstall, only those."],
-              ["--custom, -c <path>", "Custom policy file; repeat for several. Bare on --uninstall, clears every explicit path."],
-            ],
-          },
-          {
-            // Enumerated ONCE. It used to be spelled out in full four times on
-            // this screen — twice in the --cli lines, twice more as examples
-            // differing only in which agent they named.
-            label: "agents",
-            lines: [
-              "claude, codex, copilot, cursor, opencode, pi, hermes, openclaw,",
-              "factory, devin, antigravity, goose",
-              "",
-              "Codex, Copilot, Cursor, OpenCode and Pi take user or project scope only.",
-            ],
-          },
-          {
-            label: "examples",
-            lines: [
-              "failproofai policies",
-              "failproofai policies --install",
-              "failproofai policies --install block-sudo sanitize-api-keys",
-              "failproofai policies --install --cli codex --scope project",
-              "failproofai policies --install --cli claude codex copilot cursor",
-              "failproofai policies -i -c ./my-policies.js",
-              "failproofai policies --uninstall block-sudo",
-              "failproofai policies -u",
-              "failproofai policies add FailproofAI/policies --category git,database",
-            ],
-          },
-        ],
-        footer: [
-          "policy, pack and p are all spellings of policies.",
-          "add, remove and show in full:  failproofai policies add --help",
-        ],
-      });
+      await printHelp(POLICIES_HELP);
       process.exit(0);
     }
 
@@ -2224,97 +1733,29 @@ async function runCli() {
   if (args[0] === "config") {
     if (args.includes("--help") || args.includes("-h")) {
       await printHelp({
-        command: "config",
-        tagline: "set this machine up",
-        sections: [
-          {
-            label: "usage",
-            entries: [
-              ["(bare)", "Guided setup: agents, daemon, cloud"],
-              ["--token <key>", "Set up and connect to Cloud, asking nothing"],
-              ["--status", "Connection, daemon version and pause state"],
-              ["--pause [<time>]", "Pause enforcement for one session"],
-              ["--resume [--all]", "End a pause early"],
-              ["--disconnect", "Stop pulling policy and sending activity"],
-              ["configure, setup", "Aliases for config"],
-            ],
-          },
-          {
-            label: "what it does",
-            lines: [
-              "Installs the failproofaid service (needs root once), wires hooks into",
-              "every agent CLI it supports, and optionally connects this machine to",
-              "Cloud. It chooses NO policies — take some with:",
-              "",
-              "    failproofai policies add <owner>/<repo>",
-            ],
-          },
-          {
-            label: "with no terminal (CI, containers, an agent driving it)",
-            lines: [
-              "It just runs. There is nothing to confirm when nobody is watching, so it",
-              "applies rather than asking — no flag needed.",
-              "",
-              "Exit 1 if anything it was asked to do did not happen — including a key",
-              "the server refused, and a machine that could not reach root. sudo is",
-              "never prompted for here; it either works without a password, or you are",
-              "told the exact commands to run.",
-            ],
-          },
-          {
-            label: "failproof cloud",
-            entries: [
-              ["--token <key>", "The API key. Passing one IS the request to connect."],
-              ["--url <url>", "Somewhere other than app.befailproof.ai"],
-              ["--machine-id <id>", "Defaults to a stable per-machine key"],
-              ["--machine-label <n>", "Dashboard name. Alone, renames a connected machine."],
-              ["--no-transcripts", "Decisions only, no session transcripts"],
-              ["--connect <url>", "Enrol only, on a machine already set up"],
-              ["--disconnect", "Stop pulling policy and sending activity"],
-            ],
-          },
-          {
-            label: "what connecting means",
-            lines: [
-              "The key can come from FAILPROOFAI_CLOUD_TOKEN instead of the command",
-              "line, and the url from FAILPROOFAI_CLOUD_URL — the same variable the",
-              "daemon reads. Prefer the environment: an argument is readable from `ps`",
-              "by every user on the box, and lands in shell history and CI logs.",
-              "",
-              "One connection, two capabilities: this machine PULLS centrally-managed",
-              "policies and SENDS what its hooks decided. Both are checked against the",
-              "server before anything is written, and reported separately — a key",
-              "carrying policies:pull but not events:add connects for policy and says",
-              "exactly why the dashboard is empty.",
-              "",
-              "Connecting sends BOTH policy decisions and full session transcripts. A",
-              "transcript carries prompts, file contents and whatever was pasted into a",
-              "terminal — that is the point of connecting, and it is stated here rather",
-              "than buried behind a flag nobody finds. Use --no-transcripts for",
-              "decisions only.",
-              "",
-              "Tokens are stored owner-only in ~/.failproofai/, never in the service",
-              "unit — that file is world-readable. Connecting needs no sudo.",
-            ],
-          },
-          {
-            label: "pausing enforcement (one session, always time-boxed)",
-            entries: [
-              ["--pause", "This directory's newest agent session, for 30m"],
-              ["--pause 10m", "A given time (max 8h; s/m/h, bare = minutes)"],
-              ["--resume", "End the pause early"],
-              ["--resume --all", "End every active pause"],
-              ["--session <id>", "Target a specific session"],
-              ["--status", "What is paused, and when it lifts"],
-            ],
-            after: [
-              "A pause suspends builtin, custom and convention policies for that",
-              "session only, and always expires on its own. Cloud-managed policies",
-              "keep enforcing.",
-            ],
-          },
+        name: "config",
+        usage: [["failproofai config [options]"]],
+        options: [
+          ["--token <key>", "Connect with this key; prefer FAILPROOFAI_CLOUD_TOKEN"],
+          ["--status", "Show the cloud connection, daemon version and pauses"],
+          ["--pause [time]", "Pause enforcement for a session (default 30m, max 8h)"],
+          ["--resume [--all]", "End a pause early, or every pause with --all"],
+          ["--session <id>", "Session to pause or resume (default: newest one here)"],
+          ["--connect <url>", "Connect to cloud only (for a machine already set up)"],
+          ["--disconnect", "Stop pulling policies and sending activity"],
+          ["--no-transcripts", "Send policy decisions only, not session transcripts"],
+          ["--url <url>", "Use a self-hosted cloud (or FAILPROOFAI_CLOUD_URL)"],
+          ["--machine-label <name>", "Rename a connected machine (never runs setup)"],
+          ["--machine-id <id>", "Machine id for --connect (default: a stable id)"],
         ],
-        footer: ["Prefer flags?  failproofai policies --help"],
+        // The key never goes on the command line: config itself warns that argv
+        // lands in shell history and the process list.
+        examples: [
+          "read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN",
+          "failproofai config",
+          "failproofai config --pause 1h",
+        ],
+        optionsCol: 22,
       });
       process.exit(0);
       process.exit(0);

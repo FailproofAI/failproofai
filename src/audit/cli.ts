@@ -35,7 +35,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
-import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
+import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, optsFor, screenKit } from "../hooks/tui";
 import { version } from "../../package.json";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -80,41 +80,28 @@ export const AUDIT_STAGES: ReadonlyArray<{ label: string; detail: string }> = [
  * one. It still works, and still refuses every argument it always refused.
  */
 export function helpText(): string {
-  // Drawn by the same renderer as `config --help` and `policies --help`, from
-  // the same kit `audit`'s output already uses for its palette. It used to
-  // build its own rows against a hand-set HELP_DESC_COL, which is how `audit`
-  // and `config` ended up with their descriptions in different columns.
-  //
-  // The `failproofai audit` prefix is dropped from the rows: the heading two
-  // lines above already carries it, and repeating it cost 17 of the 80 columns
-  // on every row — which is what forced the four-word-per-line descriptions.
-  const lines = helpScreen(
-    {
-      command: "audit",
-      version,
-      tagline: "review your agent CLIs for risky and wasteful patterns",
-      sections: [
-        {
-          label: "usage",
-          entries: [
-            ["(bare)", `Scan your session history, then open http://localhost:${DASHBOARD_PORT}/audit`],
-            ["--schedule [days]", "Scan on a timer and email the findings. Default 7 days, range 1-90. Signs you in the first time."],
-            // Its own row now, rather than a clause inside --schedule's. It
-            // does not stand alone, which is why it used to be a clause — but
-            // a clause wraps, and `--email <address>` landing with the flag at
-            // the end of one line and its placeholder at the start of the next
-            // is not a flag anybody can read or copy.
-            ["--email <address>", "With --schedule, skips the sign-in prompt."],
-            ["--no-schedule", "Stop the timer. Leaves you signed in."],
-            ["--status", "Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due."],
-            ["-h, --help", "Show this help."],
-          ],
-        },
-      ],
-      footer: ["Everything runs on this machine; only a scheduled digest ever leaves it."],
-    },
-    helpOptsFor(process.stdout),
-  );
+  // The same page every `<command> --help` is: usage, options and examples,
+  // built from the 2026-10 kit. Descriptions are prose and may be shortened to
+  // fit a terminal; nothing is ever cut in a pipe.
+  const kit = screenKit({ ...optsFor(process.stdout), fit: !!process.stdout.isTTY, version });
+  const lines = kit.helpPage({
+    name: "audit",
+    usage: [
+      ["failproofai audit", "Scan your agents' history and open the results"],
+      ["failproofai audit [options]", "Manage scheduled scans"],
+    ],
+    options: [
+      ["--schedule [days]", "Scan every N days (1-90, default 7) and email the findings"],
+      // Its own row rather than a clause inside --schedule's, so the flag and
+      // its placeholder can never be split across a wrap.
+      ["--email <address>", "With --schedule: sign in as this address; reports go there"],
+      ["--no-schedule", "Stop scheduled scans"],
+      ["--status", "Show the schedule and when the next scan runs"],
+      ["-h, --help", "Show this help"],
+    ],
+    examples: ["failproofai audit", "failproofai audit --schedule 7 --email you@example.com"],
+    optionsCol: 20,
+  });
   // The margins `printBlock` would add, spelled out because this one returns
   // its text for a caller to write rather than writing it.
   return ["", ...lines, ""].join("\n") + "\n";

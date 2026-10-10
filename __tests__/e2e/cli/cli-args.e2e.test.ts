@@ -47,9 +47,10 @@ describe("top-level: --help", () => {
   it("prints help and exits 0", () => {
     const result = runCli("--help");
     assertSuccess(result);
-    // The index no longer shouts a USAGE heading — it spends its lines on
-    // commands and names the shape once, in the footer under them.
-    expect(result.stdout).toContain("failproofai <command> [options]");
+    // The 2026-10 index: what to do first, then every command by what it is
+    // for, and a closing line naming per-command help and the version flag.
+    expect(result.stdout).toContain("GET STARTED");
+    expect(result.stdout).toContain("failproofai -v");
     expect(result.stdout).toContain("policies");
     // The half that replaced every inlined flag.
     expect(result.stdout).toContain("failproofai help <command>");
@@ -58,7 +59,7 @@ describe("top-level: --help", () => {
   it("-h shorthand prints help and exits 0", () => {
     const result = runCli("-h");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai <command> [options]");
+    expect(result.stdout).toContain("GET STARTED");
   });
 
   it("rejects extra argument after --help", () => {
@@ -185,14 +186,12 @@ describe("policies: --help", () => {
 
 describe("pack: --help", () => {
   it("prints help when the flag follows a nested subcommand", () => {
-    // `pack` is a spelling of `policies` now, so this reaches the unified
-    // add/remove/show help rather than a pack-only one.
+    // `pack` is a spelling of `policies`, and `add|remove|show --help` prints
+    // the one policies page, which carries every flag of every policies lane.
     const result = runCli("pack", "add", "--help");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies add|remove|show");
-    // Section headings are lowercase now — the brand's display type is, and
-    // twelve screens sharing one renderer means they share its case too.
-    expect(result.stdout).toContain("a name or a source");
+    expect(result.stdout).toContain("failproofai policies add [name | owner/repo]");
+    expect(result.stdout).toBe(runCli("policies", "--help").stdout);
   });
 });
 

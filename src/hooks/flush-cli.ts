@@ -19,7 +19,7 @@
  * before returning success. A CLI that prints "requested" while the daemon is
  * stopped has told the user the opposite of what happened.
  */
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { customAgentsEventsDir, failedDir, failproofaiHome, spoolDir } from "./fp-home";
 import { readConfig } from "./fp-config";
@@ -86,15 +86,39 @@ function parkedLine(n: number, home?: string): string {
 
 /** Batches awaiting delivery. `.tmp` files are half-written and not counted. */
 export function pendingBatches(home?: string): number {
-  let n = 0;
+  return spoolBacklog(home).count;
+}
+
+/**
+ * {@link pendingBatches}, plus how long the oldest of them has waited.
+ *
+ * The age is what tells a backlog that is draining from one that is stuck: the
+ * collector sweeps a batch only once it is two minutes old, so a few young
+ * batches are normal, while one that has sat for a quarter of an hour has not
+ * been delivered by several passes. `config --status` reads it for that.
+ */
+export function spoolBacklog(home?: string, now: number = Date.now()): { count: number; oldestAgeMs?: number } {
+  let count = 0;
+  let oldest: number | undefined;
   for (const dir of spoolDirs(home)) {
+    let names: string[];
     try {
-      n += readdirSync(dir).filter((f) => f.endsWith(".jsonl")).length;
+      names = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
     } catch {
       // A directory that vanished mid-scan is one the collector just drained.
+      continue;
+    }
+    count += names.length;
+    for (const name of names) {
+      try {
+        const mtime = statSync(join(dir, name)).mtimeMs;
+        if (oldest === undefined || mtime < oldest) oldest = mtime;
+      } catch {
+        // Delivered between the listing and the stat.
+      }
     }
   }
-  return n;
+  return oldest === undefined ? { count } : { count, oldestAgeMs: Math.max(0, now - oldest) };
 }
 
 export async function runFlushCommand(opts: FlushOptions = {}): Promise<FlushResult> {

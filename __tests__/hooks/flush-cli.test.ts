@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: vi.fn(() => true),
 }));
 
-import { runFlushCommand, pendingBatches, flushRequestPath } from "../../src/hooks/flush-cli";
+import { runFlushCommand, pendingBatches, spoolBacklog, flushRequestPath } from "../../src/hooks/flush-cli";
 import { readConfig } from "../../src/hooks/fp-config";
 import { readIngestCredential } from "../../src/hooks/collector-config";
 import { daemonServiceStatus } from "../../src/hooks/daemon-service";
@@ -69,6 +69,25 @@ describe("pendingBatches, against the layout the daemon writes", () => {
     flat("state/spool", ["hooks-activity-1-0.jsonl", "claude-2-0.jsonl", "x.tmp"]);
     flat("custom-agents/events", ["sdk-3-0.jsonl"]);
     expect(pendingBatches(home)).toBe(3);
+  });
+});
+
+describe("spoolBacklog", () => {
+  it("counts what pendingBatches counts, and says how long the oldest has waited", () => {
+    flat("state/spool", ["young.jsonl", "old.jsonl", "half.tmp"]);
+    flat("custom-agents/events", ["sdk.jsonl"]);
+    const now = Date.now();
+    const old = new Date(now - 20 * 60_000);
+    utimesSync(join(home, ".failproofai", "state", "spool", "old.jsonl"), old, old);
+    const backlog = spoolBacklog(home, now);
+    expect(backlog.count).toBe(3);
+    expect(backlog.count).toBe(pendingBatches(home));
+    expect(backlog.oldestAgeMs).toBeGreaterThanOrEqual(20 * 60_000 - 1_000);
+    expect(backlog.oldestAgeMs).toBeLessThan(21 * 60_000);
+  });
+
+  it("has no age when nothing is queued", () => {
+    expect(spoolBacklog(home)).toEqual({ count: 0 });
   });
 });
 

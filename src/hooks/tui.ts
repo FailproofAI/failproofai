@@ -2214,11 +2214,14 @@ export function screenKit(opts: ScreenKitOpts = {}) {
    * Grey labels and their values, on one column at least nine wide — where the
    * reference starts its values. Values are never cut: they are URLs, ids and
    * counts, and a line that outgrows the terminal is left for it to wrap.
+   *
+   * An empty label continues the row above it, under the same value column —
+   * `config --status` lists each paused session that way.
    */
   const kv = (items: Array<[string, string]>, minLabel = 9): string[] => {
     const width = Math.max(minLabel, ...items.map(([label]) => visibleWidth(label))) + 2;
     return items.map(([label, value]) =>
-      value ? `${INDENT}${pad(c.ink3(label), width)}${value}` : `${INDENT}${c.ink3(label)}`,
+      value ? `${INDENT}${pad(tint(c.ink3, label), width)}${value}` : `${INDENT}${tint(c.ink3, label)}`,
     );
   };
 

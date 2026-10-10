@@ -1842,6 +1842,17 @@ async function runCli() {
       if (chosen.length > 1) {
         throw new CliError(`${chosen.join(" and ")} cannot be combined.`);
       }
+      // `--status` answers "what is this machine's state?": the daemon, the
+      // dashboard and any pauses, the cloud connection and whether data
+      // arrives, and what enforcement is doing — one screen, one column.
+      if (wantsStatus) {
+        const { runStatusCommand } = await import("../src/hooks/config-status");
+        const status = await runStatusCommand({ cwd: process.cwd() });
+        await printLines(status.lines);
+        await track("cli_pause_invoked", { action: "status", ok: true, affected: status.paused });
+        await exitAfterFlush(0);
+        return;
+      }
       const sessionIdx = args.indexOf("--session");
       if (sessionIdx >= 0 && !args[sessionIdx + 1]) {
         throw new CliError("Missing session id after --session.");
@@ -1853,55 +1864,15 @@ async function runCli() {
 
       const { runPauseCommand } = await import("../src/hooks/session-pause-cli");
       const result = runPauseCommand({
-        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        action: pauseIdx >= 0 ? "pause" : "resume",
         duration,
         sessionId: sessionIdx >= 0 ? args[sessionIdx + 1] : undefined,
         all: args.includes("--all"),
         cwd: process.cwd(),
       });
-      // `--status` answers "what is this machine's state?", which is both
-      // halves: whether enforcement is paused AND whether cloud is connected.
-      if (wantsStatus) {
-        const { connectionStatusReport, versionStatusLines } = await import(
-          "../src/hooks/cloud-enrollment-cli"
-        );
-        const { optsFor, printBlock, rows, stack, title, warning } = await import(
-          "../src/hooks/tui"
-        );
-        const opts = optsFor(process.stdout);
-        const report = connectionStatusReport();
-        const { hermesProfileStatusRows } = await import("../src/hooks/integrations");
-        const hermesRows = hermesProfileStatusRows();
-        // The version line was written to be "the only place a user can find out
-        // which daemon they are running" and then never called from anywhere. It
-        // is the right thing for the heading to carry, and it retires a heading
-        // that would otherwise have said the word "status" back to someone who
-        // just typed it.
-        printBlock(
-          process.stdout,
-          stack(
-            title("failproofai config", versionStatusLines()[0], opts),
-            // ONE rows() call over both blocks, so the connection facts and the
-            // enforcement state share a label column. Rendered separately they
-            // computed one column each and the window read as two commands'
-            // output stacked up.
-            //
-            // Always printed, including where reports can never work: "why am I
-            // not getting them?" is the question --status exists to answer, and
-            // an omitted line answers it with silence.
-            rows([...report.rows, ...hermesRows, ...(result.rows ?? [])], opts),
-            report.warnings.length > 0 ? warning(report.warnings, opts) : null,
-            // The trailer is not rows — it is the note and the resume command.
-            // Rendering only `rows` dropped the one line that tells a paused
-            // user how to get unpaused.
-            result.rows ? (result.trailer ?? null) : result.lines,
-          ),
-        );
-      } else {
-        await printLines(result.lines, result.exitCode === 0);
-      }
+      await printLines(result.lines, result.exitCode === 0);
       await track("cli_pause_invoked", {
-        action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",
+        action: pauseIdx >= 0 ? "pause" : "resume",
         ok: result.exitCode === 0,
         affected: result.affected,
       });

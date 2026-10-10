@@ -948,6 +948,17 @@ describe("screenKit — the 2026-10 building blocks", () => {
     expect(line).toBe("  would block  7: block-env-files 4");
   });
 
+  it("continues a kv row under the value column when the label is empty", () => {
+    expect(plain.kv([["paused", "1 session"], ["", "s-1  28m left"]])).toEqual([
+      "  paused     1 session",
+      "             s-1  28m left",
+    ]);
+    // An empty label paints nothing: no escape pair with no text between.
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    const [, continued] = k.kv([["paused", "1 session"], ["", "s-1"]]);
+    expect(continued).toBe("             s-1");
+  });
+
   it("never cuts a kv value, however narrow the terminal", () => {
     const url = "https://app.befailproof.ai/settings/machines/0b1c2d3e-0000-4000-8000-000000000001";
     const k = screenKit({ cols: 40, color: false, fit: true });

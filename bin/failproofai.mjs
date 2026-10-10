@@ -1497,6 +1497,9 @@ async function runCli() {
     );
 
     lastPolicyAction = action;
+    // `syncAgentSelection` on both: an agent hooked here is traced, and one
+    // unhooked at user scope (`policies remove all`) is not, so the next
+    // `failproofai config` neither undoes nor resurrects what this ran.
     if (action === "add") {
       const { installHooks } = await import("../src/hooks/manager");
       await installHooks(
@@ -1508,6 +1511,7 @@ async function runCli() {
         undefined,
         false,
         cli,
+        { syncAgentSelection: true },
       );
       await track("cli_policy_add_success", {
         scope,
@@ -1528,7 +1532,7 @@ async function runCli() {
         [policyName],
         scope,
         undefined,
-        { betaOnly: false, removeCustomHooks: false, cli },
+        { betaOnly: false, removeCustomHooks: false, cli, syncAgentSelection: true },
       );
       await track("cli_policy_remove_success", {
         scope,
@@ -1633,6 +1637,8 @@ async function runCli() {
         "install",
       );
 
+      // An agent hooked here is traced from now on, so the next
+      // `failproofai config` keeps these hooks instead of taking them out.
       await installHooks(
         policyNames,
         scope,
@@ -1642,6 +1648,7 @@ async function runCli() {
         customPoliciesPaths.length > 0 ? customPoliciesPaths : undefined,
         false,
         cli,
+        { syncAgentSelection: true },
       );
       await track("cli_install_success", {
         scope,
@@ -1711,11 +1718,13 @@ async function runCli() {
         "uninstall",
       );
 
+      // Hooks taken out at user scope or every scope stop the agent being
+      // traced; a project- or local-only removal leaves the selection alone.
       await removeHooks(
         policyNames.length > 0 ? policyNames : undefined,
         scope,
         undefined,
-        { betaOnly, removeCustomHooks, cli },
+        { betaOnly, removeCustomHooks, cli, syncAgentSelection: true },
       );
       await track("cli_uninstall_success", {
         scope,

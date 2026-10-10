@@ -31,6 +31,7 @@ import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
+import { keepAgentSelectionTrue } from "./agent-selection";
 import { INDENT, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
@@ -435,6 +436,16 @@ export interface InstallHooksOptions {
   /** Suppress this module's installation logging (for callers that render their
    * own UI, like the configure wizard). Errors still surface via console.error. */
   quiet?: boolean;
+  /**
+   * Trace every agent this call hooks, at whatever scope, and say so in one line
+   * after everything else it prints (decision D2, `./agent-selection`).
+   * Otherwise the next `failproofai config` takes these hooks out again.
+   *
+   * Asked for by the commands a person runs — `policies --install`,
+   * `policies add`, the dashboard — and off by default, because the one other
+   * caller is `failproofai config`, which writes the selection itself.
+   */
+  syncAgentSelection?: boolean;
 }
 
 /**
@@ -457,10 +468,11 @@ export async function installHooks(
   cli?: IntegrationType[],
   options: InstallHooksOptions = {},
 ): Promise<void> {
-  const { replace = false, quiet = false } = options;
+  const { replace = false, quiet = false, syncAgentSelection = false } = options;
   if (!quiet) {
     return installHooksImpl(
       policyNames, scope, cwd, includeBeta, source, customPoliciesPath, removeCustomHooks, cli, replace,
+      syncAgentSelection,
     );
   }
   // Quiet mode: this module logs exclusively via console.log, so muting it for
@@ -471,6 +483,7 @@ export async function installHooks(
   try {
     return await installHooksImpl(
       policyNames, scope, cwd, includeBeta, source, customPoliciesPath, removeCustomHooks, cli, replace,
+      syncAgentSelection,
     );
   } finally {
     console.log = origLog;
@@ -487,6 +500,7 @@ async function installHooksImpl(
   removeCustomHooks = false,
   cli?: IntegrationType[],
   replace = false,
+  syncAgentSelection = false,
 ): Promise<void> {
   // Validate user input first before any system checks
   if (policyNames !== undefined && policyNames.length > 0) {
@@ -906,6 +920,14 @@ async function installHooksImpl(
       });
     } catch {}
   }
+
+  // Last, after everything above: the agents whose hooks were actually written.
+  // A call that returned early (only a third-party pack's policies were named)
+  // or threw wrote none and changes nothing.
+  if (syncAgentSelection) {
+    const note = keepAgentSelectionTrue("installed", writtenSettingsPaths.map((written) => written.cli));
+    if (note) console.log(note);
+  }
 }
 
 /**
@@ -916,8 +938,12 @@ async function installHooksImpl(
  *   - `["block-sudo"]` → disable specific policies in config, keep hooks installed
  * @param scope — settings scope to remove from (default: "user"), or "all" to remove from all scopes
  * @param opts.betaOnly — set to true when removing only beta policies (adds beta_only flag to telemetry)
+ * @param opts.syncAgentSelection — when hooks are taken out at user scope or
+ *   every scope, stop tracing those agents and say so in one line (decision D2,
+ *   `./agent-selection`). Asked for by `policies --uninstall`, `policies remove`
+ *   and the dashboard; `failproofai uninstall` leaves the selection alone.
  */
-export async function removeHooks(policyNames?: string[], scope: HookScope | "all" = "user", cwd?: string, opts?: { betaOnly?: boolean; source?: string; removeCustomHooks?: boolean; cli?: IntegrationType[] }): Promise<void> {
+export async function removeHooks(policyNames?: string[], scope: HookScope | "all" = "user", cwd?: string, opts?: { betaOnly?: boolean; source?: string; removeCustomHooks?: boolean; cli?: IntegrationType[]; syncAgentSelection?: boolean }): Promise<void> {
   // Resolve the effective config scope ("all" falls back to "user" for config reads/writes)
   const configScope: HookScope = scope === "all" ? "user" : scope;
   // Back-compat default: ["claude"]. The bin layer prompts for CLI selection
@@ -995,6 +1021,17 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   // Capture enabled policies before clearing (used for accurate telemetry below)
   const configBeforeRemoval = readScopedHooksConfig(configScope, cwd);
 
+  // Every agent this removal acted on stops being traced, including one that
+  // turned out to have nothing to remove: the command still said "not this
+  // agent", and leaving it traced would let the next `failproofai config` hook
+  // it. Project and local scope never count; the selection is per machine.
+  const untraceRemoved = (): void => {
+    if (!opts?.syncAgentSelection || (scope !== "user" && scope !== "all")) return;
+    const acted = selectedClis.filter((id) => scope === "all" || getIntegration(id).scopes.includes("user"));
+    const note = keepAgentSelectionTrue("removed", acted);
+    if (note) console.log(note);
+  };
+
   // Remove failproofai hooks from each selected CLI's settings file(s)
   let totalRemoved = 0;
   let nothingToReport = false;
@@ -1046,7 +1083,10 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     }
   }
 
-  if (nothingToReport && totalRemoved === 0) return;
+  if (nothingToReport && totalRemoved === 0) {
+    untraceRemoved();
+    return;
+  }
 
   if (scope === "all") {
     console.log(`Removed ${totalRemoved} failproofai hook(s) from all scopes.`);
@@ -1094,6 +1134,8 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     const { customPoliciesPath: _drop, customPoliciesPaths: _dropMany, policyParams: _dropParams, ...rest } = existing;
     writeScopedHooksConfig({ ...rest, enabledPolicies: [] }, configScope, cwd);
   }
+
+  untraceRemoved();
 }
 
 /** A row in one of the listing's plain sections: custom, convention, cloud. */

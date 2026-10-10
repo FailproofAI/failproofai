@@ -459,6 +459,14 @@ fn spawn_collector_manager(
                         running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
                     }
                     apply_backfill(request);
+                    // Read BEFORE the build, and recorded as what is running. A
+                    // read after the spawn records an edit that landed in between
+                    // as already running, so it is never applied: `failproofai
+                    // config` writes its `added` request and then the selection
+                    // that ticks those agents, and the agents stayed off until
+                    // some unrelated edit. An edit landing between this read and
+                    // the build only costs one extra cycle on the next tick.
+                    let built_from = current_collector_config();
                     match fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
                     {
                         Some(next_collector) => {
@@ -469,7 +477,7 @@ fn spawn_collector_manager(
                             "backfill rewound cursors but the collector could not be restarted"
                         ),
                     }
-                    running_cfg = current_collector_config();
+                    running_cfg = built_from;
                     continue;
                 }
 

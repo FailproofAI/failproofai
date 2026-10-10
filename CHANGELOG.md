@@ -19,6 +19,7 @@
 
 ### Fixes
 
+- A config change that landed while the daemon was restarting its collector after a backfill was recorded as already running and never applied. `failproofai config` re-adding an agent hits exactly that, writing its backfill request and then the selection, so the agent stayed off until some unrelated edit (#PR)
 - `failproofai backfill 6m` (no `--since`) silently ran the default 30 days. Stray words are refused now, with the option they probably meant (#PR)
 - `failproofai config --token <key> --machine-label <name>` ran a rename and ignored the key. It now sets the machine up under that name (#PR)
 - `failproofai config` no longer runs setup with an option it does not know quietly ignored: an unknown option or a stray word is an error (#PR)

@@ -85,7 +85,7 @@ export class UnreadableAgentConfigError extends Error {
   }
 }
 
-function readJsonFile(path: string): Record<string, unknown> {
+export function readJsonFile(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   let raw: string;
   try {

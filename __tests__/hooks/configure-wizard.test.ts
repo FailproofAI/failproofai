@@ -175,7 +175,7 @@ const headlessIO = () => ({
  * churn that tempts someone to "fix" a test by loosening it. Naming the steps
  * keeps a reorder to a one-line change here.
  *
- * Current order — selectOne: connect, review.
+ * Current order — selectOne: connect, optional OTEL, review.
  *                 multiSelect: assistants.
  * `undefined` means "this step is not reached in this test".
  *
@@ -190,6 +190,9 @@ function drive(answers: {
 }) {
   const one = vi.mocked(selectOne);
   if ("connect" in answers) one.mockResolvedValueOnce(answers.connect as never);
+  // OTEL is an intentional new optional step after a successful key choice.
+  // Keep existing setup scenarios opted out rather than consuming "apply".
+  if (answers.connect === "key") one.mockResolvedValueOnce(false as never);
   if ("review" in answers) one.mockResolvedValueOnce(answers.review as never);
 }
 

@@ -13,7 +13,7 @@
  * the only thing that writes them.
  */
 import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
-import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
+import { readConfig, readCredentials, writeCredentials, updateConfig } from "./fp-config";
 
 /**
  * The hosted ingest endpoint — a COMPLETE endpoint, not a base to join onto.
@@ -42,6 +42,8 @@ export interface IngestCredential {
 export interface CollectorSettings {
   /** Ship agent session transcripts. Separate opt-in from having a key. */
   sessions: boolean;
+  agents?: Record<string, { sessions?: boolean }>;
+  otlp?: { enabled: boolean; port?: number };
   /** Ship hook activity. */
   hooks: boolean;
   hooksVerbosity?: "all" | "decisions" | "off";
@@ -58,6 +60,11 @@ export interface CollectorSettings {
 
 export function failproofaiHome(): string {
   return layoutHome();
+}
+
+export function agentSessionsEnabled(agent: string): boolean {
+  const collector = readConfig().collector;
+  return collector.agents?.[agent]?.sessions ?? collector.sessions;
 }
 
 export function ingestPath(): string {
@@ -122,6 +129,8 @@ export function writeCollectorSettings(settings: CollectorSettings): void {
       redact: settings.redact ?? "minimal",
       environment: settings.environment ?? "local",
       machineId: settings.machineId,
+      agents: settings.agents ?? readConfig().collector.agents,
+      otlp: settings.otlp ?? readConfig().collector.otlp,
     },
   });
 }

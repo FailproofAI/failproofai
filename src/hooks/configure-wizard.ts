@@ -34,6 +34,7 @@ import { CORE_SOURCE } from "./pack-store";
 
 import {
   selectOne,
+  multiSelect,
   promptText,
   intro,
   outro,
@@ -1271,6 +1272,18 @@ export async function runConfigureWizard(
       }
     }
   }
+  // Optional OTEL choice is never implied by unattended setup or a pasted key.
+  const { chooseWizardOtel, runOtelCommand } = await import("./otel-cli");
+  const otelWanted = !unattended && !preAnswered && connect !== null && await chooseWizardOtel(
+    async message => await selectOne({
+      message,
+      choices: [
+        { label: "No", value: false, hint: "keep current telemetry" },
+        { label: "Yes", value: true, hint: "choose OTEL agents after connecting" },
+      ],
+      stdin, stdout,
+    }) === true,
+  );
   // 5 — Review & apply
   //
   // The last question, and the only one a headless run skips outright rather
@@ -1557,6 +1570,32 @@ export async function runConfigureWizard(
     }
   }
 
+  if (otelWanted && connected) {
+    const selected = await multiSelect({
+      message: "Which agents should send OpenTelemetry?",
+      choices: [
+        { label: "Gemini CLI", value: "gemini", checked: false },
+        { label: "Copilot (VS Code)", value: "copilot", checked: false },
+        { label: "Claude Code", value: "claude", checked: false },
+        { label: "Codex", value: "codex", checked: false },
+      ],
+      stdin, stdout,
+    });
+    if (Array.isArray(selected)) for (const agent of selected) {
+      const result = await runOtelCommand(["enable", agent], {
+        onEvent: emit,
+        confirm: async message => await selectOne({
+          message,
+          choices: [
+            { label: "No", value: false, hint: "keep transcript upload" },
+            { label: "Yes", value: true, hint: "switch to OTEL" },
+          ],
+          stdin, stdout,
+        }) === true,
+      });
+      for (const line of result.lines) stdout.write(`${line}\n`);
+    }
+  }
   await applied;
   // Only now — a completed apply — is the launcher considered "seen", so
   // first-run onboarding stops offering itself on every command.

@@ -373,7 +373,7 @@ async function runCli() {
   // at all, only the paragraph in the top-level dump that this rewrite moved.
   // `help` and `publish` are new. `policy` and `pack` are canonicalized to
   // `policies` above and never reach this list.
-  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "jev", "publish", "update", "migrate", "help"];
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "otel", "jev", "publish", "update", "migrate", "help"];
   // ── help ─────────────────────────────────────────────────────────────────
   //
   // The index and the reference manual used to be the same document: 152 lines,
@@ -491,7 +491,7 @@ async function runCli() {
         // and a full row each is what made this screen read as a manual.
         {
           label: "less often",
-          lines: ["policies show, harness, flush, backfill, migrate, uninstall, config --pause"],
+          lines: ["policies show, harness, otel, flush, backfill, migrate, uninstall", "config --pause"],
         },
       ],
       footer: [
@@ -807,6 +807,48 @@ async function runCli() {
   // CLI no longer has — in a third heading dialect nothing else used. Nobody
   // could reach it to notice. The pack lane is entered from
   // `policies add|remove|show` below, which is the only door it has.
+
+  if (args[0] === "otel") {
+    const subArgs = args.slice(1);
+    if (!subArgs.length || subArgs.includes("--help") || subArgs.includes("-h")) {
+      const verb = ["status", "enable", "disable", "env"].includes(subArgs[0]) ? subArgs[0] : null;
+      const usages = {
+        status: "failproofai otel status",
+        enable: "failproofai otel enable <agent|all> [--local] [--no-content] [--yes]",
+        disable: "failproofai otel disable <agent|all>",
+        env: "failproofai otel env [--service <name>] [--local]",
+      };
+      await printHelp({
+        command: verb ? `otel ${verb}` : "otel",
+        tagline: "opt-in OpenTelemetry from agents and apps to FailproofAI Cloud",
+        sections: [
+          { label: "usage", entries: (verb ? [usages[verb]] : Object.values(usages)).map(usage => [usage]) },
+          { label: "agents", lines: ["claude, codex, gemini, copilot; all configures every available agent."] },
+          { label: "options", entries: [
+            ["--local", "Use the loopback OTLP relay. Automatic for Gemini CLI and Copilot."],
+            ["--no-content", "Do not capture prompt text or tool details."],
+            ["--yes", "Accept switching this agent from transcript upload to OTEL."],
+            ["--service <name>", "Service name for env (default: my-agent)."],
+          ] },
+          { label: "notes", lines: [
+            "Off by default. Run `failproofai config` first to configure your Cloud key.",
+            "Text capture is on unless --no-content. Disable restores only managed settings.",
+            "An org admin must enable Settings → OpenTelemetry in Cloud.",
+          ] },
+        ],
+      });
+      process.exit(0);
+    }
+    lastSubcommand = "otel";
+    const { runOtelCommand } = await import("../src/hooks/otel-cli");
+    const result = await runOtelCommand(subArgs, { onEvent: track });
+    // env is shell input and must not be wrapped in a styled report.
+    if (subArgs[0] === "env" && result.exitCode === 0) console.log(result.lines.join("\n"));
+    else await printReport("otel", result.lines, { ok: result.exitCode === 0 });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
 
   if (args[0] === "harness") {
     const subArgs = args.slice(1);

@@ -281,6 +281,8 @@ export interface FpConfig {
   };
   collector: {
     sessions: boolean;
+    agents?: Record<string, { sessions?: boolean }>;
+    otlp?: { enabled: boolean; port?: number };
     hooks: boolean;
     hooksVerbosity: "all" | "decisions" | "off";
     redact: "minimal" | "off";
@@ -443,6 +445,25 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function readAgentSessions(raw: unknown): FpConfig["collector"]["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const agents = Object.fromEntries(Object.entries(raw).flatMap(([agent, settings]) => {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+    const sessions = (settings as Record<string, unknown>).sessions;
+    return typeof sessions === "boolean" ? [[agent, { sessions }]] : [];
+  }));
+  return Object.keys(agents).length ? agents : undefined;
+}
+
+function readOtlpSettings(raw: unknown): FpConfig["collector"]["otlp"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const settings = raw as Record<string, unknown>;
+  return {
+    enabled: settings.enabled === true,
+    ...(typeof settings.port === "number" && Number.isInteger(settings.port) ? { port: settings.port } : {}),
+  };
+}
+
 /**
  * {@link readConfig}, plus the raw object it was projected from.
  *
@@ -532,6 +553,8 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
           typeof collector.environment === "string" ? collector.environment : "local",
         machineId: typeof collector.machine_id === "string" ? collector.machine_id : undefined,
         sources: readSources(collector.sources),
+        agents: readAgentSessions(collector.agents),
+        otlp: readOtlpSettings(collector.otlp),
       },
       // Only an explicit `false` switches it off. Absent, or any other value,
       // reads as on — the shipped default, and what a config with no
@@ -594,6 +617,9 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["collector", "environment"],
   ["collector", "machine_id"],
   ["collector", "sources", "*", "extra_paths"],
+  ["collector", "agents", "*", "sessions"],
+  ["collector", "otlp", "enabled"],
+  ["collector", "otlp", "port"],
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
@@ -669,6 +695,8 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
       // Omitted when unset rather than written null: the Rust side treats an
       // absent machine_id as "derive one", and an explicit null is not that.
       ...(c.machineId ? { machine_id: c.machineId } : {}),
+      ...(c.agents ? { agents: c.agents } : {}),
+      ...(c.otlp ? { otlp: c.otlp } : {}),
       // Extra capture paths per harness. Emitted ONLY when non-empty, so a
       // machine that never configured one gets a file byte-identical to what
       // this function produced before the field existed — the same reasoning as

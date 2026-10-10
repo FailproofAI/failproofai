@@ -44,6 +44,8 @@ export interface KeyIdentity {
   /** The EFFECTIVE permission set — what the server enforces. */
   permissions: string[];
   expiresAt?: string | null;
+  /** Missing on older Cloud versions; absence is unknown, never an error. */
+  otelIngest?: boolean;
 }
 
 export type IntrospectResult =
@@ -128,6 +130,7 @@ export async function introspectKey(
       orgName: typeof b.org_name === "string" ? b.org_name : undefined,
       permissions: b.permissions.filter((p): p is string => typeof p === "string"),
       expiresAt: typeof b.expires_at === "string" ? b.expires_at : null,
+      otelIngest: typeof b.otel_ingest === "boolean" ? b.otel_ingest : undefined,
     },
   };
 }

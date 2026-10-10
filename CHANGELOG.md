@@ -7,6 +7,12 @@
 - Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#PR)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#PR)
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#PR)
+- The daemon honours `agents.selected` in `config.json`: a harness that is not selected starts no collector task (its extra capture paths and every Hermes profile included), while hook decisions and the SDK spool are always collected. A change takes effect at the next config poll with no restart; no `agents` key means every harness, as before. An unknown agent id, and an untraced harness that still has extra paths, each get a journal line (#PR)
+- Backfill requests can name `agents` and a `kind`. `user` (what `failproofai backfill` writes, and what a request without `kind` means) re-sends those agents' files modified since `sinceMs`, now reaching their extra-path stores too; `added` forgets every cursor of the agents `failproofai config` re-adds, Hermes profiles included, and gives them the default 7-day window. A pending request is applied before the collector first starts, and an `added` request older than 10 minutes is dropped (#PR)
+
+### Fixes
+
+- A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#PR)
 
 ## 1.0.10 — 2026-10-05
 

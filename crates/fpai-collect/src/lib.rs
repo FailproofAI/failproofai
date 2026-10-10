@@ -27,7 +27,8 @@ mod test_env;
 pub mod uploader;
 
 pub use config::{
-    CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings, SourceSettings,
+    AgentSelection, CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings,
+    SourceSettings,
 };
 pub use delivery::Delivery;
 pub use extra_paths::{ExtraPath, Resolved as ResolvedExtraPaths};

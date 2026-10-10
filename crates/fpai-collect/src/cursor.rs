@@ -393,6 +393,26 @@ impl CursorStore {
         dropped
     }
 
+    /// Forget every cursor, so the next read starts every file — or, for a
+    /// SQLite source, the whole database — from the beginning.
+    ///
+    /// What re-adding an agent acts through. [`forget_modified_since`] cannot do
+    /// that job: a file appended to while the agent was not traced, but last
+    /// modified before the window, keeps its stale offset and resumes there,
+    /// shipping what was written while nobody asked for it. Forgetting
+    /// everything hands the decision to the first-sight window instead, which is
+    /// exactly how a brand-new agent behaves.
+    ///
+    /// [`forget_modified_since`]: CursorStore::forget_modified_since
+    pub fn forget_all(&mut self) -> usize {
+        let dropped = self.cursors.len();
+        if dropped > 0 {
+            self.cursors.clear();
+            self.dirty = true;
+        }
+        dropped
+    }
+
     /// Whether anything has changed since the last successful [`save`].
     ///
     /// [`save`]: CursorStore::save
@@ -655,6 +675,69 @@ mod tests {
 
         s.retain_existing();
         assert_eq!(s.len(), 1, "a cursor for a deleted page must be dropped");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A file at `dir/name` whose mtime is `age` ago.
+    fn aged(dir: &Path, name: &str, age: std::time::Duration) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "x").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - age)
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn a_windowed_rewind_forgets_only_files_touched_since() {
+        let dir = tmpdir("forget-since");
+        let day = std::time::Duration::from_secs(86_400);
+        let fresh = aged(&dir, "fresh.jsonl", std::time::Duration::from_secs(60));
+        let old = aged(&dir, "old.jsonl", 30 * day);
+
+        let mut s = CursorStore::load(dir.clone());
+        s.set(cursor(&fresh, 1, 1, 10));
+        s.set(cursor(&old, 1, 2, 10));
+        // An unreadable mtime is kept: forgetting it is how a rewind turns into
+        // re-shipping a whole history.
+        s.set(cursor(&dir.join("gone.jsonl"), 1, 3, 10));
+        s.save().unwrap();
+
+        assert_eq!(s.forget_modified_since(SystemTime::now() - day), 1);
+        s.save().unwrap();
+        let reloaded = CursorStore::load(dir.clone());
+        assert_eq!(reloaded.len(), 2);
+        assert!(
+            reloaded.resume(1, 2, &old).is_some(),
+            "an old file keeps its offset"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn forgetting_everything_reaches_old_files_too_and_persists() {
+        let dir = tmpdir("forget-all");
+        let old = aged(
+            &dir,
+            "old.jsonl",
+            std::time::Duration::from_secs(90 * 86_400),
+        );
+        let mut s = CursorStore::load(dir.clone());
+        s.set(cursor(&old, 1, 1, 10));
+        s.set(cursor(&dir.join("gone.jsonl"), 1, 2, 10));
+        s.save().unwrap();
+
+        assert_eq!(s.forget_all(), 2);
+        assert!(s.is_dirty(), "a forgotten cursor must reach disk");
+        s.save().unwrap();
+        assert!(CursorStore::load(dir.clone()).is_empty());
+
+        // Nothing left to forget is not a change, and writes nothing.
+        assert_eq!(s.forget_all(), 0);
+        assert!(!s.is_dirty());
         std::fs::remove_dir_all(&dir).ok();
     }
 

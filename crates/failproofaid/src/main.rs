@@ -1,4 +1,6 @@
+mod agents;
 mod audit_lane;
+mod backfill;
 mod cloud_client;
 pub mod cloud_policies;
 mod lock;
@@ -393,6 +395,17 @@ fn spawn_collector_manager(
                 }
             }
 
+            // A request already on disk is applied BEFORE the first deployment
+            // starts, not on the first tick after it. A reconnect is exactly when
+            // `failproofai config` leaves an `added` request for the agents it
+            // re-added, and a collector started first would resume their stale
+            // cursors for a whole tick — shipping what was written while they were
+            // not traced, which is what the request exists to prevent. A `user`
+            // request left for a stopped daemon is honoured here too.
+            if let Some(request) = take_backfill_request() {
+                apply_backfill(request);
+            }
+
             // Enabled — build and start. `collector_tasks()` logs "collector
             // enabled" once; `spawn_supervised` returns None only if the config
             // flipped back to disabled between the check and the build, or the
@@ -441,25 +454,11 @@ fn spawn_collector_manager(
                 // it deliberately runs before the config compare, so a backfill
                 // and a config change arriving together produce one cycle
                 // rather than two.
-                if let Some(since) = take_backfill_request() {
+                if let Some(request) = take_backfill_request() {
                     if let Some(running) = collector.take() {
                         running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
                     }
-                    let dropped = rewind_cursors_for_backfill(since);
-                    // Widen the first-sight window to cover the request, or the
-                    // files just forgotten are refused as too old and never read
-                    // — the cursor rewind alone would look like it worked and
-                    // deliver a fraction of what was asked for.
-                    let days = std::time::SystemTime::now()
-                        .duration_since(since)
-                        .map(|d| d.as_secs() / 86_400 + 1)
-                        .unwrap_or(0);
-                    set_backfill_window_days(Some(days));
-                    tracing::info!(
-                        cursors_forgotten = dropped,
-                        window_days = days,
-                        "backfill requested; re-reading those sessions from the start"
-                    );
+                    apply_backfill(request);
                     match fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
                     {
                         Some(next_collector) => {
@@ -516,6 +515,12 @@ fn spawn_collector_manager(
                             break;
                         }
                     }
+                    // Re-enabled is a first start too: apply a pending request
+                    // before anything runs, for the reason given above the
+                    // manager's first spawn.
+                    if let Some(request) = take_backfill_request() {
+                        apply_backfill(request);
+                    }
                     // Control falls through to the spawn below. `next_cfg` is
                     // refreshed to whatever re-enabled collection, because THAT
                     // is what the new deployment will be built from.
@@ -569,53 +574,6 @@ fn join_lane(handle: &mut Option<std::thread::JoinHandle<()>>) {
     }
 }
 
-/// Cheap "should the collector be running?" check — reads the two small config
-/// files. Any error resolves to `false`; the full `collector_tasks()` build
-/// logs the reason when it acts on an enabled config.
-/// How many days of history file sources may reach back on FIRST sight of a
-/// file, overriding the default when a backfill is in flight.
-///
-/// It has to exist because rewinding cursors is not, on its own, enough.
-/// `new_cursor` refuses any file older than `since_days` and returns without
-/// giving it a cursor at all — so a wiped cursor store re-reads only the last 7
-/// days, and everything older is skipped again on every poll, silently. A
-/// backfill that asked for 30 days and quietly delivered 7 would be worse than
-/// no backfill: the gap it leaves is invisible, and the dashboard looks complete.
-///
-/// Only consulted when a source meets a file it has no cursor for, so it does
-/// not need clearing: once the backfill's rebuild has read those files they all
-/// have cursors, and `since_days` is never asked again for them.
-static BACKFILL_SINCE_DAYS: std::sync::RwLock<Option<u64>> = std::sync::RwLock::new(None);
-
-fn set_backfill_window_days(days: Option<u64>) {
-    let mut slot = BACKFILL_SINCE_DAYS
-        .write()
-        .unwrap_or_else(|e| e.into_inner());
-    *slot = days;
-}
-
-/// The history window file sources should honour right now.
-///
-/// `Some(7)` normally: a machine holds hundreds of megabytes of transcripts and
-/// shipping all of it on first start is not a reasonable default.
-fn file_source_since_days() -> Option<u64> {
-    const DEFAULT_DAYS: u64 = 7;
-    BACKFILL_SINCE_DAYS
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .or(Some(DEFAULT_DAYS))
-}
-
-/// A pending backfill request, if one is on disk.
-///
-/// `since` is epoch millis: every session file modified at or after it has its
-/// cursor forgotten, so the next read starts that file from byte 0.
-///
-/// An unparseable request is DELETED rather than retried. It cannot be acted on,
-/// and leaving it would re-attempt the same failure on every tick forever — the
-/// CLI is the only writer, and it writes this file atomically, so a malformed
-/// one means a hand-edit or a truncated disk rather than a race worth waiting
-/// out.
 /// Set by the maintenance tick when a `failproofai flush` request lands, and
 /// swapped back to false by the spool sweeper when it has done the pass.
 ///
@@ -644,60 +602,63 @@ fn take_flush_request() -> bool {
     true
 }
 
-fn take_backfill_request() -> Option<std::time::SystemTime> {
+/// A pending backfill request, if one is on disk and still actionable.
+///
+/// The file is removed whatever it holds — see `backfill::take` — and an `added`
+/// request older than `backfill::ADDED_REQUEST_MAX_AGE` is dropped with a
+/// journal line rather than replayed.
+fn take_backfill_request() -> Option<backfill::Request> {
     let path = paths::backfill_request_path().ok()?;
-    let raw = std::fs::read_to_string(&path).ok()?;
-    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
-        Ok(v) => v,
-        Err(err) => {
-            tracing::warn!(?err, "discarding an unreadable backfill request");
-            let _ = std::fs::remove_file(&path);
-            return None;
-        }
-    };
-    // Removed BEFORE acting, not after. A backfill that panics mid-rewind must
-    // not be retried on the next tick — the cursors it already forgot would be
-    // forgotten again, and a machine could sit re-shipping its whole history in
-    // a loop. Losing a request costs one re-run of a command; looping does not
-    // stop.
-    let _ = std::fs::remove_file(&path);
-    let since_ms = parsed.get("sinceMs").and_then(|v| v.as_u64())?;
-    Some(std::time::UNIX_EPOCH + Duration::from_millis(since_ms))
+    backfill::take(&path, std::time::SystemTime::now())
 }
 
-/// Forget every session cursor for files touched since `since`, across every
-/// source, so the collector re-reads and re-ships them.
+/// Carry out a backfill request: rewind the cursors it reaches and set the
+/// first-sight window of the agents it names.
 ///
-/// Safe by construction rather than by luck: the cursor store is already
-/// documented as re-readable, and redaction is deterministic, so a re-shipped
-/// event hashes identically and collapses into the row already on the server
-/// instead of duplicating it.
-fn rewind_cursors_for_backfill(since: std::time::SystemTime) -> usize {
-    let Ok(root) = paths::cursors_dir() else {
-        return 0;
-    };
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        // No cursors yet means nothing has been shipped, so the next start
-        // reads everything from the beginning anyway — the backfill is already
-        // what is about to happen.
-        return 0;
-    };
-    let mut dropped = 0;
-    for entry in entries.flatten() {
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let mut store = fpai_collect::cursor::CursorStore::load(entry.path());
-        let n = store.forget_modified_since(since);
-        if n > 0 {
-            if let Err(err) = store.save() {
-                tracing::warn!(dir = ?entry.path(), ?err, "could not persist a rewound cursor store");
-                continue;
-            }
-            dropped += n;
-        }
+/// Must be called with NO collector running. The running collector holds its
+/// cursors in memory and would write them straight back over the rewind.
+///
+/// Both halves are needed. Rewinding alone is not enough: a forgotten cursor's
+/// file is a first discovery again, and a file older than the window is refused
+/// without a cursor — so a backfill that asked for 30 days and quietly delivered
+/// 7 would be worse than none, because the gap it leaves is invisible.
+fn apply_backfill(request: backfill::Request) {
+    let now = std::time::SystemTime::now();
+    let cfg = current_collector_config();
+    if cfg.is_none() && request.agents.is_none() {
+        // Mid-save, almost always. The request names no agents, so it means
+        // "the selected ones", and the selection is in the file that just failed
+        // to read: apply it as a daemon from before the selection would have.
+        tracing::warn!(
+            "config.json could not be read; applying the backfill request to every agent"
+        );
     }
-    dropped
+    let selection = cfg.as_ref().map(|c| c.agents.clone()).unwrap_or_default();
+    let scope = backfill::scope(&request, &selection);
+    if !scope.unknown.is_empty() {
+        tracing::warn!(
+            names = %scope.unknown.join(", "),
+            known = %agents::known_agents().join(", "),
+            "the backfill request names agents with no collector source; ignoring them"
+        );
+    }
+    let hermes_extras = cfg
+        .as_ref()
+        .map(|c| hermes_extra_labels(&c.settings))
+        .unwrap_or_default();
+    let rewound = match paths::cursors_dir() {
+        Ok(root) => backfill::rewind(&root, request.kind, &scope, &hermes_extras),
+        Err(_) => backfill::Rewound::default(),
+    };
+    let window_days = backfill::record_window(request.kind, &scope.agents, now);
+    tracing::info!(
+        kind = request.kind.label(),
+        agents = %scope.agents.join(","),
+        cursors_forgotten = rewound.cursors,
+        stores_rewound = rewound.stores,
+        window_days,
+        "backfill requested; re-reading those sessions from the start"
+    );
 }
 
 /// The collector's current on-disk configuration, or `None` when it cannot be
@@ -711,6 +672,9 @@ fn current_collector_config() -> Option<fpai_collect::CollectorConfig> {
     fpai_collect::config::load(&home).ok()
 }
 
+/// Cheap "should the collector be running?" check — reads the two small config
+/// files. Any error resolves to `false`; the full `collector_tasks()` build
+/// logs the reason when it acts on an enabled config.
 fn collector_is_enabled() -> bool {
     let Ok(home) = paths::failproofai_home() else {
         return false;
@@ -759,6 +723,103 @@ const HARNESS_KEYS: &[&str] = &[
     "hermes",
 ];
 
+/// What `agents.selected` and the backfill windows say about one SOURCE.
+///
+/// Both answers go through `agents::SOURCES`, the table the backfill rewind also
+/// reads, so the collector and the rewind cannot disagree about whose a source is.
+struct SourceGate<'a> {
+    selection: &'a fpai_collect::AgentSelection,
+    /// A copy taken when this deployment is built; see `backfill::Windows`.
+    windows: backfill::Windows,
+}
+
+impl SourceGate<'_> {
+    /// Whether the source's tasks start in this deployment.
+    fn traced(&self, source: &str) -> bool {
+        match agents::owner_of(source) {
+            Some(agents::Owner::Agent(agent)) => self.selection.traces(agent),
+            Some(agents::Owner::Shared) => true,
+            // Unreachable for anything registered here — a test asserts every
+            // task has a row in the table — but should one slip through, a
+            // selection must not widen to a source it cannot place.
+            None => !self.selection.is_selective(),
+        }
+    }
+
+    /// The first-sight window of the source's agent.
+    fn since_days(&self, source: &str) -> Option<u64> {
+        Some(match agents::owner_of(source) {
+            Some(agents::Owner::Agent(agent)) => self.windows.days_for(agent),
+            _ => backfill::DEFAULT_WINDOW_DAYS,
+        })
+    }
+}
+
+/// The journal line for an `agents` value that selects nothing it should, if any.
+///
+/// At most one: an unusable value has no names to be unknown.
+fn selection_warning(selection: &fpai_collect::AgentSelection) -> Option<String> {
+    let known = agents::known_agents();
+    if selection.unusable {
+        return Some(format!(
+            "[failproofaid] config.json's \"agents\" value cannot be read (agents.selected must \
+             be a list of agent ids), so it is ignored and every agent is collected. Known: {}",
+            known.join(", ")
+        ));
+    }
+    let unknown = selection.unknown(&known);
+    if unknown.is_empty() {
+        return None;
+    }
+    let (verb, pronoun) = if unknown.len() == 1 {
+        ("has", "it")
+    } else {
+        ("have", "them")
+    };
+    Some(format!(
+        "[failproofaid] agents.selected names {}, which {verb} no collector source; nothing is \
+         collected for {pronoun}. Known: {}",
+        unknown.join(", "),
+        known.join(", ")
+    ))
+}
+
+/// One line naming what a selection collects, so an agent that stops arriving
+/// after it was unticked is explained in the journal rather than merely absent.
+fn selection_summary(selection: &fpai_collect::AgentSelection) -> Option<String> {
+    if !selection.is_selective() {
+        return None;
+    }
+    let (traced, untraced): (Vec<&str>, Vec<&str>) = agents::known_agents()
+        .into_iter()
+        .partition(|agent| selection.traces(agent));
+    let traced = if traced.is_empty() {
+        "no agent".to_string()
+    } else {
+        traced.join(", ")
+    };
+    let mut line = format!("[failproofaid] agents.selected: collecting sessions from {traced}");
+    if !untraced.is_empty() {
+        line.push_str(&format!("; not traced: {}", untraced.join(", ")));
+    }
+    Some(line)
+}
+
+/// The journal line for an untraced harness that still has extra capture paths
+/// configured — paths `failproofai harness list` keeps listing, and that would
+/// otherwise go quiet with no word anywhere.
+fn idle_extra_paths_line(harness: &str, configured: usize) -> Option<String> {
+    match configured {
+        0 => None,
+        1 => Some(format!(
+            "[failproofaid] {harness} is not traced; its 1 extra capture path is idle"
+        )),
+        n => Some(format!(
+            "[failproofaid] {harness} is not traced; its {n} extra capture paths are idle"
+        )),
+    }
+}
+
 fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     let home = match paths::failproofai_home() {
         Ok(home) => home,
@@ -805,6 +866,13 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         "[failproofaid] collector enabled: sessions={} hooks={} ({:?}) -> {}",
         cfg.settings.sessions, cfg.settings.hooks, cfg.settings.hooks_verbosity, ingest.url,
     );
+
+    // Said on every build, and OUTSIDE the `sessions` block: the selection also
+    // scopes every backfill, so a misspelt id matters on a decisions-only
+    // machine too, and each of these is otherwise mentioned nowhere.
+    if let Some(line) = selection_warning(&cfg.agents) {
+        eprintln!("{line}");
+    }
 
     // One `Delivery` shared by both tasks, so they share an upload semaphore
     // and an in-flight set. Separate ones would let the watcher and a
@@ -915,6 +983,33 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             );
         }
 
+        // `agents.selected`, resolved per SOURCE through the one table the
+        // backfill rewind also reads, so `claude-subagent` follows `claude` and
+        // `openclaw-sqlite` follows `openclaw` here exactly as it does there.
+        let gate = SourceGate {
+            selection: &cfg.agents,
+            windows: backfill::current_windows(),
+        };
+        if let Some(line) = selection_summary(&cfg.agents) {
+            eprintln!("{line}");
+        }
+        // Gated off BEFORE its extra paths are resolved, so the journal never
+        // says "also capturing" for a task that does not start — and so the
+        // paths do not disappear from it silently either.
+        for harness in HARNESS_KEYS {
+            if cfg.agents.traces(harness) {
+                continue;
+            }
+            let configured = settings
+                .extra_paths_for(harness)
+                .iter()
+                .filter(|entry| !entry.trim().is_empty())
+                .count();
+            if let Some(line) = idle_extra_paths_line(harness, configured) {
+                eprintln!("{line}");
+            }
+        }
+
         // Resolve one harness's configured extra paths against the roots it
         // already watches, logging every rejection — each one is a path the
         // operator asked for and is not getting.
@@ -966,209 +1061,259 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // and asking the operator to configure `claude` and `claude-subagent`
         // separately would mean a natural-looking config that silently drops
         // every subagent under the added path.
-        let claude_roots = vec![claude_projects_root()];
-        let claude_extra = extras("claude", &claude_roots);
-        file_source(
-            &mut tasks,
-            "claude",
-            claude::FORMAT,
-            claude_roots.clone(),
-            &claude_extra,
-            claude::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
-        // Subagent transcripts live under the SAME root, claimed by a second
-        // format. A separate source, not a second predicate: `is_source_file`
-        // is a bare fn, and each source needs its own cursor store — one store
-        // writes its whole map atomically, so two sharing a file would clobber
-        // each other and the loser would re-ship from zero after every restart.
-        file_source(
-            &mut tasks,
-            "claude-subagent",
-            claude::SUBAGENT_FORMAT,
-            claude_roots,
-            &claude_extra,
-            claude::SUBAGENT_DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        let claude_on = gate.traced("claude");
+        let claude_subagent_on = gate.traced("claude-subagent");
+        if claude_on || claude_subagent_on {
+            let claude_roots = vec![claude_projects_root()];
+            let claude_extra = extras("claude", &claude_roots);
+            if claude_on {
+                file_source(
+                    &mut tasks,
+                    "claude",
+                    claude::FORMAT,
+                    claude_roots.clone(),
+                    &claude_extra,
+                    claude::DEFAULT_AGENT_ID,
+                    &spool,
+                    &cursors,
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    gate.since_days("claude"),
+                );
+            }
+            // Subagent transcripts live under the SAME root, claimed by a second
+            // format. A separate source, not a second predicate: `is_source_file`
+            // is a bare fn, and each source needs its own cursor store — one store
+            // writes its whole map atomically, so two sharing a file would clobber
+            // each other and the loser would re-ship from zero after every restart.
+            if claude_subagent_on {
+                file_source(
+                    &mut tasks,
+                    "claude-subagent",
+                    claude::SUBAGENT_FORMAT,
+                    claude_roots,
+                    &claude_extra,
+                    claude::SUBAGENT_DEFAULT_AGENT_ID,
+                    &spool,
+                    &cursors,
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    gate.since_days("claude-subagent"),
+                );
+            }
+        }
 
-        let codex_roots = vec![codex_sessions_root()];
-        file_source(
-            &mut tasks,
-            "codex",
-            codex::FORMAT,
-            codex_roots.clone(),
-            &extras("codex", &codex_roots),
-            codex::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("codex") {
+            let codex_roots = vec![codex_sessions_root()];
+            file_source(
+                &mut tasks,
+                "codex",
+                codex::FORMAT,
+                codex_roots.clone(),
+                &extras("codex", &codex_roots),
+                codex::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("codex"),
+            );
+        }
 
-        let copilot_roots = vec![copilot::session_state_root()];
-        file_source(
-            &mut tasks,
-            "copilot",
-            copilot::FORMAT,
-            copilot_roots.clone(),
-            &extras("copilot", &copilot_roots),
-            copilot::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("copilot") {
+            let copilot_roots = vec![copilot::session_state_root()];
+            file_source(
+                &mut tasks,
+                "copilot",
+                copilot::FORMAT,
+                copilot_roots.clone(),
+                &extras("copilot", &copilot_roots),
+                copilot::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("copilot"),
+            );
+        }
 
-        let openclaw_roots = openclaw::default_roots();
-        let openclaw_extra = extras("openclaw", &openclaw_roots);
-        file_source(
-            &mut tasks,
-            "openclaw",
-            openclaw::FORMAT,
-            openclaw_roots.clone(),
-            &openclaw_extra,
-            openclaw::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
-        openclaw_sqlite_harness(
-            &mut tasks,
-            openclaw_roots,
-            &openclaw_extra,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        // Two sources, one harness key: the legacy JSONL tailer and the SQLite
+        // store OpenClaw 2026.9.2+ writes. Both are OpenClaw's, so both follow
+        // its selection — gating the tailer alone would leave the store current
+        // versions actually use running for an agent nobody selected.
+        let openclaw_on = gate.traced("openclaw");
+        let openclaw_sqlite_on = gate.traced("openclaw-sqlite");
+        if openclaw_on || openclaw_sqlite_on {
+            let openclaw_roots = openclaw::default_roots();
+            let openclaw_extra = extras("openclaw", &openclaw_roots);
+            if openclaw_on {
+                file_source(
+                    &mut tasks,
+                    "openclaw",
+                    openclaw::FORMAT,
+                    openclaw_roots.clone(),
+                    &openclaw_extra,
+                    openclaw::DEFAULT_AGENT_ID,
+                    &spool,
+                    &cursors,
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    gate.since_days("openclaw"),
+                );
+            }
+            if openclaw_sqlite_on {
+                openclaw_sqlite_harness(
+                    &mut tasks,
+                    openclaw_roots,
+                    &openclaw_extra,
+                    &spool,
+                    &cursors,
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    gate.since_days("openclaw-sqlite"),
+                );
+            }
+        }
 
-        let pi_roots = vec![pi::sessions_root()];
-        file_source(
-            &mut tasks,
-            "pi",
-            pi::FORMAT,
-            pi_roots.clone(),
-            &extras("pi", &pi_roots),
-            pi::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("pi") {
+            let pi_roots = vec![pi::sessions_root()];
+            file_source(
+                &mut tasks,
+                "pi",
+                pi::FORMAT,
+                pi_roots.clone(),
+                &extras("pi", &pi_roots),
+                pi::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("pi"),
+            );
+        }
 
-        let factory_roots = vec![factory_sessions_root()];
-        file_source(
-            &mut tasks,
-            "factory",
-            factory::FORMAT,
-            factory_roots.clone(),
-            &extras("factory", &factory_roots),
-            factory::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("factory") {
+            let factory_roots = vec![factory_sessions_root()];
+            file_source(
+                &mut tasks,
+                "factory",
+                factory::FORMAT,
+                factory_roots.clone(),
+                &extras("factory", &factory_roots),
+                factory::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("factory"),
+            );
+        }
 
-        let antigravity_roots = vec![antigravity_brain_root()];
-        file_source(
-            &mut tasks,
-            "antigravity",
-            antigravity::FORMAT,
-            antigravity_roots.clone(),
-            &extras("antigravity", &antigravity_roots),
-            antigravity::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("antigravity") {
+            let antigravity_roots = vec![antigravity_brain_root()];
+            file_source(
+                &mut tasks,
+                "antigravity",
+                antigravity::FORMAT,
+                antigravity_roots.clone(),
+                &extras("antigravity", &antigravity_roots),
+                antigravity::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("antigravity"),
+            );
+        }
 
-        let cursor_roots = vec![cursor_projects_root()];
-        file_source(
-            &mut tasks,
-            "cursor",
-            cursor::FORMAT,
-            cursor_roots.clone(),
-            &extras("cursor", &cursor_roots),
-            cursor::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("cursor") {
+            let cursor_roots = vec![cursor_projects_root()];
+            file_source(
+                &mut tasks,
+                "cursor",
+                cursor::FORMAT,
+                cursor_roots.clone(),
+                &extras("cursor", &cursor_roots),
+                cursor::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+                gate.since_days("cursor"),
+            );
+        }
 
+        // The SQLite pollers take no first-sight window: a source with no
+        // cursor starts at watermark 0, the whole database.
         use fpai_collect::sources::{devin, goose, hermes, opencode};
-        sqlite_harness(
-            &mut tasks,
-            "goose",
-            goose::FORMAT,
-            goose::db_path(),
-            &extras("goose", &[goose::db_path()]),
-            goose::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
-        sqlite_harness(
-            &mut tasks,
-            "opencode",
-            opencode::FORMAT,
-            opencode::default_db_path(),
-            &extras("opencode", &[opencode::default_db_path()]),
-            opencode::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
-        sqlite_harness(
-            &mut tasks,
-            "devin",
-            devin::FORMAT,
-            devin::db_path(),
-            &extras("devin", &[devin::db_path()]),
-            devin::DEFAULT_AGENT_ID,
-            &spool,
-            &cursors,
-            &env,
-            machine.as_deref(),
-            os_user.as_deref(),
-            redact,
-        );
+        if gate.traced("goose") {
+            sqlite_harness(
+                &mut tasks,
+                "goose",
+                goose::FORMAT,
+                goose::db_path(),
+                &extras("goose", &[goose::db_path()]),
+                goose::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+            );
+        }
+        if gate.traced("opencode") {
+            sqlite_harness(
+                &mut tasks,
+                "opencode",
+                opencode::FORMAT,
+                opencode::default_db_path(),
+                &extras("opencode", &[opencode::default_db_path()]),
+                opencode::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+            );
+        }
+        if gate.traced("devin") {
+            sqlite_harness(
+                &mut tasks,
+                "devin",
+                devin::FORMAT,
+                devin::db_path(),
+                &extras("devin", &[devin::db_path()]),
+                devin::DEFAULT_AGENT_ID,
+                &spool,
+                &cursors,
+                &env,
+                machine.as_deref(),
+                os_user.as_deref(),
+                redact,
+            );
+        }
 
         // Hermes profiles are SEPARATE databases, and the SQLite poller keys its
         // cursor on a fixed synthetic id — so two profiles sharing one state
@@ -1178,77 +1323,81 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // This is the shape every other source now takes for its extra paths;
         // Hermes reached it first, by having several default databases rather
         // than several configured ones.
-        let hermes_dbs = hermes::default_db_paths();
-        for (i, db) in hermes_dbs.iter().enumerate() {
-            let profile = profile_dir_name(db, i);
-            let state = cursors.join("hermes").join(&profile);
-            // Bound outside the call: the id is borrowed for the whole
-            // `sqlite_source` invocation, and a temporary would be dropped at
-            // the end of the argument expression.
-            let hermes_agent_id =
-                hermes::agent_id_for(hermes::DEFAULT_AGENT_ID, hermes::profile_of(db).as_deref());
-            // ...and its own health key, for the same reason it gets its own
-            // cursor directory. Every profile reporting under the bare string
-            // "hermes" made two profiles overwrite each other's record five
-            // times a second: with one database missing, `root_present`
-            // alternated true/false forever, which is precisely the "absent
-            // root versus merely idle" distinction this record exists to draw.
-            sqlite_source(
-                &mut tasks,
-                "hermes",
-                hermes::FORMAT,
-                db.clone(),
-                // The DATABASE's id, not a bare constant. Every profile used to
-                // pass `hermes` and let the transform re-derive a name from each
-                // session's own mutable columns — which is what split one
-                // session across two agent ids. `agent_id_for` keys on the path:
-                // the root keeps the bare `hermes` every deployment already
-                // ships under, and `profiles/<name>/state.db` becomes
-                // `hermes-<name>`, matching the standalone collector so a
-                // machine migrating off it is not renamed.
-                &hermes_agent_id,
-                &spool,
-                state,
-                &env,
-                machine.as_deref(),
-                os_user.as_deref(),
-                redact,
-                Some(format!("hermes:{profile}")),
-                // No label: a default profile is not an extra path, and
-                // namespacing it would rename every agent id on every machine
-                // that already has one.
-                None,
-            );
-        }
-        // Configured extras are resolved against EVERY default profile database,
-        // so pointing one at a profile Hermes already exposes is rejected rather
-        // than collected twice under two ids.
-        // Reserved: the labels the default profile tasks above just claimed. Without
-        // this, `add-path hermes prod=<other>.db` on a machine with a `prod` profile
-        // is accepted, and the two pollers share `cursors/hermes/prod` and the
-        // health key `hermes:prod` — the exact clobbering the comment above says
-        // each profile gets its own directory to avoid.
-        let hermes_reserved: Vec<String> = hermes_dbs
-            .iter()
-            .enumerate()
-            .map(|(i, db)| profile_dir_name(db, i))
-            .collect();
-        for ep in extras_reserving("hermes", &hermes_dbs, &hermes_reserved) {
-            sqlite_source(
-                &mut tasks,
-                "hermes",
-                hermes::FORMAT,
-                ep.path.clone(),
-                hermes::DEFAULT_AGENT_ID,
-                &spool,
-                cursors.join("hermes").join(&ep.label),
-                &env,
-                machine.as_deref(),
-                os_user.as_deref(),
-                redact,
-                Some(format!("hermes:{}", ep.label)),
-                Some(ep.label.clone()),
-            );
+        //
+        // Every profile and every extra follows the one `hermes` selection: a
+        // profile is a database of the same agent, not an agent of its own.
+        if gate.traced("hermes") {
+            let hermes_dbs = hermes::default_db_paths();
+            for (i, db) in hermes_dbs.iter().enumerate() {
+                let profile = profile_dir_name(db, i);
+                let state = cursors.join("hermes").join(&profile);
+                // Bound outside the call: the id is borrowed for the whole
+                // `sqlite_source` invocation, and a temporary would be dropped at
+                // the end of the argument expression.
+                let hermes_agent_id = hermes::agent_id_for(
+                    hermes::DEFAULT_AGENT_ID,
+                    hermes::profile_of(db).as_deref(),
+                );
+                // ...and its own health key, for the same reason it gets its own
+                // cursor directory. Every profile reporting under the bare string
+                // "hermes" made two profiles overwrite each other's record five
+                // times a second: with one database missing, `root_present`
+                // alternated true/false forever, which is precisely the "absent
+                // root versus merely idle" distinction this record exists to draw.
+                sqlite_source(
+                    &mut tasks,
+                    "hermes",
+                    hermes::FORMAT,
+                    db.clone(),
+                    // The DATABASE's id, not a bare constant. Every profile used to
+                    // pass `hermes` and let the transform re-derive a name from each
+                    // session's own mutable columns — which is what split one
+                    // session across two agent ids. `agent_id_for` keys on the path:
+                    // the root keeps the bare `hermes` every deployment already
+                    // ships under, and `profiles/<name>/state.db` becomes
+                    // `hermes-<name>`, matching the standalone collector so a
+                    // machine migrating off it is not renamed.
+                    &hermes_agent_id,
+                    &spool,
+                    state,
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    Some(format!("hermes:{profile}")),
+                    // No label: a default profile is not an extra path, and
+                    // namespacing it would rename every agent id on every machine
+                    // that already has one.
+                    None,
+                );
+            }
+            // Configured extras are resolved against EVERY default profile
+            // database, so pointing one at a profile Hermes already exposes is
+            // rejected rather than collected twice under two ids.
+            // Reserved: the labels the default profile tasks above just claimed.
+            // Without this, `add-path hermes prod=<other>.db` on a machine with a
+            // `prod` profile is accepted, and the two pollers share
+            // `cursors/hermes/prod` and the health key `hermes:prod` — the exact
+            // clobbering the comment above says each profile gets its own
+            // directory to avoid.
+            let hermes_reserved = hermes_profile_dirs(&hermes_dbs);
+            for ep in extras_reserving("hermes", &hermes_dbs, &hermes_reserved) {
+                sqlite_source(
+                    &mut tasks,
+                    "hermes",
+                    hermes::FORMAT,
+                    ep.path.clone(),
+                    hermes::DEFAULT_AGENT_ID,
+                    &spool,
+                    cursors.join("hermes").join(&ep.label),
+                    &env,
+                    machine.as_deref(),
+                    os_user.as_deref(),
+                    redact,
+                    Some(format!("hermes:{}", ep.label)),
+                    Some(ep.label.clone()),
+                );
+            }
         }
     }
 
@@ -1300,6 +1449,10 @@ fn claude_projects_root() -> std::path::PathBuf {
 /// label that separates them lives in `Params`, so a distinct label demands a
 /// distinct task, which then also needs its own cursor directory and its own
 /// health key for the reasons documented on each.
+///
+/// `since_days` is the agent's first-sight window, resolved by the caller when
+/// the deployment is built. Every instance of the source — an extra path's
+/// included — gets the same one, because a window belongs to an agent.
 #[allow(clippy::too_many_arguments)]
 fn file_source(
     tasks: &mut Vec<fpai_collect::TaskSpec>,
@@ -1314,6 +1467,7 @@ fn file_source(
     machine_id: Option<&str>,
     user: Option<&str>,
     redact: fpai_collect::Redact,
+    since_days: Option<u64>,
 ) {
     // The default instance: every root the source ships with, no label.
     file_source_instance(
@@ -1330,6 +1484,7 @@ fn file_source(
         machine_id,
         user,
         redact,
+        since_days,
     );
 
     for ep in extra {
@@ -1353,6 +1508,7 @@ fn file_source(
             machine_id,
             user,
             redact,
+            since_days,
         );
     }
 }
@@ -1373,6 +1529,7 @@ fn file_source_instance(
     machine_id: Option<&str>,
     user: Option<&str>,
     redact: fpai_collect::Redact,
+    since_days: Option<u64>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
@@ -1411,14 +1568,19 @@ fn file_source_instance(
                     // Never the whole history by default. A normal machine holds
                     // hundreds of megabytes of transcripts, and shipping all of
                     // it on first start is not a reasonable default. A backfill
-                    // widens this for its own rebuild — see BACKFILL_SINCE_DAYS,
-                    // without which rewinding cursors delivers only 7 days no
-                    // matter what was asked for.
+                    // widens this for the agents it names — see
+                    // `backfill::Windows`, without which rewinding cursors
+                    // delivers only 7 days no matter what was asked for.
+                    //
+                    // CAPTURED, not looked up: the value moved into this closure
+                    // when the deployment was built, so a supervised restart of
+                    // this task keeps the window it was built with rather than
+                    // whatever a later request set for some other deployment.
                     //
                     // A newly added extra path needs no special case: it has no
                     // cursor, so every file under it is a first discovery and is
                     // read from the start of this same window.
-                    since_days: file_source_since_days(),
+                    since_days,
                 },
             },
             sd,
@@ -1440,6 +1602,7 @@ fn openclaw_sqlite_harness(
     machine_id: Option<&str>,
     user: Option<&str>,
     redact: fpai_collect::Redact,
+    since_days: Option<u64>,
 ) {
     openclaw_sqlite_source(
         tasks,
@@ -1452,6 +1615,7 @@ fn openclaw_sqlite_harness(
         machine_id,
         user,
         redact,
+        since_days,
     );
     for ep in extra {
         openclaw_sqlite_source(
@@ -1465,6 +1629,7 @@ fn openclaw_sqlite_harness(
             machine_id,
             user,
             redact,
+            since_days,
         );
     }
 }
@@ -1481,6 +1646,7 @@ fn openclaw_sqlite_source(
     machine_id: Option<&str>,
     user: Option<&str>,
     redact: fpai_collect::Redact,
+    since_days: Option<u64>,
 ) {
     let task_name = match &label {
         Some(label) => format!("openclaw-sqlite:{label}"),
@@ -1506,7 +1672,8 @@ fn openclaw_sqlite_source(
                     label: label.clone(),
                     max_rows_per_session: 2_000,
                     max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
-                    since_days: file_source_since_days(),
+                    // Captured at build time, like the file tailers' window.
+                    since_days,
                 },
             },
             sd,
@@ -1695,6 +1862,40 @@ fn profile_dir_name(db: &std::path::Path, index: usize) -> String {
     } else {
         safe
     }
+}
+
+/// The cursor-directory name of every Hermes default profile database, in the
+/// order `default_db_paths` returns them — which are also the labels a Hermes
+/// extra path may not take.
+fn hermes_profile_dirs(dbs: &[std::path::PathBuf]) -> Vec<String> {
+    dbs.iter()
+        .enumerate()
+        .map(|(i, db)| profile_dir_name(db, i))
+        .collect()
+}
+
+/// The labels of the Hermes extra paths the collector would run now: the
+/// nested `cursors/hermes/<label>/` stores that are extra paths and not profile
+/// databases.
+///
+/// Resolved with the very inputs `collector_tasks` uses, rejections included,
+/// so the rewind classifies a store exactly as the collector named it. Anything
+/// else under `cursors/hermes/` is treated as a profile, which a user backfill
+/// leaves alone: positively identifying the extras, rather than the profiles,
+/// is the direction where a mistake costs nothing instead of a whole database.
+fn hermes_extra_labels(settings: &fpai_collect::Settings) -> std::collections::BTreeSet<String> {
+    let dbs = fpai_collect::sources::hermes::default_db_paths();
+    let home_dir = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    fpai_collect::extra_paths::resolve_reserving(
+        &settings.extra_paths_for("hermes"),
+        &dbs,
+        &hermes_profile_dirs(&dbs),
+        home_dir.as_deref(),
+    )
+    .accepted
+    .into_iter()
+    .map(|extra| extra.label)
+    .collect()
 }
 
 /// Where OpenAI Codex keeps its rollout logs.
@@ -1903,5 +2104,406 @@ mod tests {
         // Only an all-dashes result falls back to the index.
         let dots = std::path::Path::new("/home/u/.hermes/profiles/.../state.db");
         assert_eq!(profile_dir_name(dots, 3), "profile-3");
+    }
+
+    // ── agents.selected ─────────────────────────────────────────────────────
+
+    /// Process-wide environment set for one test and restored after it, so a
+    /// developer's own `HERMES_HOME` or extra-path overrides cannot change what
+    /// the collector builds — and the test cannot leave them changed either.
+    struct EnvGuard(Vec<(String, Option<std::ffi::OsString>)>);
+
+    impl EnvGuard {
+        fn new(set: &[(&str, &std::path::Path)], remove: &[String]) -> Self {
+            let mut saved = Vec::new();
+            for (key, value) in set {
+                saved.push((key.to_string(), std::env::var_os(key)));
+                // SAFETY: serialised by `test_env::lock_env`, held by the caller.
+                unsafe { std::env::set_var(key, value) };
+            }
+            for key in remove {
+                saved.push((key.clone(), std::env::var_os(key)));
+                unsafe { std::env::remove_var(key) };
+            }
+            EnvGuard(saved)
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // In reverse, so a key named twice ends at its original value.
+            for (key, value) in self.0.iter().rev() {
+                unsafe {
+                    match value {
+                        Some(v) => std::env::set_var(key, v),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+    }
+
+    /// The task names `collector_tasks` builds for `config` (the body of
+    /// config.json), in a scratch home whose Hermes root holds `profiles`.
+    fn task_names(config: &str, profiles: &[&str]) -> Vec<String> {
+        let _env = crate::test_env::lock_env();
+        let base = std::env::temp_dir().join(format!(
+            "failproofaid-tasks-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let fp = base.join("fp");
+        let home = base.join("home");
+        let hermes = home.join(".hermes");
+        std::fs::create_dir_all(&fp).unwrap();
+        for profile in profiles {
+            std::fs::create_dir_all(hermes.join("profiles").join(profile)).unwrap();
+        }
+        let creds = fp.join("credentials.json");
+        std::fs::write(
+            &creds,
+            r#"{"ingest":{"url":"http://127.0.0.1:9/v1/events","key":"k"}}"#,
+        )
+        .unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&creds, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        std::fs::write(fp.join("config.json"), config).unwrap();
+
+        let mut cleared: Vec<String> = HARNESS_KEYS
+            .iter()
+            .map(|h| format!("FAILPROOFAI_{}_EXTRA_PATHS", h.to_ascii_uppercase()))
+            .collect();
+        cleared.push("FAILPROOFAI_INGEST_KEY".into());
+        cleared.push("FAILPROOFAI_INGEST_URL".into());
+        let names = {
+            let _vars = EnvGuard::new(
+                &[
+                    ("FAILPROOFAI_HOME", fp.as_path()),
+                    ("HOME", home.as_path()),
+                    ("HERMES_HOME", hermes.as_path()),
+                ],
+                &cleared,
+            );
+            collector_tasks()
+                .into_iter()
+                .map(|task| task.name)
+                .collect()
+        };
+        std::fs::remove_dir_all(&base).ok();
+        names
+    }
+
+    /// `config.json` with session capture on, an extra path for each of
+    /// claude, openclaw, codex and hermes, and `agents` as given (`None` omits
+    /// the key altogether).
+    fn config_with_agents(agents: Option<&str>) -> String {
+        let agents = agents
+            .map(|a| format!(r#""agents":{a},"#))
+            .unwrap_or_default();
+        format!(
+            r#"{{{agents}"collector":{{"sessions":true,"hooks":true,"sources":{{
+                "claude":{{"extra_paths":["work=/srv/work"]}},
+                "openclaw":{{"extra_paths":["lab=/srv/lab"]}},
+                "codex":{{"extra_paths":["box=/srv/box"]}},
+                "hermes":{{"extra_paths":["team=/srv/team.db"]}}
+            }}}}}}"#
+        )
+    }
+
+    fn count(names: &[String], name: &str) -> usize {
+        names.iter().filter(|n| *n == name).count()
+    }
+
+    #[test]
+    fn with_no_agents_key_every_source_and_extra_path_starts() {
+        // The regression this whole feature must not cause: every config
+        // written before `agents` existed collects exactly what it did.
+        let names = task_names(&config_with_agents(None), &["prod"]);
+        let mut expected: Vec<String> = [
+            "health",
+            "hook-activity",
+            "claude",
+            "claude:work",
+            "claude-subagent",
+            "claude-subagent:work",
+            "codex",
+            "codex:box",
+            "copilot",
+            "openclaw",
+            "openclaw:lab",
+            "openclaw-sqlite",
+            "openclaw-sqlite:lab",
+            "pi",
+            "factory",
+            "antigravity",
+            "cursor",
+            "goose",
+            "opencode",
+            "devin",
+            // One per profile database (the root and `prod`), then the extra.
+            "hermes",
+            "hermes",
+            "hermes:team",
+            "spool-watcher",
+            "spool-sweeper",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let mut got = names.clone();
+        expected.sort();
+        got.sort();
+        assert_eq!(got, expected);
+
+        // A cleared or `seen`-only object means the same as no key at all.
+        for agents in [r#"null"#, r#"{"seen":["claude"]}"#, r#"{"selected":null}"#] {
+            let mut again = task_names(&config_with_agents(Some(agents)), &["prod"]);
+            again.sort();
+            assert_eq!(again, expected, "agents = {agents}");
+        }
+    }
+
+    #[test]
+    fn an_unselected_agents_tasks_do_not_start_including_its_extra_paths_and_profiles() {
+        let names = task_names(
+            &config_with_agents(Some(r#"{"selected":["codex"],"seen":["codex","claude"]}"#)),
+            &["prod"],
+        );
+        let mut got = names.clone();
+        got.sort();
+        assert_eq!(
+            got,
+            [
+                "codex",
+                "codex:box",
+                "health",
+                "hook-activity",
+                "spool-sweeper",
+                "spool-watcher",
+            ],
+            "only codex, its extra path, and what belongs to no agent"
+        );
+        // Spelled out, because each is a separate way to get this wrong.
+        assert_eq!(
+            count(&names, "claude:work"),
+            0,
+            "an extra path of an untraced agent"
+        );
+        assert_eq!(
+            count(&names, "openclaw-sqlite"),
+            0,
+            "the SQLite half of OpenClaw"
+        );
+        assert_eq!(count(&names, "hermes"), 0, "every Hermes profile");
+        assert_eq!(count(&names, "hermes:team"), 0);
+    }
+
+    #[test]
+    fn a_selected_agent_brings_every_source_the_table_gives_it() {
+        let names = task_names(
+            &config_with_agents(Some(r#"{"selected":["claude","openclaw","hermes"]}"#)),
+            &["prod"],
+        );
+        for name in [
+            "claude",
+            "claude:work",
+            "claude-subagent",
+            "claude-subagent:work",
+            "openclaw",
+            "openclaw:lab",
+            "openclaw-sqlite",
+            "openclaw-sqlite:lab",
+            "hermes:team",
+        ] {
+            assert_eq!(count(&names, name), 1, "{name} did not start: {names:?}");
+        }
+        assert_eq!(count(&names, "hermes"), 2, "both Hermes profile databases");
+        for name in ["codex", "codex:box", "goose", "copilot"] {
+            assert_eq!(count(&names, name), 0, "{name} started: {names:?}");
+        }
+    }
+
+    #[test]
+    fn an_empty_selection_still_collects_what_belongs_to_no_agent() {
+        // Hook decisions are one CLI-agnostic store, and the SDK spool is the
+        // user's own agents; neither is anybody's to untick.
+        let mut names = task_names(&config_with_agents(Some(r#"{"selected":[]}"#)), &[]);
+        names.sort();
+        assert_eq!(
+            names,
+            ["health", "hook-activity", "spool-sweeper", "spool-watcher"]
+        );
+    }
+
+    #[test]
+    fn an_unusable_selection_collects_everything_as_the_cli_reads_it() {
+        // `readAgents` in fp-config.ts reads a garbage value as absent — "a
+        // broken file can never quietly switch tracing off" — and the two halves
+        // must agree about what one file means.
+        let everything = task_names(&config_with_agents(None), &[]).len();
+        for agents in [r#""claude""#, r#"["claude"]"#, r#"{"selected":"claude"}"#] {
+            let names = task_names(&config_with_agents(Some(agents)), &[]);
+            assert_eq!(names.len(), everything, "agents = {agents}");
+        }
+    }
+
+    #[test]
+    fn every_task_the_collector_builds_has_a_row_in_the_agent_table() {
+        // A source missing from the table would be started on every machine
+        // with no selection and on none with one — silently either way.
+        let infrastructure = ["health", "hook-activity", "spool-watcher", "spool-sweeper"];
+        for name in task_names(&config_with_agents(None), &["prod"]) {
+            let source = name.split(':').next().unwrap();
+            assert!(
+                infrastructure.contains(&source) || agents::owner_of(source).is_some(),
+                "task {name:?} has no row in agents::SOURCES"
+            );
+        }
+        // hook-activity's cursor directory is `hooks`, the table's shared row.
+        assert_eq!(agents::owner_of("hooks"), Some(agents::Owner::Shared));
+    }
+
+    #[test]
+    fn the_agent_table_names_exactly_the_harness_keys() {
+        // HARNESS_KEYS is what `harness add-path` accepts and what the TS side
+        // mirrors; the table is what the selection and the rewind resolve
+        // through. An agent in one and not the other is a selection that
+        // silently selects nothing.
+        let mut keys: Vec<&str> = HARNESS_KEYS.to_vec();
+        let mut table = agents::known_agents();
+        keys.sort_unstable();
+        table.sort_unstable();
+        assert_eq!(keys, table);
+    }
+
+    #[test]
+    fn the_rewind_classifies_hermes_stores_the_way_the_collector_names_them() {
+        let _env = crate::test_env::lock_env();
+        let base = std::env::temp_dir().join(format!(
+            "failproofaid-hermes-labels-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let home = base.join("home");
+        let hermes = home.join(".hermes");
+        std::fs::create_dir_all(hermes.join("profiles").join("prod")).unwrap();
+        let labels = {
+            let _vars = EnvGuard::new(
+                &[("HOME", home.as_path()), ("HERMES_HOME", hermes.as_path())],
+                &["FAILPROOFAI_HERMES_EXTRA_PATHS".to_string()],
+            );
+            let settings: fpai_collect::Settings = serde_json::from_str(
+                r#"{"sources":{"hermes":{"extra_paths":[
+                    "team=/srv/team.db", "prod=/srv/other.db", "/srv/.hermes-2/state.db"
+                ]}}}"#,
+            )
+            .unwrap();
+            hermes_extra_labels(&settings)
+        };
+        // `prod` is refused because a profile owns that directory — so the
+        // `hermes/prod` store is a profile's, and a user backfill must leave it.
+        assert_eq!(
+            labels,
+            std::collections::BTreeSet::from(["team".to_string(), "state-db".to_string()])
+        );
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn the_selection_journal_lines_say_what_is_and_is_not_collected() {
+        let selection = |ids: &[&str]| fpai_collect::AgentSelection {
+            selected: Some(ids.iter().map(|s| s.to_string()).collect()),
+            unusable: false,
+        };
+
+        assert_eq!(
+            selection_warning(&fpai_collect::AgentSelection::default()),
+            None
+        );
+        assert_eq!(selection_warning(&selection(&["claude"])), None);
+        let one = selection_warning(&selection(&["claude", "claud"])).unwrap();
+        assert!(
+            one.starts_with(
+                "[failproofaid] agents.selected names claud, which has no collector source"
+            ),
+            "{one}"
+        );
+        assert!(one.contains("Known: claude, codex, copilot"), "{one}");
+        let two = selection_warning(&selection(&["claud", "codx"])).unwrap();
+        assert!(two.contains("names claud, codx, which have no"), "{two}");
+        let garbage = fpai_collect::AgentSelection {
+            selected: None,
+            unusable: true,
+        };
+        assert!(
+            selection_warning(&garbage)
+                .unwrap()
+                .contains("ignored and every agent is collected")
+        );
+
+        assert_eq!(
+            selection_summary(&fpai_collect::AgentSelection::default()),
+            None
+        );
+        assert_eq!(
+            selection_summary(&selection(&["hermes", "claude"])).unwrap(),
+            "[failproofaid] agents.selected: collecting sessions from claude, hermes; not \
+             traced: codex, copilot, openclaw, pi, factory, antigravity, cursor, goose, \
+             opencode, devin"
+        );
+        assert_eq!(
+            selection_summary(&selection(&[])).unwrap(),
+            "[failproofaid] agents.selected: collecting sessions from no agent; not traced: \
+             claude, codex, copilot, openclaw, pi, factory, antigravity, cursor, goose, \
+             opencode, devin, hermes"
+        );
+
+        assert_eq!(idle_extra_paths_line("codex", 0), None);
+        assert_eq!(
+            idle_extra_paths_line("codex", 1).unwrap(),
+            "[failproofaid] codex is not traced; its 1 extra capture path is idle"
+        );
+        assert_eq!(
+            idle_extra_paths_line("hermes", 3).unwrap(),
+            "[failproofaid] hermes is not traced; its 3 extra capture paths are idle"
+        );
+    }
+
+    #[test]
+    fn the_source_gate_resolves_windows_per_agent() {
+        let selection = fpai_collect::AgentSelection {
+            selected: Some(vec!["claude".into(), "openclaw".into()]),
+            unusable: false,
+        };
+        let mut windows = backfill::Windows::new();
+        let now = std::time::SystemTime::now();
+        windows.apply(
+            backfill::Kind::User {
+                since: now - Duration::from_secs(30 * 86_400),
+            },
+            &["claude"],
+            now,
+        );
+        let gate = SourceGate {
+            selection: &selection,
+            windows,
+        };
+        assert!(gate.traced("claude-subagent"));
+        assert!(gate.traced("openclaw-sqlite"));
+        assert!(!gate.traced("codex"));
+        assert!(gate.traced("hooks"), "the shared store is never gated");
+        // The subagent source shares claude's window; nobody else gets it.
+        assert_eq!(gate.since_days("claude"), Some(31));
+        assert_eq!(gate.since_days("claude-subagent"), Some(31));
+        assert_eq!(gate.since_days("openclaw-sqlite"), Some(7));
+        assert_eq!(gate.since_days("codex"), Some(7));
     }
 }

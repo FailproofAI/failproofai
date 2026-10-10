@@ -244,12 +244,113 @@ impl Settings {
     }
 }
 
+/// Which agents this machine traces: the `agents` object at the TOP LEVEL of
+/// `config.json` (beside `collector`, not inside it), written by
+/// `failproofai config`.
+///
+/// `selected` is an opt-in list of integration ids (`claude`, `codex`, …). A
+/// harness whose id is not in it starts no collector task at all: not its
+/// default roots, not its extra paths, and for Hermes not a single profile.
+/// ABSENT means every harness, which is what every config written before this
+/// existed says, so an old file keeps collecting exactly what it did.
+///
+/// Read the way `readAgents` in `src/hooks/fp-config.ts` reads it, because the
+/// CLI that writes this key and the daemon that obeys it have to agree on what a
+/// given file means: `config --status` saying one thing while the collector does
+/// another is the failure, whichever of the two is "right". So a value that is
+/// not usable reads as ABSENT, never as an error and never as "nothing". The CLI
+/// chose that direction so a broken file cannot quietly switch tracing off;
+/// `unusable` records it so the daemon can say so instead of widening silently.
+/// Within a usable list, non-strings and blank entries are dropped and repeats
+/// collapse, exactly as the CLI does. Names are otherwise kept as written: the
+/// daemon owns the list of real agents, and warns about one it does not know.
+///
+/// `seen` (what the CLI detected at its last run) is deliberately NOT read. It
+/// changes whenever a new agent is installed, and every field here is one the
+/// collector manager compares: a re-run of `config` that only noticed a new
+/// binary would cycle the collector for nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentSelection {
+    /// `None` = every harness. `Some(ids)` = only these, possibly none at all.
+    pub selected: Option<Vec<String>>,
+    /// `agents` was present but could not be read, so it was treated as absent.
+    pub unusable: bool,
+}
+
+impl AgentSelection {
+    /// Interpret the top-level `agents` value of `config.json`.
+    pub fn from_config_value(agents: Option<&serde_json::Value>) -> Self {
+        let absent = AgentSelection::default();
+        let unusable = AgentSelection {
+            selected: None,
+            unusable: true,
+        };
+        let Some(value) = agents.filter(|v| !v.is_null()) else {
+            return absent;
+        };
+        let Some(table) = value.as_object() else {
+            return unusable;
+        };
+        match table.get("selected") {
+            // `{ "seen": [...] }` alone, or a cleared selection: no selection.
+            None | Some(serde_json::Value::Null) => absent,
+            Some(serde_json::Value::Array(items)) => {
+                let mut ids: Vec<String> = Vec::new();
+                for id in items.iter().filter_map(serde_json::Value::as_str) {
+                    if !id.trim().is_empty() && !ids.iter().any(|kept| kept == id) {
+                        ids.push(id.to_string());
+                    }
+                }
+                AgentSelection {
+                    selected: Some(ids),
+                    unusable: false,
+                }
+            }
+            Some(_) => unusable,
+        }
+    }
+
+    /// Whether `agent` is traced. Every agent is, when nothing was selected.
+    pub fn traces(&self, agent: &str) -> bool {
+        self.selected
+            .as_ref()
+            .is_none_or(|ids| ids.iter().any(|id| id == agent))
+    }
+
+    /// Whether a selection is in force at all.
+    pub fn is_selective(&self) -> bool {
+        self.selected.is_some()
+    }
+
+    /// Selected names that are not in `known`, in the order they were written.
+    ///
+    /// Returned rather than warned about here, like [`Settings::unknown_sources`]:
+    /// the caller owns the real agent list. A misspelt id selects nothing and
+    /// collects nothing, and nothing else in the pipeline would ever mention it.
+    pub fn unknown(&self, known: &[&str]) -> Vec<String> {
+        self.selected
+            .iter()
+            .flatten()
+            .filter(|id| !known.contains(&id.as_str()))
+            .cloned()
+            .collect()
+    }
+}
+
 /// Everything the collector needs, resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectorConfig {
     /// `None` means collection is off for this process.
     pub ingest: Option<Ingest>,
     pub settings: Settings,
+    /// The top-level `agents.selected`. Inside this struct, rather than read by
+    /// the daemon on its own, for the same reason `settings.sources` is: the
+    /// collector manager cycles the collector whenever the WHOLE value differs
+    /// from the one the running deployment was built from. A selection resolved
+    /// anywhere else would be written by `failproofai config`, reported as
+    /// applied, and ignored by a running daemon until some unrelated change or a
+    /// restart.
+    pub agents: AgentSelection,
     /// Directories watched for ready-to-upload event batches, in the order
     /// they are scanned.
     pub spool_dirs: Vec<PathBuf>,
@@ -328,7 +429,13 @@ impl From<io::Error> for ConfigError {
 /// real home directory would be the wrong shape.
 pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
     let ingest = load_ingest(home)?;
-    let settings = load_settings(home)?;
+    // ONE read of config.json for both halves, so a file rewritten between two
+    // reads cannot yield the collector settings of one version and the agent
+    // selection of another.
+    let doc = read_config_doc(home)?;
+    let settings = settings_from(&doc)?;
+    let agents =
+        AgentSelection::from_config_value(doc.as_ref().and_then(|(_, root)| root.get("agents")));
 
     if settings.environment.contains(',') {
         // Fail here rather than let ingest silently skip every line. The
@@ -368,6 +475,7 @@ pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
     Ok(CollectorConfig {
         ingest,
         settings,
+        agents,
         spool_dirs,
         own_spool_dir,
         failed_dir,
@@ -440,11 +548,13 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
     }
 }
 
-fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
+/// `config.json`, parsed, with the path it came from. `None` when there is no
+/// file, which is every machine that has not been set up.
+fn read_config_doc(home: &Path) -> Result<Option<(PathBuf, serde_json::Value)>, ConfigError> {
     let path = home.join(CONFIG_FILE);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Settings::default()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(ConfigError::Io(e)),
     };
 
@@ -453,14 +563,26 @@ fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
             path: path.clone(),
             detail: e.to_string(),
         })?;
+    Ok(Some((path, root)))
+}
 
+/// The `collector` object of a parsed `config.json`.
+fn settings_from(doc: &Option<(PathBuf, serde_json::Value)>) -> Result<Settings, ConfigError> {
+    let Some((path, root)) = doc else {
+        return Ok(Settings::default());
+    };
     match root.get("collector") {
         None => Ok(Settings::default()),
         Some(v) => serde_json::from_value(v.clone()).map_err(|e| ConfigError::Malformed {
-            path,
+            path: path.clone(),
             detail: format!("the collector object is not usable: {e}"),
         }),
     }
+}
+
+#[cfg(test)]
+fn load_settings(home: &Path) -> Result<Settings, ConfigError> {
+    settings_from(&read_config_doc(home)?)
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
@@ -793,6 +915,116 @@ mod extra_path_settings_tests {
         );
 
         // ...and removing it changes back, so `remove-path` also takes effect.
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(d.path()).unwrap(), before);
+    }
+
+    // ── agents.selected ─────────────────────────────────────────────────────
+
+    fn selection_from(text: &str) -> AgentSelection {
+        let root: serde_json::Value = serde_json::from_str(text).unwrap();
+        AgentSelection::from_config_value(root.get("agents"))
+    }
+
+    #[test]
+    fn no_agents_key_means_every_agent_is_traced() {
+        // Every config written before the key existed, which must keep
+        // collecting exactly what it did.
+        for text in [
+            r#"{"collector":{"sessions":true}}"#,
+            r#"{"agents":null}"#,
+            // `seen` alone is the CLI's bookkeeping, not a selection.
+            r#"{"agents":{"seen":["claude"]}}"#,
+            r#"{"agents":{"selected":null,"seen":[]}}"#,
+        ] {
+            let s = selection_from(text);
+            assert_eq!(s, AgentSelection::default(), "{text}");
+            assert!(!s.is_selective());
+            assert!(s.traces("claude") && s.traces("hermes"), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_selection_traces_only_what_it_names() {
+        let s = selection_from(r#"{"agents":{"selected":["claude","hermes"],"seen":["goose"]}}"#);
+        assert!(s.is_selective());
+        assert!(s.traces("claude") && s.traces("hermes"));
+        assert!(!s.traces("codex"));
+        assert!(!s.traces("goose"), "`seen` selects nothing");
+
+        let none = selection_from(r#"{"agents":{"selected":[]}}"#);
+        assert!(none.is_selective());
+        assert!(!none.traces("claude"), "an empty selection traces nothing");
+    }
+
+    /// The same reading `readAgents` in `src/hooks/fp-config.ts` gives, so the
+    /// CLI's "tracing every agent" and the collector cannot disagree about one
+    /// file: a garbage value is absent, never "nothing".
+    #[test]
+    fn a_selection_is_read_the_way_the_cli_reads_it() {
+        let s =
+            selection_from(r#"{"agents":{"selected":["claude",7,"","  ","claude",null,"codx"]}}"#);
+        assert_eq!(
+            s.selected,
+            Some(vec!["claude".to_string(), "codx".to_string()]),
+            "non-strings and blanks dropped, repeats collapsed, names kept as written"
+        );
+        assert!(!s.unusable);
+        assert_eq!(s.unknown(&["claude", "codex"]), vec!["codx".to_string()]);
+
+        for garbage in [
+            r#"{"agents":"claude"}"#,
+            r#"{"agents":["claude"]}"#,
+            r#"{"agents":{"selected":"claude"}}"#,
+            r#"{"agents":{"selected":{"claude":true}}}"#,
+        ] {
+            let s = selection_from(garbage);
+            assert_eq!(s.selected, None, "{garbage}");
+            assert!(
+                s.unusable,
+                "{garbage} must be reported, not silently widened"
+            );
+            assert!(s.traces("codex"), "{garbage}");
+        }
+    }
+
+    /// The selection must be INSIDE the compared `CollectorConfig`, or a
+    /// running daemon never notices `failproofai config` changed it — the same
+    /// dependency `collector_config_change_cycles_the_collector` pins for
+    /// `sources`.
+    #[test]
+    fn changing_the_selection_changes_the_collector_config_but_seen_does_not() {
+        let _env = crate::test_env::lock_env();
+        let d = home_with(r#"{"collector":{"sessions":true}}"#);
+        let before = load(d.path()).unwrap();
+        assert_eq!(before.agents, AgentSelection::default());
+
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"agents":{"selected":["claude"],"seen":["claude"]},"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        let selected = load(d.path()).unwrap();
+        assert_ne!(
+            before, selected,
+            "selecting agents did not change CollectorConfig, so a running daemon would \
+             keep collecting every agent until an unrelated restart"
+        );
+        assert!(selected.agents.traces("claude") && !selected.agents.traces("codex"));
+
+        // A newly detected agent changes only `seen`: nothing to cycle for.
+        fs::write(
+            d.path().join(CONFIG_FILE),
+            r#"{"agents":{"selected":["claude"],"seen":["claude","goose"]},"collector":{"sessions":true}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(d.path()).unwrap(), selected);
+
+        // ...and clearing the selection changes it back.
         fs::write(
             d.path().join(CONFIG_FILE),
             r#"{"collector":{"sessions":true}}"#,

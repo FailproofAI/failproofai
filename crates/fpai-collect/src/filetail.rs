@@ -205,9 +205,13 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
             "file source root"
         );
     }
+    // The window too: after a backfill, "why were older files not re-read?" is
+    // answered by the window this instance was BUILT with, and nothing else
+    // records it.
     tracing::info!(
         source = spec.format.kind,
         resumed = cursors.len(),
+        since_days = ?spec.params.since_days,
         "file source started"
     );
 

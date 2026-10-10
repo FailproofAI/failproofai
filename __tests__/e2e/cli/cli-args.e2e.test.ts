@@ -474,3 +474,16 @@ describe("backfill's arguments", () => {
     expect(result.stdout).toMatch(/--agents <a,b> +Only these traced agents/);
   });
 });
+
+describe("action results in the new look", () => {
+  it("draws a failed flush as ✕ with its fix indented under it, under the header", () => {
+    const result = runCli("flush");
+    expect(result.exitCode).toBe(1);
+    const lines = result.stderr.split("\n");
+    expect(lines[0]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Flush$/);
+    expect(result.stderr).toMatch(/^✕ This machine is not connected, so there is nowhere to flush to\.$/m);
+    expect(result.stderr).toMatch(/^ {2}Connect it with failproofai config\.$/m);
+    // Backticks become the command alone; never printed literally.
+    expect(result.stderr).not.toContain("`");
+  });
+});

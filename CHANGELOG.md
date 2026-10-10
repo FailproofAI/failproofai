@@ -4,6 +4,7 @@
 
 ### Features
 
+- `flush`, `migrate`, `update` and `uninstall` results are drawn in the new look: the header names the command, and a failure opens with ✕ and its fix indented under it (#PR)
 - `failproofai backfill` re-sends only the agents failproofai traces, counts sessions with the same readers the audit uses (all twelve agents, where the old survey knew seven), and takes `--agents` for a subset. A name that is not an agent, an untraced agent, or a daemon of another version is refused before anything is written. `config` takes `--oss` and `--agents`, `config --status` counts agents found but not traced, and `harness` says when an agent's extra paths are idle because it is not traced (#PR)
 - New terminal look for the CLI, the dashboard launch screen: bare `failproofai` prints it once the dashboard is actually listening, with its address, the policies that are on, the agents traced and the cloud connection, plus one warning when policies are not enforcing or the dashboard is reachable from other machines. A server that fails to start says why in one line (a taken port is named as such), Next.js's own startup lines are gone, piped output carries no colour codes, and `failproofai audit` hands off to the dashboard without the logomark or the screen (#PR)
 - `failproofai audit` shows a progress bar per agent and running counts of what would be blocked or warned, redrawn at most every 100 ms in one write per frame; piped or under `NO_COLOR` it prints the finished screen once. Its sign-in, `--schedule`, `--no-schedule` and `--status` screens move to the new look, and audit no longer honours `FORCE_COLOR`, like every other screen (#PR)
@@ -20,7 +21,6 @@
 
 ### Fixes
 
-- `flush`, `migrate`, `update` and `uninstall` results are drawn in the new look: the header names the command, and a failure opens with ✕ and its fix indented under it (#PR)
 - `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now says how many under BUILT IN, with the command that moves them into a pack (#PR)
 - `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#PR)
 - A config change that landed while the daemon was restarting its collector after a backfill was recorded as already running and never applied. `failproofai config` re-adding an agent hits exactly that, writing its backfill request and then the selection, so the agent stayed off until some unrelated edit (#PR)

@@ -24,6 +24,7 @@ import {
   renderBrandLogo,
   rows,
   rule,
+  screenKit,
   stack,
   table,
   title,
@@ -895,5 +896,173 @@ describe("rule — the one accent every sectioned surface carries", () => {
     expect(painted).toContain(brandAnsi("pink"));
     expect(visibleWidth(painted)).toBe(visibleWidth(plain));
     expect(visibleWidth(plain)).toBe(80 - INDENT.length);
+  });
+});
+
+
+describe("screenKit — the 2026-10 building blocks", () => {
+  const strip = (s: string) => s.replace(/\x1B\[[0-9;]*m/g, "");
+  const plain = screenKit({ version: "1.0.11", cols: 104, color: false });
+
+  it("opens every screen with the wordmark, version and context", () => {
+    expect(plain.header("Policies")).toBe("failproof ai  v1.0.11  ·  Policies");
+    expect(plain.header()).toBe("failproof ai  v1.0.11");
+  });
+
+  it("paints the wordmark's `il` pink and bold, and the version grey", () => {
+    const k = withEnv(TRUECOLOR, () => screenKit({ version: "1.0.11", color: true }));
+    const h = k.header("Status");
+    expect(h).toContain(`\x1B[1;${PINK_24}mil\x1B[0m`);
+    expect(h).toContain("\x1B[38;2;118;127;139mv1.0.11\x1B[0m");
+    expect(strip(h)).toBe("failproof ai  v1.0.11  ·  Status");
+  });
+
+  it("uppercases headings and keeps their meta grey and as written", () => {
+    expect(plain.head("Dashboard")).toBe("DASHBOARD");
+    expect(plain.head("Which agents should failproofai trace?", "8 of 9 selected")).toBe(
+      "WHICH AGENTS SHOULD FAILPROOFAI TRACE?  8 of 9 selected",
+    );
+  });
+
+  it("lines up kv values where the reference does", () => {
+    // Copied from the reference's launch screen, plain.
+    expect(
+      plain.kv([
+        ["url", "http://127.0.0.1:8020  ● live"],
+        ["policies", "10 on from FailproofAI/policies@06b802b"],
+        ["agents", "9 traced: Claude Code, Codex, Copilot, Cursor and 5 more"],
+        ["cloud", "Connected as chetanraghuvanshi85"],
+      ]),
+    ).toEqual([
+      "  url        http://127.0.0.1:8020  ● live",
+      "  policies   10 on from FailproofAI/policies@06b802b",
+      "  agents     9 traced: Claude Code, Codex, Copilot, Cursor and 5 more",
+      "  cloud      Connected as chetanraghuvanshi85",
+    ]);
+  });
+
+  it("widens the kv column for a long label instead of running it into its value", () => {
+    const [line] = plain.kv([["would block", "7: block-env-files 4"]]);
+    expect(line).toBe("  would block  7: block-env-files 4");
+  });
+
+  it("never cuts a kv value, however narrow the terminal", () => {
+    const url = "https://app.befailproof.ai/settings/machines/0b1c2d3e-0000-4000-8000-000000000001";
+    const k = screenKit({ cols: 40, color: false, fit: true });
+    expect(k.kv([["dashboard", url]])[0]).toContain(url);
+  });
+
+  it("renders a `command  description` row at the reference's column", () => {
+    expect(plain.rows([["command", "What it does, in a short sentence"]], 14)).toEqual([
+      "  command       What it does, in a short sentence",
+    ]);
+  });
+
+  it("always leaves two spaces after the widest name — the longest real policy name is 32", () => {
+    const name = "require-no-conflicts-before-stop";
+    expect(name).toHaveLength(32);
+    const [line] = plain.rows([[name, "Require no merge conflicts before stopping"]], 32);
+    expect(line).toBe(`  ${name}  Require no merge conflicts before stopping`);
+  });
+
+  it("shortens a description to fit the terminal, but never the name", () => {
+    const k = screenKit({ cols: 40, color: false, fit: true });
+    const [line] = k.rows([["failproofai policies show <owner/repo>", "See what a pack holds before installing it"]]);
+    expect(line.startsWith("  failproofai policies show <owner/repo>  ")).toBe(true);
+    const [short] = k.rows([["--wait", "Wait until everything is delivered to the cloud dashboard"]]);
+    expect(visibleWidth(short)).toBeLessThanOrEqual(40);
+    expect(short.endsWith("…")).toBe(true);
+  });
+
+  it("never shortens anything when fitting is off — piped output is never cut", () => {
+    const k = screenKit({ cols: 40, color: false });
+    const [line] = k.rows([["--wait", "Wait until everything is delivered to the cloud dashboard"]]);
+    expect(line).toBe("  --wait  Wait until everything is delivered to the cloud dashboard");
+  });
+
+  it("states results, cautions and failures with one glyph and an inline fix", () => {
+    expect(plain.ok("Done, said in the past tense")).toBe("✓ Done, said in the past tense");
+    expect(plain.ok("Published acme/guards", "in 2.1s")).toBe("✓ Published acme/guards  in 2.1s");
+    expect(plain.caution("Needs attention", "the fix")).toBe("▲ Needs attention  ·  the fix");
+    expect(plain.fail("Failed, said plainly", "the fix")).toBe("✕ Failed, said plainly  ·  the fix");
+  });
+
+  it("paints the state glyphs by role and every fix as a command", () => {
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    expect(k.ok("x")).toContain(`\x1B[${MINT_24}m✓`);
+    expect(k.caution("x", "failproofai config")).toContain(`\x1B[${PINK_24}mfailproofai config`);
+    expect(k.fail("x")).toContain("\x1B[38;2;240;113;120m✕");
+  });
+
+  it("joins key hints with a spaced dot", () => {
+    expect(plain.keys(["↑↓ move", "space toggle", "enter confirm"])).toBe(
+      "↑↓ move  ·  space toggle  ·  enter confirm",
+    );
+  });
+
+  it("draws a progress bar: pink fill and a grey track in colour, a blank track without it", () => {
+    expect(plain.bar(10, 0.6)).toBe("━━━━━━    ");
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    const painted = k.bar(10, 0.6);
+    expect(painted).toContain(`\x1B[${PINK_24}m━━━━━━\x1B[0m`);
+    expect(painted).toContain("\x1B[38;2;62;67;76m━━━━\x1B[0m");
+    // No empty colour span at either end.
+    expect(k.bar(10, 0)).not.toContain(`\x1B[${PINK_24}m\x1B[0m`);
+    expect(k.bar(10, 1)).not.toContain("38;2;62;67;76");
+  });
+
+  it("shows the logomark only where it fits, and never the retired ▮▮ one-liner", () => {
+    const art = screenKit({ cols: 80, color: false }).logo();
+    expect(art).toHaveLength(10);
+    for (const line of art) expect(line.startsWith("  ")).toBe(true);
+    expect(art.join("")).not.toContain("\x1B");
+    expect(screenKit({ cols: 21, color: false }).logo()).toEqual([]);
+    expect(art.join("")).not.toContain("▮");
+  });
+
+  it("builds a command's --help from usage, options and examples, and nothing else", () => {
+    const page = plain.helpPage({
+      name: "flush",
+      usage: [["failproofai flush [options]", "Send queued events to cloud now"]],
+      options: [
+        ["--wait", "Wait until everything is delivered"],
+        ["--timeout <secs>", "How long to wait (default 60)"],
+      ],
+      optionsCol: 20,
+    });
+    expect(page).toEqual([
+      "failproof ai  v1.0.11  ·  flush",
+      "",
+      "USAGE",
+      "  failproofai flush [options]  Send queued events to cloud now",
+      "",
+      "OPTIONS",
+      // The reference's option column, exactly.
+      "  --wait              Wait until everything is delivered",
+      "  --timeout <secs>    How long to wait (default 60)",
+    ]);
+  });
+
+  it("emits no escape at all when colour is off", () => {
+    const all = [
+      plain.header("x"),
+      plain.head("x", "m"),
+      ...plain.kv([["a", "b"]]),
+      ...plain.rows([["a", "b"]]),
+      plain.ok("x", "d"),
+      plain.caution("x", "f"),
+      plain.fail("x", "f"),
+      plain.keys(["a"]),
+      plain.bar(5, 0.5),
+      plain.on,
+      plain.off,
+      plain.cmd("failproofai config"),
+    ].join("\n");
+    expect(all).not.toContain("\x1B");
+  });
+
+  it("defaults the header's version to this build's", async () => {
+    const { version } = await import("../../package.json");
+    expect(screenKit().header()).toBe(`failproof ai  v${version}`);
   });
 });

@@ -18,6 +18,7 @@
  * 24-bit, the xterm-256 cube, or the 16 basic ANSI hues.
  */
 import * as readline from "node:readline";
+import { version as cliVersion } from "../../package.json";
 
 export type TTYIn = NodeJS.ReadableStream & {
   isTTY?: boolean;
@@ -1754,4 +1755,142 @@ export function helpScreen(spec: HelpScreenSpec, opts?: RenderOpts): string[] {
   }
   if (spec.footer?.length) groups.push(spec.footer.map((l) => `${INDENT}${c.dim(l)}`));
   return stack(...groups);
+}
+
+// ── the 2026-10 screen language ─────────────────────────────────────────────
+/**
+ * The redesign's building blocks: open text on the terminal — the wordmark
+ * header, UPPERCASE headings at column 0, rows indented two, colour by role, and
+ * no boxes or rules. The byte-level target is `reference/screens.js` →
+ * `FP.primitives` in the design handoff; the bytes differ only where the tiers
+ * above say how a colour is spelled.
+ *
+ * Commands, URLs, paths and ids are never cut: they are the part a person
+ * copies, and half of one runs the wrong thing. Prose may be shortened with `…`
+ * when `fit` is on, which a caller sets only for a terminal — piped output is
+ * never cut.
+ *
+ * ONE exported factory rather than a dozen functions, on purpose. The CLI ships
+ * as a single scope-hoisted bundle, and a new top-level name that matches a
+ * local inside a builtin policy or an audit detector (`cmd`, `row`, `head`, …)
+ * makes the bundler rename that local. That changes the function source the
+ * audit cache keys on (`engineVersion` / `detectorVersion`), and every user's
+ * history is rescanned from zero at upgrade. Everything here lives inside the
+ * factory, so the bundle gains exactly one name.
+ */
+export interface ScreenKitOpts extends RenderOpts {
+  /** The version the header shows. Defaults to this build's. */
+  version?: string;
+  /** Shorten prose that does not fit `cols`, ending on `…`. Terminal only. */
+  fit?: boolean;
+}
+
+export function screenKit(opts: ScreenKitOpts = {}) {
+  const { cols, c } = ctx(opts);
+  const colour = opts.color ?? false;
+  const version = opts.version ?? cliVersion;
+  const sep = c.ink3("  ·  ");
+  // Never paint nothing: an empty span is two escapes with no text between.
+  const tint = (paintFn: (s: string) => string, s: string): string => (s ? paintFn(s) : "");
+
+  /** Typeable: every command on a screen is pink. */
+  const cmd = (s: string): string => c.pink(s);
+  const on = c.guide(RADIO_ON);
+  const off = c.ink3(RADIO_OFF);
+
+  /** Prose shortened to `room` columns when fitting is on; untouched otherwise. */
+  const prose = (s: string, room: number): string =>
+    opts.fit && visibleWidth(s) > room ? fit(s, Math.max(1, room)) : s;
+
+  /** `failproof ai  v1.0.11  ·  Context` — the line every screen opens with. */
+  const header = (context?: string): string =>
+    `${c.bold("fa")}${c.pinkBold("il")}${c.bold("proof ai")}  ${c.ink3(`v${version}`)}` +
+    (context ? `${sep}${context}` : "");
+
+  /** An UPPERCASE heading, with optional grey meta after it. */
+  const head = (text: string, meta?: string): string =>
+    c.bold(text.toUpperCase()) + (meta ? `  ${c.ink3(meta)}` : "");
+
+  /**
+   * `name  description` rows on one column for the block: at least `minCol`
+   * wide, and always two spaces past the widest name. The design fixes its
+   * columns by hand, and the longest real policy name is exactly the 32 it
+   * fixes, so a fixed column runs that name into its description. Names are
+   * never cut; descriptions are prose and give up the room.
+   */
+  const rows = (items: Array<[string, string?]>, minCol = 0): string[] => {
+    const width = Math.max(minCol, ...items.map(([name, desc]) => (desc ? visibleWidth(name) + 2 : 0)));
+    return items.map(([name, desc]) => {
+      if (!desc) return `${INDENT}${name}`;
+      const lead = `${INDENT}${pad(name, width)}`;
+      return lead + prose(c.ink2(desc), cols - visibleWidth(lead));
+    });
+  };
+
+  /**
+   * Grey labels and their values, on one column at least nine wide — where the
+   * reference starts its values. Values are never cut: they are URLs, ids and
+   * counts, and a line that outgrows the terminal is left for it to wrap.
+   */
+  const kv = (items: Array<[string, string]>, minLabel = 9): string[] => {
+    const width = Math.max(minLabel, ...items.map(([label]) => visibleWidth(label))) + 2;
+    return items.map(([label, value]) =>
+      value ? `${INDENT}${pad(c.ink3(label), width)}${value}` : `${INDENT}${c.ink3(label)}`,
+    );
+  };
+
+  /** `✓ Done, said in the past tense.` with optional grey detail. */
+  const ok = (text: string, detail?: string): string =>
+    `${c.guide("✓")} ${text}${detail ? `  ${c.ink3(detail)}` : ""}`;
+
+  /** `▲ Needs attention.  ·  the fix` */
+  const caution = (text: string, fix?: string): string =>
+    `${c.warn("▲")} ${text}${fix ? `${sep}${cmd(fix)}` : ""}`;
+
+  /** `✕ Failed, said plainly.  ·  the fix` */
+  const fail = (text: string, fix?: string): string =>
+    `${c.err("✕")} ${text}${fix ? `${sep}${cmd(fix)}` : ""}`;
+
+  /** Lowercase key hints at the foot of an interactive screen. */
+  const keys = (list: string[]): string => c.ink3(list.join("  ·  "));
+
+  /**
+   * A progress bar `width` cells wide and `fraction` full: the filled part pink,
+   * the rest the track grey. With colour off the rest is blank, because one
+   * unbroken run of `━` would show no progress at all.
+   */
+  const bar = (width: number, fraction: number): string => {
+    const filled = Math.round(Math.max(0, Math.min(1, fraction)) * width);
+    const rest = Math.max(0, width - filled);
+    return tint(c.pink, "━".repeat(filled)) + (colour ? tint(c.track, "━".repeat(rest)) : " ".repeat(rest));
+  };
+
+  /**
+   * The logomark with a two-space margin, or nothing on a terminal too narrow
+   * to draw it — the old `▮▮` one-liner is retired with the rest of that mark.
+   * Callers show it only on a TTY, and only on bare `failproofai` and at the
+   * start of a `config` run.
+   */
+  const logo = (): string[] => {
+    if (cols < LOGO_MIN_COLS) return [];
+    const tier: ColorTier = colour ? colorTier() : "basic";
+    return renderLogo(tier).map((line) => `${INDENT}${line}`);
+  };
+
+  /** A command's `--help`: usage, options and examples. Nothing else. */
+  const helpPage = (spec: {
+    name: string;
+    usage: Array<[string, string?]>;
+    options?: Array<[string, string]>;
+    examples?: string[];
+    /** The options column, when the design fixes a wider one than the data needs. */
+    optionsCol?: number;
+  }): string[] => {
+    const out = [header(spec.name), "", head("Usage"), ...rows(spec.usage)];
+    if (spec.options?.length) out.push("", head("Options"), ...rows(spec.options, spec.optionsCol ?? 0));
+    if (spec.examples?.length) out.push("", head("Examples"), ...spec.examples.map((e) => `${INDENT}${cmd(e)}`));
+    return out;
+  };
+
+  return { cols, sep, cmd, on, off, header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage };
 }

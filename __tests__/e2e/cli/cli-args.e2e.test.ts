@@ -424,3 +424,53 @@ describe("policies --uninstall: all valid names", () => {
     assertSuccess(result);
   });
 });
+
+describe("config's own options (setup v2)", () => {
+  it("refuses --oss with --token: one uses open source, the other connects", () => {
+    const result = runCli("config", "--oss", "--token", "k".repeat(20));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--oss and --token cannot be combined");
+  });
+
+  it("refuses a name that is not an agent, naming the real ones", () => {
+    const result = runCli("config", "--agents", "claud,codex");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Not an agent: claud");
+    expect(result.stderr).toContain("claude, codex, copilot");
+    expect(result.stderr).toContain("or all");
+  });
+
+  it("refuses an option it does not take, instead of running setup without it", () => {
+    const result = runCli("config", "--agent", "claude");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unexpected argument: --agent");
+  });
+
+  it("suggests the flag a bare word meant", () => {
+    const result = runCli("config", "status");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("failproofai config --status");
+  });
+
+  it("documents --oss and --agents", () => {
+    const result = runCli("config", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(/--oss +Use open source; leaves any connection as it is/);
+    expect(result.stdout).toMatch(/--agents <a,b> +Trace these agents, or all, without asking/);
+  });
+});
+
+describe("backfill's arguments", () => {
+  it("refuses a bare window instead of silently running the default", () => {
+    const result = runCli("backfill", "6m");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unexpected argument: 6m");
+    expect(result.stderr).toContain("failproofai backfill --since 6m");
+  });
+
+  it("documents --agents", () => {
+    const result = runCli("backfill", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(/--agents <a,b> +Only these traced agents/);
+  });
+});

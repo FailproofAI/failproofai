@@ -29,14 +29,17 @@
  * on a real machine: the CLI reported success, and the actual failure sat in the
  * journal for twenty minutes while batches parked.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 
 import { failproofaiHome } from "./fp-home";
 import { readConfig } from "./fp-config";
 import { readIngestCredential } from "./collector-config";
-import { daemonServiceStatus, isDaemonSupportedPlatform } from "./daemon-service";
+import { daemonServiceStatus, daemonVersionSkew, isDaemonSupportedPlatform } from "./daemon-service";
 import { backfillRequestPath, writeBackfillRequest } from "./backfill-request";
+import { getIntegration } from "./integrations";
+import { INTEGRATION_TYPES, type IntegrationType } from "./types";
+import { screenKit, type RenderOpts } from "./tui";
+import { getAdapter } from "../audit/cli-adapters";
 
 /** Default window. `--since` widens it. */
 export const DEFAULT_BACKFILL_DAYS = 30;
@@ -46,8 +49,14 @@ export interface BackfillOptions {
   sinceMs?: number;
   /** Report what would be re-read and write nothing. */
   dryRun?: boolean;
+  /** `--agents`: a subset of the traced agents. Unvalidated ids, as typed. */
+  agents?: string[];
+  /** How the screen is drawn. */
+  render?: RenderOpts;
   /** Injected for tests. */
   now?: number;
+  /** Injected for tests: sessions an agent has at or after `sinceMs`. */
+  countSessions?: (cli: IntegrationType, sinceMs: number) => Promise<number>;
 }
 
 export interface BackfillResult {
@@ -58,179 +67,180 @@ export interface BackfillResult {
 export { backfillRequestPath };
 
 /**
- * Where each agent CLI keeps its transcripts, so the command can say what it is
- * about to re-read rather than asking for trust.
- *
- * Deliberately a SURVEY, not the source of truth. The daemon decides what is
- * actually collected from its own config; this list only produces the sentence
- * a person reads before agreeing. A directory missing here means a quieter
- * message, never a missed backfill.
+ * Agents whose history lives in a database the collector reads by row, with
+ * no time window: a backfill re-sends all of it, whatever `--since` says.
+ * Hermes keeps one database per profile, and the daemon does not rewind those
+ * at all until it can bound them (D7).
  */
-const SESSION_DIRS: Array<{ cli: string; dir: string }> = [
-  { cli: "Claude Code", dir: ".claude/projects" },
-  { cli: "OpenAI Codex", dir: ".codex/sessions" },
-  { cli: "Cursor", dir: ".cursor/chats" },
-  { cli: "GitHub Copilot", dir: ".copilot/history-session-state" },
-  { cli: "OpenCode", dir: ".local/share/opencode/storage" },
-  { cli: "Factory Droid", dir: ".factory/sessions" },
-  { cli: "Antigravity", dir: ".gemini/antigravity-cli/brain" },
-];
+const WHOLE_HISTORY: ReadonlySet<IntegrationType> = new Set(["goose", "opencode", "devin"]);
+const NOT_RESENT: ReadonlySet<IntegrationType> = new Set(["hermes"]);
 
-interface Survey {
-  cli: string;
-  files: number;
-  newest: number;
-}
-
-/** What is on disk and inside the window, per CLI. */
-function surveySessions(sinceMs: number, homeDir: string): Survey[] {
-  const out: Survey[] = [];
-  for (const { cli, dir } of SESSION_DIRS) {
-    const root = join(homeDir, dir);
-    if (!existsSync(root)) continue;
-    let files = 0;
-    let newest = 0;
-    const walk = (d: string, depth: number) => {
-      // Bounded: these trees are date-nested a few levels deep, and an
-      // unbounded walk on a symlinked home is a way to hang a CLI command.
-      if (depth > 6) return;
-      let entries;
-      try {
-        entries = readdirSync(d, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const e of entries) {
-        const p = join(d, e.name);
-        if (e.isDirectory()) {
-          walk(p, depth + 1);
-          continue;
-        }
-        try {
-          const st = statSync(p);
-          if (st.mtimeMs >= sinceMs) {
-            files += 1;
-            newest = Math.max(newest, st.mtimeMs);
-          }
-        } catch {
-          /* raced away mid-walk */
-        }
-      }
-    };
-    walk(root, 0);
-    if (files > 0) out.push({ cli, files, newest });
+/** Sessions an agent has in the window, from the same adapters the audit reads. */
+async function adapterSessionCount(cli: IntegrationType, sinceMs: number): Promise<number> {
+  try {
+    return (await getAdapter(cli).listTranscripts({ sinceMs })).length;
+  } catch {
+    // An agent whose store cannot be read has nothing to count; the daemon
+    // decides what is actually sent either way.
+    return 0;
   }
-  return out;
 }
 
-export function runBackfillCommand(opts: BackfillOptions = {}): BackfillResult {
+const plural = (n: number, one: string, many = `${one}s`): string => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export async function runBackfillCommand(opts: BackfillOptions = {}): Promise<BackfillResult> {
+  const kit = screenKit(opts.render ?? {});
   const now = opts.now ?? Date.now();
   const sinceMs = opts.sinceMs ?? now - DEFAULT_BACKFILL_DAYS * 24 * 60 * 60 * 1000;
+  const sinceLabel = new Date(sinceMs).toISOString().slice(0, 10);
   const home = failproofaiHome();
+  const fail = (text: string, ...fix: string[]): BackfillResult => ({ exitCode: 1, lines: [kit.fail(text), ...fix] });
 
   if (!existsSync(home)) {
-    return {
-      exitCode: 1,
-      lines: [`No failproofai home at ${home}. Run \`failproofai config\` first.`],
-    };
+    return fail(`There is no failproofai home at ${home}.`, `  Set this machine up first:  ${kit.cmd("failproofai config")}`);
   }
 
   // Checked HERE, not left to the daemon. Handing off an impossible request and
   // reporting success is the failure this command is partly a response to.
-  const ingest = readIngestCredential();
-  if (!ingest) {
-    return {
-      exitCode: 1,
-      lines: [
-        "This machine is not connected, so there is nowhere to send history.",
-        "Connect first: `failproofai config --token <key>`.",
-      ],
-    };
+  if (!readIngestCredential()) {
+    return fail(
+      "This machine isn't connected, so there is nowhere to send history.",
+      `  Connect it:  ${kit.cmd("failproofai config")}`,
+    );
   }
 
   let sessions = false;
   let hooks = false;
+  let selected: IntegrationType[] | null = null;
   try {
     const cfg = readConfig();
     sessions = cfg.collector?.sessions ?? false;
     hooks = cfg.collector?.hooks ?? false;
+    if (cfg.agents) selected = INTEGRATION_TYPES.filter((id) => cfg.agents?.selected.includes(id));
   } catch {
     /* an unreadable config is reported as "nothing enabled" below */
   }
   if (!sessions && !hooks) {
-    return {
-      exitCode: 1,
-      lines: [
-        "Collection is switched off, so a backfill would re-read history and send",
-        'none of it. Enable it in ~/.failproofai/config.json under "collector".',
-      ],
-    };
+    return fail(
+      "Collection is switched off, so a backfill would send nothing.",
+      `  Turn it on under "collector" in  ${kit.cmd("~/.failproofai/config.json")}`,
+    );
   }
 
-  const found = surveySessions(sinceMs, dirname(home));
-  const totalFiles = found.reduce((n, f) => n + f.files, 0);
-  const sinceLabel = new Date(sinceMs).toISOString().slice(0, 10);
+  // Traced agents only. With no saved selection every agent is traced, which
+  // is how the daemon reads the same file.
+  const traced = selected ?? [...INTEGRATION_TYPES];
+  let target = traced;
+  if (opts.agents && opts.agents.length > 0) {
+    const unknown = opts.agents.filter((id) => !(INTEGRATION_TYPES as readonly string[]).includes(id));
+    if (unknown.length > 0) {
+      return fail(`Not an agent: ${unknown.join(", ")}.`, `  Agents:  ${INTEGRATION_TYPES.join(", ")}`);
+    }
+    const asked = INTEGRATION_TYPES.filter((id) => opts.agents?.includes(id));
+    const untraced = asked.filter((id) => !traced.includes(id));
+    if (untraced.length > 0) {
+      const names = joinNames(untraced.map((id) => getIntegration(id).displayName));
+      return fail(
+        `${names} ${untraced.length === 1 ? "isn't" : "aren't"} traced, so ${untraced.length === 1 ? "it" : "they"} can't be backfilled.`,
+        `  Trace ${untraced.length === 1 ? "it" : "them"} first with  ${kit.cmd("failproofai config")}  or  ${kit.cmd(
+          `failproofai config --agents ${[...new Set([...traced, ...untraced])].filter((id) => INTEGRATION_TYPES.includes(id)).join(",")}`,
+        )}`,
+      );
+    }
+    // A daemon older than the scoped request reads every request as "rewind
+    // everything", so naming agents to it would re-send all of them. Refused on
+    // any mismatch: which side is newer cannot be told from here reliably, and
+    // `update` brings both to one version either way.
+    const skew = daemonVersionSkew();
+    if (skew) {
+      return fail(
+        `failproofaid ${skew.installed} is running, but this CLI ships ${skew.expected}; naming agents needs them to match.`,
+        `  Bring them in line:  ${kit.cmd("failproofai update")}`,
+      );
+    }
+    target = asked;
+  }
 
-  const lines: string[] = [
-    `Re-reading everything modified since ${sinceLabel}, and sending it again.`,
-    "",
-  ];
-  // Named honestly: only what the config actually enables, because that is all
-  // the daemon will ship. Promising transcripts on a machine with
-  // `sessions = false` would be a lie the user could only catch by waiting.
-  lines.push(
-    `  streams: ${[sessions && "session transcripts", hooks && "hook decisions"]
-      .filter(Boolean)
-      .join(" + ")}`,
-  );
+  const count = opts.countSessions ?? adapterSessionCount;
+  const rows: Array<[string, string]> = [];
+  let total = 0;
+  let agentsWithSessions = 0;
   if (sessions) {
-    if (found.length === 0) {
-      lines.push("  sessions: none found on disk in this window");
-    } else {
-      for (const f of found) {
-        lines.push(`  ${f.cli}: ${f.files} file${f.files === 1 ? "" : "s"}`);
+    for (const id of target) {
+      const name = getIntegration(id).displayName;
+      if (NOT_RESENT.has(id)) {
+        rows.push([name, "not re-sent: its sessions have no time window yet"]);
+        continue;
       }
+      const n = await count(id, WHOLE_HISTORY.has(id) ? 0 : sinceMs);
+      if (n === 0) continue;
+      total += n;
+      agentsWithSessions += 1;
+      rows.push([name, WHOLE_HISTORY.has(id) ? `all ${plural(n, "session")}, whatever the window` : plural(n, "session")]);
     }
   }
+  const skipped = INTEGRATION_TYPES.filter((id) => !traced.includes(id)).map((id) => getIntegration(id).displayName);
 
   if (opts.dryRun) {
-    lines.push("", "--dry-run: nothing was requested.");
+    const lines = [kit.header("Backfill"), "", kit.head("Would re-send", `since ${sinceLabel}, traced agents only`)];
+    if (!sessions) lines.push(`${"  "}Hook decisions only: session collection is off.`);
+    else if (rows.length === 0) lines.push("  No sessions on disk in this window.");
+    else lines.push(...kit.rows(rows, 14));
+    if (skipped.length > 0) lines.push(`  Not traced, skipped: ${skipped.join(", ")}`);
+    lines.push("", `Run it for real with ${kit.cmd(opts.agents ? `failproofai backfill --agents ${target.join(",")}` : "failproofai backfill")}`);
     return { exitCode: 0, lines };
   }
 
   try {
     // Merged with anything still pending rather than written over it, and
-    // atomically: see backfill-request.ts.
-    writeBackfillRequest({ kind: "user", sinceMs, requestedAtMs: now });
+    // atomically: see backfill-request.ts. Without --agents the request names
+    // nobody, which the daemon reads as "every traced agent" at the moment it
+    // acts — a selection changed in between is honoured, not a stale copy.
+    writeBackfillRequest({
+      kind: "user",
+      sinceMs,
+      requestedAtMs: now,
+      ...(opts.agents && opts.agents.length > 0 ? { agents: target } : {}),
+    });
   } catch (err) {
     return {
       exitCode: 2,
-      lines: [
-        ...lines,
-        "",
-        `Could not write the request: ${err instanceof Error ? err.message : String(err)}`,
-      ],
+      lines: [kit.fail(`Could not write the request: ${err instanceof Error ? err.message : String(err)}`)],
     };
   }
 
-  lines.push("", "Requested. The daemon picks this up within a few seconds.");
-
-  // A daemon that is not running will act on the request whenever it next
-  // starts — the request is a file, deliberately, so it survives that. Saying so
-  // is the difference between "nothing happened" and "nothing happened yet".
+  const what = !sessions
+    ? `hook decisions since ${sinceLabel}`
+    : total === 0
+      ? `everything since ${sinceLabel}`
+      : `${plural(total, "session")} from ${plural(agentsWithSessions, "traced agent")} since ${sinceLabel}`;
+  const lines = [kit.header("Backfill"), "", kit.ok(`Asked the daemon to re-send ${what}.`)];
+  // Named honestly: only what the config enables, because that is all the
+  // daemon ships.
+  if (sessions && !hooks) lines.push("  Session transcripts only: hook activity collection is off.");
+  if (!sessions) lines.push("  Session transcripts are not sent: session collection is off.");
+  // A daemon that is not running acts on the request when it next starts — the
+  // request is a file, deliberately, so it survives that.
+  let waiting = false;
   if (isDaemonSupportedPlatform()) {
     const status = daemonServiceStatus();
     if (status !== "running") {
+      waiting = true;
       lines.push(
-        `failproofaid is ${status}, so nothing moves until it starts. The request is`,
-        "on disk and will be honoured then.",
+        kit.caution(`failproofaid is ${status}, so nothing moves until it starts. The request waits for it.`),
+        `  Check it:  ${kit.cmd("failproofai config --status")}`,
       );
     }
   }
-  lines.push(
-    "",
-    `Watch it land:  ${totalFiles > 0 ? `~${totalFiles} files queued · ` : ""}` +
-      "`failproofai config --status`",
-  );
+  if (!waiting) {
+    // When, not "now": the daemon re-reads first, so `flush --wait` would only
+    // empty a queue that is still being refilled.
+    lines.push(`  They reach the dashboard over the next few minutes. Watch them land:  ${kit.cmd("failproofai config --status")}`);
+  }
   return { exitCode: 0, lines };
 }

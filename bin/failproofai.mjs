@@ -495,7 +495,7 @@ async function runCli() {
         kit.head("Get started"),
         ...steps.map(([label, command], i) => `  ${i + 1}  ${label.padEnd(27)}  ${kit.cmd(command)}`),
         ...section("Set up", [
-          ["config", "Set up hooks and the daemon, and choose cloud or open source"],
+          ["config", "Connect to cloud or use open source, and pick agents to trace"],
           ["update", "Finish an npm upgrade: migrate this machine and match the daemon"],
           ["uninstall", "Remove hooks and the daemon from this machine"],
         ]),
@@ -736,18 +736,34 @@ async function runCli() {
         usage: [["failproofai backfill [options]", "Re-send history the collector already read"]],
         options: [
           ["--since <when>", "How far back: 30d, 6m, 1y or YYYY-MM-DD (default 30d)"],
+          ["--agents <a,b>", "Only these traced agents (default: every traced agent)"],
           ["--dry-run", "Show what would be sent, send nothing"],
         ],
-        examples: ["failproofai backfill --since 6m", "failproofai backfill --dry-run"],
+        examples: ["failproofai backfill --since 6m", "failproofai backfill --agents claude,codex --dry-run"],
         optionsCol: 20,
       });
       process.exit(0);
     }
 
-    const KNOWN = new Set(["--since", "--dry-run"]);
-    const unknown = subArgs.find((a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--since");
+    const KNOWN = new Set(["--since", "--dry-run", "--agents"]);
+    const TAKES_VALUE = new Set(["--since", "--agents"]);
+    // Every word is checked, not only the ones that start with "-": a bare
+    // `backfill 6m` used to be ignored, and ran the default 30 days instead of
+    // the six months that were typed.
+    const unknown = subArgs.find((a, i) => !KNOWN.has(a) && !TAKES_VALUE.has(subArgs[i - 1]));
     if (unknown) {
-      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai backfill --help\` for usage.`);
+      const looksLikeWindow = /^\d+[dmy]$/.test(unknown) || !Number.isNaN(Date.parse(unknown));
+      throw new CliError(
+        `Unexpected argument: ${unknown}\n` +
+          (looksLikeWindow ? `Did you mean \`failproofai backfill --since ${unknown}\`?` : "Run `failproofai backfill --help` for usage."),
+      );
+    }
+    let agents;
+    const agentsIdx = subArgs.indexOf("--agents");
+    if (agentsIdx >= 0) {
+      const raw = subArgs[agentsIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --agents.");
+      agents = raw.split(",").map((a) => a.trim()).filter(Boolean);
     }
 
     let sinceMs;
@@ -774,9 +790,21 @@ async function runCli() {
 
     lastSubcommand = "backfill";
     const { runBackfillCommand } = await import("../src/hooks/backfill-cli");
-    const result = runBackfillCommand({ sinceMs, dryRun: subArgs.includes("--dry-run") });
-    await printReport("backfill", result.lines, { ok: result.exitCode === 0 });
-    await track("cli_backfill", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run"), explicit_since: sinceIdx >= 0 });
+    const { optsFor } = await import("../src/hooks/tui");
+    const result = await runBackfillCommand({
+      sinceMs,
+      dryRun: subArgs.includes("--dry-run"),
+      agents,
+      // Drawn for the stream it lands on: a refusal goes to stderr.
+      render: optsFor(process.stdout),
+    });
+    await printLines(result.lines, result.exitCode === 0);
+    await track("cli_backfill", {
+      ok: result.exitCode === 0,
+      dry_run: subArgs.includes("--dry-run"),
+      explicit_since: sinceIdx >= 0,
+      agents_named: agents ? agents.length : 0,
+    });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);
     return;
@@ -1741,6 +1769,8 @@ async function runCli() {
         usage: [["failproofai config [options]"]],
         options: [
           ["--token <key>", "Connect with this key; prefer FAILPROOFAI_CLOUD_TOKEN"],
+          ["--oss", "Use open source; leaves any connection as it is"],
+          ["--agents <a,b>", "Trace these agents, or all, without asking"],
           ["--status", "Show the cloud connection, daemon version and pauses"],
           ["--pause [time]", "Pause enforcement for a session (default 30m, max 8h)"],
           ["--resume [--all]", "End a pause early, or every pause with --all"],
@@ -1766,6 +1796,29 @@ async function runCli() {
     }
     lastSubcommand = "config";
 
+    // Every option config takes. A typo used to fall through to the full setup
+    // run with the option ignored, so `--agent claude` asked every question.
+    const CONFIG_FLAGS = new Set([
+      "--token", "--oss", "--agents", "--status", "--pause", "--resume", "--all", "--session",
+      "--connect", "--disconnect", "--no-transcripts", "--url", "--machine-label", "--machine-id",
+    ]);
+    const CONFIG_VALUE_FLAGS = new Set([
+      "--token", "--agents", "--pause", "--session", "--connect", "--url", "--machine-label", "--machine-id",
+    ]);
+    const configRest = args.slice(1);
+    const strayConfig = configRest.find(
+      (a, i) => !CONFIG_FLAGS.has(a) && !(CONFIG_VALUE_FLAGS.has(configRest[i - 1]) && !a.startsWith("-")),
+    );
+    if (strayConfig) {
+      const asFlag = `--${strayConfig.replace(/^-+/, "")}`;
+      throw new CliError(
+        `Unexpected argument: ${strayConfig}\n` +
+          (CONFIG_FLAGS.has(asFlag) && asFlag !== strayConfig
+            ? `Did you mean \`failproofai config ${asFlag}\`?`
+            : "Run `failproofai config --help` for its options."),
+      );
+    }
+
     // --pause / --resume / --status are non-interactive session actions that
     // share `config`'s surface but not the wizard. They write session state,
     // never the config file — a pause that reached policies-config.json would
@@ -1781,8 +1834,15 @@ async function runCli() {
     // keeps its old meaning (the name to enrol under); on its own it changes the
     // name of a machine that is already connected, which previously required
     // re-running enrolment with the url and token again just to fix a display name.
+    //
+    // Alongside a setup option (--token, --oss, --agents) it is the name to set up
+    // under: `config --token K --machine-label L` used to run as a rename, so
+    // setup never ran and the key was ignored.
     const wantsRename =
-      connectIdx < 0 && !wantsDisconnect && args.includes("--machine-label");
+      connectIdx < 0 &&
+      !wantsDisconnect &&
+      args.includes("--machine-label") &&
+      !["--token", "--oss", "--agents"].some((flag) => args.includes(flag));
     // A key given as --token is in shell history whatever became of the run.
     const warnTokenOnArgv = async () => {
       if (!args.includes("--token")) return;
@@ -1899,15 +1959,37 @@ async function runCli() {
       if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
       return v;
     };
+    // --oss skips the connect step and leaves any connection as it is (Tab's
+    // meaning, decision D4); --disconnect is what removes one. It overrides a
+    // key in the environment, and only an explicit --token contradicts it.
+    const oss = args.includes("--oss");
+    if (oss && args.includes("--token")) {
+      throw new CliError("--oss and --token cannot be combined: one uses open source, the other connects.");
+    }
+    // --agents: any of the twelve, or `all`, validated here so a typo is an
+    // error rather than an agent silently left untraced.
+    let agents;
+    if (args.includes("--agents")) {
+      const raw = valueFor("--agents");
+      const { INTEGRATION_TYPES } = await import("../src/hooks/types");
+      const ids = raw === "all" ? [...INTEGRATION_TYPES] : raw.split(",").map((a) => a.trim()).filter(Boolean);
+      const unknown = ids.filter((id) => !INTEGRATION_TYPES.includes(id));
+      if (ids.length === 0 || unknown.length > 0) {
+        throw new CliError(`Not an agent: ${unknown.join(", ") || raw}\nAgents: ${INTEGRATION_TYPES.join(", ")}, or all`);
+      }
+      agents = ids;
+    }
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
     const result = await runConfigureWizard(
       {},
       {
-        token: valueFor("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN,
+        token: oss ? undefined : (valueFor("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN),
         url: valueFor("--url") ?? process.env.FAILPROOFAI_CLOUD_URL,
         machineId: valueFor("--machine-id"),
         machineLabel: valueFor("--machine-label"),
         noTranscripts: args.includes("--no-transcripts"),
+        oss,
+        agents,
       },
     );
     await warnTokenOnArgv();
@@ -1921,6 +2003,8 @@ async function runCli() {
       scopes: result.scopes ?? [],
       cli_count: result.clis?.length ?? 0,
       abort: result.abort ?? null,
+      oss,
+      agents_named: agents ? agents.length : 0,
     });
     // `abort` is the field `WizardAbort` exists to expose, and exiting 0
     // regardless discarded it: a fleet script could not tell "the user pressed

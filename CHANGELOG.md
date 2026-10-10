@@ -4,6 +4,7 @@
 
 ### Features
 
+- `failproofai backfill` re-sends only the agents failproofai traces, counts sessions with the same readers the audit uses (all twelve agents, where the old survey knew seven), and takes `--agents` for a subset. A name that is not an agent, an untraced agent, or a daemon of another version is refused before anything is written. `config` takes `--oss` and `--agents`, `config --status` counts agents found but not traced, and `harness` says when an agent's extra paths are idle because it is not traced (#PR)
 - New terminal look for the CLI, the dashboard launch screen: bare `failproofai` prints it once the dashboard is actually listening, with its address, the policies that are on, the agents traced and the cloud connection, plus one warning when policies are not enforcing or the dashboard is reachable from other machines. A server that fails to start says why in one line (a taken port is named as such), Next.js's own startup lines are gone, piped output carries no colour codes, and `failproofai audit` hands off to the dashboard without the logomark or the screen (#PR)
 - `failproofai audit` shows a progress bar per agent and running counts of what would be blocked or warned, redrawn at most every 100 ms in one write per frame; piped or under `NO_COLOR` it prints the finished screen once. Its sign-in, `--schedule`, `--no-schedule` and `--status` screens move to the new look, and audit no longer honours `FORCE_COLOR`, like every other screen (#PR)
 - `failproofai config --status` in the new look: THIS MACHINE, CLOUD and ENFORCEMENT on one column, now with whether the local dashboard is running, delivery health from the daemon's own record (last event, backlog, refused batches), today's blocked and warned counts, and at most one line that needs attention. `--pause` and `--resume` confirm with one ✓ sentence, and a pause states the time actually granted, which the 8-hour limit can make shorter than asked (#PR)
@@ -18,6 +19,11 @@
 
 ### Fixes
 
+- `failproofai backfill 6m` (no `--since`) silently ran the default 30 days. Stray words are refused now, with the option they probably meant (#PR)
+- `failproofai config --token <key> --machine-label <name>` ran a rename and ignored the key. It now sets the machine up under that name (#PR)
+- `failproofai config` no longer runs setup with an option it does not know quietly ignored: an unknown option or a stray word is an error (#PR)
+- `backfill` on an unconnected machine suggested `config --token <key>`, which puts the key in shell history. It points at `failproofai config` (#PR)
+- `harness add-path` said `harness list` shows what is captured. It shows what is configured; the daemon's log says what it rejected (#PR)
 - A new backfill request no longer replaces one still waiting for the daemon: requests merge, keeping the wider window, and are written atomically (#PR)
 - A hook from an agent that `failproofai config` does not trace is logged once per session and evaluated as usual, never allowed because of the selection (#PR)
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#PR)

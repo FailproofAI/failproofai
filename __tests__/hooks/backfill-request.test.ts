@@ -126,10 +126,10 @@ describe("writeBackfillRequest", () => {
 });
 
 describe("failproofai backfill writes through the shared writer", () => {
-  it("writes a user request with its window", () => {
+  it("writes a user request with its window", async () => {
     writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "k".repeat(20) });
     writeCollectorSettings({ sessions: true, hooks: true });
-    const result = runBackfillCommand({ now: NOW, sinceMs: NOW - 7 * DAY });
+    const result = await runBackfillCommand({ now: NOW, sinceMs: NOW - 7 * DAY, countSessions: async () => 0 });
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(readFileSync(backfillRequestPath(), "utf8"))).toEqual({
       kind: "user",
@@ -138,12 +138,12 @@ describe("failproofai backfill writes through the shared writer", () => {
     });
   });
 
-  it("writes nothing on a dry run, or on a machine that is not connected", () => {
-    expect(runBackfillCommand({ now: NOW }).exitCode).toBe(1);
+  it("writes nothing on a dry run, or on a machine that is not connected", async () => {
+    expect((await runBackfillCommand({ now: NOW })).exitCode).toBe(1);
     expect(existsSync(backfillRequestPath())).toBe(false);
     writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "k".repeat(20) });
     writeCollectorSettings({ sessions: true, hooks: true });
-    expect(runBackfillCommand({ now: NOW, dryRun: true }).exitCode).toBe(0);
+    expect((await runBackfillCommand({ now: NOW, dryRun: true, countSessions: async () => 0 })).exitCode).toBe(0);
     expect(existsSync(backfillRequestPath())).toBe(false);
   });
 });

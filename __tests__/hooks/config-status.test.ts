@@ -338,6 +338,9 @@ describe("config --status — ENFORCEMENT", () => {
     expect(rowValue(renderStatusScreen(facts({ agents: { traced: 12, notInstalled: 0 } }), PLAIN), "agents")).toBe(
       "12 traced",
     );
+    expect(rowValue(renderStatusScreen(facts({ agents: { traced: 8, notTraced: 1, notInstalled: 3 } }), PLAIN), "agents")).toBe(
+      "8 traced, 1 not traced, 3 not installed",
+    );
   });
 
   it("says how many policies are on and where they come from", () => {
@@ -607,7 +610,7 @@ describe("gatherStatusFacts", () => {
     expect(f.delivery).toBeUndefined();
     expect(f.pauses).toEqual([]);
     // No selection saved means every agent is traced; two binaries were found.
-    expect(f.agents).toEqual({ traced: 12, notInstalled: 10 });
+    expect(f.agents).toEqual({ traced: 12, notTraced: 0, notInstalled: 10 });
     expect(f.today).toEqual({ blocked: 0, warned: 0 });
     expect(f.policies.packsInstalled).toBe(0);
     expect(f.daemon).toMatchObject({ service: "not-installed", answering: false, configured: false });
@@ -633,7 +636,13 @@ describe("gatherStatusFacts", () => {
   it("counts the saved agent selection, ignoring ids that are not agents", async () => {
     put("config.json", { agents: { selected: ["claude", "codex", "goose", "not-an-agent"], seen: ["claude"] } });
     const f = await gatherStatusFacts(seams({ detectInstalled: () => ["claude", "codex", "goose"] }));
-    expect(f.agents).toEqual({ traced: 3, notInstalled: 9 });
+    expect(f.agents).toEqual({ traced: 3, notTraced: 0, notInstalled: 9 });
+  });
+
+  it("counts agents found here but left out of the selection", async () => {
+    put("config.json", { agents: { selected: ["claude"], seen: ["claude", "codex"] } });
+    const f = await gatherStatusFacts(seams({ detectInstalled: () => ["claude", "codex"] }));
+    expect(f.agents).toEqual({ traced: 1, notTraced: 1, notInstalled: 10 });
   });
 
   it("reads the connection, delivery health, refusals and backlog from disk — never the token", async () => {

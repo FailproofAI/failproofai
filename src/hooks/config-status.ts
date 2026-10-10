@@ -150,7 +150,8 @@ export interface StatusFacts {
     queued: number;
     oldestQueuedMs?: number;
   };
-  agents: { traced: number; notInstalled: number };
+  /** notTraced: found on this machine and left out of the selection. */
+  agents: { traced: number; notTraced?: number; notInstalled: number };
   policies: StatusPolicies;
   today: { blocked: number; warned: number };
   /** Hermes profiles that are not healthy, with what is wrong. Healthy ones are omitted. */
@@ -449,6 +450,7 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
     ...(delivery ? { delivery } : {}),
     agents: {
       traced: known.filter((id) => isAgentTraced(id, config)).length,
+      notTraced: known.filter((id) => detected.has(id) && !isAgentTraced(id, config)).length,
       notInstalled: known.filter((id) => !detected.has(id)).length,
     },
     policies: summarizePolicySources(cwd),
@@ -666,7 +668,12 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
           ];
 
   const enforcementRows: Array<[string, string]> = [
-    ["agents", `${agents.traced} traced${agents.notInstalled > 0 ? `, ${agents.notInstalled} not installed` : ""}`],
+    [
+      "agents",
+      `${agents.traced} traced` +
+        (agents.notTraced ? `, ${agents.notTraced} not traced` : "") +
+        (agents.notInstalled > 0 ? `, ${agents.notInstalled} not installed` : ""),
+    ],
     ["policies", policiesValue()],
     ["today", `${facts.today.blocked} blocked, ${facts.today.warned} warned`],
     // The problem keeps hermesProfileStatusRows' own words; a `command` in them

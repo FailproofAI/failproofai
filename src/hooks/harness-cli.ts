@@ -37,18 +37,11 @@
 
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { readConfig, updateConfig } from "./fp-config";
+import { isAgentTraced, readConfig, updateConfig } from "./fp-config";
 import { configFile } from "./fp-home";
-import {
-  emptyState,
-  note,
-  table,
-  optsFor,
-  rule,
-  stack,
-  title,
-  warning,
-} from "./tui";
+import { getIntegration } from "./integrations";
+import { optsFor, screenKit } from "./tui";
+import type { IntegrationType } from "./types";
 
 /**
  * Harness keys `collector.sources.<key>` accepts.
@@ -88,13 +81,23 @@ export interface HarnessResult {
 
 const ok = (lines: string[]): HarnessResult => ({ lines, exitCode: 0 });
 const fail = (lines: string[]): HarnessResult => ({ lines, exitCode: 1 });
+const kitFor = () => screenKit(optsFor(process.stdout));
 
 function unknownHarness(name: string): HarnessResult {
-  return fail([
-    `Unknown harness: ${name}`,
-    "",
-    `Known harnesses: ${HARNESS_KEYS.join(", ")}`,
-  ]);
+  const kit = kitFor();
+  return fail([kit.fail(`Unknown harness: ${name}.`), `  Known: ${HARNESS_KEYS.join(", ")}`]);
+}
+
+/**
+ * An agent `failproofai config` does not trace collects nothing, extra paths
+ * included: the daemon starts no task for it. Said wherever a path is shown or
+ * added, because otherwise a configured path reads as captured.
+ */
+function untracedLine(harness: string): string[] {
+  if (isAgentTraced(harness)) return [];
+  const kit = kitFor();
+  const name = getIntegration(harness as IntegrationType).displayName;
+  return [kit.caution(`${name} isn't traced, so nothing is captured from its paths until it is.`, "failproofai config")];
 }
 
 /** The path half of an entry, for comparing against what a user typed. */
@@ -150,10 +153,7 @@ function writePaths(harness: string, paths: string[]): void {
  * wrong twice over: the restart is unnecessary, and it asks for root from a
  * command that writes one file in the user's own home and needs none.
  */
-const TAKES_EFFECT_HINT = [
-  "",
-  "The daemon picks this up on its own within a few seconds — no restart, no sudo.",
-];
+const TAKES_EFFECT_HINT = ["  The daemon picks this up within a few seconds: no restart, no sudo."];
 
 /**
  * The daemon's label rule, FOR COMPARISON ONLY.
@@ -206,10 +206,11 @@ function effectiveLabel(entry: string): string {
 
 export function addPath(harness: string, entry: string): HarnessResult {
   if (!(HARNESS_KEYS as readonly string[]).includes(harness)) return unknownHarness(harness);
+  const kit = kitFor();
   const trimmed = entry.trim();
-  if (trimmed === "") return fail(["A path is required."]);
+  if (trimmed === "") return fail([kit.fail("A path is required.")]);
   if (pathOf(trimmed) === "") {
-    return fail([`Could not read a path out of ${JSON.stringify(entry)}.`, "", "Use `<path>` or `<label>=<path>`."]);
+    return fail([kit.fail(`Could not read a path out of ${JSON.stringify(entry)}.`), `  Use  ${kit.cmd("<path>")}  or  ${kit.cmd("<label>=<path>")}`]);
   }
 
   const existing = currentPaths(harness);
@@ -217,7 +218,7 @@ export function addPath(harness: string, entry: string): HarnessResult {
   // Exact duplicate: succeed rather than error. `add-path` run twice from a
   // provisioning script must not fail the second time.
   if (existing.includes(trimmed)) {
-    return ok([`${harness}: ${trimmed} is already configured.`]);
+    return ok([kit.ok(`${harness}: ${trimmed} is already configured.`), ...untracedLine(harness)]);
   }
 
   // Same path under a different label, or the same label on a different path.
@@ -231,10 +232,8 @@ export function addPath(harness: string, entry: string): HarnessResult {
   const samePath = existing.find((e) => comparablePath(pathOf(e)) === comparablePath(pathOf(trimmed)));
   if (samePath) {
     return fail([
-      `${harness} already captures ${pathOf(trimmed)} as ${JSON.stringify(samePath)}.`,
-      "",
-      "Remove it first if you meant to relabel it:",
-      `  failproofai harness remove-path ${harness} ${pathOf(trimmed)}`,
+      kit.fail(`${harness} already captures ${pathOf(trimmed)} as ${JSON.stringify(samePath)}.`),
+      `  To relabel it, remove it first:  ${kit.cmd(`failproofai harness remove-path ${harness} ${pathOf(trimmed)}`)}`,
     ]);
   }
   const wanted = labelOf(trimmed);
@@ -249,15 +248,12 @@ export function addPath(harness: string, entry: string): HarnessResult {
     ? existing.find((e) => effectiveLabel(e) === effective)
     : undefined;
   if (sameLabel) {
+    // Labels namespace agent ids, and the daemon lowercases them and collapses
+    // punctuation, so labels differing only in case or spacing collide; an
+    // unlabelled path takes its folder name.
     return fail([
-      `${harness} already uses the label ${JSON.stringify(effective)} for ${pathOf(sameLabel)}.`,
-      "",
-      "Labels namespace agent ids, so two paths cannot share one — and the daemon",
-      "lowercases them and collapses punctuation to `-`, so labels that differ only",
-      "in case or spacing collide. An unlabelled path takes its folder name.",
-      "",
-      "Give this one an explicit label:",
-      `  failproofai harness add-path ${harness} <label>=${pathOf(trimmed)}`,
+      kit.fail(`${harness} already uses the label ${JSON.stringify(effective)} for ${pathOf(sameLabel)}.`),
+      `  Give this one its own label:  ${kit.cmd(`failproofai harness add-path ${harness} <label>=${pathOf(trimmed)}`)}`,
     ]);
   }
 
@@ -270,15 +266,15 @@ export function addPath(harness: string, entry: string): HarnessResult {
     // is not in a position to make, so it says what it did and where the answer
     // is. Teaching the CLI all thirteen sources' default roots would be the second
     // parser this file exists to avoid.
-    `${harness}: configured to also capture ${pathOf(trimmed)}`,
-    wanted
-      ? `  agent ids will be namespaced ${wanted}-*`
-      : "  a label will be derived from the folder name; `failproofai harness list` shows it",
-    `  written to ${configFile()}`,
-    "",
-    "  The daemon validates it on the next read and reports what it rejected —",
-    "  `failproofai harness list` shows what is actually being captured.",
+    //
+    // And `harness list` is not where the answer is: it reads this same file, so
+    // it shows what is configured, not what is captured. The daemon's log is.
+    kit.ok(`${harness}: configured to also capture ${pathOf(trimmed)}`),
+    wanted ? `  Agent ids are namespaced ${wanted}-*` : "  A label is derived from the folder name.",
+    `  Written to ${configFile()}`,
+    "  The daemon validates it on the next read and logs any path it rejects.",
     ...TAKES_EFFECT_HINT,
+    ...untracedLine(harness),
   ]);
 }
 
@@ -289,21 +285,17 @@ export function removePath(harness: string, target: string): HarnessResult {
   // Match on the whole entry, on its path, or on its label — a user removing
   // something is working from what `list` printed, which shows all three.
   const kept = existing.filter((e) => e !== t && pathOf(e) !== t && labelOf(e) !== t);
+  const kit = kitFor();
   if (kept.length === existing.length) {
     return fail([
-      `${harness} has no extra path matching ${JSON.stringify(t)}.`,
-      "",
-      existing.length > 0
-        ? `Configured: ${existing.join(", ")}`
-        : `${harness} has no extra paths configured.`,
+      kit.fail(`${harness} has no extra path matching ${JSON.stringify(t)}.`),
+      existing.length > 0 ? `  Configured: ${existing.join(", ")}` : `  ${harness} has no extra paths configured.`,
     ]);
   }
   writePaths(harness, kept);
   return ok([
-    `${harness}: no longer capturing ${t}`,
-    "",
-    "Already-collected sessions from that path are NOT removed — they are on the",
-    "server. This only stops new ones.",
+    kit.ok(`${harness}: no longer capturing ${t}`),
+    "  Sessions already collected from it stay on the server; this only stops new ones.",
     ...TAKES_EFFECT_HINT,
   ]);
 }
@@ -324,91 +316,48 @@ export function listPaths(harness?: string): HarnessResult {
     (k) => !(HARNESS_KEYS as readonly string[]).includes(k),
   );
 
-  const opts = optsFor(process.stdout);
-  const head = (extra: number) =>
-    title(
-      "failproofai harness list",
-      `${HARNESS_KEYS.length} harnesses · ${extra} extra path${extra === 1 ? "" : "s"}`,
-      opts,
-    );
-
-  if (names.length === 0 && unknown.length === 0) {
-    return ok(
-      stack(
-        head(0),
-        emptyState(
-          {
-            what: "No extra capture paths configured. Every harness is watching only its default location.",
-            hint: "Add one with:",
-            cmd: "failproofai harness add-path <agent> [label=]<path>",
-          },
-          opts,
-        ),
-        // Wrapped, not joined into one line: twelve names ran off the right edge
-        // of an 80-column terminal, and the twelfth is as real as the first.
-        note(`Harnesses: ${HARNESS_KEYS.join(", ")}`, opts),
-      ),
-    );
-  }
+  const kit = kitFor();
+  const header = [kit.header("Harness"), ""];
+  const unknownLines =
+    unknown.length > 0
+      ? [
+          "",
+          kit.caution(
+            `config.json configures ${unknown.length === 1 ? "an unknown harness" : `${unknown.length} unknown harnesses`}: ${unknown.join(", ")}. Nothing is captured from ${unknown.length === 1 ? "it" : "them"}.`,
+          ),
+          `  Known: ${HARNESS_KEYS.join(", ")}`,
+        ]
+      : [];
 
   const configured = names.reduce((n, name) => n + (sources[name]?.extraPaths?.length ?? 0), 0);
-  const groups: Array<string[] | null> = [head(configured)];
-  for (const name of names) {
-    const entries = sources[name]?.extraPaths ?? [];
-    if (entries.length === 0) {
-      if (harness) {
-        groups.push(rule(name, opts));
-        groups.push(note("no extra paths configured (default location only)", opts));
-      }
-      continue;
-    }
-    groups.push(rule(name, opts));
-    // A table, not label/value rows: the PATH is the fact here, and a row's
-    // label column would have capped it at 24 columns — a truncated path cannot
-    // be copied, which makes the listing useless for the one thing it is for.
-    groups.push(
-      table(
-        {
-          head: ["Path", "Agent ids"],
-          rows: entries.map((e) => {
-            const label = labelOf(e);
-            return [
-              pathOf(e),
-              label ? `${label}-*` : "derived from the folder name",
-            ];
-          }),
-          flex: 1,
-          // The path is the value this listing exists to hand back; it is never
-          // the column that gives way.
-          protect: [0],
-        },
-        opts,
-      ),
-    );
-  }
-  const lines: string[] = stack(...groups);
-  // Unknown tables are surfaced here as well as by the daemon: a user who
-  // hand-edited config.json runs `list` to check it, and that is the moment the
-  // typo is cheapest to find.
-  if (unknown.length > 0) {
-    const body =
-      configured === 0
-        ? [...head(0), "", ...note("No extra capture paths configured for any known harness.", opts)]
-        : lines;
+  if (configured === 0 && !harness) {
     return ok([
-      ...body,
-      "",
-      ...warning(
-        [
-          `config.json configures ${unknown.length} unknown harness(es): ${unknown.join(", ")}`,
-          "Nothing is captured from them.",
-          `Known: ${HARNESS_KEYS.join(", ")}`,
-        ],
-        opts,
-      ),
+      ...header,
+      "No extra capture paths configured. Every agent reads only its default location.",
+      `  Add one:  ${kit.cmd("failproofai harness add-path <agent> [label=]<path>")}`,
+      ...unknownLines,
     ]);
   }
-  return ok(lines);
+
+  const lines: string[] = [...header];
+  for (const name of names) {
+    const entries = sources[name]?.extraPaths ?? [];
+    const count = `${entries.length} extra path${entries.length === 1 ? "" : "s"}`;
+    lines.push(kit.head(name, entries.length > 0 ? count : "default location only"));
+    // Rows of path then agent ids. The PATH is the value this listing exists
+    // to hand back, so it is never cut.
+    lines.push(
+      ...kit.rows(
+        entries.map((e): [string, string] => {
+          const label = labelOf(e);
+          return [pathOf(e), label ? `${label}-*` : "derived from the folder name"];
+        }),
+      ),
+    );
+    lines.push(...untracedLine(name), "");
+  }
+  if (lines[lines.length - 1] === "") lines.pop();
+  return ok([...lines, ...unknownLines]);
 }
 
 /** Dispatch for `failproofai harness <sub> ...`. */
@@ -417,24 +366,24 @@ export function runHarnessCommand(argv: string[]): HarnessResult {
   switch (sub) {
     case "add-path":
       if (rest.length < 2) {
-        return fail(["Usage: failproofai harness add-path <agent> [label=]<path>"]);
+        return fail([kitFor().fail("add-path needs an agent and a path."), `  Usage:  ${kitFor().cmd("failproofai harness add-path <agent> [label=]<path>")}`]);
       }
       return addPath(rest[0], rest.slice(1).join(" "));
     case "remove-path":
       if (rest.length < 2) {
-        return fail(["Usage: failproofai harness remove-path <agent> <path | label>"]);
+        return fail([kitFor().fail("remove-path needs an agent and a path or label."), `  Usage:  ${kitFor().cmd("failproofai harness remove-path <agent> <path | label>")}`]);
       }
       return removePath(rest[0], rest.slice(1).join(" "));
     case "list":
       return listPaths(rest[0]);
-    default:
+    default: {
+      const kit = kitFor();
       return fail([
-        sub ? `Unknown subcommand: ${sub}` : "A subcommand is required.",
-        "",
-        "Usage:",
-        "  failproofai harness list [agent]",
-        "  failproofai harness add-path <agent> [label=]<path>",
-        "  failproofai harness remove-path <agent> <path | label>",
+        kit.fail(sub ? `Unknown subcommand: ${sub}.` : "A subcommand is required."),
+        `  ${kit.cmd("failproofai harness list [agent]")}`,
+        `  ${kit.cmd("failproofai harness add-path <agent> [label=]<path>")}`,
+        `  ${kit.cmd("failproofai harness remove-path <agent> <path | label>")}`,
       ]);
+    }
   }
 }

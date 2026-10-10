@@ -7,7 +7,7 @@ import { parse as parseToml } from "smol-toml";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { accessSync, constants, readdirSync, statSync } from "node:fs";
 
 export const OTEL_AGENTS = ["claude", "codex", "gemini", "copilot"] as const;
 export type OtelAgent = typeof OTEL_AGENTS[number];
@@ -28,8 +28,31 @@ export function agentConfigPath(agent: OtelAgent, home = homedir()): string {
     resolve(home, `.${agent}`, agent === "codex" ? "config.toml" : "settings.json");
 }
 
-export function vscodeInstalled(path: string): boolean {
-  return existsSync(resolve(path, ".."));
+export function vscodeInstalled(home = homedir(), platform = process.platform): boolean {
+  const executable = (path: string) => {
+    try {
+      accessSync(path, platform === "win32" ? constants.F_OK : constants.X_OK);
+      return statSync(path).isFile();
+    } catch { return false; }
+  };
+  const names = platform === "win32" ? ["code.cmd", "code-insiders.cmd", "Code.exe", "Code - Insiders.exe"] : ["code", "code-insiders"];
+  if ((process.env.PATH ?? "").split(platform === "win32" ? ";" : ":")
+    .some(dir => names.some(name => executable(resolve(dir, name))))) return true;
+  const apps = platform === "darwin" ? [
+    "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+    "/Applications/Visual Studio Code - Insiders.app/Contents/MacOS/Electron",
+    resolve(home, "Applications/Visual Studio Code.app/Contents/MacOS/Electron"),
+  ] : platform === "win32" ? [
+    resolve(process.env.LOCALAPPDATA ?? resolve(home, "AppData/Local"), "Programs/Microsoft VS Code/Code.exe"),
+    resolve(process.env.ProgramFiles ?? "C:/Program Files", "Microsoft VS Code/Code.exe"),
+  ] : ["/usr/share/code/code", "/opt/visual-studio-code/code"];
+  if (apps.some(executable)) return true;
+  return [".vscode", ".vscode-insiders"].some(folder => {
+    try {
+      return readdirSync(resolve(home, folder, "extensions"), { withFileTypes: true })
+        .some(entry => entry.isDirectory() && /^github\.copilot(?:-chat)?-\d/i.test(entry.name));
+    } catch { return false; }
+  });
 }
 
 export function parseAgentConfig(text: string, agent: OtelAgent): JsonObject {
@@ -78,8 +101,8 @@ function tomlValue(value: unknown): string {
   throw new Error("Unsupported TOML value.");
 }
 
-function tables(text: string): { start: number; otel: boolean }[] {
-  const result: { start: number; otel: boolean }[] = [];
+function tables(text: string): { start: number; otel: boolean; rootHeader?: string }[] {
+  const result: { start: number; otel: boolean; rootHeader?: string }[] = [];
   let multiline: string | null = null;
   let offset = 0;
   for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
@@ -87,7 +110,9 @@ function tables(text: string): { start: number; otel: boolean }[] {
       const header = /^\s*(\[\[?.*?\]\]?)\s*(?:#.*)?(?:\r?\n)?$/.exec(line);
       if (header) {
         const sample = parseToml(`${header[1]}\n__failproofai_probe = true\n`);
-        result.push({ start: offset, otel: Object.hasOwn(sample, "otel") });
+        const root = Object.keys(sample).length === 1 && Object.hasOwn(sample, "otel") &&
+          Object.hasOwn(sample.otel as object, "__failproofai_probe");
+        result.push({ start: offset, otel: Object.hasOwn(sample, "otel"), rootHeader: root ? line.replace(/\r?\n$/, "") : undefined });
       }
     }
     let quote: string | null = null;
@@ -133,7 +158,8 @@ export function editAgentConfig(text: string, agent: OtelAgent, writes: SettingW
   }
   const newline = text.includes("\r\n") ? "\r\n" : "\n";
   const otel = parsed.otel as JsonObject | undefined;
-  const replacement = otel ? `[otel]${newline}${Object.entries(otel).map(([k, v]) => `${JSON.stringify(k)} = ${tomlValue(v)}${newline}`).join("")}` : "";
+  const rootHeader = headers.find(h => h.rootHeader)?.rootHeader ?? "[otel]";
+  const replacement = otel ? `${rootHeader}${newline}${Object.entries(otel).map(([k, v]) => `${JSON.stringify(k)} = ${tomlValue(v)}${newline}`).join("")}` : "";
   let next = text;
   const ranges = headers.map((h, i) => {
     const end = headers[i + 1]?.start ?? text.length;
@@ -156,17 +182,16 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_LOGS_EXPORTER: "otlp", OTEL_METRICS_EXPORTER: "otlp",
     OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
-    OTEL_EXPORTER_OTLP_HEADERS: local ? "" : `Authorization=Bearer%20${encodeURIComponent(key)}`,
+    ...(!local ? { OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer%20${encodeURIComponent(key)}` } : {}),
     OTEL_LOG_USER_PROMPTS: content ? "1" : "0",
     OTEL_LOG_TOOL_DETAILS: content ? "1" : "0",
-    OTEL_LOG_ASSISTANT_RESPONSES: content ? "1" : "0",
     OTEL_LOG_TOOL_CONTENT: content ? "1" : "0",
   };
   if (agent === "claude") {
     for (const signal of ["LOGS", "METRICS"]) {
       env[`OTEL_EXPORTER_OTLP_${signal}_ENDPOINT`] = `${endpoint}/v1/${signal.toLowerCase()}`;
       env[`OTEL_EXPORTER_OTLP_${signal}_PROTOCOL`] = "http/protobuf";
-      env[`OTEL_EXPORTER_OTLP_${signal}_HEADERS`] = env.OTEL_EXPORTER_OTLP_HEADERS;
+      if (!local) env[`OTEL_EXPORTER_OTLP_${signal}_HEADERS`] = env.OTEL_EXPORTER_OTLP_HEADERS;
     }
     return Object.entries(env).map(([k, value]) => ({ path: ["env", k], value }));
   }

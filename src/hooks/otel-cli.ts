@@ -154,8 +154,8 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   const raw = rawConfig();
   const previousConfig = structuredClone(raw);
   const file = agentConfigPath(agent, options.home ?? homedir());
-  if (agent === "copilot" && !vscodeInstalled(file)) {
-    return { lines: ["VS Code is not installed (no user settings directory); skipping Copilot."], exitCode: 0 };
+  if (agent === "copilot" && !vscodeInstalled(options.home ?? homedir())) {
+    return { lines: ["VS Code not found — skipping copilot"], exitCode: 0 };
   }
   const existing = records(raw)[agent];
   // Gemini has no transcript source in this collector.
@@ -171,9 +171,14 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   const original = existsSync(file) ? readFileSync(file, "utf8") : null;
   const parsed = parseAgentConfig(original ?? "", agent);
   const writes = agentOtelWrites(agent, destination, key, local, content);
-  const next = editAgentConfig(original ?? "", agent, writes);
+  // Switching from Cloud to local stops owning header keys. Restore any keys
+  // from an earlier enable before applying the new (header-free) write set.
+  const oldState = existing ? privateState(agent) : null;
+  const released = oldState?.previous.filter(previous =>
+    !writes.some(write => JSON.stringify(write.path) === JSON.stringify(previous.path))) ?? [];
+  const next = editAgentConfig(original ?? "", agent, [...released, ...writes]);
   // On repeated enable keep the ORIGINAL previous values, not our last write.
-  const state = existing ? privateState(agent) : {
+  const state = oldState ?? {
     original,
     originalMode: original === null ? undefined : statSync(file).mode & 0o777,
     writtenHash: "",
@@ -183,6 +188,11 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
     // Re-enabling must not turn the fast byte-restore path into permission to
     // discard changes made after the previous enable.
     state.original = editAgentConfig(original, agent, state.previous);
+  }
+  if (existing) {
+    state.previous = writes.map(write => state.previous.find(previous =>
+      JSON.stringify(previous.path) === JSON.stringify(write.path)) ??
+      { path: write.path, value: getSetting(parsed, write.path) });
   }
   const collector = object(raw.collector);
   const agents = object(collector.agents);
@@ -304,7 +314,7 @@ export async function runOtelCommand(args: string[], options: OtelOptions = {}):
       const quote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
       const values = {
         OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
-        OTEL_EXPORTER_OTLP_HEADERS: local ? "" : `Authorization=Bearer%20${encodeURIComponent(key)}`,
+        ...(!local ? { OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer%20${encodeURIComponent(key)}` } : {}),
         OTEL_SERVICE_NAME: service,
       };
       return { lines: Object.entries(values).map(([k, v]) => `export ${k}=${quote(v)}`), exitCode: 0 };

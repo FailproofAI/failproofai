@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { runOtelCommand, chooseWizardOtel, OTEL_ORG_OFF, OTEL_WIZARD_QUESTION } from "../../src/hooks/otel-cli";
-import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, agentOtelWrites } from "../../src/hooks/otel-writers";
+import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, agentOtelWrites } from "../../src/hooks/otel-writers";
 import { configFile, credentialsFile, otelAgentStateFile, otelAgentStateDir, otlpSpoolDir, resettablePaths } from "../../src/hooks/fp-home";
 import { readConfig, updateConfig } from "../../src/hooks/fp-config";
 import { agentSessionsEnabled } from "../../src/hooks/collector-config";
@@ -66,6 +66,36 @@ describe("managed OTEL settings", () => {
     expect(readConfig().collector.otlp?.enabled).toBe(false);
   });
 
+  it("local Claude writes only documented content flags and never writes auth header variables", async () => {
+    const path = agentConfigPath("claude", home);
+    const before = '{"env":{"KEEP":"yes"}}\n';
+    seed(path, before);
+    await runOtelCommand(["enable", "claude", "--local"], options());
+    const env = JSON.parse(readFileSync(path, "utf8")).env;
+    expect(env.OTEL_LOG_ASSISTANT_RESPONSES).toBeUndefined();
+    for (const key of ["OTEL_LOG_USER_PROMPTS", "OTEL_LOG_TOOL_DETAILS", "OTEL_LOG_TOOL_CONTENT"]) expect(env[key]).toBe("1");
+    expect(Object.keys(env).some(key => key.endsWith("_HEADERS"))).toBe(false);
+    expect(agentOtelWrites("claude", "http://127.0.0.1:4318", "key", true, true)
+      .some(write => write.path.some(key => key.endsWith("_HEADERS")))).toBe(false);
+    await runOtelCommand(["disable", "claude"], options());
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("Cloud-to-local Claude restores prior headers and stops owning them", async () => {
+    const path = agentConfigPath("claude", home);
+    const before = '{"env":{"OTEL_EXPORTER_OTLP_HEADERS":"Authorization=prior","OTEL_EXPORTER_OTLP_LOGS_HEADERS":"custom=prior"}}\n';
+    seed(path, before);
+    await runOtelCommand(["enable", "claude"], options());
+    await runOtelCommand(["enable", "claude", "--local"], options());
+    expect(JSON.parse(readFileSync(path, "utf8")).env).toMatchObject({
+      OTEL_EXPORTER_OTLP_HEADERS: "Authorization=prior", OTEL_EXPORTER_OTLP_LOGS_HEADERS: "custom=prior",
+    });
+    const record = JSON.parse(readFileSync(configFile(), "utf8")).otel.agents.claude;
+    expect(record.keys.some((key: { path: string[] }) => key.path.some(p => p.endsWith("_HEADERS")))).toBe(false);
+    await runOtelCommand(["disable", "claude"], options());
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
   it("restores only owned keys after unrelated Claude changes", async () => {
     const path = agentConfigPath("claude", home);
     seed(path, '{"env":{"KEEP":"x","OTEL_LOG_USER_PROMPTS":"old"},"theme":"old"}');
@@ -104,6 +134,7 @@ describe("managed OTEL settings", () => {
     expect(result.exitCode, result.lines.join("\n")).toBe(0);
     const next = readFileSync(path, "utf8");
     expect(next.startsWith(prefix + "# OTEL\n")).toBe(true);
+    expect(next).toContain("[otel] # existing\n");
     expect(next.endsWith(suffix)).toBe(true);
     const parsed = parseAgentConfig(next, "codex");
     expect(parsed.otel).toMatchObject({
@@ -129,6 +160,7 @@ describe("managed OTEL settings", () => {
     const path = agentConfigPath(agent, home);
     const before = '{\n// user comment\n"editor.fontSize": 13,\n"telemetry": {"unknown": 42},\n}\n';
     seed(path, before);
+    if (agent === "copilot") mkdirSync(join(home, ".vscode/extensions/github.copilot-chat-0.55.0"), { recursive: true });
     const result = await runOtelCommand(["enable", agent, "--no-content"], options());
     expect(result.exitCode).toBe(0);
     expect(result.lines.join("\n")).toContain("automatically");
@@ -144,7 +176,15 @@ describe("managed OTEL settings", () => {
   });
 
   it("skips VS Code when absent and resolves macOS, Linux and Windows user paths", async () => {
-    expect((await runOtelCommand(["enable", "copilot"], options())).lines.join("\n")).toContain("not installed");
+    const savedPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      mkdirSync(dirname(agentConfigPath("copilot", home)), { recursive: true });
+      const before = readFileSync(configFile(), "utf8");
+      expect((await runOtelCommand(["enable", "copilot"], options())).lines).toEqual(["VS Code not found — skipping copilot"]);
+      expect(readFileSync(configFile(), "utf8")).toBe(before);
+      expect(vscodeInstalled(home)).toBe(false);
+    } finally { process.env.PATH = savedPath; }
     expect(existsSync(agentConfigPath("copilot", home))).toBe(false);
     expect(vscodeSettingsPath(home, "darwin")).toContain("Library/Application Support/Code/User/settings.json");
     expect(vscodeSettingsPath(home, "linux")).toContain(".config/Code/User/settings.json");
@@ -152,6 +192,23 @@ describe("managed OTEL settings", () => {
     process.env.APPDATA = join(home, "Roaming");
     expect(vscodeSettingsPath(home, "win32")).toBe(join(home, "Roaming/Code/User/settings.json"));
     if (before === undefined) delete process.env.APPDATA; else process.env.APPDATA = before;
+  });
+
+  it("detects an executable or Copilot extension, not an unrelated extension", () => {
+    const savedPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      mkdirSync(join(home, ".vscode/extensions/unrelated.extension-1.0"), { recursive: true });
+      expect(vscodeInstalled(home)).toBe(false);
+      mkdirSync(join(home, ".vscode/extensions/github.copilot-1.0"), { recursive: true });
+      expect(vscodeInstalled(home)).toBe(true);
+      rmSync(join(home, ".vscode"), { recursive: true });
+      const bin = join(home, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "code-insiders"), "#!/bin/sh\n", { mode: 0o755 });
+      process.env.PATH = bin;
+      expect(vscodeInstalled(home)).toBe(true);
+    } finally { process.env.PATH = savedPath; }
   });
 
   it("never overwrites an invalid config or creates a backup for it", async () => {

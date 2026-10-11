@@ -312,8 +312,8 @@ if (hookIdx >= 0) {
  * had all three. The words are still each screen's own — this owns the shape,
  * so a screen cannot drift out of the family without editing the family.
  *
- * Capped at 80 columns by `helpOptsFor`, so help reads the same in a maximised
- * window as in a tmux pane, and narrows on a terminal smaller than that.
+ * Drawn by `screenKit().helpPage` at the terminal's width; descriptions are
+ * prose and may be shortened on a terminal, never in a pipe.
  */
 /**
  * Lines a module ALREADY laid out with the kit — `harness`, `publish`,

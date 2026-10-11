@@ -123,25 +123,15 @@ const ESC = "\x1B";
 export const TOKEN_ON_ARGV =
   "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.";
 
-// ── glyphs ────────────────────────────────────────────────────────────────
-// Exported so the other branded prompts (install-prompt.ts) share the exact
-// same set instead of hand-syncing copies.
-export const BAR = "│";
-const BAR_END = "└";
-export const STEP_ACTIVE = "◆";
-export const STEP_DONE = "◇";
 const RADIO_ON = "●";
 const RADIO_OFF = "○";
-export const CHECK_ON = "◼";
-export const CHECK_OFF = "◻";
 // The redesign's boxes: ■ ticked, □ not. Two new names rather than new values
 // for the two above, which install-prompt.ts still draws its own menus with.
 const CHECK_SELECTED = "■";
 const CHECK_EMPTY = "□";
-export const CARET = "❯";
 /** The return key, as the multi-select hints already spell it. */
 export const CARET_RETURN = "↵";
-const MARK = "\u25AE\u25AE"; // ▮▮ — the brand mark, per the design system
+ // ▮▮ — the brand mark, per the design system
 
 // ── color ─────────────────────────────────────────────────────────────────
 // The single source of truth for the brand palette — exported (via `paint`)
@@ -199,23 +189,7 @@ export function colorsEnabled(out: TTYOut): boolean {
   return !!out.isTTY && !process.env.NO_COLOR;
 }
 
-/**
- * The raw ANSI opening sequence for a brand role, for callers that assemble
- * their own strings instead of using `paint()`'s wrappers (the help prose in
- * `bin/failproofai.mjs`). `src/audit/cli.ts` was the first: it hardcoded its
- * own 256-colour palette — a green and a blue that appear nowhere in the brand
- * — so `audit` looked like a different product from `config`. Routing it here
- * keeps HUES the single source of truth: change a hue once and every surface
- * follows. Paints at the deepest tier the terminal admits to; the caller still
- * decides *whether* to colour at all.
- */
-export function brandAnsi(role: keyof typeof HUES): string {
-  return `${ESC}[${fg(HUES[role], colorTier())}m`;
-}
-
 export const ANSI_RESET = `${ESC}[0m`;
-export const ANSI_BOLD = `${ESC}[1m`;
-export const ANSI_DIM = `${ESC}[2m`;
 
 /** How much colour this terminal will actually render. */
 type ColorTier = "truecolor" | "ansi256" | "basic";
@@ -298,7 +272,6 @@ export function paint(on: boolean) {
 // (▀ top, ▄ bottom); `t` = teal, `p` = pink, `.` = transparent. Shown when
 // there's room, else a compact one-liner.
 const LOGO_MIN_COLS = 22;
-const TAGLINE = "end-to-end failure layer for ai agents";
 
 // Three editing rules, all learned the hard way:
 //   1. The two uprights must be the SAME width. In the artwork both are 93px of
@@ -423,124 +396,7 @@ export function summarize(labels: string[], noun = "selected"): string {
   return `${labels.length} ${noun} · ${head} +${labels.length - 3}`;
 }
 
-function writeLines(out: TTYOut, lines: string[]): void {
-  const cols = out.columns || 80;
-  out.write(lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n");
-}
-
 // ── framing ─────────────────────────────────────────────────────────────────
-
-/** The logomark + wordmark + tagline block (with a 2-space margin), color-aware.
- *  Shared by the wizard intro and the dashboard launch banner. On a too-narrow
- *  target it collapses to a single compact line. */
-export function renderBrandLogo(stdout: TTYOut = process.stdout): string[] {
-  const c = paint(colorsEnabled(stdout));
-  const cols = stdout.columns || 80;
-  if (cols < LOGO_MIN_COLS) {
-    return [`${c.pink(MARK)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
-  }
-  // NO_COLOR / non-TTY forces `basic`, which renderLogo draws monochrome — so
-  // the mark never emits an escape byte on a stream that asked for none.
-  const tier: ColorTier = colorsEnabled(stdout) ? colorTier() : "basic";
-  const lines = renderLogo(tier).map((l) => `  ${l}`);
-  lines.push("");
-  lines.push(`  fa${c.pink("il")}proof ai`);
-  lines.push(`  ${c.dim(TAGLINE)}`);
-  return lines;
-}
-
-/** Print the flow header — the brand logo, tagline, and the opening step. */
-export function intro(message: string, stdout: TTYOut = process.stdout): void {
-  if (!stdout.isTTY) return;
-  const c = paint(colorsEnabled(stdout));
-  const lines: string[] = ["", ...renderBrandLogo(stdout)];
-  lines.push(c.dim(BAR));
-  lines.push(`${c.guide(STEP_ACTIVE)}  ${c.bold(message)}`);
-  writeLines(stdout, lines);
-}
-
-/** The branded splash the dashboard prints on launch — logomark, wordmark, and a
- *  tidy version/links column. Returned as ready-to-print lines (caller writes
- *  them). Degrades to plain text off a TTY so it stays clean in piped logs. */
-export function renderLaunchBanner(version: string, stdout: TTYOut = process.stdout): string[] {
-  // paint() is identity when colors are off, so the link rows are built once
-  // and only the header block differs between TTY and piped output.
-  const c = paint(colorsEnabled(stdout));
-  const row = (label: string, value: string) => `  ${c.guide(label.padEnd(9))}${value}`;
-  const header = stdout.isTTY
-    ? renderBrandLogo(stdout)
-    : ["  failproof ai", `  ${TAGLINE}`];
-  return [
-    "",
-    ...header,
-    "",
-    row("version", c.pink(version)),
-    row("star", c.dim("https://github.com/failproofai/failproofai")),
-    row("docs", c.dim("https://docs.befailproof.ai/introduction")),
-    row("discord", c.dim("https://discord.befailproof.ai/")),
-    row("reddit", c.dim("https://www.reddit.com/r/failproofai/")),
-    "",
-  ];
-}
-
-/**
- * Print a step that is already SETTLED — the `◇ / message / summary` block
- * `selectOne` leaves behind when it resolves.
- *
- * Extracted because a flow assembled out of `promptText` had no way to show its
- * own history: `intro` opens the spine and `outro` closes it, and everything in
- * between was bare lines that made the frame look like it belonged to a
- * different command. `summary` is the answer, dimmed under the question, which
- * is what makes a completed step readable at a glance rather than a heading
- * with nothing under it.
- */
-export function step(
-  message: string,
-  summary?: string | string[],
-  stdout: TTYOut = process.stdout,
-): void {
-  const c = paint(colorsEnabled(stdout));
-  const rows = summary === undefined ? [] : Array.isArray(summary) ? summary : [summary];
-  if (!stdout.isTTY) {
-    if (rows.length) stdout.write(`${message}: ${rows.join(" ")}\n`);
-    return;
-  }
-  // Truncated to the terminal, because a summary that wraps loses the spine on
-  // its second row and the block stops reading as one step.
-  const cols = stdout.columns || 80;
-  const lines = [c.dim(BAR), truncate(`${c.dim(STEP_DONE)}  ${message}`, cols - 1)];
-  for (const r of rows) lines.push(truncate(`${c.dim(BAR)}  ${c.dim(r)}`, cols - 1));
-  writeLines(stdout, lines);
-}
-
-/**
- * Open a step and leave the cursor on it, for a prompt that draws its own line.
- *
- * The counterpart to {@link step}: `◆` in teal with the question in bold, then
- * a spine row the prompt is expected to hang off via `PromptTextOptions.prefix`.
- */
-export function stepOpen(message: string, stdout: TTYOut = process.stdout): void {
-  const c = paint(colorsEnabled(stdout));
-  if (!stdout.isTTY) return;
-  writeLines(stdout, [c.dim(BAR), `${c.guide(STEP_ACTIVE)}  ${c.bold(message)}`]);
-}
-
-/** Close the flow with a terminating └ line — pink on success, dim on cancel. */
-export function outro(
-  message: string,
-  opts: { ok?: boolean } = {},
-  stdout: TTYOut = process.stdout,
-): void {
-  const c = paint(colorsEnabled(stdout));
-  const ok = opts.ok !== false;
-  if (!stdout.isTTY) {
-    stdout.write(message + "\n");
-    return;
-  }
-  const end = ok ? c.pink(BAR_END) : c.dim(BAR_END);
-  const text = ok ? c.pink(message) : c.dim(message);
-  writeLines(stdout, [c.dim(BAR), `${end}  ${text}`]);
-}
 
 // ── shared render engine ─────────────────────────────────────────────────────
 
@@ -1497,9 +1353,7 @@ export function promptCloudKey(opts: CloudKeyPromptOptions): Promise<CloudKeyAns
  * answers to "how does this product state a fact".
  *
  * These are the one answer. Every builder is pure — `(spec, opts) => string[]` —
- * so a surface can be asserted at any width, with color on or off, without a pty;
- * that is the same shape `renderBrandLogo`, `reviewLines` and `buildSummary`
- * already have, and the reason they are the only rendering we can currently test.
+ * so a surface can be asserted at any width, with color on or off, without a pty.
  *
  * Callers pass `optsFor(stdout)` and print with `printBlock`, which owns the
  * outer margins so no surface has to remember them.
@@ -1936,21 +1790,6 @@ export function chip(state: ChipState, opts?: RenderOpts): string {
   return pad(painted, CHIP_WIDTH);
 }
 
-/** A bulleted list, wrapped, with continuation lines aligned under the text —
- *  `uninstall` prints 200-column bullets today that wrap into column 0. */
-export function bullets(items: string[], opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const budget = Math.max(8, cols - INDENT.length - 4);
-  const out: string[] = [];
-  for (const item of items) {
-    const [first, ...rest] = wrap(item, budget);
-    if (first === undefined) continue;
-    out.push(`${INDENT}${c.pink("•")} ${first}`);
-    for (const line of rest) out.push(`${INDENT}  ${line}`);
-  }
-  return out;
-}
-
 /** A dim aside under a block. */
 export function note(text: string, opts?: RenderOpts): string[] {
   const { cols, c } = ctx(opts);
@@ -1988,12 +1827,6 @@ export function warning(lines: string[], opts?: RenderOpts): string[] {
   return gutterBlock(c.warn("\u25B2"), lines, opts);
 }
 
-/** The same, for the ones that destroy something. */
-export function danger(lines: string[], opts?: RenderOpts): string[] {
-  const { c } = ctx(opts);
-  return gutterBlock(c.pink("!"), lines, opts);
-}
-
 /** Nothing to show, said the same way everywhere: what is empty, then the one
  *  command that changes that. */
 export function emptyState(
@@ -2001,132 +1834,6 @@ export function emptyState(
   opts?: RenderOpts,
 ): string[] {
   return stack(note(spec.what, opts), spec.cmd ? nextStep(spec.cmd, spec.hint, opts) : null);
-}
-
-export interface HelpSpec {
-  usage: Array<[string, string?]>;
-  options?: Array<[string, string]>;
-  examples?: string[];
-  /** Free lines above the first section. */
-  lead?: string[];
-}
-
-/**
- * The description column for one block of entries, derived from its widest
- * described name and capped.
- *
- * Its own step because the callers differ on the SCOPE they compute it over —
- * {@link helpBlock} across usage and options together, {@link helpScreen} per
- * section — and neither should be restating the cap or the floor.
- */
-export function helpColumn(entries: Array<[string, string?]>): number {
-  // Only DESCRIBED entries set the column. A bare usage line — `failproofai
-  // flush [--wait] [--timeout <secs>]`, which describes itself — is 44
-  // characters and has nothing in the second column, so letting it vote pushed
-  // every real description on the screen out to column 38.
-  const named = entries.filter(([, d]) => d).map(([n]) => visibleWidth(n));
-  return Math.min(34, Math.max(12, ...named));
-}
-
-/** `<name>  <description>` at a column the caller fixed. */
-export function helpEntries(
-  items: Array<[string, string?]>,
-  nameWidth: number,
-  opts?: RenderOpts,
-): string[] {
-  const { cols, c } = ctx(opts);
-  const out: string[] = [];
-  for (const [raw, description] of items) {
-    // Pink is what you TYPE, dim is what it means, bold is the section it sits
-    // in. Three tones, the same three on every screen, so a flag looks like a
-    // flag whether you found it on `publish --help` or on the index. Decoration
-    // only: the column already separates the two halves, so the screen reads
-    // the same piped to a file or under NO_COLOR.
-    const name = c.pink(raw);
-    if (!description) {
-      out.push(`${INDENT}${name}`);
-      continue;
-    }
-    const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
-    const [first, ...rest] = wrap(description, budget);
-    // A name wider than the column takes its own line rather than shoving the
-    // description out — the top-level help has several of these today.
-    if (visibleWidth(raw) > nameWidth) {
-      out.push(`${INDENT}${name}`);
-      for (const line of [first, ...rest]) {
-        if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-      }
-      continue;
-    }
-    // Padded on the VISIBLE width, so a painted name still lands the column
-    // where an unpainted one does.
-    const gap = nameWidth - visibleWidth(raw);
-    out.push(`${INDENT}${name}${" ".repeat(gap)}  ${c.dim(first ?? "")}`);
-    for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-  }
-  return out;
-}
-
-/**
- * A usage/options/examples block, on one column across all three.
- *
- * The plain shape, for a surface with nothing else to say. A screen with prose
- * sections, a heading, or a footer wants {@link helpScreen}, which is what the
- * twelve `--help` screens use.
- */
-export function helpBlock(spec: HelpSpec, opts?: RenderOpts): string[] {
-  const nameWidth = helpColumn([...spec.usage, ...(spec.options ?? [])]);
-  const section = (label: string, body: string[]): string[] =>
-    body.length === 0 ? [] : [...rule(label, opts), ...body];
-  return stack(
-    spec.lead ? spec.lead.map((l) => `${INDENT}${l}`) : null,
-    section("usage", helpEntries(spec.usage, nameWidth, opts)),
-    section("options", helpEntries(spec.options ?? [], nameWidth, opts)),
-    section("examples", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
-  );
-}
-
-/**
- * Help is the one family of screens read at every width that belongs to no
- * terminal in particular. Capped at 80 so `publish --help` is the same shape in
- * a maximised window as in a tmux pane — and never wider than the terminal it
- * is actually in, so the cap can only ever narrow.
- */
-export const HELP_COLS = 80;
-
-/** {@link optsFor}, capped to {@link HELP_COLS}. Every help screen uses this. */
-export function helpOptsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
-  const base = optsFor(stdout);
-  return { cols: Math.min(base.cols, HELP_COLS), color: base.color };
-}
-
-export interface HelpHeading {
-  /** The command being documented. Omitted for the top-level index. */
-  command?: string;
-  version: string;
-  /** One line: what this command is for. */
-  tagline: string;
-}
-
-/**
- * The two lines every help screen opens with.
- *
- * The wordmark carries the same pink on `il` that {@link renderBrandLogo} tints,
- * so a help screen and the wizard are visibly one product rather than two that
- * happen to ship together. The version sits right-aligned and dim because it is
- * the fact you want when a help screen and its binary disagree, and the fact you
- * never want in the way otherwise.
- */
-export function helpHeading(spec: HelpHeading, opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const mark = `${c.bold("fa")}${c.pink("il")}${c.bold("proofai")}`;
-  const left = `${INDENT}${mark}${spec.command ? ` ${c.bold(spec.command)}` : ""}`;
-  const right = c.dim(`v${spec.version}`);
-  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
-  // Too narrow for both: the version goes under rather than wrapping into the
-  // middle of the name, where it reads as part of the command.
-  const head = gap < 2 ? [left, `${INDENT}${right}`] : [left + " ".repeat(gap) + right];
-  return [...head, ...note(spec.tagline, opts)];
 }
 
 /**
@@ -2141,50 +1848,6 @@ export type HelpSection =
   | { label: string; entries: Array<[string, string?]>; after?: string[] }
   | { label: string; prose: string }
   | { label: string; lines: string[] };
-
-export interface HelpScreenSpec extends HelpHeading {
-  sections: HelpSection[];
-  /** Dim closing lines — where to read more. */
-  footer?: string[];
-}
-
-/**
- * A whole `--help`, assembled the same way twelve times.
- *
- * Before this, every screen was its own template literal: `USAGE` here and
- * `Usage:` there, a description column hand-counted per file, no version on the
- * page, and no colour on any of them while the index it was reached from had
- * all three. The screens still say exactly what their authors wrote — this owns
- * only the shape.
- */
-export function helpScreen(spec: HelpScreenSpec, opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const width = Math.max(12, cols - INDENT.length * 2);
-  const groups: Array<string[] | null> = [helpHeading(spec, opts)];
-  for (const section of spec.sections) {
-    // Per SECTION, not per screen. One column across the whole page is what a
-    // screen of like-shaped entries wants, and it is exactly wrong on a screen
-    // that has both: `failproofai policies show <owner>/<repo>` is 40 columns
-    // and `--all` is 5, so a shared column left every flag description hanging
-    // 34 columns out with nothing under it. What made two screens read as two
-    // products was the INDENT and the heading, and those are shared here.
-    const body =
-      "entries" in section
-        ? [
-            ...helpEntries(section.entries, helpColumn(section.entries), opts),
-            ...(section.after?.length
-              ? ["", ...section.after.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`))]
-              : []),
-          ]
-        : "prose" in section
-          ? wrap(section.prose, width).map((l) => `${INDENT}${l}`)
-          : section.lines.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`));
-    if (body.length === 0) continue;
-    groups.push([...rule(section.label, opts), ...body]);
-  }
-  if (spec.footer?.length) groups.push(spec.footer.map((l) => `${INDENT}${c.dim(l)}`));
-  return stack(...groups);
-}
 
 // ── the 2026-10 screen language ─────────────────────────────────────────────
 /**

@@ -146,7 +146,37 @@ import {
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
-import { TOKEN_ON_ARGV, nextStep, note, optsFor, rows, screenKit, stack, title, warning, type RenderOpts } from "./tui";
+import { TOKEN_ON_ARGV, optsFor, paint, screenKit, stack, wrap, type RenderOpts } from "./tui";
+
+// ── the 2026-10 look, for the jev result screens ─────────────────────────────
+//
+// The header names the subcommand and carries its outcome as meta, the way
+// every action result does. Rows are the kit's kv rows, a note is grey prose,
+// a warning is ▲ with the rest indented under it, and a next step is its lead
+// and the command, the command never split.
+function jevHeader(name: string, meta: string | undefined, opts: RenderOpts): string[] {
+  return [screenKit(opts).header(meta ? `${name}  ·  ${meta}` : name)];
+}
+function jevRows(items: Array<[string, string]>, opts: RenderOpts): string[] {
+  return screenKit(opts).kv(items);
+}
+function jevNote(text: string, opts: RenderOpts): string[] {
+  const c = paint(opts.color ?? false);
+  return wrap(text, Math.max(20, (opts.cols ?? 80) - 2)).map((line) => `  ${c.ink3(line)}`);
+}
+function jevWarn(lines: string[], opts: RenderOpts): string[] {
+  const kit = screenKit(opts);
+  const width = Math.max(20, (opts.cols ?? 80) - 2);
+  return lines.flatMap((line, i) =>
+    wrap(line, width).map((part, j) => (i === 0 && j === 0 ? kit.caution(part) : `  ${part}`)),
+  );
+}
+function jevNext(cmd: string, lead: string | undefined, opts: RenderOpts): string[] {
+  const kit = screenKit(opts);
+  if (!lead) return [`  ${kit.cmd(cmd)}`];
+  if (lead.length + 2 + cmd.length <= (opts.cols ?? 80)) return [`${lead}  ${kit.cmd(cmd)}`];
+  return [...wrap(lead, Math.max(20, (opts.cols ?? 80) - 2)), `  ${kit.cmd(cmd)}`];
+}
 
 export interface JevCliResult {
   lines: string[];
@@ -1069,8 +1099,8 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
   const offBase = offProviderBase(cfg, route.endpoint);
   return ok(
     stack(
-      title("failproofai jev setup", `saved · ${provider} · ${cfg.mode ?? DEFAULT_JEV_MODE}`, opts),
-      rows(
+      jevHeader("Jev setup", `saved · ${provider} · ${cfg.mode ?? DEFAULT_JEV_MODE}`, opts),
+      jevRows(
         [
           ["provider", provider],
           ["endpoint", displayEndpoint(route.endpoint)],
@@ -1087,7 +1117,7 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
       // to discover from the fallback counts that the URL they gave is not an
       // API base. So the file is written and what it will do is named.
       offBase
-        ? warning(
+        ? jevWarn(
             [
               `Saved as given, but ${provider}'s API is at ${offBase.api}, and this URL sends requests to ${offBase.endpoint} instead.`,
               `Unless something of yours answers Jev requests at that path, every evaluation will fail there and hooks will fall back to regex — \`failproofai jev test\` says which it is in one request. To send requests back to ${provider}'s own API: failproofai jev setup --base-url default`,
@@ -1096,7 +1126,7 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
           )
         : null,
       tightenedDir
-        ? note(
+        ? jevNote(
             `${tightenedDir.path} was writable by other users, who could have replaced this file whatever its own permissions were; it is now ${tightenedDir.to}.`,
             opts,
           )
@@ -1105,11 +1135,11 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
       // command line it came on is not — it is in this shell's history file and
       // was readable from /proc by anything running as this user while the
       // process lived.
-      tokenOnCommandLine ? warning(TOKEN_HISTORY_WARNING, opts) : null,
-      note("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
+      tokenOnCommandLine ? jevWarn(TOKEN_HISTORY_WARNING, opts) : null,
+      jevNote("Hooks read this file on every tool call — no restart. Without it they run the regex policies exactly as before.", opts),
       // Switched off, `jev test` only answers "not run — switched off": a next
       // step that leads nowhere is worse than none.
-      (cfg.mode ?? DEFAULT_JEV_MODE) === "off" ? null : nextStep("failproofai jev test", "Check it with one live request:", opts),
+      (cfg.mode ?? DEFAULT_JEV_MODE) === "off" ? null : jevNext("failproofai jev test", "Check it with one live request:", opts),
     ),
   );
 }
@@ -1292,8 +1322,8 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
   const shownMode = cfg.mode ?? DEFAULT_JEV_MODE;
   return ok(
     stack(
-      title("failproofai jev setup", `saved · FailproofAI Cloud · ${shownMode}`, opts),
-      rows(
+      jevHeader("Jev setup", `saved · FailproofAI Cloud · ${shownMode}`, opts),
+      jevRows(
         [
           ["provider", providerLabel(JEV_CLOUD_PROVIDER)],
           ["endpoint", shownEndpoint(JEV_CLOUD_PROVIDER, route.endpoint)],
@@ -1309,14 +1339,14 @@ async function cloudSetup(values: Map<string, string>, bools: Set<string>, opts:
         ],
         opts,
       ),
-      note("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
+      jevNote("Hooks read this file on every tool call — no restart. Calls are charged to your FailproofAI Cloud org's plan.", opts),
       // With no usable key, `jev test` only answers "not run": the step that
       // helps is the connection. Switched off, there is no step to take.
       shownMode === "off"
         ? null
         : keySource
-          ? nextStep("failproofai jev test", "Check it with one live request:", opts)
-          : nextStep(
+          ? jevNext("failproofai jev test", "Check it with one live request:", opts)
+          : jevNext(
               "failproofai config --token <key>",
               "Jev stays off until this machine is connected with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page):",
               opts,
@@ -1759,7 +1789,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
               ? "Reconnect with this machine's key to re-check what it carries (a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page):"
               : undefined;
     const json = asJson ? JSON.stringify({ ok: false, error: { code, message: why } }, null, 2) : undefined;
-    return fail(stack(title("failproofai jev test", "not run", opts), note(why, opts), nextStep(fixCmd, fixLead, opts)), json);
+    return fail(stack(jevHeader("Jev test", "not run", opts), jevNote(why, opts), jevNext(fixCmd, fixLead, opts)), json);
   }
 
   const cfg = inspection.config;
@@ -1817,8 +1847,8 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
       problem === "over-timeout" ? `over timeout · ${latencyMs} ms` : problem ? `wrong answer · p = ${p.toFixed(3)}` : `ok · ${latencyMs} ms`;
     return done(
       stack(
-        title("failproofai jev test", status, opts),
-        rows(
+        jevHeader("Jev test", status, opts),
+        jevRows(
           [
             ["provider", cfg.provider],
             ["endpoint", displayEndpoint(route.endpoint)],
@@ -1833,12 +1863,12 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ],
           opts,
         ),
-        note(
+        jevNote(
           "One request, sent directly: the hook path's cache and rate limit were not involved, and a fresh process pays DNS and TLS setup that the daemon's warm worker does not.",
           opts,
         ),
         problem === "over-timeout"
-          ? nextStep("failproofai jev setup --timeout-ms <n>", `Give hooks longer (up to ${MAX_JEV_TIMEOUT_MS} ms), or use a faster route:`, opts)
+          ? jevNext("failproofai jev setup --timeout-ms <n>", `Give hooks longer (up to ${MAX_JEV_TIMEOUT_MS} ms), or use a faster route:`, opts)
           : null,
       ),
     );
@@ -1853,8 +1883,8 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     if (asJson) return fail([], JSON.stringify({ ok: false, provider: cfg.provider, latencyMs, timeoutMs: budget, withinTimeout: !late, error: e }, null, 2));
     return fail(
       stack(
-        title("failproofai jev test", `failed · ${e.code}`, opts),
-        rows(
+        jevHeader("Jev test", `failed · ${e.code}`, opts),
+        jevRows(
           [
             ["provider", cfg.provider],
             ["endpoint", displayEndpoint(route.endpoint)],
@@ -1864,7 +1894,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ],
           opts,
         ),
-        note(
+        jevNote(
           late
             ? `Hooks stop waiting after ${budget} ms, so they record this as \`timeout\`, not ${e.code}: the provider or FailproofAI Cloud is slow or failing upstream.`
             : remedy(e.code, cfg.provider, e.message),
@@ -2013,8 +2043,8 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
     }
     return fail(
       stack(
-        title("failproofai jev models", "not read", opts),
-        rows(
+        jevHeader("Jev models", "not read", opts),
+        jevRows(
           [
             ["provider", provider],
             ["endpoint", shown],
@@ -2023,7 +2053,7 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
           ],
           opts,
         ),
-        note(
+        jevNote(
           "Not every endpoint serves a model list — a proxy may expose only /systemone — and nothing depends on one: setup and hooks work without it.",
           opts,
         ),
@@ -2040,8 +2070,8 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
   const listed = list.models.slice(0, MAX_SHOWN_MODELS);
   return ok(
     stack(
-      title("failproofai jev models", `${list.models.length} · ${provider}`, opts),
-      rows(
+      jevHeader("Jev models", `${list.models.length} · ${provider}`, opts),
+      jevRows(
         [
           ["provider", provider],
           ["endpoint", shown],
@@ -2050,13 +2080,13 @@ async function models(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promi
         ],
         opts,
       ),
-      rows(
+      jevRows(
         listed.map((name) => [name, name === configuredModel ? "configured" : ""] as [string, string]),
         opts,
       ),
-      list.models.length > listed.length ? note(`… and ${list.models.length - listed.length} more.`, opts) : null,
+      list.models.length > listed.length ? jevNote(`… and ${list.models.length - listed.length} more.`, opts) : null,
       configuredModel !== null && !modelListHasModel(list, configuredModel) && listDescribesSystemOne(list)
-        ? warning(
+        ? jevWarn(
             [
               `The configured model ${configuredModel} is not one of these, so every evaluation would fail at this endpoint and hooks would fall back to regex.`,
               `Point it at one of them: failproofai jev setup --model ${list.models[0]}`,
@@ -2076,7 +2106,7 @@ function remove(argv: string[], opts: RenderOpts): JevCliResult {
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const path = jevConfigPath();
   if (!existsSync(path)) {
-    return ok(stack(title("failproofai jev remove", "nothing to do", opts), note(`There is no ${path}; Jev is already off.`, opts)));
+    return ok(stack(jevHeader("Jev remove", "nothing to do", opts), jevNote(`There is no ${path}; Jev is already off.`, opts)));
   }
   try {
     unlinkSync(path);
@@ -2085,9 +2115,9 @@ function remove(argv: string[], opts: RenderOpts): JevCliResult {
   }
   return ok(
     stack(
-      title("failproofai jev remove", "off", opts),
-      note(`Removed ${path}. Jev is off; hooks run the regex policies exactly as before, from the next tool call.`, opts),
-      process.env[JEV_API_KEY_ENV] ? note(`${JEV_API_KEY_ENV} is still set in this shell. Without the file it does nothing.`, opts) : null,
+      jevHeader("Jev remove", "off", opts),
+      jevNote(`Removed ${path}. Jev is off; hooks run the regex policies exactly as before, from the next tool call.`, opts),
+      process.env[JEV_API_KEY_ENV] ? jevNote(`${JEV_API_KEY_ENV} is still set in this shell. Without the file it does nothing.`, opts) : null,
     ),
   );
 }

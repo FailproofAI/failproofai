@@ -4,6 +4,7 @@
 
 ### Features
 
+- `jev setup`, `jev test`, `jev models` and `jev remove` results in the new look: the header names the subcommand and its outcome, with kv rows, grey notes, ▲ warnings and one-line next steps (#PR)
 - `policies --install` / `--uninstall` results in the new look: one ✓ per agent with where it was written, and the duplicate-scope warning as one ▲ line with its fix. It no longer prints a hard-coded colour code into pipes or under NO_COLOR (#PR)
 - Every error in the new look: `✕` and what went wrong, then the fix on its own line with the command in pink, instead of `Error: …`. An unknown word gets "There is no command called 'status'." and "Did you mean  failproofai config --status?": words people type (`status`, `login`, `install`, `pause` and more) map to the command that does it, a typo finds the nearest command, and a word close to none gets no guess and points at `failproofai help`. Exit codes are unchanged (#PR)
 - `failproofai uninstall` asks one question, `Continue? y/N`, under a plan that says exactly what goes: the hooks and which agents they are in, the failproofaid service, the policy settings in policies-config.json, and `~/.failproofai` with `--purge`. Yes removes all of it, the service included, as `--yes` does; the second "remove the service too?" question is gone (`policies --uninstall` removes only the hooks). `--yes` and the refusal without a terminal are unchanged (#PR)

@@ -660,7 +660,7 @@ export async function maybeFirstRunConfigure(
     // and it must stay a hint rather than a failure: the command the user
     // actually typed still runs.
     stdout.write(
-      `\n[failproofai] Not set up yet — run \`failproofai config\` to get started.\n\n`,
+      `\n${screenKit(optsFor(stdout)).caution("failproofai is not set up yet.", "failproofai config")}\n\n`,
     );
     return false;
   }
@@ -671,7 +671,7 @@ export async function maybeFirstRunConfigure(
   const lock = acquireOnboardingLock();
   if (!lock) {
     stdout.write(
-      `\n[failproofai] Setup is already running in another terminal — leaving it to finish.\n\n`,
+      `\n${screenKit(optsFor(stdout)).caution("Setup is already running in another terminal, so this one leaves it to finish.")}\n\n`,
     );
     return false;
   }

@@ -299,7 +299,9 @@ export async function runRenameCommand(
       exitCode: 1,
       lines: [
         "This machine is not connected to FailproofAI Cloud, so it has no name to change.",
-        "Connect it first: failproofai config --connect <url> --token <key>",
+        // `failproofai config`, not `--connect <url> --token <key>`: a key on
+        // the command line lands in shell history and the process list.
+        "Connect it first: `failproofai config`",
       ],
     };
   }

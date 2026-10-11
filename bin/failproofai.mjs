@@ -816,8 +816,8 @@ async function runCli() {
     if (unknown) {
       const looksLikeWindow = /^\d+[dmy]$/.test(unknown) || !Number.isNaN(Date.parse(unknown));
       throw new CliError(
-        `Unexpected argument: ${unknown}\n` +
-          (looksLikeWindow ? `Did you mean \`failproofai backfill --since ${unknown}\`?` : "Run `failproofai backfill --help` for usage."),
+        `Unexpected argument: ${unknown}.\n` +
+          (looksLikeWindow ? `Did you mean  \`failproofai backfill --since ${unknown}\`?` : "See its options:  `failproofai backfill --help`"),
       );
     }
     let agents;
@@ -1793,10 +1793,10 @@ async function runCli() {
     if (strayConfig) {
       const asFlag = `--${strayConfig.replace(/^-+/, "")}`;
       throw new CliError(
-        `Unexpected argument: ${strayConfig}\n` +
+        `Unexpected argument: ${strayConfig}.\n` +
           (CONFIG_FLAGS.has(asFlag) && asFlag !== strayConfig
-            ? `Did you mean \`failproofai config ${asFlag}\`?`
-            : "Run `failproofai config --help` for its options."),
+            ? `Did you mean  \`failproofai config ${asFlag}\`?`
+            : "See its options:  `failproofai config --help`"),
       );
     }
 
@@ -1971,7 +1971,7 @@ async function runCli() {
       const ids = raw === "all" ? [...INTEGRATION_TYPES] : raw.split(",").map((a) => a.trim()).filter(Boolean);
       const unknown = ids.filter((id) => !INTEGRATION_TYPES.includes(id));
       if (ids.length === 0 || unknown.length > 0) {
-        throw new CliError(`Not an agent: ${unknown.join(", ") || raw}\nAgents: ${INTEGRATION_TYPES.join(", ")}, or all`);
+        throw new CliError(`Not an agent: ${unknown.join(", ") || raw}.\nAgents: ${INTEGRATION_TYPES.join(", ")}, or all`);
       }
       agents = ids;
     }

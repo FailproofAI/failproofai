@@ -206,10 +206,9 @@ function applyPackPolicies(
       writeScopedHooksConfig(next, scope, cwd);
     }
   }
+  const kit = screenKit(optsFor(process.stdout));
   for (const ref of refs) {
-    console.log(
-      `${on ? "Enabled" : "Disabled"} ${ref.name} from pack ${ref.packId}@${ref.packVersion}.`,
-    );
+    console.log(kit.ok(`${on ? "Enabled" : "Disabled"} ${ref.name} from pack ${ref.packId}@${ref.packVersion}.`));
   }
 }
 
@@ -780,8 +779,10 @@ async function installHooksImpl(
         await addPack(CORE_SOURCE, { only: fromPack });
       } catch (err) {
         console.log(
-          `\nWarning: could not fetch the policy pack (${err instanceof Error ? err.message : String(err)}).\n` +
-            `Run \`failproofai policies add FailproofAI/policies\` once you are online.`,
+          screenKit(optsFor(process.stdout)).caution(
+            `Couldn't fetch the policy pack (${err instanceof Error ? err.message : String(err)}). Once you are online:`,
+            "failproofai policies add FailproofAI/policies",
+          ),
         );
       }
     } else {
@@ -800,13 +801,14 @@ async function installHooksImpl(
   // with an empty list described work it had not done — or worse, re-stated a
   // stale key as though it were this run's decision.
   if (policyNames !== undefined && selectedPolicies.length > 0) {
-    console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
+    const n = selectedPolicies.length;
+    console.log(screenKit(optsFor(process.stdout)).ok(`Enabled ${n} ${n === 1 ? "policy" : "policies"}: ${selectedPolicies.join(", ")}`));
   }
   if (removeCustomHooks) {
-    console.log("Custom hooks path cleared.");
+    console.log(screenKit(optsFor(process.stdout)).ok("Custom hooks path cleared."));
   } else if (configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath) {
     const paths = configToWrite.customPoliciesPaths ?? [configToWrite.customPoliciesPath!];
-    console.log(`Custom hooks paths: ${paths.join(", ")}`);
+    for (const line of screenKit(optsFor(process.stdout)).kv([["custom", paths.join(", ")]])) console.log(line);
   }
 
   // Write hooks for each selected CLI
@@ -883,38 +885,37 @@ async function installHooksImpl(
     // Telemetry is best-effort — never block the operation
   }
 
+  // One ✓ per agent, with where it was written under it; then how the hooks
+  // call failproofai. Drawn with the kit, so colour follows the terminal and a
+  // pipe gets plain text.
+  const kit = screenKit(optsFor(process.stdout));
   for (const { cli: cliId, path } of writtenSettingsPaths) {
     const integration = getIntegration(cliId);
-    if (cliId === "hermes") {
-      console.log(
-        `Failproof AI native plugin installed for ${integration.displayName} ` +
-          `(8 registered hooks, scope: ${scope}).`
-      );
-    } else {
-      console.log(
-        `Failproof AI hooks installed for ${integration.displayName} ` +
-          `(${integration.eventTypes.length} event types, scope: ${scope}).`
-      );
-    }
-    console.log(`Settings: ${path}`);
+    console.log(
+      kit.ok(
+        cliId === "hermes"
+          ? `${integration.displayName} plugin installed (8 hooks, ${scope} scope).`
+          : `${integration.displayName} hooks installed (${integration.eventTypes.length} events, ${scope} scope).`,
+      ),
+    );
+    for (const line of kit.kv([["settings", path]])) console.log(line);
   }
-  if (scope === "project") {
-    console.log(`Command:  npx -y failproofai`);
-    console.log(`\nThis file can be committed to git — no machine-specific paths.`);
-  } else {
-    console.log(`Binary:   ${binaryPath}`);
+  for (const line of kit.kv(scope === "project" ? [["command", "npx -y failproofai"]] : [["binary", binaryPath]])) {
+    console.log(line);
   }
+  if (scope === "project") console.log(`${INDENT}This file can be committed to git: it has no machine-specific paths.`);
 
   // Warn about duplicate-scope installations (Claude Code only — uses HOOK_SCOPES)
   const otherScopes = deduplicateScopes(HOOK_SCOPES, cwd).filter((s) => s !== scope);
   const duplicates = otherScopes.filter((s) => hooksInstalledInSettings(s, cwd));
   if (duplicates.length > 0) {
     const scopeList = duplicates.map((s) => `${s} (${scopeLabel(s)})`).join(", ");
-    console.log();
-    console.log(`\x1B[33mWarning: Failproof AI hooks are also installed at ${scopeList}.\x1B[0m`);
-    console.log(`Having hooks in multiple scopes may cause duplicate policy evaluation.`);
-    console.log(`Use \`failproofai policies --uninstall --scope ${duplicates[0]}\` to remove the other installation,`);
-    console.log(`or \`failproofai policies\` to see all scopes.`);
+    console.log(
+      kit.caution(
+        `Hooks are also installed at ${scopeList}, so each policy may run twice.`,
+        `failproofai policies --uninstall --scope ${duplicates[0]}`,
+      ),
+    );
     try {
       await trackHookEvent(getInstanceId(), "multi_scope_warning_shown", {
         new_scope: scope,
@@ -1067,7 +1068,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
 
       if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {
-          say("No settings file found. Nothing to remove.");
+          say(screenKit(optsFor(process.stdout)).ok("No settings file found, so there is nothing to remove."));
           nothingToReport = true;
         }
         continue;
@@ -1078,13 +1079,13 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         const removed = integration.removeHooksFromFile(settingsPath);
         removedHere += removed;
         if (removed > 0 && scope !== "all") {
-          say(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
-          say(`Settings: ${settingsPath}`);
+          say(screenKit(optsFor(process.stdout)).ok(`Removed ${removed} failproofai ${removed === 1 ? "hook" : "hooks"} from ${integration.displayName} settings.`));
+          for (const line of screenKit(optsFor(process.stdout)).kv([["settings", settingsPath]])) say(line);
         }
       }
 
       if (removedHere === 0 && scope !== "all" && selectedClis.length === 1) {
-        say("No hooks found in settings. Nothing to remove.");
+        say(screenKit(optsFor(process.stdout)).ok("No hooks found in settings, so there is nothing to remove."));
         nothingToReport = true;
         continue;
       }
@@ -1098,12 +1099,12 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   }
 
   if (scope === "all") {
-    say(`Removed ${totalRemoved} failproofai hook(s) from all scopes.`);
+    say(screenKit(optsFor(process.stdout)).ok(`Removed ${totalRemoved} failproofai ${totalRemoved === 1 ? "hook" : "hooks"} from every scope.`));
     for (const cliId of selectedClis) {
       const integration = getIntegration(cliId);
       for (const s of integration.scopes) {
         for (const p of settingsPathsFor(integration, s, cwd)) {
-          say(`  ${integration.displayName} / ${s}: ${p}`);
+          say(`${INDENT}${integration.displayName}, ${s}:  ${p}`);
         }
       }
     }

@@ -331,7 +331,7 @@ describe("policies --uninstall / policies remove all", () => {
     writeSelection({ selected: ["claude", "goose"], seen: [] });
     await removeHooks(undefined, "user", project, { cli: ["goose"], syncAgentSelection: true });
     expect(printed()).toEqual([
-      "No settings file found. Nothing to remove.",
+      "✓ No settings file found, so there is nothing to remove.",
       "✓ Goose is no longer traced, so failproofai config won't add its hooks back.",
     ]);
     expect(selectionOnDisk()?.selected).toEqual(["claude"]);

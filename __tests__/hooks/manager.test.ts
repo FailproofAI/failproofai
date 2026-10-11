@@ -488,7 +488,7 @@ describe("hooks/manager", () => {
       const logs = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("npx -y failproofai"))).toBe(true);
       expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("committed to git"))).toBe(true);
-      expect(logs.some((l: unknown) => typeof l === "string" && (l as string).includes("Binary:"))).toBe(false);
+      expect(logs.some((l: unknown) => typeof l === "string" && /^ {2}binary +\S/.test(l as string))).toBe(false);
     });
 
     it("install at local scope writes to {cwd}/.claude/settings.local.json", async () => {
@@ -556,7 +556,7 @@ describe("hooks/manager", () => {
       await installHooks(["all"], "user");
 
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("Warning: Failproof AI hooks are also installed"),
+        expect.stringContaining("Hooks are also installed at"),
       );
     });
 

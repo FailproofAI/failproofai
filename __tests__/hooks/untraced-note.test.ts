@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -47,11 +48,16 @@ describe("noteUntracedAgent", () => {
   });
 
   it("keeps the record bounded however many sessions pass", () => {
+    // Seeded full rather than filled by 200 writes, which is slow enough on a
+    // loaded machine to time out; the bound is the same either way.
     const config = { ...readConfig(), agents: { selected: ["claude"], seen: [] } };
-    for (let i = 0; i < 260; i++) noteUntracedAgent("goose", `s${i}`, config);
+    mkdirSync(dirname(untracedNotePath()), { recursive: true });
+    writeFileSync(untracedNotePath(), JSON.stringify(Array.from({ length: 200 }, (_, i) => `goose:old${i}`)));
+    for (let i = 0; i < 5; i++) noteUntracedAgent("goose", `s${i}`, config);
     const kept = JSON.parse(readFileSync(untracedNotePath(), "utf8")) as string[];
     expect(kept).toHaveLength(200);
-    expect(kept[199]).toBe("goose:s259");
+    expect(kept[0]).toBe("goose:old5");
+    expect(kept[199]).toBe("goose:s4");
   });
 
   it("never throws on the hook path", () => {

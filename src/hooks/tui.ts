@@ -2290,6 +2290,79 @@ export function screenKit(opts: ScreenKitOpts = {}) {
   const fail = (text: string, fix?: string): string =>
     `${c.err("✕")} ${text}${fix ? `${sep}${cmd(fix)}` : ""}`;
 
+  /**
+   * A message as every notice prints it: the first line after one state glyph,
+   * each later line a fix line indented two (keeping any indentation of its
+   * own), and each `backticked` span painted as a command with the backticks
+   * dropped. A message author writes `Run  \`failproofai help\`  for usage.`,
+   * and it reads `Run  failproofai help  for usage.` in a pipe, with the
+   * command in pink on a terminal. Unbalanced backticks are left as written
+   * rather than guessed at.
+   *
+   * Never cut: a notice holds the reason something failed and the command that
+   * fixes it, and half of either is worse than a line the terminal wraps.
+   */
+  const notice = (state: "ok" | "caution" | "fail", message: string): string[] => {
+    const typeable = (line: string): string =>
+      (line.split("`").length - 1) % 2 === 0 ? line.replace(/`([^`]+)`/g, (_whole, typed: string) => cmd(typed)) : line;
+    const glyph = state === "ok" ? c.guide("✓") : state === "caution" ? c.warn("▲") : c.err("✕");
+    const [first = "", ...rest] = message.split("\n");
+    return [
+      `${glyph} ${typeable(first)}`,
+      ...rest.map((line) => (line.trim() === "" ? "" : `${INDENT}${typeable(line)}`)),
+    ];
+  };
+
+  /**
+   * `Continue? y/N` — the one question a destructive command asks, after the
+   * caller has printed what it would do. Only `y` or `yes`, in any case, then
+   * Enter, is a yes. Enter alone, anything else, Esc, Ctrl+C, Ctrl+D or the
+   * input closing is a no: the default answer to "remove these?" has to be the
+   * one that removes nothing, and one stray key must not be consent. Keys are
+   * read the way the pickers read them (raw, echoed here), so it behaves the
+   * same on every terminal. Callers ask only when there is one to answer on.
+   */
+  const confirm = (io: { stdin: TTYIn; stdout: TTYOut }, question = "Continue?"): Promise<boolean> =>
+    new Promise((resolve) => {
+      const { stdin, stdout } = io;
+      let typed = "";
+      let settled = false;
+      const wasRaw = stdin.isRaw;
+      const settle = (answer: boolean): void => {
+        if (settled) return;
+        settled = true;
+        stdin.removeListener("keypress", onKey);
+        stdin.removeListener("end", onEnd);
+        stdin.setRawMode?.(wasRaw ?? false);
+        stdin.pause();
+        stdout.write("\n");
+        resolve(answer);
+      };
+      function onEnd(): void {
+        settle(false);
+      }
+      function onKey(sequence: string | undefined, key: readline.Key | undefined): void {
+        const name = key?.name;
+        if ((key?.ctrl && (name === "c" || name === "d")) || name === "escape") settle(false);
+        else if (name === "return" || name === "enter") settle(/^y(es)?$/i.test(typed.trim()));
+        else if (name === "backspace") {
+          if (typed) {
+            typed = typed.slice(0, -1);
+            stdout.write("\b \b");
+          }
+        } else if (sequence && sequence.length === 1 && sequence >= " " && !key?.ctrl && !key?.meta) {
+          typed += sequence;
+          stdout.write(sequence);
+        }
+      }
+      stdout.write(`${question} ${c.ink3("y/N")} `);
+      readline.emitKeypressEvents(stdin);
+      stdin.setRawMode?.(true);
+      stdin.on("keypress", onKey);
+      stdin.on("end", onEnd);
+      stdin.resume();
+    });
+
   /** Lowercase key hints at the foot of an interactive screen. */
   const keys = (list: string[]): string => c.ink3(list.join("  ·  "));
 
@@ -2418,6 +2491,6 @@ export function screenKit(opts: ScreenKitOpts = {}) {
 
   return {
     cols, sep, cmd, on, off, failed, selected, unselected, meta,
-    header, head, rows, kv, ok, caution, fail, keys, bar, logo, helpPage, live,
+    header, head, rows, kv, ok, caution, fail, notice, confirm, keys, bar, logo, helpPage, live,
   };
 }

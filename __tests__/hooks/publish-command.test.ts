@@ -352,12 +352,16 @@ describe("publish to a release", () => {
     expect(requests.every((q) => q.authorization === `Bearer ${TOKEN}`)).toBe(true);
 
     const text = r.lines.join("\n");
-    expect(text).toMatch(/Published acme\/support@1\.0\.0 to acme\/support at tag 1\.0\.0\./);
-    expect(text).toMatch(/3 assets attached/);
+    // The design's done screen: the header, one `✓` sentence with the policy
+    // count, then how to install it. "3 assets attached" was the same line on
+    // every publish and went with the rest of the fine print (D6); the three
+    // uploads are asserted above, where they are a fact rather than a sentence.
+    expect(r.lines[0]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Publish$/);
+    expect(r.lines).toContain("✓ Published acme/support@1.0.0 with 1 policy.");
     // The line the publisher hands to someone else.
-    expect(r.lines).toContain("  failproofai policies add acme/support");
+    expect(r.lines).toContain("  Anyone can install it:  failproofai policies add acme/support");
     // A public repository is not warned about.
-    expect(text).not.toMatch(/PRIVATE/);
+    expect(text).not.toMatch(/is private/);
   });
 
   it("tells the author to pass on the rollback reminder for a pack of Jev checks alone", async () => {
@@ -545,7 +549,9 @@ describe("an existing private repository", () => {
     const r = await publishTo();
 
     const text = r.lines.join("\n");
-    expect(text).toMatch(/acme\/support is PRIVATE/);
+    // One `✕` sentence, then each way out on its own line. Said in sentence
+    // case now: the old "is PRIVATE" shouted the part that is not the reason.
+    expect(r.lines[0]).toMatch(/^✕ acme\/support is private, so nothing was published/);
     // "It is private" is not the reason — plenty of private things work. The
     // reason is that the install carries no credential, so it 404s.
     expect(text).toMatch(/anonymous HTTPS/);
@@ -570,13 +576,13 @@ describe("an existing private repository", () => {
     ]);
     const text = r.lines.join("\n");
     expect(text).toMatch(/Published acme\/support@1\.0\.0/);
-    // The flag buys a publish, never a working install, so the warning stays.
-    expect(text).toMatch(/acme\/support is PRIVATE/);
-    expect(text).toMatch(/anonymous HTTPS/);
-    // Printed INSTEAD of the install lines, not underneath them: a reader who
+    // The flag buys a publish, never a working install, so the warning stays:
+    // a `▲` line right under the `✓`, in the install line's place.
+    expect(text).toMatch(/▲ acme\/support is private, and installs fetch over anonymous HTTPS/);
+    // Printed INSTEAD of the install line, not underneath it: a reader who
     // copies the first command they see must not be copying one that 404s.
-    expect(text).not.toMatch(/Anyone can now install it/);
-    expect(r.lines).not.toContain("  failproofai policies add acme/support");
+    expect(text).not.toMatch(/Anyone can install it/);
+    expect(r.lines.some((l) => l.includes("failproofai policies add"))).toBe(false);
   });
 
   it("leaves a public repository alone, flag or no flag", async () => {
@@ -591,8 +597,8 @@ describe("an existing private repository", () => {
     expect(uploadsOf()).toHaveLength(3);
     const text = r.lines.join("\n");
     expect(text).toMatch(/Published acme\/support@1\.0\.0/);
-    expect(text).not.toMatch(/PRIVATE/);
-    expect(r.lines).toContain("  failproofai policies add acme/support");
+    expect(text).not.toMatch(/is private/);
+    expect(r.lines).toContain("  Anyone can install it:  failproofai policies add acme/support");
   });
 });
 
@@ -716,10 +722,12 @@ describe("the version, when nobody says what it is", () => {
     const version = packCli.versionFromCommit(sha);
     // The whole line, not just the `@version` fragment: a version carrying an
     // extra suffix still CONTAINS the fragment, so the fragment alone would
-    // read a counted `<sha>-2` as a pass. The tag is pinned in the same breath
-    // because a release whose tag and version disagree installs as neither.
+    // read a counted `<sha>-2` as a pass. The tag is pinned in the same breath:
+    // the done screen names the repository and tag only when they differ from
+    // the id and version, so this short form IS the claim that the release's
+    // tag agrees with its version — one that disagreed would install as neither.
     expect(r.lines.join("\n")).toContain(
-      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+      `Published acme/guards@${version} with 1 policy.`,
     );
     expect(manifestVersion().version).toBe(version);
     // The ABBREVIATION is what reaches the artifact — the version is a prefix
@@ -744,7 +752,7 @@ describe("the version, when nobody says what it is", () => {
     const first = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
     expect(first.exitCode).toBe(0);
     expect(first.lines.join("\n")).toContain(
-      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+      `Published acme/guards@${version} with 1 policy.`,
     );
 
     // The release the first publish made is now sitting on that tag.
@@ -754,7 +762,7 @@ describe("the version, when nobody says what it is", () => {
     const second = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
     expect(second.exitCode).toBe(0);
     expect(second.lines.join("\n")).toContain(
-      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+      `Published acme/guards@${version} with 1 policy.`,
     );
     expect(manifestVersion().version).toBe(version);
     // Asserted at the wire too, because the printed line is downstream of the
@@ -855,7 +863,7 @@ describe("the version, when nobody says what it is", () => {
       const second = await publish(["--repo", "acme/guards"]);
       expect(second.exitCode).toBe(0);
       expect(second.lines.join("\n")).toContain(
-        `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+        `Published acme/guards@${version} with 1 policy.`,
       );
     } finally {
       process.chdir(before);
@@ -896,7 +904,7 @@ describe("the version, when nobody says what it is", () => {
     const second = await publish([entry, "--repo", "acme/guards", "--out", out]);
     expect(second.exitCode).toBe(0);
     expect(second.lines.join("\n")).toContain(
-      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+      `Published acme/guards@${version} with 1 policy.`,
     );
 
     // Dirt two levels up from the file being published, with the same skip in
@@ -930,13 +938,14 @@ describe("the version, when nobody says what it is", () => {
     //
     // The whole line each time, not the `@version` fragment: the fragment is
     // still contained in a version carrying a suffix, and the tag has to agree
-    // with the version or the release installs as neither.
+    // with the version or the release installs as neither — the short form is
+    // printed only when it does (see "publishes a clean checkout").
     const bare = writeEntry();
     const bareOut = join(work, "out-bare");
     const r1 = await publish([bare, "--repo", "acme/guards", "--version", "1.0.0", "--out", bareOut]);
     expect(r1.exitCode).toBe(0);
     expect(r1.lines.join("\n")).toContain(
-      "Published acme/guards@1.0.0 to acme/guards at tag 1.0.0.",
+      "Published acme/guards@1.0.0 with 1 policy.",
     );
     // No checkout, so there is no commit to record — and an invented one would
     // be worse than none, because `commit` is what a reader resolves back to
@@ -949,7 +958,7 @@ describe("the version, when nobody says what it is", () => {
     const r2 = await publish([entry, "--repo", "acme/guards", "--version", "2.0.0", "--out", dirtyOut]);
     expect(r2.exitCode).toBe(0);
     expect(r2.lines.join("\n")).toContain(
-      "Published acme/guards@2.0.0 to acme/guards at tag 2.0.0.",
+      "Published acme/guards@2.0.0 with 1 policy.",
     );
     // NO commit is recorded on a dirty tree, even though --version let the
     // publish through. `commit` claims these bytes came from that commit, and
@@ -1029,9 +1038,9 @@ describe("a repository that is not there yet", () => {
     const create = requests.find((q) => q.method === "POST" && /repos$/.test(q.path));
     expect(create, "the repository has to have been created for this to mean anything").toBeDefined();
     expect(JSON.parse(create!.body.toString()).private).toBe(false);
-    // And because it came back public, the install lines stand — the flag
-    // suppresses them only for a destination that really is private.
-    expect(r.lines).toContain("  failproofai policies add acme/guards");
+    // And because it came back public, the install line stands — the flag
+    // suppresses it only for a destination that really is private.
+    expect(r.lines).toContain("  Anyone can install it:  failproofai policies add acme/guards");
   });
 
   it("uses the personal endpoint when the credential owns the name", async () => {
@@ -1091,5 +1100,46 @@ describe("a repository that is not there yet", () => {
     expect(r.exitCode).toBe(1);
     expect(r.lines.join("\n")).toMatch(/someone-else/);
     expect(r.lines.join("\n")).toMatch(/gh repo create/);
+  });
+});
+
+describe("the done screen", () => {
+  it("keeps the side effects as ✓ lines above the publish, and names a differing tag", async () => {
+    // A side effect on somebody's GitHub account is never silent, and a tag
+    // that is not the version — `--tag v1.0.0` — is said where it went.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    const r = await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0", "--tag", "v1.0.0", "--out", join(work, "out")]);
+
+    expect(r.exitCode, r.lines.join("\n")).toBe(0);
+    const created = r.lines.indexOf("✓ Created acme/guards (public).");
+    const published = r.lines.indexOf("✓ Published acme/guards@1.0.0 with 1 policy to acme/guards at tag v1.0.0.");
+    expect(created).toBeGreaterThan(0);
+    expect(published).toBe(created + 1);
+    expect(r.lines[published + 1]).toBe("  Anyone can install it:  failproofai policies add acme/guards");
+  });
+
+  it("paints by role on a terminal — mint ✓, pink command — and writes no escape in a pipe", async () => {
+    const plain = await publish([writeEntry(), "--repo", "acme/support", "--version", "1.0.0", "--out", join(work, "plain")]);
+    expect(plain.lines.join("\n")).not.toMatch(/\x1B\[/);
+
+    const saved = { COLORTERM: process.env.COLORTERM, TERM: process.env.TERM, NO_COLOR: process.env.NO_COLOR };
+    const tty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    process.env.COLORTERM = "truecolor";
+    process.env.TERM = "xterm-256color";
+    delete process.env.NO_COLOR;
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      const r = await publish([writeEntry(), "--repo", "acme/support", "--version", "1.0.0", "--out", join(work, "tty")]);
+      const out = r.lines.join("\n");
+      expect(out).toContain("\x1B[38;2;102;209;181m✓\x1B[0m Published acme/support@1.0.0 with 1 policy.");
+      expect(out).toContain("  Anyone can install it:  \x1B[38;2;228;88;125mfailproofai policies add acme/support\x1B[0m");
+    } finally {
+      if (tty) Object.defineProperty(process.stdout, "isTTY", tty);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });

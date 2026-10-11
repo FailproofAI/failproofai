@@ -242,6 +242,9 @@ describe("failproofai help <command> — one copy of each command's help", () =>
     expect(run.exitCode).not.toBe(0);
     expect(run.stderr).toContain("nonsense");
     expect(run.stderr).toContain("failproofai help");
+    // The notice shape: one `✕` sentence, then the fix on its own line.
+    expect(run.stderr).toContain("✕ There is no help for 'nonsense'.");
+    expect(run.stderr).toContain("  Run  failproofai help  to see every command.");
     // A clean CliError, not a stack trace.
     expect(run.stderr).not.toContain("node:internal");
   });
@@ -262,7 +265,9 @@ describe("the index advertises nothing it cannot explain", () => {
 
     expect(run.exitCode).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
-    expect(run.stderr).not.toContain("No help for");
+    // The unknown-topic error's words, as the test above pins them: checking
+    // for the old wording here would pass forever and test nothing.
+    expect(run.stderr).not.toContain("There is no help for");
     expect(run.stdout).toBe(direct.stdout);
   });
 });

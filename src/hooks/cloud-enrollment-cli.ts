@@ -19,7 +19,7 @@ import {
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { TOKEN_ON_ARGV, optsFor, rows as kitRows, stack, warning } from "./tui";
+import { optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { clearJevCloudCredential, readVersionFile, readCredentials } from "./fp-config";
 // A CLI command's import, never the hook path's: `jev-cloud-connection` reaches
@@ -180,11 +180,13 @@ function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[]
 /**
  * What `config --token` (and `config --connect … --token`) ends with, connected
  * or not: every Jev remedy sends people to that spelling, and the key is in
- * history either way. `jev setup --token` says the same first line.
+ * history either way. A `▲` notice: the state, then the fix, with the command
+ * in backticks so the printer paints it (`screenKit().notice`). `jev setup
+ * --token` says the same thing in `TOKEN_ON_ARGV`'s words.
  */
 export const CONFIG_TOKEN_HISTORY_WARNING = [
-  TOKEN_ON_ARGV,
-  "Next time, run `failproofai config` with the key in FAILPROOFAI_CLOUD_TOKEN (from a secret store, or `read -rs`) instead of --token — and rotate this one if it matters.",
+  "--token put the key in your shell history and, while this ran, the process list. Rotate it if that matters.",
+  "Next time, set FAILPROOFAI_CLOUD_TOKEN instead:  `read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN`",
 ];
 
 export async function runConnectCommand(opts: ConnectOptions): Promise<CommandResult> {

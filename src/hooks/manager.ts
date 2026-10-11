@@ -32,7 +32,7 @@ import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
 import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import { keepAgentSelectionTrue } from "./agent-selection";
-import { INDENT, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
+import { INDENT, colorsEnabled, optsFor, printBlock, screenKit, type ScreenKitOpts } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -65,7 +65,7 @@ function resolveFailproofaiBinary(): string {
   } catch {
     throw new CliError(
       "failproofai binary not found in PATH.\n" +
-      "Install it globally first: npm install -g failproofai"
+      "Install it globally first:  `npm install -g failproofai`"
     );
   }
 }
@@ -133,7 +133,7 @@ function resolvePolicyNames(names: string[]): { builtins: string[]; packs: PackP
       throw new CliError(
         `"${raw}" is declared by ${direct.length} installed packs.\n` +
           `Name the one you mean:\n` +
-          direct.map((m) => `  ${m.packId}:${m.name}`).join("\n"),
+          direct.map((m) => `  \`${m.packId}:${m.name}\``).join("\n"),
       );
     }
     // No pack carries it. Falls back to the compiled name set, which is what a
@@ -160,7 +160,7 @@ function resolvePolicyNames(names: string[]): { builtins: string[]; packs: PackP
       throw new CliError(
         `"${raw}" is declared by ${matches.length} installed packs.\n` +
           `Name the one you mean:\n` +
-          matches.map((m) => `  ${m.packId}:${m.name}`).join("\n"),
+          matches.map((m) => `  \`${m.packId}:${m.name}\``).join("\n"),
       );
     }
     unknown.push(raw);
@@ -228,9 +228,7 @@ function rejectAlwaysOnPolicies(names: string[]): void {
   if (refused.length > 0) {
     throw new CliError(
       `Cannot disable: ${refused.join(", ")}\n` +
-      `This policy stops an agent from switching off failproofai itself, so it ` +
-      `is always on and ships with the package. A guard the agent can disable ` +
-      `by the means it is meant to prevent is not a guard.`
+      `It stops an agent from switching failproofai off, so it is always on.`
     );
   }
 }
@@ -551,7 +549,7 @@ async function installHooksImpl(
       // Then check if "all" is mixed with valid specific names
       throw new CliError(
         `"all" cannot be combined with specific policy names.\n` +
-        `Use either: --install all  or  --install block-sudo sanitize-jwt ...`
+        "Use either  `failproofai policies --install all`  or  `failproofai policies --install block-sudo sanitize-jwt`"
       );
     }
   }
@@ -576,8 +574,8 @@ async function installHooksImpl(
         });
       } catch {}
       throw new CliError(
-        `Scope "${scope}" is not supported by ${integration.displayName}. ` +
-          `Valid scopes: ${integration.scopes.join(", ")}`
+        `Scope "${scope}" is not supported by ${integration.displayName}.\n` +
+          `Use one of: ${integration.scopes.join(", ")}`
       );
     }
   }
@@ -595,7 +593,7 @@ async function installHooksImpl(
     const verb = daemonRequiredBy.length === 1 ? "requires" : "require";
     throw new CliError(
       `${names} ${verb} a compatible failproofaid daemon with native policy evaluation before FailproofAI enforcement can be enabled.\n` +
-        "Run `failproofai config` to install or update the daemon, then retry.",
+        "Install or update the daemon with  `failproofai config`,  then run this again.",
     );
   }
 
@@ -699,7 +697,7 @@ async function installHooksImpl(
             error_type: /not found/i.test(msg) ? "file_not_found" : "load_error",
           });
         } catch {}
-        console.error(`Error: ${msg}`);
+        process.stderr.write(`${screenKit({ color: colorsEnabled(process.stderr) }).notice("fail", msg).join("\n")}\n`);
         process.exit(1);
       }
       const semanticCount = getSemanticRegistrations().length;
@@ -716,9 +714,14 @@ async function installHooksImpl(
             error_type: "no_hooks_registered",
           });
         } catch {}
-        console.error(
-          `Error: no hooks registered in ${path}. ` +
-            `Make sure your file calls customPolicies.add(...) at least once.`,
+        process.stderr.write(
+          `${screenKit({ color: colorsEnabled(process.stderr) })
+            .notice(
+              "fail",
+              `No hooks are registered in ${path}.\n` +
+                "Make sure the file calls  `customPolicies.add(...)`  at least once.",
+            )
+            .join("\n")}\n`,
         );
         process.exit(1);
       }
@@ -942,8 +945,14 @@ async function installHooksImpl(
  *   every scope, stop tracing those agents and say so in one line (decision D2,
  *   `./agent-selection`). Asked for by `policies --uninstall`, `policies remove`
  *   and the dashboard; `failproofai uninstall` leaves the selection alone.
+ * @param opts.silent — print nothing; for a caller that reports the outcome itself
+ *   (`failproofai uninstall` says what it removed in its own lines, under its
+ *   question, and these old-style rows landed between the two)
  */
-export async function removeHooks(policyNames?: string[], scope: HookScope | "all" = "user", cwd?: string, opts?: { betaOnly?: boolean; source?: string; removeCustomHooks?: boolean; cli?: IntegrationType[]; syncAgentSelection?: boolean }): Promise<void> {
+export async function removeHooks(policyNames?: string[], scope: HookScope | "all" = "user", cwd?: string, opts?: { betaOnly?: boolean; source?: string; removeCustomHooks?: boolean; cli?: IntegrationType[]; syncAgentSelection?: boolean; silent?: boolean }): Promise<void> {
+  const say = (line: string): void => {
+    if (!opts?.silent) console.log(line);
+  };
   // Resolve the effective config scope ("all" falls back to "user" for config reads/writes)
   const configScope: HookScope = scope === "all" ? "user" : scope;
   // Back-compat default: ["claude"]. The bin layer prompts for CLI selection
@@ -957,7 +966,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     delete config.customPoliciesPath;
     delete config.customPoliciesPaths;
     writeScopedHooksConfig(config, configScope, cwd);
-    console.log("Custom hooks path cleared.");
+    say("Custom hooks path cleared.");
   }
 
   // Remove specific policies from config (keep hooks installed)
@@ -979,7 +988,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     const remaining = config.enabledPolicies.filter((p) => !removeSet.has(p));
     const notEnabled = policyNames.filter((p) => !config.enabledPolicies.includes(p));
     if (notEnabled.length > 0) {
-      console.log(`Warning: policy(ies) not currently enabled: ${notEnabled.join(", ")}`);
+      say(`Warning: policy(ies) not currently enabled: ${notEnabled.join(", ")}`);
     }
     const { policyParams: existingParams, ...baseConfig } = config;
     const filteredParams = existingParams
@@ -1013,8 +1022,8 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
       // Telemetry is best-effort — never block the operation
     }
 
-    console.log(`Disabled ${policyNames.length - notEnabled.length} policy(ies).`);
-    console.log(`Remaining: ${remaining.length > 0 ? remaining.join(", ") : "(none)"}`);
+    say(`Disabled ${policyNames.length - notEnabled.length} policy(ies).`);
+    say(`Remaining: ${remaining.length > 0 ? remaining.join(", ") : "(none)"}`);
     return;
   }
 
@@ -1029,7 +1038,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     if (!opts?.syncAgentSelection || (scope !== "user" && scope !== "all")) return;
     const acted = selectedClis.filter((id) => scope === "all" || getIntegration(id).scopes.includes("user"));
     const note = keepAgentSelectionTrue("removed", acted);
-    if (note) console.log(note);
+    if (note) say(note);
   };
 
   // Remove failproofai hooks from each selected CLI's settings file(s)
@@ -1058,7 +1067,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
 
       if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {
-          console.log("No settings file found. Nothing to remove.");
+          say("No settings file found. Nothing to remove.");
           nothingToReport = true;
         }
         continue;
@@ -1069,13 +1078,13 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         const removed = integration.removeHooksFromFile(settingsPath);
         removedHere += removed;
         if (removed > 0 && scope !== "all") {
-          console.log(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
-          console.log(`Settings: ${settingsPath}`);
+          say(`Removed ${removed} failproofai hook(s) from ${integration.displayName} settings.`);
+          say(`Settings: ${settingsPath}`);
         }
       }
 
       if (removedHere === 0 && scope !== "all" && selectedClis.length === 1) {
-        console.log("No hooks found in settings. Nothing to remove.");
+        say("No hooks found in settings. Nothing to remove.");
         nothingToReport = true;
         continue;
       }
@@ -1089,12 +1098,12 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   }
 
   if (scope === "all") {
-    console.log(`Removed ${totalRemoved} failproofai hook(s) from all scopes.`);
+    say(`Removed ${totalRemoved} failproofai hook(s) from all scopes.`);
     for (const cliId of selectedClis) {
       const integration = getIntegration(cliId);
       for (const s of integration.scopes) {
         for (const p of settingsPathsFor(integration, s, cwd)) {
-          console.log(`  ${integration.displayName} / ${s}: ${p}`);
+          say(`  ${integration.displayName} / ${s}: ${p}`);
         }
       }
     }

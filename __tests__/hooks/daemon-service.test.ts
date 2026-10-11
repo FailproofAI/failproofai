@@ -1165,6 +1165,42 @@ describe("refreshDaemonToCliVersion", () => {
     expect(result.lines.join("\n")).not.toContain("restarted and holding");
     expect(result.lines.join("\n")).toContain("previous daemon is untouched");
   });
+
+  it("says what to run when it needs root: get sudo, then THIS command again", async () => {
+    // The install's own reason is written for the wizard and the log — it says
+    // to re-run `failproofai config` and carries a whole unit file to paste.
+    // From `update` the answer is two lines, and names `update`.
+    const { version } = await import("../../package.json");
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      interactive: () => false,
+      install: async () => ({
+        installed: false,
+        reason:
+          "root privileges are required to install the failproofaid system service, and sudo credentials were not available. " +
+          "Re-run `failproofai config` and approve the sudo prompt — To install by hand: sudo tee /etc/systemd/system/x.service <<'EOF'\n[Unit]\nEOF",
+      }),
+    });
+
+    expect(result.lines).toEqual([
+      `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
+      "  Run `sudo -v` and then `failproofai update` again.",
+    ]);
+    expect(result.lines.join("\n")).not.toMatch(/failproofai config|\[Unit\]|sudo tee/);
+  });
+
+  it("keeps any other failure's reason, and where to look", async () => {
+    const { version } = await import("../../package.json");
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => ({ installed: false, reason: "failed to download failproofaid 9.9.9." }),
+    });
+
+    expect(result.lines[0]).toBe(
+      `✕ failproofaid ${version} could not be installed: failed to download failproofaid 9.9.9. The previous daemon is untouched.`,
+    );
+    expect(result.lines[1]).toMatch(/^ {2}See why with `.+`\.$/);
+  });
 });
 
 /**

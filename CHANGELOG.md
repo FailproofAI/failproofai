@@ -4,6 +4,11 @@
 
 ### Features
 
+- Every error in the new look: `✕` and what went wrong, then the fix on its own line with the command in pink, instead of `Error: …`. An unknown word gets "There is no command called 'status'." and "Did you mean  failproofai config --status?": words people type (`status`, `login`, `install`, `pause` and more) map to the command that does it, a typo finds the nearest command, and a word close to none gets no guess and points at `failproofai help`. Exit codes are unchanged (#PR)
+- `failproofai uninstall` asks one question, `Continue? y/N`, under a plan that says exactly what goes: the hooks and which agents they are in, the failproofaid service, the policy settings in policies-config.json, and `~/.failproofai` with `--purge`. Yes removes all of it, the service included, as `--yes` does; the second "remove the service too?" question is gone (`policies --uninstall` removes only the hooks). `--yes` and the refusal without a terminal are unchanged (#PR)
+- The notices printed above a command — a daemon that does not match the CLI, the daemon self-heal, a reorganised or newer `~/.failproofai`, and the `--token` warning — are each one state line and one fix line (#PR)
+- `failproofai publish` ends on the new done screen: a ✓ per side effect (a commit, a bundle, a new repository), then "Published <id>@<version> with N policies." and the command to install it. A private repository gets a ▲ in the install line's place (#PR)
+- `failproofai jev status` in the new look: a status row, then provider and model, endpoint, mode, timeout, key and config, the activity block, and the next command last. There is no "last test" row, because nothing records one (#PR)
 - `policies show <owner>/<repo> --releases` and the empty `policies add` picker are drawn in the new look (#PR)
 - `flush`, `migrate`, `update` and `uninstall` results are drawn in the new look: the header names the command, and a failure opens with ✕ and its fix indented under it (#PR)
 - `failproofai backfill` re-sends only the agents failproofai traces, counts sessions with the same readers the audit uses (all twelve agents, where the old survey knew seven), and takes `--agents` for a subset. A name that is not an agent, an untraced agent, or a daemon of another version is refused before anything is written. `config` takes `--oss` and `--agents`, `config --status` counts agents found but not traced, and `harness` says when an agent's extra paths are idle because it is not traced (#PR)
@@ -30,6 +35,15 @@
 - `failproofai config` no longer runs setup with an option it does not know quietly ignored: an unknown option or a stray word is an error (#PR)
 - `backfill` on an unconnected machine suggested `config --token <key>`, which puts the key in shell history. It points at `failproofai config` (#PR)
 - `harness add-path` said `harness list` shows what is captured. It shows what is configured; the daemon's log says what it rejected (#PR)
+
+### Fixes
+
+- `--cli` in `policies --install`, `--uninstall`, `add` and `remove` named only 8 of the 12 agents and said "Missing value(s)" for a typo; it now says "Not an agent: claud (did you mean claude?)" and lists all 12 (#PR)
+- The did-you-mean for an unknown command answered `install` with `uninstall`, `status` with `flush` and `-i` with `audit`, and suggested flags in a form that could not be run (#PR)
+- `failproofai update` without sudo said to re-run `failproofai config` and printed a whole unit file to paste; it now says to run `sudo -v`, then `failproofai update` again. `uninstall` names the commands to run as root when it cannot remove the service (#PR)
+- `failproofai uninstall` said settings "survive a reinstall" while it reset enabled policies, custom policy paths and policy parameters in policies-config.json; its question now says so (#PR)
+- `policies remove --scope` with no value left `all` out of the valid scopes, and `policies add|remove` with an unknown flag pointed at `failproofai policy --help` (#PR)
+
 - A new backfill request no longer replaces one still waiting for the daemon: requests merge, keeping the wider window, and are written atomically (#PR)
 - A hook from an agent that `failproofai config` does not trace is logged once per session and evaluated as usual, never allowed because of the selection (#PR)
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#PR)

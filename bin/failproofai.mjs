@@ -120,9 +120,16 @@ async function exitAfterFlush(code) {
 const hookIdx = args.indexOf("--hook");
 if (hookIdx >= 0) {
   if (!args[hookIdx + 1]) {
-    console.error("Error: Missing event type after --hook");
-    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose>]");
-    process.exit(1);
+    // The notice shape, written out by hand and never coloured: importing the
+    // kit here — the first module this file imports — moves `tui.ts` ahead of
+    // the builtin policies in the bundle, so its top-level `ctx` renames their
+    // `ctx` parameters and changes the audit cache key (`engineVersion`) for
+    // every user. It also keeps the hook path an agent spawns per tool call
+    // loading nothing new. Written, not `console.error`, which Bun paints red.
+    process.stderr.write(
+      "✕ Missing event type after --hook.\n  Run  failproofai help hook  for the events and agent ids.\n",
+    );
+    await exitAfterFlush(1);
   }
   const eventType = args[hookIdx + 1];
   const cliIdx = args.indexOf("--cli");
@@ -344,8 +351,16 @@ async function printReport(command, lines, opts = {}) {
   // the command to run next more often than not, and pink is what you type
   // everywhere. Applied AFTER wrapping, because an escape sequence has no
   // width and colouring first would make every wrap measure the wrong length.
-  const paint = (line) =>
-    (line.match(/`/g) || []).length % 2 === 0 ? line.replace(/`([^`]+)`/g, (_, cmd) => c.pink(cmd)) : line;
+  //
+  // A line that opens on a state glyph gets that glyph in its role colour, the
+  // way a notice draws it: `update` reports a daemon that needs root that way.
+  const glyphRoles = { "✓": c.guide, "▲": c.warn, "✕": c.err };
+  const paint = (line) => {
+    const typed =
+      (line.match(/`/g) || []).length % 2 === 0 ? line.replace(/`([^`]+)`/g, (_, cmd) => c.pink(cmd)) : line;
+    const lead = /^(\s*)([✓▲✕]) /.exec(typed);
+    return lead ? `${lead[1]}${glyphRoles[lead[2]](lead[2])}${typed.slice(lead[1].length + 1)}` : typed;
+  };
   // The 2026-10 shape: the header names the command, top-level lines start at
   // column 0, and lines a module indented on purpose keep their indent. A
   // failed run opens with ✕, so it reads as the failure it is.
@@ -361,8 +376,10 @@ async function printReport(command, lines, opts = {}) {
       body.push(paint(line));
       continue;
     }
-    // After a failure's ✕ line, what follows is the fix: indented under it.
-    const lead = !ok ? (first ? `${c.err("✕")} ` : "  ") : "";
+    // After a failure's ✕ line, what follows is the fix: indented under it. A
+    // line that already opens on a state glyph says its own state.
+    const glyphed = /^[✓▲✕] /.test(line);
+    const lead = !ok && !glyphed ? (first ? `${c.err("✕")} ` : "  ") : "";
     const wrapped = wrap(line, Math.max(20, o.cols - 2));
     wrapped.forEach((w, i) => body.push(paint(i === 0 ? `${lead}${w}` : `${lead ? "  " : ""}${w}`)));
     first = false;
@@ -412,6 +429,39 @@ async function runCli() {
       "failproofai policies remove block-sudo",
     ],
   };
+  // `--cli` in the three policies lanes: one or more space-separated agents,
+  // optionally repeated, read until the next flag or the first word that is
+  // not an agent, since a policy name may follow the list. One wording for
+  // every mistake, built from INTEGRATION_TYPES: the message this replaced
+  // named eight of the twelve agents, and said "Missing" for a typo too.
+  async function readCliFlag(list) {
+    const { INTEGRATION_TYPES } = await import("../src/hooks/types");
+    const agents = new Set(INTEGRATION_TYPES);
+    const cliFlagValues = [];
+    const cliConsumedIdxs = new Set();
+    for (let idx = 0; idx < list.length; idx++) {
+      if (list[idx] !== "--cli") continue;
+      let consumed = 0;
+      for (let j = idx + 1; j < list.length && !list[j].startsWith("-") && agents.has(list[j]); j++) {
+        cliFlagValues.push(list[j]);
+        cliConsumedIdxs.add(j);
+        consumed++;
+      }
+      if (consumed > 0) continue;
+      const half = Math.ceil(INTEGRATION_TYPES.length / 2);
+      const everyAgent =
+        `Use any of: ${INTEGRATION_TYPES.slice(0, half).join(", ")},\n` +
+        `            ${INTEGRATION_TYPES.slice(half).join(", ")}`;
+      const given = list[idx + 1];
+      if (given === undefined || given.startsWith("-")) {
+        throw new CliError(`Missing agent name after --cli.\n${everyAgent}`);
+      }
+      const { nearestName } = await import("../src/hooks/did-you-mean");
+      const near = nearestName(given, INTEGRATION_TYPES);
+      throw new CliError(`Not an agent: ${given}${near ? ` (did you mean ${near}?)` : "."}\n${everyAgent}`);
+    }
+    return { cliFlagValues, cliConsumedIdxs };
+  }
   // --help / -h  (only when not inside a subcommand that handles its own --help)
   // `update` and `migrate` were missing here, so `failproofai update --help`
   // exited 1 with "Unexpected argument" — both commands had no reachable help
@@ -459,8 +509,8 @@ async function runCli() {
           : helpTopic;
     if (!SUBCOMMANDS.includes(canonical)) {
       throw new CliError(
-        `No help for: ${helpTopic}\n` +
-        `Run \`failproofai help\` to see every command.`,
+        `There is no help for '${helpTopic}'.\n` +
+        "Run  `failproofai help`  to see every command.",
       );
     }
     // `policies add|remove|show` has its own help, distinct from the listing's.
@@ -473,7 +523,7 @@ async function runCli() {
   ) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h" && a !== "help");
     if (extraArgs.length > 0) {
-      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${extraArgs[0]}.\nRun  \`failproofai help\`  for usage.`);
     }
     // The index and every `<command> --help` page are built from the same kit,
     // so a row added here cannot end up in a different dialect from the page it
@@ -543,7 +593,7 @@ async function runCli() {
   if ((args.includes("--version") || args.includes("-v")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--version" && a !== "-v");
     if (extraArgs.length > 0) {
-      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai --help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${extraArgs[0]}.\nRun  \`failproofai help\`  for usage.`);
     }
     console.log(version);
     process.exit(0);
@@ -618,8 +668,9 @@ async function runCli() {
       // entry point can see this ordering.
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
       const check = await checkLayoutForCli();
-      for (const line of check.lines) console.error(line);
-      if (check.fatal) process.exit(1);
+      // Written rather than `console.error`, which Bun paints red on a terminal.
+      if (check.lines.length > 0) process.stderr.write(`${check.lines.join("\n")}\n`);
+      if (check.fatal) await exitAfterFlush(1);
       // `check.didReset` is deliberately not read. It used to force the wizard
       // below; see the note at `shouldOfferFirstRun` for why a migrated machine
       // no longer needs setup re-run, and `didReset` in `fp-reset.ts` for what
@@ -706,19 +757,21 @@ async function runCli() {
       (a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--timeout",
     );
     if (unknown) {
-      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai flush --help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${unknown}.\nRun  \`failproofai flush --help\`  for usage.`);
     }
 
     let timeoutSecs;
     const tIdx = subArgs.indexOf("--timeout");
     if (tIdx >= 0) {
       const raw = subArgs[tIdx + 1];
-      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --timeout.");
+      if (!raw || raw.startsWith("-")) {
+        throw new CliError("Missing value after --timeout.\nFor example:  `failproofai flush --wait --timeout 60`");
+      }
       const n = Number(raw);
       // Rejected rather than coerced: NaN would silently become "wait forever
       // or not at all" depending on the comparison, and neither is what was asked.
       if (!Number.isFinite(n) || n <= 0) {
-        throw new CliError(`Could not read --timeout ${raw}. Give a number of seconds.`);
+        throw new CliError(`Could not read --timeout ${raw}.\nGive a number of seconds, for example  \`--timeout 60\``);
       }
       timeoutSecs = n;
     }
@@ -958,7 +1011,7 @@ async function runCli() {
     const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai migrate --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai migrate --help\`  for usage.`,
       );
     }
 
@@ -1044,7 +1097,7 @@ async function runCli() {
     const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai update --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai update --help\`  for usage.`,
       );
     }
 
@@ -1175,79 +1228,47 @@ async function runCli() {
     const unknown = subArgs.find((a) => !KNOWN.has(a));
     if (unknown) {
       throw new CliError(
-        `Unexpected argument: ${unknown}\nRun \`failproofai uninstall --help\` for usage.`,
+        `Unexpected argument: ${unknown}.\nRun  \`failproofai uninstall --help\`  for usage.`,
       );
     }
 
     lastSubcommand = "uninstall_command";
     const { runUninstallCommand } = await import("../src/hooks/uninstall-cli");
+    const { screenKit, optsFor, printBlock, stack } = await import("../src/hooks/tui");
     const purge = subArgs.includes("--purge");
     const dryRun = subArgs.includes("--dry-run");
     const yes = subArgs.includes("--yes") || subArgs.includes("-y");
+    const render = optsFor(process.stdout);
+    const kit = screenKit(render);
 
-    // Set only when the prompt actually rendered the plan, which is the one
-    // case where printing it again would duplicate it.
+    // Set only when the question was actually asked, which is the one case
+    // where the plan is already on screen and printing it again would
+    // duplicate it.
     let planWasShown = false;
     const result = await runUninstallCommand({
       purge,
       dryRun,
       yes,
       cwd: process.cwd(),
-      // Only offered when a person can actually answer. Without a TTY the
-      // command requires --yes rather than assuming consent — see the module.
+      render,
+      // ONE question (D17): the plan says exactly what goes, and `y` removes all
+      // of it, the daemon service included — the same thing `--yes` does. Only
+      // offered when a person can actually answer: without a TTY the command
+      // requires --yes rather than assuming consent — see the module.
       confirm: process.stdin.isTTY
         ? async (planLines) => {
             planWasShown = true;
-            const { selectOne } = await import("../src/hooks/tui");
-            // "No" first, so the default landing position on Enter is the
-            // non-destructive one.
-            const answer = await selectOne({
-              message: purge
-                ? "Remove failproofai and DELETE ~/.failproofai?"
-                : "Remove failproofai from this machine?",
-              body: planLines,
-              choices: [
-                { label: "No, cancel", value: false },
-                { label: purge ? "Yes, remove and purge" : "Yes, remove it", value: true },
-              ],
-            });
-            return answer === true;
+            process.stdout.write(["", kit.header("Uninstall"), "", ...planLines].join("\n") + "\n");
+            return kit.confirm({ stdin: process.stdin, stdout: process.stdout });
           }
         : undefined,
-      // Only on a plain uninstall: `--purge` removes the service unconditionally
-      // because it deletes the binary the service points at. Absent without a TTY,
-      // which the module reads as "keep it".
-      confirmDaemon:
-        process.stdin.isTTY && !purge
-          ? async () => {
-              const { selectOne } = await import("../src/hooks/tui");
-              const answer = await selectOne({
-                message: "Remove the failproofaid background service too?",
-                body: [
-                  "It runs as a system service and needs sudo to remove, so you",
-                  "will be asked for your password.",
-                  "",
-                  "Keeping it is fine if you plan to reinstall — the hooks are",
-                  "already gone either way, so nothing is being enforced.",
-                ],
-                choices: [
-                  { label: "Yes, remove the service", value: true },
-                  { label: "No, leave it installed", value: false },
-                ],
-              });
-              return answer === true;
-            }
-          : undefined,
     });
 
-    // The prompt already rendered the plan as its body; re-printing it would
-    // show the same block twice. `planLines` is reported by the command rather
-    // than guessed from the text — see UninstallResult.
-    const skip = planWasShown ? result.planLines : 0;
-    await printReport("uninstall", result.lines.slice(skip), {
-      ok: result.exitCode === 0,
-      meta: subArgs.includes("--purge") ? "purge" : subArgs.includes("--dry-run") ? "dry run" : undefined,
-    });
+    // The question already printed the header and the plan; the outcome goes
+    // under it. `planLines` is reported by the command rather than guessed from
+    // the text — see UninstallResult.
+    const outcome = planWasShown ? result.lines.slice(result.planLines) : [kit.header("Uninstall"), "", ...result.lines];
+    printBlock(result.exitCode === 0 ? process.stdout : process.stderr, stack(outcome));
     // NOT after a purge. `track` resolves the instance id, and `getInstanceId()`
     // lazily WRITES ~/.failproofai/state/telemetry-id — which re-created the
     // whole directory seconds after the purge deleted it, leaving a machine the
@@ -1390,8 +1411,8 @@ async function runCli() {
     if (action === "show" || looksLikeSource) {
       if (action === "show" && !firstPositional) {
         throw new CliError(
-          "Usage: failproofai policies show <owner>/<repo>\n" +
-          "Run `failproofai policies` for what is installed here.",
+          "Name the pack to show, as <owner>/<repo>.\n" +
+          "To see what is installed here, run  `failproofai policies`",
         );
       }
       // One lane, one implementation. `show` is the pack lane's remote preview,
@@ -1414,44 +1435,22 @@ async function runCli() {
       return;
     }
 
-    if (action !== "add" && action !== "remove") {
-      throw new CliError(
-        `Unknown policies subcommand: ${action}\n` +
-        `Run \`failproofai policies --help\` for usage.`,
-      );
-    }
-
-    const scopeIdx = rest.indexOf("--scope");
-    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
-    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-      throw new CliError("Missing value for --scope. Valid values: user, project, local");
-    }
+    // `show` left above, so only add and remove reach here. A branch for any
+    // other word stood here, unreachable: this lane is entered for those three.
     const validScopes = action === "remove"
       ? ["user", "project", "local", "all"]
       : ["user", "project", "local"];
+    const scopeIdx = rest.indexOf("--scope");
+    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
+    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
+      throw new CliError(`Missing value for --scope.\nUse one of: ${validScopes.join(", ")}`);
+    }
     if (scopeIdx >= 0 && !validScopes.includes(scope)) {
-      throw new CliError(`Invalid scope: ${scope}. Valid values: ${validScopes.join(", ")}`);
+      throw new CliError(`Invalid scope: ${scope}.\nUse one of: ${validScopes.join(", ")}`);
     }
 
     // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-    const cliFlagValues = [];
-    const cliConsumedIdxs = new Set();
-    const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-    for (const idx of cliFlagIdxs) {
-      let consumed = 0;
-      for (let j = idx + 1; j < rest.length; j++) {
-        const v = rest[j];
-        if (v.startsWith("-")) break;
-        if (!VALID_CLIS.has(v)) break;
-        cliFlagValues.push(v);
-        cliConsumedIdxs.add(j);
-        consumed++;
-      }
-      if (consumed === 0) {
-        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-      }
-    }
+    const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(rest);
 
     const includeBeta = rest.includes("--beta");
 
@@ -1459,7 +1458,7 @@ async function runCli() {
     const knownFlags = new Set(["--scope", "--cli", "--beta"]);
     const unknownFlag = rest.find((a) => a.startsWith("-") && !knownFlags.has(a));
     if (unknownFlag) {
-      throw new CliError(`Unknown flag: ${unknownFlag}\nRun \`failproofai policy --help\` for usage.`);
+      throw new CliError(`Unknown flag: ${unknownFlag}.\nRun  \`failproofai policies ${action} --help\`  for usage.`);
     }
 
     // Positional policy names = anything not consumed by --scope / --cli.
@@ -1484,8 +1483,8 @@ async function runCli() {
     }
     if (positional.length > 1) {
       throw new CliError(
-        `\`policy ${action}\` takes exactly one policy name (got ${positional.length}).\n` +
-        `For multiple policies use \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\`.`,
+        `policies ${action} takes one policy name, not ${positional.length}.\n` +
+        `For several, run  \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\``,
       );
     }
     const policyName = positional[0];
@@ -1566,10 +1565,10 @@ async function runCli() {
       const scopeIdx = subArgs.indexOf("--scope");
       const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
       if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-        throw new CliError("Missing value for --scope. Valid values: user, project, local");
+        throw new CliError("Missing value for --scope.\nUse one of: user, project, local");
       }
       if (scopeIdx >= 0 && !["user", "project", "local"].includes(scope)) {
-        throw new CliError(`Invalid scope: ${scope}. Valid values: user, project, local`);
+        throw new CliError(`Invalid scope: ${scope}.\nUse one of: user, project, local`);
       }
 
       const customIdxs = subArgs
@@ -1577,33 +1576,16 @@ async function runCli() {
         .filter((index) => index >= 0);
       const customPoliciesPaths = customIdxs.map((index) => subArgs[index + 1]);
       if (customPoliciesPaths.some((path) => !path || path.startsWith("-"))) {
-        throw new CliError("Missing path after --custom/-c\nUsage: --custom <path>  (e.g. --custom ./my-policies.js)");
+        throw new CliError("Missing path after --custom/-c.\nFor example:  `failproofai policies -i -c ./my-policies.js`");
       }
 
       // --cli accepts one or more space-separated values, optionally repeated:
       //   --cli claude codex copilot
       //   --cli claude --cli codex
-      // Values are consumed greedily until the next flag or end of argv.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-      const cliFlagValues = [];
-      const cliConsumedIdxs = new Set();
-      const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-      for (const idx of cliFlagIdxs) {
-        let consumed = 0;
-        for (let j = idx + 1; j < subArgs.length; j++) {
-          const v = subArgs[j];
-          if (v.startsWith("-")) break;
-          // Stop at the first non-CLI token so a policy name following --cli
-          // (e.g. `--cli claude block-sudo`) is not mis-consumed as a CLI.
-          if (!VALID_CLIS.has(v)) break;
-          cliFlagValues.push(v);
-          cliConsumedIdxs.add(j);
-          consumed++;
-        }
-        if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-        }
-      }
+      // Values are consumed greedily until the next flag, or the first word that
+      // is not an agent so a policy name following --cli (e.g. `--cli claude
+      // block-sudo`) is not mis-consumed as one.
+      const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(subArgs);
 
       const includeBeta = subArgs.includes("--beta");
 
@@ -1617,7 +1599,7 @@ async function runCli() {
       const flags = new Set(["--install", "-i", "--scope", "--beta", "--custom", "-c", "--cli"]);
       const unknownInstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
       if (unknownInstallFlag) {
-        throw new CliError(`Unknown flag: ${unknownInstallFlag}\nRun \`failproofai policies --help\` for usage.`);
+        throw new CliError(`Unknown flag: ${unknownInstallFlag}.\nRun  \`failproofai policies --help\`  for usage.`);
       }
 
       const explicitPolicyNames = subArgs.filter(
@@ -1669,33 +1651,14 @@ async function runCli() {
       const scopeIdx = subArgs.indexOf("--scope");
       const scope = scopeIdx >= 0 ? subArgs[scopeIdx + 1] : "user";
       if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-        throw new CliError("Missing value for --scope. Valid values: user, project, local, all");
+        throw new CliError("Missing value for --scope.\nUse one of: user, project, local, all");
       }
       if (scopeIdx >= 0 && !["user", "project", "local", "all"].includes(scope)) {
-        throw new CliError(`Invalid scope: ${scope}. Valid values: user, project, local, all`);
+        throw new CliError(`Invalid scope: ${scope}.\nUse one of: user, project, local, all`);
       }
 
       // --cli accepts one or more space-separated values; same parser as install.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-      const cliFlagValues = [];
-      const cliConsumedIdxs = new Set();
-      const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-      for (const idx of cliFlagIdxs) {
-        let consumed = 0;
-        for (let j = idx + 1; j < subArgs.length; j++) {
-          const v = subArgs[j];
-          if (v.startsWith("-")) break;
-          // Stop at the first non-CLI token so a policy name following --cli
-          // (e.g. `--cli claude block-sudo`) is not mis-consumed as a CLI.
-          if (!VALID_CLIS.has(v)) break;
-          cliFlagValues.push(v);
-          cliConsumedIdxs.add(j);
-          consumed++;
-        }
-        if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-        }
-      }
+      const { cliFlagValues, cliConsumedIdxs } = await readCliFlag(subArgs);
 
       const betaOnly = subArgs.includes("--beta");
       const removeCustomHooks = subArgs.includes("--custom") || subArgs.includes("-c");
@@ -1706,7 +1669,7 @@ async function runCli() {
       const flags = new Set(["--uninstall", "-u", "--scope", "--beta", "--custom", "-c", "--cli"]);
       const unknownUninstallFlag = subArgs.find((a) => a.startsWith("-") && !flags.has(a));
       if (unknownUninstallFlag) {
-        throw new CliError(`Unknown flag: ${unknownUninstallFlag}\nRun \`failproofai policies --help\` for usage.`);
+        throw new CliError(`Unknown flag: ${unknownUninstallFlag}.\nRun  \`failproofai policies --help\`  for usage.`);
       }
 
       const policyNames = subArgs.filter(
@@ -1745,15 +1708,15 @@ async function runCli() {
     const unknownListArg = subArgs.find((a) => a.startsWith("-") && !knownListFlags.has(a));
     if (unknownListArg) {
       throw new CliError(
-        `Unknown flag: ${unknownListArg}\n` +
-        `Run \`failproofai policies --help\` for usage.`
+        `Unknown flag: ${unknownListArg}.\n` +
+        "Run  `failproofai policies --help`  for usage."
       );
     }
     const positionalArgs = subArgs.filter((a) => !a.startsWith("-"));
     if (positionalArgs.length > 0) {
       throw new CliError(
-        `Unexpected argument: ${positionalArgs[0]}\n` +
-        `Run \`failproofai policies --help\` for usage.`
+        `Unexpected argument: ${positionalArgs[0]}.\n` +
+        "Run  `failproofai policies --help`  for usage."
       );
     }
 
@@ -1865,8 +1828,19 @@ async function runCli() {
     const warnTokenOnArgv = async () => {
       if (!args.includes("--token")) return;
       const { CONFIG_TOKEN_HISTORY_WARNING } = await import("../src/hooks/cloud-enrollment-cli");
-      process.stderr.write(`\n${CONFIG_TOKEN_HISTORY_WARNING.join("\n")}\n`);
+      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+      const kit = screenKit({ color: colorsEnabled(process.stderr) });
+      process.stderr.write(`\n${kit.notice("caution", CONFIG_TOKEN_HISTORY_WARNING.join("\n")).join("\n")}\n`);
     };
+    // The fix for a flag given no value. Never "put the key after --token": the
+    // whole point of the variable is that a key on argv lands in shell history.
+    const missingValue = (flag) =>
+      new CliError(
+        `Missing value after ${flag}.\n` +
+          (flag === "--token"
+            ? "Or leave --token out and set FAILPROOFAI_CLOUD_TOKEN."
+            : "Run  `failproofai config --help`  for what it takes."),
+      );
     if (connectIdx >= 0 || wantsDisconnect || wantsRename) {
       if (connectIdx >= 0 && wantsDisconnect) {
         throw new CliError("--connect and --disconnect cannot be combined.");
@@ -1875,7 +1849,7 @@ async function runCli() {
         const i = args.indexOf(flag);
         if (i < 0) return undefined;
         const v = args[i + 1];
-        if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+        if (!v || v.startsWith("-")) throw missingValue(flag);
         return v;
       };
       let result;
@@ -1925,7 +1899,7 @@ async function runCli() {
     if (pauseIdx >= 0 || wantsResume || wantsStatus) {
       const chosen = [pauseIdx >= 0 && "--pause", wantsResume && "--resume", wantsStatus && "--status"].filter(Boolean);
       if (chosen.length > 1) {
-        throw new CliError(`${chosen.join(" and ")} cannot be combined.`);
+        throw new CliError(`${chosen.join(" and ")} cannot be combined.\nRun them one at a time.`);
       }
       // `--status` answers "what is this machine's state?": the daemon, the
       // dashboard and any pauses, the cloud connection and whether data
@@ -1940,7 +1914,7 @@ async function runCli() {
       }
       const sessionIdx = args.indexOf("--session");
       if (sessionIdx >= 0 && !args[sessionIdx + 1]) {
-        throw new CliError("Missing session id after --session.");
+        throw new CliError("Missing session id after --session.\nOr leave --session out to use the newest session here.");
       }
       // A bare `--pause` takes the default duration, so only treat the next
       // token as a duration when it isn't another flag.
@@ -1978,7 +1952,7 @@ async function runCli() {
       const i = args.indexOf(flag);
       if (i < 0) return undefined;
       const v = args[i + 1];
-      if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+      if (!v || v.startsWith("-")) throw missingValue(flag);
       return v;
     };
     // --oss skips the connect step and leaves any connection as it is (Tab's
@@ -2036,58 +2010,32 @@ async function runCli() {
     return;
   }
 
-  // Shared by both "unknown thing" guards below, so a mistyped SUBCOMMAND gets
-  // the same nearest-match treatment a mistyped flag already got.
-  function levenshtein(a, b) {
-    const m = a.length, n = b.length;
-    const dp = Array.from({ length: m + 1 }, (_, i) =>
-      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-    );
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1]
-          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    return dp[m][n];
-  }
-
-  // Unknown flag guard — must appear after all known-flag branches
+  // Unknown flag guard — must appear after all known-flag branches.
+  //
+  // Both guards below suggest a whole command, runnable as printed, or nothing
+  // at all. The nearest-spelling guess they replaced always answered, so
+  // `status` got `flush`, `install` got `uninstall` and `-i` got `audit`; see
+  // did-you-mean.ts for the table of words people type and the cut-off.
   const knownFlags = ["--version", "-v", "--help", "-h", "--hook"];
   const unknownFlag = args.find(a => a.startsWith("-") && !knownFlags.includes(a));
 
   if (unknownFlag) {
-    const primary = ["--version", "--help", "--hook", "policies", "policy", "audit"];
-    const closest = primary.reduce((best, flag) => {
-      const dist = levenshtein(unknownFlag, flag);
-      return dist < best.dist ? { flag, dist } : best;
-    }, { flag: primary[0], dist: Infinity });
-
+    const { suggestFlag } = await import("../src/hooks/did-you-mean");
+    const suggestion = suggestFlag(unknownFlag);
     throw new CliError(
-      `Unknown flag: ${unknownFlag}\n` +
-      `Did you mean: ${closest.flag}?\n` +
-      `Run \`failproofai --help\` for usage details.`
+      `Unknown flag: ${unknownFlag}.\n` +
+      (suggestion ? `Did you mean  \`${suggestion}\`?` : "Run  `failproofai help`  for usage.")
     );
   }
 
   // Unknown subcommand guard (non-flag args that aren't a known subcommand)
   const unknownSubcommand = args.find(a => !a.startsWith("-") && !SUBCOMMANDS.includes(a));
   if (unknownSubcommand) {
-    // Nearest match rather than a hardcoded "policies", which was wrong for
-    // every input that was not a typo of it. `auth` made that concrete: it was
-    // a real subcommand until this release, so an old script or plain muscle
-    // memory lands here, and answering "did you mean policies?" sends someone
-    // to the one command that has nothing to do with what they typed.
-    const nearest = SUBCOMMANDS.reduce(
-      (best, name) => {
-        const dist = levenshtein(unknownSubcommand, name);
-        return dist < best.dist ? { name, dist } : best;
-      },
-      { name: SUBCOMMANDS[0], dist: Infinity },
-    );
+    const { suggestCommand } = await import("../src/hooks/did-you-mean");
+    const suggestion = suggestCommand(unknownSubcommand, SUBCOMMANDS);
     throw new CliError(
-      `Unknown command: ${unknownSubcommand}\n` +
-      `Did you mean: failproofai ${nearest.name}?\n` +
-      `Run \`failproofai --help\` for usage details.`
+      `There is no command called '${unknownSubcommand}'.\n` +
+      (suggestion ? `Did you mean  \`${suggestion}\`?` : "Run  `failproofai help`  to see every command.")
     );
   }
 
@@ -2122,8 +2070,19 @@ try {
         exit_code: err.exitCode,
       });
     }
-    console.error(`Error: ${err.message}`);
-    process.exit(err.exitCode);
+    // `✕ <what went wrong>`, then each fix on its own line, indented two, with
+    // the command in pink (see `notice` in tui.ts). The exit code is the error's.
+    // Written rather than `console.error`, which Bun paints red on a terminal —
+    // a colour from outside the palette — and drained before exiting.
+    let failureText = `✕ ${err.message}`;
+    try {
+      const { screenKit, colorsEnabled } = await import("../src/hooks/tui");
+      failureText = screenKit({ color: colorsEnabled(process.stderr) }).notice("fail", err.message).join("\n");
+    } catch {
+      // The plain glyph is still the right shape; the kit is decoration.
+    }
+    process.stderr.write(`${failureText}\n`);
+    await exitAfterFlush(err.exitCode);
   }
   // Unexpected internal error — show message only, no stack trace
   const msg = err instanceof Error ? err.message : String(err);
@@ -2141,6 +2100,8 @@ try {
       error_type: err instanceof Error ? err.name : "unknown",
     });
   }
-  console.error(`Unexpected error: ${msg}`);
-  process.exit(2);
+  // Plain, never through the kit: this is the path for an install so broken
+  // that anything could be the next thing to fail.
+  process.stderr.write(`✕ Unexpected error: ${msg}\n`);
+  await exitAfterFlush(2);
 }

@@ -76,29 +76,34 @@ describe("top-level: --help", () => {
 describe("top-level: unknown command", () => {
   it("rejects unknown subcommand with clean error", () => {
     const result = runCli("unknowncommand");
-    assertCleanError(result, "Unknown command: unknowncommand");
+    // The design's words (Q4), in the notice shape: `✕`, then the fix line.
+    assertCleanError(result, "✕ There is no command called 'unknowncommand'.");
   });
 
-  it("always offers a runnable suggestion for an unknown subcommand", () => {
-    // Deliberately NOT pinned to a specific word. "unknowncommand" is a typo of
-    // nothing, so which subcommand comes out nearest is an artefact of the
-    // command LIST, not a contract: it read "policies" only because three names
-    // tied at distance 12 and `SUBCOMMANDS[0]` broke the tie. Adding
-    // `uninstall` (distance 10) changed the winner without changing any
-    // behaviour anyone relies on. The contract is that a suggestion is offered
-    // and names a real subcommand; the nearest-match behaviour itself is
-    // covered by the tests below, which use inputs that ARE typos of something.
+  it("suggests nothing for a word that is close to no command, and points at help", () => {
+    // This used to ALWAYS name a subcommand, so a typo of nothing got the
+    // winner of a 12-way tie on distance — an artefact of the command list.
+    // A far-off word now gets no guess (Q6): the help index is the honest answer.
     const result = runCli("unknowncommand");
-    const match = /Did you mean: failproofai (\S+)\?/.exec(result.stderr);
-    expect(match).not.toBeNull();
-    expect(["policies", "policy", "audit", "config", "uninstall"]).toContain(match![1]);
+    expect(result.stderr).not.toContain("Did you mean");
+    expect(result.stderr).toContain("  Run  failproofai help  to see every command.");
   });
 
   it("suggests the NEAREST subcommand, not a hardcoded one", () => {
     // The suggestion was the literal string "policies" for every input, which
     // was right only when the typo happened to be a typo of that word.
-    expect(runCli("confg").stderr).toContain("failproofai config");
-    expect(runCli("audits").stderr).toContain("failproofai audit");
+    expect(runCli("confg").stderr).toContain("  Did you mean  failproofai config?");
+    expect(runCli("audits").stderr).toContain("  Did you mean  failproofai audit?");
+  });
+
+  it("answers the words people type with the command that does it", () => {
+    // `status` got `flush` and `install` got `uninstall` — the opposite of the
+    // request — from the nearest-spelling guess alone.
+    expect(runCli("status").stderr).toContain("  Did you mean  failproofai config --status?");
+    const install = runCli("install").stderr;
+    expect(install).toContain("  Did you mean  failproofai policies --install?");
+    expect(install).not.toContain("uninstall");
+    expect(runCli("login").stderr).toContain("  Did you mean  failproofai config?");
   });
 
   it("points a stale `auth` at audit rather than somewhere unrelated", () => {
@@ -106,7 +111,7 @@ describe("top-level: unknown command", () => {
     // plain muscle memory lands here. It must not be answered with the one
     // command that has nothing to do with what was typed.
     const result = runCli("auth", "login");
-    assertCleanError(result, "Unknown command: auth");
+    assertCleanError(result, "✕ There is no command called 'auth'.");
     expect(result.stderr).toContain("failproofai audit");
   });
 });
@@ -114,12 +119,35 @@ describe("top-level: unknown command", () => {
 describe("top-level: unknown flag", () => {
   it("rejects unknown flag with clean error", () => {
     const result = runCli("--unknownflag");
-    assertCleanError(result, "Unknown flag: --unknownflag");
+    assertCleanError(result, "✕ Unknown flag: --unknownflag.");
   });
 
-  it("suggests closest known flag", () => {
-    const result = runCli("--unknownflag");
-    expect(result.stderr).toContain("Did you mean");
+  it("suggests the closest known flag as a whole command", () => {
+    expect(runCli("--versoin").stderr).toContain("  Did you mean  failproofai --version?");
+    expect(runCli("--status").stderr).toContain("  Did you mean  failproofai config --status?");
+  });
+
+  it("suggests nothing for a flag that is close to none, and never `audit` for -i", () => {
+    const far = runCli("--unknownflag");
+    expect(far.stderr).not.toContain("Did you mean");
+    expect(far.stderr).toContain("  Run  failproofai help  for usage.");
+    expect(runCli("-i").stderr).not.toContain("audit");
+  });
+});
+
+describe("every error prints in the notice shape", () => {
+  it("opens on `✕`, never on `Error:`, and keeps the exit code", () => {
+    for (const result of [runCli("status"), runCli("policies", "--typo"), runCli("help", "nonsense")]) {
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.startsWith("✕ ")).toBe(true);
+      expect(result.stderr).not.toContain("Error:");
+    }
+  });
+
+  it("prints no escape codes and no backticks into a pipe", () => {
+    const { stderr } = runCli("policies", "--typo");
+    expect(stderr).not.toMatch(/\x1B\[|`/);
+    expect(stderr).toBe("✕ Unknown flag: --typo.\n  Run  failproofai policies --help  for usage.");
   });
 });
 
@@ -128,6 +156,29 @@ describe("top-level: --hook", () => {
     const result = runCli("--hook");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Missing event type after --hook");
+    // Pointed at the page that lists the events and agent ids, instead of a
+    // 131-column usage line.
+    expect(result.stderr).toContain("  Run  failproofai help hook  for the events and agent ids.");
+  });
+});
+
+describe("policies: --cli names every agent", () => {
+  const EVERY_AGENT = [
+    "  Use any of: claude, codex, copilot, cursor, opencode, pi,",
+    "              hermes, openclaw, factory, devin, antigravity, goose",
+  ].join("\n");
+
+  it("says `Not an agent` for a typo, with the near one, and lists all twelve", () => {
+    // It said "Missing value(s)" even for a typo, and named eight of twelve.
+    const result = runCli("policies", "--install", "--cli", "claud");
+    assertCleanError(result, "✕ Not an agent: claud (did you mean claude?)");
+    expect(result.stderr).toContain(EVERY_AGENT);
+  });
+
+  it("says the agent is missing when nothing follows --cli", () => {
+    const result = runCli("policies", "--uninstall", "--cli");
+    assertCleanError(result, "✕ Missing agent name after --cli.");
+    expect(result.stderr).toContain(EVERY_AGENT);
   });
 });
 

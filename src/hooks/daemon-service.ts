@@ -1617,14 +1617,24 @@ export async function refreshDaemonToCliVersion(
 
   const result = await install();
   if (!result.installed) {
+    // Root is the usual reason, and the install's own `reason` for it is written
+    // for the wizard and the log: it says to re-run `failproofai config` and
+    // carries a full unit file to paste. From `update` the answer is shorter,
+    // and names this command: get sudo, then run it again. Never "run the CLI
+    // under sudo" — that would configure root's account instead of this one.
+    const needsRoot = /root privileges are required/.test(result.reason ?? "");
     return {
       ok: false,
-      lines: [
-        `failproofaid ${version} could not be installed: ${result.reason ?? "unknown reason"}`,
-        `The previous daemon is untouched. On a machine configured to require it,`,
-        `enforcement continues; collection and cloud policy may be stale until this`,
-        `succeeds. \`${daemonStatusCommand() ?? "systemctl status"}\` will say more.`,
-      ],
+      lines: needsRoot
+        ? [
+            `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
+            "  Run `sudo -v` and then `failproofai update` again.",
+          ]
+        : [
+            `✕ failproofaid ${version} could not be installed: ${(result.reason ?? "unknown reason").replace(/\.$/, "")}. ` +
+              "The previous daemon is untouched.",
+            `  See why with \`${daemonStatusCommand() ?? "systemctl status"}\`.`,
+          ],
     };
   }
   // RECORD THE VERSION, or the refresh is invisible to everything that asks.

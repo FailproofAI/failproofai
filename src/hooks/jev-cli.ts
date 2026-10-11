@@ -146,7 +146,7 @@ import {
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
-import { TOKEN_ON_ARGV, emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
+import { TOKEN_ON_ARGV, nextStep, note, optsFor, rows, screenKit, stack, title, warning, type RenderOpts } from "./tui";
 
 export interface JevCliResult {
   lines: string[];
@@ -444,10 +444,11 @@ function remedy(code: string, provider?: JevProviderKind, message?: string): str
 
 /** The `jev status` activity block, from `jevStats()` (null when it could not be read). */
 export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): string[] {
+  const kit = screenKit(opts);
   const hours = stats ? Math.round(stats.windowMs / 3_600_000) : 24;
-  const heading = rule(`last ${hours} hours`, opts);
-  if (!stats) return stack(heading, note("Activity could not be read.", opts));
-  if (stats.total === 0) return stack(heading, note(`No Jev evaluations recorded in the last ${hours} hours.`, opts));
+  const heading = kit.head("Activity", `last ${hours} hours`);
+  if (!stats) return [heading, "  Activity could not be read."];
+  if (stats.total === 0) return [heading, "  No Jev evaluations recorded."];
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
   const reasons = Object.entries(stats.fallbackReasons)
     .sort((a, b) => b[1] - a[1])
@@ -466,19 +467,16 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
   // they turned observe mode on to watch.
   const observeClears = byPolicy(stats.observeClearsByPolicy);
   const ms = (v: number | null) => (v === null ? "—" : `${Math.round(v)} ms`);
-  return stack(
+  return [
     heading,
-    rows(
-      [
-        ["evaluations", String(stats.total)],
-        ["fell back to regex", `${pct(stats.fallbackRate)}${reasons ? ` (${reasons})` : ""}`],
-        ["latency", `p50 ${ms(stats.latencyP50Ms)} · p95 ${ms(stats.latencyP95Ms)}`],
-        ["cleared", clears || "nothing"],
-        ...(observeClears ? ([["would have cleared (observe)", observeClears]] as Array<[string, string]>) : []),
-      ],
-      opts,
-    ),
-  );
+    ...kit.kv([
+      ["evaluations", String(stats.total)],
+      ["fell back to regex", `${pct(stats.fallbackRate)}${reasons ? ` (${reasons})` : ""}`],
+      ["latency", `p50 ${ms(stats.latencyP50Ms)} · p95 ${ms(stats.latencyP95Ms)}`],
+      ["cleared", clears || "nothing"],
+      ...(observeClears ? ([["would have cleared (observe)", observeClears]] as Array<[string, string]>) : []),
+    ]),
+  ];
 }
 
 // ── setup ────────────────────────────────────────────────────────────────────
@@ -1511,35 +1509,38 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     return inspection.status === "refused" ? fail([], json) : ok([], json);
   }
 
+  // The design's jevStatus: the header, then `label  value` rows — a status row
+  // first, so every state answers "is Jev running?" in the same place — then
+  // any attention line, the activity block, and the next command last. There
+  // is no "last test" row: nothing records one (D16), and a row with nothing
+  // behind it would be invented. Nor a key tail: no output of this module
+  // contains the key.
+  const kit = screenKit(opts);
+  const screen = (facts: Array<[string, string]>, attention: string[][], next: string[]): string[] =>
+    stack([kit.header("Jev")], kit.kv(facts), ...attention, jevStatsLines(stats, opts), next);
+  /** A closing next step: what it does, then the command, in pink. */
+  const step = (lead: string, command: string): string => `${lead}  ${kit.cmd(command)}`;
+  const modelText = (r: { model: string; modelIsDefault: boolean }): string =>
+    r.modelIsDefault ? `${r.model} (provider default)` : r.model;
   const legacyNote = legacy
-    ? warning(
-        [
-          "FAILPROOFAI_EVALUATOR=legacy is set in this shell: sessions started from it skip Jev when their hooks evaluate in-process.",
+    ? kit.notice(
+        "caution",
+        "FAILPROOFAI_EVALUATOR=legacy is set in this shell: sessions started from it skip Jev when their hooks evaluate in-process.\n" +
           "The daemon does not see this shell's environment.",
-        ],
-        opts,
       )
-    : null;
+    : [];
 
   if (inspection.status === "absent") {
     return ok(
-      stack(
-        title("failproofai jev status", "off", opts),
-        emptyState(
-          {
-            what: `Jev is off: there is no ${inspection.path}. Hooks run the regex policies exactly as before.`,
-            hint: "Turn it on with your own Jev endpoint and key:",
-            cmd: "failproofai jev setup --provider <typesafe|openrouter|vercel|cloudflare|custom> --key-stdin",
-          },
-          opts,
-        ),
-        note(
+      screen(
+        [["status", `${kit.off} off: there is no ${inspection.path}`]],
+        [],
+        [
+          step("Turn it on with your own key:", "failproofai jev setup --provider <typesafe|openrouter|vercel|cloudflare|custom> --key-stdin"),
           cloudCredentialPresent()
-            ? "Or through FailproofAI Cloud, on your org's plan — this machine's key already carries jev:evaluate: failproofai jev setup --provider failproofai"
-            : "Or through FailproofAI Cloud, on your org's plan, with no key of your own: connect with a key that carries jev:evaluate (the \"machine\" preset) — failproofai config --token <key>",
-          opts,
-        ),
-        jevStatsLines(stats, opts),
+            ? step("Or through FailproofAI Cloud, which this machine's key already allows:", "failproofai jev setup --provider failproofai")
+            : step("Or through FailproofAI Cloud, with a key that carries jev:evaluate:", "failproofai config --token <key>"),
+        ],
       ),
     );
   }
@@ -1551,32 +1552,18 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     // and the next step is the variable, not a rewrite.
     const route = routeForRouting(inspection.routing);
     return ok(
-      stack(
-        title("failproofai jev status", "off in this shell", opts),
-        note(
-          `Jev is off in this shell: ${inspection.path} stores no key and takes it from ${JEV_API_KEY_ENV}, which is not set here. ` +
-            "The config is fine; hooks run the regex policies wherever the variable is unset — including under the daemon, which does not see a shell's environment.",
-          opts,
-        ),
-        rows(
-          [
-            ["provider", inspection.routing.provider],
-            ...((route
-              ? [
-                  ["endpoint", displayEndpoint(route.endpoint)],
-                  ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
-                ]
-              : []) as Array<[string, string]>),
-            ["mode", modeLine(inspection.routing.mode ?? DEFAULT_JEV_MODE)],
-            ["config", inspection.path],
-            ["permissions", permissions(inspection.mode)],
-            ["key", `from ${JEV_API_KEY_ENV} — not set in this shell`],
-          ],
-          opts,
-        ),
-        nextStep(`failproofai jev setup --key-stdin < key-file`, `Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file instead:`, opts),
-        legacyNote,
-        jevStatsLines(stats, opts),
+      screen(
+        [
+          ["status", `${kit.off} off in this shell: ${JEV_API_KEY_ENV} is not set here`],
+          ["provider", providerLabel(inspection.routing.provider) + (route ? `, model ${modelText(route)}` : "")],
+          ...((route ? [["endpoint", displayEndpoint(route.endpoint)]] : []) as Array<[string, string]>),
+          ["mode", modeLine(inspection.routing.mode ?? DEFAULT_JEV_MODE)],
+          // The daemon is the one place a setting in this shell can never reach.
+          ["key", `from ${JEV_API_KEY_ENV}, not set in this shell; the daemon never sees a shell's environment`],
+          ["config", `${inspection.path}${kit.sep}${permissions(inspection.mode)}`],
+        ],
+        [legacyNote],
+        [step(`Set ${JEV_API_KEY_ENV} for this shell, or store the key in the file:`, "failproofai jev setup --key-stdin < key-file")],
       ),
     );
   }
@@ -1588,22 +1575,17 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     const r = inspection.routing;
     const route = routeForRouting(r);
     return ok(
-      stack(
-        title("failproofai jev status", "off (switched off)", opts),
-        note(`Jev is switched off in ${inspection.path}: it is not asked about any tool call, and hooks run the regex policies exactly as before.`, opts),
-        rows(
-          [
-            ["provider", providerLabel(r.provider)],
-            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
-            ["mode", modeLine("off")],
-            ["config", inspection.path],
-            ...((r.provider === JEV_CLOUD_PROVIDER ? [["key", cloudKeyRow()]] : []) as Array<[string, string]>),
-          ],
-          opts,
-        ),
-        nextStep("failproofai jev setup --mode observe", "Switch it back on (observe logs Jev and keeps enforcing regex; enforce lets it clear), here or from the dashboard:", opts),
-        legacyNote,
-        jevStatsLines(stats, opts),
+      screen(
+        [
+          ["status", `${kit.off} off (switched off)`],
+          ["provider", providerLabel(r.provider)],
+          ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+          ["mode", modeLine("off")],
+          ...((r.provider === JEV_CLOUD_PROVIDER ? [["key", cloudKeyRow()]] : []) as Array<[string, string]>),
+          ["config", inspection.path],
+        ],
+        [legacyNote],
+        [step("Switch it back on, here or from the dashboard:", "failproofai jev setup --mode observe")],
       ),
     );
   }
@@ -1614,31 +1596,20 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     const r = inspection.routing;
     const route = routeForRouting(r);
     return ok(
-      stack(
-        title("failproofai jev status", "off — this machine is not connected to FailproofAI Cloud", opts),
-        note(
-          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and this machine holds no FailproofAI Cloud key that carries jev:evaluate. ` +
-            "Hooks run the regex policies exactly as before.",
-          opts,
-        ),
-        rows(
-          [
-            ["provider", providerLabel(r.provider)],
-            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
-            ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
-            ["config", inspection.path],
-            ["key", `${CLOUD_KEY_SOURCE} — not connected`],
-          ],
-          opts,
-        ),
-        nextStep(
-          "failproofai config --token <key>",
-          "Connect with a key that carries jev:evaluate (the \"machine\" preset on the dashboard's Keys page):",
-          opts,
-        ),
-        nextStep("failproofai jev remove", "Or switch Jev off:", opts),
-        legacyNote,
-        jevStatsLines(stats, opts),
+      screen(
+        [
+          ["status", `${kit.off} off — this machine is not connected to FailproofAI Cloud`],
+          ["provider", providerLabel(r.provider)],
+          ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+          ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
+          ["key", `${CLOUD_KEY_SOURCE} — not connected`],
+          ["config", inspection.path],
+        ],
+        [legacyNote],
+        [
+          step("Connect with a key that carries jev:evaluate (the \"machine\" preset):", "failproofai config --token <key>"),
+          step("Or switch Jev off:", "failproofai jev remove"),
+        ],
       ),
     );
   }
@@ -1646,34 +1617,24 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   if (inspection.status === "key-lacks-jev") {
     // Connected, so "not connected" would be false and send its owner to
     // reconnect with the same key. The remedy is a key WITH Jev.
+    // Its key lacks jev:evaluate, or the last connect could not confirm that.
     const r = inspection.routing;
     const route = routeForRouting(r);
     return ok(
-      stack(
-        title("failproofai jev status", KEY_LACKS_JEV_TITLE, opts),
-        note(
-          `Jev is off: ${inspection.path} sends Jev requests through FailproofAI Cloud, and no Jev key is stored for this machine's connection: its key lacks jev:evaluate, or the last connect could not confirm that. ` +
-            "Hooks run the regex policies exactly as before.",
-          opts,
-        ),
-        rows(
-          [
-            ["provider", providerLabel(r.provider)],
-            ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
-            ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
-            ["config", inspection.path],
-            ["key", `${CLOUD_KEY_SOURCE} — connected, no Jev key stored for it`],
-          ],
-          opts,
-        ),
-        nextStep(
-          "failproofai config --token <key>",
-          "Reconnect with this machine's key to re-check what it carries (a key without jev:evaluate needs the \"machine\" preset on the dashboard's Keys page):",
-          opts,
-        ),
-        nextStep("failproofai jev setup --mode off", "Or keep Jev off for good:", opts),
-        legacyNote,
-        jevStatsLines(stats, opts),
+      screen(
+        [
+          ["status", `${kit.off} ${KEY_LACKS_JEV_TITLE}`],
+          ["provider", providerLabel(r.provider)],
+          ...((route ? [["endpoint", shownEndpoint(r.provider, route.endpoint)]] : []) as Array<[string, string]>),
+          ["mode", modeLine(r.mode ?? DEFAULT_JEV_MODE)],
+          ["key", `${CLOUD_KEY_SOURCE} — connected, no Jev key stored for it`],
+          ["config", inspection.path],
+        ],
+        [legacyNote],
+        [
+          step("Reconnect to re-check what this machine's key carries:", "failproofai config --token <key>"),
+          step("Or keep Jev off for good:", "failproofai jev setup --mode off"),
+        ],
       ),
     );
   }
@@ -1686,13 +1647,13 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     const named = inspection.reason === "too-open" ? namedEndpoint(raw) : null;
     const next = refusedNextStep(inspection, cloudRoute(raw));
     return fail(
-      stack(
-        title("failproofai jev status", "off (config refused)", opts),
-        warning([`Jev is off: ${inspection.path} was refused — ${inspection.problem}.`, "Hooks run the regex policies exactly as before."], opts),
-        named ? rows([["endpoint it names", named]], opts) : null,
-        nextStep(next.cmd, next.lead, opts),
-        legacyNote,
-        jevStatsLines(stats, opts),
+      screen(
+        [
+          ["status", `${kit.failed} off: ${inspection.path} was refused — ${inspection.problem}`],
+          ...((named ? [["endpoint it names", named]] : []) as Array<[string, string]>),
+        ],
+        [legacyNote],
+        [step(next.lead, next.cmd)],
       ),
     );
   }
@@ -1701,32 +1662,26 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const route = jevRoute(cfg);
   const mode = cfg.mode ?? DEFAULT_JEV_MODE;
   return ok(
-    stack(
-      title("failproofai jev status", legacy ? "on (legacy override in this shell)" : `on · ${mode}`, opts),
-      rows(
+    screen(
+      [
+        ["status", `${kit.on} ${legacy ? "on, with a legacy override in this shell" : `on · ${mode}`}`],
+        ["provider", `${providerLabel(cfg.provider)}, model ${modelText(route)}`],
+        ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
+        ["mode", modeLine(mode)],
+        ["timeout", `${cfg.timeoutMs} ms`],
         [
-          ["provider", providerLabel(cfg.provider)],
-          ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
-          ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
-          ["mode", modeLine(mode)],
-          ["timeout", `${cfg.timeoutMs} ms`],
-          ["config", inspection.path],
-          ["permissions", permissions(inspection.mode)],
-          [
-            "key",
-            inspection.keySource === "cloud"
-              ? CLOUD_KEY_SOURCE
-              : inspection.keySource === "file"
-                ? "set in the config file"
-                : `from ${JEV_API_KEY_ENV} (this shell only; the daemon does not see it)`,
-          ],
+          "key",
+          inspection.keySource === "cloud"
+            ? CLOUD_KEY_SOURCE
+            : inspection.keySource === "file"
+              ? "set in the config file"
+              : `from ${JEV_API_KEY_ENV} (this shell only; the daemon does not see it)`,
         ],
-        opts,
-      ),
-      coverage ? note(reviewableSummary(coverage), opts) : null,
-      coverageProblem ? warning([coverageProblem], opts) : null,
-      legacyNote,
-      jevStatsLines(stats, opts),
+        ["config", `${inspection.path}${kit.sep}${permissions(inspection.mode)}`],
+        ...((coverage ? [["reviewable", reviewableSummary(coverage)]] : []) as Array<[string, string]>),
+      ],
+      [coverageProblem ? kit.notice("caution", coverageProblem) : [], legacyNote],
+      [],
     ),
   );
 }

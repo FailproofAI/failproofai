@@ -93,12 +93,17 @@ import {
 } from "./fp-config";
 import {
   daemonServiceStatus,
-  daemonStatusCommand,
   daemonVersionSkew,
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
   type DaemonServiceStatus,
 } from "./daemon-service";
+// Types only: the kit is loaded with `import()` inside `checkLayoutForCli`, so
+// the hook path — handler.ts imports this module for `layoutWarningForHook` —
+// never loads the renderer.
+import type { RenderOpts } from "./tui";
+
+type BannerKit = ReturnType<typeof import("./tui").screenKit>;
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
@@ -1110,22 +1115,35 @@ async function drainSpoolAfterMigrating(): Promise<number> {
  */
 export interface LayoutCheckDeps {
   daemonStatus?: () => DaemonServiceStatus;
+  /** How to draw the banners. Defaults to what stderr can show, where they print. */
+  render?: RenderOpts;
 }
 
+/**
+ * What this returns is printed above whatever command was typed, so each
+ * banner is one state line and one fix line, in the screen language: `✕` for
+ * the one that stops the command, `▲` for one that needs attention, `✓` for a
+ * repair already made.
+ */
 export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<LayoutCheck> {
   const state = detectLayout();
+  const { screenKit, colorsEnabled } = await import("./tui");
+  const kit: BannerKit = screenKit(deps.render ?? { color: colorsEnabled(process.stderr) });
 
   if (state.kind === "future") {
     return {
       state,
       fatal: true,
       didReset: false,
+      // Upgrade rather than reset: the data is fine, this build just cannot read it.
       lines: [
-        `This machine's failproofai directory was written by a newer version`,
-        `(layout ${state.found}; this build speaks ${LAYOUT_VERSION}).`,
-        ``,
-        `Upgrade rather than reset — the data is fine, this build just cannot read it:`,
-        `  npm install -g failproofai@latest`,
+        ...kit.notice(
+          "fail",
+          `This machine's failproofai directory was written by a newer version (layout ${state.found}; ` +
+            `this build reads ${LAYOUT_VERSION}).\n` +
+            "Your data is fine. Upgrade to read it:  `npm install -g failproofai@latest`",
+        ),
+        "",
       ],
     };
   }
@@ -1146,68 +1164,56 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
     // Read AFTER the migration: on a machine coming from layout 1 or 2 the
     // config this reads is the one the migration just carried across, so asking
     // any earlier would read a file that is about to move.
-    const daemonHint = staleDaemonHint();
+    const daemonHint = staleDaemonHint(kit);
     return {
       state,
       fatal: false,
       didReset: true,
       lines: [
-        `failproofai reorganised ${failproofaiHome()} in this version.`,
-        // "activity history" was in this sentence while the reset was deleting
-        // it, and "policy config" stayed in it after that file stopped being
-        // removed. Both are the same failure: a message describing a delete list
-        // it is not derived from. It names the CLASSES now, which is what
-        // `HOME_CLASSES` actually decides — so it cannot drift again without the
-        // rule itself changing.
-        `Removed ${removed.length} item(s) that this version rebuilds — the audit`,
-        `cache, cloud deployments (re-fetched on the next poll) and daemon scratch.`,
-        `Your settings, cloud enrolment, policy selection, decision history,`,
-        `undelivered events and daemon binary were all kept.`,
-        // Named individually rather than counted. These are files a person
-        // wrote; "moved 3 items" is not something you can check at a glance,
-        // and the whole point of saying it is that they can.
-        ...(migrated.length > 0
-          ? [
-              ``,
-              `Kept your own policy file(s) and moved them to where this version`,
-              `loads them (${customPoliciesDir()}):`,
-              ...migrated.map((name) => `  ${name}`),
-            ]
-          : []),
-        // Counted, not named. Unlike policy files these are machine-written
-        // pages with generated names — a list of them tells the reader nothing
-        // they could act on, where the COUNT answers the only question they
-        // have: did my history survive.
-        ...(activity.length > 0
-          ? [
-              ``,
-              `Carried ${activity.length} page(s) of decision history into ${hookActivityDir()}.`,
-            ]
-          : []),
-        // Said only when a backlog actually survived the flush. Silence here
-        // would be the wrong kind: the events are safe, but "safe" and
-        // "delivered" are different states and only one of them shows up on a
-        // dashboard. Naming the count is what stops a user reading an incomplete
-        // dashboard as data loss.
+        // What was rebuilt and what was kept, by CLASS — which is what
+        // `HOME_CLASSES` actually decides. "Activity history" was once in a
+        // sentence like this while the reset was deleting it, and "policy config"
+        // stayed after that file stopped being removed: a message describing a
+        // delete list it is not derived from. Naming the classes cannot drift
+        // without the rule itself changing.
+        ...kit.notice(
+          "ok",
+          `failproofai reorganised ${failproofaiHome()} for this version.\n` +
+            `Removed ${removed.length} ${removed.length === 1 ? "item" : "items"} that this version rebuilds: ` +
+            "the audit cache, cloud deployments (re-fetched on the next poll) and daemon scratch.\n" +
+            "Kept your settings, cloud enrolment, policy selection, decision history, undelivered events and daemon binary." +
+            // Named individually rather than counted. These are files a person
+            // wrote; "moved 3 items" is not something you can check at a glance,
+            // and the whole point of saying it is that they can.
+            (migrated.length > 0 ? `\nMoved your own policy files to ${customPoliciesDir()}: ${migrated.join(", ")}` : "") +
+            // Counted, not named. Machine-written pages with generated names: the
+            // COUNT answers the only question there is — did my history survive.
+            (activity.length > 0
+              ? `\nCarried ${activity.length} page${activity.length === 1 ? "" : "s"} of decision history into ${hookActivityDir()}.`
+              : ""),
+        ),
+        // Said only when a backlog actually survived the flush. The events are
+        // safe, but "safe" and "delivered" are different states and only one of
+        // them shows up on a dashboard; naming the count is what stops a user
+        // reading an incomplete dashboard as data loss.
         ...(pending > 0
-          ? [
-              ``,
-              `${pending} batch(es) were still undelivered and were carried across.`,
-              `They ship on the next collector pass — \`failproofai flush --wait\` now if you`,
-              `are waiting on a dashboard.`,
-            ]
+          ? kit.notice(
+              "caution",
+              `${pending} batch(es) were still undelivered and were carried across.\n` +
+                "They ship on the next collector pass. Send them now:  `failproofai flush --wait`",
+            )
           : []),
         // A step that threw leaves the home marked with the OLD layout, so the
         // next command tries again — which is right, and is also why this must
         // say so rather than let a partial migration pass for a finished one.
         ...(run.failed
-          ? [
-              ``,
-              `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
-              `The home is still marked layout ${state.found} and will be retried. Copies of`,
-              `your settings and enrolment were saved first, in ${migrationBackupDir(state.found)}.`,
-            ]
+          ? kit.notice(
+              "fail",
+              `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}\n` +
+                `It is retried on the next command; your settings and enrolment were saved first in ${migrationBackupDir(state.found)}.`,
+            )
           : []),
+        "",
         // No "run `failproofai config` to set up again". There is nothing to set
         // up: the settings, the enrolment and the policy selection all survived,
         // so the machine enforces exactly as it did before this command ran. A
@@ -1220,7 +1226,7 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
         // daemon, and it was the one command saying nothing about it. Every
         // later command reached the non-stale return below and got the hint;
         // the one where the user is watching the reorganisation happen did not.
-        ...(daemonHint.length > 0 ? ["", ...daemonHint] : []),
+        ...daemonHint,
       ],
     };
   }
@@ -1238,7 +1244,7 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
     state,
     fatal: false,
     didReset: false,
-    lines: [...(await healDaemonFlag(deps)), ...staleDaemonHint()],
+    lines: [...(await healDaemonFlag(deps, kit)), ...staleDaemonHint(kit)],
   };
 }
 
@@ -1257,20 +1263,24 @@ export async function checkLayoutForCli(deps: LayoutCheckDeps = {}): Promise<Lay
  * downgrade a healthy machine to the in-process path — trading a loud, correct
  * failure for a quiet, wrong one.
  */
-async function healDaemonFlag(deps: LayoutCheckDeps = {}): Promise<string[]> {
+async function healDaemonFlag(deps: LayoutCheckDeps, kit: BannerKit): Promise<string[]> {
   try {
     const cfg = readConfig();
     if (!cfg.daemon.configured) return [];
     if (!isDaemonSupportedPlatform()) return [];
 
+    // Each repair says the one phrase the cleared flag was about — "denies every
+    // tool call" — on ONE line, where a reader (and the tests) can find it.
     const status = (deps.daemonStatus ?? daemonServiceStatus)();
     if (status === "not-installed") {
       updateConfig({ daemon: { configured: false } });
       return [
-        `failproofaid is no longer installed, but this machine was still configured`,
-        `to require it — which denies every tool call. Cleared that flag; policies`,
-        `now evaluate in-process. Run \`failproofai config\` to reinstall the daemon.`,
-        ``,
+        ...kit.notice(
+          "caution",
+          "failproofaid is no longer installed, and requiring it denies every tool call, so policies now evaluate in-process.\n" +
+            "Reinstall the daemon:  `failproofai config`",
+        ),
+        "",
       ];
     }
 
@@ -1285,16 +1295,15 @@ async function healDaemonFlag(deps: LayoutCheckDeps = {}): Promise<string[]> {
     // the distinction `condition-failed` exists to carry; see its definition.
     if (status === "condition-failed") {
       updateConfig({ daemon: { configured: false } });
+      // Most often `npm rm -g failproofai`, which deletes the worker the service
+      // needs and leaves the service behind.
       return [
-        `failproofaid is installed but cannot start — a file its service requires is`,
-        `gone (most often because failproofai was removed with \`npm rm -g\`, which`,
-        `deletes the worker but leaves the service behind). This machine was`,
-        `configured to require the daemon, which denies every tool call, so that flag`,
-        `is cleared; policies now evaluate in-process.`,
-        ``,
-        `Run \`failproofai uninstall\` to remove the leftover service, or`,
-        `\`failproofai config\` to rebuild it. \`${daemonStatusCommand()}\` names the missing path.`,
-        ``,
+        ...kit.notice(
+          "caution",
+          "failproofaid cannot start, and requiring it denies every tool call, so policies now evaluate in-process.\n" +
+            "Remove the leftover service with  `failproofai uninstall`,  or rebuild it with  `failproofai config`",
+        ),
+        "",
       ];
     }
 
@@ -1313,13 +1322,15 @@ async function healDaemonFlag(deps: LayoutCheckDeps = {}): Promise<string[]> {
     // `daemonAlreadyHealthy` probe in `configure-wizard.ts`.
     if (status === "running" && !(await probeDaemonEndToEnd())) {
       updateConfig({ daemon: { configured: false } });
+      // Most often the Node install its service was built against is gone, so
+      // the worker process will not start.
       return [
-        `failproofaid is running but cannot evaluate policies — its worker process`,
-        `will not start (most often because the Node install its service was built`,
-        `against is gone). This machine was configured to require it, which denies`,
-        `every tool call, so that flag is cleared; policies now evaluate in-process.`,
-        `Run \`failproofai config\` to rebuild the service.`,
-        ``,
+        ...kit.notice(
+          "caution",
+          "failproofaid cannot evaluate policies, and requiring it denies every tool call, so policies now evaluate in-process.\n" +
+            "Rebuild the service:  `failproofai config`",
+        ),
+        "",
       ];
     }
     return [];
@@ -1357,7 +1368,7 @@ async function healDaemonFlag(deps: LayoutCheckDeps = {}): Promise<string[]> {
  * to everybody, and pointed at `failproofai config`. Across a layout bump that
  * is the wrong sentence and the wrong command.
  */
-function staleDaemonHint(): string[] {
+function staleDaemonHint(kit: BannerKit): string[] {
   try {
     const skew = daemonVersionSkew();
     if (!skew) return [];
@@ -1368,26 +1379,22 @@ function staleDaemonHint(): string[] {
       // Unreadable config: fall through to the mild message rather than
       // frightening somebody whose machine may not require the daemon at all.
     }
+    const fix = `Bring it from ${skew.installed} to ${skew.expected}:  \`failproofai update\``;
     if (requiresDaemon) {
+      // A daemon built against a different on-disk layout refuses to start, so
+      // the next reboot or restart can leave the service down on a machine that
+      // requires it. "denies every tool call" is the consequence this line
+      // exists to state, and it stays on ONE line: splitting it is what once
+      // made the test asserting the phrase fail while the text read correctly.
       return [
-        `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected}.`,
-        `This machine is configured to REQUIRE the daemon. A daemon built against a`,
-        `different on-disk layout refuses to start, and this version moved it — so the`,
-        // The wrap is load-bearing: "denies every tool call" is the consequence
-        // this message exists to state, and splitting it across two lines is
-        // what made the test asserting that phrase fail while the text looked
-        // perfectly correct to a human reading it.
-        `next reboot or restart can leave the service down, which`,
-        `denies every tool call until it is fixed.`,
-        `Run \`failproofai update\` now to bring the daemon in line.`,
-        ``,
+        ...kit.notice(
+          "caution",
+          `failproofaid does not match this CLI, and a restart can stop it, which denies every tool call.\n${fix}`,
+        ),
+        "",
       ];
     }
-    return [
-      `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected} — ` +
-        `run \`failproofai update\` to update it.`,
-      ``,
-    ];
+    return [...kit.notice("caution", `failproofaid does not match this CLI.\n${fix}`), ""];
   } catch {
     return [];
   }

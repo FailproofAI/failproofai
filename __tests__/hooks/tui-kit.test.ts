@@ -1357,3 +1357,102 @@ describe("screenKit().live — a block that redraws in place", () => {
     expect(added("SIGTERM", before.SIGTERM)).toHaveLength(0);
   });
 });
+
+describe("screenKit().notice — every error and warning in one shape", () => {
+  const plainKit = screenKit({ color: false });
+
+  it("puts the glyph on the first line and indents every fix line two", () => {
+    expect(plainKit.notice("fail", "There is no command called 'status'.\nDid you mean  `failproofai config --status`?")).toEqual([
+      "✕ There is no command called 'status'.",
+      "  Did you mean  failproofai config --status?",
+    ]);
+    expect(plainKit.notice("caution", "Needs attention.")).toEqual(["▲ Needs attention."]);
+    expect(plainKit.notice("ok", "Done.\nNext:  `failproofai policies`")).toEqual(["✓ Done.", "  Next:  failproofai policies"]);
+  });
+
+  it("drops the backticks from a command in plain text — nothing is left to show they were there", () => {
+    const [, fix] = plainKit.notice("fail", "Unknown flag: --typo.\nRun  `failproofai policies --help`  for usage.");
+    expect(fix).toBe("  Run  failproofai policies --help  for usage.");
+    expect(fix).not.toMatch(/`|\x1B/);
+  });
+
+  it("keeps a fix line's own indentation under the two it adds", () => {
+    expect(plainKit.notice("fail", "Two packs declare it.\nName the one you mean:\n  `acme/a:x`\n  `acme/b:x`")).toEqual([
+      "✕ Two packs declare it.",
+      "  Name the one you mean:",
+      "    acme/a:x",
+      "    acme/b:x",
+    ]);
+  });
+
+  it("leaves unbalanced backticks as written rather than guessing", () => {
+    expect(plainKit.notice("fail", "A stray ` here.")).toEqual(["✕ A stray ` here."]);
+  });
+
+  it("paints the glyph by role and every command pink with colour on", () => {
+    const k = withEnv(TRUECOLOR, () => screenKit({ color: true }));
+    const [failure, fix] = k.notice("fail", "Gone.\nRun  `failproofai config`  again.");
+    expect(failure).toBe("\x1B[38;2;240;113;120m✕\x1B[0m Gone.");
+    expect(fix).toBe(`  Run  \x1B[${PINK_24}mfailproofai config\x1B[0m  again.`);
+    expect(k.notice("caution", "x")[0]).toBe("\x1B[38;2;227;179;65m▲\x1B[0m x");
+    expect(k.notice("ok", "x")[0]).toBe(`\x1B[${MINT_24}m✓\x1B[0m x`);
+  });
+});
+
+describe("screenKit().confirm — `Continue? y/N`", () => {
+  /** A terminal on both ends, with the keys typed after the question is drawn. */
+  const ask = async (keys: string[], color = false) => {
+    const written: string[] = [];
+    const stdout = { isTTY: true, columns: 80, write: (chunk: string) => (written.push(chunk), true) } as unknown as TTYOut;
+    const stdin = new PassThrough() as unknown as TTYIn & PassThrough;
+    let raw = false;
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (on: boolean) => void }).setRawMode = (on: boolean) => {
+      raw = on;
+    };
+    const kit = color ? withEnv(TRUECOLOR, () => screenKit({ color: true })) : screenKit({ color: false });
+    const pending = kit.confirm({ stdin: stdin as unknown as TTYIn, stdout });
+    for (const k of keys) stdin.write(k);
+    const answer = await pending;
+    return { answer, out: written.join(""), rawAfter: raw };
+  };
+
+  it("draws the design's question, the y/N grey with colour on and plain without", async () => {
+    expect((await ask(["\r"])).out.startsWith("Continue? y/N ")).toBe(true);
+    const { out } = await ask(["\r"], true);
+    expect(out.startsWith("Continue? \x1B[38;2;118;127;139my/N\x1B[0m ")).toBe(true);
+  });
+
+  it.each([["y\r"], ["Y\r"], ["yes\r"], ["YES\r"]])("takes %j as yes", async (keys) => {
+    expect((await ask([keys])).answer).toBe(true);
+  });
+
+  it.each([
+    ["Enter alone", ["\r"]],
+    ["n", ["n\r"]],
+    ["anything else", ["sure\r"]],
+    ["Esc", ["\u001b"]],
+    ["Ctrl+C", ["\u0003"]],
+    ["Ctrl+D", ["\u0004"]],
+  ])("takes %s as no", async (_label, keys) => {
+    expect((await ask(keys)).answer).toBe(false);
+  });
+
+  it("says no when the input closes before an answer", async () => {
+    const stdout = { isTTY: true, columns: 80, write: () => true } as unknown as TTYOut;
+    const stdin = new PassThrough() as unknown as TTYIn & PassThrough;
+    const pending = screenKit().confirm({ stdin: stdin as unknown as TTYIn, stdout });
+    stdin.end();
+    expect(await pending).toBe(false);
+  });
+
+  it("echoes what is typed, honours backspace, and ends the line", async () => {
+    const { answer, out } = await ask(["n", "\u007f", "y", "\r"]);
+    expect(answer).toBe(true);
+    expect(out).toBe("Continue? y/N n\b \by\n");
+  });
+
+  it("gives the terminal back out of raw mode", async () => {
+    expect((await ask(["y\r"])).rawAfter).toBe(false);
+  });
+});

@@ -2243,7 +2243,6 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   );
   let version =
     flag("version") ?? (entry ? inferTaggedVersion(entry, bundledSources) : null) ?? undefined;
-  let versionFromSha = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
   const dryRun = rest.includes("--dry-run") || !repo;
@@ -2318,7 +2317,6 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     const resolved = versionForPublish(provenance);
     if ("error" in resolved) return fail(resolved.error);
     version = resolved.version;
-    versionFromSha = true;
   }
 
   // Check an EXPLICIT tag against the version before anything reaches the
@@ -2364,16 +2362,18 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     // A repository this command creates is made public, so this only ever
     // fires on reuse of one that was already private.
     if (repoInfo.json?.private === true && !allowPrivate) {
-      return fail([
-        `${repo} is PRIVATE, so nothing was published.`,
-        "Installing a pack fetches its release assets over anonymous HTTPS with no",
-        "credential to offer, so every install would 404 — including your own from",
-        "another machine. Publishing would only have attached three assets",
-        "advertising a route nobody can take.",
-        `Make it public and re-run:  gh repo edit ${repo} --visibility public`,
-        "Or, to keep it private and hand the pack over some other way, publish it",
-        "with --allow-private.",
-      ]);
+      // The reason is the install, not the privacy: it fetches over anonymous
+      // HTTPS with no credential to offer, so it 404s even for the author on
+      // another machine, and publishing would only attach three assets
+      // advertising a route nobody can take.
+      return fail(
+        screenKit(optsFor(process.stderr)).notice(
+          "fail",
+          `${repo} is private, so nothing was published: installs fetch over anonymous HTTPS, so every one would 404.\n` +
+            `Make it public and publish again:  \`gh repo edit ${repo} --visibility public\`\n` +
+            "Or keep it private and hand the pack over yourself:  `--allow-private`",
+        ),
+      );
     }
   }
   const tag = flag("tag") ?? version;
@@ -2527,36 +2527,46 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     uploaded.push(asset);
   }
 
+  // The design's done screen: one `✓` per thing that happened, then how to
+  // install it. The policy count comes from the build; a pack of Jev checks
+  // alone has no regex policies to count, and says so in its reminder.
+  const kit = screenKit(optsFor(process.stdout));
+  const policies = built.meta?.policies ?? 0;
+  const counted = policies > 0 ? ` with ${policies} ${policies === 1 ? "policy" : "policies"}` : "";
+  // Where it went, only when the id and version do not already say it: `--id`
+  // can differ from the repository, and `--tag v1.2.0` from version 1.2.0.
+  const where = repo === id && tag === version ? "" : ` to ${repo} at tag ${tag}`;
   const lines = [
+    kit.header("Publish"),
+    "",
     // What was done to the user's own directory, before what was done to
     // GitHub. A side effect on somebody's working tree is never silent, even
     // when it is the side effect they wanted.
-    ...gitLines,
-    ...(gitLines.length ? [""] : []),
-    ...bundleNote,
-    ...(created ? [`Created ${repo} (public).`] : []),
-    `Published ${id}@${version} to ${repo} at tag ${tag}.` +
-      (versionFromSha ? " That names the commit it was built from." : ""),
-    `  ${assets.length} assets attached`,
-    ...(built.meta?.semanticOnly ? JEV_ONLY_ROLLBACK_REMINDER : []),
-    "",
-    // The install lines are the whole point of the success message, and on a
-    // private repository they are a lie — `policies add` 404s there. Print the
-    // warning INSTEAD of them, never underneath them: a reader who copies the
+    ...gitLines.map((line) => kit.ok(line)),
+    ...(discovered.length > 1
+      ? [
+          kit.ok(
+            `Bundled ${discovered.length} files into one artifact: ` +
+              discovered.map((f) => f.replace(process.cwd() + "/", "")).join(", "),
+          ),
+        ]
+      : []),
+    ...(created ? [kit.ok(`Created ${repo} (public).`)] : []),
+    kit.ok(`Published ${id}@${version}${counted}${where}.`),
+    // The install line is the whole point of the success message, and on a
+    // private repository it is a lie — `policies add` 404s there. Print the
+    // warning INSTEAD of it, never underneath it: a reader who copies the
     // first command they see must not be copying one that cannot work.
     ...(isPrivate
-      ? [
-          `WARNING: ${repo} is PRIVATE, so nobody can install this — you asked for`,
-          "that with --allow-private. Installs are anonymous HTTPS with no credential",
-          "to offer, so every `failproofai policies add` will 404. Distribute the",
-          "three assets yourself, or make it public:",
-          `  gh repo edit ${repo} --visibility public`,
-        ]
-      : [
-          "Anyone can now install it:",
-          `  failproofai policies add ${repo}`,
-          `  failproofai policies show ${repo}      (look first, without running it)`,
-        ]),
+      ? kit.notice(
+          "caution",
+          `${repo} is private, and installs fetch over anonymous HTTPS, so every install will fail.\n` +
+            `Share the three assets yourself, or make it public:  \`gh repo edit ${repo} --visibility public\``,
+        )
+      : [`  Anyone can install it:  ${kit.cmd(`failproofai policies add ${repo}`)}`]),
+    ...(built.meta?.semanticOnly
+      ? kit.notice("caution", JEV_ONLY_ROLLBACK_REMINDER.map((line) => line.trim()).join("\n"))
+      : []),
   ];
   return ok(lines);
 }

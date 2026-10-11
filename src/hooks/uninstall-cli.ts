@@ -47,6 +47,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { optsFor, screenKit, type RenderOpts } from "./tui";
 
 export interface UninstallOptions {
   /** Also delete ~/.failproofai (config, credentials, state, audit cache, daemon binary). */
@@ -58,30 +59,24 @@ export interface UninstallOptions {
   /** Project/local scopes are read relative to here. */
   cwd?: string;
   /**
-   * Injected so the decision is testable without a TTY. Absent means "no
-   * confirmation available", which is a REFUSAL rather than an assumed yes —
-   * see the non-interactive branch.
+   * The ONE question (D17): handed the plan — which says exactly what goes —
+   * and answering yes removes all of it, the daemon service included, exactly
+   * as `--yes` does. Injected so the decision is testable without a TTY.
+   * Absent means "no confirmation available", which is a REFUSAL rather than
+   * an assumed yes — see the non-interactive branch.
+   *
+   * There used to be a second question, whether to keep the service. Keeping
+   * the daemon while removing the hooks is `failproofai policies --uninstall`,
+   * which takes the hooks out and leaves everything else alone.
    */
   confirm?: (lines: string[]) => Promise<boolean>;
-  /**
-   * Asked, on a plain uninstall only, whether the daemon service should go too.
-   *
-   * A plain uninstall removes the hooks and leaves the machine otherwise intact,
-   * so the daemon is a genuine choice: someone clearing hooks before reinstalling
-   * has no reason to tear down a system service and re-enter their password for
-   * it. Absent means "could not ask" and the daemon is KEPT — declining to remove
-   * a service is the recoverable half of that decision, and removing one nobody
-   * asked about is not.
-   *
-   * NOT consulted under `--purge`. See `removeDaemon` in the implementation for
-   * why purge cannot leave it behind.
-   */
-  confirmDaemon?: () => Promise<boolean>;
   /**
    * Ask for the sudo password before removing the service. Injected for tests;
    * defaults to `primeElevation`.
    */
   elevate?: () => boolean;
+  /** How to draw the lines. Defaults to what stdout can show. */
+  render?: RenderOpts;
 }
 
 export interface UninstallResult {
@@ -160,6 +155,10 @@ function survey(cwd?: string): Leftovers {
 
 export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<UninstallResult> {
   const found = survey(opts.cwd);
+  const kit = screenKit(opts.render ?? optsFor(process.stdout));
+  const home = failproofaiHome();
+  const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
   const lines: string[] = [];
 
   const nothingToDo =
@@ -170,53 +169,53 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
       exitCode: 0,
       planLines: 0,
       purged: false,
-      lines: [
-        "Nothing to uninstall — no hook entries, no daemon service, and nothing configured.",
-        ...(found.homeExists && !opts.purge
-          ? [``, `${failproofaiHome()} still holds settings and audit history.`,
-             `Remove it with \`failproofai uninstall --purge\`.`]
-          : []),
-      ],
+      lines: kit.notice(
+        "ok",
+        "Nothing to uninstall: no hooks, no failproofaid service, and nothing configured." +
+          (found.homeExists && !opts.purge
+            ? `\n${home} still holds settings and history. Delete it with  \`failproofai uninstall --purge\``
+            : ""),
+      ),
     };
   }
 
-  // The plan is shown before anything happens and is the same text the
-  // confirmation asks about, so what is agreed to and what is done cannot drift.
-  const plan: string[] = [];
+  // The plan is the question (D17), and it is the same text the confirmation
+  // shows, so what is agreed to and what is done cannot drift. It names every
+  // thing the steps below remove, read off them rather than summarised:
+  // `removeHooks(undefined, "all", …)` also resets the policy settings in
+  // policies-config.json, which "settings survive a reinstall" used to hide.
+  const purging = Boolean(opts.purge && found.homeExists);
+  const removals: string[] = [];
+  if (found.clis.length > 0) removals.push(`failproofai's hooks from ${many(found.clis.length, "agent")}`);
+  if (found.serviceInstalled) removals.push("the failproofaid service (needs sudo)");
+  if (purging) removals.push(home);
+  const releasesDaemon = found.daemonConfigured && !found.serviceInstalled;
+  const listed =
+    removals.length <= 1 ? removals.join("") : `${removals.slice(0, -1).join(", ")} and ${removals[removals.length - 1]}`;
+  const lead =
+    removals.length === 0
+      ? "This stops this machine requiring the failproofaid daemon."
+      : `This removes ${listed}${releasesDaemon ? ", and stops this machine requiring the failproofaid daemon" : ""}.`;
+  const details: string[] = [];
   if (found.clis.length > 0) {
-    plan.push(
-      `  • remove failproofai hook entries from ${found.clis.length} agent CLI${found.clis.length === 1 ? "" : "s"}: ` +
-        found.clis.map((id) => getIntegration(id).displayName ?? id).join(", "),
+    details.push(
+      `Agents: ${found.clis.map((id) => getIntegration(id).displayName ?? id).join(", ")}`,
+      "Also resets enabled policies, custom policy paths and policy parameters in policies-config.json.",
     );
   }
-  if (found.daemonConfigured) {
-    plan.push(`  • stop requiring the daemon (policies go back to evaluating in-process)`);
-  }
-  if (found.serviceInstalled) {
-    plan.push(
-      opts.purge || opts.yes
-        ? `  • stop, disable and delete the service at ${found.servicePath} — needs sudo`
-        : `  • ask whether to remove the service at ${found.servicePath} (kept unless you say so)`,
-    );
-  }
-  let purged = false;
-  if (opts.purge && found.homeExists) {
-    plan.push(`  • delete ${failproofaiHome()} — settings, credentials, audit history and the daemon binary`);
+  if (purging) details.push(`${home} holds your settings, credentials, audit history and the daemon binary.`);
+  else if (found.homeExists) {
+    details.push(`${found.clis.length > 0 ? "The rest of " : ""}${home} is kept unless you add --purge.`);
   }
 
-  lines.push("failproofai uninstall will:", ...plan);
-  if (!opts.purge && found.homeExists) {
-    lines.push(
-      ``,
-      `${failproofaiHome()} is KEPT (settings and audit history survive a reinstall).`,
-      `Add --purge to delete it too.`,
-    );
-  }
+  // `--yes` asks nothing, so it has no question to show: what it did follows.
+  // A dry run IS the plan, and a refusal says what it would have removed.
+  if (opts.dryRun || !opts.yes) lines.push(...kit.notice("caution", [lead, ...details].join("\n")));
   // Everything pushed so far IS the plan; `confirm` is shown exactly this.
   const planLines = lines.length;
 
   if (opts.dryRun) {
-    lines.push(``, `--dry-run: nothing was changed.`);
+    lines.push("", kit.ok("Dry run: nothing was changed."));
     return { exitCode: 0, lines, planLines, purged: false };
   }
 
@@ -225,16 +224,24 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     // This runs in scripts and CI, where a prompt that cannot be answered would
     // otherwise read as consent to delete a root-owned service.
     if (!opts.confirm) {
-      lines.push(``, `Refusing to uninstall without confirmation. Re-run with --yes.`);
+      lines.push(
+        "",
+        ...kit.notice(
+          "fail",
+          "Nothing was removed: there is no terminal to confirm on.\n" +
+            `Re-run with --yes to go ahead:  \`failproofai uninstall${opts.purge ? " --purge" : ""} --yes\``,
+        ),
+      );
       return { exitCode: 1, lines, planLines, purged: false };
     }
     if (!(await opts.confirm(lines))) {
-      return { exitCode: 1, planLines, purged: false, lines: [...lines, ``, `Cancelled — nothing was changed.`] };
+      return { exitCode: 1, planLines, purged: false, lines: [...lines, "", "Cancelled. Nothing was changed."] };
     }
   }
 
-  lines.push(``);
+  if (lines.length > 0) lines.push("");
   const failures: string[] = [];
+  let purged = false;
 
   // STEP 1, and it must stay step 1. See the header: from here the machine can
   // only fail open, so every remaining step is cleanup rather than a step that
@@ -242,7 +249,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   if (found.daemonConfigured) {
     try {
       setDaemonConfigured(false);
-      lines.push(`✓ policies now evaluate in-process (this machine no longer requires the daemon)`);
+      lines.push(kit.ok("This machine no longer requires the daemon; policies evaluate in-process."));
     } catch (err) {
       // Uniquely fatal: everything after this assumes the flag is down. Removing
       // the service while it is still up is the lockout this command exists to
@@ -253,10 +260,12 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
         purged: false,
         lines: [
           ...lines,
-          `✗ could not update ${failproofaiHome()}/config.json: ${err instanceof Error ? err.message : String(err)}`,
-          ``,
-          `Stopped before touching the service. Removing it while this machine still`,
-          `requires it would deny every tool call. Fix the file's permissions and re-run.`,
+          ...kit.notice(
+            "fail",
+            `Could not update ${home}/config.json: ${errText(err)}\n` +
+              "Stopped before the service: removing it while this machine requires it would deny every tool call.\n" +
+              "Fix the file's permissions, then run  `failproofai uninstall`  again.",
+          ),
         ],
       };
     }
@@ -268,109 +277,87 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
       // named. `removeCustomHooks` clears the configured custom-policy paths as
       // well; leaving them behind would point a reinstall at files this command
       // may be about to purge.
+      // Silent: the line below says what happened, under the question, and
+      // `removeHooks`' own `policies --uninstall` rows would land between them.
       await removeHooks(undefined, "all", opts.cwd, {
         cli: found.clis,
         removeCustomHooks: true,
         source: "uninstall_command",
+        silent: true,
       });
-      lines.push(`✓ removed hook entries from ${found.clis.length} agent CLI${found.clis.length === 1 ? "" : "s"}`);
+      lines.push(kit.ok(`Removed hooks from ${many(found.clis.length, "agent")}.`));
     } catch (err) {
       failures.push(
-        `hook entries: ${err instanceof Error ? err.message : String(err)} ` +
-          `(finish with \`failproofai policies --uninstall --scope all\`)`,
+        `Could not remove the hooks: ${errText(err)}\n` +
+          "Finish with  `failproofai policies --uninstall --scope all`",
       );
     }
   }
 
   if (found.serviceInstalled) {
-    // PURGE ALWAYS REMOVES IT, and is not asked. `--purge` deletes
-    // `~/.failproofai`, which is where the daemon BINARY lives
-    // (`bin/failproofaid-<version>`) — so keeping an enabled unit whose ExecStart
-    // has just been deleted leaves the machine crash-looping the service at every
-    // boot. "Keep the daemon" is not an option purge can offer, because purge has
-    // already destroyed what the daemon needs to run.
+    // Every run that gets here agreed to the whole plan, and the plan names the
+    // service: `--yes` is yes to the plan, an interactive yes is the same answer
+    // to the same text (D17), and `--purge` cannot leave it behind anyway — it
+    // deletes `~/.failproofai`, where the daemon BINARY lives
+    // (`bin/failproofaid-<version>`), so an enabled unit left pointing at it
+    // would crash-loop at every boot.
     //
-    // A plain uninstall is the opposite: the home survives, the binary survives,
-    // and someone clearing hooks before a reinstall has no reason to tear down a
-    // system service and re-type their password. So it asks, and a missing answer
-    // means KEEP — declining to remove a service is recoverable, removing one
-    // nobody asked about is not.
-    //
-    // `--yes` also removes it, and that is deliberate rather than incidental: the
-    // flag means "yes to the plan", the plan has always included the service, and
-    // scripted uninstalls rely on it. Making `--yes` keep the daemon would silently
-    // start leaving a service behind on every automated run — a behaviour change
-    // nobody asked for, in the direction of leaving more behind.
-    //
-    // So the only case that keeps it is an INTERACTIVE run where the person said no
-    // (or could not be asked).
-    const removeDaemon =
-      opts.purge || opts.yes ? true : ((await opts.confirmDaemon?.()) ?? false);
-
-    if (!removeDaemon) {
-      lines.push(
-        `• kept the daemon service at ${found.servicePath}`,
-        `  Remove it later with: failproofai uninstall --purge`,
+    // Ask for the password BEFORE trying, rather than failing on `sudo -n` and
+    // printing a unit file to delete by hand. `uninstallDaemonService()` is
+    // deliberately non-interactive — the wizard cannot prompt from under a
+    // full-screen TUI — but this command is plain line output and has a person
+    // in front of it, which is the same reasoning `failproofai update` follows.
+    // Best-effort: a refused or absent sudo still falls through to the
+    // "still there, here is what to run as root" path below.
+    const elevate = opts.elevate ?? primeElevation;
+    try {
+      elevate();
+    } catch {
+      // A failed prompt is not a reason to skip the attempt; `sudo -n` inside
+      // the removal will simply fail the same way it would have anyway.
+    }
+    // What to run as root when the removal could not elevate, and where to look.
+    const byHand = (servicePath: string): string =>
+      "\nRemove it as root:\n" +
+      manualServiceRemoval(servicePath).map((step) => `  \`${step}\``).join("\n") +
+      (daemonStatusCommand() ? `\nCheck it with  \`${daemonStatusCommand()}\`` : "");
+    try {
+      await uninstallDaemonService();
+      // uninstallDaemonService is best-effort by contract — it warns and
+      // returns rather than throwing when it cannot elevate — so the unit file
+      // is what gets believed here, not the absence of an exception.
+      if (found.servicePath && existsSync(found.servicePath)) {
+        failures.push(
+          "The failproofaid service is still there, most often because sudo was not available." +
+            byHand(found.servicePath),
+        );
+      } else {
+        lines.push(kit.ok("Stopped and removed the failproofaid service."));
+      }
+    } catch (err) {
+      failures.push(
+        `Could not remove the failproofaid service: ${errText(err)}` +
+          (found.servicePath && existsSync(found.servicePath) ? byHand(found.servicePath) : ""),
       );
-    } else {
-      // Ask for the password BEFORE trying, rather than failing on `sudo -n` and
-      // printing a unit file to delete by hand. `uninstallDaemonService()` is
-      // deliberately non-interactive — the wizard cannot prompt from under a
-      // full-screen TUI — but this command is plain line output and has a person
-      // in front of it, which is the same reasoning `failproofai update` follows.
-      // Best-effort: a refused or absent sudo still falls through to the existing
-      // "still there, here are the commands" path below.
-      const elevate = opts.elevate ?? primeElevation;
-      try {
-        elevate();
-      } catch {
-        // A failed prompt is not a reason to skip the attempt; `sudo -n` inside
-        // the removal will simply fail the same way it would have anyway.
-      }
-      try {
-        await uninstallDaemonService();
-        // uninstallDaemonService is best-effort by contract — it warns and
-        // returns rather than throwing when it cannot elevate — so the unit file
-        // is what gets believed here, not the absence of an exception.
-        if (found.servicePath && existsSync(found.servicePath)) {
-          failures.push(
-            `the service at ${found.servicePath} is still there (most often: no sudo). ` +
-              `Remove it with the commands below.`,
-          );
-        } else {
-          lines.push(`✓ stopped and removed the daemon service`);
-        }
-      } catch (err) {
-        failures.push(`daemon service: ${err instanceof Error ? err.message : String(err)}`);
-      }
     }
   }
 
-  if (opts.purge && found.homeExists) {
+  if (purging) {
     // Last, and only after the service is down: the daemon binary and its
     // socket live here, and deleting them out from under a running unit is how
     // a clean uninstall turns into a restart loop.
     try {
-      rmSync(failproofaiHome(), { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
       purged = true;
-      lines.push(`✓ deleted ${failproofaiHome()}`);
+      lines.push(kit.ok(`Deleted ${home}.`));
     } catch (err) {
-      failures.push(`${failproofaiHome()}: ${err instanceof Error ? err.message : String(err)}`);
+      failures.push(`Could not delete ${home}: ${errText(err)}`);
     }
   }
 
   if (failures.length > 0) {
-    lines.push(``, `Not everything could be removed:`);
-    for (const f of failures) lines.push(`  ✗ ${f}`);
-    if (found.servicePath && existsSync(found.servicePath)) {
-      lines.push(
-        ``,
-        `To remove the service by hand:`,
-        ...manualServiceRemoval(found.servicePath),
-        ``,
-        `(\`${daemonStatusCommand()}\` shows its current state.)`,
-      );
-    }
+    lines.push("");
+    for (const failure of failures) lines.push(...kit.notice("fail", failure));
     // Exit 1, not 0: enforcement is off (step 1 succeeded, or there was nothing
     // to clear), but something durable is still installed and the operator has
     // to act. A 0 here is what makes people believe a machine is clean when a
@@ -378,30 +365,30 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     return { exitCode: 1, lines, planLines, purged };
   }
 
+  // npm runs no uninstall script, which is why this command exists — and why
+  // the package itself is still there for npm to remove.
   lines.push(
-    ``,
-    `Done. failproofai no longer enforces anything on this machine.`,
-    ``,
-    `The npm package itself is still installed — npm runs no uninstall script, which`,
-    `is why this command exists. Remove it with:`,
-    `  npm rm -g failproofai`,
+    "",
+    ...kit.notice(
+      "ok",
+      "failproofai no longer enforces anything on this machine.\n" +
+        "Remove the npm package too:  `npm rm -g failproofai`" +
+        (!opts.purge && found.homeExists ? `\n${home} was kept. Delete it with  \`failproofai uninstall --purge\`` : ""),
+    ),
   );
-  if (!opts.purge && found.homeExists) {
-    lines.push(``, `${failproofaiHome()} was kept. Delete it with \`failproofai uninstall --purge\`.`);
-  }
   return { exitCode: 0, lines, planLines, purged };
 }
 
 /** The exact commands to finish a service removal that could not elevate. */
 function manualServiceRemoval(servicePath: string): string[] {
   if (process.platform === "darwin") {
-    return [`  sudo launchctl unload -w ${servicePath}`, `  sudo rm -f ${servicePath}`];
+    return [`sudo launchctl unload -w ${servicePath}`, `sudo rm -f ${servicePath}`];
   }
   const unit = servicePath.split("/").pop() ?? servicePath;
   return [
-    `  sudo systemctl disable --now ${unit}`,
-    `  sudo rm -f ${servicePath}`,
-    `  sudo systemctl daemon-reload`,
+    `sudo systemctl disable --now ${unit}`,
+    `sudo rm -f ${servicePath}`,
+    `sudo systemctl daemon-reload`,
   ];
 }
 

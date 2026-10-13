@@ -19,6 +19,7 @@ from .._context import (
     validate_limit,
 )
 from ..models import Session
+from . import _cloud, _write
 
 
 def sessions(
@@ -70,6 +71,8 @@ def sessions(
     * `fp sessions --agents` — expand each multi-agent session to its full agent roster
     * `fp --json sessions --all --fields session_id,agents | jq '.sessions'` — every session's full agent roster as JSON
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     cctx = require_auth(state)
     validate_limit(limit)
@@ -147,5 +150,15 @@ def sessions(
         output.recheck_filters_hint(active_filters)
 
 
+def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> None:
+    """Re-run evaluators on one session. Needs evaluations:trigger."""
+    _write.confirm(ctx.obj, f"Re-evaluate session {session_id}", assume_yes=False)
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST",
+        f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation")
+
+
 def register(app: typer.Typer) -> None:
-    app.command("sessions", epilog=GLOBALS_EPILOG)(sessions)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(sessions)
+    group.command("re-evaluate", epilog=GLOBALS_EPILOG)(re_evaluate)
+    app.add_typer(group, name="sessions")

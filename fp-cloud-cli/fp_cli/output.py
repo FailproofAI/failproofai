@@ -485,6 +485,7 @@ _TOP_LEVEL_GROUPS = [
         ("events", "List the raw per-step agent event trail.", ""),
         ("sessions", "List agent runs — one row per run.", ""),
         ("evals", "List scored agent evaluations.", "--aggregate"),
+        ("evaluators", "Author, test and deploy managed evaluators.", "list show create deploy draft dry-run enable disable label instances schema jobs backfill"),
         ("errors", "List errored events.", "--aggregate"),
         ("usage", "Show current org usage for the metering window.", ""),
     ]),

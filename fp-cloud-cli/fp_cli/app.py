@@ -23,6 +23,7 @@ from .commands import (
     auth_cmds,
     errors_cmds,
     evals_cmds,
+    evaluators_cmds,
     events_cmds,
     fleet_cmds,
     guardrails_cmds,
@@ -452,6 +453,7 @@ orgs_cmds.register(app)
 events_cmds.register(app)
 sessions_cmds.register(app)
 evals_cmds.register(app)
+evaluators_cmds.register(app)
 errors_cmds.register(app)
 usage_cmds.register(app)
 list_cmds.register(app)

@@ -30,7 +30,7 @@ def rows(data: Any, key: str) -> list:
 
 
 def emit(state, data: Any, title: str) -> None:
-    if state.json:
+    if state is not None and state.json:
         output.emit_json(data)
         return
     if isinstance(data, list) and all(isinstance(r, dict) for r in data):

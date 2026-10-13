@@ -1,6 +1,5 @@
 import json
 
-import httpx
 import pytest
 import respx
 

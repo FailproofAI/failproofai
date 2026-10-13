@@ -1,6 +1,5 @@
 import json
 
-import httpx
 import pytest
 import respx
 
@@ -215,3 +214,49 @@ def test_evaluator_404(logged_in, runner, command):
         result = runner.invoke(app, ["--json", "evaluators", command])
     assert result.exit_code == 6
     assert "not available on this FailproofAI Cloud yet" in result.stdout
+
+
+def test_failed_dry_run_blocks_creation(logged_in, runner, code):
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(f"{BASE}/api/evaluator-definitions/dry-run").respond(200, json={
+            "runs": [{"ok": False, "error_message": "missing result"}], "summary": {"failed": 1}})
+        create = mock.post(f"{BASE}/api/evaluator-definitions").respond(201, json={"id": "d1"})
+        result = runner.invoke(app, ["--json", "evaluators", "create", "--key", "quality", "--name", "Quality", "--code", code, "--dry-run-on", "s1"])
+    assert result.exit_code == 1
+    assert not create.called
+    assert "was not created" in result.stdout
+
+
+@pytest.mark.parametrize("draft_kind,fields", [
+    ("code", {"evaluator_source": SOURCE}),
+    ("judge", {"criteria": "Grade relevance", "steps": ["Assess specificity"], "threshold": 0.7, "evaluator_source": ""}),
+    ("jev", {"jevType": "noul", "instructions": "Check resolution", "jevCriteria": {"true": "Resolved", "false": "Unresolved"}, "evaluator_source": ""}),
+])
+def test_real_dashboard_draft_shape(logged_in, runner, tmp_path, draft_kind, fields):
+    draft = {"eval_key": "quality", "display_name": "Quality", "result_kind": "score", "labels": [],
+             "condition_source": "", "reasoning": "Draft explanation", "kind": draft_kind, **fields}
+    path = tmp_path / "draft.json"
+    with respx.mock as mock:
+        mock.post(f"{BASE}/api/agent/compose-eval").respond(200, json=draft)
+        result = runner.invoke(app, ["--json", "evaluators", "draft", "Grade", "--kind", draft_kind, "--out", str(path)])
+    assert result.exit_code == 0, result.output
+    body = json.loads(path.read_text())
+    assert body["eval_version"] == "1"
+    assert "reasoning" not in body and "kind" not in body and "condition_source" not in body
+    if draft_kind != "code":
+        assert json.loads(body["evaluator_source"])["kind"] == draft_kind
+
+
+@pytest.mark.parametrize("flags", [
+    ["--judge", "--criteria", "Grade", "--step", "Score of 0 on failure"],
+    ["--judge", "--criteria", "Grade", "--step", "score: 1 on success"],
+    ["--jev", "score", "--instructions", "Grade", "--level", "Poor", "--level", "poor", "--level", "Good"],
+    ["--judge", "--criteria", "Grade", "--version", "bad version"],
+    ["--judge", "--criteria", "Grade", "--label", "bad\nlabel"],
+    ["--judge", "--criteria", "Grade", "--timeout", "3601"],
+])
+def test_server_validation_edges(logged_in, runner, flags):
+    with respx.mock as mock:
+        result = runner.invoke(app, ["--json", "evaluators", "create", "--key", "quality", "--name", "Quality", *flags])
+        assert not mock.calls
+    assert result.exit_code == 2, result.output

@@ -49,7 +49,10 @@ def show(ctx: typer.Context, handle: str = typer.Argument(..., metavar="KEY[@VER
 
 def _create(state, cctx, body, sessions, disabled=False) -> dict:
     if sessions:
-        api.cloud_request(cctx, "POST", f"{PATH}/dry-run", body=spec.dry_run_body(body, sessions))
+        if spec.source_kind(body) == "jev":
+            output.warn("Jev dry-runs spend model budget.")
+        preview = api.cloud_request(cctx, "POST", f"{PATH}/dry-run", body=spec.dry_run_body(body, sessions))
+        check_dry_run(preview)
     _write.confirm(state, f"Create evaluator {body['eval_key']}@{body['eval_version']}", assume_yes=False)
     row = api.cloud_request(cctx, "POST", PATH, body=body)
     if not isinstance(row, dict) or not row.get("id"):
@@ -234,7 +237,26 @@ def dry_run(
     body = spec.dry_run_body(body, session)
     if spec.source_kind(body) == "jev":
         output.warn("Jev dry-runs spend model budget.")
-    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST", f"{PATH}/dry-run", body=body), "Evaluator dry-run")
+    result = api.cloud_request(require_auth(ctx.obj), "POST", f"{PATH}/dry-run", body=body)
+    _cloud.emit(ctx.obj, result, "Evaluator dry-run")
+    if dry_run_failed(result):
+        # Preserve the full dry-run result in --json, but do not signal success.
+        raise typer.Exit(code=1)
+
+
+def dry_run_failed(result):
+    return isinstance(result, dict) and (
+        result.get("ok") is False
+        or any(r.get("ok") is False for r in result.get("runs", []) if isinstance(r, dict))
+        or result.get("summary", {}).get("failed", 0) > 0
+    )
+
+
+def check_dry_run(result):
+    if dry_run_failed(result):
+        failures = [r for r in result.get("runs", []) if r.get("ok") is False]
+        detail = "; ".join(str(r.get("error_message") or r.get("error_kind") or "run failed") for r in failures)
+        raise ApiError(f"Dry-run failed; evaluator was not created. {detail}".strip())
 
 
 def toggle(ctx, handle, enabled):
@@ -267,6 +289,7 @@ def label_def(ctx: typer.Context, handle: str = typer.Argument(...),
     cctx = require_auth(ctx.obj)
     row = select(definitions(cctx), handle)
     labels = list(dict.fromkeys([v for v in row.get("labels", []) if v not in (remove or [])] + (add or [])))
+    spec.validate_labels(labels)
     _write.confirm(ctx.obj, f"Label {handle}", assume_yes=False)
     data = api.cloud_request(cctx, "PATCH", f"{PATH}/{row['id']}", body={"labels": labels})
     _cloud.emit(ctx.obj, data or {**row, "labels": labels}, "Evaluator labels")

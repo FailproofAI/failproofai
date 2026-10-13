@@ -458,7 +458,7 @@ def render_artifact(block):
             data.get("rows", []),
         )
     else:
-        _cloud.emit(type("HumanState", (), {"json": False})(), block, block.get("title", "Home"))
+        _cloud.emit(None, block, block.get("title", "Home"))
 
 
 def agent_brief(ctx: typer.Context, range: str = typer.Option("24h", "--range")) -> None:

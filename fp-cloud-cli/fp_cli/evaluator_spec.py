@@ -35,6 +35,14 @@ def threshold(value: Any) -> None:
         fail("threshold must be between 0 and 1")
 
 
+def validate_labels(labels: Any) -> None:
+    if not isinstance(labels, list) or len(labels) > 20 or any(
+        not isinstance(v, str) or not v.strip() or len(v.encode()) > 64
+        or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in v) for v in labels
+    ):
+        fail("labels must contain at most 20 non-empty strings, up to 64 bytes each, without control characters")
+
+
 def source_kind(body: dict) -> str:
     source = body.get("evaluator_source", "")
     try:
@@ -50,29 +58,34 @@ def validate(body: dict, *, complete: bool = True) -> dict:
         fail(f"Unknown spec field(s): {', '.join(sorted(unknown))}; use the evaluator API body")
     if complete:
         key = text(body.get("eval_key"), "eval_key")
-        if not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", key) or len(key.encode()) > 128:
             fail("eval_key must match ^[a-z][a-z0-9_]*$")
-        text(body.get("display_name"), "display_name")
-        text(body.get("eval_version"), "eval_version")
+        name = text(body.get("display_name"), "display_name")
+        version = text(body.get("eval_version"), "eval_version")
+        if len(name.encode()) > 128 or len(version.encode()) > 128 or any(c.isspace() for c in version):
+            fail("display_name and eval_version are limited to 128 bytes; versions cannot contain whitespace")
     elif body.get("eval_key") is not None and not re.fullmatch(r"[a-z][a-z0-9_]*", str(body["eval_key"])):
         fail("eval_key must match ^[a-z][a-z0-9_]*$")
     result_kind = body.get("result_kind", "score")
     if result_kind not in ("score", "metric", "assertion"):
         fail("result_kind must be score, metric or assertion")
     labels = body.get("labels", [])
-    if not isinstance(labels, list) or any(not isinstance(v, str) or not v.strip() for v in labels):
-        fail("labels must be a list of non-empty strings")
+    validate_labels(labels)
     timeout = body.get("timeout_seconds")
     if timeout is not None and (
         isinstance(timeout, bool) or not isinstance(timeout, (int, float))
-        or not math.isfinite(timeout) or timeout <= 0
+        or not math.isfinite(timeout) or not 0.001 <= timeout <= 3600
     ):
-        fail("timeout_seconds must be positive and finite")
+        fail("timeout_seconds must be finite and between 0.001 and 3600")
     condition = body.get("condition_source")
-    if condition:
+    if condition is not None:
         text(condition, "condition_source")
+        if len(condition.encode()) > 16 * 1024:
+            fail("condition_source is limited to 16 KiB")
         expression(condition, "condition_source")
     source = text(body.get("evaluator_source"), "evaluator_source")
+    if len(source.encode()) > 128 * 1024:
+        fail("evaluator_source is limited to 128 KiB")
     kind = source_kind(body)
     if kind == "code":
         expression(source, "evaluator_source")
@@ -91,7 +104,7 @@ def validate(body: dict, *, complete: bool = True) -> dict:
                 fail("judge steps must be a list")
             for step in steps:
                 text(step, "judge step")
-                if re.search(r"\b(yes\s*/\s*no|true\s*/\s*false|binary|pass\s*/\s*fail|score\s+0\s+if|score\s+1\s+if)\b", step, re.I):
+                if re.search(r"\b(yes\s*/\s*no|true\s*/\s*false|binary|pass\s*/\s*fail|score(?: of|:)? [01])\b", step, re.I):
                     fail("binary judge steps are not supported; use graded evaluation steps")
     else:
         text(envelope.get("instructions"), "Jev instructions")
@@ -108,7 +121,7 @@ def validate(body: dict, *, complete: bool = True) -> dict:
                 fail("Jev score needs 3–5 distinct levels, ordered worst to best")
             for level in criteria:
                 text(level, "Jev level")
-            if len({v.strip() for v in criteria}) != len(criteria):
+            if len({v.strip().lower() for v in criteria}) != len(criteria):
                 fail("Jev score levels must be distinct")
         else:
             fail("Jev type must be noul or score")
@@ -126,6 +139,8 @@ def from_draft(data: dict, requested_kind: str) -> dict:
     if not isinstance(draft, dict):
         fail("Cloud draft was not an evaluator JSON spec")
     body = {k: v for k, v in draft.items() if k in FIELDS}
+    if not body.get("condition_source"):
+        body.pop("condition_source", None)
     body.setdefault("eval_version", "1")
     kind = draft.get("kind", source_kind(body))
     if kind != requested_kind:
@@ -210,6 +225,8 @@ def build(
 def dry_run_body(body: dict, sessions: Optional[list]) -> dict:
     if len(sessions or []) > 10:
         fail("dry-run accepts at most 10 sessions")
+    if any(not isinstance(s, str) or not s.strip() or len(s.encode()) > 256 for s in (sessions or [])):
+        fail("dry-run session ids must be non-empty, up to 256 bytes")
     if source_kind(body) == "judge":
         fail("Cloud refuses judge dry-runs; create/deploy without --dry-run-on and inspect evaluation results instead")
     return {

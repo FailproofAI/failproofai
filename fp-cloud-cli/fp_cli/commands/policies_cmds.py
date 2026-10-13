@@ -512,8 +512,8 @@ def policies_author(ctx: typer.Context, intent: str = typer.Argument(...)) -> No
         {"issue": {"title": intent, "source": "manual"}}))
     for event in events:
         if event.get("type") == "error":
-            raise ApiError(str(event.get("message") or event.get("error") or "Policy author failed"))
-    result = next((e.get("result", e) for e in reversed(events) if e.get("type") == "result"), None)
+            raise ApiError(str(event.get("message") or event.get("error") or event.get("reason") or "Policy author failed"))
+    result = next((e.get("result", e) for e in reversed(events) if e.get("type") in ("result", "done")), None)
     if result is None:
         raise ApiError("Policy author returned no result; nothing was published")
     _cloud.emit(ctx.obj, result, "Policy draft")
@@ -527,8 +527,11 @@ def policies_backtest(ctx: typer.Context, file_or_id: str = typer.Argument(..., 
     if file_or_id == "-" or file_or_id.startswith("@") or Path(file_or_id).is_file():
         source = _write.read_text_arg(file_or_id.removeprefix("@"))
     else:
-        row = api.cloud_request(cctx, "GET", f"/api/enforcement/policies/{file_or_id}")
-        source = row.get("source", "")
+        data = api.cloud_request(cctx, "GET", "/api/enforcement/policies")
+        versions = [p for p in _cloud.rows(data, "policies") if p.get("id") == file_or_id]
+        if not versions:
+            raise NotFoundError(f"no policy named {file_or_id}")
+        source = max(versions, key=lambda p: p.get("version", 0)).get("source", "")
     if not isinstance(source, str) or not source.strip():
         raise click.UsageError("Policy source is empty")
     _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest",

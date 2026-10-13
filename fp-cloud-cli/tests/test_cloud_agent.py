@@ -104,7 +104,7 @@ def test_policy_commands(logged_in, runner, tmp_path, argv, path, response):
     with respx.mock(assert_all_called=False) as mock:
         mock.get(f"{BASE}/api/issues/i1").respond(200, json={"id": "i1", "title": "Force pushes"})
         if response == "stream":
-            route = mock.post(f"{BASE}{path}").respond(200, text=sse([{"type": "result", "result": {"source": "policy"}}]))
+            route = mock.post(f"{BASE}{path}").respond(200, text=sse([{"type": "done", "result": {"source": "policy"}}]))
         else:
             route = mock.post(f"{BASE}{path}").respond(200, json=response)
         result = runner.invoke(app, ["--json", *[v.format(file=file) for v in argv]])
@@ -139,3 +139,15 @@ def test_404(logged_in, runner, argv):
         result = runner.invoke(app, ["--json", *argv])
     assert result.exit_code == 6, result.output
     assert "not available on this FailproofAI Cloud yet" in result.stdout
+
+
+def test_backtest_published_policy_uses_latest_version(logged_in, runner):
+    with respx.mock as mock:
+        mock.get(f"{BASE}/api/enforcement/policies").respond(200, json=[
+            {"id": "p1", "version": 1, "source": "old"},
+            {"id": "p1", "version": 2, "source": "new"},
+        ])
+        route = mock.post(f"{BASE}/api/agent/policy-backtest").respond(200, json={"matched": 1})
+        result = runner.invoke(app, ["--json", "policies", "backtest", "p1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls[0].request.content) == {"source": "new"}

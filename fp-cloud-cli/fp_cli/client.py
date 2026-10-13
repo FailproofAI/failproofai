@@ -599,7 +599,9 @@ def cloud_request(
         if method == "GET":
             return _get_json(ctx, path, params)
         return _request_json(ctx, method, path, json_body=body, params=params)
-    except NotFoundError as exc:
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
         raise NotFoundError(
             "not available on this FailproofAI Cloud yet",
             hint="check the resource id or upgrade your Cloud deployment",
@@ -611,7 +613,9 @@ def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterato
     """Dashboard SSE with the same additive-capability 404 contract."""
     try:
         yield from _stream_sse(ctx, path, body)
-    except NotFoundError as exc:
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
         raise NotFoundError("not available on this FailproofAI Cloud yet", request_id=exc.request_id) from exc
 
 

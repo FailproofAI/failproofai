@@ -1,4 +1,3 @@
-import httpx
 import pytest
 import respx
 
@@ -31,3 +30,12 @@ def test_cloud_request_degrades(method, key_mode):
     headers = route.calls[0].request.headers
     assert ("authorization" in headers) is key_mode
     assert ("cookie" in headers) is not key_mode
+
+
+def test_new_capability_html_404_degrades():
+    ctx = client.ClientContext("http://dash.test", api_key="key", auth_mode=client.AuthMode.API_KEY)
+    with respx.mock as mock:
+        mock.get("http://dash.test/v1/dashboards").respond(404, text="<html>old Cloud</html>", headers={"content-type": "text/html"})
+        with pytest.raises(NotFoundError, match="not available on this FailproofAI Cloud yet") as exc:
+            client.cloud_request(ctx, "GET", "/api/dashboards")
+    assert exc.value.exit_code == 6

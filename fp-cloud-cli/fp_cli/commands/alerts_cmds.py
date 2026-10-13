@@ -442,4 +442,27 @@ def register(app: typer.Typer) -> None:
     alerts_app.command("update", epilog=GLOBALS_EPILOG)(alerts_update)
     alerts_app.command("delete", epilog=GLOBALS_EPILOG)(alerts_delete)
     alerts_app.command("test", epilog=GLOBALS_EPILOG)(alerts_test)
+    alerts_app.command("recipients", epilog=GLOBALS_EPILOG)(alerts_recipients)
+    alerts_app.command("issues", epilog=GLOBALS_EPILOG)(alerts_issues)
     app.add_typer(alerts_app, name="alerts")
+
+
+def alerts_recipients(ctx: typer.Context) -> None:
+    """List available alert recipients."""
+    from .account_cmds import request
+    request(ctx, "GET", "/api/alerts/recipients")
+
+
+def alerts_issues(ctx: typer.Context, alert_id: str = typer.Argument(...),
+                 create: bool = typer.Option(False, "--create"),
+                 title: Optional[str] = typer.Option(None, "--title"),
+                 summary: Optional[str] = typer.Option(None, "--summary"),
+                 file: Optional[str] = typer.Option(None, "--file")) -> None:
+    """List alert issues, or --create one with --title/--summary or --file."""
+    from .account_cmds import request
+    if not create and any(v is not None for v in (title, summary, file)):
+        raise click.UsageError("Pass --create to use issue body flags")
+    body = _write.read_body(ctx.obj, file, {"title": title, "summary": summary}) if create else None
+    if create and (not isinstance(body.get("title"), str) or not body["title"].strip()):
+        raise click.UsageError("Creating an issue needs --title or a title in --file")
+    request(ctx, "POST" if create else "GET", f"/api/alerts/{alert_id}/issues", body)

@@ -17,6 +17,7 @@ from . import orgs as orgsmod
 from ._context import AppState
 from ._version import __version__
 from .commands import (
+    account_cmds,
     agent_cmds,
     alerts_cmds,
     audits_cmds,
@@ -472,6 +473,7 @@ agent_cmds.register(app)
 policies_cmds.register(app)
 fleet_cmds.register(app)
 guardrails_cmds.register(app)
+account_cmds.register(app)
 
 
 def _elapsed_ms(start: float) -> int:

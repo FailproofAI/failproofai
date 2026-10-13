@@ -75,7 +75,7 @@ def test_observability_404(logged_in, runner, files, key_mode, argv, method, pat
 
 
 def test_query_compose(logged_in, runner):
-    stream = 'data: {"type":"result","result":{"sql":"SELECT 1"}}\n\n'
+    stream = 'data: {"type":"done","sql":"SELECT 1"}\n\n'
     with respx.mock as mock:
         draft = mock.post(f"{BASE}/api/agent/compose-sql").respond(200, text=stream, headers={"content-type": "text/event-stream"})
         run = mock.post(f"{BASE}/api/queries/run").respond(200, json=RESULT)

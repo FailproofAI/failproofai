@@ -391,7 +391,7 @@ def query_compose(ctx: typer.Context, question: str = typer.Argument(...),
         if event.get("type") == "error":
             from ..errors import ApiError
             raise ApiError(str(event.get("error") or event.get("reason") or "SQL composer failed"))
-        if event.get("type") == "result":
+        if event.get("type") in ("result", "done"):
             draft = event.get("result", event)
     if not isinstance(draft, dict):
         raise click.UsageError("Cloud did not return composed SQL")

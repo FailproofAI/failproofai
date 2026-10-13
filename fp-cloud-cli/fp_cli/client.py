@@ -181,6 +181,8 @@ _V1_NO_EQUIVALENT = {
         "cloud-managed policies are an operator surface — the fleet routes are "
         "deliberately absent from /v1, which is internet-facing"
     ),
+    "integrations": "dashboard integration routes need a signed-in session",
+    "orgs": "organization creation needs a signed-in user",
 }
 
 

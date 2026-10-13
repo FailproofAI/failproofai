@@ -109,8 +109,14 @@ fn busy_port_logs_once_and_daemon_keeps_answering() {
             .count(),
         1
     );
-    let health = std::fs::read_to_string(daemon.home.join("state/otlp-health.json")).unwrap();
-    assert!(health.contains("port_busy"));
+    // The log line can land before the health file is written; wait for it the
+    // same way, rather than reading once and racing the daemon.
+    let health_file = daemon.home.join("state/otlp-health.json");
+    wait(|| {
+        std::fs::read_to_string(&health_file)
+            .map(|health| health.contains("port_busy"))
+            .unwrap_or(false)
+    });
     // Both default and subagent Claude tasks must be absent.
     let log = daemon.log.lock().unwrap();
     assert!(!log.contains("source=\"claude\""));
@@ -134,8 +140,9 @@ fn relay_starts_and_stops_on_config_reload_without_daemon_restart() {
     settings(&daemon.home, port, true);
     wait(|| TcpStream::connect(("127.0.0.1", port)).is_ok());
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    // Generous: a loaded CI box can take seconds to answer; a hang still fails.
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
     stream.write_all(b"POST /v1/logs HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").unwrap();
     let mut response = String::new();

@@ -134,6 +134,14 @@ _V1_MECHANICAL_FAMILIES = frozenset(
         "alerts",
         "audits",
         "evaluations",
+        "evaluator-definitions",
+        "evaluator-instances",
+        "evaluator-schema-profile",
+        "evaluation-jobs",
+        "dashboards",
+        "otel",
+        "offers",
+        "team-trial",
         "events",
         "issues",
         "keys",
@@ -574,6 +582,27 @@ def _patch_json(ctx: ClientContext, path: str, json_body: Any = None) -> Any:
 
 def _delete(ctx: ClientContext, path: str) -> Any:
     return _request_json(ctx, "DELETE", path)
+
+
+def cloud_request(
+    ctx: ClientContext, method: str, path: str, *,
+    body: Any = None, params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """New Cloud capabilities, with a predictable older-deployment failure.
+
+    Existing callers retain their response and error contracts. Paths still pass
+    through the credential and identifier guards; this is not a second transport.
+    """
+    try:
+        if method == "GET":
+            return _get_json(ctx, path, params)
+        return _request_json(ctx, method, path, json_body=body, params=params)
+    except NotFoundError as exc:
+        raise NotFoundError(
+            "not available on this FailproofAI Cloud yet",
+            hint="check the resource id or upgrade your Cloud deployment",
+            request_id=exc.request_id,
+        ) from exc
 
 
 # --- Auth / identity --------------------------------------------------------

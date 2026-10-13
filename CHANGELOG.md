@@ -56,7 +56,7 @@
 ### Dependencies
 
 - Update vulnerable existing build and SDK test lockfile dependencies reported by the PR's OSV scan (#880).
-- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` 0.11.18 in `Cargo.lock` (RUSTSEC-2026-0338 to -0342) (#881)
+- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` 0.11.18 (RUSTSEC-2026-0338 to -0342) and `ruzstd` 0.9.1 (RUSTSEC-2026-0344) in `Cargo.lock` (#881)
 
 ## 1.0.10 — 2026-10-05
 

@@ -7,6 +7,8 @@
 - Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (#880).
 - Add optional TypeScript and Python OpenTelemetry span exporters with durable OTLP/JSON spool delivery and no hard runtime dependencies (#880).
 - Port OpenTelemetry help and setup into the new TUI, retaining per-agent transcript overrides and reversible settings. OpenTelemetry stays out of `failproofai config`: it is opt-in, per agent, through `failproofai otel enable <agent>` (#880).
+- Cloud CLI parity: hosted code, LLM-judge and Jev evaluator authoring/deployment, dashboards, sentiment, assistant artifacts/approvals, org controls and the shared mint/pink screen language.
+
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#881)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#881)
 - Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#881)

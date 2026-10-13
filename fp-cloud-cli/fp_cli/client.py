@@ -134,6 +134,14 @@ _V1_MECHANICAL_FAMILIES = frozenset(
         "alerts",
         "audits",
         "evaluations",
+        "evaluator-definitions",
+        "evaluator-instances",
+        "evaluator-schema-profile",
+        "evaluation-jobs",
+        "dashboards",
+        "otel",
+        "offers",
+        "team-trial",
         "events",
         "issues",
         "keys",
@@ -173,6 +181,8 @@ _V1_NO_EQUIVALENT = {
         "cloud-managed policies are an operator surface — the fleet routes are "
         "deliberately absent from /v1, which is internet-facing"
     ),
+    "integrations": "dashboard integration routes need a signed-in session",
+    "orgs": "organization creation needs a signed-in user",
 }
 
 
@@ -574,6 +584,39 @@ def _patch_json(ctx: ClientContext, path: str, json_body: Any = None) -> Any:
 
 def _delete(ctx: ClientContext, path: str) -> Any:
     return _request_json(ctx, "DELETE", path)
+
+
+def cloud_request(
+    ctx: ClientContext, method: str, path: str, *,
+    body: Any = None, params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """New Cloud capabilities, with a predictable older-deployment failure.
+
+    Existing callers retain their response and error contracts. Paths still pass
+    through the credential and identifier guards; this is not a second transport.
+    """
+    try:
+        if method == "GET":
+            return _get_json(ctx, path, params)
+        return _request_json(ctx, method, path, json_body=body, params=params)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise NotFoundError(
+            "not available on this FailproofAI Cloud yet",
+            hint="check the resource id or upgrade your Cloud deployment",
+            request_id=exc.request_id,
+        ) from exc
+
+
+def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+    """Dashboard SSE with the same additive-capability 404 contract."""
+    try:
+        yield from _stream_sse(ctx, path, body)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise NotFoundError("not available on this FailproofAI Cloud yet", request_id=exc.request_id) from exc
 
 
 # --- Auth / identity --------------------------------------------------------
@@ -1502,6 +1545,8 @@ def agent_chat_oneshot(
     conversation_id: Optional[str] = None,
     page_context: Optional[str] = None,
     model: Optional[str] = None,
+    on_ask_user: Optional[Callable[[Dict[str, Any]], None]] = None,
+    on_artifact: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """POST /api/agent/chat — accumulate the streamed answer.
 
@@ -1521,20 +1566,32 @@ def agent_chat_oneshot(
         body["pageContext"] = page_context
     if model:
         body["model"] = model
+    if on_artifact:
+        body["pageActions"] = [{"action": "open_artifact"}, {"action": "home"}]
     parts: List[str] = []
     tools: List[str] = []
     interrupted = False
     error: Optional[str] = None
-    for ev in _stream_sse(ctx, "/api/agent/chat", body):
+    for ev in cloud_stream(ctx, "/api/agent/chat", body):
         kind = ev.get("type")
         if kind == "text-delta":
             parts.append(str(ev.get("text", "")))
         elif kind == "tool-start":
             tools.append(str(ev.get("tool", "")))
         elif kind == "ask-user":
+            if on_ask_user and ev.get("callId"):
+                on_ask_user(ev)
+                continue
             interrupted = True
             error = str(ev.get("question") or "the assistant needs interactive input")
             break
+        elif kind == "ui-action" and on_artifact:
+            if ev.get("action") == "open_artifact" and isinstance(ev.get("artifact"), dict):
+                on_artifact(ev["artifact"])
+            elif ev.get("action") == "home" and isinstance(ev.get("home"), dict):
+                for block in ev["home"].get("blocks", []):
+                    if isinstance(block, dict):
+                        on_artifact(block)
         elif kind == "error":
             error = str(ev.get("message", "assistant error"))
         elif kind == "done":

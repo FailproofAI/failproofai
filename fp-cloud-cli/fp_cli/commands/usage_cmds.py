@@ -23,6 +23,8 @@ def usage(ctx: typer.Context) -> None:
     * `fp usage`
     * `fp --json usage | jq '.usage.events_ingested'`
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     data = api.get_usage(require_auth(state))
     if state.json:
@@ -32,4 +34,13 @@ def usage(ctx: typer.Context) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    app.command("usage", epilog=GLOBALS_EPILOG)(usage)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(usage)
+    group.command("windows", epilog=GLOBALS_EPILOG)(usage_windows)
+    app.add_typer(group, name="usage")
+
+
+def usage_windows(ctx: typer.Context) -> None:
+    """List usage metering windows."""
+    from .account_cmds import request
+    request(ctx, "GET", "/api/usage/windows")

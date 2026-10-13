@@ -1,5 +1,20 @@
 # Changelog — `fp` CLI
 
+## 0.0.2b1 — 2026-10-13
+
+### Added
+
+- Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and code-only backfill.
+- Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.
+- Policy author/backtest/candidacy, assistant artifact tables, fail-closed interactive write approvals, and agent-curated home briefs.
+- Organization creation, permission-set roles, member deletion/defaults, usage windows, offers/trial, model context windows, OTEL and Slack controls.
+
+### Changed
+
+- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and older-Cloud 404s exit 6 with an availability message.
+- Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
+- The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
+
 ## 0.0.2b0 — 2026-09-22
 
 ### Added

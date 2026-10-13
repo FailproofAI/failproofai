@@ -19,6 +19,7 @@ from .._context import (
     validate_limit,
 )
 from ..models import Session
+from . import _cloud, _write
 
 
 def sessions(
@@ -70,6 +71,8 @@ def sessions(
     * `fp sessions --agents` — expand each multi-agent session to its full agent roster
     * `fp --json sessions --all --fields session_id,agents | jq '.sessions'` — every session's full agent roster as JSON
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     cctx = require_auth(state)
     validate_limit(limit)
@@ -147,5 +150,47 @@ def sessions(
         output.recheck_filters_hint(active_filters)
 
 
+def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> None:
+    """Re-run evaluators on one session. Needs evaluations:trigger."""
+    _write.confirm(ctx.obj, f"Re-evaluate session {session_id}", assume_yes=False)
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST",
+        f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation")
+
+
+def show(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
+    """Show a session overview and its event timeline."""
+    cctx = require_auth(ctx.obj)
+    overview = api.cloud_request(cctx, "GET", "/api/sessions", params={"session_id": id, "limit": 1})
+    items = _cloud.rows(overview, "sessions")
+    if not items:
+        from ..errors import NotFoundError
+        raise NotFoundError(f"no session {id}")
+    timeline = api.cloud_request(cctx, "GET", "/api/events/summary", params={"session_id": id, "limit": 200, "order": "asc"})
+    _cloud.emit(ctx.obj, {"overview": items[0], "timeline": timeline}, "Session")
+
+
+def export(ctx: typer.Context, id: str = typer.Argument(...),
+           out: Optional[str] = typer.Option(None, "--out")) -> None:
+    """Export a full session as JSON."""
+    import json
+    data = api.cloud_request(require_auth(ctx.obj), "GET", f"/api/sessions/{id}/export")
+    if out:
+        _cloud.write_file(out, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        _cloud.emit(ctx.obj, {"out": out}, "Session exported")
+    else:
+        output.emit_json(data)
+
+
+def history(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
+    """Show a session's evaluation history."""
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "GET", f"/api/sessions/{id}/evaluation-history"), "Evaluation history")
+
+
 def register(app: typer.Typer) -> None:
-    app.command("sessions", epilog=GLOBALS_EPILOG)(sessions)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(sessions)
+    group.command("re-evaluate", epilog=GLOBALS_EPILOG)(re_evaluate)
+    group.command("show", epilog=GLOBALS_EPILOG)(show)
+    group.command("export", epilog=GLOBALS_EPILOG)(export)
+    group.command("history", epilog=GLOBALS_EPILOG)(history)
+    app.add_typer(group, name="sessions")

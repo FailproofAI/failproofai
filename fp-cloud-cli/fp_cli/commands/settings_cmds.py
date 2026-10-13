@@ -147,4 +147,6 @@ def register(app: typer.Typer) -> None:
     settings_app.command("list", epilog=GLOBALS_EPILOG)(settings_list)
     settings_app.command("schema", epilog=GLOBALS_EPILOG)(settings_schema)
     settings_app.command("set", epilog=GLOBALS_EPILOG)(settings_set)
+    from .account_cmds import register_context_windows
+    register_context_windows(settings_app)
     app.add_typer(settings_app, name="settings")

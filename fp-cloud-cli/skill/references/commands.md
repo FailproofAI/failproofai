@@ -17,6 +17,8 @@ command**, **`--json` to parse**, **branch on exit codes**.
 - [issues](#issues)
 - [query](#query)
 - [agent](#agent)
+- [Author an evaluator](#author-an-evaluator)
+- [Cloud dashboard parity](#cloud-dashboard-parity)
 
 ## Global options
 Set on the CLI, **before** the subcommand. Precedence: flag > env var > config file (`~/.failproofai/fpcli/cli-auth.json`, mode 0600).
@@ -117,7 +119,7 @@ scale.
 `fp usage` — the active org's current fixed 30-day metering window, grouped for human
 reading. Needs `usage:read`. `fp --json usage` returns the dashboard contract unchanged:
 `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at`, and `stale_after`. It has no
-filters or subcommands and is read-only; limits and enforcement are not part of this command.
+filters and is read-only; `usage windows` lists historical windows.
 
 ### list
 `fp list <kind>` — discover valid filter values. Kinds: `envs agents event_types score_filters models hooks tools error_types`. JSON `{kind, values}`. Run this before filtering by a value you're unsure of.
@@ -255,3 +257,108 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 - `guardrails timeline [--since …] [--machine ID]` — one row per time bucket: a bar scaled to the busiest bucket with the blocked share in red, plus total / denied / instructed counts. Answers *when* enforcement bit, which the summary's sparkline only sketches.
 - A `(no policy)` row is **normal**: most evaluations are allows nothing objected to, and the row keeps the denominator visible.
 - Coverage comes from the control plane, decision counts from reported telemetry — a machine can be deployed-to and silent, or reporting and undeployed.
+
+## Author an evaluator
+
+Every invocation accepts global `--json` **before** the command. `evals` reads
+results; `evaluators` authors definitions. Code is one restricted Python expression.
+Judge/Jev use JSON envelopes inside `evaluator_source`. Never execute downloaded
+or model-authored source locally merely to inspect it.
+
+| Command | Flags / behavior |
+| --- | --- |
+| `evaluators list` | `--key K`, `--all` (include disabled versions) |
+| `evaluators show K[@V]` | full source; specify version when ambiguous |
+| `evaluators create` | `--key K --name N`, optional `--version V` (default `1`), repeated `--label`, `--condition EXPR\|@file`, exactly one source below, repeated `--dry-run-on SESSION`, `--disabled` |
+| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; creates first, then disables predecessors; `--backfill 7d` code only |
+| `evaluators draft "intent"` | session only; `--kind code\|judge\|jev`, `--out spec.json` (refuses to overwrite) |
+| `evaluators dry-run` | source flags or `--file`; repeated `--session` (max 10), none = compile only; judge refused, Jev spends budget |
+| `evaluators enable\|disable K[@V]` | toggle definition |
+| `evaluators label K[@V]` | repeated `--add` / `--remove` |
+| `evaluators instances\|schema\|jobs` | managed instances, event schema profile, jobs |
+| `evaluators backfill` | `--from T --to T`, optional `--key K`, `--dry-run`; increasing range ≤90 days; excludes judge/Jev |
+
+Sources:
+
+- Code: `--code path.py` (or `-` for stdin), `--result-kind score|metric|assertion`,
+  optional `--timeout S` (0.001–3600 seconds).
+- Judge: `--judge --criteria TEXT`, optional repeated `--step TEXT`, `--threshold X`.
+  Steps must describe continuous grading, not “score 0/1”.
+- Jev binary: `--jev noul --instructions TEXT --true TEXT --false TEXT`, optional threshold.
+- Jev rubric: `--jev score --instructions TEXT --level Worst --level Middle --level Best`.
+  3–5 distinct, case-insensitive levels, **worst first**.
+- `--file spec.json`: the API body below; do not combine with discrete spec flags.
+  `deploy KEY --file spec.json --version 2` may override the version.
+
+Spec file (exact API fields; no `id`, `enabled`, `kind` or draft `reasoning`):
+
+```json
+{
+  "eval_key": "error_free",
+  "display_name": "Error free",
+  "eval_version": "1",
+  "result_kind": "score",
+  "labels": ["reliability"],
+  "condition_source": null,
+  "evaluator_source": "EvalResult(score=Score(1.0 if session.count(\"error\") == 0 else 0.0), reasoning=\"Error-free session\")",
+  "timeout_seconds": 5
+}
+```
+
+Judge source string: `{"kind":"judge","criteria":"Grade relevance","threshold":0.7,"steps":["Assess specificity on a continuous scale"]}`.
+Jev source string: `{"kind":"jev","type":"noul","instructions":"Was the request resolved?","criteria":{"true":"Resolved","false":"Unresolved"},"threshold":0.8}`.
+Judge/Jev require `result_kind: "score"`; thresholds are 0–1 or null.
+
+Code, judge and Jev end to end:
+
+```bash
+fp --json evaluators draft "Measure error-free sessions with code" --kind code --out error-free.json
+# Read the draft's eval_key, review its source, then create.
+fp --json evaluators create --file error-free.json --dry-run-on run-001
+fp --json evaluators dry-run --file error-free.json --session run-001
+fp --json evaluators deploy error_free --file error-free.json --version 2
+
+fp --json evaluators create --key relevance --name Relevance --judge --criteria "Grade relevance" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge --criteria "Grade relevance and completeness" --threshold 0.8
+
+fp --json evaluators create --key resolution --name Resolution --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolution --version 2 --jev score --instructions "Grade resolution quality" --level "Unresolved" --level "Partly resolved" --level "Fully resolved"
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+fp --json evaluators list --all
+```
+
+Check draft keys before copying these examples. A failed `--dry-run-on` prevents
+creation. A failed predecessor disable leaves the new version published: inspect
+`list --all` and recover with explicit `disable KEY@VERSION`, not another create.
+API 409 can mean no enabled managed instance or an existing version; 422 can mean
+the org has 100 enabled keys. Read the error, do not rename/retry silently.
+
+## Cloud dashboard parity
+
+All new commands degrade on API 404 with exit 6 and “not available on this
+FailproofAI Cloud yet”. Session-only commands exit 2 before HTTP in key mode.
+Human output uses mint/pink open screens and full ids; legacy `--full-ids`
+remains accepted. Exports refuse to overwrite existing files.
+
+| Commands | Options / notes |
+| --- | --- |
+| `dashboards list\|show ID\|create\|update ID\|delete ID` | create `--name`, `--description`, optional `--file` definition; update selected fields |
+| `dashboards tiles ID list\|add\|update TILE\|remove TILE\|layout` | add `--query ID --chart line\|area\|bar\|stacked_bar\|pie\|kpi\|table`, `--title`; update supports same flags or `--file`; layout `--file` with `{tiles:[{id,pos_x,pos_y,pos_w,pos_h}]}` |
+| `sessions show\|export\|history\|re-evaluate ID` | export `--out`; show includes overview + event timeline |
+| `events latency` | `--since` |
+| `sentiment summary\|messages\|sessions\|session ID` | list reads accept `--since`; messages/sessions `--limit`; messages `--session-id` |
+| `query compose "question"` | session; `--run` |
+| `query export [ID]` | or `--sql TEXT\|@file`; `--format csv\|json`, `--out`; with `--json`, CSV is `{format,content}` |
+| `alerts recipients` / `alerts issues ID` | issues: optional `--create --title --summary` or `--create --file` |
+| `audits contracts list\|show ID\|create\|update ID` | `--agent-id`, `--body TEXT\|@file`, or `--file` API JSON; update `--enabled/--disabled` |
+| `policies author "intent"\|backtest FILE_OR_ID\|candidacy --issue ID` | session; drafts/replays only, never auto-publishes |
+| `agent ask "question"` / `agent brief` | session; ask renders artifacts and prompts for approval on a terminal; scripts/JSON decline unless `--approve`; brief `--range 24h\|7d` |
+| `orgs create --name N [--slug S]` | session; omitted slug derives from name; never auto-switches |
+| `roles list\|show NAME\|create\|update NAME\|delete NAME` | permission sets; create `--name --permission`; update `--permission` replaces or `--add/--remove` merges; `--description`, `--file`; builtins immutable |
+| `users delete ID` / `users defaults` | deletion is by id, not email |
+| `usage windows` / `plan` / `plan claim OFFER` | offers + trial; offers still require an actor identity on the Cloud |
+| `settings context-windows list\|set MODEL TOKENS\|delete MODEL` | tokens 0–1000000; model names may contain `/` |
+| `otel status\|enable\|disable` | Cloud org switch `otel.ingest_enabled`, not local collector configuration |
+| `slack status\|disconnect` | session only |

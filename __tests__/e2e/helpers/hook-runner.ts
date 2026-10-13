@@ -104,7 +104,7 @@ export function assertPermissionRequestDeny(result: HookRunResult): void {
 export function assertPostToolUseDeny(result: HookRunResult): void {
   expect(result.exitCode).toBe(0);
   const output = result.parsed?.hookSpecificOutput as Record<string, unknown> | undefined;
-  expect(output?.additionalContext).toMatch(/Blocked/i);
+  expect(output?.additionalContext).toMatch(/Flagged/i);
 }
 
 /**

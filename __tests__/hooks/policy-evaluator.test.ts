@@ -65,7 +65,7 @@ describe("hooks/policy-evaluator", () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
     expect(parsed.hookSpecificOutput.additionalContext).toBe(
-      "Blocked Read by failproofai because: JWT found, as per the policy configured by the user",
+      "Flagged Read output by failproofai because: JWT found, as per the policy configured by the user",
     );
     expect(result.policyName).toBe("failproofai/jwt-scrub");
     expect(result.reason).toBe("JWT found");
@@ -120,7 +120,7 @@ describe("hooks/policy-evaluator", () => {
     expect(parsed.decision).toBeUndefined();
     expect(
       (parsed.hookSpecificOutput as Record<string, unknown>).additionalContext,
-    ).toBe("Blocked Read by failproofai because: JWT found, as per the policy configured by the user");
+    ).toBe("Flagged Read output by failproofai because: JWT found, as per the policy configured by the user");
   });
 
   it("other event types use exit 2 for deny", async () => {

@@ -412,9 +412,10 @@ function formatDeny(
     displayTool = "operation";
   }
   // Jev's reason is its own sentences, ending in "."; no user configured the check.
-  const blockedMessage = byJev
-    ? `Blocked ${displayTool} by failproofai because: ${reason.replace(/[.\s]+$/, "")}, as flagged by Jev semantic review`
-    : `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
+  const because = byJev
+    ? `because: ${reason.replace(/[.\s]+$/, "")}, as flagged by Jev semantic review`
+    : `because: ${reason}, as per the policy configured by the user`;
+  const blockedMessage = `Blocked ${displayTool} by failproofai ${because}`;
 
   // Cursor's hook protocol expects a flat `{permission, user_message,
   // agent_message}` shape for any blocking decision, regardless of which
@@ -797,10 +798,12 @@ function formatDeny(
         decision: "deny",
       };
     }
+    // additionalContext only adds a note: the output has already reached the
+    // model, so do not tell it the call was blocked.
     const response = {
       hookSpecificOutput: {
         hookEventName: eventType,
-        additionalContext: blockedMessage,
+        additionalContext: `Flagged ${displayTool} output by failproofai ${because}`,
       },
     };
     return {

@@ -132,6 +132,12 @@ app = typer.Typer(
 # function Typer calls for this; falls back silently if its internals change.
 try:  # pragma: no cover - exercised via real command output, not unit assertions
     import typer.rich_utils as _rich_utils
+    # Keep generated subcommand help on the same shared screen primitives.
+    _rich_utils.Panel = output.Panel
+    _rich_utils.Table = output.Table
+    _rich_utils.STYLE_OPTION = output.theme.PINK
+    _rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = output.theme.PINK
+    _rich_utils.STYLE_OPTION_ENVVAR = output.theme.LABEL
 
     import re as _re
 
@@ -331,7 +337,7 @@ def main(
             "must be a positive number of seconds.", param_hint="--timeout"
         )
     cfg = cfgmod.load_config()
-    output.configure(no_color=no_color, quiet=quiet, json=json_output)
+    output.configure(no_color=no_color, quiet=quiet, json=json_output, context=ctx.invoked_subcommand or "Cloud")
     # Resolve the credential BEFORE telemetry starts: the distinct-id depends on it.
     # `get_parameter_source` is what separates a flag from its env var — the values
     # alone cannot, and the precedence rules differ between the two (see resolve_auth).

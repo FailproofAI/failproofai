@@ -66,7 +66,7 @@ def test_whoami_human_renders_header_and_panels(logged_in, runner):
     assert "62230791-4811-4f04-b388-ae57bdcb422e" in out
     assert "instance admin" in out
     # permissions panel
-    assert "permissions" in out
+    assert "PERMISSIONS" in out
     assert "dashboards" in out and "read" in out and "write" in out and "delete" in out
     # orgs panel + switch hint to the non-active org
     assert "your orgs" in out

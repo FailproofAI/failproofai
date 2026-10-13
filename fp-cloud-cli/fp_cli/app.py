@@ -21,6 +21,7 @@ from .commands import (
     alerts_cmds,
     audits_cmds,
     auth_cmds,
+    dashboards_cmds,
     errors_cmds,
     evals_cmds,
     evaluators_cmds,
@@ -34,6 +35,7 @@ from .commands import (
     policies_cmds,
     queries_cmds,
     sessions_cmds,
+    sentiment_cmds,
     settings_cmds,
     usage_cmds,
     users_cmds,
@@ -454,6 +456,8 @@ events_cmds.register(app)
 sessions_cmds.register(app)
 evals_cmds.register(app)
 evaluators_cmds.register(app)
+dashboards_cmds.register(app)
+sentiment_cmds.register(app)
 errors_cmds.register(app)
 usage_cmds.register(app)
 list_cmds.register(app)

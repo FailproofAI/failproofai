@@ -486,6 +486,8 @@ _TOP_LEVEL_GROUPS = [
         ("sessions", "List agent runs — one row per run.", ""),
         ("evals", "List scored agent evaluations.", "--aggregate"),
         ("evaluators", "Author, test and deploy managed evaluators.", "list show create deploy draft dry-run enable disable label instances schema jobs backfill"),
+        ("sentiment", "Inspect conversation sentiment.", "summary messages sessions session"),
+        ("dashboards", "Manage dashboards and saved-query tiles.", "list show create update delete tiles"),
         ("errors", "List errored events.", "--aggregate"),
         ("usage", "Show current org usage for the metering window.", ""),
     ]),

@@ -17,6 +17,7 @@ from .._context import GLOBALS_EPILOG, AppState, require_auth, resolve_fields, v
 from ..errors import NotFoundError
 from ..models import SavedQuery
 from . import _write
+from . import _cloud
 
 
 def _humanize_list(items: List[str]) -> str:
@@ -375,4 +376,70 @@ def register(app: typer.Typer) -> None:
     query_app.command("delete", epilog=GLOBALS_EPILOG)(query_delete)
     query_app.command("run", epilog=GLOBALS_EPILOG)(query_run)
     query_app.command("schema", epilog=GLOBALS_EPILOG)(query_schema)
+    query_app.command("compose", epilog=GLOBALS_EPILOG)(query_compose)
+    query_app.command("export", epilog=GLOBALS_EPILOG)(query_export)
     app.add_typer(query_app, name="query")
+
+
+def query_compose(ctx: typer.Context, question: str = typer.Argument(...),
+                  run: bool = typer.Option(False, "--run")) -> None:
+    """AI-compose SQL (session only); optionally run it."""
+    _cloud.session_only(ctx.obj, "query compose")
+    cctx = require_auth(ctx.obj)
+    draft = None
+    for event in api.cloud_stream(cctx, "/api/agent/compose-sql", {"intent": question}):
+        if event.get("type") == "error":
+            from ..errors import ApiError
+            raise ApiError(str(event.get("error") or event.get("reason") or "SQL composer failed"))
+        if event.get("type") == "result":
+            draft = event.get("result", event)
+    if not isinstance(draft, dict):
+        raise click.UsageError("Cloud did not return composed SQL")
+    sql = draft.get("sql") or draft.get("sql_text")
+    if not isinstance(sql, str) or not sql.strip():
+        raise click.UsageError("Cloud did not return composed SQL")
+    if run:
+        data = api.cloud_request(cctx, "POST", "/api/queries/run", body={"sql": sql, "params": []})
+        _cloud.emit(ctx.obj, {"sql": sql, "result": data}, "Composed query")
+    elif ctx.obj.json:
+        output.emit_json(draft)
+    else:
+        print(sql)
+
+
+def query_export(ctx: typer.Context, id: Optional[str] = typer.Argument(None),
+                 sql: Optional[str] = typer.Option(None, "--sql"),
+                 format: str = typer.Option("csv", "--format"),
+                 out: Optional[str] = typer.Option(None, "--out")) -> None:
+    """Export a saved or ad-hoc query as CSV/JSON (all returned rows).
+
+    --json wraps CSV in {format,content} unless --out writes the file.
+    """
+    import csv
+    import io
+    import json
+    if (id is None) == (sql is None):
+        raise click.UsageError("Pass a saved query id or --sql, exactly one")
+    if format not in ("csv", "json"):
+        raise click.UsageError("--format must be csv or json")
+    data = api.cloud_request(require_auth(ctx.obj), "POST", "/api/queries/run",
+        body={"query_id": id, "sql": _read_sql(sql) if sql is not None else None, "params": []})
+    if format == "json":
+        content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    else:
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([c.get("name", "") if isinstance(c, dict) else c for c in data.get("columns", [])])
+        # Spreadsheet-safe export of untrusted event cells.
+        writer.writerows([
+            ["'" + v if isinstance(v, str) and v.startswith(("=", "+", "-", "@", "\t", "\r")) else v for v in row]
+            for row in data.get("rows", [])
+        ])
+        content = buf.getvalue()
+    if out:
+        _cloud.write_file(out, content)
+        _cloud.emit(ctx.obj, {"out": out, "format": format}, "Query exported")
+    elif ctx.obj.json:
+        output.emit_json(data if format == "json" else {"format": format, "content": content})
+    else:
+        print(content, end="")

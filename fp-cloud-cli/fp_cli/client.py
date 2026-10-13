@@ -605,6 +605,14 @@ def cloud_request(
         ) from exc
 
 
+def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+    """Dashboard SSE with the same additive-capability 404 contract."""
+    try:
+        yield from _stream_sse(ctx, path, body)
+    except NotFoundError as exc:
+        raise NotFoundError("not available on this FailproofAI Cloud yet", request_id=exc.request_id) from exc
+
+
 # --- Auth / identity --------------------------------------------------------
 
 
@@ -1531,6 +1539,8 @@ def agent_chat_oneshot(
     conversation_id: Optional[str] = None,
     page_context: Optional[str] = None,
     model: Optional[str] = None,
+    on_ask_user: Optional[Callable[[Dict[str, Any]], None]] = None,
+    on_artifact: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """POST /api/agent/chat — accumulate the streamed answer.
 
@@ -1550,20 +1560,32 @@ def agent_chat_oneshot(
         body["pageContext"] = page_context
     if model:
         body["model"] = model
+    if on_artifact:
+        body["pageActions"] = [{"action": "open_artifact"}, {"action": "home"}]
     parts: List[str] = []
     tools: List[str] = []
     interrupted = False
     error: Optional[str] = None
-    for ev in _stream_sse(ctx, "/api/agent/chat", body):
+    for ev in cloud_stream(ctx, "/api/agent/chat", body):
         kind = ev.get("type")
         if kind == "text-delta":
             parts.append(str(ev.get("text", "")))
         elif kind == "tool-start":
             tools.append(str(ev.get("tool", "")))
         elif kind == "ask-user":
+            if on_ask_user and ev.get("callId"):
+                on_ask_user(ev)
+                continue
             interrupted = True
             error = str(ev.get("question") or "the assistant needs interactive input")
             break
+        elif kind == "ui-action" and on_artifact:
+            if ev.get("action") == "open_artifact" and isinstance(ev.get("artifact"), dict):
+                on_artifact(ev["artifact"])
+            elif ev.get("action") == "home" and isinstance(ev.get("home"), dict):
+                for block in ev["home"].get("blocks", []):
+                    if isinstance(block, dict):
+                        on_artifact(block)
         elif kind == "error":
             error = str(ev.get("message", "assistant error"))
         elif kind == "done":

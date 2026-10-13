@@ -234,7 +234,10 @@ def print_table(
         # Wrap each cell in Text so a value containing Rich markup (e.g. "[/]" or
         # "[red]" in a server-provided field) renders literally instead of raising
         # MarkupError mid-render (which would abort with a raw traceback).
-        table.add_row(*[Text(_cell(value)) for value in row])
+        table.add_row(*[
+            Text(_cell(value), style=theme.LABEL if list(columns) == ["Field", "Value"] and i == 0 else "")
+            for i, value in enumerate(row)
+        ])
     _stdout.print(table)
 
 
@@ -312,7 +315,7 @@ def code_sent(email: str) -> None:
     """Confirm the one-time code was emailed (the completed `request_otp` step)."""
     if _quiet:
         return
-    _stderr.print(f"  [green]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
+    _stderr.print(f"  [{theme.SUCCESS}]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
 
 
 def org_picker(slugs: Sequence[str], current: Optional[str] = None) -> None:
@@ -635,6 +638,8 @@ def render_top_level_help() -> None:
     def _bullet(*parts) -> Text:
         line = Text("  · ", style=theme.FAINT)
         for text, style in parts:
+            if text.startswith("fp "):
+                style = theme.PINK
             line.append(text, style=style)
         return line
 
@@ -673,9 +678,9 @@ def render_top_level_help() -> None:
         glob.append(g, style=theme.TEXT_DIM)
     _stdout.print(glob)
     eg = Text("    e.g.  ")
-    eg.append("fp --json events ", style=theme.TEXT_DIM)
+    eg.append("fp --json events ", style=theme.PINK)
     eg.append("✓", style=theme.SUCCESS)
-    eg.append("     fp events --json ", style=theme.TEXT_DIM)
+    eg.append("     fp events --json ", style=theme.PINK)
     eg.append("✗", style=theme.ERROR)
     _stdout.print(eg)
     mt = Text("    multi-tenant: set the org at login (", style=theme.FAINT)
@@ -2890,6 +2895,8 @@ def _plain(*parts, console=None) -> None:
     ``--quiet`` for non-error chrome; callers that must always show pass ``console``)."""
     line = Text("  ")
     for text, style in parts:
+        if text.startswith("fp "):
+            style = theme.PINK
         line.append(text, style=style)
     (console or _stderr).print(line)
 

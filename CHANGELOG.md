@@ -4,7 +4,7 @@
 
 ### Features
 
-- Cloud CLI parity: hosted code, LLM-judge and Jev evaluator authoring/deployment, dashboards, sentiment, assistant artifacts/approvals, org controls and the shared mint/pink screen language.
+- Cloud CLI parity: hosted code, LLM-judge and Jev evaluator authoring/deployment, dashboards, sentiment, assistant artifacts/approvals, org controls and the shared mint/pink screen language (#885)
 
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#881)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#881)

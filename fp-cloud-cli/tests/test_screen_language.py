@@ -1,4 +1,5 @@
 import json
+from io import StringIO
 
 from rich.console import Console
 
@@ -54,3 +55,19 @@ def test_generated_help_has_no_boxes(logged_in, runner):
     assert result.exit_code == 0
     assert "Code:" in result.stdout and "Judge:" in result.stdout and "Jev:" in result.stdout
     assert not any(c in result.stdout for c in "╭╮╰╯┌┐└┘─━│┃")
+
+
+def test_shared_key_value_labels_are_grey():
+    capture = StringIO()
+    output.configure()
+    output._stdout = Console(file=capture, width=140, force_terminal=True, color_system="truecolor")
+    output.print_table(["Field", "Value"], [["enabled", "true"]])
+    assert "\x1b[38;2;118;127;139menabled" in capture.getvalue()
+
+
+def test_help_typeable_commands_are_pink():
+    capture = StringIO()
+    output.configure()
+    output._stdout = Console(file=capture, width=140, force_terminal=True, color_system="truecolor")
+    output.render_top_level_help()
+    assert "\x1b[38;2;228;88;125mfp login" in capture.getvalue()

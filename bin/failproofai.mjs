@@ -887,7 +887,7 @@ async function runCli() {
       };
       const options = {
         enable: [
-          ["--local", "Use the loopback OTLP relay. Automatic for Gemini CLI and Copilot."],
+          ["--local", "Use the loopback OTLP relay. Automatic for Copilot."],
           ["--no-content", "Do not capture prompt text or tool details."],
           ["--yes", "Accept switching this agent from transcript upload to OTEL."],
         ],
@@ -903,7 +903,7 @@ async function runCli() {
         name: verb ? `otel ${verb}` : "otel",
         usage: (verb ? [usages[verb]] : Object.values(usages)).map(usage => [
           usage,
-          verb === "enable" || verb === "disable" || !verb ? "Agents: claude, codex, gemini, copilot, all" : "",
+          verb === "enable" || verb === "disable" || !verb ? "Agents: claude, codex, copilot, all" : "",
         ]),
         options: acceptedOptions,
         examples: verb === "status" ? ["failproofai otel status"] :

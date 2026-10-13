@@ -8,14 +8,14 @@ describe("OTEL screen language", () => {
       "Org OTEL ingest: on",
       "Claude Code: on by failproofai · destination: Cloud",
       "Codex: on, not managed · destination: Cloud",
-      "Gemini CLI: off · destination: none · org: on",
+      "Codex: off · destination: none · org: on",
       "Copilot (VS Code): unreadable settings · destination: none",
       "Relay: listening on 127.0.0.1 · last upload: none",
     ] })).toEqual([
       "● Org OTEL ingest: on",
       "● Claude Code: on by failproofai · destination: Cloud",
       "● Codex: on, not managed · destination: Cloud",
-      "○ Gemini CLI: off · destination: none · org: on",
+      "○ Codex: off · destination: none · org: on",
       "▲ Copilot (VS Code): unreadable settings · destination: none",
       "● Relay: listening on 127.0.0.1 · last upload: none",
     ]);

@@ -103,7 +103,7 @@ function hasExternalOtel(agent: OtelAgent, config: JsonObject): boolean {
       return value !== undefined && value !== "none" && value !== "statsig";
     });
   }
-  return getSetting(config, agent === "gemini" ? ["telemetry", "enabled"] : ["github.copilot.chat.otel.enabled"]) === true;
+  return getSetting(config, ["github.copilot.chat.otel.enabled"]) === true;
 }
 async function defaultConfirm(question: string): Promise<boolean> {
   return await selectOne({
@@ -152,13 +152,12 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
     return { lines: ["VS Code not found — skipping copilot"], exitCode: 0 };
   }
   const existing = records(raw)[agent];
-  // Gemini has no transcript source in this collector.
-  const transcriptsEnabled = agent !== "gemini" && agentSessionsEnabled(agent);
+  const transcriptsEnabled = agentSessionsEnabled(agent);
   if (!existing && transcriptsEnabled && !yes) {
     const question = `failproofai already sends ${AGENT_LABELS[agent]} sessions to Cloud. Send them with OTEL instead? Transcript upload for ${AGENT_LABELS[agent]} stops.`;
     if (!await (options.confirm ?? defaultConfirm)(question)) return { lines: [`${AGENT_LABELS[agent]} unchanged (default No).`], exitCode: 0 };
   }
-  const local = localFlag || agent === "gemini" || agent === "copilot";
+  const local = localFlag || agent === "copilot";
   const port = readConfig().collector.otlp?.port ?? 4318;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("collector.otlp.port must be between 1 and 65535.");
   const destination = local ? `http://127.0.0.1:${port}` : origin;
@@ -273,7 +272,6 @@ async function status(options: OtelOptions): Promise<OtelResult> {
       } catch { /* Missing recovery state or key. */ }
     }
     const dest = record?.destination ?? getSetting(parsed, agent === "claude" ? ["env", "OTEL_EXPORTER_OTLP_ENDPOINT"] :
-      agent === "gemini" ? ["telemetry", "otlpEndpoint"] :
       agent === "copilot" ? ["github.copilot.chat.otel.otlpEndpoint"] : ["otel", "exporter", "otlp-http", "endpoint"]);
     const destination = dest ? `${record?.local ? "local relay" : "Cloud"} (${dest})` : "none";
     lines.push(`${AGENT_LABELS[agent]}: ${unreadable ? "unreadable settings" : on ? managed ? "on by failproofai" : "on, not managed" : "off"} · destination: ${destination} · org: ${org}`);

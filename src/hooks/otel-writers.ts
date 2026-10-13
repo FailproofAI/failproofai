@@ -9,10 +9,10 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 
-export const OTEL_AGENTS = ["claude", "codex", "gemini", "copilot"] as const;
+export const OTEL_AGENTS = ["claude", "codex", "copilot"] as const;
 export type OtelAgent = typeof OTEL_AGENTS[number];
 export const AGENT_LABELS: Record<OtelAgent, string> = {
-  claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", copilot: "Copilot",
+  claude: "Claude Code", codex: "Codex", copilot: "Copilot",
 };
 export type JsonObject = Record<string, unknown>;
 export interface SettingWrite { path: string[]; value?: unknown }
@@ -216,9 +216,6 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
       log_agent_responses: content,
     }).map(([k, value]) => ({ path: ["otel", k], value }));
   }
-  if (agent === "gemini") return Object.entries({
-    enabled: true, target: "local", otlpEndpoint: endpoint, otlpProtocol: "http", logPrompts: content, useCollector: true, outfile: undefined,
-  }).map(([k, value]) => ({ path: ["telemetry", k], value }));
   return Object.entries({
     enabled: true, exporterType: "otlp-http", otlpEndpoint: endpoint, captureContent: content,
   }).map(([k, value]) => ({ path: [`github.copilot.chat.otel.${k}`], value }));

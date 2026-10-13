@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { runOtelCommand, OTEL_ORG_OFF } from "../../src/hooks/otel-cli";
-import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, vscodeProbe, agentOtelWrites } from "../../src/hooks/otel-writers";
+import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, vscodeProbe, agentOtelWrites, OTEL_AGENTS } from "../../src/hooks/otel-writers";
 import { configFile, credentialsFile, otelAgentStateFile, otelAgentStateDir, otlpSpoolDir, resettablePaths } from "../../src/hooks/fp-home";
 import { readConfig, updateConfig } from "../../src/hooks/fp-config";
 import { agentSessionsEnabled } from "../../src/hooks/collector-config";
@@ -173,11 +173,12 @@ describe("managed OTEL settings", () => {
     expect(readFileSync(path, "utf8")).toBe(before);
   });
 
-  it.each(["gemini", "copilot"] as const)("writes %s with automatic auth-free relay and restores JSONC byte-equal", async agent => {
+  it("writes copilot with automatic auth-free relay and restores JSONC byte-equal", async () => {
+    const agent = "copilot" as const;
     const path = agentConfigPath(agent, home);
     const before = '{\n// user comment\n"editor.fontSize": 13,\n"telemetry": {"unknown": 42},\n}\n';
     seed(path, before);
-    if (agent === "copilot") mkdirSync(join(home, ".vscode/extensions/github.copilot-chat-0.55.0"), { recursive: true });
+    mkdirSync(join(home, ".vscode/extensions/github.copilot-chat-0.55.0"), { recursive: true });
     const result = await runOtelCommand(["enable", agent, "--no-content"], options());
     expect(result.exitCode).toBe(0);
     expect(result.lines.join("\n")).toContain("automatically");
@@ -186,7 +187,7 @@ describe("managed OTEL settings", () => {
     expect(text).not.toContain("capture-test-secret");
     expect(text).toContain("127.0.0.1:4318");
     const parsed = parseAgentConfig(text, agent);
-    expect(agent === "gemini" ? (parsed.telemetry as Record<string, unknown>).logPrompts : parsed["github.copilot.chat.otel.captureContent"]).toBe(false);
+    expect(parsed["github.copilot.chat.otel.captureContent"]).toBe(false);
     expect(readConfig().collector.otlp?.enabled).toBe(true);
     await runOtelCommand(["disable", agent], options());
     expect(readFileSync(path, "utf8")).toBe(before);
@@ -297,32 +298,34 @@ describe("opt-in, one path and status", () => {
     expect(existsSync(path)).toBe(false);
   });
 
-  it("Gemini has no transcript source and does not ask a misleading switch question", async () => {
-    updateConfig({ collector: { sessions: true } });
-    const confirm = vi.fn(async () => false);
-    const result = await runOtelCommand(["enable", "gemini"], { ...options(), confirm });
-    expect(result.exitCode).toBe(0);
-    expect(confirm).not.toHaveBeenCalled();
-    expect(readConfig().collector.agents?.gemini).toBeUndefined();
+  it("covers only agents failproofai supports: Gemini CLI is not one", async () => {
+    expect(OTEL_AGENTS).toEqual(["claude", "codex", "copilot"]);
+    const result = await runOtelCommand(["enable", "gemini"], options());
+    expect(result.exitCode).toBe(1);
+    expect(result.lines.join("\n")).toContain("Choose an agent: claude, codex, copilot, all.");
+    expect(existsSync(join(home, ".gemini"))).toBe(false);
   });
 
   it("restores explicit sessions override and keeps relay on until last local agent disables", async () => {
     updateConfig({ collector: { agents: { claude: { sessions: true } }, otlp: { enabled: false, port: 14318 } } });
+    mkdirSync(join(home, ".vscode/extensions/github.copilot-chat-0.55.0"), { recursive: true });
     await runOtelCommand(["enable", "claude", "--yes", "--local"], options());
-    await runOtelCommand(["enable", "gemini"], options());
+    await runOtelCommand(["enable", "copilot"], options());
     await runOtelCommand(["disable", "claude"], options());
     expect(readConfig().collector.agents?.claude?.sessions).toBe(true);
     expect(readConfig().collector.otlp?.enabled).toBe(true);
-    await runOtelCommand(["disable", "gemini"], options());
+    await runOtelCommand(["disable", "copilot"], options());
     expect(readConfig().collector.otlp?.enabled).toBe(false);
   });
 
   it("status shows all agents, Cloud/local, relay, last upload and unknown for old introspect", async () => {
+    mkdirSync(join(home, ".vscode/extensions/github.copilot-chat-0.55.0"), { recursive: true });
     await runOtelCommand(["enable", "claude"], options());
-    await runOtelCommand(["enable", "gemini"], options());
+    await runOtelCommand(["enable", "copilot"], options());
     const result = await runOtelCommand(["status"], options());
     const output = result.lines.join("\n");
-    for (const agent of ["Claude Code", "Codex", "Gemini CLI", "Copilot"]) expect(output).toContain(agent);
+    for (const agent of ["Claude Code", "Codex", "Copilot"]) expect(output).toContain(agent);
+    expect(output).not.toContain("Gemini");
     expect(output).toContain("on by failproofai");
     expect(output).toContain("https://cloud.example");
     expect(output).toContain("http://127.0.0.1:4318");

@@ -141,7 +141,7 @@ export const configFile = (home?: string) => atHome(home, "config.json");
 
 export const otelAgentStateDir = (home?: string) => atHome(home, "state", "otel-agents");
 export const otelAgentStateFile = (agent: string) => {
-  if (!["claude", "codex", "gemini", "copilot"].includes(agent)) throw new Error("Unknown OTEL agent.");
+  if (!["claude", "codex", "copilot"].includes(agent)) throw new Error("Unknown OTEL agent.");
   return resolve(otelAgentStateDir(), `${agent}.json`);
 };
 export const otlpSpoolDir = (home?: string) => atHome(home, "state", "spool-otlp");

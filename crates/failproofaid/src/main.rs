@@ -410,8 +410,9 @@ fn spawn_collector_manager(
             // enabled" once; `spawn_supervised` returns None only if the config
             // flipped back to disabled between the check and the build, or the
             // runtime failed to start.
+            let mut running_cfg = current_collector_config();
             let Some(collector) =
-                fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+                fpai_collect::spawn_supervised(collector_tasks(running_cfg.clone()), daemon_shutdown.clone())
             else {
                 return;
             };
@@ -431,7 +432,6 @@ fn spawn_collector_manager(
             // it also covers a stream being switched off, a verbosity change and
             // a redaction change, all of which are baked into the tasks at build
             // time and none of which took effect before.
-            let mut running_cfg = current_collector_config();
 
             loop {
                 if daemon_shutdown.load(Ordering::Relaxed) {
@@ -467,7 +467,7 @@ fn spawn_collector_manager(
                     // some unrelated edit. An edit landing between this read and
                     // the build only costs one extra cycle on the next tick.
                     let built_from = current_collector_config();
-                    match fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+                    match fpai_collect::spawn_supervised(collector_tasks(built_from.clone()), daemon_shutdown.clone())
                     {
                         Some(next_collector) => {
                             telemetry::set_collector_metrics(next_collector.metrics());
@@ -540,7 +540,7 @@ fn spawn_collector_manager(
                 let next_cfg = current_collector_config().unwrap_or(next_cfg);
 
                 let Some(next_collector) =
-                    fpai_collect::spawn_supervised(collector_tasks(), daemon_shutdown.clone())
+                    fpai_collect::spawn_supervised(collector_tasks(Some(next_cfg.clone())), daemon_shutdown.clone())
                 else {
                     // Nothing to supervise for this config. Keep the loop alive
                     // so the next edit is still seen; returning here would make
@@ -832,7 +832,7 @@ fn idle_extra_paths_line(harness: &str, configured: usize) -> Option<String> {
     }
 }
 
-fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
+fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_collect::TaskSpec> {
     let home = match paths::failproofai_home() {
         Ok(home) => home,
         Err(err) => {
@@ -841,10 +841,10 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         }
     };
 
-    let cfg = match fpai_collect::config::load(&home) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            eprintln!("[failproofaid] collector disabled: {err}");
+    let cfg = match config {
+        Some(cfg) => cfg,
+        None => {
+            eprintln!("[failproofaid] collector disabled: unreadable configuration");
             return Vec::new();
         }
     };
@@ -912,7 +912,9 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     // on an interval and deletes it on clean shutdown — absence means "no
     // daemon", where a stale file makes a stopped daemon look like a running
     // one whose sources all went quiet.
-    let health = std::sync::Arc::new(fpai_collect::Health::new());
+    let health = std::sync::Arc::new(
+        fpai_collect::Health::new().with_config_generation(cfg.settings.config_generation.clone()),
+    );
     // Before `install`, so the first snapshot already carries delivery. The
     // source map alone cannot say whether anything is ARRIVING — a source's job
     // ends at the spool — and the SDK's batches have no source entry at all, so
@@ -2237,7 +2239,7 @@ mod tests {
                 ],
                 &cleared,
             );
-            collector_tasks()
+            collector_tasks(current_collector_config())
                 .into_iter()
                 .map(|task| task.name)
                 .collect()

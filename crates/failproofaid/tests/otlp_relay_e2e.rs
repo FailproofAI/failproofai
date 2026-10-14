@@ -155,6 +155,45 @@ fn relay_starts_and_stops_on_config_reload_without_daemon_restart() {
 }
 
 #[test]
+fn collector_health_acknowledges_only_the_config_used_by_the_replacement_tasks() {
+    let daemon = start(4318, false);
+    let health_path = daemon.home.join("state/collector-health.json");
+    wait(|| health_path.exists());
+    let config_path = daemon.home.join("config.json");
+    let mut config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["collector"]["config_generation"] = "otel-test-generation".into();
+    config["collector"]["agents"]["codex"]["sessions"] = false.into();
+    config["collector"]["agents"]["codex"]["sessions_resume_after"] = 1234567890000u64.into();
+    std::fs::write(&config_path, config.to_string()).unwrap();
+    wait(|| {
+        std::fs::read_to_string(&health_path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .is_some_and(|health| health["config_generation"] == "otel-test-generation")
+    });
+    assert!(
+        daemon
+            .log
+            .lock()
+            .unwrap()
+            .contains("collector configuration changed")
+    );
+    assert!(!daemon.log.lock().unwrap().contains("source=\"codex\""));
+    ping(&daemon);
+    // A second enable requires a fresh acknowledgement, not the old heartbeat.
+    config["collector"]["config_generation"] = "otel-next-generation".into();
+    std::fs::write(&config_path, config.to_string()).unwrap();
+    wait(|| {
+        std::fs::read_to_string(&health_path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .is_some_and(|health| health["config_generation"] == "otel-next-generation")
+    });
+    ping(&daemon);
+}
+
+#[test]
 fn sdk_spool_delivers_without_opening_a_tcp_listener() {
     let capture = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let origin_port = capture.local_addr().unwrap().port();

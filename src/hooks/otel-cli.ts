@@ -4,11 +4,11 @@ import {
   statSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { connect } from "node:net";
 import { readConfig, readCredentials } from "./fp-config";
-import { configFile, otelAgentStateFile, otlpHealthFile } from "./fp-home";
+import { collectorHealthFile, configFile, otelAgentStateFile, otlpHealthFile } from "./fp-home";
 import { writeConfigFileAtomic } from "./safe-config-write";
 import { agentSessionsEnabled } from "./collector-config";
 import { introspectKey } from "./cloud-introspect";
@@ -46,6 +46,7 @@ export interface OtelOptions {
   fetchImpl?: typeof fetch;
   confirm?: (question: string) => Promise<boolean>;
   onEvent?: (name: string, properties: { agent: OtelAgent; local: boolean; content: boolean }) => void | Promise<void>;
+  waitForCollector?: (generation: string, timeoutMs: number) => Promise<boolean>;
 }
 
 function rawConfig(): JsonObject {
@@ -64,6 +65,24 @@ function saveConfig(raw: JsonObject): void {
 }
 function digest(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+function collectorWaitMs(): number {
+  const configured = Number(process.env.FAILPROOFAI_COLLECTOR_CONFIG_POLL_MS ?? 5000);
+  return 2 * Math.max(500, Number.isSafeInteger(configured) && configured >= 0 ? configured : 5000);
+}
+export async function waitForCollectorConfig(generation: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    try {
+      const health = JSON.parse(readFileSync(collectorHealthFile(), "utf8")) as JsonObject;
+      // An old deployment cannot acknowledge a newly generated token. The
+      // replacement publishes it only after the old tasks have been joined.
+      if (health.config_generation === generation && typeof health.ts === "number" &&
+          Date.now() - health.ts * 1000 < 35000) return true;
+    } catch { /* Missing health, an older daemon or a file mid-replacement. */ }
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))));
+  } while (Date.now() < deadline);
+  return false;
 }
 function privateState(agent: OtelAgent): PrivateState {
   return JSON.parse(readFileSync(otelAgentStateFile(agent), "utf8")) as PrivateState;
@@ -221,6 +240,10 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   otel.agents = { ...records(raw), [agent]: record };
   raw.otel = otel;
   configureRelay(raw);
+  const waitForCollector = agent === "codex";
+  const generation = randomUUID();
+  if (waitForCollector) collector.config_generation = generation;
+  const lines: string[] = [];
   // Recovery state and one-time backup precede the first agent-file write.
   backupOnce(file, original);
   savePrivate(agent, { ...state, writtenHash: digest(next) });
@@ -228,6 +251,9 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
     // Publish ownership BEFORE the agent settings so a killed CLI can always
     // disable/restore what it wrote, including the one-path transcript choice.
     saveConfig(raw);
+    if (waitForCollector && !await (options.waitForCollector ?? waitForCollectorConfig)(generation, collectorWaitMs())) {
+      lines.push("Warning: daemon did not confirm the collector change in time; wait for `failproofai otel status` before starting Codex to avoid duplicate uploads.");
+    }
     writeConfigFileAtomic(file, next, { backup: false, mode: 0o600 });
     // Agent files now contain a credential, even if previously world-readable.
     chmodSync(file, 0o600);
@@ -237,7 +263,7 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
     saveConfig(previousConfig);
     throw err;
   }
-  const lines = [`${AGENT_LABELS[agent]} OTEL enabled → ${local ? "local relay" : "Cloud"} (${content ? "text capture on" : "no content"}).`];
+  lines.push(`${AGENT_LABELS[agent]} OTEL enabled → ${local ? "local relay" : "Cloud"} (${content ? "text capture on" : "no content"}).`);
   if (keptPromptPrivacy) lines.push("Codex log_user_prompt = false kept; user prompt capture remains off.");
   if (local && !localFlag) lines.push(`${AGENT_LABELS[agent]} settings cannot carry an auth header; using the local relay automatically.`);
   if (local) lines.push("The daemon picks this up within seconds — no restart. Use `failproofai otel status` to check the relay.");

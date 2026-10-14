@@ -136,6 +136,9 @@ pub struct Settings {
     /// Raw OTLP relay is additive and disabled by default.
     #[serde(default)]
     pub otlp: OtlpSettings,
+    /// Non-secret token acknowledged by the deployment built from this config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_generation: Option<String>,
     /// Ship hook activity. Defaults to TRUE once ingest is configured — it
     /// carries decisions and tool names, never file contents, and it is the
     /// capability that justifies collecting from inside failproofai at all.
@@ -223,6 +226,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sessions: false,
+            config_generation: None,
             agents: BTreeMap::new(),
             otlp: OtlpSettings::default(),
             hooks: true,

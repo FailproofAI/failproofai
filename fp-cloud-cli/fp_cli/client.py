@@ -672,6 +672,7 @@ def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> N
             or family == "queries" and segments[1:] in (["run"], ["schema"])
             or family == "audits" and segments == ["audits", "contracts"]
             or family == "alerts" and segments == ["alerts", "recipients"]
+            or family == "issues" and segments in (["issues", "count"], ["issues", "facets"])
             or family == "users" and segments == ["users", "defaults"]
             or family == "usage" and segments == ["usage", "windows"]
             or family == "settings" and segments == ["settings", "model-context-windows"]
@@ -1300,26 +1301,74 @@ def list_incidents(
     state: Optional[str] = None,
     alert_id: Optional[str] = None,
     limit: Optional[int] = None,
+    filters: Optional[Dict[str, str]] = None,
+    on_filters_unavailable: Optional[Callable[[], None]] = None,
 ) -> List[Incident]:
     """GET /api/issues (or /api/alerts/{id}/issues when alert_id given). The
     alert-scoped path honours ``state``/``limit`` too — pass them so the filters aren't silently
     dropped on that path (``_get_json`` omits None params)."""
-    if alert_id:
+    if alert_id and not filters:
         data = _get_json(ctx, f"/api/alerts/{alert_id}/issues", {"state": state, "limit": limit})
     else:
-        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit})
-    return [Incident.from_dict(i) for i in (data if isinstance(data, list) else [])]
+        params = {"state": state, "limit": limit, **(filters or {})}
+        if alert_id:
+            params["alert_id"] = alert_id
+        data = cloud_request(ctx, "GET", "/api/issues", params=params)
+    _check_issue_filters(ctx, data, filters, on_filters_unavailable)
+    items = data.get("issues", []) if isinstance(data, dict) else data
+    return [Incident.from_dict(i) for i in (items if isinstance(items, list) else [])]
 
 
-def count_incidents(ctx: ClientContext, *, state: Optional[str] = None) -> int:
+def count_incidents(
+    ctx: ClientContext, *, state: Optional[str] = None,
+    filters: Optional[Dict[str, str]] = None,
+    on_filters_unavailable: Optional[Callable[[], None]] = None,
+) -> int:
     """GET /api/issues/count — {count}."""
-    data = _get_json(ctx, "/api/issues/count", {"state": state})
+    data = cloud_request(ctx, "GET", "/api/issues/count", params={"state": state, **(filters or {})})
+    _check_issue_filters(ctx, data, filters, on_filters_unavailable)
     if not isinstance(data, dict):
         return 0
     try:
         return int(data.get("count", 0))
     except (TypeError, ValueError):
         return 0
+
+
+def issue_facets(
+    ctx: ClientContext, *, state: Optional[str] = None,
+    filters: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """GET /api/issues/facets — available scope/source/assignee values with counts."""
+    data = cloud_request(ctx, "GET", "/api/issues/facets", params={"state": state, **(filters or {})})
+    if not isinstance(data, dict):
+        raise ApiError("Cloud returned an invalid issues facets response")
+    return data
+
+
+def _check_issue_filters(
+    ctx: ClientContext, data: Any, filters: Optional[Dict[str, str]],
+    on_unavailable: Optional[Callable[[], None]],
+) -> None:
+    """An echo proves support; otherwise probe facets, never infer it from rows.
+
+    Older deployments return a bare, unfiltered array/count. Only a missing
+    capability route warrants the compatibility warning; auth/network/server
+    failures must remain visible, not be misreported as an older Cloud.
+    """
+    if not filters:
+        return
+    echoed = data.get("filters", data.get("applied_filters")) if isinstance(data, dict) else None
+    if isinstance(echoed, dict) and all(
+        echoed.get(key) == value or echoed.get(key) == value.split(",")
+        for key, value in filters.items()
+    ):
+        return
+    try:
+        issue_facets(ctx, filters=filters)
+    except NotFoundError:
+        if on_unavailable:
+            on_unavailable()
 
 
 def get_incident(ctx: ClientContext, incident_id: str) -> Incident:

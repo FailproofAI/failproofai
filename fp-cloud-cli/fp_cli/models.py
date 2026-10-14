@@ -430,6 +430,8 @@ class Incident:
     subscribers: Optional[List[Dict[str, Any]]] = None
     comments: Optional[List[Dict[str, Any]]] = None
     activity: Optional[List[Dict[str, Any]]] = None
+    #: Stored evidence scope. Older Clouds omit it; no event scan is needed.
+    scope: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Incident":
@@ -461,6 +463,7 @@ class Incident:
             subscribers=d.get("subscribers"),
             comments=d.get("comments"),
             activity=d.get("activity"),
+            scope=dict(d.get("scope") or {}),
         )
 
 

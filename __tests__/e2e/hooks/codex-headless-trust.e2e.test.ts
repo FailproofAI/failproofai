@@ -50,7 +50,7 @@ fn:async ctx=>JSON.stringify(ctx).includes('FP_CLOUD_BLOCK_PROOF')?deny('BLOCKED
       const path = new URL(req.url!, "http://localhost").pathname;
       res.setHeader("Content-Type", "application/json");
       if (path.endsWith("/auth/introspect")) return res.end(JSON.stringify({
-        orgId: "local-org-A", orgName: "Local Org A", permissions: ["events:add", "policies:pull"],
+        org_id: "local-org-A", org_name: "Local Org A", permissions: ["events:add", "policies:pull"],
       }));
       if (path.includes("desired-state")) return res.end(JSON.stringify({
         schemaVersion: 2, deployment: 1,
@@ -125,6 +125,7 @@ requires_openai_auth=false
     const connect = await run("node", [cli, "config", "--connect", origin, "--machine-id", "proof"],
       { FAILPROOFAI_CLOUD_TOKEN: "LOCAL_TEST_KEY" });
     expect(connect.code, connect.out).toBe(0);
+    expect(JSON.parse(readFileSync(join(fp, "credentials.json"), "utf8")).org.id).toBe("local-org-A");
     chmodSync(join(fp, "credentials.json"), 0o600);
     const daemon = spawn(daemonPath!, [], { cwd: repo, env, stdio: ["ignore", "ignore", "pipe"] });
     let daemonLog = "";

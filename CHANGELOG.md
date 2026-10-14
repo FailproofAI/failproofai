@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11-beta.1 — 2026-10-14
+
+### Features
+
+- Stamp harness provenance on every collected event, using the source kind, the hook row's CLI, or sdk for SDK batches, without replacing existing values; add Cloud CLI issue filters and facets (PR pending).
+
 ## 1.0.11-beta.1 — 2026-10-13
 
 ### Features

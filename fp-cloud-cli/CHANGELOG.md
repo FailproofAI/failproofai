@@ -1,5 +1,11 @@
 # Changelog — `fp` CLI
 
+## 0.0.2b1 — 2026-10-14
+
+### Added
+
+- Filter issues list/count and discover facets by agent, harness, environment, machine, source/alert/audit, assignee, opened dates and title/summary text in session or key mode; show scope tags and warn when an older Cloud may ignore filters (PR pending).
+
 ## 0.0.2b1 — 2026-10-13
 
 ### Added

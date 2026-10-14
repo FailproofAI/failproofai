@@ -127,6 +127,33 @@ fp --json events --session-id run-001 --all | jq '.events[].payload'
 fp --json sessions --since 7d --fields session_id,status,scores
 ```
 
+### Filter the failures inbox
+
+Issue filters work with either a signed-in session or an API key carrying `issues:read`:
+
+```bash
+fp --json issues facets --env prod
+fp issues list --harness claude --harness codex --env prod --assignee me --since 7d
+fp --json issues count --source audit --audit weekly-audit --machine ci-runner-01
+fp issues list --agent claude-checkout --assignee unassigned --search "tool timeout" \
+  --since 2026-10-01T00:00:00Z --until 2026-10-14T00:00:00Z
+```
+
+`issues list`, `count` and `facets` share `--agent`, `--harness`, `--env`,
+`--machine`, `--source alert|audit|manual`, `--alert`, `--audit` and
+`--assignee EMAIL|me|unassigned`. These accept repeated flags or comma-separated
+values (OR within a filter, AND between filters). `--since` accepts the existing
+`all|15m|1h|6h|24h|7d` presets or RFC3339; `--until` accepts RFC3339. Dates apply
+to issue opening, and `--search` searches title + summary. Human rows show the
+stored harness/agent scope; facets show available values and counts.
+
+Older Clouds may ignore the new query parameters. If no filters are echoed,
+the CLI probes facets; a missing route produces one warning on stderr that
+list/count results may be unfiltered, leaving stdout JSON usable. Calling
+missing `facets` directly exits 6 with “not available on this FailproofAI Cloud yet”.
+Upgrade Cloud for filtering; the collector's new `harness` event field is
+additive and ignored by old servers. Existing `list --alert-id` remains supported.
+
 ### Cloud-managed policies
 
 Three commands for the three jobs the dashboard splits across three pages —

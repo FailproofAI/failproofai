@@ -125,3 +125,17 @@ def test_stream_404_distinguishes_route_and_record():
             mock.post("http://dash.test/api/agent/chat").respond(404, json=error)
             with pytest.raises(NotFoundError, match=expected):
                 list(client.cloud_stream(ctx, "/api/agent/chat", {"conversationId": "missing"}))
+
+
+@pytest.mark.parametrize("path", [
+    "/api/agent/conversations/stale",
+    "/api/offers/stale",
+    "/api/integrations/slack/stale",
+])
+def test_named_endpoint_families_do_not_hide_record_404s(path):
+    ctx = client.ClientContext("http://dash.test", token="tok")
+    with respx.mock as mock:
+        mock.get(f"http://dash.test{path}").respond(404, json={})
+        with pytest.raises(NotFoundError, match="Record not found") as exc:
+            client.cloud_request(ctx, "GET", path)
+    assert "not available" not in exc.value.message

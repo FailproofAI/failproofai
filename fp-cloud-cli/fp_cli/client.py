@@ -657,7 +657,11 @@ def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> N
         segments = path.removeprefix("/api/").split("/")
         family = segments[0]
         capability = len(segments) == 1 or (
-            family in ("agent", "otel", "offers", "team-trial", "integrations")
+            family == "agent" and len(segments) == 2
+            or family == "otel" and segments == ["otel", "status"]
+            or family == "offers" and segments[1:] in (["me"], ["claim"])
+            or family == "team-trial" and segments == ["team-trial", "me"]
+            or family == "integrations" and segments == ["integrations", "slack"]
             or family == "events" and segments in (
                 ["events", "summary"], ["events", "latency_aggregate"],
                 ["events", "sentiment"], ["events", "sentiment", "messages"],

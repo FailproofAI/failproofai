@@ -1,8 +1,13 @@
 import json
+import re
+from io import StringIO
 
+import httpx
 import pytest
 import respx
+from rich.console import Console
 
+from fp_cli import output
 from fp_cli.app import app
 
 BASE = "http://dash.test"
@@ -151,3 +156,70 @@ def test_backtest_published_policy_uses_latest_version(logged_in, runner):
         result = runner.invoke(app, ["--json", "policies", "backtest", "p1"])
     assert result.exit_code == 0, result.output
     assert json.loads(route.calls[0].request.content) == {"source": "new"}
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+@pytest.mark.parametrize("failure,exit_code", [("404", 6), ("network", 3)])
+def test_approval_answer_failure_is_clean(logged_in, runner, json_mode, failure, exit_code):
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(f"{BASE}/api/agent/chat").respond(200, text=sse([
+            {"type": "ask-user", "kind": "approval", "callId": "ask_1", "question": "Disable alert?"},
+            {"type": "text-delta", "text": "Must not reach this answer."},
+            {"type": "done"},
+        ]))
+        answer = mock.post(f"{BASE}/api/agent/answer")
+        if failure == "404":
+            answer.respond(404, json={})
+        else:
+            answer.mock(side_effect=httpx.ConnectError("connection refused"))
+        saved = mock.post(f"{BASE}/api/agent/conversations").respond(200, json={"id": "c1"})
+        result = runner.invoke(app, [*(["--json"] if json_mode else []), "agent", "ask", "Hello", "--approve"])
+    assert result.exit_code == exit_code, result.output
+    assert answer.called and not saved.called
+    assert "Traceback" not in result.output
+    assert "Must not reach this answer" not in result.output
+    if json_mode:
+        data = json.loads(result.stdout)
+        assert data["exit_code"] == exit_code
+        message = data["error"]
+    else:
+        assert len(result.stderr.strip().splitlines()) == 1
+        message = result.stderr
+    assert "Assistant approval answer failed" in message
+    assert "delivery unconfirmed" in message
+    if failure == "404":
+        assert "not available on this FailproofAI Cloud yet" in message
+
+
+@pytest.mark.parametrize("failure,exit_code", [("404", 6), ("network", 3)])
+def test_approval_failure_restores_terminal_status(logged_in, runner, monkeypatch, failure, exit_code):
+    # The suite defaults to TERM=dumb, which suppresses live cursor control.
+    monkeypatch.setenv("TERM", "xterm-256color")
+    capture = StringIO()
+    terminal = Console(file=capture, force_terminal=True, color_system="truecolor", width=200)
+    original_configure = output.configure
+
+    def configure_terminal(**kwargs):
+        original_configure(**kwargs)
+        monkeypatch.setattr(output, "_stderr", terminal)
+
+    monkeypatch.setattr(output, "configure", configure_terminal)
+    with respx.mock as mock:
+        mock.post(f"{BASE}/api/agent/chat").respond(200, text=sse([
+            {"type": "ask-user", "kind": "approval", "callId": "ask_1", "question": "Disable alert?"},
+        ]))
+        answer = mock.post(f"{BASE}/api/agent/answer")
+        if failure == "404":
+            answer.respond(404, json={})
+        else:
+            answer.mock(side_effect=httpx.ConnectError("connection refused"))
+        result = runner.invoke(app, ["agent", "ask", "Hello", "--approve"])
+    assert result.exit_code == exit_code, result.output
+    rendered = capture.getvalue()
+    assert terminal._live_stack == []
+    assert "\x1b[?25l" in rendered
+    assert rendered.rfind("\x1b[?25h") > rendered.rfind("\x1b[?25l")
+    assert rendered.index("Assistant approval answer failed") > rendered.rfind("\x1b[?25h")
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
+    assert plain.count("Assistant approval answer failed") == 1
+    assert "Traceback" not in plain

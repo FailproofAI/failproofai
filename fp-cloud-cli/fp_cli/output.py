@@ -1427,9 +1427,10 @@ def render_events(items: Sequence[Any], *, order: Optional[str] = None,
 
 
 def _short_session(sid: str, *, full: bool = False) -> str:
-    """Truncate a long session id for the table (full id always kept in ``--json``):
-    ``sess-20260615-fcf97e01`` → ``sess-…fcf97e01`` (prefix + last 8); other long ids →
-    first 6 + ``…`` + last 6; short ids are left intact."""
+    """Return the full session id unchanged for copyable terminal output.
+
+    The legacy ``full`` argument remains accepted for compatibility.
+    """
     return sid
 
 
@@ -2116,15 +2117,15 @@ _KEY_STATUS = {
 
 
 def _short_id(value: str) -> str:
-    """A long id → ``1f58…9826`` (first 4 + ``…`` + last 4); short ids unchanged."""
+    """Return the full id unchanged; the legacy helper name is retained."""
     return value
 
 
 def _short_chat_id(value: str) -> str:
-    """A chat id → its short, copy-friendly handle: the segment before the first ``-`` (the first
-    8 hex of a UUID, e.g. ``07854990-dade-…`` → ``07854990``), or the first 8 chars when there's no
-    ``-``. The CLI resolves this prefix back to the full id against the chat list, while the server
-    keeps the full id intact."""
+    """Return the full chat id without shortening it (empty when absent).
+
+    Commands still accept unambiguous prefixes, but rendered ids stay complete.
+    """
     return str(value or "")
 
 
@@ -4921,13 +4922,12 @@ def render_agent_models(models: Sequence[str], *, default_model: Optional[str] =
 
 
 def render_agent_chats(chats: Sequence[dict]) -> None:
-    """The ``agent chats`` view (stdout): a boxed ``chats · {n}`` table with columns ``chat-id ·
-    title · messages · updated`` (newest first). ``chat-id`` is the SHORT, copy-friendly handle
-    (the first 8 hex before the UUID's first ``-``) that ``agent show``/``rename``/``delete``/``ask
-    --chat`` accept as a prefix; the ``title`` absorbs any width squeeze (``…``-truncated on a
-    budget). The count glows. Empty → ``no chats``."""
+    """The ``agent chats`` view (stdout): an open ``chats · {n}`` table with columns
+    ``chat-id · title · messages · updated`` (newest first). Chat ids are shown in full;
+    commands also accept unambiguous prefixes. The title absorbs width pressure
+    (``…``-truncated on a budget). Empty → ``no chats``."""
     items = sorted(chats, key=lambda c: c.get("updated_at") or "", reverse=True)  # newest first
-    ids = [_short_chat_id(str(c.get("id") or "-")) for c in items]  # short copy-friendly handle
+    ids = [_short_chat_id(str(c.get("id") or "-")) for c in items]  # full copyable ids
     titles = [str(c.get("title") or "untitled") for c in items]
     mcs = [str(c.get("message_count")) if c.get("message_count") is not None else "-" for c in items]
     ages = [_age_compact(c.get("updated_at")) for c in items]
@@ -4946,7 +4946,7 @@ def render_agent_chats(chats: Sequence[dict]) -> None:
         t = _truncate(titles[i], budget) if budget is not None else titles[i]
         updated = Text(ages[i], style=theme.TEXT_DIM) if ages[i] else Text("—", style=theme.FAINT)
         rows.append([
-            Text(ids[i], style=theme.TEXT_DIM),  # the short copy-friendly handle
+            Text(ids[i], style=theme.TEXT_DIM),  # the full copyable id
             Text(t, style=theme.TEXT),
             Text(mcs[i], style=theme.TEXT_DIM),
             updated,

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 import pytest
 import respx
@@ -92,6 +93,43 @@ def test_deploy_order_and_dry_run(logged_in, runner, code):
     assert json.loads(patch.calls[0].request.content) == {"enabled": False}
     assert json.loads(dry.calls[0].request.content)["session_ids"] == ["s1"]
     assert json.loads(result.stdout)["disabled"] == ["d1"]
+
+
+@pytest.mark.parametrize("key_mode", [False, True])
+def test_deploy_backfill_uses_utc_z_timestamps(logged_in, runner, code, monkeypatch, key_mode):
+    from fp_cli.commands import evaluators_cmds
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz == timezone.utc
+            return cls(2026, 10, 14, 12, 34, 56, 123456, tzinfo=tz)
+
+    monkeypatch.setattr(evaluators_cmds, "datetime", FixedDateTime)
+    prefix = "v1" if key_mode else "api"
+    with respx.mock as mock:
+        mock.get(f"{BASE}/{prefix}/evaluator-definitions").respond(200, json=[
+            {"id": "d1", "eval_key": "quality", "eval_version": "1", "enabled": True},
+        ])
+        mock.post(f"{BASE}/{prefix}/evaluator-definitions").respond(201, json={"id": "d2"})
+        mock.patch(f"{BASE}/{prefix}/evaluator-definitions/d1").respond(200, json={})
+        backfill = mock.post(f"{BASE}/{prefix}/evaluations/backfill").respond(200, json={"queued": True})
+        result = runner.invoke(app, [
+            "--json", *(["--api-key", "key"] if key_mode else []),
+            "evaluators", "deploy", "quality", "--code", code, "--backfill", "7d",
+        ])
+        order = [(call.request.method, call.request.url.path) for call in mock.calls]
+    assert result.exit_code == 0, result.output
+    assert json.loads(backfill.calls[0].request.content) == {
+        "from": "2026-10-07T12:34:56Z",
+        "to": "2026-10-14T12:34:56Z",
+        "eval_key": "quality",
+        "dry_run": False,
+    }
+    assert order[-2:] == [
+        ("PATCH", f"/{prefix}/evaluator-definitions/d1"),
+        ("POST", f"/{prefix}/evaluations/backfill"),
+    ]
 
 
 def test_failed_create_never_disables(logged_in, runner, code):

@@ -15,6 +15,10 @@
 - Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
 - The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
 
+### Fixes
+
+- Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
+
 ## 0.0.2b0 — 2026-09-22
 
 ### Added

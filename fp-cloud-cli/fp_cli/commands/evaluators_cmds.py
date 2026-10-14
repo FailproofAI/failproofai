@@ -160,7 +160,12 @@ def deploy(
         if not re.fullmatch(r"[1-9][0-9]*d", backfill) or int(backfill[:-1]) > 90:
             spec.fail("--backfill must be a duration in days from 1d to 90d")
         now = datetime.now(timezone.utc)
-        backfill_body = {"from": (now - timedelta(days=int(backfill[:-1]))).isoformat(), "to": now.isoformat(), "eval_key": key, "dry_run": False}
+        backfill_body = {
+            "from": dates._iso(now - timedelta(days=int(backfill[:-1]))),
+            "to": dates._iso(now),
+            "eval_key": key,
+            "dry_run": False,
+        }
     cctx = require_auth(ctx.obj)
     existing = [r for r in definitions(cctx) if r.get("eval_key") == key]
     if "eval_version" not in body:

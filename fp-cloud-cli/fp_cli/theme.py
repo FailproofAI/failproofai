@@ -44,9 +44,6 @@ PERM_COLORS = {
 }
 DEFAULT_PERM_COLOR = LABEL  # any unmapped action → neutral dim (never crash / guess a risk)
 
-# Risk rank for ordering actions within a row: read → modify → invoke → destroy.
-PERM_RANK = {PERM_READ: 0, PERM_WRITE: 1, PERM_ACTION: 2, PERM_DANGER: 3}
-
 
 def perm_color(action: str) -> str:
     """The color for a permission action, or the neutral default if it's unmapped."""

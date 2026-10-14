@@ -23,7 +23,7 @@ from .. import _click_compat as click  # the Click Typer is running; see _click_
 from .. import client as api
 from .. import output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
-from ..errors import NotFoundError
+from ..errors import FpCliError, NetworkError, NotFoundError
 from . import _cloud, _write
 
 # The assistant has NO server route at all: `/agent/chat` and `/agent/health` are
@@ -344,7 +344,20 @@ def agent_ask(
                 if typer.confirm("Approve this change", default=False, err=True):
                     decision = "approve"
         answer = {"callId": event["callId"], "decision": decision}
-        api.cloud_request(cctx, "POST", "/api/agent/answer", body=answer)
+        try:
+            api.cloud_request(cctx, "POST", "/api/agent/answer", body=answer)
+        except FpCliError as exc:
+            # Unwind the stream and Rich status before the central error renderer
+            # prints one line. Preserve the transport's exit code and request id.
+            reason = (
+                "cannot reach FailproofAI Cloud" if isinstance(exc, NetworkError)
+                else " ".join(exc.message.split()).rstrip(".")
+            )
+            exc.message = (
+                f"Assistant approval answer failed: {reason}; delivery unconfirmed."
+            )
+            exc.hint = None
+            raise exc from None
         if decision == "reject" and not state.json:
             output.hint("Declined assistant request; no write approved.")
 

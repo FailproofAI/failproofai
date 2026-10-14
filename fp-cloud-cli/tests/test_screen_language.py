@@ -13,6 +13,13 @@ def test_two_accent_palette():
     assert {theme.SUCCESS, theme.ERROR, theme.AMBER, theme.BLUE, theme.SCORE_HIGH} <= {theme.ACCENT, theme.PINK}
 
 
+def test_permission_risk_order_is_independent_of_shared_colours():
+    assert theme.PERM_WRITE == theme.PERM_ACTION == theme.PERM_DANGER
+    assert sorted(["delete", "run", "write", "read"], key=output._perm_act_key) == [
+        "read", "write", "run", "delete",
+    ]
+
+
 def test_open_table_and_header(capsys):
     output.configure(no_color=True)
     output.print_table(["Id", "URL"], [["run-001", "https://cloud.example.test"]], title="Resources")

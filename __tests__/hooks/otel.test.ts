@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
-import { runOtelCommand, OTEL_ORG_OFF } from "../../src/hooks/otel-cli";
+import { runOtelCommand, OTEL_ORG_OFF, waitForCollectorConfig } from "../../src/hooks/otel-cli";
 import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, vscodeProbe, agentOtelWrites, OTEL_AGENTS } from "../../src/hooks/otel-writers";
-import { configFile, credentialsFile, otelAgentStateFile, otelAgentStateDir, otlpSpoolDir, resettablePaths } from "../../src/hooks/fp-home";
+import { collectorHealthFile, configFile, credentialsFile, otelAgentStateFile, otelAgentStateDir, otlpSpoolDir, resettablePaths } from "../../src/hooks/fp-home";
 import { readConfig, updateConfig } from "../../src/hooks/fp-config";
 import { agentSessionsEnabled } from "../../src/hooks/collector-config";
 import { introspectKey } from "../../src/hooks/cloud-introspect";
@@ -14,7 +14,7 @@ import { introspectKey } from "../../src/hooks/cloud-introspect";
 let home: string;
 const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ permissions: ["events:add"] })));
 const originalEnv = { ...process.env };
-const options = () => ({ home, fetchImpl });
+const options = () => ({ home, fetchImpl, waitForCollector: vi.fn(async () => true) });
 function seed(path: string, text: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, text);
@@ -140,8 +140,11 @@ describe("managed OTEL settings", () => {
     expect(parsed.otel).toMatchObject({
       environment: "keep",
       exporter: { "otlp-http": { endpoint: "https://cloud.example/v1/logs", headers: { Authorization: "Bearer capture-test-secret" } } },
-      trace_exporter: { "otlp-http": { endpoint: "https://cloud.example/v1/traces" } },
+      log_user_prompt: false,
     });
+    expect(parsed.otel).not.toHaveProperty("trace_exporter");
+    expect(parsed.otel).not.toHaveProperty("metrics_exporter");
+    expect(result.lines.join("\n")).toContain("log_user_prompt = false kept");
     await runOtelCommand(["disable", "codex"], options());
     expect(readFileSync(path, "utf8")).toBe(before);
   });
@@ -156,7 +159,7 @@ describe("managed OTEL settings", () => {
     expect(() => editAgentConfig("[broken", "codex", writes)).toThrow();
   });
 
-  it("local Codex omits headers from all exporters and restores original config bytes", async () => {
+  it("local Codex writes only the logs exporter without headers and restores original config bytes", async () => {
     const path = agentConfigPath("codex", home);
     const before = '# kept\n[otel] # old config\nexporter = { otlp-http = { endpoint="https://old/v1/logs", protocol="json", headers={Authorization="Bearer old"} } }\n[other]\nkey="kept"\n';
     seed(path, before);
@@ -164,10 +167,10 @@ describe("managed OTEL settings", () => {
     expect(enabled.exitCode, enabled.lines.join("\n")).toBe(0);
     const text = readFileSync(path, "utf8");
     const parsed = parseAgentConfig(text, "codex").otel as Record<string, { "otlp-http": Record<string, unknown> }>;
-    for (const name of ["exporter", "trace_exporter", "metrics_exporter"]) {
-      expect(parsed[name]["otlp-http"]).not.toHaveProperty("headers");
-      expect(parsed[name]["otlp-http"].endpoint).toContain("http://127.0.0.1:4318/v1/");
-    }
+    expect(parsed.exporter["otlp-http"]).not.toHaveProperty("headers");
+    expect(parsed.exporter["otlp-http"].endpoint).toBe("http://127.0.0.1:4318/v1/logs");
+    expect(parsed).not.toHaveProperty("trace_exporter");
+    expect(parsed).not.toHaveProperty("metrics_exporter");
     expect(text).not.toContain("headers");
     expect((await runOtelCommand(["disable", "codex"], options())).exitCode).toBe(0);
     expect(readFileSync(path, "utf8")).toBe(before);
@@ -191,6 +194,109 @@ describe("managed OTEL settings", () => {
     expect(readConfig().collector.otlp?.enabled).toBe(true);
     await runOtelCommand(["disable", agent], options());
     expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("upgrades a previously managed Codex config by releasing traces and metrics, then restores exact bytes", async () => {
+    const path = agentConfigPath("codex", home);
+    const before = '# original\r\n[otel]\r\nlog_user_prompt = false\r\ntrace_exporter = "none"\r\n';
+    seed(path, before);
+    await runOtelCommand(["enable", "codex", "--yes"], options());
+    // Simulate recovery state and file written by the old three-exporter CLI.
+    const state = JSON.parse(readFileSync(otelAgentStateFile("codex"), "utf8"));
+    state.previous.push({ path: ["otel", "trace_exporter"], value: "none" },
+      { path: ["otel", "metrics_exporter"] });
+    const legacy = editAgentConfig(readFileSync(path, "utf8"), "codex", [
+      { path: ["otel", "trace_exporter"], value: { "otlp-http": { endpoint: "https://cloud.example/v1/traces" } } },
+      { path: ["otel", "metrics_exporter"], value: { "otlp-http": { endpoint: "https://cloud.example/v1/metrics" } } },
+    ]);
+    state.writtenHash = (await import("node:crypto")).createHash("sha256").update(legacy).digest("hex");
+    seed(path, legacy);
+    seed(otelAgentStateFile("codex"), JSON.stringify(state));
+    const enabled = await runOtelCommand(["enable", "codex", "--yes"], options());
+    expect(enabled.exitCode).toBe(0);
+    const parsed = parseAgentConfig(readFileSync(path, "utf8"), "codex");
+    expect(parsed.otel).toMatchObject({ trace_exporter: "none", log_user_prompt: false });
+    expect(parsed.otel).not.toHaveProperty("metrics_exporter");
+    expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Codex: on by failproofai");
+    expect((await runOtelCommand(["disable", "codex"], options())).exitCode).toBe(0);
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("keeps a prompt opt-out across re-enable, no-content and disable, with managed status", async () => {
+    const path = agentConfigPath("codex", home);
+    const before = '[otel]\nlog_user_prompt = false\n';
+    seed(path, before);
+    for (const flags of [[], ["--no-content"], []]) {
+      const enabled = await runOtelCommand(["enable", "codex", ...flags], options());
+      expect(enabled.exitCode).toBe(0);
+      expect(enabled.lines.join("\n")).toContain("log_user_prompt = false kept");
+      expect(parseAgentConfig(readFileSync(path, "utf8"), "codex").otel).toMatchObject({ log_user_prompt: false });
+      expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Codex: on by failproofai");
+    }
+    await runOtelCommand(["disable", "codex"], options());
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("can turn content back on after our own no-content enable without inventing a user opt-out", async () => {
+    const path = agentConfigPath("codex", home);
+    seed(path, 'model = "kept"\n');
+    await runOtelCommand(["enable", "codex", "--no-content"], options());
+    const enabled = await runOtelCommand(["enable", "codex"], options());
+    expect(enabled.exitCode).toBe(0);
+    expect(enabled.lines.join("\n")).not.toContain("log_user_prompt = false kept");
+    expect(parseAgentConfig(readFileSync(path, "utf8"), "codex").otel).toMatchObject({ log_user_prompt: true });
+    expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Codex: on by failproofai");
+  });
+
+  it("publishes the transcript switch and waits for acknowledgement before writing Codex settings", async () => {
+    updateConfig({ collector: { sessions: true } });
+    const path = agentConfigPath("codex", home);
+    seed(path, 'model = "kept"\n');
+    const waitForCollector = vi.fn(async (generation: string, timeoutMs: number) => {
+      expect(timeoutMs).toBeGreaterThanOrEqual(1000);
+      expect(readFileSync(path, "utf8")).toBe('model = "kept"\n');
+      const config = JSON.parse(readFileSync(configFile(), "utf8"));
+      expect(config.collector.agents.codex.sessions).toBe(false);
+      expect(config.collector.config_generation).toBe(generation);
+      seed(collectorHealthFile(), JSON.stringify({ ts: Math.floor(Date.now() / 1000), config_generation: generation }));
+      return waitForCollectorConfig(generation, 100);
+    });
+    const enabled = await runOtelCommand(["enable", "codex", "--yes"], { ...options(), waitForCollector });
+    expect(enabled.exitCode).toBe(0);
+    expect(waitForCollector).toHaveBeenCalledOnce();
+    expect(enabled.lines.join("\n")).not.toContain("Warning:");
+    expect(readFileSync(path, "utf8")).toContain("/v1/logs");
+  });
+
+  it("warns on an unacknowledged handoff and rejects stale or wrong-generation health", async () => {
+    updateConfig({ collector: { sessions: true } });
+    const enabled = await runOtelCommand(["enable", "codex", "--yes"], {
+      ...options(), waitForCollector: async () => false,
+    });
+    expect(enabled.exitCode).toBe(0);
+    expect(enabled.lines.join("\n")).toContain("Warning: daemon did not confirm");
+    for (const health of [
+      { ts: Math.floor(Date.now() / 1000), config_generation: "old" },
+      { ts: 1, config_generation: "new" },
+    ]) {
+      seed(collectorHealthFile(), JSON.stringify(health));
+      expect(await waitForCollectorConfig("new", 10)).toBe(false);
+    }
+  });
+
+  it("disable records a Codex resume cutoff and config v2 writes retain it", async () => {
+    updateConfig({ collector: { sessions: true } });
+    await runOtelCommand(["enable", "codex", "--yes"], options());
+    const start = Date.now();
+    await runOtelCommand(["disable", "codex"], options());
+    const raw = JSON.parse(readFileSync(configFile(), "utf8"));
+    expect(raw.collector.agents.codex.sessions).toBeUndefined();
+    expect(raw.collector.agents.codex.sessions_resume_after).toBeGreaterThanOrEqual(start);
+    expect(raw.collector.agents.codex.sessions_resume_after).toBeLessThanOrEqual(Date.now());
+    updateConfig({ mode: "cloud" });
+    expect(JSON.parse(readFileSync(configFile(), "utf8")).collector.agents.codex.sessions_resume_after)
+      .toBe(raw.collector.agents.codex.sessions_resume_after);
+    expect(agentSessionsEnabled("codex")).toBe(true);
   });
 
   it("skips VS Code when absent and resolves macOS, Linux and Windows user paths", async () => {

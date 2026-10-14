@@ -211,7 +211,9 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
       endpoint: `${endpoint}/v1/${signal}`, protocol: "json", ...(!local ? { headers: auth } : {}),
     } });
     return Object.entries({
-      exporter: exporter("logs"), trace_exporter: exporter("traces"), metrics_exporter: exporter("metrics"),
+      // Codex conversation content lives in logs. Runtime traces have no GenAI
+      // attributes and create empty sessions; the server discards metrics.
+      exporter: exporter("logs"),
       log_user_prompt: content,
       log_agent_responses: content,
     }).map(([k, value]) => ({ path: ["otel", k], value }));

@@ -14,7 +14,14 @@ import { INTEGRATION_TYPES,
   type HookScope,
   type IntegrationType,
 } from "./types";
-import { claudeCode, getIntegration, settingsPathsFor, type Integration } from "./integrations";
+import { claudeCode, codexSystemHookEntries, getIntegration, settingsPathsFor, type Integration } from "./integrations";
+import {
+  CODEX_UNTRUSTED_NOTICE,
+  codexHookTrust,
+  installCodexSystemHooks,
+  removeCodexSystemHooks,
+  type CodexSystemInstall,
+} from "./codex-system-hooks";
 import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
@@ -815,8 +822,24 @@ async function installHooksImpl(
 
   // Write hooks for each selected CLI
   const writtenSettingsPaths: { cli: IntegrationType; path: string }[] = [];
+  // Why Codex's user-scope hooks went to hooks.json rather than its system config.
+  let codexFallback: CodexSystemInstall | null = null;
   for (const cliId of selectedClis) {
     const integration = getIntegration(cliId);
+    // Codex runs a hooks.json hook only once a person has trusted it, so a
+    // headless `codex exec` skips every one of ours. Its system config is
+    // trusted as managed: put user-scope hooks there whenever root allows, and
+    // take them out of hooks.json so a trusted copy does not run them twice.
+    if (cliId === "codex" && scope === "user") {
+      const placed = installCodexSystemHooks(codexSystemHookEntries(binaryPath));
+      if (placed.ok) {
+        const userPath = integration.getSettingsPath("user", cwd);
+        if (existsSync(userPath)) integration.removeHooksFromFile(userPath);
+        writtenSettingsPaths.push({ cli: cliId, path: placed.path });
+        continue;
+      }
+      codexFallback = placed;
+    }
     // Usually one path; Hermes returns one per profile (each is a separate home
     // dir with its own config.yaml, and a missed one runs unhooked in silence).
     const settingsPaths = settingsPathsFor(integration, scope, cwd);
@@ -906,6 +929,17 @@ async function installHooksImpl(
     console.log(line);
   }
   if (scope === "project") console.log(`${INDENT}This file can be committed to git: it has no machine-specific paths.`);
+
+  // Codex on hooks.json: say so when Codex will not run them yet.
+  if (codexFallback && !codexFallback.ok) {
+    if (codexFallback.reason === "conflict" || codexFallback.reason === "unreadable" || codexFallback.reason === "write-failed") {
+      console.log(
+        kit.caution(`Couldn't add the Codex hooks to ${codexFallback.path}: ${codexFallback.detail ?? codexFallback.reason}.`),
+      );
+    }
+    const trust = codexHookTrust();
+    if (trust.kind === "untrusted") for (const line of kit.notice("caution", CODEX_UNTRUSTED_NOTICE)) console.log(line);
+  }
 
   // Warn about duplicate-scope installations (Claude Code only — uses HOOK_SCOPES)
   const otherScopes = deduplicateScopes(HOOK_SCOPES, cwd).filter((s) => s !== scope);
@@ -1060,6 +1094,30 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
           : [];
 
     for (const s of scopesToRemove) {
+      // Codex's user-scope hooks may be in its system config (see
+      // ./codex-system-hooks). Taken out first: a machine with no hooks.json
+      // still has them there.
+      let removedFromSystem = 0;
+      if (cliId === "codex" && s === "user") {
+        const system = removeCodexSystemHooks();
+        if (system.status === "removed") {
+          removedFromSystem = system.hooks;
+          if (scope !== "all") {
+            say(screenKit(optsFor(process.stdout)).ok(`Removed ${system.hooks} failproofai ${system.hooks === 1 ? "hook" : "hooks"} from Codex's system config.`));
+            for (const line of screenKit(optsFor(process.stdout)).kv([["settings", system.path]])) say(line);
+          }
+        } else if (system.status === "failed") {
+          // Non-interactive by design (this also runs from the dashboard), so
+          // the fix is to prime sudo and come back.
+          for (const line of screenKit(optsFor(process.stdout)).notice(
+            "caution",
+            `failproofai's Codex hooks are still in ${system.path}: ${system.reason}.\n` +
+              "Run  `sudo -v`,  then this command again.",
+          )) {
+            say(line);
+          }
+        }
+      }
       // Usually one path; Hermes returns one per profile.
       const settingsPaths = settingsPathsFor(integration, s, cwd);
       // A Hermes install copies its managed plugin before updating config.yaml.
@@ -1069,6 +1127,8 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         cliId === "hermes" ? settingsPaths : settingsPaths.filter((p) => existsSync(p));
 
       if (existing.length === 0) {
+        totalRemoved += removedFromSystem;
+        if (removedFromSystem > 0) continue;
         if (scope !== "all" && selectedClis.length === 1) {
           say(screenKit(optsFor(process.stdout)).ok("No settings file found, so there is nothing to remove."));
           nothingToReport = true;
@@ -1076,7 +1136,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
         continue;
       }
 
-      let removedHere = 0;
+      let removedHere = removedFromSystem;
       for (const settingsPath of existing) {
         const removed = integration.removeHooksFromFile(settingsPath);
         removedHere += removed;

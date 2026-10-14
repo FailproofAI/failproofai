@@ -56,6 +56,12 @@ import {
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { enforcingPolicyCount, installHooks, notEnforcingReason } from "./manager";
+import {
+  CODEX_UNTRUSTED_NOTICE,
+  codexHookTrust,
+  removeCodexSystemHooks,
+  type CodexHookTrust,
+} from "./codex-system-hooks";
 import { readInstalledPacks } from "./pack-manifest";
 import { getConfigPathForScope, readScopedHooksConfig } from "./hooks-config";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
@@ -404,6 +410,15 @@ export function removeUserScopeHooks(clis: IntegrationType[], cwd: string): numb
   for (const id of clis) {
     const integration = getIntegration(id);
     if (!integration.scopes.includes("user")) continue;
+    if (id === "codex") {
+      // Codex's user-scope hooks may live in its system config instead; setup
+      // primed sudo, so taking them out of there needs no prompt.
+      const system = removeCodexSystemHooks();
+      if (system.status === "removed") removed += system.hooks;
+      else if (system.status === "failed") {
+        hookLogWarn(`could not remove failproofai's Codex hooks from ${system.path}: ${system.reason}`);
+      }
+    }
     for (const settingsPath of settingsPathsFor(integration, "user", cwd)) {
       // Hermes is asked even without a config file, so it can clear a plugin
       // directory left behind by an interrupted install.
@@ -1290,7 +1305,20 @@ export async function runConfigureWizard(
   // And any record of an earlier failure is now false: this machine got set up.
   clearOnboardingAttempt();
 
-  write(doneLines(kit, { elapsedMs: Date.now() - started, done, cwd, agents: selected.length, connected: connected || cloud.kind === "kept" }));
+  // Codex runs hooks from hooks.json only once they are trusted; from its
+  // system config always. Said here, and not counted as enforcing until it is.
+  const codexTrust = selected.includes("codex") ? codexHookTrust() : undefined;
+  if (codexTrust?.kind === "system") done.push(kit.ok(`Codex hooks are in its system config (${codexTrust.path}), which Codex runs without asking`));
+  write(
+    doneLines(kit, {
+      elapsedMs: Date.now() - started,
+      done,
+      cwd,
+      agents: selected.length,
+      connected: connected || cloud.kind === "kept",
+      codexTrust,
+    }),
+  );
 
   return {
     applied: true,
@@ -1478,10 +1506,14 @@ function failClosedPacks(): Array<{ id: string | null }> {
  */
 export function doneLines(
   kit: ReturnType<typeof screenKit>,
-  state: { elapsedMs: number; done: string[]; cwd: string; agents: number; connected: boolean },
+  state: { elapsedMs: number; done: string[]; cwd: string; agents: number; connected: boolean; codexTrust?: CodexHookTrust },
 ): string[] {
   const lines = [kit.head("Done", `in ${(state.elapsedMs / 1000).toFixed(1)}s`), ...state.done];
-  const on = `${state.agents} ${state.agents === 1 ? "agent" : "agents"}`;
+  // Codex with untrusted hooks runs none of them: it is not an agent anything
+  // enforces on, whatever was written.
+  const codexSkips = state.codexTrust?.kind === "untrusted";
+  const agents = codexSkips ? Math.max(0, state.agents - 1) : state.agents;
+  const on = `${agents} ${agents === 1 ? "agent" : "agents"}`;
   if (notEnforcingReason(state.cwd)) {
     lines.push(
       kit.caution("Policies are not enforcing yet."),
@@ -1489,7 +1521,9 @@ export function doneLines(
     );
   } else {
     const { count, custom } = enforcingPolicyCount(state.cwd);
-    if (count > 0 || custom) {
+    // Codex was the only agent, and it runs none of the hooks: nothing enforces anywhere.
+    const nowhere = codexSkips && agents === 0;
+    if ((count > 0 || custom) && !nowhere) {
       lines.push(
         kit.ok(
           count === 0
@@ -1514,10 +1548,11 @@ export function doneLines(
           first.id ? `failproofai policies remove ${first.id}` : "failproofai policies",
         ),
       );
-    } else if (count === 0 && !custom) {
+    } else if (count === 0 && !custom && !nowhere) {
       lines.push(kit.ok(`Policies are enforcing on ${on}.`));
     }
   }
+  if (codexSkips) lines.push(...kit.notice("caution", CODEX_UNTRUSTED_NOTICE));
   if (!state.connected) lines.push(`  Connect to cloud any time:  ${kit.cmd("failproofai config")}`);
   for (const warning of describeCustomPolicies(state.cwd).warnings) {
     lines.push(kit.caution(warning.replace(/^! /, "")));

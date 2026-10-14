@@ -24,6 +24,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readCloudCredentials } from "./cloud-enrollment";
+import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
@@ -145,6 +146,11 @@ export interface StatusFacts {
   agents: { traced: number; notTraced?: number; notInstalled: number };
   policies: StatusPolicies;
   notEnforcing: NotEnforcingReason | null;
+  /**
+   * Whether Codex runs failproofai's user-scope hooks. Codex skips hooks.json
+   * hooks nobody has trusted, so hooks being installed is not enough.
+   */
+  codex?: CodexHookTrust;
 }
 
 /** Seams for everything that would otherwise reach a service manager, PATH or the network. */
@@ -155,6 +161,7 @@ export interface StatusDeps {
   daemonAnswering?: () => boolean;
   detectInstalled?: () => IntegrationType[];
   notEnforcing?: (cwd?: string) => NotEnforcingReason | null;
+  codexTrust?: () => CodexHookTrust;
 }
 
 /**
@@ -364,7 +371,16 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
     },
     policies: summarizePolicySources(cwd),
     notEnforcing,
+    codex: readCodexTrust(deps),
   };
+}
+
+function readCodexTrust(deps: StatusDeps): CodexHookTrust {
+  try {
+    return (deps.codexTrust ?? codexHookTrust)();
+  } catch {
+    return { kind: "none" };
+  }
 }
 
 /** The one line that needs attention, before it is painted. */
@@ -372,6 +388,8 @@ export interface StatusAttention {
   severity: "fail" | "caution";
   text: string;
   fix?: string;
+  /** A second line for a fix that is more than one command; `backticks` mark commands. */
+  detail?: string;
 }
 
 /**
@@ -415,6 +433,10 @@ export function pickStatusAttention(facts: StatusFacts): StatusAttention | null 
             ? "failproofai policies add"
             : `failproofai policies add ${CORE_SOURCE}`;
     return { severity: "caution", text: "Policies are not enforcing yet.", fix };
+  }
+  if (facts.codex?.kind === "untrusted") {
+    const [text, fixLine] = CODEX_UNTRUSTED_NOTICE.split("\n");
+    return { severity: "caution", text, detail: fixLine };
   }
   if (cloud.kind !== "none" && !daemon.answering && daemon.service !== "running") {
     const idle =
@@ -531,6 +553,18 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
     return policies.anyPack ? `0 on from ${policies.anyPack}` : "None installed";
   };
 
+  // Only when failproofai's Codex hooks are installed at user scope: whether
+  // Codex actually runs them is the one per-agent fact this screen keeps,
+  // because hooks being written does not make them run.
+  const codexValue = (): string | null => {
+    const codex = facts.codex;
+    if (!codex || codex.kind === "none") return null;
+    if (codex.kind === "system") return `${kit.on} Enforcing (system config)`;
+    if (codex.kind === "trusted") return `${kit.on} Enforcing (hooks trusted)`;
+    if (codex.kind === "ungated") return `${kit.on} Enforcing`;
+    return `${kit.off} Not enforcing: ${codex.untrusted === codex.total ? "hooks not trusted" : `${codex.untrusted} of ${codex.total} hooks not trusted`}`;
+  };
+
   const machineRows: Array<[string, string]> = [
     ["daemon", daemonValue()],
     ["paused", facts.pauses.length === 0 ? "No" : many(facts.pauses.length, "session")],
@@ -571,6 +605,7 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
         (agents.notInstalled > 0 ? `, ${agents.notInstalled} not installed` : ""),
     ],
     ["policies", policiesValue()],
+    ...(codexValue() ? [["codex", codexValue()!] as [string, string]] : []),
   ];
 
   const sections: Array<[string, Array<[string, string]>]> = [
@@ -588,7 +623,11 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
 
   const attention = pickStatusAttention(facts);
   if (attention) {
-    screen.push("", attention.severity === "fail" ? kit.fail(attention.text, attention.fix) : kit.caution(attention.text, attention.fix));
+    if (attention.detail) {
+      screen.push("", ...kit.notice(attention.severity, `${attention.text}\n${attention.detail}`));
+    } else {
+      screen.push("", attention.severity === "fail" ? kit.fail(attention.text, attention.fix) : kit.caution(attention.text, attention.fix));
+    }
   }
   if (facts.pauses.length > 0) {
     const id = facts.pauses.length === 1 ? facts.pauses[0].sessionId : "<id>";

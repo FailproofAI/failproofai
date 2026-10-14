@@ -88,6 +88,14 @@ Run `failproofai config --status` to detect a disabled, incomplete, duplicated,
 or newly unconfigured profile, or one still on legacy shell hooks (reported as
 "Hermes cron jobs are not checked").
 
+### Codex hook trust
+
+Codex 0.129 and later runs a hook from `~/.codex/hooks.json` only after you approve it in interactive `codex` ("Review hooks"); until then, every Codex session — headless `codex exec` included — skips it. Hooks in Codex's system config, `/etc/codex/config.toml` on Linux and macOS, run without that approval.
+
+So when `failproofai config` (or `policies --install --cli codex` at user scope) can use sudo, it writes the Codex hooks into `/etc/codex/config.toml`, between `# >>> failproofai managed hooks >>>` and `# <<< failproofai managed hooks <<<`, and leaves the rest of that file as it was. The file applies to every account on the machine. `failproofai uninstall` and unticking Codex in `failproofai config` take the block out again.
+
+Without sudo, and on Windows, the hooks stay in `~/.codex/hooks.json`. `failproofai config` and `failproofai config --status` then do not count Codex as enforcing until the hooks are approved, and say how to fix it: re-run `failproofai config` and allow sudo, or open `codex` once and approve the hooks.
+
 ## Install capture and policy hooks
 
 <Tabs>

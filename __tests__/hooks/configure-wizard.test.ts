@@ -472,6 +472,46 @@ describe("doneLines", () => {
   });
 });
 
+describe("doneLines — Codex trust", () => {
+  const untrusted = { kind: "untrusted", path: "/h/.codex/hooks.json", untrusted: 10, total: 10 } as const;
+  const WARNING = [
+    "▲ Codex won't run failproofai's hooks until they're trusted.",
+    "  Re-run  failproofai config  and allow sudo, or open  codex  once and approve the hooks.",
+  ];
+
+  it("does not count Codex as enforcing while its hooks are untrusted, and says how to fix it", () => {
+    vi.mocked(notEnforcingReason).mockReturnValue(null);
+    vi.mocked(enforcingPolicyCount).mockReturnValue({ count: 1, custom: false });
+    const lines = doneLines(kit, { elapsedMs: 1, done: [], cwd: "/x", agents: 2, connected: true, codexTrust: untrusted });
+    expect(lines).toContain("✓ 1 policy is enforcing on 1 agent.");
+    const at = lines.indexOf(WARNING[0]);
+    expect(lines.slice(at, at + 2)).toEqual(WARNING);
+  });
+
+  it("claims nothing enforces when Codex was the only agent", () => {
+    vi.mocked(notEnforcingReason).mockReturnValue(null);
+    vi.mocked(enforcingPolicyCount).mockReturnValue({ count: 1, custom: false });
+    const lines = doneLines(kit, { elapsedMs: 1, done: [], cwd: "/x", agents: 1, connected: true, codexTrust: untrusted });
+    expect(lines.join("\n")).not.toMatch(/enforcing on/);
+    expect(lines).toContain(WARNING[0]);
+  });
+
+  it("counts Codex when its hooks are in the system config", () => {
+    vi.mocked(notEnforcingReason).mockReturnValue(null);
+    vi.mocked(enforcingPolicyCount).mockReturnValue({ count: 1, custom: false });
+    const lines = doneLines(kit, {
+      elapsedMs: 1,
+      done: [],
+      cwd: "/x",
+      agents: 1,
+      connected: true,
+      codexTrust: { kind: "system", path: "/etc/codex/config.toml" },
+    });
+    expect(lines).toContain("✓ 1 policy is enforcing on 1 agent.");
+    expect(lines.join("\n")).not.toContain("trusted");
+  });
+});
+
 describe("doneLines — custom policy files", () => {
   it("names a policy file that will not load, which the review step used to", () => {
     const dir = mkdtempSync(resolve(tmpdir(), "fpai-done-"));

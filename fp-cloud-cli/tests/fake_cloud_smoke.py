@@ -274,7 +274,9 @@ def main():
         transcript.append("$ fp agent ask 'Count events' [interactive approval]\n" + output.decode(errors="replace") + f"\nexit {proc.returncode}\n")
         assert proc.returncode == 0 and sent, transcript[-1]
         assert Cloud.answers[-1]["decision"] == "approve"
-        rendered = output.decode(errors="replace")
+        # CI may force colour even with NO_COLOR, inserting ANSI spans inside
+        # the wordmark. Compare visible text without weakening the order check.
+        rendered = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output.decode(errors="replace"))
         assert rendered.index("failproof ai") < rendered.index("Events by agent")
     server.shutdown()
     (artifacts / "fp-user-smoke.txt").write_text("\n".join(transcript), encoding="utf-8")

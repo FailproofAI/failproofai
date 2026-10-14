@@ -4384,9 +4384,8 @@ def render_incidents(incidents: Sequence[Any], *, show_id: bool = False) -> None
         identity = Text(label, style=theme.TEXT)
         # Keep tags with the title so narrow terminals never lose provenance
         # by dropping a rightmost column.
-        for key, tag in (("harnesses", "harness"), ("agent_ids", "agent")):
-            for value in getattr(i, key, None) or []:
-                identity.append(f" [{tag}:{value}]", style=theme.TEXT_DIM)
+        for value in getattr(i, "agent_ids", None) or []:
+            identity.append(f" [agent:{value}]", style=theme.TEXT_DIM)
         rows.append([
             Text(iid, style=theme.TEXT_DIM),
             identity,
@@ -4408,7 +4407,9 @@ def render_issue_facets(data: Dict[str, Any]) -> None:
     facets = data.get("facets", data)
     rows = []
     for facet, values in facets.items():
-        if not isinstance(values, list):
+        if facet not in (
+            "agents", "environments", "machines", "sources", "alerts", "audits", "assignees",
+        ) or not isinstance(values, list):
             continue
         for item in values:
             if isinstance(item, dict):

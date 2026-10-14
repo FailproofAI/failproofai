@@ -115,60 +115,6 @@ fn epoch_millis_become_rfc3339_with_microseconds() {
     assert!(s < s1);
 }
 
-#[tokio::test]
-async fn hooks_stamp_each_cli_on_pairs_and_separate_allow_buckets() {
-    for verbosity in [HooksVerbosity::All, HooksVerbosity::Decisions] {
-        let store = tmpdir("harness-store");
-        let state = tmpdir("harness-state");
-        let spool = tmpdir("harness-spool");
-        let mut rows = String::new();
-        for cli in [
-            "claude",
-            "codex",
-            "copilot",
-            "cursor",
-            "pi",
-            "factory",
-            "antigravity",
-            "goose",
-            "opencode",
-            "hermes",
-            "devin",
-            "openclaw",
-        ] {
-            for decision in ["allow", "deny"] {
-                let mut row: Value =
-                    serde_json::from_str(&allow_row(1785740912184, "Bash")).unwrap();
-                row["integration"] = serde_json::json!(cli);
-                row["decision"] = serde_json::json!(decision);
-                rows.push_str(&row.to_string());
-                rows.push('\n');
-            }
-        }
-        fs::write(store.join("page.jsonl"), rows).unwrap();
-        run_once(&store, &state, &spool, verbosity).await;
-        let events = spooled(&spool);
-        assert_eq!(
-            events.len(),
-            if verbosity == HooksVerbosity::All {
-                48
-            } else {
-                36
-            }
-        );
-        for event in events {
-            let cli = event["harness"].as_str().unwrap();
-            assert_eq!(event["agent_id"], format!("{cli}-repo"));
-            if verbosity == HooksVerbosity::Decisions && event["outcome"] == "allow" {
-                assert_eq!(event["failproofai_allow_count"], 1);
-            }
-        }
-        fs::remove_dir_all(&store).ok();
-        fs::remove_dir_all(&state).ok();
-        fs::remove_dir_all(&spool).ok();
-    }
-}
-
 #[test]
 fn a_leap_day_is_handled() {
     // The reason this uses a date library rather than hand-rolled maths.

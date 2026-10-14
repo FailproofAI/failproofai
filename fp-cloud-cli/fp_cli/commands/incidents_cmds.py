@@ -70,13 +70,13 @@ def _fail(state: AppState, exc: Exception, *, incident_id: str = "") -> None:
 
 
 def _issue_filters(
-    agent, harness, environment, machine, source, alert, audit, assignee,
+    agent, environment, machine, source, alert, audit, assignee,
     since, until, search,
 ) -> dict:
     """The shared list/count/facets contract; repeated values become CSV."""
     filters = {}
     for key, values in (
-        ("agent", agent), ("harness", harness), ("environment", environment),
+        ("agent", agent), ("environment", environment),
         ("machine", machine), ("source", source), ("alert_id", alert),
         ("audit_id", audit), ("assignee", assignee),
     ):
@@ -124,7 +124,6 @@ def incidents_list(
     limit: int = typer.Option(50, "--limit", "-n", help="Max incidents to return."),
     show_id: bool = typer.Option(False, "--show-id", help="Show the full incident id instead of the short form (always full in --json)."),
     agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
-    harness: Optional[List[str]] = typer.Option(None, "--harness", help="Harness (repeatable or CSV)."),
     environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
     machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
     source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
@@ -153,7 +152,7 @@ def incidents_list(
     state: AppState = ctx.obj
     _validate_states(state_filter)
     validate_limit(limit)
-    filters = _issue_filters(agent, harness, environment, machine, source, alert, audit, assignee, since, until, search)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
     if alert_id and "alert_id" in filters:
         raise typer.BadParameter("use --alert or --alert-id, not both")
     cctx = require_auth(state)
@@ -172,7 +171,6 @@ def incidents_count(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
     agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
-    harness: Optional[List[str]] = typer.Option(None, "--harness", help="Harness (repeatable or CSV)."),
     environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
     machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
     source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
@@ -194,7 +192,7 @@ def incidents_count(
     """
     state: AppState = ctx.obj
     _validate_states(state_filter)
-    filters = _issue_filters(agent, harness, environment, machine, source, alert, audit, assignee, since, until, search)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
     cctx = require_auth(state)
     count = api.count_incidents(cctx, state=state_filter, filters=filters, on_filters_unavailable=_filters_unavailable)
     if state.json:
@@ -207,7 +205,6 @@ def incidents_facets(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
     agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
-    harness: Optional[List[str]] = typer.Option(None, "--harness", help="Harness (repeatable or CSV)."),
     environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
     machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
     source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
@@ -226,7 +223,7 @@ def incidents_facets(
     """
     state: AppState = ctx.obj
     _validate_states(state_filter)
-    filters = _issue_filters(agent, harness, environment, machine, source, alert, audit, assignee, since, until, search)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
     data = api.issue_facets(require_auth(state), state=state_filter, filters=filters)
     if state.json:
         output.emit_json(data)

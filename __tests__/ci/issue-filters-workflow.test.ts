@@ -15,15 +15,12 @@ describe("issue-filter stacked verification", () => {
     expect(workflow.on.pull_request.branches).toContain("feat/fp-cli-parity");
     expect(workflow.on.workflow_dispatch).toBeUndefined();
     expect(workflow.permissions).toEqual({ contents: "read" });
-    expect(workflow.on.pull_request.paths).toContain("crates/fpai-collect/**");
     expect(workflow.on.pull_request.paths).toContain("fp-cloud-cli/**");
   });
 
-  it("runs collector formatting, clippy and all cargo tests", () => {
-    const run = scripts(workflow.jobs.collector);
-    expect(run).toContain("cargo fmt --all -- --check");
-    expect(run).toContain("cargo clippy -p fpai-collect --all-targets -- -D warnings");
-    expect(run).toContain("cargo test -p fpai-collect");
+  it("keeps this client-only feature's verification scoped to the CLI", () => {
+    expect(Object.keys(workflow.jobs)).toEqual(["cloud-cli"]);
+    expect(workflow.on.pull_request.paths).not.toContain("crates/fpai-collect/**");
   });
 
   it("tests both auth modes across supported Python versions and a clean wheel", () => {

@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [feat/fp-cli-parity]
     paths:
-      - "crates/fpai-collect/**"
       - "fp-cloud-cli/**"
       - ".github/workflows/issue-filters.yml"
       - "CHANGELOG.md"
@@ -19,22 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  collector:
-    name: Collector harness
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.97.1"
-          components: rustfmt, clippy
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy -p fpai-collect --all-targets -- -D warnings
-      - run: cargo test -p fpai-collect
-
   cloud-cli:
     name: Issue filters (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

@@ -432,7 +432,6 @@ class Incident:
     activity: Optional[List[Dict[str, Any]]] = None
     #: Stored evidence scope, returned as top-level fields by Cloud.
     agent_ids: List[str] = field(default_factory=list)
-    harnesses: List[str] = field(default_factory=list)
     environments: List[str] = field(default_factory=list)
     machine_ids: List[str] = field(default_factory=list)
     scope_computed_at: Optional[str] = None
@@ -468,7 +467,6 @@ class Incident:
             comments=d.get("comments"),
             activity=d.get("activity"),
             agent_ids=list(d.get("agent_ids") or []),
-            harnesses=list(d.get("harnesses") or []),
             environments=list(d.get("environments") or []),
             machine_ids=list(d.get("machine_ids") or []),
             scope_computed_at=d.get("scope_computed_at"),

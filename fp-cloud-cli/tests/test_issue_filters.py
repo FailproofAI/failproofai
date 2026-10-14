@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 import respx
+from typer.main import get_command
 
 from fp_cli import client, dates, output
 from fp_cli.app import app
@@ -14,7 +15,6 @@ from fp_cli.models import Incident
 BASE = "http://dash.test"
 FILTER_FLAGS = [
     "--agent", "claude-repo", "--agent", "codex-repo",
-    "--harness", "claude", "--harness", "codex",
     "--env", "prod", "--env", "staging",
     "--machine", "m1", "--machine", "m2",
     "--source", "alert", "--source", "audit",
@@ -26,7 +26,6 @@ FILTER_FLAGS = [
 ]
 FILTERS = {
     "agent": "claude-repo,codex-repo",
-    "harness": "claude,codex",
     "environment": "prod,staging",
     "machine": "m1,m2",
     "source": "alert,audit",
@@ -39,12 +38,11 @@ FILTERS = {
 }
 ISSUE = {
     "id": "i1", "title": "Timeouts",
-    "agent_ids": ["claude-repo"], "harnesses": ["claude"],
+    "agent_ids": ["claude-repo"],
     "environments": ["prod"], "machine_ids": ["m1"],
     "scope_computed_at": "2026-10-14T00:00:00Z",
 }
 FACETS = {
-    "harnesses": [{"value": "claude", "count": 3}],
     "agents": [{"value": "claude-repo", "count": 2}],
     "alerts": [{"id": "a1", "name": "Tool failure alert", "count": 4}],
     "audits": [{"id": "au1", "name": "Weekly quality audit", "count": 5}],
@@ -86,7 +84,7 @@ def test_all_filters_in_session_and_key_mode(logged_in, runner, key_mode, comman
     payload = json.loads(result.stdout)
     if command == "list":
         row = payload["issues"][0]
-        for key in ("agent_ids", "harnesses", "environments", "machine_ids", "scope_computed_at"):
+        for key in ("agent_ids", "environments", "machine_ids", "scope_computed_at"):
             assert row[key] == ISSUE[key]
         assert "scope" not in row
     elif command == "count":
@@ -103,7 +101,7 @@ def test_old_nonempty_list_warns_without_extra_request(logged_in, runner, key_mo
     respx.get(f"{BASE}{prefix}/issues").respond(200, json=[{"id": "old"}])
     auth = ["--api-key", "key"] if key_mode else []
     result = runner.invoke(app, ["--json", "--quiet", *auth, "issues", "list",
-                                 "--harness", "claude", "--env", "prod"])
+                                 "--agent", "claude-repo", "--env", "prod"])
     assert result.exit_code == 0, result.output
     assert result.stderr.count("not available on this FailproofAI Cloud yet") == 1
     assert "unfiltered" in result.stderr
@@ -120,7 +118,7 @@ def test_old_empty_result_probes_once_and_preserves_json(logged_in, runner, key_
     respx.get(path).respond(200, json=[] if command == "list" else {"count": 0})
     facets = respx.get(f"{BASE}{prefix}/issues/facets").respond(404, json={"error": "not found"})
     auth = ["--api-key", "key"] if key_mode else []
-    result = runner.invoke(app, ["--json", "--quiet", *auth, "issues", command, "--harness", "claude"])
+    result = runner.invoke(app, ["--json", "--quiet", *auth, "issues", command, "--agent", "claude-repo"])
     assert result.exit_code == 0, result.output
     assert result.stderr.count("not available on this FailproofAI Cloud yet") == 1
     assert facets.call_count == 1
@@ -151,10 +149,10 @@ def test_empty_list_on_new_cloud_probes_facets_without_warning(logged_in, runner
 
 @respx.mock
 @pytest.mark.parametrize("rows", [
-    [{"id": "manual", "harnesses": []}],
+    [{"id": "manual", "agent_ids": []}],
     [{"id": "legacy"}, ISSUE],
 ])
-def test_any_raw_harnesses_key_confirms_support_without_probe(logged_in, runner, rows):
+def test_any_raw_agent_ids_key_confirms_support_without_probe(logged_in, runner, rows):
     respx.get(f"{BASE}/api/issues").respond(200, json=rows)
     result = runner.invoke(app, ["--json", "issues", "list", "--source", "manual"])
     assert result.exit_code == 0, result.output
@@ -170,7 +168,7 @@ def test_empty_result_probe_and_warning_are_once_per_process(logged_in, runner, 
     route = respx.get(f"{BASE}/api/issues/facets").respond(
         200 if available else 404, json=FACETS if available else {})
     results = [
-        runner.invoke(app, ["--json", "issues", command, "--harness", "claude"])
+        runner.invoke(app, ["--json", "issues", command, "--agent", "claude-repo"])
         for command in ("list", "count", "list")
     ]
     assert all(result.exit_code == 0 for result in results)
@@ -182,7 +180,7 @@ def test_empty_result_probe_and_warning_are_once_per_process(logged_in, runner, 
 @respx.mock
 def test_legacy_row_warning_is_once_per_process(logged_in, runner):
     respx.get(f"{BASE}/api/issues").respond(200, json=[{"id": "old"}])
-    results = [runner.invoke(app, ["--json", "issues", "list", "--harness", "claude"])
+    results = [runner.invoke(app, ["--json", "issues", "list", "--agent", "claude-repo"])
                for _ in range(2)]
     assert all(result.exit_code == 0 for result in results)
     assert "".join(result.stderr for result in results).count("unfiltered") == 1
@@ -194,14 +192,14 @@ def test_legacy_row_warning_is_once_per_process(logged_in, runner):
 def test_probe_errors_are_not_disguised_as_older_cloud(logged_in, runner, status):
     respx.get(f"{BASE}/api/issues/count").respond(200, json={"count": 0})
     respx.get(f"{BASE}/api/issues/facets").respond(status, json={"error": "probe failed"})
-    result = runner.invoke(app, ["--json", "issues", "count", "--harness", "claude"])
+    result = runner.invoke(app, ["--json", "issues", "count", "--agent", "claude-repo"])
     assert result.exit_code != 0
     assert "unfiltered" not in result.stderr
 
 
 @pytest.mark.parametrize("command", ["list", "count", "facets"])
 @pytest.mark.parametrize("flags", [
-    ["--source", "invalid"], ["--harness", ""], ["--agent", "a,,b"],
+    ["--source", "invalid"], ["--agent", ""], ["--agent", "a,,b"],
     ["--since", "yesterday"], ["--until", "2026-10-14"],
 ])
 @respx.mock
@@ -216,11 +214,11 @@ def test_relative_since_keeps_until_and_csv_is_normalized(logged_in, runner, mon
     real = dates.resolve_range
     now = datetime(2026, 10, 14, tzinfo=timezone.utc)
     monkeypatch.setattr(dates, "resolve_range", lambda *args: real(*args, now=now))
-    expected = {"harness": "claude,codex", "opened_from": "2026-10-07T00:00:00Z",
+    expected = {"agent": "claude-repo,codex-repo", "opened_from": "2026-10-07T00:00:00Z",
                 "opened_to": "2026-10-14T00:00:00Z"}
     route = respx.get(f"{BASE}/api/issues/count").respond(200, json={"count": 3})
     result = runner.invoke(app, ["--json", "issues", "count",
-        "--harness", "claude, codex", "--harness", "claude",
+        "--agent", "claude-repo, codex-repo", "--agent", "claude-repo",
         "--since", "7d", "--until", "2026-10-14T00:00:00Z"])
     assert result.exit_code == 0, result.output
     assert dict(route.calls[0].request.url.params) == expected
@@ -233,32 +231,44 @@ def test_existing_alert_id_path_is_kept_and_combined_filters_use_issues(logged_i
     result = runner.invoke(app, ["--json", "issues", "list", "--alert-id", "a1"])
     assert result.exit_code == 0, result.output
     assert legacy.called
-    route = respx.get(f"{BASE}/api/issues").respond(200, json=[{**ISSUE, "harnesses": ["codex"]}])
-    result = runner.invoke(app, ["--json", "issues", "list", "--alert-id", "a1", "--harness", "codex"])
+    route = respx.get(f"{BASE}/api/issues").respond(200, json=[{**ISSUE, "agent_ids": ["codex-repo"]}])
+    result = runner.invoke(app, ["--json", "issues", "list", "--alert-id", "a1", "--agent", "codex-repo"])
     assert result.exit_code == 0, result.output
-    assert dict(route.calls[0].request.url.params) == {"limit": "50", "harness": "codex", "alert_id": "a1"}
+    assert dict(route.calls[0].request.url.params) == {"limit": "50", "agent": "codex-repo", "alert_id": "a1"}
 
 
-def test_human_rows_include_harness_and_agent_tags(capsys):
+def test_human_rows_include_agent_tags(capsys):
     output.render_incidents([Incident.from_dict(ISSUE)])
     out = capsys.readouterr().out
-    assert "[harness:claude]" in out
     assert "[agent:claude-repo]" in out
+
+
+@pytest.mark.parametrize("command", ["list", "count", "facets"])
+def test_issue_commands_offer_only_the_supported_filter_flags(command):
+    cmd = get_command(app).commands["issues"].commands[command]
+    flags = {flag for param in cmd.params for flag in getattr(param, "opts", [])}
+    expected = {
+        "--state", "--agent", "--env", "--machine", "--source", "--alert", "--audit",
+        "--assignee", "--since", "--until", "--search",
+    }
+    if command == "list":
+        expected.update(("--alert-id", "--limit", "-n", "--show-id"))
+    assert flags == expected
 
 
 def test_older_issue_defaults_scope_fields_without_inventing_tags(capsys):
     issue = Incident.from_dict({"id": "old", "title": "Old issue"})
-    assert issue.agent_ids == issue.harnesses == issue.environments == issue.machine_ids == []
+    assert issue.agent_ids == issue.environments == issue.machine_ids == []
     assert issue.scope_computed_at is None
     output.render_incidents([issue])
     out = capsys.readouterr().out
-    assert "[harness:" not in out and "[agent:" not in out
+    assert "[agent:" not in out
 
 
 def test_human_facets_show_values_counts_and_empty_state(capsys):
     output.render_issue_facets(FACETS)
     out = capsys.readouterr().out
-    assert "claude" in out and "3" in out and "claude-repo" in out
+    assert "2" in out and "claude-repo" in out
     assert "Tool failure alert" in out and "4" in out
     assert "Weekly quality audit" in out and "5" in out
     assert "a1" not in out and "au1" not in out
@@ -274,11 +284,20 @@ def test_unnamed_alert_and_audit_facets_fall_back_to_id(capsys):
     assert "a1" in out and "au1" in out
 
 
+def test_human_facets_ignore_dimensions_outside_the_issue_filters(capsys):
+    output.render_issue_facets({
+        **FACETS, "unrelated": [{"value": "unsupported-value", "count": 1}],
+    })
+    out = capsys.readouterr().out
+    assert "claude-repo" in out
+    assert "unrelated" not in out and "unsupported-value" not in out
+
+
 def test_programmatic_client_reports_missing_filters_without_printing():
     def handle(request):
         return httpx.Response(404, json={}) if request.url.path.endswith("/facets") else httpx.Response(200, json=[])
     ctx = client.ClientContext(BASE, token="tok", transport=httpx.MockTransport(handle))
     warnings = []
-    assert client.list_incidents(ctx, filters={"harness": "codex"},
+    assert client.list_incidents(ctx, filters={"agent": "codex-repo"},
                                  on_filters_unavailable=lambda: warnings.append(True)) == []
     assert warnings == [True]

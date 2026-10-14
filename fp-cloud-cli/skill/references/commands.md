@@ -188,18 +188,18 @@ The single board for everything needing human attention — alert breaches (`sou
 - `issues facets` — available filter values with counts; read-only, needs `issues:read`.
 
 `list`, `count` and `facets` share filters (session and API-key mode):
-`--agent`, `--harness`, `--env`, `--machine`, `--source alert|audit|manual`,
+`--agent`, `--env`, `--machine`, `--source alert|audit|manual`,
 `--alert <id>`, `--audit <id>`, `--assignee EMAIL|me|unassigned`.
 Each accepts repeated flags or comma-separated values. Different dimensions combine
 with AND; values within one dimension combine with OR. `--since` accepts the existing
 `all|15m|1h|6h|24h|7d` presets or an RFC3339 timestamp; `--until` accepts RFC3339.
 Dates filter when the issue **opened**, not when it last fired. `--search TEXT`
-searches title + summary. Human issue rows read harness/agent tags from top-level
-`harnesses`/`agent_ids`; `--json` also keeps `environments`, `machine_ids` and
+searches title + summary. Human issue rows read agent tags from top-level
+`agent_ids`; `--json` also keeps `environments`, `machine_ids` and
 `scope_computed_at`. Facets render alert/audit names; JSON retains their ids.
 Global `--json` goes before `issues`, and facets JSON preserves the server response.
 On an older Cloud, missing facets exits 6 with “not available on this FailproofAI Cloud
-yet”. A returned row's `harnesses` key confirms list support without another request.
+yet”. A returned row's `agent_ids` key confirms list support without another request.
 Non-empty legacy rows warn once. Empty lists/zero counts probe facets at most once
 per process and warn once if missing (also under `--json`/`--quiet`); positive
 counts make no extra request.

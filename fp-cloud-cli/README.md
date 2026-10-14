@@ -133,28 +133,27 @@ Issue filters work with either a signed-in session or an API key carrying `issue
 
 ```bash
 fp --json issues facets --env prod
-fp issues list --harness claude --harness codex --env prod --assignee me --since 7d
+fp issues list --agent claude-repo --agent codex-repo --env prod --assignee me --since 7d
 fp --json issues count --source audit --audit weekly-audit --machine ci-runner-01
 fp issues list --agent claude-checkout --assignee unassigned --search "tool timeout" \
   --since 2026-10-01T00:00:00Z --until 2026-10-14T00:00:00Z
 ```
 
-`issues list`, `count` and `facets` share `--agent`, `--harness`, `--env`,
+`issues list`, `count` and `facets` share `--agent`, `--env`,
 `--machine`, `--source alert|audit|manual`, `--alert`, `--audit` and
 `--assignee EMAIL|me|unassigned`. These accept repeated flags or comma-separated
 values (OR within a filter, AND between filters). `--since` accepts the existing
 `all|15m|1h|6h|24h|7d` presets or RFC3339; `--until` accepts RFC3339. Dates apply
 to issue opening, and `--search` searches title + summary. Human rows show the
-stored harness/agent scope; facets show available values and counts.
+stored agent scope; facets show available values and counts.
 
 Older Clouds may ignore the new query parameters. A returned issue's top-level
-`harnesses` key confirms filter support without another request. Non-empty
+`agent_ids` key confirms filter support without another request. Non-empty
 legacy rows warn once; empty lists or zero counts probe facets at most once
 per process, and a missing route warns once that results may be unfiltered.
 Positive counts make no extra request. Warnings leave stdout JSON usable. Calling
 missing `facets` directly exits 6 with “not available on this FailproofAI Cloud yet”.
-Upgrade Cloud for filtering; the collector's new `harness` event field is
-additive and ignored by old servers. Existing `list --alert-id` remains supported.
+Upgrade Cloud for filtering. Existing `list --alert-id` remains supported.
 
 ### Cloud-managed policies
 

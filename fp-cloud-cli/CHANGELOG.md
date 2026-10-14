@@ -4,7 +4,7 @@
 
 ### Added
 
-- Filter issues list/count and discover facets by agent, harness, environment, machine, source/alert/audit, assignee, opened dates and title/summary text in session or key mode; show scope tags and warn when an older Cloud may ignore filters (#900).
+- Filter issues list/count and discover facets by agent, environment, machine, source/alert/audit, assignee, opened dates and title/summary text in session or key mode; show agent tags and warn when an older Cloud may ignore filters (#900).
 
 - Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and code-only backfill.
 - Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.

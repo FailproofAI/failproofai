@@ -826,7 +826,6 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
 pub struct AllowBucket {
     pub session_id: String,
     pub agent_id: String,
-    pub integration: String,
     pub event_name: String,
     pub tool_name: Option<String>,
     /// Truncated to the minute; also the bucket's emitted timestamp.
@@ -853,7 +852,7 @@ pub struct AllowBucket {
 /// emitted is wrong for the rest, which is worse than no attribution: it moves
 /// a count into a bucket someone is using to judge a rollout. Splitting instead
 /// costs extra events only when a minute genuinely mixed sources.
-pub type BucketKey = (String, String, Option<String>, i64, Attribution, String);
+pub type BucketKey = (String, String, Option<String>, i64, Attribution);
 
 pub fn bucket_key(row: &HookRow) -> Option<BucketKey> {
     let session = row.session_id.clone().filter(|s| !s.is_empty())?;
@@ -865,7 +864,6 @@ pub fn bucket_key(row: &HookRow) -> Option<BucketKey> {
         row.tool_name.clone(),
         minute,
         Attribution::of(row),
-        row.integration.clone().unwrap_or_else(|| "hooks".into()),
     ))
 }
 

@@ -34,14 +34,13 @@ class Handler(BaseHTTPRequestHandler):
         self.calls.append({"path": parsed.path, "filters": filters})
         route = parsed.path.removeprefix("/v1").removeprefix("/api")
         issue = {"id": "i1", "title": "Tool timeouts", "state": "firing",
-                 "harnesses": ["claude"], "agent_ids": ["claude-repo"],
+                 "agent_ids": ["claude-repo"],
                  "environments": ["prod"], "machine_ids": ["m1"],
                  "scope_computed_at": "2026-10-14T00:00:00Z"}
         status = 200
         if route == "/issues/facets":
             status = 404 if self.legacy else 200
             data = {"error": "not found"} if self.legacy else {
-                "harnesses": [{"value": "claude", "count": 2}],
                 "agents": [{"value": "claude-repo", "count": 2}],
                 "alerts": [{"id": "a1", "name": "Tool failure alert", "count": 2}],
                 "audits": [{"id": "au1", "name": "Weekly quality audit", "count": 1}],
@@ -84,7 +83,7 @@ def main():
                         result = subprocess.run([
                             args.fp, "--base-url", f"http://127.0.0.1:{server.server_port}",
                             *auth, *(["--json"] if as_json else []), "issues", command,
-                            "--harness", "claude", "--harness", "codex", "--env", "prod",
+                            "--agent", "claude-repo", "--agent", "codex-repo", "--env", "prod",
                             "--assignee", "unassigned", "--since", "2026-10-01T00:00:00Z",
                             "--until", "2026-10-14T00:00:00Z", "--search", "tool timeout",
                         ], env=env, text=True, capture_output=True, timeout=20)
@@ -95,7 +94,6 @@ def main():
                             assert data["count"] == 2 if command == "count" else bool(data)
                             if command == "list":
                                 row = data["issues"][0]
-                                assert row["harnesses"] == ["claude"]
                                 assert row["agent_ids"] == ["claude-repo"]
                                 assert row["environments"] == ["prod"]
                                 assert row["machine_ids"] == ["m1"]
@@ -105,7 +103,6 @@ def main():
                                 assert data["alerts"][0]["id"] == "a1"
                                 assert data["audits"][0]["id"] == "au1"
                         elif command == "list":
-                            assert "[harness:claude]" in result.stdout
                             assert "[agent:claude-repo]" in result.stdout
                         elif command == "facets":
                             assert "claude" in result.stdout and "2" in result.stdout
@@ -115,13 +112,13 @@ def main():
                         assert "unfiltered" not in result.stderr
                         stem = f"issues-{mode}-{command}-{'json' if as_json else 'human'}"
                         (artifacts / f"{stem}.txt").write_text(result.stdout + result.stderr)
-                        assert Handler.calls[-1]["filters"]["harness"] == "claude,codex"
+                        assert Handler.calls[-1]["filters"]["agent"] == "claude-repo,codex-repo"
                 Handler.legacy = True
                 for command in ("list", "count", "facets"):
                     before = len(Handler.calls)
                     result = subprocess.run([
                         args.fp, "--base-url", f"http://127.0.0.1:{server.server_port}",
-                        *auth, "--json", "issues", command, "--harness", "claude",
+                        *auth, "--json", "issues", command, "--agent", "claude-repo",
                     ], env=env, text=True, capture_output=True, timeout=20)
                     json.loads(result.stdout)
                     if command == "facets":

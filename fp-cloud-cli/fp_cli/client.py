@@ -1356,7 +1356,7 @@ def _check_issue_filters(
     ctx: ClientContext, data: Any, filters: Optional[Dict[str, str]],
     on_unavailable: Optional[Callable[[], None]],
 ) -> None:
-    """New Cloud always sends `harnesses`, even when its array is empty.
+    """New Cloud always sends `agent_ids`, even when its array is empty.
 
     Non-empty lists confirm support from the raw rows (before model defaults
     fill missing keys), or warn for legacy rows without making another request.
@@ -1368,7 +1368,7 @@ def _check_issue_filters(
     if not filters:
         return
     if isinstance(data, list) and data:
-        if any(isinstance(row, dict) and "harnesses" in row for row in data):
+        if any(isinstance(row, dict) and "agent_ids" in row for row in data):
             return
         unavailable = True
     else:

@@ -4,7 +4,7 @@
 
 ### Features
 
-- Stamp harness provenance on every collected event, using the source kind, the hook row's CLI, or sdk for SDK batches, without replacing existing values; add Cloud CLI issue filters and facets (#900).
+- Add Cloud CLI issue filters and facets for agent, environment, machine, source/alert/audit, assignee, opened dates and title/summary text (#900).
 
 - Cloud CLI parity: hosted code, LLM-judge and Jev evaluator authoring/deployment, dashboards, sentiment, assistant artifacts/approvals, org controls and the shared mint/pink screen language (#885)
 

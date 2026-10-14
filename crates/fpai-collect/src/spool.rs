@@ -44,18 +44,6 @@ const MIN_BATCH_BYTES: u64 = 64 * 1024;
 /// Default batch cap, matching the ingest endpoint's body limit.
 pub const DEFAULT_MAX_BATCH_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Fill provenance only when absent. SDK batches arrive already spooled, so
-/// the uploader uses this same stamp without writing a second batch.
-pub(crate) fn stamp_harness(event: &mut Value, harness: &str) -> bool {
-    if let Some(obj) = event.as_object_mut()
-        && !obj.contains_key("harness")
-    {
-        obj.insert("harness".into(), Value::String(harness.into()));
-        return true;
-    }
-    false
-}
-
 /// Accumulates events and writes them out as size-bounded batches.
 pub struct SpoolWriter {
     dir: PathBuf,
@@ -183,8 +171,6 @@ impl SpoolWriter {
         // disk.
         self.redacted += crate::redact::scrub_value(&mut event, self.redact) as u64;
 
-        stamp_harness(&mut event, &self.prefix);
-
         // Stamp the machine id here, at the one point every event passes
         // through — a source cannot forget it and a new source inherits it. Set
         // only when absent, so an event that already names its machine (a
@@ -257,17 +243,6 @@ impl SpoolWriter {
         self.buf.push('\n');
         self.buf_bytes += needed;
         Ok(())
-    }
-
-    /// Hook batches contain multiple CLIs. Use the row's CLI, not its agent id.
-    pub async fn push_with_harness(
-        &mut self,
-        mut event: Value,
-        harness: &str,
-    ) -> std::io::Result<()> {
-        stamp_harness(&mut event, harness);
-        // The later stamp_harness(prefix) in push is a no-op: the key is already set.
-        self.push(event).await
     }
 
     /// Durably write the buffered events as one batch. No-op when empty.
@@ -386,79 +361,6 @@ mod tests {
             .collect();
         v.sort();
         v
-    }
-
-    #[tokio::test]
-    async fn every_source_stamps_harness_without_guessing_from_the_agent_id() {
-        for source in [
-            "claude",
-            "codex",
-            "copilot",
-            "cursor",
-            "pi",
-            "factory",
-            "antigravity",
-            "goose",
-            "opencode",
-            "hermes",
-            "devin",
-            "openclaw",
-            "sdk",
-        ] {
-            let dir = tmpdir(source);
-            let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, source, "s")
-                .with_label(Some("extra-path".into()));
-            for kind in ["agent_start", "tool_use", "agent_end"] {
-                w.push(json!({"type": kind, "agent_id": "not-a-harness"}))
-                    .await
-                    .unwrap();
-            }
-            w.flush().await.unwrap();
-            let body = std::fs::read_to_string(dir.join(batches(&dir).remove(0))).unwrap();
-            for line in body.lines() {
-                let event: Value = serde_json::from_str(line).unwrap();
-                assert_eq!(event["harness"], source);
-            }
-            std::fs::remove_dir_all(&dir).ok();
-        }
-    }
-
-    #[tokio::test]
-    async fn hooks_use_the_rows_cli_and_existing_harness_is_untouched() {
-        let dir = tmpdir("harness-hooks");
-        let mut w = SpoolWriter::new(dir.clone(), DEFAULT_MAX_BATCH_BYTES, "hooks", "s");
-        for cli in ["claude", "codex", "hermes"] {
-            w.push_with_harness(json!({"type": "hook_completed"}), cli)
-                .await
-                .unwrap();
-        }
-        for harness in [json!("original"), Value::Null, json!("")] {
-            w.push(json!({"harness": harness})).await.unwrap();
-            w.push_with_harness(json!({"harness": harness}), "copilot")
-                .await
-                .unwrap();
-        }
-        w.flush().await.unwrap();
-        let body = std::fs::read_to_string(dir.join(batches(&dir).remove(0))).unwrap();
-        let values: Vec<Value> = body
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap()["harness"].clone())
-            .collect();
-        assert_eq!(
-            values,
-            vec![
-                json!("claude"),
-                json!("codex"),
-                json!("hermes"),
-                json!("original"),
-                json!("original"),
-                Value::Null,
-                Value::Null,
-                json!(""),
-                json!("")
-            ]
-        );
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]

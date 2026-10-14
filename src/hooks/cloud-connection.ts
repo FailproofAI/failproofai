@@ -29,9 +29,12 @@
  * exact confusion this module removes.
  */
 import {
+  clearCloudCredentials,
   cloudCredentialPath,
   validateCloudUrl,
   verifyCloudCredentials,
+  maskToken,
+  readCloudCredentials,
   writeCloudCredentials,
   type CloudCredentials,
 } from "./cloud-enrollment";
@@ -57,9 +60,10 @@ import {
   ingestPath,
   validateIngestKey,
   writeCollectorSettings,
-  writeIngestCredential,
   type CollectorSettings,
 } from "./collector-config";
+import { recoverCredentialRefusals } from "./credential-recovery";
+import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
 
 /**
  * The path ingest is served on, appended to the cloud base URL.
@@ -147,6 +151,8 @@ export interface CapabilityOutcome {
 }
 
 export interface ConnectOutcome {
+  /** Reconciliation changes, already masked and safe to print. */
+  changes?: string[];
   policy: CapabilityOutcome & { policyCount?: number; deployment?: number };
   ingest: CapabilityOutcome;
   /**
@@ -201,6 +207,8 @@ export interface JevConnectOutcome {
  * connection the machine does not have.
  */
 export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcome> {
+  const prev = readCredentials();
+  const previousPolicy = readCloudCredentials();
   // Checked HERE, not only at the call sites. `ConnectInput.url` is documented
   // as "already validated by `validateCloudUrl`", and that was true of exactly
   // one of the two callers: `--connect` validated, and the interactive wizard —
@@ -289,10 +297,63 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       : undefined,
   };
 
+  outcome.anyConfigured = policyResult.ok || ingestResult.ok;
+  if (!outcome.anyConfigured) return outcome;
+
+  const origin = new URL(input.url).origin;
+  const sameOrigin = (url: string) => {
+    try { return new URL(url).origin === origin; } catch { return false; }
+  };
+  const unknown = (result: { ok: true } | { ok: false; status?: number }) =>
+    !result.ok && (result.status === undefined || result.status >= 500);
+  const next = { ...prev, connectedAt: Date.now() };
+  const changes: string[] = [];
   if (policyResult.ok) {
-writeCloudCredentials(creds);
-    outcome.anyConfigured = true;
+    next.cloud = creds;
+  } else if (
+    !canPolicy || !unknown(policyResult) ||
+    previousPolicy?.token !== input.token || !sameOrigin(previousPolicy.url)
+  ) {
+    delete next.cloud;
+    if (previousPolicy) {
+      changes.push(`Removed the previous policy key ${maskToken(previousPolicy.token)}: this key can't pull policies (${PERMISSION_POLICIES}).`);
+      clearActiveCloudManagedPolicies();
+    }
   }
+  if (ingestResult.ok) {
+    next.ingest = { url: ingestUrl, key: input.token };
+  } else if (
+    !canIngest || !unknown(ingestResult) ||
+    prev.ingest?.key !== input.token || !sameOrigin(prev.ingest.url)
+  ) {
+    delete next.ingest;
+    if (prev.ingest) changes.push(`Removed the previous ingest key ${maskToken(prev.ingest.key)}: this key can't send events (${PERMISSION_EVENTS}).`);
+  }
+  if (known && hasPermission(known, PERMISSION_JEV)) {
+    next.jev = { url: origin, key: input.token };
+  } else if (known || prev.jev?.key !== input.token || !sameOrigin(prev.jev.url)) {
+    delete next.jev;
+    if (prev.jev) changes.push(`Removed the previous Jev key ${maskToken(prev.jev.key)}: this key's ${PERMISSION_JEV} permission was not verified.`);
+  }
+  if (known) {
+    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName };
+  } else if (
+    (prev.cloud && (prev.cloud.token !== input.token || !sameOrigin(prev.cloud.url))) ||
+    (prev.ingest && (prev.ingest.key !== input.token || !sameOrigin(prev.ingest.url)))
+  ) {
+    delete next.org;
+  }
+  if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
+    recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === known?.orgId && sameOrigin(prev.ingest.url)), prev.org?.id);
+  }
+  writeCredentials(next);
+  // Legacy JSON override remains supported; the consolidated file above is
+  // published once, never as a mixture of previous and replacement slots.
+  if (process.env.FAILPROOFAI_CLOUD_CREDENTIALS) {
+    if (policyResult.ok) writeCloudCredentials(creds);
+    else if (!next.cloud) clearCloudCredentials();
+  }
+  outcome.changes = changes;
 
   // Mode is the hard gate, set only once a capability actually verified.
   // "cloud" is never inferred from a token merely being present: a machine
@@ -302,7 +363,6 @@ writeCloudCredentials(creds);
   }
 
   if (ingestResult.ok) {
-    writeIngestCredential({ url: ingestUrl, key: input.token });
     const settings: CollectorSettings = {
       // Hook activity is what makes the dashboard show anything at all, and it
       // carries decisions and tool names — never file contents.
@@ -317,17 +377,6 @@ writeCloudCredentials(creds);
     };
     writeCollectorSettings(settings);
     outcome.anyConfigured = true;
-  }
-
-  // Last, and only once something actually configured: recording an org for a
-  // machine that connected to nothing would be a claim about where data goes
-  // from a machine that sends none. Merged into whatever the two writers above
-  // just wrote, so it cannot race them.
-  if (outcome.anyConfigured && known && (known.orgId || known.orgSlug || known.orgName)) {
-    writeCredentials({
-      ...readCredentials(),
-      org: { id: known.orgId, slug: known.orgSlug, name: known.orgName },
-    });
   }
 
   // ── Jev, last ─────────────────────────────────────────────────────────────
@@ -394,7 +443,7 @@ writeCloudCredentials(creds);
       // there can only fall back with `http-404` — never spend — and clearing
       // it would turn Jev off on no evidence. It gets no line when there was
       // no slot, because on such a server there is nothing to say about Jev.
-      const previous = readCredentials().jev;
+      const previous = prev.jev;
       if (!previous) {
         if (identity.kind === "unreachable") outcome.jev = { ok: false, unconfirmed: "none" };
       } else if (previous.key === input.token && previous.url === new URL(input.url).origin) {
@@ -483,7 +532,7 @@ export function jevLines(outcome: ConnectOutcome): string[] {
  * without a cause is the message that sends people to support.
  */
 export function describeOutcome(outcome: ConnectOutcome, machineId: string, url: string): string[] {
-  const lines: string[] = [];
+  const lines: string[] = [...(outcome.changes ?? [])];
 
   // Named on every branch that connected, including the partial ones. A key
   // pasted from the wrong organisation authenticates perfectly and reports into

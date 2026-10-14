@@ -36,6 +36,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { writeJsonAtomically } from "../../lib/atomic-write";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -808,6 +809,8 @@ export function isAgentTraced(id: string, config: FpConfig = readConfig()): bool
 // ── credentials.json ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
+  /** Successful connection time, epoch milliseconds; resets stale refusal status. */
+  connectedAt?: number;
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
   /**
    * Which organisation this machine's credentials report into, as the server
@@ -860,6 +863,7 @@ export interface JevCloudCredential {
  * only local answer to "where does this machine's data go?".
  */
 const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
+  ["connectedAt"],
   ["cloud", "url"],
   ["cloud", "machine_id"],
   ["cloud", "machine_label"],
@@ -916,6 +920,9 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
     const out: FpCredentials = {};
+    if (typeof parsed.connectedAt === "number" && Number.isSafeInteger(parsed.connectedAt) && parsed.connectedAt >= 0) {
+      out.connectedAt = parsed.connectedAt;
+    }
     if (
       cloud &&
       typeof cloud.url === "string" &&
@@ -963,6 +970,7 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
  */
 export function writeCredentials(creds: FpCredentials, raw?: Record<string, unknown>): void {
   const out: Record<string, unknown> = {};
+  if (creds.connectedAt !== undefined) out.connectedAt = creds.connectedAt;
   if (creds.cloud) {
     out.cloud = {
       url: creds.cloud.url,
@@ -1007,7 +1015,7 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+  writeJsonAtomically(credentialsFile(), merged);
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {

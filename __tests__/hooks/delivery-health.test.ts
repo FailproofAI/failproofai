@@ -75,6 +75,16 @@ describe("hooks/delivery-health parseParkedName", () => {
 });
 
 describe("hooks/delivery-health deliveryHealth", () => {
+  it("ignores older credential refusals after reconnect, but keeps fresh and unrelated refusals", () => {
+    park("old.a1.c401.jsonl", 60_000);
+    park("old403.a1.c403.jsonl", 60_000);
+    park("old404.a1.c404.jsonl", 60_000);
+    park("fresh.a1.c401.jsonl");
+    const health = deliveryHealth(home, Date.now(), Date.now() - 30_000);
+    expect(health.total).toBe(2);
+    expect(health.byStatus).toEqual({ 401: 1, 404: 1 });
+    expect(health.credentialRejected).toBe(1);
+  });
   it("reports a machine with no failed directory as healthy", () => {
     const fresh = mkdtempSync(join(tmpdir(), "fpai-delivery-health-none-"));
     try {

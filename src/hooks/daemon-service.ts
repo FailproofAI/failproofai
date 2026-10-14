@@ -548,7 +548,7 @@ export function canElevate(): boolean {
  * cannot elevate silently gets a clear reason and the manual commands
  * instead — it keeps working exactly as it did, on the in-process path.
  */
-function runPrivileged(command: string, args: string[]): void {
+export function runPrivileged(command: string, args: string[]): void {
   const root = typeof process.getuid === "function" && process.getuid() === 0;
   const [cmd, argv] = root ? [command, args] : ["sudo", ["-n", command, ...args]];
   execFileSync(cmd, argv, { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
@@ -559,7 +559,7 @@ function runPrivileged(command: string, args: string[]): void {
  * caller is not root and cannot write there directly. `install -m` sets the
  * mode in the same step, so the file is never briefly world-writable.
  */
-function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
+export function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
   // mkdtempSync, not a name built from pid + timestamp in the shared tmpdir.
   // That name is guessable, and `writeFileSync` follows a symlink already
   // sitting at the path — so on a multi-user box another local user could

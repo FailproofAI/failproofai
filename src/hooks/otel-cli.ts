@@ -163,10 +163,15 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   const destination = local ? `http://127.0.0.1:${port}` : origin;
   const original = existsSync(file) ? readFileSync(file, "utf8") : null;
   const parsed = parseAgentConfig(original ?? "", agent);
-  const writes = agentOtelWrites(agent, destination, key, local, content);
+  const oldState = existing ? privateState(agent) : null;
+  // Our own --no-content write is not a new user opt-out. An unchanged
+  // managed file inherits the user's original content preference.
+  const privacyConfig = oldState && original !== null && digest(original) === oldState.writtenHash
+    ? parseAgentConfig(oldState.original ?? "", agent) : parsed;
+  const writes = agentOtelWrites(agent, destination, key, local, content, privacyConfig);
+  const keptPromptPrivacy = agent === "codex" && getSetting(privacyConfig, ["otel", "log_user_prompt"]) === false;
   // Switching from Cloud to local stops owning header keys. Restore any keys
   // from an earlier enable before applying the new (header-free) write set.
-  const oldState = existing ? privateState(agent) : null;
   const released = oldState?.previous.filter(previous =>
     !writes.some(write => JSON.stringify(write.path) === JSON.stringify(previous.path))) ?? [];
   const next = editAgentConfig(original ?? "", agent, [...released, ...writes]);
@@ -227,6 +232,7 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
     throw err;
   }
   const lines = [`${AGENT_LABELS[agent]} OTEL enabled → ${local ? "local relay" : "Cloud"} (${content ? "text capture on" : "no content"}).`];
+  if (keptPromptPrivacy) lines.push("Codex log_user_prompt = false kept; user prompt capture remains off.");
   if (local && !localFlag) lines.push(`${AGENT_LABELS[agent]} settings cannot carry an auth header; using the local relay automatically.`);
   if (local) lines.push("The daemon picks this up within seconds — no restart. Use `failproofai otel status` to check the relay.");
   const result = await introspectKey(origin, key, options.fetchImpl, 3000);
@@ -266,8 +272,9 @@ async function status(options: OtelOptions): Promise<OtelResult> {
     if (record && on) {
       try {
         const state = privateState(agent);
+        const original = parseAgentConfig(state.original ?? "", agent);
         const expected = parseAgentConfig(editAgentConfig(state.original ?? "", agent,
-          agentOtelWrites(agent, record.destination, credential().key, record.local, record.content)), agent);
+          agentOtelWrites(agent, record.destination, credential().key, record.local, record.content, original)), agent);
         managed = record.keys.every(k => JSON.stringify(getSetting(parsed, k.path)) === JSON.stringify(getSetting(expected, k.path)));
       } catch { /* Missing recovery state or key. */ }
     }

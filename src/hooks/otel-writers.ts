@@ -186,7 +186,7 @@ export function editAgentConfig(text: string, agent: OtelAgent, writes: SettingW
   return next;
 }
 
-export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string, local: boolean, content: boolean): SettingWrite[] {
+export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string, local: boolean, content: boolean, config: JsonObject = {}): SettingWrite[] {
   const auth = local ? {} : { Authorization: `Bearer ${key}` };
   const env: JsonObject = {
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
@@ -214,7 +214,7 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
       // Codex conversation content lives in logs. Runtime traces have no GenAI
       // attributes and create empty sessions; the server discards metrics.
       exporter: exporter("logs"),
-      log_user_prompt: content,
+      log_user_prompt: getSetting(config, ["otel", "log_user_prompt"]) === false ? false : content,
       log_agent_responses: content,
     }).map(([k, value]) => ({ path: ["otel", k], value }));
   }

@@ -306,6 +306,41 @@ impl PolicyStore {
         &self.root
     }
 
+    /// Forgets the highest deployment the server has offered this process.
+    ///
+    /// The deployment counter is the server's per (org, machine) — a different
+    /// org, a re-registered machine or a fresh enrolment starts again at 0. A
+    /// floor carried over from the previous identity would refuse every
+    /// deployment the new one legitimately sends ("deployment rollback from 3
+    /// to 0") until the daemon restarted, while the previous org's policies
+    /// went on enforcing. The maintenance lane calls this when, and only when,
+    /// the cloud identity it polls with changes; within one identity the
+    /// replay guard is untouched.
+    pub fn reset_high_water(&self) {
+        self.server_high_water.store(0, Ordering::Relaxed);
+    }
+
+    /// Stops enforcing cloud-managed policy: removes `desired-state.json`, then
+    /// `active.json`. Returns whether anything was removed.
+    ///
+    /// Both files, in that order. Removing only `active.json` (what the CLI's
+    /// `--disconnect` does) is undone on the next maintenance tick, because
+    /// `repair_active_from_cache` rebuilds the pointer from the desired state
+    /// still on disk. Desired first, so a crash between the two leaves nothing
+    /// that repair could resurrect. The content-addressed artifacts stay: they
+    /// are inert without a pointer, and a reconnect may reuse them.
+    pub fn deactivate(&self) -> Result<bool, ReconcileError> {
+        let mut removed = false;
+        for path in [self.desired_state_path(), self.active_manifest_path()] {
+            match fs::remove_file(&path) {
+                Ok(()) => removed = true,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Ok(removed)
+    }
+
     pub fn active_manifest_path(&self) -> PathBuf {
         self.root.join("active.json")
     }
@@ -1043,6 +1078,75 @@ mod tests {
             store.read_active().unwrap().unwrap().policies[0].id,
             "guard"
         );
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The floor belongs to one cloud identity. After a reset (org switch,
+    /// re-registration) the new identity's deployment 0 — and its empty set —
+    /// must activate; without one, the same 0 is still a rollback.
+    #[test]
+    fn a_reset_floor_accepts_the_next_identitys_lower_deployment() {
+        let store = temp_store("reset-floor");
+        let bytes = b"policy";
+        store
+            .reconcile(&desired(3, "guard", bytes), &|_: &DesiredPolicy| {
+                Ok(bytes.to_vec())
+            })
+            .unwrap();
+
+        let empty = DesiredState {
+            schema_version: DESIRED_STATE_SCHEMA_VERSION,
+            deployment: 0,
+            policies: vec![],
+        };
+        let refuse = |_: &DesiredPolicy| -> Result<Vec<u8>, String> { Err("no fetch".into()) };
+        assert!(
+            matches!(
+                store.reconcile(&empty, &refuse),
+                Err(ReconcileError::InvalidDesiredState(_))
+            ),
+            "without a reset, a lower deployment is still a rollback"
+        );
+
+        store.reset_high_water();
+        let outcome = store
+            .reconcile(&empty, &refuse)
+            .expect("a new identity's deployment 0 must be accepted after a reset");
+        assert!(outcome.activated);
+        let active = store.read_active().unwrap().unwrap();
+        assert_eq!(active.deployment, 0);
+        assert!(active.policies.is_empty());
+
+        // And the guard is live again for the new identity.
+        store
+            .reconcile(&desired(2, "guard", bytes), &|_: &DesiredPolicy| {
+                Ok(bytes.to_vec())
+            })
+            .unwrap();
+        assert!(matches!(
+            store.reconcile(&empty, &refuse),
+            Err(ReconcileError::InvalidDesiredState(_))
+        ));
+        fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// Deactivation must survive the next maintenance tick: repair rebuilds
+    /// `active.json` from `desired-state.json`, so both have to go.
+    #[test]
+    fn deactivate_removes_what_repair_would_resurrect() {
+        let store = temp_store("deactivate");
+        let bytes = b"policy";
+        store
+            .reconcile(&desired(4, "guard", bytes), &|_: &DesiredPolicy| {
+                Ok(bytes.to_vec())
+            })
+            .unwrap();
+        assert!(store.deactivate().unwrap());
+        assert!(store.read_active().unwrap().is_none());
+        assert!(store.read_desired().unwrap().is_none());
+        assert_eq!(store.repair_active_from_cache().unwrap(), 0);
+        assert!(store.read_active().unwrap().is_none());
+        assert!(!store.deactivate().unwrap(), "idempotent");
         fs::remove_dir_all(store.root()).ok();
     }
 

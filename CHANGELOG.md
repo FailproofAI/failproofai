@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11-beta.0 — 2026-10-14
+
+### Fixes
+
+- **The daemon no longer refuses a new cloud identity's policies as a "rollback".** Its replay guard kept the highest deployment number it had seen for the life of the process, but the server numbers deployments per organisation and machine. After switching organisation, re-registering the machine or enrolling afresh, the new identity's deployment (often 0) was refused with "deployment rollback from N to 0 is not allowed" until the daemon restarted, and the previous organisation's policies kept enforcing. The guard now starts again whenever the URL, machine id or token it polls with changes; within one identity it is unchanged. When the enrolment is removed, the daemon also deletes `desired-state.json` along with `active.json`. Before, the maintenance pass rebuilt `active.json` from the leftover desired state and the departed organisation's policies came back.
+
 ## 1.0.10 — 2026-10-05
 
 Action needed if you use `instruct` policies with Hermes: an `instruct` no longer stops the call it reminds about. The call runs and the reminder is placed first in its result, so a policy written to prevent an action (for example, a direct API write that should go through an approved script) must become a `deny` before you upgrade. Hermes 0.20.0 is supported again: on 1.0.9 the plugin loaded there with no hooks and every tool call ran unchecked. After upgrading, run `failproofai update` and restart each Hermes gateway profile by name. Collects 1.0.10-beta.0 to beta.1 below.

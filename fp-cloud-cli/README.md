@@ -147,9 +147,11 @@ values (OR within a filter, AND between filters). `--since` accepts the existing
 to issue opening, and `--search` searches title + summary. Human rows show the
 stored harness/agent scope; facets show available values and counts.
 
-Older Clouds may ignore the new query parameters. If no filters are echoed,
-the CLI probes facets; a missing route produces one warning on stderr that
-list/count results may be unfiltered, leaving stdout JSON usable. Calling
+Older Clouds may ignore the new query parameters. A returned issue's top-level
+`harnesses` key confirms filter support without another request. Non-empty
+legacy rows warn once; empty lists or zero counts probe facets at most once
+per process, and a missing route warns once that results may be unfiltered.
+Positive counts make no extra request. Warnings leave stdout JSON usable. Calling
 missing `facets` directly exits 6 with “not available on this FailproofAI Cloud yet”.
 Upgrade Cloud for filtering; the collector's new `harness` event field is
 additive and ignored by old servers. Existing `list --alert-id` remains supported.

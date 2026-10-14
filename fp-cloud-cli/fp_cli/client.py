@@ -1294,6 +1294,12 @@ def test_alert(ctx: ClientContext, alert_id: str, channels: Optional[List[Dict[s
 
 # --- Incidents --------------------------------------------------------------
 
+# Capability detection is only a fallback for empty results. Keep both the
+# probe and the compatibility warning to at most once per CLI process.
+_issue_facets_probed = False
+_issue_facets_available: Optional[bool] = None
+_issue_filters_warned = False
+
 
 def list_incidents(
     ctx: ClientContext,
@@ -1314,8 +1320,8 @@ def list_incidents(
         if alert_id:
             params["alert_id"] = alert_id
         data = cloud_request(ctx, "GET", "/api/issues", params=params)
-    _check_issue_filters(ctx, data, filters, on_filters_unavailable)
     items = data.get("issues", []) if isinstance(data, dict) else data
+    _check_issue_filters(ctx, items, filters, on_filters_unavailable)
     return [Incident.from_dict(i) for i in (items if isinstance(items, list) else [])]
 
 
@@ -1350,25 +1356,35 @@ def _check_issue_filters(
     ctx: ClientContext, data: Any, filters: Optional[Dict[str, str]],
     on_unavailable: Optional[Callable[[], None]],
 ) -> None:
-    """An echo proves support; otherwise probe facets, never infer it from rows.
+    """New Cloud always sends `harnesses`, even when its array is empty.
 
-    Older deployments return a bare, unfiltered array/count. Only a missing
-    capability route warrants the compatibility warning; auth/network/server
-    failures must remain visible, not be misreported as an older Cloud.
+    Non-empty lists confirm support from the raw rows (before model defaults
+    fill missing keys), or warn for legacy rows without making another request.
+    Empty lists/zero counts probe facets once per process. Positive counts have
+    no scope marker and make no extra request; a cached missing route still
+    warrants a warning. Probe auth/network/server errors remain visible.
     """
+    global _issue_facets_probed, _issue_facets_available, _issue_filters_warned
     if not filters:
         return
-    echoed = data.get("filters", data.get("applied_filters")) if isinstance(data, dict) else None
-    if isinstance(echoed, dict) and all(
-        echoed.get(key) == value or echoed.get(key) == value.split(",")
-        for key, value in filters.items()
-    ):
-        return
-    try:
-        issue_facets(ctx, filters=filters)
-    except NotFoundError:
-        if on_unavailable:
-            on_unavailable()
+    if isinstance(data, list) and data:
+        if any(isinstance(row, dict) and "harnesses" in row for row in data):
+            return
+        unavailable = True
+    else:
+        empty = data == [] or isinstance(data, dict) and data.get("count") == 0
+        if empty and not _issue_facets_probed:
+            _issue_facets_probed = True
+            try:
+                issue_facets(ctx, filters=filters)
+            except NotFoundError:
+                _issue_facets_available = False
+            else:
+                _issue_facets_available = True
+        unavailable = _issue_facets_available is False
+    if unavailable and on_unavailable and not _issue_filters_warned:
+        _issue_filters_warned = True
+        on_unavailable()
 
 
 def get_incident(ctx: ClientContext, incident_id: str) -> Incident:

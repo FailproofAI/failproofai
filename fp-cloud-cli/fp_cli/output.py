@@ -4382,11 +4382,10 @@ def render_incidents(incidents: Sequence[Any], *, show_id: bool = False) -> None
         opened = _age_compact(getattr(i, "opened_at", "")) or "-"
         label = getattr(i, "title", None) or getattr(i, "alert_name", None) or "—"
         identity = Text(label, style=theme.TEXT)
-        scope = getattr(i, "scope", None) or {}
         # Keep tags with the title so narrow terminals never lose provenance
         # by dropping a rightmost column.
-        for key, tag in (("harnesses", "harness"), ("agents", "agent")):
-            for value in scope.get(key, []):
+        for key, tag in (("harnesses", "harness"), ("agent_ids", "agent")):
+            for value in getattr(i, key, None) or []:
                 identity.append(f" [{tag}:{value}]", style=theme.TEXT_DIM)
         rows.append([
             Text(iid, style=theme.TEXT_DIM),
@@ -4413,9 +4412,14 @@ def render_issue_facets(data: Dict[str, Any]) -> None:
             continue
         for item in values:
             if isinstance(item, dict):
+                label = (
+                    item.get("name") or item.get("id", "—")
+                    if facet in ("alerts", "audits")
+                    else item.get("value", "—")
+                )
                 rows.append([
                     Text(str(facet), style=theme.LABEL),
-                    Text(str(item.get("label") or item.get("value", "—")), style=theme.TEXT),
+                    Text(str(label), style=theme.TEXT),
                     Text(str(item.get("count", 0)), style=theme.TEXT_DIM),
                 ])
     render_list_panel(

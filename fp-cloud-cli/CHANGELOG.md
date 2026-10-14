@@ -19,6 +19,8 @@
 
 ### Fixes
 
+- Align issue scope JSON and named alert/audit facets with agenteye #1074; avoid capability requests on normal filtered calls and limit empty-result probes and older-Cloud warnings to once per process (#900).
+
 - Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
 - Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).
 - New Cloud commands use deliberate human summaries/tables and actionable empty states at 80/140 columns without raw response blobs. Evaluator previews display before writes and require explicit `--force` after failures; plan/claim deny key mode, deploy specs can omit the positional key, and older settings-route 404s degrade clearly. Existing JSON payloads stay unchanged (#885).

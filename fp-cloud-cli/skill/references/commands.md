@@ -194,11 +194,15 @@ Each accepts repeated flags or comma-separated values. Different dimensions comb
 with AND; values within one dimension combine with OR. `--since` accepts the existing
 `all|15m|1h|6h|24h|7d` presets or an RFC3339 timestamp; `--until` accepts RFC3339.
 Dates filter when the issue **opened**, not when it last fired. `--search TEXT`
-searches title + summary. Human issue rows include harness/agent tags from stored scope.
+searches title + summary. Human issue rows read harness/agent tags from top-level
+`harnesses`/`agent_ids`; `--json` also keeps `environments`, `machine_ids` and
+`scope_computed_at`. Facets render alert/audit names; JSON retains their ids.
 Global `--json` goes before `issues`, and facets JSON preserves the server response.
 On an older Cloud, missing facets exits 6 with “not available on this FailproofAI Cloud
-yet”. Filtered list/count without a filter echo probe facets; a missing route prints
-one stderr warning that results may be unfiltered (also under `--json`/`--quiet`).
+yet”. A returned row's `harnesses` key confirms list support without another request.
+Non-empty legacy rows warn once. Empty lists/zero counts probe facets at most once
+per process and warn once if missing (also under `--json`/`--quiet`); positive
+counts make no extra request.
 The legacy `list --alert-id` stays supported; use `--alert` for multi-alert filtering.
 
 - `issues show <id>` — identity + comments + subscribers + **activity log** (read this before acting). An audit-born issue (`source: audit`) carries the full finding it graduated from and back-links to the audit/run.

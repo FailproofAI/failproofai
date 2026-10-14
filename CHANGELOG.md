@@ -33,6 +33,8 @@
 
 ### Fixes
 
+- Align Cloud CLI issue tags, JSON and alert/audit facets with the server's top-level scope contract, without extra requests on normal filtered calls (#900).
+
 - `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now says how many under BUILT IN, with the command that moves them into a pack (#881)
 - `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#881)
 - A config change that landed while the daemon was restarting its collector after a backfill was recorded as already running and never applied. `failproofai config` re-adding an agent hits exactly that, writing its backfill request and then the selection, so the agent stayed off until some unrelated edit (#881)

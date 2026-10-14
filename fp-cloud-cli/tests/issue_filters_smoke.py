@@ -34,18 +34,22 @@ class Handler(BaseHTTPRequestHandler):
         self.calls.append({"path": parsed.path, "filters": filters})
         route = parsed.path.removeprefix("/v1").removeprefix("/api")
         issue = {"id": "i1", "title": "Tool timeouts", "state": "firing",
-                 "scope": {"harnesses": ["claude"], "agents": ["claude-repo"]}}
+                 "harnesses": ["claude"], "agent_ids": ["claude-repo"],
+                 "environments": ["prod"], "machine_ids": ["m1"],
+                 "scope_computed_at": "2026-10-14T00:00:00Z"}
         status = 200
         if route == "/issues/facets":
             status = 404 if self.legacy else 200
             data = {"error": "not found"} if self.legacy else {
                 "harnesses": [{"value": "claude", "count": 2}],
                 "agents": [{"value": "claude-repo", "count": 2}],
+                "alerts": [{"id": "a1", "name": "Tool failure alert", "count": 2}],
+                "audits": [{"id": "au1", "name": "Weekly quality audit", "count": 1}],
             }
         elif route == "/issues/count":
-            data = {"count": 2} if self.legacy else {"count": 2, "filters": filters}
+            data = {"count": 0 if self.legacy else 2}
         elif route == "/issues":
-            data = [issue] if self.legacy else {"issues": [issue], "filters": filters}
+            data = [{"id": "old", "title": "Old issue"}] if self.legacy else [issue]
         else:
             status, data = 404, {"error": "unknown route"}
         raw = json.dumps(data).encode()
@@ -76,6 +80,7 @@ def main():
                 mode = "key" if key_mode else "session"
                 for command in ("list", "count", "facets"):
                     for as_json in (False, True):
+                        before = len(Handler.calls)
                         result = subprocess.run([
                             args.fp, "--base-url", f"http://127.0.0.1:{server.server_port}",
                             *auth, *(["--json"] if as_json else []), "issues", command,
@@ -84,20 +89,36 @@ def main():
                             "--until", "2026-10-14T00:00:00Z", "--search", "tool timeout",
                         ], env=env, text=True, capture_output=True, timeout=20)
                         assert result.returncode == 0, result.stderr
+                        assert len(Handler.calls) == before + 1, "normal calls must not probe facets"
                         if as_json:
                             data = json.loads(result.stdout)
                             assert data["count"] == 2 if command == "count" else bool(data)
+                            if command == "list":
+                                row = data["issues"][0]
+                                assert row["harnesses"] == ["claude"]
+                                assert row["agent_ids"] == ["claude-repo"]
+                                assert row["environments"] == ["prod"]
+                                assert row["machine_ids"] == ["m1"]
+                                assert row["scope_computed_at"] == "2026-10-14T00:00:00Z"
+                                assert "scope" not in row
+                            elif command == "facets":
+                                assert data["alerts"][0]["id"] == "a1"
+                                assert data["audits"][0]["id"] == "au1"
                         elif command == "list":
                             assert "[harness:claude]" in result.stdout
                             assert "[agent:claude-repo]" in result.stdout
                         elif command == "facets":
                             assert "claude" in result.stdout and "2" in result.stdout
+                            assert "Tool failure alert" in result.stdout
+                            assert "Weekly quality audit" in result.stdout
+                            assert "a1" not in result.stdout and "au1" not in result.stdout
                         assert "unfiltered" not in result.stderr
                         stem = f"issues-{mode}-{command}-{'json' if as_json else 'human'}"
                         (artifacts / f"{stem}.txt").write_text(result.stdout + result.stderr)
                         assert Handler.calls[-1]["filters"]["harness"] == "claude,codex"
                 Handler.legacy = True
                 for command in ("list", "count", "facets"):
+                    before = len(Handler.calls)
                     result = subprocess.run([
                         args.fp, "--base-url", f"http://127.0.0.1:{server.server_port}",
                         *auth, "--json", "issues", command, "--harness", "claude",
@@ -109,6 +130,7 @@ def main():
                     else:
                         assert result.returncode == 0
                         assert result.stderr.count("unfiltered") == 1
+                        assert len(Handler.calls) == before + (2 if command == "count" else 1)
                     (artifacts / f"issues-{mode}-{command}-legacy.txt").write_text(
                         result.stdout + result.stderr)
                 Handler.legacy = False

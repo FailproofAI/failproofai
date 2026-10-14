@@ -266,6 +266,7 @@ impl SpoolWriter {
         harness: &str,
     ) -> std::io::Result<()> {
         stamp_harness(&mut event, harness);
+        // The later stamp_harness(prefix) in push is a no-op: the key is already set.
         self.push(event).await
     }
 

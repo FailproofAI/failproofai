@@ -1,0 +1,52 @@
+name: Issue filters
+
+# The existing CI and parity workflows do not target this feature's stacked
+# base. Keep verification separate from the workflow edit owned by feat/otel.
+on:
+  pull_request:
+    branches: [feat/fp-cli-parity]
+    paths:
+      - "fp-cloud-cli/**"
+      - ".github/workflows/issue-filters.yml"
+      - "CHANGELOG.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-filters-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud-cli:
+    name: Issue filters (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: fp-cloud-cli
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: fp-cloud-cli/uv.lock
+      - run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+      - name: Test all CLI behaviour
+        env:
+          FP_CLI_REQUIRE_CONTRACT: "1"
+        run: uv run --extra dev pytest -q
+      - run: uv build
+      - name: Clean wheel install and user-level issue-filter smoke
+        run: |
+          uv venv /tmp/fp-issue-smoke --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/fp-issue-smoke/bin/python dist/*.whl
+          /tmp/fp-issue-smoke/bin/fp --version
+          /tmp/fp-issue-smoke/bin/python tests/issue_filters_smoke.py \
+            --fp /tmp/fp-issue-smoke/bin/fp --artifacts /tmp/fp-issue-artifacts

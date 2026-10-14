@@ -187,6 +187,12 @@ you need a flag you don't already know.
 - `errors` — errored events; `--aggregate` for count / sessions / agents / last-seen.
 - `usage` — current org usage for its fixed 30-day metering window; needs `usage:read`.
 - `list <kind>` — **discover valid filter values first**: `envs agents event_types score_filters models hooks tools error_types`.
+- `issues list|count|facets` — scope the failures inbox by agent/environment/machine,
+  source or a specific alert/audit, assignee, opened dates and title/summary text. Use
+  `fp --json issues facets --env prod` to discover values/counts, then
+  `fp --json issues list --env prod --agent claude-repo --assignee me --since 7d`.
+  Full flags are in `references/commands.md`. If stderr warns that Cloud may have
+  returned unfiltered results, do not treat the response as proof of the requested scope.
 
 **Manage (permission-gated, mutations):**
 - `keys list|show|create|update|disable|regenerate` — API keys; secret shown once.

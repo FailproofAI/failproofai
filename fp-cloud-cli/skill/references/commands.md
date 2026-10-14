@@ -185,6 +185,26 @@ The title column truncates to whatever width is left so the fixed columns always
 The single board for everything needing human attention — alert breaches (`source: alert`), hand-raised issues (`manual`), and audit findings (`audit`). Referenced by id (short ids accepted, `--show-id` shows them). This group was **renamed from `incidents`**; the old name no longer exists. Reads and ack/comment need `issues:read`; opening, assigning, and subscribing others need `issues:create`; resolving, closing, archiving and clearing need `issues:close` (and `clear` also needs `audits:write`, because it resolves the findings behind the issues).
 - `issues list [--state firing|acknowledged|resolved|closed] [--alert-id <id>] [--limit N] [--show-id]` — there is **no** `--severity` filter on this command. Archived issues are hidden.
 - `issues count`
+- `issues facets` — available filter values with counts; read-only, needs `issues:read`.
+
+`list`, `count` and `facets` share filters (session and API-key mode):
+`--agent`, `--env`, `--machine`, `--source alert|audit|manual`,
+`--alert <id>`, `--audit <id>`, `--assignee EMAIL|me|unassigned`.
+Each accepts repeated flags or comma-separated values. Different dimensions combine
+with AND; values within one dimension combine with OR. `--since` accepts the existing
+`all|15m|1h|6h|24h|7d` presets or an RFC3339 timestamp; `--until` accepts RFC3339.
+Dates filter when the issue **opened**, not when it last fired. `--search TEXT`
+searches title + summary. Human issue rows read agent tags from top-level
+`agent_ids`; `--json` also keeps `environments`, `machine_ids` and
+`scope_computed_at`. Facets render alert/audit names; JSON retains their ids.
+Global `--json` goes before `issues`, and facets JSON preserves the server response.
+On an older Cloud, missing facets exits 6 with “not available on this FailproofAI Cloud
+yet”. A returned row's `agent_ids` key confirms list support without another request.
+Non-empty legacy rows warn once. Empty lists/zero counts probe facets at most once
+per process and warn once if missing (also under `--json`/`--quiet`); positive
+counts make no extra request.
+The legacy `list --alert-id` stays supported; use `--alert` for multi-alert filtering.
+
 - `issues show <id>` — identity + comments + subscribers + **activity log** (read this before acting). An audit-born issue (`source: audit`) carries the full finding it graduated from and back-links to the audit/run.
 - `issues ack <id>` · `issues assign <id> --assignee <member>` (repeatable; omit to clear all assignees; each must be an operator) · `issues resolve <id>` (calm confirm). **On an audit issue these stay in sync with the finding** — resolving the issue resolves the underlying audit finding, so it can't reappear on the next run (equivalently, triage it with `audits resolve <finding-id>`; both surfaces agree).
 - `issues close <id>` (calm confirm) — the second terminal state: **"we're done with it", not "we fixed it"** (won't fix / not a problem / stale). The difference from `resolve` is what happens next: a **resolved** issue REOPENS when its audit finding recurs, a **closed** one does not. On an audit issue this marks the finding `dismissed`; it does **not** write the org-wide fingerprint suppression that `audits dismiss` writes, so closing one issue never hides that pattern in your other audits. Exit 9 if the issue already ended — an issue ends once, and neither terminal state may overwrite the other.

@@ -1,8 +1,10 @@
 # Changelog
 
-## 1.0.11-beta.1 — 2026-10-13
+## 1.0.11-beta.1 — 2026-10-14
 
 ### Features
+
+- Add Cloud CLI issue filters and facets for agent, environment, machine, source/alert/audit, assignee, opened dates and title/summary text (#900).
 
 - Cloud CLI parity: hosted code, LLM-judge and Jev evaluator authoring/deployment, dashboards, sentiment, assistant artifacts/approvals, org controls and the shared mint/pink screen language (#885)
 
@@ -30,6 +32,8 @@
 - Backfill requests can name `agents` and a `kind`. `user` (what `failproofai backfill` writes, and what a request without `kind` means) re-sends those agents' files modified since `sinceMs`, now reaching their extra-path stores too; `added` forgets every cursor of the agents `failproofai config` re-adds, Hermes profiles included, and gives them the default 7-day window. A pending request is applied before the collector first starts, and an `added` request older than 10 minutes is dropped (#881)
 
 ### Fixes
+
+- Align Cloud CLI issue tags, JSON and alert/audit facets with the server's top-level scope contract, without extra requests on normal filtered calls (#900).
 
 - `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now says how many under BUILT IN, with the command that moves them into a pack (#881)
 - `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#881)

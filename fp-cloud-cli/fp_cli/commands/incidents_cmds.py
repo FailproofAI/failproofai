@@ -13,8 +13,8 @@ from typing import List, Optional
 import typer
 
 from .. import client as api
-from .. import output
-from .._context import GLOBALS_EPILOG, AppState, require_auth, validate_limit
+from .. import dates, output
+from .._context import GLOBALS_EPILOG, AppState, require_auth, resolve_dates, validate_limit
 from ..errors import ApiError, ForbiddenError, NotFoundError
 from . import _write
 
@@ -23,6 +23,7 @@ _SEVERITIES = ("info", "warning", "critical")
 # TERMINAL state (won't-fix); missing it here would reject `--state closed`
 # client-side with exit 2 for a state the server accepts.
 _STATES = ("firing", "acknowledged", "resolved", "closed")
+_SOURCES = ("alert", "audit", "manual")
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
@@ -68,12 +69,70 @@ def _fail(state: AppState, exc: Exception, *, incident_id: str = "") -> None:
     raise exc
 
 
+def _issue_filters(
+    agent, environment, machine, source, alert, audit, assignee,
+    since, until, search,
+) -> dict:
+    """The shared list/count/facets contract; repeated values become CSV."""
+    filters = {}
+    for key, values in (
+        ("agent", agent), ("environment", environment),
+        ("machine", machine), ("source", source), ("alert_id", alert),
+        ("audit_id", audit), ("assignee", assignee),
+    ):
+        if not values:
+            continue
+        parts = [part.strip() for value in values for part in value.split(",")]
+        if any(not part for part in parts):
+            raise typer.BadParameter(f"--{key} needs a non-empty value")
+        if key == "source" and any(part not in _SOURCES for part in parts):
+            raise typer.BadParameter(f"--source must be one of: {', '.join(_SOURCES)}")
+        filters[key] = ",".join(dict.fromkeys(parts))
+    # Reuse the CLI presets and RFC3339 validation. Compute each bound
+    # independently: an explicit --until must not cancel a relative --since.
+    if since in dates.SINCE_CHOICES or since is None:
+        opened_from, _ = resolve_dates(since, None, None)
+    else:
+        try:
+            opened_from = dates._validate_iso(since, "--since")
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    try:
+        opened_to = dates._validate_iso(until, "--until") if until is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if opened_from:
+        filters["opened_from"] = opened_from
+    if opened_to:
+        filters["opened_to"] = opened_to
+    if search is not None:
+        filters["q"] = search
+    return filters
+
+
+def _filters_unavailable() -> None:
+    output.cli_warn(
+        "▲ Issue filters are not available on this FailproofAI Cloud yet; "
+        "Cloud may have returned unfiltered results. Upgrade your Cloud deployment."
+    )
+
+
 def incidents_list(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s): firing, acknowledged, resolved, closed (CSV)."),
     alert_id: Optional[str] = typer.Option(None, "--alert-id", help="Only incidents for this alert."),
     limit: int = typer.Option(50, "--limit", "-n", help="Max incidents to return."),
     show_id: bool = typer.Option(False, "--show-id", help="Show the full incident id instead of the short form (always full in --json)."),
+    agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
+    environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
+    machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
+    source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
+    alert: Optional[List[str]] = typer.Option(None, "--alert", help="Alert id (repeatable or CSV)."),
+    audit: Optional[List[str]] = typer.Option(None, "--audit", help="Audit id (repeatable or CSV)."),
+    assignee: Optional[List[str]] = typer.Option(None, "--assignee", help="Email, me, or unassigned (repeatable or CSV)."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened since a preset (all, 15m, 1h, 6h, 24h, 7d) or RFC3339 timestamp."),
+    until: Optional[str] = typer.Option(None, "--until", help="Opened before an RFC3339 timestamp."),
+    search: Optional[str] = typer.Option(None, "--search", help="Text in the issue title or summary."),
 ) -> None:
     """List incidents in a boxed table (newest-opened first).
 
@@ -93,8 +152,14 @@ def incidents_list(
     state: AppState = ctx.obj
     _validate_states(state_filter)
     validate_limit(limit)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
+    if alert_id and "alert_id" in filters:
+        raise typer.BadParameter("use --alert or --alert-id, not both")
     cctx = require_auth(state)
-    incidents = api.list_incidents(cctx, state=state_filter, alert_id=alert_id, limit=limit)
+    incidents = api.list_incidents(
+        cctx, state=state_filter, alert_id=alert_id, limit=limit,
+        filters=filters, on_filters_unavailable=_filters_unavailable,
+    )
     if state.json:
         output.emit_json({"issues": incidents})
         return
@@ -105,6 +170,16 @@ def incidents_list(
 def incidents_count(
     ctx: typer.Context,
     state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
+    agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
+    environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
+    machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
+    source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
+    alert: Optional[List[str]] = typer.Option(None, "--alert", help="Alert id (repeatable or CSV)."),
+    audit: Optional[List[str]] = typer.Option(None, "--audit", help="Audit id (repeatable or CSV)."),
+    assignee: Optional[List[str]] = typer.Option(None, "--assignee", help="Email, me, or unassigned (repeatable or CSV)."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened since a preset (all, 15m, 1h, 6h, 24h, 7d) or RFC3339 timestamp."),
+    until: Optional[str] = typer.Option(None, "--until", help="Opened before an RFC3339 timestamp."),
+    search: Optional[str] = typer.Option(None, "--search", help="Text in the issue title or summary."),
 ) -> None:
     """Count incidents (optionally by state) as a compact stat card.
 
@@ -117,12 +192,43 @@ def incidents_count(
     """
     state: AppState = ctx.obj
     _validate_states(state_filter)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
     cctx = require_auth(state)
-    count = api.count_incidents(cctx, state=state_filter)
+    count = api.count_incidents(cctx, state=state_filter, filters=filters, on_filters_unavailable=_filters_unavailable)
     if state.json:
         output.emit_json({"count": count})
     else:
         output.render_incident_count(count, state=state_filter)
+
+
+def incidents_facets(
+    ctx: typer.Context,
+    state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s) (CSV)."),
+    agent: Optional[List[str]] = typer.Option(None, "--agent", help="Agent id (repeatable or CSV)."),
+    environment: Optional[List[str]] = typer.Option(None, "--env", help="Environment (repeatable or CSV)."),
+    machine: Optional[List[str]] = typer.Option(None, "--machine", help="Machine id (repeatable or CSV)."),
+    source: Optional[List[str]] = typer.Option(None, "--source", help="Source: alert, audit, manual (repeatable or CSV)."),
+    alert: Optional[List[str]] = typer.Option(None, "--alert", help="Alert id (repeatable or CSV)."),
+    audit: Optional[List[str]] = typer.Option(None, "--audit", help="Audit id (repeatable or CSV)."),
+    assignee: Optional[List[str]] = typer.Option(None, "--assignee", help="Email, me, or unassigned (repeatable or CSV)."),
+    since: Optional[str] = typer.Option(None, "--since", help="Opened since a preset (all, 15m, 1h, 6h, 24h, 7d) or RFC3339 timestamp."),
+    until: Optional[str] = typer.Option(None, "--until", help="Opened before an RFC3339 timestamp."),
+    search: Optional[str] = typer.Option(None, "--search", help="Text in the issue title or summary."),
+) -> None:
+    """Show available issue filter values with counts. Needs issues:read.
+
+    Example:
+
+    * `fp --json issues facets --env prod`
+    """
+    state: AppState = ctx.obj
+    _validate_states(state_filter)
+    filters = _issue_filters(agent, environment, machine, source, alert, audit, assignee, since, until, search)
+    data = api.issue_facets(require_auth(state), state=state_filter, filters=filters)
+    if state.json:
+        output.emit_json(data)
+    else:
+        output.render_issue_facets(data)
 
 
 def incidents_show(
@@ -671,10 +777,11 @@ def register(app: typer.Typer) -> None:
         no_args_is_help=True,
         rich_markup_mode="markdown",
         context_settings={"help_option_names": ["-h", "--help"]},
-        help="Triage issues (list / count / show / ack / assign / resolve / close / archive / unarchive / clear / comment-* / subscribe* / open).",
+        help="Triage issues (list / count / facets / show / ack / assign / resolve / close / archive / unarchive / clear / comment-* / subscribe* / open).",
     )
     inc.command("list", epilog=GLOBALS_EPILOG)(incidents_list)
     inc.command("count", epilog=GLOBALS_EPILOG)(incidents_count)
+    inc.command("facets", epilog=GLOBALS_EPILOG)(incidents_facets)
     inc.command("show", epilog=GLOBALS_EPILOG)(incidents_show)
     inc.command("ack", epilog=GLOBALS_EPILOG)(incidents_ack)
     inc.command("assign", epilog=GLOBALS_EPILOG)(incidents_assign)

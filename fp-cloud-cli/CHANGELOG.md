@@ -1,8 +1,10 @@
 # Changelog — `fp` CLI
 
-## 0.0.2b1 — 2026-10-13
+## 0.0.2b1 — 2026-10-14
 
 ### Added
+
+- Filter issues list/count and discover facets by agent, environment, machine, source/alert/audit, assignee, opened dates and title/summary text in session or key mode; show agent tags and warn when an older Cloud may ignore filters (#900).
 
 - Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and code-only backfill.
 - Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.
@@ -16,6 +18,8 @@
 - The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
 
 ### Fixes
+
+- Align issue scope JSON and named alert/audit facets with agenteye #1074; avoid capability requests on normal filtered calls and limit empty-result probes and older-Cloud warnings to once per process (#900).
 
 - Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
 - Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).

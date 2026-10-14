@@ -603,7 +603,7 @@ _TOP_LEVEL_GROUPS = [
         # is one level down, in `fp audits --help`, which walks the real
         # Click tree.
         ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings finding ack mute dismiss resolve reopen assign context-* contracts"),
-        ("issues", "Triage and resolve issues.", "list count show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
+        ("issues", "Triage and resolve issues.", "list count facets show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
         ("settings", "View and change org settings.", "list schema set context-windows"),
         ("roles", "Manage permission sets.", "list show create update delete"),
         ("plan", "Inspect offers and team trial.", "claim"),
@@ -4381,9 +4381,14 @@ def render_incidents(incidents: Sequence[Any], *, show_id: bool = False) -> None
         iid = (getattr(i, "id", "") or "-") if show_id else _short_id(getattr(i, "id", "") or "-")
         opened = _age_compact(getattr(i, "opened_at", "")) or "-"
         label = getattr(i, "title", None) or getattr(i, "alert_name", None) or "—"
+        identity = Text(label, style=theme.TEXT)
+        # Keep tags with the title so narrow terminals never lose provenance
+        # by dropping a rightmost column.
+        for value in getattr(i, "agent_ids", None) or []:
+            identity.append(f" [agent:{value}]", style=theme.TEXT_DIM)
         rows.append([
             Text(iid, style=theme.TEXT_DIM),
-            Text(label, style=theme.TEXT),
+            identity,
             _incident_source_cell(getattr(i, "source", None), getattr(i, "alert_name", None)),
             _severity_cell(getattr(i, "alert_severity", "") or "-"),
             _incident_status_cell(getattr(i, "state", "")),
@@ -4395,6 +4400,33 @@ def render_incidents(incidents: Sequence[Any], *, show_id: bool = False) -> None
     title.append(f" · {len(items)}", style=theme.LABEL)
     render_list_panel("issues", header=header, rows=rows, days=set(), order=None,
                       empty_message="no issues", title=title)
+
+
+def render_issue_facets(data: Dict[str, Any]) -> None:
+    """Available values with counts, without dumping a raw response in human mode."""
+    facets = data.get("facets", data)
+    rows = []
+    for facet, values in facets.items():
+        if facet not in (
+            "agents", "environments", "machines", "sources", "alerts", "audits", "assignees",
+        ) or not isinstance(values, list):
+            continue
+        for item in values:
+            if isinstance(item, dict):
+                label = (
+                    item.get("name") or item.get("id", "—")
+                    if facet in ("alerts", "audits")
+                    else item.get("value", "—")
+                )
+                rows.append([
+                    Text(str(facet), style=theme.LABEL),
+                    Text(str(label), style=theme.TEXT),
+                    Text(str(item.get("count", 0)), style=theme.TEXT_DIM),
+                ])
+    render_list_panel(
+        "issue facets", header=["filter", "value", "count"], rows=rows,
+        days=set(), order=None, empty_message="no issue filter values",
+    )
 
 
 def incidents_footer(incidents: Sequence[Any]) -> None:

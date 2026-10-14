@@ -672,6 +672,7 @@ def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> N
             or family == "queries" and segments[1:] in (["run"], ["schema"])
             or family == "audits" and segments == ["audits", "contracts"]
             or family == "alerts" and segments == ["alerts", "recipients"]
+            or family == "issues" and segments in (["issues", "count"], ["issues", "facets"])
             or family == "users" and segments == ["users", "defaults"]
             or family == "usage" and segments == ["usage", "windows"]
             or family == "settings" and segments == ["settings", "model-context-windows"]
@@ -1293,6 +1294,12 @@ def test_alert(ctx: ClientContext, alert_id: str, channels: Optional[List[Dict[s
 
 # --- Incidents --------------------------------------------------------------
 
+# Capability detection is only a fallback for empty results. Keep both the
+# probe and the compatibility warning to at most once per CLI process.
+_issue_facets_probed = False
+_issue_facets_available: Optional[bool] = None
+_issue_filters_warned = False
+
 
 def list_incidents(
     ctx: ClientContext,
@@ -1300,26 +1307,84 @@ def list_incidents(
     state: Optional[str] = None,
     alert_id: Optional[str] = None,
     limit: Optional[int] = None,
+    filters: Optional[Dict[str, str]] = None,
+    on_filters_unavailable: Optional[Callable[[], None]] = None,
 ) -> List[Incident]:
     """GET /api/issues (or /api/alerts/{id}/issues when alert_id given). The
     alert-scoped path honours ``state``/``limit`` too — pass them so the filters aren't silently
     dropped on that path (``_get_json`` omits None params)."""
-    if alert_id:
+    if alert_id and not filters:
         data = _get_json(ctx, f"/api/alerts/{alert_id}/issues", {"state": state, "limit": limit})
     else:
-        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit})
-    return [Incident.from_dict(i) for i in (data if isinstance(data, list) else [])]
+        params = {"state": state, "limit": limit, **(filters or {})}
+        if alert_id:
+            params["alert_id"] = alert_id
+        data = cloud_request(ctx, "GET", "/api/issues", params=params)
+    items = data.get("issues", []) if isinstance(data, dict) else data
+    _check_issue_filters(ctx, items, filters, on_filters_unavailable)
+    return [Incident.from_dict(i) for i in (items if isinstance(items, list) else [])]
 
 
-def count_incidents(ctx: ClientContext, *, state: Optional[str] = None) -> int:
+def count_incidents(
+    ctx: ClientContext, *, state: Optional[str] = None,
+    filters: Optional[Dict[str, str]] = None,
+    on_filters_unavailable: Optional[Callable[[], None]] = None,
+) -> int:
     """GET /api/issues/count — {count}."""
-    data = _get_json(ctx, "/api/issues/count", {"state": state})
+    data = cloud_request(ctx, "GET", "/api/issues/count", params={"state": state, **(filters or {})})
+    _check_issue_filters(ctx, data, filters, on_filters_unavailable)
     if not isinstance(data, dict):
         return 0
     try:
         return int(data.get("count", 0))
     except (TypeError, ValueError):
         return 0
+
+
+def issue_facets(
+    ctx: ClientContext, *, state: Optional[str] = None,
+    filters: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """GET /api/issues/facets — available scope/source/assignee values with counts."""
+    data = cloud_request(ctx, "GET", "/api/issues/facets", params={"state": state, **(filters or {})})
+    if not isinstance(data, dict):
+        raise ApiError("Cloud returned an invalid issues facets response")
+    return data
+
+
+def _check_issue_filters(
+    ctx: ClientContext, data: Any, filters: Optional[Dict[str, str]],
+    on_unavailable: Optional[Callable[[], None]],
+) -> None:
+    """New Cloud always sends `agent_ids`, even when its array is empty.
+
+    Non-empty lists confirm support from the raw rows (before model defaults
+    fill missing keys), or warn for legacy rows without making another request.
+    Empty lists/zero counts probe facets once per process. Positive counts have
+    no scope marker and make no extra request; a cached missing route still
+    warrants a warning. Probe auth/network/server errors remain visible.
+    """
+    global _issue_facets_probed, _issue_facets_available, _issue_filters_warned
+    if not filters:
+        return
+    if isinstance(data, list) and data:
+        if any(isinstance(row, dict) and "agent_ids" in row for row in data):
+            return
+        unavailable = True
+    else:
+        empty = data == [] or isinstance(data, dict) and data.get("count") == 0
+        if empty and not _issue_facets_probed:
+            _issue_facets_probed = True
+            try:
+                issue_facets(ctx, filters=filters)
+            except NotFoundError:
+                _issue_facets_available = False
+            else:
+                _issue_facets_available = True
+        unavailable = _issue_facets_available is False
+    if unavailable and on_unavailable and not _issue_filters_warned:
+        _issue_filters_warned = True
+        on_unavailable()
 
 
 def get_incident(ctx: ClientContext, incident_id: str) -> Incident:

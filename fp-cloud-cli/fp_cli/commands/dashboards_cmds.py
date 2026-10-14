@@ -20,7 +20,7 @@ def request(ctx, method, path, body=None):
     data = api.cloud_request(require_auth(ctx.obj), method, path, body=body)
     if method != "GET":
         _write.record_action("dashboard_changed", resource="dashboard", success=True, destructive=method == "DELETE")
-    _cloud.emit(ctx.obj, data, "Dashboards")
+    _cloud.emit(ctx.obj, data, "Dashboards", view=path, method=method, body=body)
 
 
 def list_dashboards(ctx: typer.Context) -> None:

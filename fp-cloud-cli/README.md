@@ -221,6 +221,11 @@ immutable version before disabling older enabled versions. If disabling fails,
 the CLI names the published id; inspect `list --all` and recover explicitly.
 `--backfill 7d` is code-only; `evaluators backfill --from T --to T` accepts ≤90 days.
 
+Human output shows each `--dry-run-on` session's outcome before creation or
+deployment. Any failed run stops the write; after reviewing the failure, an
+explicit `--force` overrides this guard. Existing `--json` response shapes stay
+unchanged.
+
 AI drafting is session-only and writes an API spec that create/deploy accept:
 
 ```bash
@@ -258,8 +263,8 @@ fp roles list|show|create|update|delete
 fp users delete <id>
 fp users defaults
 fp usage windows
-fp plan
-fp plan claim <offer>
+fp plan                                           # session
+fp plan claim <offer>                             # session
 fp settings context-windows list|set <model> <tokens>|delete <model>
 fp otel status|enable|disable
 fp slack status|disconnect                          # session
@@ -275,10 +280,16 @@ All new commands accept the global `--json` before the command. Session-only
 commands fail before HTTP in API-key mode, with exit 2 and a `fp login` hint.
 Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”.
 Missing-record 404s also exit 6 but report that the record was not found.
-`plan` routes are mapped for keys, but the Cloud also requires an actor email;
-an API key alone cannot impersonate a person to claim an offer.
+`plan` and `plan claim` require a signed-in person and deny API-key mode before
+HTTP with the standard `fp login` message.
 Human screens use the mint/pink wordmark, grey labels, open tables and full ids;
 existing JSON shapes are unchanged.
+
+Human commands show summaries, tables and wrapped text rather than response
+objects. Use global `--json` for raw API results. For `sessions export` or
+`query export --format json`, use `--out FILE` to save the JSON; without either
+option, the terminal shows a readable session or query view. CSV exports remain
+plain CSV for piping.
 
 ## Configuration
 

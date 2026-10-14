@@ -107,8 +107,15 @@ class Handler(BaseHTTPRequestHandler):
                 "condition_source": "", "evaluator_source": Cloud.source, "reasoning": "Drafted from intent", "kind": "code"})
         if route == "/evaluator-definitions/dry-run":
             assert len(body["session_ids"]) <= 10
-            return self.json_response({"runs": [{"ok": True, "session_id": sid, "mode": "run", "result": {"score": {"value": 1.0}}} for sid in body["session_ids"]],
-                "summary": {"failed": 0, "succeeded": len(body["session_ids"]), "skipped": 0}})
+            runs = [
+                {"ok": sid != "failed-session", "session_id": sid, "mode": "run",
+                 "result": {"score": {"value": 1.0}, "reasoning": "No errors found"} if sid != "failed-session" else None,
+                 "error_message": "Missing result score" if sid == "failed-session" else None}
+                for sid in body["session_ids"]
+            ]
+            failed = sum(not run["ok"] for run in runs)
+            return self.json_response({"runs": runs,
+                "summary": {"failed": failed, "succeeded": len(runs) - failed, "skipped": 0}})
         if route == "/evaluations/backfill":
             assert body == {
                 "from": "2026-10-01T00:00:00Z", "to": "2026-10-08T00:00:00Z",
@@ -192,7 +199,8 @@ def main():
     base = f"http://127.0.0.1:{server.server_port}"
     transcript = []
     with tempfile.TemporaryDirectory(prefix="fp-user-smoke-") as tmp:
-        env = {**os.environ, "FP_HOME": tmp, "FP_ANALYTICS_DISABLED": "1", "COLUMNS": "140", "NO_COLOR": "1"}
+        env = {**os.environ, "FP_HOME": tmp, "FP_ANALYTICS_DISABLED": "1",
+               "COLUMNS": os.environ.get("FP_SMOKE_COLUMNS", "140"), "NO_COLOR": "1"}
         for var in ("FP_TOKEN", "FP_API_KEY", "FP_ORG", "FP_JSON", "FP_DASHBOARD_URL"):
             env.pop(var, None)
         fp = [args.fp, "--base-url", base]
@@ -212,6 +220,8 @@ def main():
         run(["evaluators", "deploy", "error_free", "--file", spec, "--version", "2"], key=True)
         assert not Cloud.definitions[0]["enabled"] and Cloud.definitions[1]["enabled"]
         run(["evaluators", "list", "--all"], key=True)
+        human_list = run(["evaluators", "list", "--all"], key=True, json_mode=False)
+        assert "EVALUATORS" in human_list and "error_free" in human_list and "[]" not in human_list
         run(["evaluators", "disable", "error_free@2"], key=True)
         run(["evaluators", "backfill", "--from", "2026-10-01T02:00:00+02:00",
              "--to", "2026-10-07T20:00:00-04:00", "--key", "error_free", "--dry-run"], key=True)
@@ -221,6 +231,17 @@ def main():
             run(["evaluators", "create", "--key", "binary", "--name", "Binary", "--judge",
                  "--criteria", "Grade relevance", "--step", step], key=True, expected=2)
         run(["evaluators", "create", "--key", "resolution", "--name", "Resolution", "--jev", "noul", "--instructions", "Was the request resolved?", "--true", "Resolved", "--false", "Unresolved"], key=True)
+        before = len(Cloud.definitions)
+        failed = run(["evaluators", "create", "--key", "preview_failure", "--name", "Preview failure",
+                      "--code", "-", "--dry-run-on", "failed-session"],
+                     input=Cloud.source, key=True, json_mode=False, expected=1)
+        assert "failed-session · failed" in failed and "Missing result score" in failed
+        assert len(Cloud.definitions) == before
+        forced = run(["evaluators", "create", "--key", "preview_failure", "--name", "Preview failure",
+                      "--code", "-", "--dry-run-on", "failed-session", "--force"],
+                     input=Cloud.source, key=True, json_mode=False)
+        assert len(Cloud.definitions) == before + 1
+        assert forced.index("Missing result score") < forced.index("EVALUATOR CREATED")
         run(["dashboards", "create", "--name", "Quality"], key=True)
         run(["dashboards", "tiles", "board1", "add", "--query", "q1", "--chart", "bar", "--title", "Traffic"], key=True)
         run(["dashboards", "tiles", "board1", "list"])
@@ -234,6 +255,9 @@ def main():
         run(["evaluators", "draft", "Grade quality"], key=True, expected=2)
         denial = run(["agent", "ask", "Hello"], key=True, expected=2)
         assert denial["error"] == "`fp agent ask` needs a signed-in session: run `fp login`"
+        for argv in (["plan"], ["plan", "claim", "offer"]):
+            denied = run(argv, key=True, expected=2)
+            assert "needs a signed-in session" in denied["error"]
         missing = run(["sessions", "re-evaluate", "missing"], key=True, expected=6)
         assert missing["error"] == "session not found"
         assert "not available" not in missing["error"]
@@ -277,7 +301,7 @@ def main():
         # CI may force colour even with NO_COLOR, inserting ANSI spans inside
         # the wordmark. Compare visible text without weakening the order check.
         rendered = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output.decode(errors="replace"))
-        assert rendered.index("failproof ai") < rendered.index("Events by agent")
+        assert rendered.index("failproof ai") < rendered.index("EVENTS BY AGENT")
     server.shutdown()
     (artifacts / "fp-user-smoke.txt").write_text("\n".join(transcript), encoding="utf-8")
     (artifacts / "fp-fake-cloud-requests.json").write_text(json.dumps(Cloud.requests, indent=2), encoding="utf-8")

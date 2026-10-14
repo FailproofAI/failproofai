@@ -17,7 +17,7 @@ def request(ctx, method, path, body=None, params=None):
     result = api.cloud_request(require_auth(ctx.obj), method, path, body=body, params=params)
     if method != "GET":
         _write.record_action("cloud_resource_changed", resource=path.split("/")[2], success=True, destructive=method == "DELETE")
-    _cloud.emit(ctx.obj, result, "Cloud")
+    _cloud.emit(ctx.obj, result, "Cloud", view=path, method=method, body=body, params=params)
 
 
 def roles_list(ctx: typer.Context) -> None:
@@ -88,6 +88,7 @@ def plan(ctx: typer.Context) -> None:
     """Show current offers and team-trial state."""
     if ctx.invoked_subcommand:
         return
+    _cloud.session_only(ctx.obj, "plan")
     cctx = require_auth(ctx.obj)
     data = {"offers": api.cloud_request(cctx, "GET", "/api/offers/me"),
             "team_trial": api.cloud_request(cctx, "GET", "/api/team-trial/me")}
@@ -96,6 +97,7 @@ def plan(ctx: typer.Context) -> None:
 
 def claim(ctx: typer.Context, offer: str = typer.Argument(...)) -> None:
     """Claim a named offer."""
+    _cloud.session_only(ctx.obj, "plan claim")
     request(ctx, "POST", "/api/offers/claim", {"offer_key": offer})
 
 

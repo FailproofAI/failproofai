@@ -675,6 +675,7 @@ def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> N
             or family == "users" and segments == ["users", "defaults"]
             or family == "usage" and segments == ["usage", "windows"]
             or family == "settings" and segments == ["settings", "model-context-windows"]
+            or family == "settings" and len(segments) == 2
         )
         # Some collection operations name their target in a query or body.
         request_body = body if isinstance(body, dict) else {}

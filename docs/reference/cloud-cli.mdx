@@ -81,6 +81,8 @@ disables older enabled versions. A failed follow-up leaves the new version
 published: inspect `evaluators list --all` before retrying.
 Judge dry-runs are refused by Cloud. Jev dry-runs spend model budget.
 Backfill excludes judge/Jev and accepts at most 90 days.
+Human output shows per-session dry-run results before creating/deploying.
+Failed previews stop the write unless you explicitly pass `--force` after review.
 </Warning>
 
 AI drafting requires `fp login` and writes a spec accepted by create/deploy:
@@ -96,8 +98,8 @@ fp --json evaluators dry-run --file evaluator.json
 | --- | --- |
 | `fp evaluators list` | `--key`, `--all` |
 | `fp evaluators show KEY[@VERSION]` | Full source/envelope |
-| `fp evaluators create` | `--key`, `--name`, `--version`, repeated `--label`, `--condition EXPR\|@file`, one source, repeated `--dry-run-on`, `--disabled` |
-| `fp evaluators deploy KEY` | Same source flags; `--version`, code-only `--backfill 7d`; numeric versions auto-increment |
+| `fp evaluators create` | `--key`, `--name`, `--version`, repeated `--label`, `--condition EXPR\|@file`, one source, repeated `--dry-run-on`, `--disabled`, explicit `--force` for failed previews |
+| `fp evaluators deploy KEY` | Same source flags; `--version`, code-only `--backfill 7d`, `--force`; numeric versions auto-increment; KEY supplies a missing spec-file `eval_key` |
 | `fp evaluators draft "intent"` | Session; `--kind code\|judge\|jev`, `--out` |
 | `fp evaluators dry-run` | Source flags or `--file`, repeated `--session` (maximum 10); none = compile only |
 | `fp evaluators enable\|disable KEY[@VERSION]` | Toggle |
@@ -123,6 +125,10 @@ All commands accept global `--json`. Unknown-route 404s exit 6 with “not avail
 on this FailproofAI Cloud yet”. Missing-record 404s also exit 6 but report that the
 record was not found. Session-only commands deny key mode before HTTP (exit 2).
 
+Human commands use summaries and tables. For raw JSON exports, pass global
+`--json` or save with `--out FILE`; otherwise session and JSON query exports show
+a readable view. CSV exports remain plain CSV for piping.
+
 | Commands | Options / notes |
 | --- | --- |
 | `fp dashboards list\|show ID\|create\|update ID\|delete ID` | Create `--name`, `--description`, `--file` definition; update preserves unmentioned fields |
@@ -139,7 +145,7 @@ record was not found. Session-only commands deny key mode before HTTP (exit 2).
 | `fp orgs create --name N [--slug S]` | Session; derives omitted slug, does not switch org |
 | `fp roles list\|show NAME\|create\|update NAME\|delete NAME` | Permission sets; create `--name --permission`; update replace `--permission` or merge `--add/--remove`; `--description`, `--file` |
 | `fp users delete ID` / `fp users defaults` | Deletion by id |
-| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | Offers and trial; Cloud requires actor identity for offers |
+| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | Offers and trial; plan/claim require a signed-in session |
 | `fp settings context-windows list\|set MODEL TOKENS\|delete MODEL` | 0–1000000 tokens |
 | `fp otel status\|enable\|disable` | Cloud org ingest switch, not local capture |
 | `fp slack status\|disconnect` | Session |

@@ -404,7 +404,7 @@ def query_compose(ctx: typer.Context, question: str = typer.Argument(...),
     elif ctx.obj.json:
         output.emit_json(draft)
     else:
-        print(sql)
+        _cloud.emit(ctx.obj, {"sql": sql}, "Composed query")
 
 
 def query_export(ctx: typer.Context, id: Optional[str] = typer.Argument(None),
@@ -441,5 +441,8 @@ def query_export(ctx: typer.Context, id: Optional[str] = typer.Argument(None),
         _cloud.emit(ctx.obj, {"out": out, "format": format}, "Query exported")
     elif ctx.obj.json:
         output.emit_json(data if format == "json" else {"format": format, "content": content})
+    elif format == "json":
+        from .. import cloud_output
+        cloud_output.query_result(data, "Query export")
     else:
         print(content, end="")

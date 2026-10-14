@@ -21,7 +21,7 @@ import typer
 
 from .. import _click_compat as click  # the Click Typer is running; see _click_compat
 from .. import client as api
-from .. import output
+from .. import cloud_output, output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
 from ..errors import FpCliError, NetworkError, NotFoundError
 from . import _cloud, _write
@@ -463,16 +463,7 @@ def run_artifact(cctx, block):
 
 
 def render_artifact(block):
-    output.screen_header()
-    data = block.get("result")
-    if isinstance(data, dict):
-        output._stdout.print(str(block.get("title", "Artifact")), markup=False)
-        output.print_table(
-            [c.get("name", "") if isinstance(c, dict) else str(c) for c in data.get("columns", [])],
-            data.get("rows", []),
-        )
-    else:
-        _cloud.emit(None, block, block.get("title", "Home"))
+    cloud_output.artifact(block)
 
 
 def agent_brief(ctx: typer.Context, range: str = typer.Option("24h", "--range")) -> None:
@@ -486,7 +477,4 @@ def agent_brief(ctx: typer.Context, range: str = typer.Option("24h", "--range"))
     if ctx.obj.json:
         output.emit_json({**data, "blocks": blocks})
     else:
-        output.info(str(data.get("greeting", "")))
-        output.info(str(data.get("summary", "")))
-        for block in blocks:
-            render_artifact(block)
+        cloud_output.brief({**data, "blocks": blocks})

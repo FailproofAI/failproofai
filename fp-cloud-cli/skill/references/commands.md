@@ -269,8 +269,8 @@ or model-authored source locally merely to inspect it.
 | --- | --- |
 | `evaluators list` | `--key K`, `--all` (include disabled versions) |
 | `evaluators show K[@V]` | full source; specify version when ambiguous |
-| `evaluators create` | `--key K --name N`, optional `--version V` (default `1`), repeated `--label`, `--condition EXPR\|@file`, exactly one source below, repeated `--dry-run-on SESSION`, `--disabled` |
-| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; creates first, then disables predecessors; `--backfill 7d` code only |
+| `evaluators create` | `--key K --name N`, optional `--version V` (default `1`), repeated `--label`, `--condition EXPR\|@file`, exactly one source below, repeated `--dry-run-on SESSION`, `--disabled`, explicit `--force` to override failed previews |
+| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; creates first, then disables predecessors; `--backfill 7d` code only; `--force` to override failed previews |
 | `evaluators draft "intent"` | session only; `--kind code\|judge\|jev`, `--out spec.json` (refuses to overwrite) |
 | `evaluators dry-run` | source flags or `--file`; repeated `--session` (max 10), none = compile only; judge refused, Jev spends budget |
 | `evaluators enable\|disable K[@V]` | toggle definition |
@@ -329,8 +329,10 @@ fp --json sessions history run-001
 fp --json evaluators list --all
 ```
 
-Check draft keys before copying these examples. A failed `--dry-run-on` prevents
-creation. A failed predecessor disable leaves the new version published: inspect
+Check draft keys before copying these examples. Human output shows each preview's
+score/reasoning/error before writing. A failed `--dry-run-on` prevents creation
+unless `--force` is explicitly authorized. Deploy's positional key may supply a
+missing `eval_key` in a spec file. A failed predecessor disable leaves the new version published: inspect
 `list --all` and recover with explicit `disable KEY@VERSION`, not another create.
 API 409 can mean no enabled managed instance or an existing version; 422 can mean
 the org has 100 enabled keys. Read the error, do not rename/retry silently.
@@ -343,6 +345,10 @@ an empty response on a record-scoped request identifies the missing record path.
 Session-only commands exit 2 before HTTP in key mode.
 Human output uses mint/pink open screens and full ids; legacy `--full-ids`
 remains accepted. Exports refuse to overwrite existing files.
+
+Use global `--json` for API objects or `--out` to save a session/query JSON
+export. Without either, human mode renders a readable view rather than raw
+structures. CSV query export remains pipeable CSV.
 
 | Commands | Options / notes |
 | --- | --- |
@@ -360,7 +366,7 @@ remains accepted. Exports refuse to overwrite existing files.
 | `orgs create --name N [--slug S]` | session; omitted slug derives from name; never auto-switches |
 | `roles list\|show NAME\|create\|update NAME\|delete NAME` | permission sets; create `--name --permission`; update `--permission` replaces or `--add/--remove` merges; `--description`, `--file`; builtins immutable |
 | `users delete ID` / `users defaults` | deletion is by id, not email |
-| `usage windows` / `plan` / `plan claim OFFER` | offers + trial; offers still require an actor identity on the Cloud |
+| `usage windows` / `plan` / `plan claim OFFER` | offers + trial; plan/claim are session-only (deny key mode before HTTP) |
 | `settings context-windows list\|set MODEL TOKENS\|delete MODEL` | tokens 0–1000000; model names may contain `/` |
 | `otel status\|enable\|disable` | Cloud org switch `otel.ingest_enabled`, not local collector configuration |
 | `slack status\|disconnect` | session only |

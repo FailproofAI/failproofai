@@ -63,9 +63,9 @@ def test_ask_artifacts_and_approvals(logged_in, runner, monkeypatch, json_mode, 
         assert data["answer"] == "Here is the result."
         assert data["artifacts"][0]["result"] == RESULT
     else:
-        assert "Event total" in result.output
+        assert "EVENT TOTAL" in result.output
         assert "42" in result.output
-        assert result.stdout.index("failproof ai v") < result.stdout.index("Event total")
+        assert result.stdout.index("failproof ai v") < result.stdout.index("EVENT TOTAL")
         if tty:
             assert "alert a1" in result.output
             assert "Approve this change" in result.output
@@ -250,4 +250,4 @@ def test_artifact_header_precedes_title_once(capsys):
     render_artifact({"title": "Second artifact", "result": RESULT})
     rendered = capsys.readouterr().out
     assert rendered.count("failproof ai v") == 1
-    assert rendered.index("failproof ai v") < rendered.index("First artifact") < rendered.index("Second artifact")
+    assert rendered.index("failproof ai v") < rendered.index("FIRST ARTIFACT") < rendered.index("SECOND ARTIFACT")

@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import typer
 
-from .. import client as api, dates, evaluator_spec as spec, output
+from .. import client as api, cloud_output, dates, evaluator_spec as spec, output
 from .._context import GLOBALS_EPILOG, require_auth
 from ..errors import ApiError, NotFoundError
 from . import _cloud, _write
@@ -47,12 +47,17 @@ def show(ctx: typer.Context, handle: str = typer.Argument(..., metavar="KEY[@VER
     _cloud.emit(ctx.obj, select(definitions(require_auth(ctx.obj)), handle), "Evaluator")
 
 
-def _create(state, cctx, body, sessions, disabled=False) -> dict:
+def _create(state, cctx, body, sessions, disabled=False, force=False) -> dict:
     if sessions:
         if spec.source_kind(body) == "jev":
             output.warn("Jev dry-runs spend model budget.")
         preview = api.cloud_request(cctx, "POST", f"{PATH}/dry-run", body=spec.dry_run_body(body, sessions))
-        check_dry_run(preview)
+        if not state.json:
+            cloud_output.dry_run(preview)
+        if dry_run_failed(preview) and force:
+            output.warn("Dry-run failed; --force authorizes creating the evaluator anyway.")
+        else:
+            check_dry_run(preview)
     _write.confirm(state, f"Create evaluator {body['eval_key']}@{body['eval_version']}", assume_yes=False)
     row = api.cloud_request(cctx, "POST", PATH, body=body)
     if not isinstance(row, dict) or not row.get("id"):
@@ -86,6 +91,7 @@ def create(
     file: Optional[str] = typer.Option(None, "--file"),
     dry_run_on: Optional[List[str]] = typer.Option(None, "--dry-run-on"),
     disabled: bool = typer.Option(False, "--disabled"),
+    force: bool = typer.Option(False, "--force", help="Create despite failed --dry-run-on results (review the failures first)."),
 ) -> None:
     """Create a code, LLM judge or Jev evaluator (enabled by default).
 
@@ -108,8 +114,11 @@ def create(
     # Validate before any request, including the judge refusal / session bound.
     if dry_run_on:
         spec.dry_run_body(body, dry_run_on)
-    row = _create(ctx.obj, require_auth(ctx.obj), body, dry_run_on, disabled)
-    _cloud.emit(ctx.obj, row, "Evaluator created")
+    row = _create(ctx.obj, require_auth(ctx.obj), body, dry_run_on, disabled, force)
+    if ctx.obj.json:
+        output.emit_json(row)
+    else:
+        cloud_output.evaluator({**body, **row}, "Evaluator created")
 
 
 def deploy(
@@ -134,6 +143,7 @@ def deploy(
     file: Optional[str] = typer.Option(None, "--file"),
     dry_run_on: Optional[List[str]] = typer.Option(None, "--dry-run-on"),
     backfill: Optional[str] = typer.Option(None, "--backfill", help="Code only; e.g. 7d (up to 90d)."),
+    force: bool = typer.Option(False, "--force", help="Deploy despite failed --dry-run-on results (review the failures first)."),
 ) -> None:
     """Publish a NEW immutable version, then disable enabled predecessors.
 
@@ -146,7 +156,7 @@ def deploy(
         judge=judge, criteria=criteria, step=step, threshold_value=threshold, jev=jev,
         instructions=instructions, true=true, false=false, level=level, file=file, complete=False,
     )
-    if file and body.get("eval_key") != key:
+    if file and body.get("eval_key") is not None and body["eval_key"] != key:
         spec.fail("The spec eval_key must match the deploy argument")
     body["eval_key"] = key
     if version is not None:
@@ -177,7 +187,7 @@ def deploy(
         spec.fail(f"Version {key}@{body['eval_version']} already exists; deploy needs a NEW version")
     body.setdefault("display_name", existing[-1].get("display_name", key) if existing else key)
     spec.validate(body)
-    created = _create(ctx.obj, cctx, body, dry_run_on)
+    created = _create(ctx.obj, cctx, body, dry_run_on, force=force)
     disabled_ids = []
     try:
         for old in existing:
@@ -190,7 +200,10 @@ def deploy(
         output.warn(f"Published {key}@{body['eval_version']} (id {created['id']}); disabled {len(disabled_ids)} predecessors. Follow-up failed; inspect evaluators list --all before retrying.")
         raise exc
     _write.record_action("evaluator_deployed", resource="evaluator", success=True)
-    _cloud.emit(ctx.obj, {"created": created, "disabled": disabled_ids}, "Evaluator deployed")
+    if ctx.obj.json:
+        output.emit_json({"created": created, "disabled": disabled_ids})
+    else:
+        cloud_output.deployed({**body, **created}, [r for r in existing if r["id"] in disabled_ids])
 
 
 def draft(
@@ -270,7 +283,10 @@ def toggle(ctx, handle, enabled):
     _write.confirm(ctx.obj, f"{'Enable' if enabled else 'Disable'} {handle}", assume_yes=False)
     result = api.cloud_request(cctx, "PATCH", f"{PATH}/{row['id']}", body={"enabled": enabled})
     _write.record_action("evaluator_toggled", resource="evaluator", success=True)
-    _cloud.emit(ctx.obj, result or {**row, "enabled": enabled}, "Evaluator")
+    if ctx.obj.json:
+        output.emit_json(result or {**row, "enabled": enabled})
+    else:
+        cloud_output.evaluator({**row, **(result or {}), "enabled": enabled})
 
 
 def enable(ctx: typer.Context, handle: str = typer.Argument(...)) -> None:
@@ -297,7 +313,10 @@ def label_def(ctx: typer.Context, handle: str = typer.Argument(...),
     spec.validate_labels(labels)
     _write.confirm(ctx.obj, f"Label {handle}", assume_yes=False)
     data = api.cloud_request(cctx, "PATCH", f"{PATH}/{row['id']}", body={"labels": labels})
-    _cloud.emit(ctx.obj, data or {**row, "labels": labels}, "Evaluator labels")
+    if ctx.obj.json:
+        output.emit_json(data or {**row, "labels": labels})
+    else:
+        cloud_output.evaluator({**row, **(data or {}), "labels": labels}, "Evaluator labels")
 
 
 def instances(ctx: typer.Context) -> None:

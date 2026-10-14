@@ -154,7 +154,7 @@ def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> No
     """Re-run evaluators on one session. Needs evaluations:trigger."""
     _write.confirm(ctx.obj, f"Re-evaluate session {session_id}", assume_yes=False)
     _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST",
-        f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation")
+        f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation", body=session_id)
 
 
 def show(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
@@ -178,7 +178,7 @@ def export(ctx: typer.Context, id: str = typer.Argument(...),
         _cloud.write_file(out, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
         _cloud.emit(ctx.obj, {"out": out}, "Session exported")
     else:
-        output.emit_json(data)
+        _cloud.emit(ctx.obj, data, "Session")
 
 
 def history(ctx: typer.Context, id: str = typer.Argument(...)) -> None:

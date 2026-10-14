@@ -42,6 +42,13 @@ SESSION = [
 @pytest.mark.parametrize("key_mode", [False, True])
 @pytest.mark.parametrize("argv,method,path,response", CASES)
 def test_commands(logged_in, runner, key_mode, argv, method, path, response):
+    if key_mode and argv[0] == "plan":
+        with respx.mock as mock:
+            result = runner.invoke(app, ["--json", "--api-key", "key", *argv])
+            assert not mock.calls
+        assert result.exit_code == 2
+        assert "needs a signed-in session" in result.stdout
+        return
     prefix = "/v1" if key_mode else "/api"
     with respx.mock(assert_all_called=False) as mock:
         mock.get(f"{BASE}{prefix}/permission-sets/reviewer").respond(200, json={"name": "reviewer", "permissions": ["events:read"], "description": "Keep"})

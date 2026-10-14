@@ -16,7 +16,7 @@ def read(ctx, suffix, since=None, limit=None, session_id=None):
     frm, to = resolve_dates(since, None, None)
     data = api.cloud_request(require_auth(ctx.obj), "GET", f"/api/events/sentiment{suffix}",
         params={"ts_from": frm, "ts_to": to, "limit": limit, "session_id": session_id})
-    _cloud.emit(ctx.obj, data, "Sentiment")
+    _cloud.emit(ctx.obj, data, "Sentiment", view=suffix.strip("/") or "summary")
 
 
 def summary(ctx: typer.Context, since: Optional[str] = typer.Option(None, "--since")) -> None:

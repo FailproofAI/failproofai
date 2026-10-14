@@ -79,7 +79,7 @@ Throughout this skill, `fp` means "whichever form you resolved."
   a saved session (Click treats an empty env var as unset, so it falls to rung 4).
 
 - **Some commands need a signed-in user.** `login`, `logout`, `orgs *`, the whole
-  `agent` group, `evaluators draft`, `query compose`, `slack *`, `keys update`, and all of `policies *` / `fleet *` /
+  `agent` group, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, `keys update`, and all of `policies *` / `fleet *` /
   `guardrails *` refuse a key with a usage error (**exit 2**) and make **no
   network call at all** — there is no user to sign in, no saved active org to
   switch, no private assistant thread to own, and the enforcement write routes
@@ -378,6 +378,10 @@ a rubric. `deploy` creates the new immutable version **before** disabling older
 enabled versions. A partial failure names the new id: inspect `list --all`,
 then disable any remaining old version; do not retry creation blindly.
 Backfill excludes judge/Jev and accepts at most 90 days.
+
+Human mode displays dry-run outcomes before creation/deployment. Failed runs
+stop the write unless `--force` is explicitly authorized; do not add it merely
+to get past a failed check. Plan offers and claims require `fp login`, not a key.
 
 AI drafting needs a signed-in session (`fp login`); evaluator API operations can
 use a scoped key. Unknown-route 404s exit 6 with “not available on this

@@ -47,6 +47,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { CODEX_MANAGED_BEGIN, CODEX_MANAGED_END, codexSystemConfigPath, codexSystemHooksPresent } from "./codex-system-hooks";
 import { optsFor, screenKit, type RenderOpts } from "./tui";
 
 export interface UninstallOptions {
@@ -109,6 +110,8 @@ export interface UninstallResult {
 /** Everything this machine has that uninstalling would remove. */
 interface Leftovers {
   clis: IntegrationType[];
+  /** failproofai's block in Codex's system config, which only root can remove. */
+  codexSystemPath: string | null;
   servicePath: string | null;
   serviceInstalled: boolean;
   daemonConfigured: boolean;
@@ -146,6 +149,7 @@ function survey(cwd?: string): Leftovers {
   const servicePath = isDaemonSupportedPlatform() ? daemonServiceFilePath() : null;
   return {
     clis,
+    codexSystemPath: codexSystemHooksPresent() ? codexSystemConfigPath() : null,
     servicePath,
     serviceInstalled: !!servicePath && existsSync(servicePath),
     daemonConfigured,
@@ -200,6 +204,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   if (found.clis.length > 0) {
     details.push(
       `Agents: ${found.clis.map((id) => getIntegration(id).displayName ?? id).join(", ")}`,
+      ...(found.codexSystemPath ? [`Codex's hooks are in ${found.codexSystemPath}, so removing them needs sudo.`] : []),
       "Also resets enabled policies, custom policy paths and policy parameters in policies-config.json.",
     );
   }
@@ -271,6 +276,22 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     }
   }
 
+  // Asked once, up front, for everything below that needs root: the Codex
+  // block in /etc and the service. Best-effort, like the service step: a
+  // refused prompt falls through to the "still there, do this" lines.
+  const elevate = opts.elevate ?? primeElevation;
+  let elevated = false;
+  const elevateOnce = (): void => {
+    if (elevated) return;
+    elevated = true;
+    try {
+      elevate();
+    } catch {
+      // `sudo -n` in the removal fails the same way it would have anyway.
+    }
+  };
+  if (found.codexSystemPath) elevateOnce();
+
   if (found.clis.length > 0) {
     try {
       // Scope "all" and every cli that HAS entries — the same list the plan
@@ -285,6 +306,12 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
         source: "uninstall_command",
         silent: true,
       });
+      if (found.codexSystemPath && codexSystemHooksPresent()) {
+        failures.push(
+          `failproofai's Codex hooks are still in ${found.codexSystemPath}, most often because sudo was not available.\n` +
+            `Remove the lines from  \`${CODEX_MANAGED_BEGIN}\`  to  \`${CODEX_MANAGED_END}\`  as root.`,
+        );
+      }
       lines.push(kit.ok(`Removed hooks from ${many(found.clis.length, "agent")}.`));
     } catch (err) {
       failures.push(
@@ -309,13 +336,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     // in front of it, which is the same reasoning `failproofai update` follows.
     // Best-effort: a refused or absent sudo still falls through to the
     // "still there, here is what to run as root" path below.
-    const elevate = opts.elevate ?? primeElevation;
-    try {
-      elevate();
-    } catch {
-      // A failed prompt is not a reason to skip the attempt; `sudo -n` inside
-      // the removal will simply fail the same way it would have anyway.
-    }
+    elevateOnce();
     // What to run as root when the removal could not elevate, and where to look.
     const byHand = (servicePath: string): string =>
       "\nRemove it as root:\n" +

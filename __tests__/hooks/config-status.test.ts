@@ -540,6 +540,7 @@ const seams = (over: StatusDeps = {}): StatusDeps => ({
   daemonAnswering: () => false,
   detectInstalled: () => ["claude", "codex"],
   notEnforcing: () => null,
+  codexTrust: () => ({ kind: "none" }),
   ...over,
 });
 
@@ -701,5 +702,52 @@ describe("the backlog age the delivery row reads", () => {
     const f = await gatherStatusFacts(seams());
     expect(f.delivery?.queued).toBe(2);
     expect(f.delivery?.oldestQueuedMs).toBe(30 * 60_000);
+  });
+});
+
+describe("config --status — Codex trust", () => {
+  const enforcement = (lines: string[]) => lines.slice(lines.indexOf("ENFORCEMENT")).map(strip);
+
+  it("shows no codex row when failproofai has no Codex hooks at user scope", () => {
+    expect(rowValue(renderStatusScreen(facts({ codex: { kind: "none" } }), PLAIN), "codex")).toBeUndefined();
+  });
+
+  it("says Codex enforces from its system config", () => {
+    const lines = renderStatusScreen(facts({ codex: { kind: "system", path: "/etc/codex/config.toml" } }), PLAIN);
+    expect(rowValue(lines, "codex")).toBe("● Enforcing (system config)");
+    expect(pickStatusAttention(facts({ codex: { kind: "system", path: "/etc/codex/config.toml" } }))).toBeNull();
+  });
+
+  it("says trusted hooks.json hooks enforce", () => {
+    const lines = renderStatusScreen(facts({ codex: { kind: "trusted", path: "/h/.codex/hooks.json" } }), PLAIN);
+    expect(rowValue(lines, "codex")).toBe("● Enforcing (hooks trusted)");
+  });
+
+  it("does not count untrusted Codex hooks as enforcing, and says how to fix it", () => {
+    const f = facts({ codex: { kind: "untrusted", path: "/h/.codex/hooks.json", untrusted: 10, total: 10 } });
+    const lines = renderStatusScreen(f, PLAIN);
+    expect(rowValue(lines, "codex")).toBe("○ Not enforcing: hooks not trusted");
+    expect(enforcement(lines).slice(-3)).toEqual([
+      "",
+      "▲ Codex won't run failproofai's hooks until they're trusted.",
+      "  Re-run  failproofai config  and allow sudo, or open  codex  once and approve the hooks.",
+    ]);
+  });
+
+  it("puts a machine with no policies on before Codex's trust", () => {
+    const f = facts({
+      notEnforcing: "no-hooks",
+      codex: { kind: "untrusted", path: "/h/.codex/hooks.json", untrusted: 2, total: 10 },
+    });
+    expect(pickStatusAttention(f)?.text).toBe("Policies are not enforcing yet.");
+    expect(rowValue(renderStatusScreen(f, PLAIN), "codex")).toBe("○ Not enforcing: 2 of 10 hooks not trusted");
+  });
+
+  it("reads Codex's trust through its seam", async () => {
+    const f = await gatherStatusFacts({
+      ...seams(),
+      codexTrust: () => ({ kind: "system", path: "/etc/codex/config.toml" }),
+    });
+    expect(f.codex).toEqual({ kind: "system", path: "/etc/codex/config.toml" });
   });
 });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.11-beta.0 — 2026-10-14
+
+### Dependencies
+
+- Combine the open Dependabot PRs (#883, #884, #886–#898) into one: `next` and `eslint-config-next` 16.3.6 → 16.4.0, `eslint` 10.11.0 → 10.12.0, `@anthropic-ai/sdk` 0.128.0 → 0.133.0, `@types/node` 26.6.2 → 26.6.5, `lucide-react` 1.48.0 → 1.55.0, `@tanstack/react-virtual` 3.14.13 → 3.14.14, `@vitejs/plugin-react` 6.1.1 → 6.1.2, `jsdom` 30.1.1 → 30.1.2 and `posthog-node` 5.54.1 → 5.55.1; the Rust group (`serde_json` 1.0.152, `libc` 0.2.190, `tokio` 1.53.2, `getrandom` 0.4.3, `tokio-rustls` 0.26.6, `proptest` 1.12.0); `typer` 0.27.3 and `posthog` 7.67.0 in `fp-cloud-cli`; and `langchain-core` 1.6.9, `langgraph` 1.2.14, `crewai` 1.15.27 and `pydantic-ai-slim` 2.54.0 in the Python SDK's test lockfile. That last group also moves `langgraph-sdk` to 0.4.7, past #883's 0.4.4 (#901)
+- Clear the Supply Chain gate, which `main`'s daily scan had failed on 20 fixable advisories. The bumps above close nine (`next`, `pydantic-ai-slim`, `langgraph-sdk`). The other eleven are transitive or held by an override, so no Dependabot PR covered them: `banks` 2.5.1 and `multidict` 6.9.1 in `sdk/python/uv.lock`, `quinn-proto` 0.11.19 and `ruzstd` 0.9.1 in `Cargo.lock`, the `sharp` override 0.35.4 → 0.35.5 (libvips 1.3.4), and `source-map-js` 1.2.2 in `bun.lock` and `sdk/typescript/package-lock.json` (#901)
+- Patch `@modelcontextprotocol/client` 2.0.0 → 2.2.0 (GHSA-6qxp-vccf-f47h) in the `mastra-1` SDK integration fixture with an `overrides` entry. Dependabot's fix in #884 moved `@mastra/mcp` to 2.3.0, which needs `@mastra/core` ≥ 1.75 and so cannot install next to the fixture's 1.68.0 pin. The rest of #884 (`ai` 4 → 5 in `ai-4` and `mastra-0`) is the pin move `SECURITY.md` rules out, so it is not applied (#901)
+- OSV-Scanner: the four chromadb ignores now name 1.5.9, the version crewai 1.15.27 requires. It is the newest release and still affected, with no fix (#901)
+
 ## 1.0.10 — 2026-10-05
 
 Action needed if you use `instruct` policies with Hermes: an `instruct` no longer stops the call it reminds about. The call runs and the reminder is placed first in its result, so a policy written to prevent an action (for example, a direct API write that should go through an approved script) must become a `deny` before you upgrade. Hermes 0.20.0 is supported again: on 1.0.9 the plugin loaded there with no hooks and every tool call ran unchecked. After upgrading, run `failproofai update` and restart each Hermes gateway profile by name. Collects 1.0.10-beta.0 to beta.1 below.

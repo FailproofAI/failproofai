@@ -256,6 +256,7 @@ async fn poll_once(
                         .or_insert_with(|| AllowBucket {
                             session_id: key.0.clone(),
                             agent_id: transform::agent_id(&row),
+                            integration: key.5.clone(),
                             event_name: key.1.clone(),
                             tool_name: key.2.clone(),
                             minute_ms: key.3,
@@ -273,7 +274,10 @@ async fn poll_once(
             }
 
             for event in transform::to_events(&row, this_offset, environment) {
-                writer.push(event).await.map_err(io_err)?;
+                writer
+                    .push_with_harness(event, row.integration.as_deref().unwrap_or("hooks"))
+                    .await
+                    .map_err(io_err)?;
                 emitted += 1;
             }
         }
@@ -293,7 +297,10 @@ async fn poll_once(
 
     for bucket in buckets.values() {
         if let Some(event) = bucket.to_event(environment) {
-            writer.push(event).await.map_err(io_err)?;
+            writer
+                .push_with_harness(event, &bucket.integration)
+                .await
+                .map_err(io_err)?;
             emitted += 1;
         }
     }

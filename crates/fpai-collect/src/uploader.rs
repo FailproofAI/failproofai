@@ -268,7 +268,14 @@ impl Uploader {
             Err(e) => return Err(UploadError::Io(e)),
         };
 
-        let bytes = redact_batch(&bytes, self.redact);
+        // Both SDKs (including the legacy spool) publish `event-*.jsonl`.
+        // The name survives parking/retries, so provenance is stable even
+        // after the batch moves out of custom-agents/events into failed/.
+        let sdk = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|name| name.starts_with("event-"));
+        let bytes = prepare_batch(&bytes, self.redact, sdk);
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
             self.post_batch(path, chunk).await?;
         }
@@ -698,8 +705,8 @@ fn lower_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn redact_batch(bytes: &[u8], mode: Redact) -> Vec<u8> {
-    if mode == Redact::Off {
+fn prepare_batch(bytes: &[u8], mode: Redact, sdk: bool) -> Vec<u8> {
+    if mode == Redact::Off && !sdk {
         return bytes.to_vec();
     }
 
@@ -710,7 +717,8 @@ fn redact_batch(bytes: &[u8], mode: Redact) -> Vec<u8> {
             .map_or((line, false), |body| (body, true));
         match serde_json::from_slice::<serde_json::Value>(body) {
             Ok(mut event) => {
-                if crate::redact::scrub_value(&mut event, mode) > 0 {
+                let stamped = sdk && crate::spool::stamp_harness(&mut event, "sdk");
+                if crate::redact::scrub_value(&mut event, mode) > 0 || stamped {
                     event
                         .serialize(&mut serde_json::Serializer::new(&mut out))
                         .expect("serializing JSON into Vec cannot fail");

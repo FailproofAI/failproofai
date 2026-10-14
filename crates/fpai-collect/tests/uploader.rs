@@ -89,6 +89,48 @@ async fn a_2xx_with_an_accepting_ack_deletes_the_batch() {
 }
 
 #[tokio::test]
+async fn sdk_harness_is_stamped_even_without_redaction_and_survives_retry() {
+    for mode in [Redact::Minimal, Redact::Off] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "accepted": 3, "skipped": 0
+            })))
+            .mount(&server)
+            .await;
+        let spool = tmpdir("sdk-harness");
+        let failed = tmpdir("sdk-harness-failed");
+        // Parked SDK files retain their event-* stem.
+        let batch = spool.join("event-s-1-0.a1.jsonl");
+        fs::write(
+            &batch,
+            concat!(
+                "{\"type\":\"agent_start\",\"agent_id\":\"claude-custom\"}\n",
+                "{\"type\":\"tool_use\",\"harness\":\"original\"}\n",
+                "{\"type\":\"agent_end\",\"harness\":null}\n",
+            ),
+        )
+        .unwrap();
+        uploader(&server, &failed)
+            .with_redact(mode)
+            .upload_file(&batch)
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let body = String::from_utf8(requests[0].body.clone()).unwrap();
+        let events: Vec<serde_json::Value> = body
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(events[0]["harness"], "sdk");
+        assert_eq!(events[1]["harness"], "original");
+        assert!(events[2]["harness"].is_null());
+        fs::remove_dir_all(&spool).ok();
+        fs::remove_dir_all(&failed).ok();
+    }
+}
+
+#[tokio::test]
 async fn sdk_batches_are_redacted_before_upload() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

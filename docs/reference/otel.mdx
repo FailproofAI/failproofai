@@ -13,20 +13,22 @@ Interactive setup asks about OpenTelemetry after the Cloud key field and the age
 ```bash
 failproofai otel enable claude
 failproofai otel enable codex --local
-failproofai otel enable gemini --no-content
+failproofai otel enable codex --no-content
 failproofai otel enable copilot
 failproofai otel enable all --yes
 ```
 
-The supported agents are `claude`, `codex`, `gemini`, and `copilot` (VS Code). Copilot setup requires a VS Code executable or an installed Copilot extension. A leftover settings directory alone is not enough; setup skips Copilot when neither is found.
+The supported agents are `claude`, `codex`, and `copilot` (VS Code). Copilot setup requires a VS Code executable or an installed Copilot extension. A leftover settings directory alone is not enough; setup skips Copilot when neither is found.
 
-`--local` sends to the local relay instead of directly to Cloud. Gemini CLI and Copilot use the relay automatically because their settings cannot store the authentication header.
+`--local` sends to the local relay instead of directly to Cloud. Copilot uses the relay automatically because its settings cannot store the authentication header.
 
 The relay listens only on your machine. Your configured FailproofAI daemon picks up the change within seconds; you do not need to restart it. If another application owns the relay port, status reports it as off and the daemon keeps running.
 
 <Warning>
 Text capture is on by default. Add `--no-content` to omit prompts and tool details. Agent versions can expose different content controls; review what your agent exports before using it with sensitive data.
 </Warning>
+
+Codex exports conversation logs only, not internal runtime traces or metrics. An explicit `log_user_prompt = false` in your Codex configuration stays off; enable prints a note when it preserves that choice.
 
 ### Choose one reporting path
 
@@ -35,6 +37,8 @@ If transcript reporting is on for an agent, setup asks:
 > failproofai already sends Claude Code sessions to Cloud. Send them with OTEL instead? Transcript upload for Claude Code stops.
 
 The default is No. `--yes` accepts the switch without a prompt. Other agents and policy enforcement are unaffected.
+
+Codex setup waits for the daemon to confirm the collector change before writing its exporter settings. If confirmation times out, setup warns you to wait before starting Codex.
 
 Config v2 keeps the remembered tracing list at `agents.selected` (and detection history at `agents.seen`). The per-agent transcript preference remains at `collector.agents.<agent>.sessions`, OTEL ownership at `otel.agents`, and relay settings at `collector.otlp.enabled` / `collector.otlp.port`. These separate keys keep old OTEL configurations readable: setup can change the tracing list without losing the transport preference or the state needed to restore your agent settings.
 
@@ -67,5 +71,7 @@ failproofai otel disable all
 ```
 
 Disable restores only the settings FailproofAI wrote, keeps unrelated changes, and restores each agent's prior transcript-reporting choice. When the last managed local agent is disabled, the relay stops accepting exports.
+
+For Codex, disable also records `collector.agents.codex.sessions_resume_after` (epoch milliseconds). Existing rollout bytes are treated as delivered so sessions captured with OTEL are not uploaded again; later appends still flow through transcript reporting.
 
 Every command supports `--help`. See [OpenTelemetry in Cloud](/agenteye/opentelemetry) for application and coding-agent examples.

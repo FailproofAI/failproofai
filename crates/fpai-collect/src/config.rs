@@ -185,6 +185,9 @@ pub struct SourceSettings {
 pub struct AgentSettings {
     #[serde(default)]
     pub sessions: Option<bool>,
+    /// Transcript delivery resumes after an OTEL handoff (epoch ms).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sessions_resume_after: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

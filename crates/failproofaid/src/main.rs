@@ -1104,6 +1104,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                     os_user.as_deref(),
                     redact,
                     gate.since_days("claude"),
+                    None,
                 );
             }
             // Subagent transcripts live under the SAME root, claimed by a second
@@ -1126,6 +1127,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                     os_user.as_deref(),
                     redact,
                     gate.since_days("claude-subagent"),
+                    None,
                 );
             }
         }
@@ -1146,6 +1148,10 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("codex"),
+                cfg.settings
+                    .agents
+                    .get("codex")
+                    .and_then(|a| a.sessions_resume_after),
             );
         }
 
@@ -1165,6 +1171,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("copilot"),
+                None,
             );
         }
 
@@ -1192,6 +1199,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                     os_user.as_deref(),
                     redact,
                     gate.since_days("openclaw"),
+                    None,
                 );
             }
             if openclaw_sqlite_on {
@@ -1226,6 +1234,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("pi"),
+                None,
             );
         }
 
@@ -1245,6 +1254,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("factory"),
+                None,
             );
         }
 
@@ -1264,6 +1274,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("antigravity"),
+                None,
             );
         }
 
@@ -1283,6 +1294,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 os_user.as_deref(),
                 redact,
                 gate.since_days("cursor"),
+                None,
             );
         }
 
@@ -1499,6 +1511,7 @@ fn file_source(
     user: Option<&str>,
     redact: fpai_collect::Redact,
     since_days: Option<u64>,
+    sessions_resume_after: Option<u64>,
 ) {
     // The default instance: every root the source ships with, no label.
     file_source_instance(
@@ -1516,6 +1529,7 @@ fn file_source(
         user,
         redact,
         since_days,
+        sessions_resume_after,
     );
 
     for ep in extra {
@@ -1540,6 +1554,7 @@ fn file_source(
             user,
             redact,
             since_days,
+            sessions_resume_after,
         );
     }
 }
@@ -1561,6 +1576,7 @@ fn file_source_instance(
     user: Option<&str>,
     redact: fpai_collect::Redact,
     since_days: Option<u64>,
+    sessions_resume_after: Option<u64>,
 ) {
     let spool_dir = spool_dir.to_path_buf();
     let environment = environment.to_string();
@@ -1612,6 +1628,7 @@ fn file_source_instance(
                     // cursor, so every file under it is a first discovery and is
                     // read from the start of this same window.
                     since_days,
+                    sessions_resume_after,
                 },
             },
             sd,

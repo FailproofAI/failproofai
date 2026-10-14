@@ -133,6 +133,10 @@ pub struct FileCursor {
     /// either.
     #[serde(default)]
     pub agent_start_emitted: bool,
+    /// OTEL resume cutoff already applied to this cursor. A later handoff must
+    /// advance an existing transcript cursor as well as newly discovered ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sessions_resume_after: Option<u64>,
     /// Whether `agent_end` has been emitted. Cleared if the file grows again,
     /// so a resumed session can end a second time rather than freezing.
     #[serde(default)]

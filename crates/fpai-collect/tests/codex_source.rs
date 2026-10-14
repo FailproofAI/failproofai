@@ -745,6 +745,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,
             since_days: None,
+            sessions_resume_after: None,
             label: None,
         },
     }
@@ -772,6 +773,12 @@ fn spooled(dir: &Path) -> Vec<Value> {
 async fn run_briefly(s: Spec, ms: u64) {
     let sd = Shutdown::for_test(Arc::new(AtomicBool::new(false)));
     let _ = tokio::time::timeout(Duration::from_millis(ms), filetail::run(s, sd)).await;
+}
+
+fn resume_spec(root: &Path, spool: &Path, state: &Path, cutoff: u64) -> Spec {
+    let mut s = spec(root.to_path_buf(), spool.to_path_buf(), state.to_path_buf());
+    s.params.sessions_resume_after = Some(cutoff);
+    s
 }
 
 fn clear(spool: &Path) {
@@ -989,4 +996,109 @@ async fn a_rollout_whose_header_is_still_being_written_is_not_lost() {
     fs::remove_dir_all(&root).ok();
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&state).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn otel_resume_seeds_old_rollouts_at_eof_and_delivers_only_later_appends() {
+    use fpai_collect::cursor::CursorStore;
+    use std::io::Write;
+
+    let root = tmpdir("otel-resume-root");
+    let spool = tmpdir("otel-resume-spool");
+    let state = tmpdir("otel-resume-state");
+    let path = write_rollout(&root, &full_session());
+    // A deterministic boundary equal to the file mtime exercises <=, not <.
+    let cutoff = fs::metadata(&path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    run_briefly(resume_spec(&root, &spool, &state, cutoff), 400).await;
+    assert!(
+        spooled(&spool).is_empty(),
+        "no transcript or end for an OTEL session"
+    );
+    let store = CursorStore::load(state.clone());
+    let (dev, inode) = fpai_collect::cursor::identity(&fs::metadata(&path).unwrap());
+    let cursor = store.resume(dev, inode, &path).unwrap();
+    assert_eq!(cursor.offset, fs::metadata(&path).unwrap().len());
+    assert!(cursor.agent_start_emitted && cursor.ended);
+    assert_eq!(cursor.sessions_resume_after, Some(cutoff));
+    // No cursor skip: the persisted EOF watermark still accepts new content.
+    let line = assistant_message("2026-07-30T08:16:00.000Z", "post-disable append");
+    writeln!(
+        fs::OpenOptions::new().append(true).open(&path).unwrap(),
+        "{line}"
+    )
+    .unwrap();
+    run_briefly(resume_spec(&root, &spool, &state, cutoff), 400).await;
+    let events = spooled(&spool);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["type"] == "model_response")
+            .count(),
+        1
+    );
+    assert!(events.iter().any(|e| e["content"] == "post-disable append"));
+    assert!(
+        !events
+            .iter()
+            .any(|e| e["type"] == "agent_start" || e["type"] == "model_request")
+    );
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(spool).ok();
+    fs::remove_dir_all(state).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn otel_resume_advances_a_stale_existing_cursor_and_keeps_new_files_from_zero() {
+    use std::io::Write;
+
+    let root = tmpdir("otel-stale-root");
+    let spool = tmpdir("otel-stale-spool");
+    let state = tmpdir("otel-stale-state");
+    let path = write_rollout(&root, &full_session());
+    run_briefly(spec(root.clone(), spool.clone(), state.clone()), 400).await;
+    clear(&spool);
+    // Data appended while the transcript task was stopped by OTEL.
+    let during = assistant_message("2026-07-30T08:16:00.000Z", "already exported by OTEL");
+    writeln!(
+        fs::OpenOptions::new().append(true).open(&path).unwrap(),
+        "{during}"
+    )
+    .unwrap();
+    let cutoff = fs::metadata(&path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    run_briefly(resume_spec(&root, &spool, &state, cutoff), 400).await;
+    assert!(
+        spooled(&spool).is_empty(),
+        "old in-memory/persisted cursor must advance"
+    );
+    let fresh = root.join(ROLLOUT.replace(UUID, "019fb217-14a2-7193-8ceb-504b318e00ae"));
+    fs::write(&fresh, full_session().join("\n") + "\n").unwrap();
+    // Set mtime strictly later than the cutoff without a clock-resolution race.
+    fs::File::open(&fresh)
+        .unwrap()
+        .set_times(
+            fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_millis(cutoff + 1000)),
+        )
+        .unwrap();
+    run_briefly(resume_spec(&root, &spool, &state, cutoff), 400).await;
+    assert!(spooled(&spool).iter().any(|e| e["type"] == "agent_start"));
+    assert!(
+        !spooled(&spool)
+            .iter()
+            .any(|e| e["content"] == "already exported by OTEL")
+    );
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(spool).ok();
+    fs::remove_dir_all(state).ok();
 }

@@ -158,6 +158,8 @@ pub struct Params {
     /// Skip files older than this many days on first discovery. `None` reads
     /// everything, which on a normal machine is gigabytes of history.
     pub since_days: Option<u64>,
+    /// Treat bytes written before this OTEL handoff as already delivered.
+    pub sessions_resume_after: Option<u64>,
     /// Agent-id namespace when this instance watches an EXTRA path rather than
     /// the source's default root. `None` for the default instance.
     ///
@@ -307,6 +309,12 @@ async fn process_file(
             None => return Ok(0), // outside the backfill window
         },
     };
+    if resume_at_eof(spec, &meta)
+        && cursor.sessions_resume_after < spec.params.sessions_resume_after
+        && let Some(fresh) = new_cursor(spec, path, dev, inode, &meta).await?
+    {
+        cursor = fresh;
+    }
 
     // A resumed cursor whose recorded path has CHANGED is either a rotation
     // (same file, new name — resume it) or INODE REUSE (the old file was
@@ -486,7 +494,9 @@ async fn new_cursor(
     inode: u64,
     meta: &std::fs::Metadata,
 ) -> Result<Option<FileCursor>, TaskError> {
-    if let Some(days) = spec.params.since_days
+    let delivered = resume_at_eof(spec, meta);
+    if !delivered
+        && let Some(days) = spec.params.since_days
         && !within_days(meta, days)
     {
         return Ok(None);
@@ -515,12 +525,13 @@ async fn new_cursor(
         path: path.to_path_buf(),
         dev,
         inode,
-        offset: 0,
-        size_seen: 0,
+        offset: if delivered { meta.len() } else { 0 },
+        size_seen: if delivered { meta.len() } else { 0 },
         session_id: Some(session_id),
         agent_id: Some(agent_id),
-        agent_start_emitted: false,
-        ended: false,
+        agent_start_emitted: delivered,
+        sessions_resume_after: spec.params.sessions_resume_after,
+        ended: delivered,
         last_ts: None,
         first_line_len: first_line_len(&header),
         first_seen_epoch_ms: mtime_epoch_ms(meta),
@@ -529,6 +540,12 @@ async fn new_cursor(
         sqlite_seq: None,
         sqlite_generation: None,
     }))
+}
+
+fn resume_at_eof(spec: &Spec, meta: &std::fs::Metadata) -> bool {
+    spec.params.sessions_resume_after.is_some_and(|after| {
+        mtime_epoch_ms(meta).is_some_and(|mtime| mtime >= 0 && mtime as u64 <= after)
+    })
 }
 
 /// The file's modification time as epoch milliseconds, if the platform reports

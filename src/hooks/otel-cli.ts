@@ -129,12 +129,18 @@ function restoreAgent(agent: OtelAgent, raw: JsonObject): void {
       writeConfigFileAtomic(record.file, restored, { backup: false, mode: state.originalMode });
     }
   }
-  if (record.switchedSessions) {
+  if (record.switchedSessions || agent === "codex") {
     const collector = object(raw.collector);
     const agents = object(collector.agents);
     const settings = object(agents[agent]);
-    if (record.previousSessions === undefined) delete settings.sessions;
-    else settings.sessions = record.previousSessions;
+    if (record.switchedSessions) {
+      if (record.previousSessions === undefined) delete settings.sessions;
+      else settings.sessions = record.previousSessions;
+    }
+    // Rollouts produced while OTEL owned delivery must not be uploaded again
+    // when the transcript task is restarted. Keep a cursor so later appends
+    // to those same files still flow.
+    if (agent === "codex") settings.sessions_resume_after = Date.now();
     if (Object.keys(settings).length) agents[agent] = settings;
     else delete agents[agent];
     if (Object.keys(agents).length) collector.agents = agents;

@@ -186,6 +186,15 @@ def deploy(
     if any(str(r.get("eval_version")) == body["eval_version"] for r in existing):
         spec.fail(f"Version {key}@{body['eval_version']} already exists; deploy needs a NEW version")
     body.setdefault("display_name", existing[-1].get("display_name", key) if existing else key)
+    if existing and not file:
+        # A new version keeps the previous version's scope and labels unless a flag
+        # changes them; silently dropping the condition would widen the evaluator to
+        # every session. A --file spec states every field itself.
+        latest = max(existing, key=lambda r: str(r.get("created_at") or ""))
+        if condition is None:
+            body["condition_source"] = latest.get("condition_source")
+        if not label:
+            body["labels"] = list(latest.get("labels") or [])
     spec.validate(body)
     created = _create(ctx.obj, cctx, body, dry_run_on, force=force)
     disabled_ids = []

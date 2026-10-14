@@ -95,6 +95,28 @@ def test_deploy_order_and_dry_run(logged_in, runner, code):
     assert json.loads(result.stdout)["disabled"] == ["d1"]
 
 
+@pytest.mark.parametrize("flags,expect_condition,expect_labels", [
+    ([], "session.agent_id == 'support-bot'", ["prod"]),
+    (["--condition", "True", "--label", "beta"], "True", ["beta"]),
+])
+def test_deploy_inherits_condition_and_labels(logged_in, runner, code, flags, expect_condition, expect_labels):
+    older = {"id": "d0", "eval_key": "quality", "eval_version": "1", "display_name": "Quality", "enabled": False,
+             "created_at": "2026-10-01T00:00:00Z", "condition_source": None, "labels": []}
+    latest = {"id": "d1", "eval_key": "quality", "eval_version": "2", "display_name": "Quality", "enabled": True,
+              "created_at": "2026-10-02T00:00:00Z", "condition_source": "session.agent_id == 'support-bot'",
+              "labels": ["prod"]}
+    with respx.mock as mock:
+        mock.get(f"{BASE}/v1/evaluator-definitions").respond(200, json=[latest, older])
+        create = mock.post(f"{BASE}/v1/evaluator-definitions").respond(201, json={**latest, "id": "d2", "eval_version": "3"})
+        mock.patch(f"{BASE}/v1/evaluator-definitions/d1").respond(200, json={})
+        result = runner.invoke(app, ["--json", "--api-key", "key", "evaluators", "deploy", "quality", "--code", code, *flags])
+    assert result.exit_code == 0, result.output
+    sent = json.loads(create.calls[0].request.content)
+    assert sent["condition_source"] == expect_condition
+    assert sent["labels"] == expect_labels
+    assert sent["eval_version"] == "3"
+
+
 @pytest.mark.parametrize("key_mode", [False, True])
 def test_deploy_backfill_uses_utc_z_timestamps(logged_in, runner, code, monkeypatch, key_mode):
     from fp_cli.commands import evaluators_cmds

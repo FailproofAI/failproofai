@@ -340,6 +340,9 @@ impl AgentSelection {
 /// Everything the collector needs, resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectorConfig {
+    /// Recording boundary shared by sources and delivery. A change cycles the
+    /// collector before any new key can consume the previous org's queues.
+    pub boundary: Option<OrgBoundary>,
     /// `None` means collection is off for this process.
     pub ingest: Option<Ingest>,
     pub settings: Settings,
@@ -359,6 +362,26 @@ pub struct CollectorConfig {
     pub own_spool_dir: PathBuf,
     /// Batches the server rejected, parked for retry.
     pub failed_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OrgBoundary {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub since: u64,
+}
+
+pub fn load_boundary(home: &Path) -> Result<Option<OrgBoundary>, ConfigError> {
+    let doc = read_credential_doc(home)?;
+    Ok(boundary_from(doc.as_ref()))
+}
+
+fn boundary_from(doc: Option<&serde_json::Value>) -> Option<OrgBoundary> {
+    let org = doc?.get("org")?;
+    Some(OrgBoundary {
+        id: org.get("id").and_then(|v| v.as_str()).map(str::to_string),
+        since: org.get("since")?.as_u64()?,
+    })
 }
 
 impl CollectorConfig {
@@ -428,7 +451,10 @@ impl From<io::Error> for ConfigError {
 /// local development against a stack on `localhost`, where writing a file to a
 /// real home directory would be the wrong shape.
 pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
-    let ingest = load_ingest(home)?;
+    // One snapshot: never pair a replacement key with the previous boundary.
+    let credentials = read_credential_doc(home)?;
+    let ingest = load_ingest(credentials.as_ref());
+    let boundary = boundary_from(credentials.as_ref());
     // ONE read of config.json for both halves, so a file rewritten between two
     // reads cannot yield the collector settings of one version and the agent
     // selection of another.
@@ -473,6 +499,7 @@ pub fn load(home: &Path) -> Result<CollectorConfig, ConfigError> {
     }
 
     Ok(CollectorConfig {
+        boundary,
         ingest,
         settings,
         agents,
@@ -501,10 +528,9 @@ fn agenteye_events_dir() -> PathBuf {
     base.join("events")
 }
 
-fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
+fn read_credential_doc(home: &Path) -> Result<Option<serde_json::Value>, ConfigError> {
     let path = home.join(CREDENTIALS_FILE);
-
-    let from_file: Option<Ingest> = match fs::read_to_string(&path) {
+    match fs::read_to_string(&path) {
         Ok(text) => {
             warn_if_world_readable(&path);
             let doc: serde_json::Value =
@@ -512,27 +538,23 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
                     path: path.clone(),
                     detail: e.to_string(),
                 })?;
-            // A credentials file with no `ingest` object is not malformed — it
-            // is a machine connected for policy but not reporting, which is a
-            // supported half-state.
-            //
-            // `url` DEFAULTS rather than being required: the wizard writes only
-            // a key when the user accepts the hosted endpoint, so requiring it
-            // would read a perfectly good credential as absent and silently
-            // disable collection. Only `key` makes the table meaningful.
-            doc.get("ingest").and_then(|t| {
-                let key = t.get("key")?.as_str()?.to_string();
-                let url = t
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-                    .unwrap_or_else(default_url);
-                Some(Ingest { url, key })
-            })
+            Ok(Some(doc))
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(ConfigError::Io(e)),
-    };
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ConfigError::Io(e)),
+    }
+}
+
+fn load_ingest(doc: Option<&serde_json::Value>) -> Option<Ingest> {
+    let from_file = doc.and_then(|doc| doc.get("ingest")).and_then(|t| {
+        let key = t.get("key")?.as_str()?.to_string();
+        let url = t
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(default_url);
+        Some(Ingest { url, key })
+    });
 
     let key = env_nonempty("FAILPROOFAI_INGEST_KEY")
         .or_else(|| from_file.as_ref().map(|i| i.key.clone()));
@@ -543,8 +565,8 @@ fn load_ingest(home: &Path) -> Result<Option<Ingest>, ConfigError> {
     // A file with an empty key is "configured but not really" — treat it as
     // absent rather than sending `Authorization: Bearer ` and collecting 401s.
     match key {
-        Some(key) if !key.trim().is_empty() => Ok(Some(Ingest { url, key })),
-        _ => Ok(None),
+        Some(key) if !key.trim().is_empty() => Some(Ingest { url, key }),
+        _ => None,
     }
 }
 

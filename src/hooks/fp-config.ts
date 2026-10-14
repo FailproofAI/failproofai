@@ -827,7 +827,7 @@ export interface FpCredentials {
    * the one a key pasted from the wrong org gets silently wrong. Absent against
    * a server predating introspect, and in files written by an older CLI.
    */
-  org?: { id?: string; slug?: string; name?: string };
+  org?: { id?: string; slug?: string; name?: string; since?: number };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
   /**
@@ -871,6 +871,7 @@ const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
   ["org", "id"],
   ["org", "slug"],
   ["org", "name"],
+  ["org", "since"],
   ["ingest", "url"],
   ["ingest", "key"],
   ["jev", "url"],
@@ -940,8 +941,10 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
       // Every field independently optional: a server may send fewer than three,
       // and a partial org record is still better than none for `--status`.
       const pick = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name) };
-      if (built.id || built.slug || built.name) out.org = built;
+      const since = typeof org.since === "number" && Number.isSafeInteger(org.since) && org.since >= 0
+        ? org.since : undefined;
+      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name), ...(since !== undefined ? { since } : {}) };
+      if (built.id || built.slug || built.name || since !== undefined) out.org = built;
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
@@ -985,11 +988,12 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   if (creds.jev) {
     out.jev = { url: creds.jev.url, key: creds.jev.key };
   }
-  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
+  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name || creds.org.since !== undefined)) {
     out.org = {
       ...(creds.org.id ? { id: creds.org.id } : {}),
       ...(creds.org.slug ? { slug: creds.org.slug } : {}),
       ...(creds.org.name ? { name: creds.org.name } : {}),
+      ...(creds.org.since !== undefined ? { since: creds.org.since } : {}),
     };
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {

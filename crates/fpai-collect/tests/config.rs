@@ -51,6 +51,27 @@ fn absent_config_means_collection_is_off() {
 }
 
 #[test]
+fn the_org_boundary_is_loaded_even_without_ingest_and_cycles_the_config() {
+    let home = tmp_home("org-boundary");
+    fs::write(
+        home.join("credentials.json"),
+        r#"{"org":{"id":"A","since":100}}"#,
+    )
+    .unwrap();
+    let first = without_env_overrides(|| config::load(&home).unwrap());
+    assert_eq!(first.boundary.as_ref().unwrap().since, 100);
+    assert_eq!(first.boundary.as_ref().unwrap().id.as_deref(), Some("A"));
+    fs::write(
+        home.join("credentials.json"),
+        r#"{"org":{"id":"B","since":200}}"#,
+    )
+    .unwrap();
+    let second = without_env_overrides(|| config::load(&home).unwrap());
+    assert_ne!(first, second);
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn a_key_alone_does_not_enable_session_collection() {
     // The privacy default, and the one most likely to be eroded by accident.
     // Transcripts carry prompts, file contents and pasted credentials, so

@@ -391,6 +391,7 @@ async fn process_file(
         spec.format.kind,
         &ctx.session_id,
     )
+    .with_source(path)
     .with_label(spec.params.label.clone())
     .with_machine_id(spec.params.machine_id.clone())
     .with_user(spec.params.user.clone())
@@ -486,6 +487,16 @@ async fn new_cursor(
     inode: u64,
     meta: &std::fs::Metadata,
 ) -> Result<Option<FileCursor>, TaskError> {
+    let boundary = spec
+        .spool_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|home| crate::config::load_boundary(home).ok().flatten());
+    if let Some(boundary) = boundary
+        && mtime_epoch_ms(meta).is_none_or(|ms| ms < 0 || (ms as u64) < boundary.since)
+    {
+        return Ok(None);
+    }
     if let Some(days) = spec.params.since_days
         && !within_days(meta, days)
     {

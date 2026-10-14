@@ -774,6 +774,55 @@ async fn run_briefly(s: Spec, ms: u64) {
     let _ = tokio::time::timeout(Duration::from_millis(ms), filetail::run(s, sd)).await;
 }
 
+#[tokio::test]
+async fn an_old_idle_end_and_backfilled_records_are_dropped_after_the_org_boundary() {
+    let home = tmpdir("boundary");
+    let root = home.join("sessions");
+    let spool = home.join("state/spool");
+    let state = home.join("cursors/codex");
+    fs::create_dir_all(&spool).unwrap();
+    let rollout = write_rollout(&root, &full_session());
+    run_briefly(spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    assert!(!spooled(&spool).is_empty());
+    clear(&spool);
+    let boundary = 1_791_936_000_000_u64;
+    fs::write(
+        home.join("credentials.json"),
+        json!({"org":{"id":"B","since":boundary}}).to_string(),
+    )
+    .unwrap();
+    // Simulate an old idle cursor that has not emitted its end yet.
+    let mut store = fpai_collect::cursor::CursorStore::load(state.clone());
+    let (dev, inode) = fpai_collect::cursor::identity(&fs::metadata(&rollout).unwrap());
+    let mut cursor = store.resume(dev, inode, &rollout).unwrap().clone();
+    cursor.ended = false;
+    store.set(cursor);
+    store.save().unwrap();
+    run_briefly(spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    assert!(spooled(&spool).is_empty(), "old idle-end leaked");
+    // A user backfill or added rewind causes reread from zero, but timestamp
+    // filtering still rejects every historical record.
+    let mut store = fpai_collect::cursor::CursorStore::load(state.clone());
+    store.forget_all();
+    store.save().unwrap();
+    run_briefly(spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    assert!(spooled(&spool).is_empty(), "old backfill leaked");
+    // Files last modified before the boundary never acquire a new cursor.
+    let mut store = fpai_collect::cursor::CursorStore::load(state.clone());
+    store.forget_all();
+    store.save().unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&rollout)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_millis(boundary - 1))
+        .unwrap();
+    run_briefly(spec(root, spool.clone(), state.clone()), 500).await;
+    assert!(fpai_collect::cursor::CursorStore::load(state).is_empty());
+    assert!(spooled(&spool).is_empty());
+    fs::remove_dir_all(home).unwrap();
+}
+
 fn clear(spool: &Path) {
     for e in fs::read_dir(spool).unwrap().filter_map(|e| e.ok()) {
         fs::remove_file(e.path()).ok();

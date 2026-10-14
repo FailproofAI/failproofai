@@ -64,6 +64,8 @@ import {
 } from "./collector-config";
 import { recoverCredentialRefusals } from "./credential-recovery";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { rmSync } from "node:fs";
+import { backfillRequestPath } from "./backfill-request";
 
 /**
  * The path ingest is served on, appended to the cloud base URL.
@@ -308,6 +310,27 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     !result.ok && (result.status === undefined || result.status >= 500);
   const next = { ...prev, connectedAt: Date.now() };
   const changes: string[] = [];
+  const hadConnection = Boolean(previousPolicy || prev.ingest || prev.jev || prev.org);
+  const keyChanged = [
+    previousPolicy ? { token: previousPolicy.token, url: previousPolicy.url } : undefined,
+    prev.ingest ? { token: prev.ingest.key, url: prev.ingest.url } : undefined,
+    prev.jev ? { token: prev.jev.key, url: prev.jev.url } : undefined,
+  ].some((slot) => slot && (slot.token !== input.token || !sameOrigin(slot.url)));
+  const orgSwitch = hadConnection && (
+    (prev.org?.id && known?.orgId && prev.org.id !== known.orgId) ||
+    ((!prev.org?.id || !known?.orgId) && keyChanged) ||
+    (previousPolicy && !sameOrigin(previousPolicy.url)) ||
+    (prev.ingest && !sameOrigin(prev.ingest.url))
+  );
+  const boundary = orgSwitch || prev.org?.since === undefined ? next.connectedAt : prev.org.since;
+  if (orgSwitch) {
+    rmSync(backfillRequestPath(), { force: true });
+    const oldOrg = prev.org?.name ?? prev.org?.slug ?? prev.org?.id ?? "the previous org";
+    const newOrg = known?.orgName ?? known?.orgSlug ?? known?.orgId ?? "the new org";
+    changes.push(`Switched from ${oldOrg} to ${newOrg}. Nothing recorded before now will be sent to ${newOrg}; ${oldOrg}'s cloud policies stop within ~30 s.`);
+    // Remove local references, not the daemon's policy-floor state (#899).
+    clearActiveCloudManagedPolicies();
+  }
   if (policyResult.ok) {
     next.cloud = creds;
   } else if (
@@ -336,12 +359,9 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     if (prev.jev) changes.push(`Removed the previous Jev key ${maskToken(prev.jev.key)}: this key's ${PERMISSION_JEV} permission was not verified.`);
   }
   if (known) {
-    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName };
-  } else if (
-    (prev.cloud && (prev.cloud.token !== input.token || !sameOrigin(prev.cloud.url))) ||
-    (prev.ingest && (prev.ingest.key !== input.token || !sameOrigin(prev.ingest.url)))
-  ) {
-    delete next.org;
+    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName, since: boundary };
+  } else {
+    next.org = { ...(orgSwitch ? {} : prev.org), since: boundary };
   }
   if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
     recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === known?.orgId && sameOrigin(prev.ingest.url)), prev.org?.id);

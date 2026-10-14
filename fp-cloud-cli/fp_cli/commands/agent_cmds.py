@@ -302,7 +302,7 @@ def agent_ask(
     * `fp agent ask "summarize p95 latency" --model claude-opus-4-7`
     """
     state: AppState = ctx.obj
-    deny_in_key_mode(state, "agent", _KEY_MODE_REASON)
+    _cloud.session_only(state, "agent ask")
     if not message:
         message = sys.stdin.read().strip() if not sys.stdin.isatty() else typer.prompt("question", err=True)
     if not message:
@@ -463,6 +463,7 @@ def run_artifact(cctx, block):
 
 
 def render_artifact(block):
+    output.screen_header()
     data = block.get("result")
     if isinstance(data, dict):
         output._stdout.print(str(block.get("title", "Artifact")), markup=False)

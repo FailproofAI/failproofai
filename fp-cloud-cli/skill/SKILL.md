@@ -380,7 +380,8 @@ then disable any remaining old version; do not retry creation blindly.
 Backfill excludes judge/Jev and accepts at most 90 days.
 
 AI drafting needs a signed-in session (`fp login`); evaluator API operations can
-use a scoped key. New capability 404s exit 6 with “not available on this
-FailproofAI Cloud yet”. An assistant approval is different from ordinary
+use a scoped key. Unknown-route 404s exit 6 with “not available on this
+FailproofAI Cloud yet”; missing-record 404s report that the record was not found
+(also exit 6). An assistant approval is different from ordinary
 mutation confirmation: `agent ask` declines writes in scripts/`--json` unless
 `--approve` was explicitly authorized by the user.

@@ -65,6 +65,7 @@ def test_ask_artifacts_and_approvals(logged_in, runner, monkeypatch, json_mode, 
     else:
         assert "Event total" in result.output
         assert "42" in result.output
+        assert result.stdout.index("failproof ai v") < result.stdout.index("Event total")
         if tty:
             assert "alert a1" in result.output
             assert "Approve this change" in result.output
@@ -140,7 +141,7 @@ def test_session_only(logged_in, runner, argv):
 ])
 def test_404(logged_in, runner, argv):
     with respx.mock as mock:
-        mock.route().respond(404, json={})
+        mock.route().respond(404, json={"error": "unknown route"})
         result = runner.invoke(app, ["--json", *argv])
     assert result.exit_code == 6, result.output
     assert "not available on this FailproofAI Cloud yet" in result.stdout
@@ -169,7 +170,7 @@ def test_approval_answer_failure_is_clean(logged_in, runner, json_mode, failure,
         ]))
         answer = mock.post(f"{BASE}/api/agent/answer")
         if failure == "404":
-            answer.respond(404, json={})
+            answer.respond(404, json={"error": "unknown route"})
         else:
             answer.mock(side_effect=httpx.ConnectError("connection refused"))
         saved = mock.post(f"{BASE}/api/agent/conversations").respond(200, json={"id": "c1"})
@@ -210,7 +211,7 @@ def test_approval_failure_restores_terminal_status(logged_in, runner, monkeypatc
         ]))
         answer = mock.post(f"{BASE}/api/agent/answer")
         if failure == "404":
-            answer.respond(404, json={})
+            answer.respond(404, json={"error": "unknown route"})
         else:
             answer.mock(side_effect=httpx.ConnectError("connection refused"))
         result = runner.invoke(app, ["agent", "ask", "Hello", "--approve"])
@@ -223,3 +224,30 @@ def test_approval_failure_restores_terminal_status(logged_in, runner, monkeypatc
     plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
     assert plain.count("Assistant approval answer failed") == 1
     assert "Traceback" not in plain
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_ask_api_key_uses_session_only_wording(logged_in, runner, json_mode):
+    with respx.mock as mock:
+        result = runner.invoke(app, [
+            "--api-key", "key", *(["--json"] if json_mode else []),
+            "agent", "ask", "Hello",
+        ])
+        assert not mock.calls
+    assert result.exit_code == 2, result.output
+    expected = "`fp agent ask` needs a signed-in session: run `fp login`"
+    if json_mode:
+        assert json.loads(result.stdout)["error"] == expected
+    else:
+        assert expected in result.stderr
+        assert len(result.stderr.strip().splitlines()) == 1
+
+
+def test_artifact_header_precedes_title_once(capsys):
+    from fp_cli.commands.agent_cmds import render_artifact
+    output.configure(no_color=True)
+    render_artifact({"title": "First artifact", "result": RESULT})
+    render_artifact({"title": "Second artifact", "result": RESULT})
+    rendered = capsys.readouterr().out
+    assert rendered.count("failproof ai v") == 1
+    assert rendered.index("failproof ai v") < rendered.index("First artifact") < rendered.index("Second artifact")

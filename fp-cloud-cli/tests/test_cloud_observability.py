@@ -67,7 +67,7 @@ def test_observability_commands(logged_in, runner, files, key_mode, argv, method
 @pytest.mark.parametrize("key_mode", [False, True])
 def test_observability_404(logged_in, runner, files, key_mode, argv, method, path, response):
     with respx.mock as mock:
-        mock.route().respond(404, json={})
+        mock.route().respond(404, json={"error": "unknown route"})
         result = runner.invoke(app, ["--json", *(["--api-key", "key"] if key_mode else []), *[v.format(**files) for v in argv]])
     assert result.exit_code == 6, result.output
     assert "not available on this FailproofAI Cloud yet" in result.stdout

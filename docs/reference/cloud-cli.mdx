@@ -119,8 +119,9 @@ exclusive; deploy can override the file's version. Output files are never overwr
 
 ### New dashboard controls
 
-All commands accept global `--json`. New 404s exit 6 with “not available on this
-FailproofAI Cloud yet”. Session-only commands deny key mode before HTTP (exit 2).
+All commands accept global `--json`. Unknown-route 404s exit 6 with “not available
+on this FailproofAI Cloud yet”. Missing-record 404s also exit 6 but report that the
+record was not found. Session-only commands deny key mode before HTTP (exit 2).
 
 | Commands | Options / notes |
 | --- | --- |

@@ -320,7 +320,8 @@ def backfill(ctx: typer.Context, frm: str = typer.Option(..., "--from"),
              dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Backfill at most 90 days. Judge/Jev evaluators are excluded by Cloud."""
     try:
-        dates.resolve_range(ts_from=frm, ts_to=to)
+        frm = dates._validate_iso(frm, "--from")
+        to = dates._validate_iso(to, "--to")
         start = datetime.fromisoformat(frm.replace("Z", "+00:00"))
         end = datetime.fromisoformat(to.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -330,7 +331,7 @@ def backfill(ctx: typer.Context, frm: str = typer.Option(..., "--from"),
     output.warn("Backfill excludes judge/Jev evaluators; only code evaluators are replayed.")
     _write.confirm(ctx.obj, "Backfill evaluations", assume_yes=dry_run)
     _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST", "/api/evaluations/backfill",
-        body={"from": frm, "to": to, "eval_key": key, "dry_run": dry_run}), "Evaluation backfill")
+        body={"from": dates._iso(start), "to": dates._iso(end), "eval_key": key, "dry_run": dry_run}), "Evaluation backfill")
 
 
 def register(app: typer.Typer) -> None:

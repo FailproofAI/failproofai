@@ -31,6 +31,7 @@ from .errors import (
     ApiError,
     AuthError,
     ForbiddenError,
+    FpCliError,
     KeyModeUnsupportedError,
     NetworkError,
     NotFoundError,
@@ -385,6 +386,40 @@ def _required_permission(response: httpx.Response) -> Optional[str]:
     return None
 
 
+def _unknown_route_response(response: httpx.Response) -> Optional[bool]:
+    """Use explicit 404 details first; an empty/generic reply is ambiguous."""
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code") or data.get("error_code") or data.get("error") or ""
+    if isinstance(code, dict):
+        code = code.get("code", "")
+    code = str(code).lower()
+    if code in ("unknown_route", "route_not_found", "unknown_endpoint", "endpoint_not_found"):
+        return True
+    if code in ("record_not_found", "resource_not_found", "entity_not_found", "session_not_found", "query_not_found"):
+        return False
+    message = _extract_error(response)
+    if not message:
+        return None
+    lower = message.lower().strip().rstrip(".")
+    if re.search(
+        r"\b(?:unknown|unrecognized|unsupported|missing|no such)\s+(?:api\s+)?(?:route|endpoint)\b"
+        r"|\b(?:route|endpoint)\b.*\b(?:not found|not available|does not exist|absent|unknown)\b"
+        r"|\bcannot (?:get|post|put|patch|delete)\s+/",
+        lower,
+    ):
+        return True
+    if lower in ("not found", "not_found", "404", "404 not found"):
+        return None
+    # A specific response ("session not found", "offer expired", etc.) came
+    # from a handler, rather than the router. Do not replace its useful detail.
+    return False
+
+
 def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
     key_mode = ctx.auth_mode is AuthMode.API_KEY
     if response.status_code < 400:
@@ -484,7 +519,9 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     request_id=request_id,
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
-        raise NotFoundError(message or "Not found.", request_id=request_id)
+        error = NotFoundError(message or "Not found.", request_id=request_id)
+        error.route_unknown = _unknown_route_response(response)
+        raise error
     if response.status_code == 429:
         retry_after = response.headers.get("retry-after")
         wait = f" Retry after {retry_after}s." if retry_after else " Please wait a moment and try again."
@@ -602,11 +639,61 @@ def cloud_request(
     except (NotFoundError, ApiError) as exc:
         if isinstance(exc, ApiError) and exc.status != 404:
             raise
-        raise NotFoundError(
+        raise _cloud_not_found(exc, path, body=body, params=params) from exc
+
+
+def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> NotFoundError:
+    """Classify ambiguous 404s from the request; never claim a record is a route.
+
+    Top-level collections and named capability endpoints have no record segment.
+    Scoped collections (/dashboards/ID/tiles) and actions on records default to a
+    missing record unless the response explicitly says the route is unknown.
+    """
+    route_unknown = getattr(exc, "route_unknown", None)
+    if isinstance(exc, ApiError):
+        # The transport only raises HTTP 404 ApiError for an HTML front door.
+        route_unknown = True
+    if route_unknown is None:
+        segments = path.removeprefix("/api/").split("/")
+        family = segments[0]
+        capability = len(segments) == 1 or (
+            family in ("agent", "otel", "offers", "team-trial", "integrations")
+            or family == "events" and segments in (
+                ["events", "summary"], ["events", "latency_aggregate"],
+                ["events", "sentiment"], ["events", "sentiment", "messages"],
+                ["events", "sentiment", "sessions"],
+            )
+            or family == "evaluator-definitions" and segments == ["evaluator-definitions", "dry-run"]
+            or family == "evaluations" and segments == ["evaluations", "backfill"]
+            or family == "queries" and segments[1:] in (["run"], ["schema"])
+            or family == "audits" and segments == ["audits", "contracts"]
+            or family == "alerts" and segments == ["alerts", "recipients"]
+            or family == "users" and segments == ["users", "defaults"]
+            or family == "usage" and segments == ["usage", "windows"]
+            or family == "settings" and segments == ["settings", "model-context-windows"]
+        )
+        # Some collection operations name their target in a query or body.
+        request_body = body if isinstance(body, dict) else {}
+        record_selected = (
+            (params or {}).get("session_id") or (params or {}).get("model")
+            or request_body.get("query_id") or request_body.get("callId")
+            or request_body.get("session_ids") or request_body.get("offer_key")
+            or request_body.get("conversationId")
+        )
+        route_unknown = capability and not record_selected
+    if route_unknown:
+        return NotFoundError(
             "not available on this FailproofAI Cloud yet",
-            hint="check the resource id or upgrade your Cloud deployment",
+            hint="upgrade your Cloud deployment to use this route",
             request_id=exc.request_id,
-        ) from exc
+        )
+    message = exc.message
+    if message.lower().strip().rstrip(".") in (
+        "not found", "not_found", "record_not_found", "resource_not_found",
+        "entity_not_found", "session_not_found", "query_not_found",
+    ):
+        message = f"Record not found at {path}"
+    return NotFoundError(message, request_id=exc.request_id)
 
 
 def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
@@ -616,7 +703,7 @@ def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterato
     except (NotFoundError, ApiError) as exc:
         if isinstance(exc, ApiError) and exc.status != 404:
             raise
-        raise NotFoundError("not available on this FailproofAI Cloud yet", request_id=exc.request_id) from exc
+        raise _cloud_not_found(exc, path, body=body) from exc
 
 
 # --- Auth / identity --------------------------------------------------------

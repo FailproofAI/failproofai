@@ -273,7 +273,8 @@ behavior; assistant approvals are a separate safety boundary.
 
 All new commands accept the global `--json` before the command. Session-only
 commands fail before HTTP in API-key mode, with exit 2 and a `fp login` hint.
-Older-Cloud 404s exit 6 with “not available on this FailproofAI Cloud yet”.
+Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”.
+Missing-record 404s also exit 6 but report that the record was not found.
 `plan` routes are mapped for keys, but the Cloud also requires an actor email;
 an API key alone cannot impersonate a person to claim an offer.
 Human screens use the mint/pink wordmark, grey labels, open tables and full ids;

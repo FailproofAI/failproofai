@@ -52,6 +52,35 @@ def source_kind(body: dict) -> str:
     return envelope.get("kind", "code") if isinstance(envelope, dict) else "code"
 
 
+def binary_judge_step(step: str) -> bool:
+    """Mirror the server's literal scoring check, plus natural-language pairs.
+
+    The six score phrases match evaluator_definitions.rs::steps_are_binary_scored.
+    Whitespace normalization and equivalent directives catch binary rubrics without
+    rejecting ordinary continuous wording such as "score between 0 and 1".
+    """
+    lowered = " ".join(step.lower().split())
+    if any(phrase in lowered for phrase in (
+        "score 0", "score 1", "score of 0", "score of 1", "score: 0", "score: 1",
+    )):
+        return True
+    return bool(re.search(
+        r"\bbinary\b"
+        r"|\bscore(?:\s+of)?\s*[:=]?\s*(?:0|1|zero|one)\b"
+        r"|\b(?:yes\s*(?:/|or|and|versus|vs\.?|-)\s*no"
+        r"|no\s*(?:/|or|and|versus|vs\.?|-)\s*yes"
+        r"|true\s*(?:/|or|and|versus|vs\.?|-)\s*false"
+        r"|false\s*(?:/|or|and|versus|vs\.?|-)\s*true"
+        r"|pass\s*(?:/|or|and|versus|vs\.?|-)\s*fail"
+        r"|fail\s*(?:/|or|and|versus|vs\.?|-)\s*pass)\b"
+        r"|\b(?:give|assign|award|return|output)\s+"
+        r"(?:(?:a\s+)?(?:score|value)(?:\s+of)?\s*[:=]?\s*)?"
+        r"(?:0(?:\.0+)?|1(?:\.0+)?|zero|one|true|false|yes|no|pass|fail)"
+        r"\s+(?:if|when|otherwise|for)\b",
+        lowered,
+    ))
+
+
 def validate(body: dict, *, complete: bool = True) -> dict:
     unknown = set(body) - FIELDS
     if unknown:
@@ -104,7 +133,7 @@ def validate(body: dict, *, complete: bool = True) -> dict:
                 fail("judge steps must be a list")
             for step in steps:
                 text(step, "judge step")
-                if re.search(r"\b(yes\s*/\s*no|true\s*/\s*false|binary|pass\s*/\s*fail|score(?: of|:)? [01])\b", step, re.I):
+                if binary_judge_step(step):
                     fail("binary judge steps are not supported; use graded evaluation steps")
     else:
         text(envelope.get("instructions"), "Jev instructions")

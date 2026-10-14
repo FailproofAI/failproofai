@@ -337,8 +337,10 @@ the org has 100 enabled keys. Read the error, do not rename/retry silently.
 
 ## Cloud dashboard parity
 
-All new commands degrade on API 404 with exit 6 and “not available on this
-FailproofAI Cloud yet”. Session-only commands exit 2 before HTTP in key mode.
+Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”.
+Missing-record 404s also exit 6 but preserve the server's record-not-found message;
+an empty response on a record-scoped request identifies the missing record path.
+Session-only commands exit 2 before HTTP in key mode.
 Human output uses mint/pink open screens and full ids; legacy `--full-ids`
 remains accepted. Exports refuse to overwrite existing files.
 

@@ -96,7 +96,7 @@ class Handler(BaseHTTPRequestHandler):
             assert "ae_session=fake-session" in self.headers.get("Cookie", "")
             assert not self.headers.get("Authorization")
         if Cloud.unavailable:
-            return self.json_response({"error": "old Cloud route absent"}, 404)
+            return self.json_response({"code": "unknown_route", "error": "old Cloud route absent"}, 404)
         if route == "/auth/session":
             return self.json_response({"id": "u1", "email": "smoke@example.test", "memberships": [
                 {"org_id": "o1", "org_slug": "smoke", "org_name": "Smoke", "permissions": ["evaluations:trigger", "events:read", "queries:run", "agent:use"], "permission_set": "admin"}]})
@@ -109,6 +109,14 @@ class Handler(BaseHTTPRequestHandler):
             assert len(body["session_ids"]) <= 10
             return self.json_response({"runs": [{"ok": True, "session_id": sid, "mode": "run", "result": {"score": {"value": 1.0}}} for sid in body["session_ids"]],
                 "summary": {"failed": 0, "succeeded": len(body["session_ids"]), "skipped": 0}})
+        if route == "/evaluations/backfill":
+            assert body == {
+                "from": "2026-10-01T00:00:00Z", "to": "2026-10-08T00:00:00Z",
+                "eval_key": "error_free", "dry_run": True,
+            }
+            return self.json_response({"queued": False, "dry_run": True})
+        if route == "/sessions/missing/re-evaluate":
+            return self.json_response({"error": "session not found"}, 404)
         if route == "/evaluator-definitions":
             if method == "GET":
                 return self.json_response(Cloud.definitions)
@@ -205,8 +213,13 @@ def main():
         assert not Cloud.definitions[0]["enabled"] and Cloud.definitions[1]["enabled"]
         run(["evaluators", "list", "--all"], key=True)
         run(["evaluators", "disable", "error_free@2"], key=True)
+        run(["evaluators", "backfill", "--from", "2026-10-01T02:00:00+02:00",
+             "--to", "2026-10-07T20:00:00-04:00", "--key", "error_free", "--dry-run"], key=True)
         run(["evaluators", "create", "--key", "relevance", "--name", "Relevance", "--judge", "--criteria", "Grade relevance"], key=True)
         run(["evaluators", "dry-run", "--judge", "--criteria", "Grade relevance"], key=True, expected=2)
+        for step in ("score 1 if correct", "give 0 when incorrect", "pass/fail", "yes or no"):
+            run(["evaluators", "create", "--key", "binary", "--name", "Binary", "--judge",
+                 "--criteria", "Grade relevance", "--step", step], key=True, expected=2)
         run(["evaluators", "create", "--key", "resolution", "--name", "Resolution", "--jev", "noul", "--instructions", "Was the request resolved?", "--true", "Resolved", "--false", "Unresolved"], key=True)
         run(["dashboards", "create", "--name", "Quality"], key=True)
         run(["dashboards", "tiles", "board1", "add", "--query", "q1", "--chart", "bar", "--title", "Traffic"], key=True)
@@ -219,6 +232,14 @@ def main():
         assert Cloud.answers[-1]["decision"] == "approve"
         run(["agent", "brief", "--range", "7d"], json_mode=False)
         run(["evaluators", "draft", "Grade quality"], key=True, expected=2)
+        denial = run(["agent", "ask", "Hello"], key=True, expected=2)
+        assert denial["error"] == "`fp agent ask` needs a signed-in session: run `fp login`"
+        missing = run(["sessions", "re-evaluate", "missing"], key=True, expected=6)
+        assert missing["error"] == "session not found"
+        assert "not available" not in missing["error"]
+        help_text = run(["help"], json_mode=False)
+        for group in ("evaluators", "dashboards", "sentiment", "roles", "plan", "otel", "slack"):
+            assert group in help_text
         Cloud.unavailable = True
         unavailable = run(["sentiment", "summary"], key=True, expected=6)
         assert "not available on this FailproofAI Cloud yet" in unavailable["error"]
@@ -253,6 +274,8 @@ def main():
         transcript.append("$ fp agent ask 'Count events' [interactive approval]\n" + output.decode(errors="replace") + f"\nexit {proc.returncode}\n")
         assert proc.returncode == 0 and sent, transcript[-1]
         assert Cloud.answers[-1]["decision"] == "approve"
+        rendered = output.decode(errors="replace")
+        assert rendered.index("failproof ai") < rendered.index("Events by agent")
     server.shutdown()
     (artifacts / "fp-user-smoke.txt").write_text("\n".join(transcript), encoding="utf-8")
     (artifacts / "fp-fake-cloud-requests.json").write_text(json.dumps(Cloud.requests, indent=2), encoding="utf-8")

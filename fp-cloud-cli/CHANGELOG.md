@@ -11,13 +11,14 @@
 
 ### Changed
 
-- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and older-Cloud 404s exit 6 with an availability message.
+- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and unknown-route 404s exit 6 with an availability message.
 - Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
 - The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
 
 ### Fixes
 
 - Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
+- Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).
 
 ## 0.0.2b0 — 2026-09-22
 

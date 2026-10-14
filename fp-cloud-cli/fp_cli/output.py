@@ -577,42 +577,42 @@ _TOP_LEVEL_GROUPS = [
         ("whoami", "Show the current user, active org, and perms.", ""),
     ]),
     ("OBSERVE", [
-        ("events", "List the raw per-step agent event trail.", ""),
-        ("sessions", "List agent runs — one row per run.", ""),
+        ("events", "List the raw per-step agent event trail.", "latency"),
+        ("sessions", "List agent runs — one row per run.", "show export history re-evaluate"),
         ("evals", "List scored agent evaluations.", "--aggregate"),
         ("evaluators", "Author, test and deploy managed evaluators.", "list show create deploy draft dry-run enable disable label instances schema jobs backfill"),
         ("sentiment", "Inspect conversation sentiment.", "summary messages sessions session"),
         ("dashboards", "Manage dashboards and saved-query tiles.", "list show create update delete tiles"),
         ("errors", "List errored events.", "--aggregate"),
-        ("usage", "Show current org usage for the metering window.", ""),
+        ("usage", "Show current org usage for the metering window.", "windows"),
     ]),
     ("ENFORCE", [
-        ("policies", "Write cloud-managed policies.", "list show publish test compose enable disable delete"),
+        ("policies", "Write cloud-managed policies.", "list show publish test compose author backtest candidacy enable disable delete"),
         ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
         ("guardrails", "What enforcement actually blocked.", "summary timeline"),
     ]),
     ("MANAGE", [
-        ("orgs", "Switch and inspect the active org.", "list switch current perms"),
+        ("orgs", "Switch and inspect the active org.", "list switch current perms create"),
         ("keys", "Provision and manage API keys.", "list show create update disable regenerate"),
-        ("users", "Manage org members and their permissions.", "list show create update disable enable"),
-        ("query", "Run and manage saved SQL queries.", "list show create update delete run schema"),
-        ("alerts", "Define, edit, and test alerts.", "list show create update delete test"),
+        ("users", "Manage org members and their permissions.", "list show create update disable enable delete defaults"),
+        ("query", "Run and manage saved SQL queries.", "list show create update delete run schema compose export"),
+        ("alerts", "Define, edit, and test alerts.", "list show create update delete test recipients issues"),
         # `context-*` rather than the three names spelled out: this hint column
         # ellipsis-truncates at ~110 cols (see `desc_max` below) and this row was
         # already overflowing, so the long form would never render. The full list
         # is one level down, in `fp audits --help`, which walks the real
         # Click tree.
-        ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings context-*"),
-        ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment-* subscribe open"),
-        ("settings", "View and change org settings.", "list schema set"),
+        ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings finding ack mute dismiss resolve reopen assign context-* contracts"),
+        ("issues", "Triage and resolve issues.", "list count show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
+        ("settings", "View and change org settings.", "list schema set context-windows"),
         ("roles", "Manage permission sets.", "list show create update delete"),
         ("plan", "Inspect offers and team trial.", "claim"),
         ("otel", "Control Cloud OTEL ingestion.", "status enable disable"),
         ("slack", "Manage Slack integration.", "status disconnect"),
     ]),
     ("TOOLS", [
-        ("list", "List distinct values behind the filter dropdowns.", ""),
-        ("agent", "Chat with the FailproofAI Cloud assistant.", "health models chats ask show rename delete"),
+        ("list", "List distinct values behind the filter dropdowns.", "envs agents event_types score_filters models hooks tools error_types"),
+        ("agent", "Chat with the FailproofAI Cloud assistant.", "health models chats ask show rename delete brief"),
     ]),
 ]
 

@@ -298,3 +298,120 @@ def test_server_validation_edges(logged_in, runner, flags):
         result = runner.invoke(app, ["--json", "evaluators", "create", "--key", "quality", "--name", "Quality", *flags])
         assert not mock.calls
     assert result.exit_code == 2, result.output
+
+
+@pytest.mark.parametrize("step", [
+    "Score 0 if incorrect; score 1 otherwise.",
+    "score 1 if the answer is correct",
+    "give a score of 0 for a violation",
+    "SCORE OF 1 when compliant",
+    "score: 0 on failure",
+    "score: 1 on success",
+    "score\n1 if correct",
+    "score : 1 if correct",
+    "score=0 when it fails",
+    "score one if compliant",
+    "Give 0 when the request is unresolved",
+    "Give 1 if the answer is correct",
+    "Assign a value of 0 when evidence is absent",
+    "Award a score of one if it succeeds",
+    "Return zero otherwise",
+    "Grade pass/fail",
+    "Return pass or fail",
+    "Answer yes/no",
+    "Answer yes or no",
+    "Respond true/false",
+    "Return true or false",
+    "Return false or true",
+    "Answer no or yes",
+    "Grade fail/pass",
+    "Give 0.0 when incorrect",
+    "Give 1.0 if correct",
+    "Return true if correct, false otherwise",
+    "Output yes when the answer is complete",
+])
+@pytest.mark.parametrize("file_input", [False, True])
+def test_binary_judge_phrasing_is_rejected_before_http(logged_in, runner, tmp_path, step, file_input):
+    if file_input:
+        path = tmp_path / "judge.json"
+        path.write_text(json.dumps({
+            "eval_key": "quality", "display_name": "Quality", "eval_version": "1",
+            "result_kind": "score",
+            "evaluator_source": json.dumps({"kind": "judge", "criteria": "Grade quality", "steps": [step]}),
+        }))
+        flags = ["--file", str(path)]
+    else:
+        flags = ["--key", "quality", "--name", "Quality", "--judge", "--criteria", "Grade quality", "--step", step]
+    with respx.mock as mock:
+        result = runner.invoke(app, ["--json", "evaluators", "create", *flags])
+        assert not mock.calls
+    assert result.exit_code == 2, result.output
+    assert "binary judge steps" in result.stdout
+
+
+@pytest.mark.parametrize("step", [
+    "Return a score between 0 and 1 reflecting how well it did.",
+    "The score should reflect 0 to 1 confidence.",
+    "Award a high score when evidence supports the answer.",
+    "Award a low score when a refund was promised without verification.",
+    "Determine whether a policy-verification tool was called before the refund.",
+])
+def test_continuous_judge_steps_are_accepted(logged_in, runner, step):
+    with respx.mock as mock:
+        route = mock.post(f"{BASE}/api/evaluator-definitions").respond(201, json={"id": "d1"})
+        result = runner.invoke(app, [
+            "--json", "evaluators", "create", "--key", "quality", "--name", "Quality",
+            "--judge", "--criteria", "Grade quality", "--step", step,
+        ])
+    assert result.exit_code == 0, result.output
+    assert json.loads(json.loads(route.calls[0].request.content)["evaluator_source"])["steps"] == [step]
+
+
+@pytest.mark.parametrize("server_body", [None, {"error": "binary-phrased steps are invalid"}])
+def test_judge_server_422_is_visible(logged_in, runner, server_body):
+    with respx.mock as mock:
+        mock.post(f"{BASE}/api/evaluator-definitions").respond(422, json=server_body)
+        result = runner.invoke(app, [
+            "--json", "evaluators", "create", "--key", "quality", "--name", "Quality",
+            "--judge", "--criteria", "Grade quality", "--step", "Assess relevance continuously",
+        ])
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.stdout)
+    assert payload["status"] == 422
+    assert payload["error"] == (server_body["error"] if server_body else "Request failed with status 422.")
+
+
+@pytest.mark.parametrize("key_mode", [False, True])
+def test_stale_evaluator_patch_is_missing_record(logged_in, runner, key_mode):
+    prefix = "v1" if key_mode else "api"
+    with respx.mock as mock:
+        mock.get(f"{BASE}/{prefix}/evaluator-definitions").respond(200, json=[
+            {"id": "stale", "eval_key": "quality", "eval_version": "1", "enabled": True},
+        ])
+        mock.patch(f"{BASE}/{prefix}/evaluator-definitions/stale").respond(404, json={})
+        result = runner.invoke(app, ["--json", *(["--api-key", "key"] if key_mode else []), "evaluators", "disable", "quality@1"])
+    assert result.exit_code == 6
+    assert "Record not found" in result.stdout
+    assert "stale" in result.stdout
+    assert "not available on this FailproofAI Cloud yet" not in result.stdout
+
+
+@pytest.mark.parametrize("frm,to", [
+    ("2026-10-01T02:00:00+02:00", "2026-10-08T05:30:00+05:30"),
+    ("2026-09-30T20:00:00-04:00", "2026-10-07T20:00:00-04:00"),
+    (" 2026-10-01T00:00:00.123456Z ", " 2026-10-08T00:00:00.654321Z "),
+])
+@pytest.mark.parametrize("key_mode", [False, True])
+def test_standalone_backfill_normalizes_utc_z(logged_in, runner, frm, to, key_mode):
+    prefix = "v1" if key_mode else "api"
+    with respx.mock as mock:
+        route = mock.post(f"{BASE}/{prefix}/evaluations/backfill").respond(200, json={})
+        result = runner.invoke(app, [
+            "--json", *(["--api-key", "key"] if key_mode else []), "evaluators", "backfill",
+            "--from", frm, "--to", to, "--key", "quality", "--dry-run",
+        ])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls[0].request.content) == {
+        "from": "2026-10-01T00:00:00Z", "to": "2026-10-08T00:00:00Z",
+        "eval_key": "quality", "dry_run": True,
+    }

@@ -84,7 +84,7 @@ def test_session_commands(logged_in, runner, argv, method, path, response):
 @pytest.mark.parametrize("argv,method,path,response", CASES + SESSION)
 def test_404(logged_in, runner, argv, method, path, response):
     with respx.mock as mock:
-        mock.route().respond(404, json={})
+        mock.route().respond(404, json={"error": "unknown route"})
         result = runner.invoke(app, ["--json", *argv])
     assert result.exit_code == 6, result.output
     assert "not available on this FailproofAI Cloud yet" in result.stdout

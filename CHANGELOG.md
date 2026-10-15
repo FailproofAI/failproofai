@@ -1,10 +1,14 @@
 # Changelog
 
-## 1.0.11-beta.3 — 2026-10-15
+## 1.0.11-beta.4 — 2026-10-15
 
 ### Fixes
 
 - `otel enable` no longer switches an agent over while the org has OpenTelemetry ingest off. It used to stop the agent's transcript upload, write the OTel settings and only warn, so that agent's sessions went nowhere until it was disabled again. It now writes nothing, keeps transcript upload running, and exits 1 with "OTEL ingest is off for your org. An admin can turn it on in Settings → OpenTelemetry." When the setting can't be read (offline, or an older Cloud), it enables as before.
+
+## 1.0.11-beta.3 — 2026-10-15
+
+### Fixes
 
 - A first connect, and a machine upgrading from an earlier version, no longer draw an organisation boundary. Both set it to "now", so the collector dropped every older event: a new machine never backfilled its last week of sessions, and an upgrading machine could drop events still queued for upload. Only an actual switch to another organisation draws the boundary.
 - The `config` Done screen no longer prints "Codex hooks are in its system config …" or "Your custom policies are enforcing on N agents." Counted policies still get their line, and untrusted Codex hooks still get their warning.

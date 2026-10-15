@@ -96,7 +96,8 @@ export class OtelSpanExporter {
     let result: OtelExportResult = { code: 0 };
     try {
       if (this.stopped) throw new Error("OTEL exporter has shut down.");
-      const dir = this.directory ?? join(process.env.FAILPROOFAI_HOME || join(homedir(), ".failproofai"), "state", "spool-otlp");
+      // A blank or whitespace-only FAILPROOFAI_HOME means unset, not the cwd.
+      const dir = this.directory ?? join(process.env.FAILPROOFAI_HOME?.trim() || join(homedir(), ".failproofai"), "state", "spool-otlp");
       // Encode each span once and split batches at the relay's request limit.
       const chunks: string[] = [];
       let items: string[] = [];

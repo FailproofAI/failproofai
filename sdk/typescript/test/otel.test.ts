@@ -86,6 +86,31 @@ describe("OTLP/JSON SpanExporter", () => {
     await provider.shutdown();
   });
 
+  it.each(["", "   "])("a blank FAILPROOFAI_HOME (%j) spools under ~/.failproofai, never the cwd", async blank => {
+    const previousHomeDir = process.env.HOME;
+    const previousCwd = process.cwd();
+    const cwd = mkdtempSync(join(tmpdir(), "fpai-otel-cwd-"));
+    process.env.HOME = home;
+    process.env.FAILPROOFAI_HOME = blank;
+    process.chdir(cwd);
+    try {
+      const provider = new BasicTracerProvider();
+      const span = provider.getTracer("test").startSpan("blank-home");
+      span.end();
+      const results: number[] = [];
+      new OtelSpanExporter().export([span as unknown as ReadableSpan], result => results.push(result.code));
+      expect(results).toEqual([0]);
+      expect(readdirSync(join(home, ".failproofai", "state", "spool-otlp"))).toHaveLength(1);
+      expect(readdirSync(cwd)).toEqual([]);
+      await provider.shutdown();
+    } finally {
+      process.chdir(previousCwd);
+      if (previousHomeDir === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHomeDir;
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("splits an export above 8 MiB into complete bounded requests", async () => {
     const provider = new BasicTracerProvider({ spanLimits: { attributeValueLengthLimit: 10_000_000 } });
     const span = provider.getTracer("test").startSpan("big", { attributes: { content: "x".repeat(4 * 1024 * 1024) } });

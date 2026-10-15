@@ -2,6 +2,8 @@
 
 ## 1.0.11-beta.5 — 2026-10-15
 
+- The TypeScript SDK's OTel exporter and custom-agents resolver treated a blank or whitespace-only `FAILPROOFAI_HOME` as a path relative to the working directory, so spans could be spooled into the project folder where the daemon never reads them. Blank now means unset, as in the Python SDK.
+
 ### Fixes
 
 - Switching a machine to another organisation now also sets aside OpenTelemetry batches still waiting to upload. They used to be sent to the new organisation with its key; they are now kept with the previous organisation's undelivered events and never sent.

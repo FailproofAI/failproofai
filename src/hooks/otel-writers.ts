@@ -186,6 +186,19 @@ export function editAgentConfig(text: string, agent: OtelAgent, writes: SettingW
   return next;
 }
 
+/**
+ * FailproofAI Cloud's OTLP base URL. Exporters append `/v1/<signal>` to it, as
+ * the OTLP spec says. The local relay is plain `http://127.0.0.1:<port>`.
+ */
+export function cloudOtlpBase(origin: string): string {
+  return `${origin.replace(/\/+$/, "")}/otel`;
+}
+
+/** Where an agent's exporter points: the local relay, or Cloud's OTLP base. */
+export function otlpDestination(origin: string, local: boolean, port: number): string {
+  return local ? `http://127.0.0.1:${port}` : cloudOtlpBase(origin);
+}
+
 export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string, local: boolean, content: boolean, config: JsonObject = {}): SettingWrite[] {
   const auth = local ? {} : { Authorization: `Bearer ${key}` };
   const env: JsonObject = {

@@ -31,11 +31,13 @@ If FailproofAI already sends an agent's session transcripts, setup asks whether 
 Use your application's OpenTelemetry instrumentation with these environment variables:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://app.befailproof.ai/otel
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer%20<key>'
 export OTEL_SERVICE_NAME=my-agent
 ```
+
+The endpoint is Cloud's OTLP base, `https://app.befailproof.ai/otel`; your exporter appends `/v1/traces`, `/v1/logs`, or `/v1/metrics` itself. Per-signal variables such as `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` are used as-is, so they need the full path, for example `https://app.befailproof.ai/otel/v1/logs`.
 
 Replace `<key>` with your API key. Keep the secret out of shell history, screen recordings, and committed configuration. For a configured machine, `failproofai otel env --service my-agent` prints the block with its existing key. Its output contains a credential.
 
@@ -76,7 +78,7 @@ For an agent you configure manually, use its own content-capture controls:
     ```toml
     [otel]
     log_user_prompt = true
-    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
+    exporter = { otlp-http = { endpoint = "https://app.befailproof.ai/otel/v1/logs", protocol = "json", headers = { Authorization = "Bearer <key>" } } }
     ```
 
     Codex conversation content is in logs; leave internal runtime traces and metrics disabled. Codex uses the complete endpoint you provide. Set `log_user_prompt` to `false` to leave prompts out; the setup command preserves an explicit `false`.

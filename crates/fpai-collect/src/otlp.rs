@@ -21,7 +21,11 @@ use crate::supervisor::{Shutdown, TaskError, TaskSpec};
 use crate::uploader::{ParkedName, new_request_id};
 
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+/// The local OTLP paths: what the relay listens on and what the SDK spool
+/// metadata carries. Standard OTLP, because agents and SDKs speak it to us.
 const PATHS: [&str; 3] = ["/v1/traces", "/v1/logs", "/v1/metrics"];
+/// Cloud's OTLP base is `<origin>/otel`; each batch goes to that plus its path.
+const CLOUD_OTLP_PREFIX: &str = "/otel";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Metadata {
@@ -53,7 +57,8 @@ struct Relay {
     health_file: PathBuf,
     health: Mutex<RelayHealth>,
     client: reqwest::Client,
-    origin: String,
+    /// Cloud's OTLP base URL, `<origin>/otel`.
+    cloud_base: String,
     key: String,
     receiving: tokio::sync::Semaphore,
     /// First in-request retry delay; doubles per attempt. Tests shrink it.
@@ -78,7 +83,7 @@ const OFFLINE_BACKOFF_MAX: Duration = Duration::from_secs(300);
 impl Relay {
     fn new(home: &Path, ingest: &Ingest) -> Result<Self, TaskError> {
         let url = reqwest::Url::parse(&ingest.url).map_err(|e| TaskError(e.to_string()))?;
-        let origin = url.origin().ascii_serialization();
+        let cloud_base = format!("{}{CLOUD_OTLP_PREFIX}", url.origin().ascii_serialization());
         let health_file = home.join("state/otlp-health.json");
         let mut health = fs::read(&health_file)
             .ok()
@@ -95,7 +100,7 @@ impl Relay {
                 .timeout(Duration::from_secs(30))
                 .build()
                 .map_err(|e| TaskError(e.to_string()))?,
-            origin,
+            cloud_base,
             key: ingest.key.clone(),
             receiving: tokio::sync::Semaphore::new(16),
             retry_base: Duration::from_secs(1),
@@ -147,7 +152,7 @@ impl Relay {
             }
             let mut request = self
                 .client
-                .post(format!("{}{}", self.origin, metadata.path))
+                .post(format!("{}{}", self.cloud_base, metadata.path))
                 .bearer_auth(&self.key)
                 .header("Content-Type", &metadata.content_type)
                 .body(body.to_vec());
@@ -530,10 +535,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_signal_gets_exactly_one_cloud_prefix() {
+        let server = MockServer::start().await;
+        let home = temp();
+        // Saved credentials may name the event endpoint or the OTLP base.
+        // Neither path is carried into the upstream URL a second time.
+        for suffix in ["", "/v1/events", "/otel", "/otel/v1/logs"] {
+            let relay = Relay::new(
+                &home,
+                &Ingest {
+                    url: format!("{}{suffix}", server.uri()),
+                    key: "test".into(),
+                },
+            )
+            .unwrap();
+            for signal in PATHS {
+                Mock::given(method("POST"))
+                    .and(path(format!("/otel{signal}")))
+                    .and(header("authorization", "Bearer test"))
+                    .respond_with(ResponseTemplate::new(200))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                let file = spool_request(
+                    &relay.spool,
+                    &Metadata {
+                        path: signal.into(),
+                        content_type: "application/json".into(),
+                        encoding: None,
+                    },
+                    b"{}",
+                )
+                .unwrap();
+                relay.deliver(&file, &shutdown()).await;
+                assert!(!file.exists());
+                server.verify().await;
+                server.reset().await;
+            }
+        }
+        fs::remove_dir_all(home).unwrap();
+    }
+
+    #[tokio::test]
     async fn durable_opaque_forward_and_partial_success() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/logs"))
+            .and(path("/otel/v1/logs"))
             .and(header("authorization", "Bearer test"))
             .and(header("content-type", "application/json"))
             .and(header("content-encoding", "gzip"))

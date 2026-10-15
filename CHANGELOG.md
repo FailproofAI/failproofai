@@ -7,11 +7,12 @@ The first stable release with the new terminal experience and OpenTelemetry. Eve
 ### Features
 
 - **A redesigned CLI and `config` v2.** Every screen, picker, `--help` page and error has the new look, and `config` walks you through choosing agents, connecting to FailproofAI Cloud (hosted or self-hosted, with `--url`) and turning policies on, end to end.
-- **OpenTelemetry, per agent.** `otel enable claude|codex|copilot|all` sends that agent's sessions to Cloud over OpenTelemetry instead of transcript upload, and `otel disable` restores its settings byte for byte. Codex exports logs only, a `log_user_prompt = false` you set is kept, `--no-content` leaves prompt and tool text out, and `--local` routes through the daemon's relay, which spools to disk and retries. `otel env` prints the exporter settings for any other OpenTelemetry app, and `otel status` shows the org switch, each agent and the relay.
+- **OpenTelemetry, per agent.** `otel enable claude|codex|copilot|all` sends that agent's sessions to Cloud over OpenTelemetry instead of transcript upload, and `otel disable` restores its settings byte for byte. Codex exports logs only, a `log_user_prompt = false` you set is kept, `--no-content` leaves prompt and tool text out, and `--local` routes through the daemon's relay, which spools to disk and retries. `otel env` prints the exporter settings for any other OpenTelemetry app, and `otel status` shows the org switch, each agent and the relay. Cloud's OTLP endpoint base is `<cloud>/otel`: exporters append `/v1/traces`, `/v1/logs` or `/v1/metrics` to it, and the relay forwards to the same address.
 - **Headless Codex enforces policies.** With sudo, `config` installs Codex's hooks into its system config, which Codex runs without an interactive trust prompt; `config --status` warns when hooks are not trusted.
 
 ### Fixes
 
+- Cloud's OpenTelemetry ingest moved to `<cloud>/otel`; direct exporters and the relay use `/otel/v1/<signal>`, while the local relay keeps `/v1/<signal>`. Re-run `otel disable <agent>` then `otel enable <agent>` after upgrading to rewrite older beta settings. (#903)
 - **Switching a machine to another organisation is a clean break.** Nothing recorded before the switch is sent to the new organisation (transcripts, queued batches and OpenTelemetry alike), the old organisation's cloud policies stop, and the daemon accepts the new organisation's policies without a restart. A first connect still backfills the last week.
 - **Reconnecting with a different key replaces every saved credential,** and events the old key was refused are resent with the new one.
 - **The daemon no longer stops collecting** when a settings change or backfill arrives while it is busy.

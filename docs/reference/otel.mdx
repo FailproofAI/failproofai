@@ -61,7 +61,7 @@ failproofai otel env --service my-agent
 failproofai otel env --service my-agent --local
 ```
 
-The output is a shell environment block for an OTLP/HTTP exporter. Cloud output includes the configured API key; treat it as a secret. Local output omits the key. To use local output, first enable a local agent so the relay is running.
+The output is a shell environment block for an OTLP/HTTP exporter. Cloud output sets `OTEL_EXPORTER_OTLP_ENDPOINT` to Cloud's OTLP base, `https://<cloud>/otel`, and the exporter appends `/v1/<signal>`; a per-signal variable such as `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` needs the full `https://<cloud>/otel/v1/logs`. Local output points at the relay, `http://127.0.0.1:<port>`. Cloud output includes the configured API key; treat it as a secret. Local output omits the key. To use local output, first enable a local agent so the relay is running.
 
 ## Restore previous settings
 

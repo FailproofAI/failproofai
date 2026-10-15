@@ -234,7 +234,8 @@ fn sdk_spool_delivers_without_opening_a_tcp_listener() {
     let mut request = vec![0; 4096];
     let read = stream.read(&mut request).unwrap();
     let request = String::from_utf8_lossy(&request[..read]).to_lowercase();
-    assert!(request.starts_with("post /v1/traces "));
+    // Cloud's OTLP base is <origin>/otel; the spool keeps the local /v1 path.
+    assert!(request.starts_with("post /otel/v1/traces "));
     assert!(request.contains("authorization: bearer test"));
     assert!(request.contains("content-type: application/json"));
     stream

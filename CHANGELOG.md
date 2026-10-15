@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.11-beta.5 — 2026-10-15
+
+### Fixes
+
+- Switching a machine to another organisation now also sets aside OpenTelemetry batches still waiting to upload. They used to be sent to the new organisation with its key; they are now kept with the previous organisation's undelivered events and never sent.
+- `otel enable` and `otel env` refuse a plain-http ingest URL that is not localhost, before writing or printing anything. They used to write or print the Cloud key for that address, sending it in clear. https, and http on localhost or 127.0.0.1, work as before.
+- A network outage no longer marks OpenTelemetry batches as permanently undeliverable. After three failed rounds of retries a batch stopped being retried, even though nothing was wrong with it; it is now kept and sent once the connection is back, and only batches Cloud actually rejects are given up on.
+- The Python SDK treats an empty or blank `FAILPROOFAI_HOME` as unset. The OpenTelemetry exporter used to write its batches into the current directory, where they were never uploaded.
+- Replacing a Cloud key with `config --connect` now reliably resends the events the old key had been refused. They could be retried with the old key one last time and refused again, and then sat undelivered.
+
 ## 1.0.11-beta.4 — 2026-10-15
 
 ### Fixes

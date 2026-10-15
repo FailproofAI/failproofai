@@ -267,8 +267,6 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   if (keptPromptPrivacy) lines.push("Codex log_user_prompt = false kept; user prompt capture remains off.");
   if (local && !localFlag) lines.push(`${AGENT_LABELS[agent]} settings cannot carry an auth header; using the local relay automatically.`);
   if (local) lines.push("The daemon picks this up within seconds — no restart. Use `failproofai otel status` to check the relay.");
-  const result = await introspectKey(origin, key, options.fetchImpl, 3000);
-  if (result.kind === "ok" && result.identity.otelIngest === false) lines.push(OTEL_ORG_OFF);
   await options.onEvent?.("otel_enabled", { agent, local, content });
   return { lines, exitCode: 0, events: [{ name: "otel_enabled", agent, local, content }] };
 }
@@ -355,6 +353,16 @@ export async function runOtelCommand(args: string[], options: OtelOptions = {}):
     if (!target || (target !== "all" && !OTEL_AGENTS.includes(target as OtelAgent))) throw new Error(`Choose an agent: ${OTEL_AGENTS.join(", ")}, all.`);
     if (rest.slice(1).some(x => !flags.has(x))) throw new Error("Unexpected positional argument.");
     const agents = target === "all" ? [...OTEL_AGENTS] : [target as OtelAgent];
+    if (verb === "enable") {
+      // Enabling stops the agent's transcript upload. With org ingest off, Cloud
+      // would refuse the OTEL export too and the sessions would go nowhere, so
+      // nothing is written. An unknown answer (offline, older server) proceeds.
+      const { origin, key } = credential();
+      const org = await introspectKey(origin, key, options.fetchImpl, 3000);
+      if (org.kind === "ok" && org.identity.otelIngest === false) {
+        return { lines: [OTEL_ORG_OFF, "Nothing changed: transcript upload keeps running."], exitCode: 1 };
+      }
+    }
     const result: OtelResult = { lines: [], exitCode: 0, events: [] };
     for (const agent of agents) {
       if (verb === "enable") {

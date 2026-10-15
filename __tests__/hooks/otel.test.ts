@@ -453,14 +453,33 @@ describe("opt-in, one path and status", () => {
     expect(line).toContain("destination: local relay (http://127.0.0.1:4318)");
   });
 
-  it("reports unmanaged OTEL and warns but writes when org ingest is off", async () => {
+  it("reports unmanaged OTEL, and refuses to enable anything while org ingest is off", async () => {
     seed(agentConfigPath("codex", home), '[otel]\nexporter = { "otlp-http" = { endpoint="http://external/v1/logs", protocol="json" } }\n');
     expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Codex: on, not managed");
     fetchImpl.mockImplementation(async () => new Response(JSON.stringify({ permissions: ["events:add"], otel_ingest: false })));
-    const result = await runOtelCommand(["enable", "claude"], options());
-    expect(result.exitCode).toBe(0);
-    expect(result.lines).toContain(OTEL_ORG_OFF);
+    const claudeFile = agentConfigPath("claude", home);
+    const before = existsSync(claudeFile) ? readFileSync(claudeFile, "utf8") : null;
+    const readOrNull = (f: string) => existsSync(f) ? readFileSync(f, "utf8") : null;
+    const configBefore = readOrNull(configFile());
+    const sessionsBefore = agentSessionsEnabled("claude");
+    for (const target of ["claude", "all"]) {
+      const result = await runOtelCommand(["enable", target, "--yes"], options());
+      expect(result.exitCode).toBe(1);
+      expect(result.lines).toContain(OTEL_ORG_OFF);
+      expect(result.events ?? []).toEqual([]);
+    }
+    // Nothing written: the agent's settings and transcript upload are untouched.
+    expect(existsSync(claudeFile) ? readFileSync(claudeFile, "utf8") : null).toBe(before);
+    expect(readOrNull(configFile())).toBe(configBefore);
+    expect(agentSessionsEnabled("claude")).toBe(sessionsBefore);
     expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("org: off");
+  });
+
+  it("enables when the org's ingest setting can't be read (offline or older server)", async () => {
+    fetchImpl.mockImplementation(async () => { throw new TypeError("fetch failed"); });
+    const result = await runOtelCommand(["enable", "claude", "--yes"], options());
+    expect(result.exitCode).toBe(0);
+    expect(result.lines).not.toContain(OTEL_ORG_OFF);
   });
 
   it("missing key errors before writes; env is shell-safe and has the correct protocol/header", async () => {

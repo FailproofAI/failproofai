@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.11-beta.3 — 2026-10-15
+
+### Fixes
+
+- A first connect, and a machine upgrading from an earlier version, no longer draw an organisation boundary. Both set it to "now", so the collector dropped every older event: a new machine never backfilled its last week of sessions, and an upgrading machine could drop events still queued for upload. Only an actual switch to another organisation draws the boundary.
+- The `config` Done screen no longer prints "Codex hooks are in its system config …" or "Your custom policies are enforcing on N agents." Counted policies still get their line, and untrusted Codex hooks still get their warning.
+
 ## 1.0.11-beta.2 — 2026-10-15
 
 ### Features

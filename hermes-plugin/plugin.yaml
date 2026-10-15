@@ -1,5 +1,5 @@
 name: failproofai
-version: 1.0.11-beta.2
+version: 1.0.11-beta.3
 description: Real-time FailproofAI policy enforcement for Hermes
 manifest_version: 2
 api_version: 1

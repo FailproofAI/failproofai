@@ -52,7 +52,7 @@ Status shows every agent, whether its settings are managed by FailproofAI, its d
 
 `unknown` for the organisation switch means the server did not provide it or could not be reached. It is not an error and does not prevent configuration on an older Cloud version.
 
-If Cloud does not support OTEL yet, the relay retains rejected exports instead of discarding them. If organisation ingest is off, ask an admin to turn it on before starting your agents.
+If Cloud does not support OTEL yet, the relay retains rejected exports instead of discarding them. If organisation ingest is off, `enable` writes nothing and exits with an error; ask an admin to turn it on first.
 
 ## Print configuration for an application
 

@@ -8,6 +8,8 @@ import threading
 import uuid
 from pathlib import Path
 
+from .._resolver import failproofai_home
+
 _MAX_BYTES = 8 * 1024 * 1024
 _METADATA = b'{"path":"/v1/traces","content_type":"application/json","encoding":null}\n'
 
@@ -85,7 +87,7 @@ class OtelSpanExporter:
             if self._stopped:
                 return SpanExportResult.FAILURE
             try:
-                directory = self._directory or Path(os.environ.get("FAILPROOFAI_HOME", Path.home() / ".failproofai")) / "state" / "spool-otlp"
+                directory = self._directory or failproofai_home() / "state" / "spool-otlp"
                 items, chunks, size = [], [], 20
                 for span in spans:
                     encoded = json.dumps(_resource_span(span), ensure_ascii=True, separators=(",", ":")).encode("utf8")

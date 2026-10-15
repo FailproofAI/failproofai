@@ -102,6 +102,31 @@ def test_exporter_reports_failures_and_shutdown(tmp_path):
     provider.shutdown()
 
 
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_failproofai_home_means_the_default_not_the_cwd(tmp_path, monkeypatch, blank):
+    from failproofai_sdk import _redact, _resolver
+    home, cwd = tmp_path / "home", tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("FAILPROOFAI_HOME", blank)
+    monkeypatch.chdir(cwd)
+    default = home / ".failproofai"
+    assert _resolver.failproofai_home() == default
+    assert _resolver.failproofai_custom_agents_dir() == default / "custom-agents"
+    provider = TracerProvider()
+    span = provider.get_tracer("app").start_span("blank-home")
+    span.end()
+    assert failproofai_sdk.OtelSpanExporter().export([span]) == SpanExportResult.SUCCESS
+    assert len(batches(default)) == 1
+    assert not any(cwd.iterdir()), "a blank FAILPROOFAI_HOME wrote into the working directory"
+    # Redaction reads the same root: a switch in the cwd must not be consulted.
+    (cwd / "config.json").write_text('{"collector":{"redact":"off"}}')
+    default.mkdir(parents=True, exist_ok=True)
+    (default / "config.json").write_text('{"collector":{"redact":"minimal"}}')
+    assert _redact.redaction_enabled(tmp_path / "unrelated") is True
+    provider.shutdown()
+
+
 def test_batches_split_at_relay_limit(tmp_path, monkeypatch):
     from opentelemetry.sdk.trace import SpanLimits
     monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path))

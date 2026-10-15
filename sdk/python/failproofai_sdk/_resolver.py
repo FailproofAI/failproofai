@@ -87,7 +87,8 @@ def failproofai_custom_agents_dir() -> Path:
     into. An existence check here is what made the old opt-in dead — a spool
     root that must pre-exist can never be the place a first batch is written.
     """
-    return failproofai_home() / "custom-agents"
+    base = failproofai_home()
+    return base / "custom-agents"
 
 
 def failproofai_home() -> Path:

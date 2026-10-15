@@ -3,6 +3,7 @@ use crate::cloud_policies::{
 };
 use reqwest::Url;
 use reqwest::blocking::Client;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -10,6 +11,10 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_POLL_MS: u64 = 30_000;
 const MINIMUM_POLL_MS: u64 = 100;
+
+/// Digest of a [`CloudClient`]'s identity. See [`CloudClient::identity`].
+#[derive(Clone, PartialEq, Eq)]
+struct CloudIdentity(Vec<u8>);
 
 #[derive(Clone)]
 pub struct CloudClient {
@@ -318,6 +323,28 @@ impl CloudClient {
         })
     }
 
+    /// Who this client polls AS: a SHA-256 over the normalised base URL, the
+    /// machine id and the token. Only the digest is kept, so the token never
+    /// sits in a second place and cannot reach a log through this value.
+    ///
+    /// The server numbers deployments per (org, machine), so any of the three
+    /// changing can mean a counter that starts again at 0. The token is in it
+    /// because switching org with the same machine id (or rotating to a fresh
+    /// enrolment) changes nothing else the daemon can see.
+    fn identity(&self) -> CloudIdentity {
+        let mut hasher = Sha256::new();
+        for part in [
+            self.base_url.as_str(),
+            self.machine_id.as_str(),
+            self.token.as_str(),
+        ] {
+            // Length-prefixed, so ("ab","c") and ("a","bc") cannot collide.
+            hasher.update((part.len() as u64).to_be_bytes());
+            hasher.update(part.as_bytes());
+        }
+        CloudIdentity(hasher.finalize().to_vec())
+    }
+
     /// `applied` is the deployment this machine is ACTUALLY enforcing right now,
     /// read from `active.json`.
     ///
@@ -446,14 +473,61 @@ pub fn spawn_maintenance(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut last_state: Option<bool> = None;
+        // `None` until the first successful resolution; then the identity seen
+        // last (itself `None` when not enrolled).
+        let mut last_identity: Option<Option<CloudIdentity>> = None;
+        // Set when the identity changed and the new one has not yet completed a
+        // reconcile. See below.
+        let mut floor_reset_pending = false;
         while !shutdown.load(Ordering::Relaxed) {
-            let cloud = match CloudClient::from_env_or_file() {
-                Ok(client) => client,
+            let (cloud, identity) = match CloudClient::from_env_or_file() {
+                Ok(client) => {
+                    let identity = client.as_ref().map(CloudClient::identity);
+                    (client, Some(identity))
+                }
+                // A resolution ERROR is not a change of identity: broken
+                // credentials keep the last known-good deployment (see above),
+                // so they must neither reset the floor nor deactivate anything.
                 Err(err) => {
                     eprintln!("[failproofaid] cloud enrolment error: {err}");
-                    None
+                    (None, None)
                 }
             };
+
+            // The rollback floor belongs to ONE cloud identity. The server
+            // numbers deployments per (org, machine), so after an org switch, a
+            // re-registration or a fresh enrolment the new identity legitimately
+            // answers with a lower deployment — often 0. Carrying the old floor
+            // across refused it ("deployment rollback from N to 0") until the
+            // daemon restarted, and the previous org's policies kept enforcing.
+            if let Some(identity) = identity
+                && last_identity.as_ref() != Some(&identity)
+            {
+                let first = last_identity.is_none();
+                if !first {
+                    store.reset_high_water();
+                    floor_reset_pending = identity.is_some();
+                    eprintln!(
+                        "[failproofaid] cloud identity changed; the cloud-policy deployment floor starts again"
+                    );
+                }
+                // Enrolled → not enrolled (`--disconnect`, credentials removed):
+                // stop enforcing the departed org's policies. Removing only
+                // `active.json`, as the CLI does, is undone by the repair below,
+                // which rebuilds it from `desired-state.json`.
+                if !first && identity.is_none() {
+                    match store.deactivate() {
+                        Ok(true) => eprintln!(
+                            "[failproofaid] cloud enrolment removed; cloud-managed policies deactivated"
+                        ),
+                        Ok(false) => {}
+                        Err(err) => eprintln!(
+                            "[failproofaid] could not deactivate cloud-managed policies: {err}"
+                        ),
+                    }
+                }
+                last_identity = Some(identity);
+            }
 
             // Log only on transition, so a disconnected machine does not print
             // a line every 30 seconds forever.
@@ -467,7 +541,17 @@ pub fn spawn_maintenance(
             }
 
             if let Some(cloud) = cloud.as_ref() {
-                poll_once(&store, cloud);
+                // Re-reset until the new identity's first reconcile lands. If
+                // that poll fails, the repair below re-applies the PREVIOUS
+                // identity's `desired-state.json` through `reconcile`, which
+                // raises the floor straight back to the old number. Replay
+                // protection resumes from the new identity's first success.
+                if floor_reset_pending {
+                    store.reset_high_water();
+                }
+                if poll_once(&store, cloud) {
+                    floor_reset_pending = false;
+                }
             }
 
             // Runs whether or not cloud is reachable: poll failures never
@@ -488,7 +572,8 @@ pub fn spawn_maintenance(
     })
 }
 
-fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
+/// Whether the server's desired state was reconciled.
+fn poll_once(store: &PolicyStore, cloud: &CloudClient) -> bool {
     // Read BEFORE the request, so what we report is what was in force when we
     // asked. Reading after would race this poll's own reconcile and could claim
     // a deployment the server is about to be told about anyway — reporting the
@@ -515,12 +600,19 @@ fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
                         "[failproofaid] cloud policy deployment {} active (downloaded {}, repaired {})",
                         outcome.deployment, outcome.downloaded, outcome.repaired
                     );
+                    true
                 }
-                Ok(_) => {}
-                Err(err) => eprintln!("[failproofaid] cloud policy reconcile error: {err}"),
+                Ok(_) => true,
+                Err(err) => {
+                    eprintln!("[failproofaid] cloud policy reconcile error: {err}");
+                    false
+                }
             }
         }
-        Err(err) => eprintln!("[failproofaid] cloud policy poll error: {err}"),
+        Err(err) => {
+            eprintln!("[failproofaid] cloud policy poll error: {err}");
+            false
+        }
     }
 }
 
@@ -1150,5 +1242,134 @@ mod tests {
         }
         assert!(CloudClient::from_file().unwrap().is_none());
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    // ── The rollback floor follows the cloud identity ────────────────────────
+
+    /// A fake control plane that answers each token with its own deployment,
+    /// as the real server does per (org, machine). Empty sets, so no artifact
+    /// fetch is involved.
+    fn serve_deployments_by_token(by_token: Vec<(&'static str, u64)>) -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..read]).to_lowercase();
+                let deployment = by_token
+                    .iter()
+                    .find(|(token, _)| request.contains(&format!("bearer {token}")))
+                    .map(|(_, deployment)| *deployment);
+                let response = match deployment {
+                    Some(d) => {
+                        let body =
+                            format!(r#"{{"schemaVersion":2,"deployment":{d},"policies":[]}}"#);
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                    }
+                    None => "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .to_string(),
+                };
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        address
+    }
+
+    fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            if done() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("timed out waiting for {what}");
+    }
+
+    /// The reported bug, end to end through the maintenance lane: switch the
+    /// credential to another org (fresh token and machine) while the daemon
+    /// runs, and that org's deployment 0 must activate on the next poll —
+    /// not be refused as a rollback from the old org's 3 until a restart.
+    /// Then remove the credential: the old org's policies stop enforcing and
+    /// stay stopped across the repair pass.
+    #[test]
+    fn an_identity_change_resets_the_floor_and_a_disconnect_deactivates() {
+        let _lock = lock_env();
+        let address = serve_deployments_by_token(vec![("org-a-token", 3), ("org-b-token", 0)]);
+        let creds = |machine: &str, token: &str| {
+            format!(
+                r#"{{"schemaVersion":1,"url":"http://{address}","machineId":"{machine}","token":"{token}"}}"#
+            )
+        };
+        let guard = with_credentials_file(Some(&creds("machine-a", "org-a-token")));
+        let credentials = guard.0.join("cloud.json");
+        let root = guard.0.join("cloud-policies");
+        let store = PolicyStore::new(root.clone());
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let lane = spawn_maintenance(
+            store.clone(),
+            shutdown.clone(),
+            Duration::from_millis(50),
+            Duration::from_millis(50),
+        );
+
+        wait_for("org A's deployment 3", || {
+            store
+                .read_active()
+                .ok()
+                .flatten()
+                .is_some_and(|a| a.deployment == 3)
+        });
+
+        fs::write(&credentials, creds("machine-b", "org-b-token")).unwrap();
+        wait_for("org B's deployment 0 after the switch", || {
+            store
+                .read_active()
+                .ok()
+                .flatten()
+                .is_some_and(|a| a.deployment == 0)
+        });
+        assert_eq!(store.read_desired().unwrap().unwrap().deployment, 0);
+
+        // Back to org A: its 3 is above the floor anyway, and must still win.
+        fs::write(&credentials, creds("machine-a", "org-a-token")).unwrap();
+        wait_for("org A's deployment 3 again", || {
+            store
+                .read_active()
+                .ok()
+                .flatten()
+                .is_some_and(|a| a.deployment == 3)
+        });
+
+        fs::remove_file(&credentials).unwrap();
+        wait_for("deactivation after the credential is removed", || {
+            store.read_active().ok().flatten().is_none()
+                && store.read_desired().ok().flatten().is_none()
+        });
+        // Several more ticks: repair must not resurrect the departed org.
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(store.read_active().unwrap().is_none());
+
+        shutdown.store(true, Ordering::Relaxed);
+        lane.join().unwrap();
+    }
+
+    #[test]
+    fn the_identity_covers_url_machine_and_token_and_is_stable() {
+        let a = CloudClient::new("https://cloud.example", "t".into(), "m".into()).unwrap();
+        let same = CloudClient::new("https://CLOUD.example/", "t".into(), "m".into()).unwrap();
+        assert!(a.identity() == same.identity());
+        for other in [
+            CloudClient::new("https://other.example", "t".into(), "m".into()).unwrap(),
+            CloudClient::new("https://cloud.example", "t2".into(), "m".into()).unwrap(),
+            CloudClient::new("https://cloud.example", "t".into(), "m2".into()).unwrap(),
+        ] {
+            assert!(a.identity() != other.identity());
+        }
     }
 }

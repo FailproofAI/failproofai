@@ -33,6 +33,7 @@
 
 ### Fixes
 
+- **The daemon no longer refuses a new cloud identity's policies as a "rollback".** Its replay guard kept the highest deployment number it had seen for the life of the process, but the server numbers deployments per organisation and machine. After switching organisation, re-registering the machine or enrolling afresh, the new identity's deployment (often 0) was refused with "deployment rollback from N to 0 is not allowed" until the daemon restarted, and the previous organisation's policies kept enforcing. The guard now starts again whenever the URL, machine id or token it polls with changes; within one identity it is unchanged. When the enrolment is removed, the daemon also deletes `desired-state.json` along with `active.json`. Before, the maintenance pass rebuilt `active.json` from the leftover desired state and the departed organisation's policies came back. (#899)
 - Preserve Codex OTEL header comments, omit local Claude auth-header settings, and require an executable or Copilot extension before configuring VS Code (#880).
 - Keep Python OTEL imports lazy, label direct loopback destinations correctly, omit local Codex auth headers, and scope help options to each verb (#880).
 - `failproofai otel enable codex` now exports Codex's conversation logs only. Its runtime spans carry no conversation and created empty sessions in Cloud, so failproofai sets only the Codex logs exporter (#880)

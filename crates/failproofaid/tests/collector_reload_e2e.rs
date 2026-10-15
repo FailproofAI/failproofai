@@ -117,7 +117,12 @@ impl Drop for DaemonGuard {
 }
 
 fn spawn_daemon(home: &Path) -> DaemonGuard {
+    spawn_daemon_with(home, &[])
+}
+
+fn spawn_daemon_with(home: &Path, env: &[(&str, &str)]) -> DaemonGuard {
     let mut child = Command::new(binary_path())
+        .envs(env.iter().copied())
         .env("FAILPROOFAI_HOME", home)
         .env(
             "FAILPROOFAI_DAEMON_SOCKET",
@@ -454,5 +459,68 @@ async fn a_flush_after_a_key_rotation_is_delivered_with_the_new_key() {
         .collect();
     assert!(leftovers.is_empty(), "re-parked: {leftovers:?}");
     drop(daemon);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A collector that is slow to stop (busy uploading a large backfill) used to
+/// end the collector manager for good: it gave up waiting, logged, and
+/// returned, so nothing was collected again until the daemon restarted. A zero
+/// stop budget makes every ordinary collector "slow to stop".
+#[test]
+fn a_collector_slow_to_stop_is_replaced_once_it_stops_after_a_config_change() {
+    let home = unique_home("slow-stop-config");
+    make_home(&home, "first-key");
+    let daemon = spawn_daemon_with(&home, &[("FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS", "0")]);
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    write_credentials(&home, "second-key");
+    daemon.wait_for(
+        "previous collector is still draining",
+        1,
+        Duration::from_secs(20),
+    );
+    daemon.wait_for("previous collector stopped", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
+
+    // Still managing: a later change cycles again rather than being ignored.
+    write_credentials(&home, "third-key");
+    daemon.wait_for("collector started", 3, Duration::from_secs(20));
+    assert!(
+        !daemon
+            .stderr()
+            .contains("refusing to start a second collector")
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_backfill_taken_while_the_collector_drains_is_applied_once_it_stops() {
+    let home = unique_home("slow-stop-backfill");
+    make_home(&home, "first-key");
+    let daemon = spawn_daemon_with(&home, &[("FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS", "0")]);
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    std::fs::write(
+        home.join("state/backfill-request.json"),
+        r#"{"kind":"user","sinceMs":0}"#,
+    )
+    .unwrap();
+    daemon.wait_for(
+        "previous collector is still draining",
+        1,
+        Duration::from_secs(20),
+    );
+    // The request was already taken off disk; it must survive the wait.
+    daemon.wait_for("backfill requested", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
+    let log = daemon.stderr();
+    let drained = log
+        .find("previous collector stopped")
+        .expect("never stopped");
+    let applied = log.find("backfill requested").unwrap();
+    assert!(
+        drained < applied,
+        "cursors were rewound while the old collector could still write them:\n{log}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }

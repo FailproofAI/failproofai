@@ -437,6 +437,17 @@ fn spawn_collector_manager(
             // a redaction change, all of which are baked into the tasks at build
             // time and none of which took effect before.
 
+            // A deployment asked to stop that has not finished yet (it can be
+            // mid-upload of a large backfill). Held, never abandoned: nothing
+            // new starts over its queues, and no cursor is rewound under it,
+            // until it has stopped. Giving up here used to end this thread and
+            // with it all collection until the daemon restarted.
+            let mut draining: Option<fpai_collect::CollectorHandle> = None;
+            // A backfill request already taken off disk while a deployment was
+            // still draining. Applied once it has stopped, never dropped.
+            let mut pending_backfill: Option<backfill::Request> = None;
+            let stop_budget = collector_stop_budget();
+
             loop {
                 if daemon_shutdown.load(Ordering::Relaxed) {
                     break;
@@ -452,19 +463,35 @@ fn spawn_collector_manager(
                     break;
                 }
 
+                if let Some(old) = draining.take() {
+                    match old.stop_within(Duration::from_millis(200)) {
+                        Ok(()) => tracing::info!("previous collector stopped; starting its replacement"),
+                        Err(still) => {
+                            draining = Some(still);
+                            continue;
+                        }
+                    }
+                }
+
                 // A backfill rewinds cursors, which the RUNNING collector holds
                 // in memory and would write straight back over. So it is
                 // handled here, where the collector can be stopped first — and
                 // it deliberately runs before the config compare, so a backfill
                 // and a config change arriving together produce one cycle
                 // rather than two.
-                if let Some(request) = take_backfill_request() {
+                if let Some(request) = pending_backfill.take().or_else(take_backfill_request) {
                     if let Some(running) = collector.take()
-                        && !running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET) {
-                            tracing::error!("collector did not stop; refusing to start a second collector over shared queues");
-                            return;
+                        && let Err(still) = running.stop_within(stop_budget)
+                    {
+                        tracing::warn!("previous collector is still draining; the new one starts once it stops");
+                        draining = Some(still);
+                        pending_backfill = Some(request);
+                        continue;
                     }
-                    if !prepare_collector_boundary() { continue; }
+                    if !prepare_collector_boundary() {
+                        pending_backfill = Some(request);
+                        continue;
+                    }
                     apply_backfill(request);
                     // Read BEFORE the build, and recorded as what is running. A
                     // read after the spawn records an edit that landed in between
@@ -521,9 +548,13 @@ fn spawn_collector_manager(
                 // both claim the same batch files.
                 tracing::info!("collector configuration changed; cycling the collector");
                 if let Some(running) = collector.take()
-                    && !running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET) {
-                        tracing::error!("collector did not stop; refusing to start a second collector over shared queues");
-                        return;
+                    && let Err(still) = running.stop_within(stop_budget)
+                {
+                    // Next ticks keep waiting for it; once it stops, the
+                    // compare above sees no collector and starts this config.
+                    tracing::warn!("previous collector is still draining; the new one starts once it stops");
+                    draining = Some(still);
+                    continue;
                 }
 
                 if !next_cfg.is_enabled() {
@@ -582,6 +613,9 @@ fn spawn_collector_manager(
 
             if let Some(running) = collector.take() {
                 running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+            }
+            if let Some(old) = draining.take() {
+                old.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
             }
         })
         .inspect_err(|err| {
@@ -762,6 +796,17 @@ fn collector_is_enabled() -> bool {
 /// How often to re-check whether the collector config has become enabled.
 /// Short by default — it is two small JSON reads — so enabling collection after
 /// a fresh setup is prompt. `FAILPROOFAI_COLLECTOR_CONFIG_POLL_MS` overrides it.
+/// How long one tick waits for a stopping collector before it holds the handle
+/// and checks again on later ticks. `FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS`
+/// exists so tests can make an ordinary collector "slow to stop".
+fn collector_stop_budget() -> Duration {
+    std::env::var("FAILPROOFAI_COLLECTOR_STOP_BUDGET_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(fpai_collect::DEFAULT_FLUSH_BUDGET)
+}
+
 fn collector_config_poll_interval() -> Duration {
     const DEFAULT_MS: u64 = 5_000;
     const MINIMUM_MS: u64 = 500;

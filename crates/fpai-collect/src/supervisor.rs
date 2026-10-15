@@ -210,31 +210,52 @@ impl CollectorHandle {
     /// Ask every task to stop, then wait up to `budget` for the collector
     /// thread to finish.
     ///
-    /// Returns `true` if it drained in time. On `false` the thread is
-    /// abandoned deliberately rather than blocked on: the process is already
-    /// exiting, and the alternative — waiting indefinitely on a task that has
-    /// wedged — is the hang this whole module exists to prevent.
-    pub fn join_with_flush(mut self, budget: Duration) -> bool {
+    /// `Ok` once it has stopped and been joined. `Err` hands the handle back
+    /// with the thread still attached: the collector is stopping but has not
+    /// finished (a large backfill upload can take minutes), so the caller must
+    /// keep it and ask again later. It must not start another collector over
+    /// the same queues meanwhile, and must not give up on collection either.
+    pub fn stop_within(mut self, budget: Duration) -> Result<(), CollectorHandle> {
         self.stop.store(true, Ordering::Relaxed);
         let Some(thread) = self.thread.take() else {
-            return true;
+            return Ok(());
         };
 
         // `JoinHandle` has no timed join in std, so poll `is_finished` and
         // only then join (which is guaranteed not to block once finished).
         let deadline = std::time::Instant::now() + budget;
-        while std::time::Instant::now() < deadline {
+        loop {
             if thread.is_finished() {
                 let _ = thread.join();
-                return true;
+                return Ok(());
             }
-            std::thread::sleep(SHUTDOWN_POLL);
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                break;
+            }
+            std::thread::sleep(SHUTDOWN_POLL.min(deadline - now));
         }
-        tracing::warn!(
-            budget_ms = budget.as_millis() as u64,
-            "collector did not drain within its flush budget; abandoning it so process exit is not blocked"
-        );
-        false
+        self.thread = Some(thread);
+        Err(self)
+    }
+
+    /// Process-exit variant of [`CollectorHandle::stop_within`].
+    ///
+    /// Returns `true` if it drained in time. On `false` the thread is
+    /// abandoned deliberately rather than blocked on: the process is already
+    /// exiting, and the alternative — waiting indefinitely on a task that has
+    /// wedged — is the hang this whole module exists to prevent.
+    pub fn join_with_flush(self, budget: Duration) -> bool {
+        match self.stop_within(budget) {
+            Ok(()) => true,
+            Err(_abandoned) => {
+                tracing::warn!(
+                    budget_ms = budget.as_millis() as u64,
+                    "collector did not drain within its flush budget; abandoning it so process exit is not blocked"
+                );
+                false
+            }
+        }
     }
 }
 

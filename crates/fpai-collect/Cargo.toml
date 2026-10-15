@@ -52,7 +52,7 @@ time = { version = "0.3", default-features = false, features = ["std", "formatti
 # Request ids and batch ids on each upload (see uploader.rs). Both were already
 # in the lockfile — sha2 via failproofaid, getrandom via the TLS stack — so
 # neither adds a crate to the four cross-compiled legs; `uuid` would have.
-getrandom = "0.3"
+getrandom = "0.4"
 sha2 = "0.11"
 
 [dev-dependencies]

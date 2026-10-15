@@ -43,10 +43,26 @@ function previous(id?: string) {
 }
 
 describe("cloud organisation recording boundary", () => {
-  it("first connect sets an epoch-ms boundary even on a server without introspect", async () => {
+  it("first connect sets no boundary, so the machine backfills its window", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1000);
+    await connect("A");
+    expect(readCredentials().org).toEqual({ id: "A", name: "A", slug: undefined });
+    expect(readCredentials().org).not.toHaveProperty("since");
+  });
+  it("first connect on a server without introspect sets no boundary either", async () => {
     await connect();
-    expect(readCredentials().org).toEqual({ since: 1000 });
+    expect(readCredentials().org?.since).toBeUndefined();
+  });
+  it("a machine upgrading from a version with no boundary keeps none on a same-key reconnect", async () => {
+    writeCredentials({
+      cloud: { url: "https://cloud.example", token: "new", machineId: "m" },
+      ingest: { url: "https://cloud.example/v1/events", key: "new" },
+    });
+    mkdirSync(join(home, "state"), { recursive: true });
+    writeFileSync(backfillRequestPath(), '{"kind":"user","sinceMs":0}');
+    await connect("A");
+    expect(readCredentials().org?.since).toBeUndefined();
+    expect(existsSync(backfillRequestPath())).toBe(true);
   });
   it("switching known organisations drops pending backfill and announces the clean break", async () => {
     previous("A");

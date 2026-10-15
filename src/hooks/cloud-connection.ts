@@ -322,7 +322,10 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     (previousPolicy && !sameOrigin(previousPolicy.url)) ||
     (prev.ingest && !sameOrigin(prev.ingest.url))
   );
-  const boundary = orgSwitch || prev.org?.since === undefined ? next.connectedAt : prev.org.since;
+  // Only a switch draws a line. A first connect, or a machine upgrading from a
+  // version that kept no boundary, has nothing to keep apart: it backfills its
+  // window and sends what is queued, as before.
+  const boundary = orgSwitch ? next.connectedAt : prev.org?.since;
   if (orgSwitch) {
     rmSync(backfillRequestPath(), { force: true });
     const oldOrg = prev.org?.name ?? prev.org?.slug ?? prev.org?.id ?? "the previous org";
@@ -358,10 +361,12 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     delete next.jev;
     if (prev.jev) changes.push(`Removed the previous Jev key ${maskToken(prev.jev.key)}: this key's ${PERMISSION_JEV} permission was not verified.`);
   }
+  const since = boundary === undefined ? {} : { since: boundary };
   if (known) {
-    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName, since: boundary };
+    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName, ...since };
   } else {
-    next.org = { ...(orgSwitch ? {} : prev.org), since: boundary };
+    const { since: _drop, ...kept } = orgSwitch ? {} : (prev.org ?? {});
+    next.org = { ...kept, ...since };
   }
   if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
     recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === known?.orgId && sameOrigin(prev.ingest.url)), prev.org?.id);

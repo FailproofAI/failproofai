@@ -61,7 +61,7 @@
 - After every agent's hooks were removed, an unattended `failproofai config` re-run hooked all twelve again; a saved empty selection now stands (#881)
 - `failproofai config --disconnect` removed the cloud policy manifest but left the cached desired state, from which the daemon rebuilt the departed organisation's policies. Both are removed now (#881)
 - Reconnecting with a new key left the old key's capability slots in place, and batches the old key had been refused (401/403) stayed parked. A reconnect now reconciles the slots; batches refused under the same organisation are re-sent with the new key at once, and those from a different or unconfirmed organisation are set aside under `previous-org/`, never sent (#881)
-- Switching a machine to another organisation could send the old organisation's history to the new one: collector cursors and upload queues are machine-wide. The collector now records an organisation boundary, sends only events from after the switch, and moves batches still queued for the old organisation aside instead of delivering them (#881)
+- Switching a machine to another organisation could send the old organisation's history to the new one: collector cursors and upload queues are machine-wide. The collector now records an organisation boundary, sends only events from after the switch, and moves batches still queued for the old organisation aside instead of delivering them (#881) A first connect, or a machine upgrading from an earlier version, draws no boundary: it backfills its usual window and sends what is already queued.
 
 ### Dependencies
 

@@ -43,6 +43,9 @@ fn start(port: u16, enabled: bool) -> Daemon {
         r#"{"ingest":{"url":"http://127.0.0.1:59999/v1/events","key":"test"}}"#,
     )
     .unwrap();
+    spawn(home)
+}
+fn spawn(home: PathBuf) -> Daemon {
     let mut child = Command::new(env!("CARGO_BIN_EXE_failproofaid"))
         .env("HOME", &home)
         .env("FAILPROOFAI_HOME", &home)
@@ -239,5 +242,83 @@ fn sdk_spool_delivers_without_opening_a_tcp_listener() {
         .unwrap();
     wait(|| !batch.exists());
     assert!(TcpStream::connect(("127.0.0.1", relay_port)).is_err());
+    ping(&daemon);
+}
+
+/// An org change must take the relay's undelivered queue with it: the relay
+/// starts with the new key, and the old org's batches are not the new org's.
+#[tokio::test(flavor = "multi_thread")]
+async fn org_change_archives_the_otlp_queue_before_the_relay_delivers_with_the_new_key() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let home = std::env::temp_dir().join(format!(
+        "fpai-otlp-org-{}",
+        fpai_collect::uploader::new_request_id()
+    ));
+    let state = home.join("state");
+    let spool = state.join("spool-otlp");
+    let failed = state.join("failed/otlp");
+    std::fs::create_dir_all(&spool).unwrap();
+    std::fs::create_dir_all(&failed).unwrap();
+    let reserved = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = reserved.local_addr().unwrap().port();
+    drop(reserved);
+    settings(&home, port, false);
+    // Org A was the last applied boundary and left batches undelivered.
+    std::fs::write(state.join("collector-org.json"), r#"{"id":"A","since":0}"#).unwrap();
+    let old = b"{\"path\":\"/v1/traces\",\"content_type\":\"application/json\",\"encoding\":null}\n{\"ORG_A_SPAN\":1}";
+    std::fs::write(spool.join("otlp-org-a.jsonl"), old).unwrap();
+    std::fs::write(failed.join("otlp-org-a-retry.a1.jsonl"), old).unwrap();
+    std::fs::write(
+        home.join("credentials.json"),
+        serde_json::json!({
+            "ingest": {"url": format!("{}/v1/events", server.uri()), "key": "B"},
+            "org": {"id": "B", "since": 1}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let daemon = spawn(home.clone());
+    let archive = state.join("previous-org/A");
+    wait(|| {
+        archive.join("spool-otlp/otlp-org-a.jsonl").exists()
+            && archive
+                .join("failed-otlp/otlp-org-a-retry.a1.jsonl")
+                .exists()
+    });
+    // A batch recorded under B is delivered, proving the relay is running...
+    std::fs::write(
+        spool.join("otlp-org-b.jsonl"),
+        b"{\"path\":\"/v1/traces\",\"content_type\":\"application/json\",\"encoding\":null}\n{\"ORG_B_SPAN\":1}",
+    )
+    .unwrap();
+    let start = Instant::now();
+    loop {
+        let received = server.received_requests().await.unwrap();
+        if received
+            .iter()
+            .any(|r| String::from_utf8_lossy(&r.body).contains("ORG_B_SPAN"))
+        {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(20),
+            "B's batch never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    // ...and nothing of A's ever reached B's endpoint.
+    for request in server.received_requests().await.unwrap() {
+        assert!(!String::from_utf8_lossy(&request.body).contains("ORG_A_SPAN"));
+    }
+    assert_eq!(
+        std::fs::read(archive.join("spool-otlp/otlp-org-a.jsonl")).unwrap(),
+        old
+    );
     ping(&daemon);
 }

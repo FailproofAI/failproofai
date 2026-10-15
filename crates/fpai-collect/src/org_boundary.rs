@@ -84,7 +84,19 @@ pub fn prepare(cfg: &CollectorConfig) -> io::Result<u64> {
     let mut count = 0;
     if cfg.boundary.is_some() {
         let archive = archive_dir(state, old.as_ref());
-        for (source, label) in [(&cfg.own_spool_dir, "spool"), (&cfg.failed_dir, "failed")] {
+        // The OTLP relay keeps its own queue and delivers it with the same
+        // ingest key, so it belongs to the old org exactly like the events
+        // spool. Its failed dir nests inside `failed`; it is archived under its
+        // own label and skipped when `failed` is walked.
+        let otlp_spool = crate::otlp::spool_dir(state);
+        let otlp_failed = crate::otlp::failed_dir(state);
+        let sources = [
+            (&otlp_spool, "spool-otlp"),
+            (&otlp_failed, "failed-otlp"),
+            (&cfg.own_spool_dir, "spool"),
+            (&cfg.failed_dir, "failed"),
+        ];
+        for (source, label) in sources {
             let entries = match fs::read_dir(source) {
                 Ok(entries) => entries,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
@@ -94,6 +106,9 @@ pub fn prepare(cfg: &CollectorConfig) -> io::Result<u64> {
             fs::create_dir_all(&destination)?;
             for entry in entries {
                 let entry = entry?;
+                if entry.path() == otlp_failed || entry.path() == otlp_spool {
+                    continue;
+                }
                 let mut target = destination.join(entry.file_name());
                 // Preserve collisions across repeated visits to the same org.
                 if target.exists() {
@@ -150,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn a_boundary_change_archives_spool_failed_poison_and_tmp_without_overwriting() {
+    fn a_boundary_change_archives_spool_failed_poison_tmp_and_otlp_without_overwriting() {
         let home = std::env::temp_dir().join(format!(
             "fp-org-{}-{}",
             std::process::id(),
@@ -172,11 +187,24 @@ mod tests {
         fs::write(cfg.failed_dir.join("old.c401.jsonl"), "refused").unwrap();
         fs::write(cfg.failed_dir.join("old.jsonl.poison"), "poison").unwrap();
         fs::write(cfg.own_spool_dir.join("old.tmp"), "partial").unwrap();
+        let state = home.join("state");
+        fs::create_dir_all(crate::otlp::spool_dir(&state)).unwrap();
+        fs::create_dir_all(crate::otlp::failed_dir(&state)).unwrap();
+        fs::write(
+            crate::otlp::spool_dir(&state).join("otlp-old.jsonl"),
+            "otlp",
+        )
+        .unwrap();
+        fs::write(
+            crate::otlp::failed_dir(&state).join("otlp-old.a1.c401.jsonl"),
+            "otlp refused",
+        )
+        .unwrap();
         cfg.boundary = Some(OrgBoundary {
             id: Some("B".into()),
             since: 200,
         });
-        assert_eq!(prepare(&cfg).unwrap(), 4);
+        assert_eq!(prepare(&cfg).unwrap(), 6);
         let archive = home.join("state/previous-org/A");
         assert_eq!(
             fs::read_to_string(archive.join("spool/old.jsonl")).unwrap(),
@@ -185,6 +213,25 @@ mod tests {
         assert!(archive.join("failed/old.c401.jsonl").exists());
         assert!(archive.join("failed/old.jsonl.poison").exists());
         assert!(!cfg.own_spool_dir.join("old.jsonl").exists());
+        // The OTLP relay's queue is the old org's too, under its own labels.
+        assert_eq!(
+            fs::read_to_string(archive.join("spool-otlp/otlp-old.jsonl")).unwrap(),
+            "otlp"
+        );
+        assert!(archive.join("failed-otlp/otlp-old.a1.c401.jsonl").exists());
+        assert!(!archive.join("failed/otlp").exists());
+        assert_eq!(
+            fs::read_dir(crate::otlp::spool_dir(&state))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(
+            fs::read_dir(crate::otlp::failed_dir(&state))
+                .unwrap()
+                .count(),
+            0
+        );
         // Same boundary on restart leaves the current org's queue in place.
         fs::write(cfg.own_spool_dir.join("new.jsonl"), "new").unwrap();
         assert_eq!(prepare(&cfg).unwrap(), 0);

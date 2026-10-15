@@ -36,6 +36,17 @@ struct RelayHealth {
     last_upload: Option<String>,
 }
 
+/// The relay's queue under the state root. Shared with `org_boundary`, which
+/// must archive it on an org change before a relay with the new key starts.
+pub fn spool_dir(state: &Path) -> PathBuf {
+    state.join("spool-otlp")
+}
+
+/// Nested under failed, isolated from the NDJSON events sweeper.
+pub fn failed_dir(state: &Path) -> PathBuf {
+    state.join("failed").join("otlp")
+}
+
 struct Relay {
     spool: PathBuf,
     failed: PathBuf,
@@ -58,9 +69,8 @@ impl Relay {
             .unwrap_or_default();
         health.relay = "off".to_string();
         Ok(Self {
-            spool: home.join("state/spool-otlp"),
-            // Nested under failed, isolated from the NDJSON events sweeper.
-            failed: home.join("state/failed/otlp"),
+            spool: spool_dir(&home.join("state")),
+            failed: failed_dir(&home.join("state")),
             health_file,
             health: Mutex::new(health),
             client: reqwest::Client::builder()

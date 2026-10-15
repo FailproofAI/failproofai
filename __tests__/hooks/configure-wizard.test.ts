@@ -455,9 +455,9 @@ describe("doneLines", () => {
     expect(lines).toContain("✓ 10 policies are enforcing on 8 agents.");
     expect(lines.join("\n")).not.toContain("Connect to cloud any time");
     vi.mocked(enforcingPolicyCount).mockReturnValue({ count: 0, custom: true });
-    expect(doneLines(kit, { elapsedMs: 1, done: [], cwd: "/x", agents: 1, connected: true })).toContain(
-      "✓ Your custom policies are enforcing on 1 agent.",
-    );
+    const customOnly = doneLines(kit, { elapsedMs: 1, done: [], cwd: "/x", agents: 1, connected: true });
+    expect(customOnly.join("\n")).not.toContain("custom policies");
+    expect(customOnly.join("\n")).not.toContain("Policies are enforcing");
   });
 
   it("names a pack that failed to load, and claims no custom policies there are none of", () => {

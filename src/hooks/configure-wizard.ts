@@ -1312,9 +1312,9 @@ export async function runConfigureWizard(
   clearOnboardingAttempt();
 
   // Codex runs hooks from hooks.json only once they are trusted; from its
-  // system config always. Said here, and not counted as enforcing until it is.
+  // system config always. Untrusted hooks are warned about below and not
+  // counted as enforcing; hooks in the system config need no line of their own.
   const codexTrust = selected.includes("codex") ? codexHookTrust() : undefined;
-  if (codexTrust?.kind === "system") done.push(kit.ok(`Codex hooks are in its system config (${codexTrust.path}), which Codex runs without asking`));
   write(
     doneLines(kit, {
       elapsedMs: Date.now() - started,
@@ -1533,14 +1533,13 @@ export function doneLines(
     const { count, custom } = enforcingPolicyCount(state.cwd);
     // Codex was the only agent, and it runs none of the hooks: nothing enforces anywhere.
     const nowhere = codexSkips && agents === 0;
-    if ((count > 0 || custom) && !nowhere) {
+    // Only custom policies: nothing to count, and no line for it.
+    if (count > 0 && !nowhere) {
       lines.push(
         kit.ok(
-          count === 0
-            ? `Your custom policies are enforcing on ${on}.`
-            : custom
-              ? `${count} ${count === 1 ? "policy" : "policies"} and your custom policies are enforcing on ${on}.`
-              : `${count} ${count === 1 ? "policy is" : "policies are"} enforcing on ${on}.`,
+          custom
+            ? `${count} ${count === 1 ? "policy" : "policies"} and your custom policies are enforcing on ${on}.`
+            : `${count} ${count === 1 ? "policy is" : "policies are"} enforcing on ${on}.`,
         ),
       );
     }

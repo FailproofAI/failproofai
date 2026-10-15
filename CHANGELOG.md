@@ -1,11 +1,26 @@
 # Changelog
 
-## 1.0.11-beta.5 — 2026-10-15
+## 1.0.11 — 2026-10-15
 
-- The TypeScript SDK's OTel exporter and custom-agents resolver treated a blank or whitespace-only `FAILPROOFAI_HOME` as a path relative to the working directory, so spans could be spooled into the project folder where the daemon never reads them. Blank now means unset, as in the Python SDK.
+The first stable release with the new terminal experience and OpenTelemetry. Everything below in the `1.0.11-beta.*` sections ships here; the highlights:
+
+### Features
+
+- **A redesigned CLI and `config` v2.** Every screen, picker, `--help` page and error has the new look, and `config` walks you through choosing agents, connecting to FailproofAI Cloud (hosted or self-hosted, with `--url`) and turning policies on, end to end.
+- **OpenTelemetry, per agent.** `otel enable claude|codex|copilot|all` sends that agent's sessions to Cloud over OpenTelemetry instead of transcript upload, and `otel disable` restores its settings byte for byte. Codex exports logs only, a `log_user_prompt = false` you set is kept, `--no-content` leaves prompt and tool text out, and `--local` routes through the daemon's relay, which spools to disk and retries. `otel env` prints the exporter settings for any other OpenTelemetry app, and `otel status` shows the org switch, each agent and the relay.
+- **Headless Codex enforces policies.** With sudo, `config` installs Codex's hooks into its system config, which Codex runs without an interactive trust prompt; `config --status` warns when hooks are not trusted.
 
 ### Fixes
 
+- **Switching a machine to another organisation is a clean break.** Nothing recorded before the switch is sent to the new organisation (transcripts, queued batches and OpenTelemetry alike), the old organisation's cloud policies stop, and the daemon accepts the new organisation's policies without a restart. A first connect still backfills the last week.
+- **Reconnecting with a different key replaces every saved credential,** and events the old key was refused are resent with the new one.
+- **The daemon no longer stops collecting** when a settings change or backfill arrives while it is busy.
+
+## 1.0.11-beta.5 — 2026-10-15
+
+### Fixes
+
+- The TypeScript SDK's OTel exporter and custom-agents resolver treated a blank or whitespace-only `FAILPROOFAI_HOME` as a path relative to the working directory, so spans could be spooled into the project folder where the daemon never reads them. Blank now means unset, as in the Python SDK.
 - Switching a machine to another organisation now also sets aside OpenTelemetry batches still waiting to upload. They used to be sent to the new organisation with its key; they are now kept with the previous organisation's undelivered events and never sent.
 - `otel enable` and `otel env` refuse a plain-http ingest URL that is not localhost, before writing or printing anything. They used to write or print the Cloud key for that address, sending it in clear. https, and http on localhost or 127.0.0.1, work as before.
 - A network outage no longer marks OpenTelemetry batches as permanently undeliverable. After three failed rounds of retries a batch stopped being retried, even though nothing was wrong with it; it is now kept and sent once the connection is back, and only batches Cloud actually rejects are given up on.

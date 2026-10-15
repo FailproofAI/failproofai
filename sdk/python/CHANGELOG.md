@@ -9,12 +9,24 @@ in `failproofai_sdk/_version.py` becomes that release's GitHub Release body. A
 release whose section is missing or empty is refused before anything is built —
 see `scripts/changelog-section.py`.
 
-## 0.0.1b6 — 2026-09-26
+## 0.0.1b6 — 2026-10-15
 
-Open for the next release. `0.0.1b5` published on 2026-09-26 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b6` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Features
+
+- **OpenTelemetry spans to FailproofAI Cloud, without a network call in your
+  process.** `OtelSpanExporter` (and `instrument("otel")`, which adds it as a span
+  processor) writes each finished batch of spans as OTLP/JSON to the local spool
+  (`~/.failproofai/state/spool-otlp`); the failproofai daemon delivers it to Cloud
+  with the machine's key and retries if Cloud is unreachable. OpenTelemetry stays
+  optional: nothing is imported until you ask for it, and the SDK keeps zero
+  required dependencies.
+
+### Fixes
+
+- **A blank `FAILPROOFAI_HOME` no longer means the current directory.** An empty or
+  whitespace-only value made the exporter spool into `./state/spool-otlp`, where the
+  daemon never reads, and the custom-agents and redaction lookups treat it the same
+  way. Blank now means unset everywhere.
 
 ## 0.0.1b5 — 2026-09-22
 

@@ -718,9 +718,10 @@ describe("config --status — Codex trust", () => {
     expect(rowValue(renderStatusScreen(facts({ codex: { kind: "none" } }), PLAIN), "codex")).toBeUndefined();
   });
 
-  it("says Codex enforces from its system config", () => {
+  it("shows no codex row when Codex runs the hooks from its system config", () => {
     const lines = renderStatusScreen(facts({ codex: { kind: "system", path: "/etc/codex/config.toml" } }), PLAIN);
-    expect(rowValue(lines, "codex")).toBe("● Enforcing (system config)");
+    expect(rowValue(lines, "codex")).toBeUndefined();
+    expect(lines.join("\n")).not.toContain("system config");
     expect(pickStatusAttention(facts({ codex: { kind: "system", path: "/etc/codex/config.toml" } }))).toBeNull();
   });
 

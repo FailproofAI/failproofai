@@ -148,7 +148,9 @@ requires_openai_auth=false
       expect(modelSawDeny).toBe(true);
       expect(existsSync(marker)).toBe(false);
       const status = await run("node", [cli, "config", "--status"]);
-      expect(status.out).toContain("Enforcing (system config)");
+      // Enforcing from the system config needs no row; only the trust warning would show.
+      expect(status.out).not.toContain("system config");
+      expect(status.out).not.toContain("Not enforcing");
       expect(status.out).toContain("1 on from cloud");
       const fallbackEnv = { FAILPROOFAI_CODEX_SYSTEM_CONFIG: "off" };
       const fallback = await run("node", [cli, "policies", "--install", "--cli", "codex", "--scope", "user"], fallbackEnv);

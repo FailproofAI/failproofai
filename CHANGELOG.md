@@ -5,6 +5,7 @@
 ### Fixes
 
 - `otel enable` no longer switches an agent over while the org has OpenTelemetry ingest off. It used to stop the agent's transcript upload, write the OTel settings and only warn, so that agent's sessions went nowhere until it was disabled again. It now writes nothing, keeps transcript upload running, and exits 1 with "OTEL ingest is off for your org. An admin can turn it on in Settings → OpenTelemetry." When the setting can't be read (offline, or an older Cloud), it enables as before.
+- `config --status` no longer shows a `codex  ● Enforcing (system config)` row. Hooks in Codex's system config always run, so the row only appears when there is something to fix (untrusted hooks).
 
 ## 1.0.11-beta.3 — 2026-10-15
 

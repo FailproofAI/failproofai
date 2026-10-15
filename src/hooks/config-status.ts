@@ -560,8 +560,8 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
   // because hooks being written does not make them run.
   const codexValue = (): string | null => {
     const codex = facts.codex;
-    if (!codex || codex.kind === "none") return null;
-    if (codex.kind === "system") return `${kit.on} Enforcing (system config)`;
+    // Hooks in Codex's system config always run: nothing to say.
+    if (!codex || codex.kind === "none" || codex.kind === "system") return null;
     if (codex.kind === "trusted") return `${kit.on} Enforcing (hooks trusted)`;
     if (codex.kind === "ungated") return `${kit.on} Enforcing`;
     return `${kit.off} Not enforcing: ${codex.untrusted === codex.total ? "hooks not trusted" : `${codex.untrusted} of ${codex.total} hooks not trusted`}`;

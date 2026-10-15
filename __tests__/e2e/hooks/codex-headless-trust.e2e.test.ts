@@ -101,7 +101,8 @@ base_url="${origin}/v1"
 wire_api="responses"
 requires_openai_auth=false
 `);
-    writeFileSync(join(fp, "VERSION"), JSON.stringify({ layout: 4, cli: "1.0.11-beta.1", daemon: "1.0.11-beta.1" }));
+    const version = (JSON.parse(readFileSync(join(repo, "package.json"), "utf8")) as { version: string }).version;
+    writeFileSync(join(fp, "VERSION"), JSON.stringify({ layout: 4, cli: version, daemon: version }));
     writeFileSync(join(fp, "config.json"), JSON.stringify({
       mode: { kind: "cloud" }, collector: { hooks: true, sessions: true },
     }));

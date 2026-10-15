@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.11-beta.1 — 2026-10-13
+## 1.0.11-beta.2 — 2026-10-15
 
 ### Features
 
@@ -48,10 +48,13 @@
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#881)
 - Renaming an unconnected machine suggested `config --connect <url> --token <key>`, a key on the command line; it points at `failproofai config` (#881)
 - After every agent's hooks were removed, an unattended `failproofai config` re-run hooked all twelve again; a saved empty selection now stands (#881)
+- `failproofai config --disconnect` removed the cloud policy manifest but left the cached desired state, from which the daemon rebuilt the departed organisation's policies. Both are removed now (#881)
+- Reconnecting with a new key left the old key's capability slots in place, and batches the old key had been refused (401/403) stayed parked. A reconnect now reconciles the slots; batches refused under the same organisation are re-sent with the new key at once, and those from a different or unconfirmed organisation are set aside under `previous-org/`, never sent (#881)
+- Switching a machine to another organisation could send the old organisation's history to the new one: collector cursors and upload queues are machine-wide. The collector now records an organisation boundary, sends only events from after the switch, and moves batches still queued for the old organisation aside instead of delivering them (#881)
 
 ### Dependencies
 
-- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` 0.11.18 (RUSTSEC-2026-0338 to -0342) and `ruzstd` 0.9.1 (RUSTSEC-2026-0344) in `Cargo.lock` (#881)
+- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` (RUSTSEC-2026-0338 to -0342), `ruzstd` 0.9.1 (RUSTSEC-2026-0344) and `rustls` 0.23.46 (RUSTSEC-2026-0346 to -0349) in `Cargo.lock`, which `main` now also carries from #901 (#881)
 
 ## 1.0.11-beta.0 — 2026-10-14
 

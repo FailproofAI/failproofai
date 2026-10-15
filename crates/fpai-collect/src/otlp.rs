@@ -56,7 +56,24 @@ struct Relay {
     origin: String,
     key: String,
     receiving: tokio::sync::Semaphore,
+    /// First in-request retry delay; doubles per attempt. Tests shrink it.
+    retry_base: Duration,
 }
+
+/// What became of one delivery attempt.
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    /// Delivered, parked or abandoned for shutdown: the loop moves on.
+    Settled,
+    /// No HTTP response at all. The batch keeps its name and place — a
+    /// transport failure says nothing about the batch, so it never counts
+    /// toward poison — and the loop backs off before trying again.
+    Unreachable,
+}
+
+/// Loop pause after an unreachable endpoint; doubles up to the cap.
+const OFFLINE_BACKOFF_START: Duration = Duration::from_secs(5);
+const OFFLINE_BACKOFF_MAX: Duration = Duration::from_secs(300);
 
 impl Relay {
     fn new(home: &Path, ingest: &Ingest) -> Result<Self, TaskError> {
@@ -81,6 +98,7 @@ impl Relay {
             origin,
             key: ingest.key.clone(),
             receiving: tokio::sync::Semaphore::new(16),
+            retry_base: Duration::from_secs(1),
         })
     }
 
@@ -99,31 +117,33 @@ impl Relay {
         }
     }
 
-    async fn deliver(&self, path: &Path, sd: &Shutdown) {
+    async fn deliver(&self, path: &Path, sd: &Shutdown) -> Outcome {
         let bytes = match tokio::fs::read(path).await {
             Ok(bytes) => bytes,
-            Err(_) => return,
+            Err(_) => return Outcome::Settled,
         };
         let Some(split) = bytes.iter().position(|b| *b == b'\n') else {
             self.park(path, None).await;
-            return;
+            return Outcome::Settled;
         };
         let metadata: Metadata = match serde_json::from_slice(&bytes[..split]) {
             Ok(metadata) => metadata,
             Err(_) => {
                 self.park(path, None).await;
-                return;
+                return Outcome::Settled;
             }
         };
         if !PATHS.contains(&metadata.path.as_str()) || bytes.len() - split - 1 > MAX_BODY_BYTES {
             self.park(path, Some(400)).await;
-            return;
+            return Outcome::Settled;
         }
         let body = &bytes[split + 1..];
+        // The outcome of the LAST attempt decides: a 503 followed by a dropped
+        // connection is still an unreachable endpoint, not a server verdict.
         let mut status = None;
         for attempt in 0..5 {
             if sd.is_set() {
-                return;
+                return Outcome::Settled;
             }
             let mut request = self
                 .client
@@ -135,7 +155,7 @@ impl Relay {
                 request = request.header("Content-Encoding", encoding);
             }
             let response = request.send().await;
-            let mut delay = Duration::from_secs(1 << attempt);
+            let mut delay = self.retry_base * (1 << attempt);
             match response {
                 Ok(response) => {
                     let code = response.status().as_u16();
@@ -162,7 +182,7 @@ impl Relay {
                         }
                         self.report(None, Some(format!("200 delivered; rejected={rejected}")));
                         let _ = tokio::fs::remove_file(path).await;
-                        return;
+                        return Outcome::Settled;
                     }
                     self.report(None, Some(format!("{code} parked")));
                     if !matches!(code, 429 | 502 | 503 | 504) {
@@ -170,13 +190,20 @@ impl Relay {
                     }
                     delay = retry_after(response.headers()).unwrap_or(delay);
                 }
-                Err(_) => self.report(None, Some("network error; retained".to_string())),
+                Err(_) => {
+                    status = None;
+                    self.report(None, Some("network error; retained".to_string()));
+                }
             }
             if attempt < 4 && !sd.sleep(delay).await {
-                return;
+                return Outcome::Settled;
             }
         }
+        if status.is_none() {
+            return Outcome::Unreachable;
+        }
         self.park(path, status).await;
+        Outcome::Settled
     }
 
     async fn park(&self, path: &Path, status: Option<u16>) {
@@ -406,8 +433,10 @@ async fn listen(relay: Arc<Relay>, port: u16, sd: Shutdown) -> Result<(), TaskEr
 
 async fn deliver_loop(relay: Arc<Relay>, sd: Shutdown) -> Result<(), TaskError> {
     let mut last_failed = tokio::time::Instant::now();
+    let mut offline: Option<Duration> = None;
     while !sd.is_set() {
-        for directory in [&relay.spool, &relay.failed] {
+        let mut unreachable = false;
+        'scan: for directory in [&relay.spool, &relay.failed] {
             if directory == &relay.failed && last_failed.elapsed() < Duration::from_secs(3600) {
                 continue;
             }
@@ -424,7 +453,12 @@ async fn deliver_loop(relay: Arc<Relay>, sd: Shutdown) -> Result<(), TaskError> 
                     continue;
                 }
                 if entry.file_type().await.is_ok_and(|t| t.is_file()) {
-                    relay.deliver(&entry.path(), &sd).await;
+                    if relay.deliver(&entry.path(), &sd).await == Outcome::Unreachable {
+                        // Every other batch would fail the same way; stop
+                        // and back off rather than burn through the queue.
+                        unreachable = true;
+                        break 'scan;
+                    }
                     delivered += 1;
                     if delivered >= 32 || sd.is_set() {
                         break;
@@ -432,7 +466,10 @@ async fn deliver_loop(relay: Arc<Relay>, sd: Shutdown) -> Result<(), TaskError> 
                 }
             }
         }
-        if !sd.sleep(Duration::from_millis(250)).await {
+        offline = unreachable
+            .then(|| offline.map_or(OFFLINE_BACKOFF_START, |d| (d * 2).min(OFFLINE_BACKOFF_MAX)));
+        let pause = offline.unwrap_or(Duration::from_millis(250));
+        if !sd.sleep(pause).await {
             break;
         }
     }
@@ -600,6 +637,57 @@ mod tests {
             assert_eq!(fs::read(&parked).unwrap(), original);
             fs::remove_dir_all(home).unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn transport_failures_never_poison_and_the_batch_delivers_once_reachable() {
+        let reserved = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let dead = format!("http://{}", reserved.local_addr().unwrap());
+        drop(reserved);
+        let home = temp();
+        let mut offline = Relay::new(
+            &home,
+            &Ingest {
+                url: dead,
+                key: "test".into(),
+            },
+        )
+        .unwrap();
+        offline.retry_base = Duration::from_millis(1);
+        let file = batch(&offline, b"kept");
+        let original = fs::read(&file).unwrap();
+        // Well past the old poison threshold of three parked attempts.
+        for _ in 0..6 {
+            assert_eq!(
+                offline.deliver(&file, &shutdown()).await,
+                Outcome::Unreachable
+            );
+            assert_eq!(fs::read(&file).unwrap(), original);
+        }
+        assert!(
+            fs::read_dir(&offline.failed)
+                .map(|entries| entries.count() == 0)
+                .unwrap_or(true),
+            "a transport failure parked or poisoned the batch"
+        );
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let online = Relay::new(
+            &home,
+            &Ingest {
+                url: server.uri(),
+                key: "test".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(online.deliver(&file, &shutdown()).await, Outcome::Settled);
+        assert!(!file.exists());
+        assert_eq!(server.received_requests().await.unwrap()[0].body, b"kept");
+        fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]

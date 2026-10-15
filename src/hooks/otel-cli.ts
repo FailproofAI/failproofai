@@ -12,6 +12,7 @@ import { collectorHealthFile, configFile, otelAgentStateFile, otlpHealthFile } f
 import { writeConfigFileAtomic } from "./safe-config-write";
 import { agentSessionsEnabled } from "./collector-config";
 import { introspectKey } from "./cloud-introspect";
+import { validateCloudUrl } from "./cloud-enrollment";
 import { readJsonFile } from "./integrations";
 import { selectOne } from "./tui";
 import {
@@ -91,8 +92,13 @@ function credential(): { key: string; origin: string } {
   const ingest = readCredentials().ingest;
   const key = process.env.FAILPROOFAI_INGEST_KEY || ingest?.key;
   if (!key) throw new Error("No Cloud API key configured. Run `failproofai config` first.");
-  const url = new URL(process.env.FAILPROOFAI_INGEST_URL || ingest?.url || "https://app.befailproof.ai");
-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid Cloud ingest URL.");
+  const raw = process.env.FAILPROOFAI_INGEST_URL || ingest?.url || "https://app.befailproof.ai";
+  // Every caller sends or prints this key for the origin: the same rule as
+  // Cloud enrollment, https or loopback http only, so it never travels in clear.
+  const checked = validateCloudUrl(raw);
+  if (!checked.ok) throw new Error(`Invalid Cloud ingest URL: ${checked.reason}`);
+  const url = new URL(raw);
+  if (url.username || url.password) throw new Error("Invalid Cloud ingest URL.");
   return { key, origin: url.origin };
 }
 function backupOnce(path: string, original: string | null): void {

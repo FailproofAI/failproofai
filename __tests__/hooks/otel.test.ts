@@ -506,6 +506,42 @@ describe("opt-in, one path and status", () => {
     expect(existsSync(agentConfigPath("claude", home))).toBe(false);
   });
 
+  it("refuses a non-loopback http ingest URL before writing or printing the key", async () => {
+    const claude = agentConfigPath("claude", home);
+    const before = '{"env":{"EXISTING":"yes"}}\n';
+    seed(claude, before);
+    const configBefore = readFileSync(configFile(), "utf8");
+    for (const via of ["credentials", "env"] as const) {
+      if (via === "credentials") {
+        seed(credentialsFile(), JSON.stringify({ ingest: { url: "http://ingest.example/v1/events", key: "capture-test-secret" } }));
+      } else {
+        process.env.FAILPROOFAI_INGEST_URL = "http://10.0.0.5:8080/v1/events";
+      }
+      for (const args of [["enable", "claude", "--yes"], ["enable", "claude", "--yes", "--local"], ["env"], ["env", "--local"]]) {
+        const result = await runOtelCommand(args, options());
+        expect(result.exitCode).toBe(1);
+        expect(result.lines.join("\n")).toContain("plain http");
+        expect(result.lines.join("\n")).not.toContain("capture-test-secret");
+      }
+      expect(readFileSync(claude, "utf8")).toBe(before);
+      expect(existsSync(`${claude}.failproofai-bak`)).toBe(false);
+      expect(readFileSync(configFile(), "utf8")).toBe(configBefore);
+      expect(existsSync(otelAgentStateFile("claude"))).toBe(false);
+    }
+    // The key never left the machine: not even the org-setting probe ran.
+    expect(fetchImpl).not.toHaveBeenCalled();
+    delete process.env.FAILPROOFAI_INGEST_URL;
+    for (const url of ["http://localhost:8080/v1/events", "http://127.0.0.1:8080/v1/events"]) {
+      seed(credentialsFile(), JSON.stringify({ ingest: { url, key: "capture-test-secret" } }));
+      const env = await runOtelCommand(["env"], options());
+      expect(env.exitCode).toBe(0);
+      expect(env.lines.join("\n")).toContain(new URL(url).origin);
+      expect((await runOtelCommand(["enable", "claude", "--yes"], options())).exitCode).toBe(0);
+      expect(JSON.parse(readFileSync(claude, "utf8")).env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(new URL(url).origin);
+      expect((await runOtelCommand(["disable", "claude"], options())).exitCode).toBe(0);
+    }
+  });
+
   it("is not part of `failproofai config`: setup never imports the OTEL command", () => {
     const source = readFileSync(join(__dirname, "../../src/hooks/configure-wizard.ts"), "utf8");
     expect(source).not.toContain('from "./otel-cli"');

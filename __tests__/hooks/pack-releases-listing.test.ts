@@ -73,11 +73,16 @@ interface Release {
 }
 
 /** A release the way GitHub returns one, with the fields this listing reads. */
+// One instant for every fixture release. Computed per call, four releases
+// could straddle a millisecond on a loaded machine, and the newest-first sort
+// would then reverse them and pick a different "newest" tag for the hint.
+const PUBLISHED = daysAgo(3);
+
 function release(tag: string, over: Partial<Release> = {}): Release {
   return {
     tag_name: tag,
     body: body(tag, true, COMMIT),
-    published_at: daysAgo(3),
+    published_at: PUBLISHED,
     draft: false,
     prerelease: false,
     assets: THREE_ASSETS,

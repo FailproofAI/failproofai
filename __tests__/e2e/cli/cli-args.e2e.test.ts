@@ -8,6 +8,10 @@
  * before running these tests.
  */
 import { describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runCli, assertCleanError, assertSuccess } from "../helpers/cli-runner";
 
 // ── Top-level flags ───────────────────────────────────────────────────────────
@@ -47,9 +51,10 @@ describe("top-level: --help", () => {
   it("prints help and exits 0", () => {
     const result = runCli("--help");
     assertSuccess(result);
-    // The index no longer shouts a USAGE heading — it spends its lines on
-    // commands and names the shape once, in the footer under them.
-    expect(result.stdout).toContain("failproofai <command> [options]");
+    // The 2026-10 index: what to do first, then every command by what it is
+    // for, and a closing line naming per-command help and the version flag.
+    expect(result.stdout).toContain("GET STARTED");
+    expect(result.stdout).toContain("failproofai -v");
     expect(result.stdout).toContain("policies");
     // The half that replaced every inlined flag.
     expect(result.stdout).toContain("failproofai help <command>");
@@ -58,7 +63,7 @@ describe("top-level: --help", () => {
   it("-h shorthand prints help and exits 0", () => {
     const result = runCli("-h");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai <command> [options]");
+    expect(result.stdout).toContain("GET STARTED");
   });
 
   it("rejects extra argument after --help", () => {
@@ -75,29 +80,34 @@ describe("top-level: --help", () => {
 describe("top-level: unknown command", () => {
   it("rejects unknown subcommand with clean error", () => {
     const result = runCli("unknowncommand");
-    assertCleanError(result, "Unknown command: unknowncommand");
+    // The design's words (Q4), in the notice shape: `✕`, then the fix line.
+    assertCleanError(result, "✕ There is no command called 'unknowncommand'.");
   });
 
-  it("always offers a runnable suggestion for an unknown subcommand", () => {
-    // Deliberately NOT pinned to a specific word. "unknowncommand" is a typo of
-    // nothing, so which subcommand comes out nearest is an artefact of the
-    // command LIST, not a contract: it read "policies" only because three names
-    // tied at distance 12 and `SUBCOMMANDS[0]` broke the tie. Adding
-    // `uninstall` (distance 10) changed the winner without changing any
-    // behaviour anyone relies on. The contract is that a suggestion is offered
-    // and names a real subcommand; the nearest-match behaviour itself is
-    // covered by the tests below, which use inputs that ARE typos of something.
+  it("suggests nothing for a word that is close to no command, and points at help", () => {
+    // This used to ALWAYS name a subcommand, so a typo of nothing got the
+    // winner of a 12-way tie on distance — an artefact of the command list.
+    // A far-off word now gets no guess (Q6): the help index is the honest answer.
     const result = runCli("unknowncommand");
-    const match = /Did you mean: failproofai (\S+)\?/.exec(result.stderr);
-    expect(match).not.toBeNull();
-    expect(["policies", "policy", "audit", "config", "uninstall"]).toContain(match![1]);
+    expect(result.stderr).not.toContain("Did you mean");
+    expect(result.stderr).toContain("  Run  failproofai help  to see every command.");
   });
 
   it("suggests the NEAREST subcommand, not a hardcoded one", () => {
     // The suggestion was the literal string "policies" for every input, which
     // was right only when the typo happened to be a typo of that word.
-    expect(runCli("confg").stderr).toContain("failproofai config");
-    expect(runCli("audits").stderr).toContain("failproofai audit");
+    expect(runCli("confg").stderr).toContain("  Did you mean  failproofai config?");
+    expect(runCli("audits").stderr).toContain("  Did you mean  failproofai audit?");
+  });
+
+  it("answers the words people type with the command that does it", () => {
+    // `status` got `flush` and `install` got `uninstall` — the opposite of the
+    // request — from the nearest-spelling guess alone.
+    expect(runCli("status").stderr).toContain("  Did you mean  failproofai config --status?");
+    const install = runCli("install").stderr;
+    expect(install).toContain("  Did you mean  failproofai policies --install?");
+    expect(install).not.toContain("uninstall");
+    expect(runCli("login").stderr).toContain("  Did you mean  failproofai config?");
   });
 
   it("points a stale `auth` at audit rather than somewhere unrelated", () => {
@@ -105,7 +115,7 @@ describe("top-level: unknown command", () => {
     // plain muscle memory lands here. It must not be answered with the one
     // command that has nothing to do with what was typed.
     const result = runCli("auth", "login");
-    assertCleanError(result, "Unknown command: auth");
+    assertCleanError(result, "✕ There is no command called 'auth'.");
     expect(result.stderr).toContain("failproofai audit");
   });
 });
@@ -113,12 +123,35 @@ describe("top-level: unknown command", () => {
 describe("top-level: unknown flag", () => {
   it("rejects unknown flag with clean error", () => {
     const result = runCli("--unknownflag");
-    assertCleanError(result, "Unknown flag: --unknownflag");
+    assertCleanError(result, "✕ Unknown flag: --unknownflag.");
   });
 
-  it("suggests closest known flag", () => {
-    const result = runCli("--unknownflag");
-    expect(result.stderr).toContain("Did you mean");
+  it("suggests the closest known flag as a whole command", () => {
+    expect(runCli("--versoin").stderr).toContain("  Did you mean  failproofai --version?");
+    expect(runCli("--status").stderr).toContain("  Did you mean  failproofai config --status?");
+  });
+
+  it("suggests nothing for a flag that is close to none, and never `audit` for -i", () => {
+    const far = runCli("--unknownflag");
+    expect(far.stderr).not.toContain("Did you mean");
+    expect(far.stderr).toContain("  Run  failproofai help  for usage.");
+    expect(runCli("-i").stderr).not.toContain("audit");
+  });
+});
+
+describe("every error prints in the notice shape", () => {
+  it("opens on `✕`, never on `Error:`, and keeps the exit code", () => {
+    for (const result of [runCli("status"), runCli("policies", "--typo"), runCli("help", "nonsense")]) {
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.startsWith("✕ ")).toBe(true);
+      expect(result.stderr).not.toContain("Error:");
+    }
+  });
+
+  it("prints no escape codes and no backticks into a pipe", () => {
+    const { stderr } = runCli("policies", "--typo");
+    expect(stderr).not.toMatch(/\x1B\[|`/);
+    expect(stderr).toBe("✕ Unknown flag: --typo.\n  Run  failproofai policies --help  for usage.");
   });
 });
 
@@ -127,29 +160,107 @@ describe("top-level: --hook", () => {
     const result = runCli("--hook");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Missing event type after --hook");
+    // Pointed at the page that lists the events and agent ids, instead of a
+    // 131-column usage line.
+    expect(result.stderr).toContain("  Run  failproofai help hook  for the events and agent ids.");
+  });
+});
+
+describe("policies: --cli names every agent", () => {
+  const EVERY_AGENT = [
+    "  Use any of: claude, codex, copilot, cursor, opencode, pi,",
+    "              hermes, openclaw, factory, devin, antigravity, goose",
+  ].join("\n");
+
+  it("says `Not an agent` for a typo, with the near one, and lists all twelve", () => {
+    // It said "Missing value(s)" even for a typo, and named eight of twelve.
+    const result = runCli("policies", "--install", "--cli", "claud");
+    assertCleanError(result, "✕ Not an agent: claud (did you mean claude?)");
+    expect(result.stderr).toContain(EVERY_AGENT);
+  });
+
+  it("says the agent is missing when nothing follows --cli", () => {
+    const result = runCli("policies", "--uninstall", "--cli");
+    assertCleanError(result, "✕ Missing agent name after --cli.");
+    expect(result.stderr).toContain(EVERY_AGENT);
   });
 });
 
 // ── policies (list / default) ─────────────────────────────────────────────────
 
 describe("policies: list (default)", () => {
+  // The listing opens with the redesign's wordmark header (D14), not with the
+  // command's name, so that header is what proves the listing rendered.
+  const HEADER = /failproof ai\s+v\S+\s+·\s+Policies/;
+
   it("lists policies and exits 0 with no args", () => {
     const result = runCli("policies");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
     expect(result.stdout).not.toContain("block-sudo");
   });
 
   it("lists policies when --list alias is used", () => {
     const result = runCli("policies", "--list");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
+  });
+
+  it("lists every policy, folding none, with --all", () => {
+    // Only a pack section folds, and this file's HOME has no pack, so on its own
+    // `not.toMatch(/more off/)` could never fail. Seed a pack with one policy
+    // off, prove the bare listing folds it, then that --all does not. The pack
+    // directory is set for these two runs only: other tests here assert an
+    // empty listing.
+    const packs = mkdtempSync(join(tmpdir(), "failproofai-cli-e2e-packs-"));
+    const artifact = "export const hooks = [];\n";
+    const digest = createHash("sha256").update(artifact).digest("hex");
+    mkdirSync(join(packs, "artifacts"), { recursive: true });
+    writeFileSync(join(packs, "artifacts", `${digest}.mjs`), artifact);
+    writeFileSync(
+      join(packs, "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [{
+          id: "FailproofAI/policies",
+          version: "1.2.0",
+          source: "github:FailproofAI/policies@v1.2.0",
+          entry: `artifacts/${digest}.mjs`,
+          sha256: digest,
+          enabled: ["e2e-shown-when-on"],
+          policies: [
+            { name: "e2e-shown-when-on", description: "on", category: "Security", defaultEnabled: true, match: {} },
+            { name: "e2e-folded-when-off", description: "off", category: "Security", defaultEnabled: false, match: {} },
+          ],
+        }],
+      }),
+    );
+    const prior = process.env.FAILPROOFAI_PACK_DIR;
+    process.env.FAILPROOFAI_PACK_DIR = packs;
+    try {
+      const folded = runCli("policies");
+      assertSuccess(folded);
+      expect(folded.stdout).toMatch(/● e2e-shown-when-on/);
+      expect(folded.stdout).toMatch(/○ 1 more off/);
+      expect(folded.stdout).not.toContain("e2e-folded-when-off");
+
+      const result = runCli("policies", "--all");
+      assertSuccess(result);
+      expect(result.stdout).toMatch(HEADER);
+      expect(result.stdout).toMatch(/● e2e-shown-when-on/);
+      expect(result.stdout).toMatch(/○ e2e-folded-when-off/);
+      expect(result.stdout).not.toMatch(/more off/);
+    } finally {
+      if (prior === undefined) delete process.env.FAILPROOFAI_PACK_DIR;
+      else process.env.FAILPROOFAI_PACK_DIR = prior;
+      rmSync(packs, { recursive: true, force: true });
+    }
   });
 
   it("p shorthand lists policies", () => {
     const result = runCli("p");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).toMatch(HEADER);
   });
 
   it("rejects unexpected positional argument", () => {
@@ -185,14 +296,12 @@ describe("policies: --help", () => {
 
 describe("pack: --help", () => {
   it("prints help when the flag follows a nested subcommand", () => {
-    // `pack` is a spelling of `policies` now, so this reaches the unified
-    // add/remove/show help rather than a pack-only one.
+    // `pack` is a spelling of `policies`, and `add|remove|show --help` prints
+    // the one policies page, which carries every flag of every policies lane.
     const result = runCli("pack", "add", "--help");
     assertSuccess(result);
-    expect(result.stdout).toContain("failproofai policies add|remove|show");
-    // Section headings are lowercase now — the brand's display type is, and
-    // twelve screens sharing one renderer means they share its case too.
-    expect(result.stdout).toContain("a name or a source");
+    expect(result.stdout).toContain("failproofai policies add [name | owner/repo]");
+    expect(result.stdout).toBe(runCli("policies", "--help").stdout);
   });
 });
 
@@ -412,5 +521,111 @@ describe("policies --uninstall: all valid names", () => {
   it("succeeds with multiple valid policy names", () => {
     const result = runCli("policies", "--uninstall", "block-sudo", "sanitize-jwt");
     assertSuccess(result);
+  });
+});
+
+describe("config's own options (setup v2)", () => {
+  it("refuses --oss with --token: one uses open source, the other connects", () => {
+    const result = runCli("config", "--oss", "--token", "k".repeat(20));
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--oss and --token cannot be combined");
+  });
+
+  it("refuses a name that is not an agent, naming the real ones", () => {
+    const result = runCli("config", "--agents", "claud,codex");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Not an agent: claud");
+    expect(result.stderr).toContain("claude, codex, copilot");
+    expect(result.stderr).toContain("or all");
+  });
+
+  it("refuses an option it does not take, instead of running setup without it", () => {
+    const result = runCli("config", "--agent", "claude");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unexpected argument: --agent");
+  });
+
+  it("suggests the flag a bare word meant", () => {
+    const result = runCli("config", "status");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("failproofai config --status");
+  });
+
+  it("documents --oss and --agents", () => {
+    const result = runCli("config", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(/--oss +Use open source; leaves any connection as it is/);
+    expect(result.stdout).toMatch(/--agents <a,b> +Trace these agents, or all, without asking/);
+  });
+});
+
+describe("backfill's arguments", () => {
+  it("refuses a bare window instead of silently running the default", () => {
+    const result = runCli("backfill", "6m");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Unexpected argument: 6m");
+    expect(result.stderr).toContain("failproofai backfill --since 6m");
+  });
+
+  it("documents --agents", () => {
+    const result = runCli("backfill", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toMatch(/--agents <a,b> +Only these traced agents/);
+  });
+});
+
+describe("action results in the new look", () => {
+  it("draws a failed flush as ✕ with its fix indented under it, under the header", () => {
+    const result = runCli("flush");
+    expect(result.exitCode).toBe(1);
+    const lines = result.stderr.split("\n");
+    expect(lines[0]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Flush$/);
+    expect(result.stderr).toMatch(/^✕ This machine is not connected, so there is nowhere to flush to\.$/m);
+    expect(result.stderr).toMatch(/^ {2}Connect it with failproofai config\.$/m);
+    // Backticks become the command alone; never printed literally.
+    expect(result.stderr).not.toContain("`");
+  });
+});
+
+describe("review fixes for #881", () => {
+  it("answers --uninstall and unpause with what they asked for, never the opposite", () => {
+    const uninstall = runCli("--uninstall").stderr;
+    expect(uninstall).toContain("  Did you mean  failproofai policies --uninstall?");
+    expect(uninstall).not.toMatch(/policies --install/);
+    const unpause = runCli("unpause").stderr;
+    expect(unpause).toContain("  Did you mean  failproofai config --resume?");
+    expect(unpause).not.toContain("--pause");
+  });
+
+  it("accepts the retired --send-transcripts as a no-op, rather than as an unknown option", () => {
+    // Missing --connect's url is the first thing it trips over, so the run
+    // proves the flag got past the option check without reaching a server.
+    const result = runCli("config", "--send-transcripts", "--connect");
+    expect(result.stderr).not.toContain("Unexpected argument");
+    assertCleanError(result, "Missing value after --connect.");
+  });
+
+  it("refuses --send-transcripts with --no-transcripts", () => {
+    assertCleanError(runCli("config", "--send-transcripts", "--no-transcripts"), "cannot be combined");
+  });
+
+  it("refuses --machine-label with --oss on a machine that is not connected, instead of dropping it", () => {
+    const result = runCli("config", "--oss", "--machine-label", "prod-01");
+    assertCleanError(result, "--oss leaves this one unconnected");
+  });
+
+  it("points `policies add -c` at the lane that takes it, and the shared help says which lane that is", () => {
+    const add = runCli("policies", "add", "-c", "./guards.mjs");
+    assertCleanError(add, "Unknown flag: -c.");
+    expect(add.stderr).toContain("failproofai policies --install -c <file>");
+    expect(add.stderr).not.toContain("policies add --help");
+    const help = runCli("policies", "--help");
+    expect(help.stdout).toMatch(/-c, --custom <file> +With --install, add a custom policy file \(repeatable\)/);
+    expect(help.stdout).toContain("--uninstall -c removes every custom policy file");
+  });
+
+  it("refuses --machine-label with --agents and no key when nobody is at a prompt", () => {
+    const result = runCli("config", "--agents", "claude", "--machine-label", "prod-01");
+    assertCleanError(result, "this one is not connected");
   });
 });

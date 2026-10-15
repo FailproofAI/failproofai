@@ -62,6 +62,7 @@ import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } fro
 import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
+import { noteUntracedAgent } from "./untraced-note";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -491,6 +492,9 @@ export async function evaluateHookEvent(
 
     // Extract session metadata from payload
     const sessionId = parsed.session_id as string | undefined;
+    // An agent setup does not trace still gets its calls evaluated — only
+    // noted, once per session. See untraced-note.ts for why never "allow".
+    noteUntracedAgent(cli, sessionId);
     const session: SessionMetadata = {
       sessionId,
       transcriptPath: resolveTranscriptPath(cli, parsed, sessionId),

@@ -258,8 +258,15 @@ describe.each(FIXTURES)("%s", (fixture) => {
       };
       expect(report.text).toBe("It is 20C in Paris.");
       if (major >= 7) {
-        // v7 has no OpenTelemetry dependency; the integration records the call.
-        expect(report.customer).toBe("absent");
+        // v7 has no OpenTelemetry dependency of its own. The optional OTEL
+        // exporter's dev tests can make it resolvable from the parent SDK
+        // project; when present, their provider must still own the global slot
+        // and receive only their service span (ai 7 emits no OTEL spans).
+        if (report.customer !== "absent") {
+          expect(report.customer, describeTrace(result)).toEqual({
+            registered: true, ended: ["http.request"],
+          });
+        }
         expect(shape(result.events), describeTrace(result)).toEqual(GEN);
         return;
       }

@@ -40,6 +40,7 @@ ADAPTER_DIRS = {
     "crewai": "crewai",
     "llama_index": "llama_index",
     "pydantic_ai": "pydantic_ai",
+    "otel": "otel",
 }
 
 #: directory -> the failproofai-sdk extra its guide must name.
@@ -48,6 +49,7 @@ DIR_EXTRA = {
     "crewai": "crewai",
     "llama_index": "llamaindex",
     "pydantic_ai": "pydantic-ai",
+    "otel": "otel",
 }
 
 #: directory -> third-party modules its examples may import. `manual/` maps to
@@ -59,6 +61,7 @@ DIR_IMPORTS = {
     "llama_index": {"llama_index"},
     "pydantic_ai": {"pydantic_ai", "pydantic"},
     "manual": {"openai"},
+    "otel": {"opentelemetry"},
 }
 
 #: stdlib and local helpers every example may import. `_shared` is the trace
@@ -191,7 +194,12 @@ def test_a_framework_guide_names_its_own_extra(directory, extra):
 def test_a_framework_guide_shows_instrument_and_a_session(directory):
     text = (DOCS / directory / "README.md").read_text(encoding="utf-8")
     assert "failproofai_sdk.instrument(" in text, f"{directory} never shows instrument()"
-    assert "failproofai_sdk.session()" in text, f"{directory} never shows a session"
+    if directory == "otel":
+        # OTEL supplies trace identity itself, not the SDK event scopes.
+        assert 'instrument("otel"' in text
+        assert "start_as_current_span(" in text
+    else:
+        assert "failproofai_sdk.session()" in text, f"{directory} never shows a session"
 
 
 @pytest.mark.parametrize("guide", _guides(), ids=lambda p: p.parent.name)
@@ -285,7 +293,11 @@ def test_an_example_does_not_thread_identity_by_hand(path):
 @pytest.mark.parametrize("path", EXAMPLES, ids=EXAMPLE_IDS)
 def test_an_example_opens_a_session(path):
     source = path.read_text(encoding="utf-8")
-    assert "failproofai_sdk.session()" in source, f"{path.name} never opens a session"
+    if path.parents[1].name == "otel":
+        assert "start_as_current_span(" in source
+        assert '"gen_ai.operation.name": "invoke_agent"' in source
+    else:
+        assert "failproofai_sdk.session()" in source, f"{path.name} never opens a session"
 
 
 @pytest.mark.parametrize(
@@ -295,7 +307,8 @@ def test_an_example_opens_a_session(path):
 )
 def test_a_framework_example_instruments(path):
     source = path.read_text(encoding="utf-8")
-    assert "failproofai_sdk.instrument()" in source, f"{path.name} never instruments"
+    call = 'failproofai_sdk.instrument("otel",' if path.parents[1].name == "otel" else "failproofai_sdk.instrument()"
+    assert call in source, f"{path.name} never instruments"
 
 
 @pytest.mark.parametrize(

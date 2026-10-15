@@ -1,5 +1,116 @@
 # Changelog
 
+## 1.0.11 — 2026-10-15
+
+The first stable release with the new terminal experience and OpenTelemetry. Everything below in the `1.0.11-beta.*` sections ships here; the highlights:
+
+### Features
+
+- **A redesigned CLI and `config` v2.** Every screen, picker, `--help` page and error has the new look, and `config` walks you through choosing agents, connecting to FailproofAI Cloud (hosted or self-hosted, with `--url`) and turning policies on, end to end.
+- **OpenTelemetry, per agent.** `otel enable claude|codex|copilot|all` sends that agent's sessions to Cloud over OpenTelemetry instead of transcript upload, and `otel disable` restores its settings byte for byte. Codex exports logs only, a `log_user_prompt = false` you set is kept, `--no-content` leaves prompt and tool text out, and `--local` routes through the daemon's relay, which spools to disk and retries. `otel env` prints the exporter settings for any other OpenTelemetry app, and `otel status` shows the org switch, each agent and the relay.
+- **Headless Codex enforces policies.** With sudo, `config` installs Codex's hooks into its system config, which Codex runs without an interactive trust prompt; `config --status` warns when hooks are not trusted.
+
+### Fixes
+
+- **Switching a machine to another organisation is a clean break.** Nothing recorded before the switch is sent to the new organisation (transcripts, queued batches and OpenTelemetry alike), the old organisation's cloud policies stop, and the daemon accepts the new organisation's policies without a restart. A first connect still backfills the last week.
+- **Reconnecting with a different key replaces every saved credential,** and events the old key was refused are resent with the new one.
+- **The daemon no longer stops collecting** when a settings change or backfill arrives while it is busy.
+
+## 1.0.11-beta.5 — 2026-10-15
+
+### Fixes
+
+- The TypeScript SDK's OTel exporter and custom-agents resolver treated a blank or whitespace-only `FAILPROOFAI_HOME` as a path relative to the working directory, so spans could be spooled into the project folder where the daemon never reads them. Blank now means unset, as in the Python SDK.
+- Switching a machine to another organisation now also sets aside OpenTelemetry batches still waiting to upload. They used to be sent to the new organisation with its key; they are now kept with the previous organisation's undelivered events and never sent.
+- `otel enable` and `otel env` refuse a plain-http ingest URL that is not localhost, before writing or printing anything. They used to write or print the Cloud key for that address, sending it in clear. https, and http on localhost or 127.0.0.1, work as before.
+- A network outage no longer marks OpenTelemetry batches as permanently undeliverable. After three failed rounds of retries a batch stopped being retried, even though nothing was wrong with it; it is now kept and sent once the connection is back, and only batches Cloud actually rejects are given up on.
+- The Python SDK treats an empty or blank `FAILPROOFAI_HOME` as unset. The OpenTelemetry exporter used to write its batches into the current directory, where they were never uploaded.
+- The daemon could stop collecting for good when a settings change or backfill arrived while the collector was busy (e.g. during a large backfill): it gave up waiting for the old collector to stop and never started a new one. It now waits and starts the new collector as soon as the old one stops.
+- Replacing a Cloud key with `config --connect` now reliably resends the events the old key had been refused. They could be retried with the old key one last time and refused again, and then sat undelivered.
+
+## 1.0.11-beta.4 — 2026-10-15
+
+### Fixes
+
+- `otel enable` no longer switches an agent over while the org has OpenTelemetry ingest off. It used to stop the agent's transcript upload, write the OTel settings and only warn, so that agent's sessions went nowhere until it was disabled again. It now writes nothing, keeps transcript upload running, and exits 1 with "OTEL ingest is off for your org. An admin can turn it on in Settings → OpenTelemetry." When the setting can't be read (offline, or an older Cloud), it enables as before.
+- Claude Code's OpenTelemetry export to Cloud was refused with 401 on every batch. `otel enable claude` wrote the auth header URL-encoded (`Authorization=Bearer%20<key>`), and Claude Code sends header values as-is, so Cloud saw `Bearer%20<key>`. It now writes `Authorization=Bearer <key>` with a literal space, as Claude Code's docs do. Run `otel disable claude` then `otel enable claude` to rewrite an existing setup.
+- `config --status` no longer shows a `codex  ● Enforcing (system config)` row. Hooks in Codex's system config always run, so the row only appears when there is something to fix (untrusted hooks).
+
+## 1.0.11-beta.3 — 2026-10-15
+
+### Fixes
+
+- A first connect, and a machine upgrading from an earlier version, no longer draw an organisation boundary. Both set it to "now", so the collector dropped every older event: a new machine never backfilled its last week of sessions, and an upgrading machine could drop events still queued for upload. Only an actual switch to another organisation draws the boundary.
+- The `config` Done screen no longer prints "Codex hooks are in its system config …" or "Your custom policies are enforcing on N agents." Counted policies still get their line, and untrusted Codex hooks still get their warning.
+
+## 1.0.11-beta.2 — 2026-10-15
+
+### Features
+
+- Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (#880).
+- Add optional TypeScript and Python OpenTelemetry span exporters with durable OTLP/JSON spool delivery and no hard runtime dependencies (#880).
+- Port OpenTelemetry help and setup into the new TUI, retaining per-agent transcript overrides and reversible settings. OpenTelemetry stays out of `failproofai config`: it is opt-in, per agent, through `failproofai otel enable <agent>` (#880).
+- `failproofai otel` covers Claude Code, Codex and GitHub Copilot (VS Code). Copilot always uses the local relay, because its settings cannot carry an auth header (#880)
+- New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#881)
+- Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#881)
+- Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#881)
+- Every error in the new look: `✕` and what went wrong, then the fix on its own line with the command in pink, instead of `Error: …`. An unknown word gets "There is no command called 'status'." and "Did you mean  failproofai config --status?": words people type (`status`, `login`, `install`, `pause` and more) map to the command that does it, a typo finds the nearest command, and a word close to none gets no guess and points at `failproofai help`. Exit codes are unchanged (#881)
+- The notices printed above a command — a daemon that does not match the CLI, the daemon self-heal, a reorganised or newer `~/.failproofai`, and the `--token` warning — are each one state line and one fix line (#881)
+- New look for `failproofai policies`, `policies add <pack>` and `policies show <pack>`: every policy is ● on or ○ off, packs are named once at the top, off policies fold into one line per category, and the new `failproofai policies --all` lists every one. At most one line asks for attention, most severe first: a pack that will not load (and so denies what it covers), then "Policies are not enforcing yet." (#881)
+- `policies show <owner>/<repo> --releases` and the empty `policies add` picker are drawn in the new look (#881)
+- `policies --install` / `--uninstall` results in the new look: one ✓ per agent with where it was written, and the duplicate-scope warning as one ▲ line with its fix. It no longer prints a hard-coded colour code into pipes or under NO_COLOR (#881)
+- `failproofai config --status` in the new look: THIS MACHINE (the daemon, pauses), CLOUD and ENFORCEMENT (agents traced, policies on) on one column, now with delivery health from the daemon's own record (last event, backlog, refused batches) and at most one line that needs attention. Per-agent rows, such as one per Hermes profile, are gone: the screen is about the machine. `--pause` and `--resume` confirm with one ✓ sentence, and a pause states the time actually granted, which the 8-hour limit can make shorter than asked (#881)
+- New terminal look for the CLI, the dashboard launch screen: bare `failproofai` prints it once the dashboard is actually listening, with its address, the policies that are on, the agents traced and the cloud connection, plus one warning when policies are not enforcing or the dashboard is reachable from other machines. A server that fails to start says why in one line (a taken port is named as such), Next.js's own startup lines are gone, piped output carries no colour codes, and `failproofai audit` hands off to the dashboard without the logomark or the screen (#881)
+- `failproofai audit` shows a progress bar per agent and running counts of what would be blocked or warned, redrawn at most every 100 ms in one write per frame; piped or under `NO_COLOR` it prints the finished screen once. Its sign-in, `--schedule`, `--no-schedule` and `--status` screens move to the new look, and audit no longer honours `FORCE_COLOR`, like every other screen (#881)
+- `flush`, `migrate`, `update`, `uninstall`, `config --connect`, `--disconnect` and a machine rename print their results in the new look: the header names the command, and a failure opens with ✕ and its fix indented under it (#881)
+- `failproofai uninstall` asks one question, `Continue? y/N`, under a plan that says exactly what goes: the hooks and which agents they are in, the failproofaid service, the policy settings in policies-config.json, and `~/.failproofai` with `--purge`. Yes removes all of it, the service included, as `--yes` does; the second "remove the service too?" question is gone (`policies --uninstall` removes only the hooks). `--yes` and the refusal without a terminal are unchanged (#881)
+- `failproofai publish` ends on the new done screen: a ✓ per side effect (a commit, a bundle, a new repository), then "Published <id>@<version> with N policies." and the command to install it. A private repository gets a ▲ in the install line's place (#881)
+- `failproofai jev status` in the new look: a status row, then provider and model, endpoint, mode, timeout, key and config, the activity block, and the next command last. There is no "last test" row, because nothing records one (#881)
+- `jev setup`, `jev test`, `jev models` and `jev remove` results in the new look: the header names the subcommand and its outcome, with kv rows, grey notes, ▲ warnings and one-line next steps (#881)
+- A new API-key prompt for `failproofai config`: one masked field, Tab for open source, a saved key shown at once and checked in the background, a spinner while a key is checked, and a refused key kept in the field to retry. A tab or newline inside a paste no longer switches mode or submits halfway (#881)
+- `failproofai config` v2: after sudo, one API-key field (Tab for open source; Enter keeps a saved key, which is checked in the background), then which agents failproofai traces. That one remembered list drives hooks, collection and backfill. Every agent is listed: the detected ones are ticked on a first run, a re-run opens on the last answer with newly detected agents ticked, and an upgraded machine opens on what is protected today. Nothing is written until the last question is answered, and the run ends with what was written and whether anything is enforcing. Tab never disconnects a connected machine; `--disconnect` does. An agent traced again starts fresh in the collector instead of resuming old cursors (#881)
+- Installing an agent's hooks (`policies --install`, `policies add`, the dashboard's agent panel) now adds it to the agents `failproofai config` traces, at any scope, and removing them at user scope or `--scope all` (`policies --uninstall`, `policies remove all`, the panel) takes it out, each with a one-line note. So the next `failproofai config` neither strips those hooks nor puts them back, and the daemon stops collecting an agent you unhooked. An agent added back starts fresh in the collector, as one re-ticked in `failproofai config` does, instead of resuming its old cursors. With no saved selection, a removal saves one listing this machine's agents (detected, or hooked at user scope) but those removed; project- and local-scope removals, `failproofai config` itself and `failproofai uninstall` leave the selection alone (#881)
+- `failproofai backfill` re-sends only the agents failproofai traces, counts sessions with the same readers the audit uses (all twelve agents, where the old survey knew seven), and takes `--agents` for a subset. A name that is not an agent, an untraced agent, or a daemon of another version is refused before anything is written. `config` takes `--oss` and `--agents`, `config --status` counts agents found but not traced, and `harness` says when an agent's extra paths are idle because it is not traced (#881)
+- The daemon honours `agents.selected` in `config.json`: a harness that is not selected starts no collector task (its extra capture paths and every Hermes profile included), while hook decisions and the SDK spool are always collected. A change takes effect at the next config poll with no restart; no `agents` key means every harness, as before. An unknown agent id, and an untraced harness that still has extra paths, each get a journal line (#881)
+- Backfill requests can name `agents` and a `kind`. `user` (what `failproofai backfill` writes, and what a request without `kind` means) re-sends those agents' files modified since `sinceMs`, now reaching their extra-path stores too; `added` forgets every cursor of the agents `failproofai config` re-adds, Hermes profiles included, and gives them the default 7-day window. A pending request is applied before the collector first starts, and an `added` request older than 10 minutes is dropped (#881)
+
+### Fixes
+
+- **The daemon no longer refuses a new cloud identity's policies as a "rollback".** Its replay guard kept the highest deployment number it had seen for the life of the process, but the server numbers deployments per organisation and machine. After switching organisation, re-registering the machine or enrolling afresh, the new identity's deployment (often 0) was refused with "deployment rollback from N to 0 is not allowed" until the daemon restarted, and the previous organisation's policies kept enforcing. The guard now starts again whenever the URL, machine id or token it polls with changes; within one identity it is unchanged. When the enrolment is removed, the daemon also deletes `desired-state.json` along with `active.json`. Before, the maintenance pass rebuilt `active.json` from the leftover desired state and the departed organisation's policies came back. (#899)
+- Preserve Codex OTEL header comments, omit local Claude auth-header settings, and require an executable or Copilot extension before configuring VS Code (#880).
+- Keep Python OTEL imports lazy, label direct loopback destinations correctly, omit local Codex auth headers, and scope help options to each verb (#880).
+- `failproofai otel enable codex` now exports Codex's conversation logs only. Its runtime spans carry no conversation and created empty sessions in Cloud, so failproofai sets only the Codex logs exporter (#880)
+- `failproofai otel enable` no longer overwrites a prompt-capture opt-out: an existing Codex `log_user_prompt = false` is kept and reported, and re-enabling keeps the original setting rather than failproofai's last write (#880)
+- `failproofai otel disable codex` hands Codex back to transcript upload without re-sending rollouts OTEL already delivered: the collector resumes those files at their end, so only later appends are uploaded (#880)
+- `failproofai otel enable codex` waits for the daemon to confirm it has stopped Codex transcript upload before writing the Codex settings, so the same session is not uploaded twice; if the daemon does not confirm in time it says so and points at `failproofai otel status` (#880)
+- Codex skipped every failproofai hook in `~/.codex/hooks.json` until a person approved it in interactive `codex`, so headless `codex exec` enforced nothing while `failproofai config` said policies were enforcing. With sudo, user-scope Codex hooks now go into Codex's system config (`/etc/codex/config.toml`, in a marked block that keeps the rest of the file), which Codex runs without approval; uninstalling takes the block out. Without sudo, or on Windows, they stay in `hooks.json`, and `config` and `config --status` count Codex as enforcing only once its hooks are trusted, and otherwise say how to fix it (a Codex older than 0.129, which runs them unasked, keeps `hooks.json` with no warning) (#881)
+- `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now says how many under BUILT IN, with the command that moves them into a pack (#881)
+- `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#881)
+- A config change that landed while the daemon was restarting its collector after a backfill was recorded as already running and never applied. `failproofai config` re-adding an agent hits exactly that, writing its backfill request and then the selection, so the agent stayed off until some unrelated edit (#881)
+- `failproofai backfill 6m` (no `--since`) silently ran the default 30 days. Stray words are refused now, with the option they probably meant (#881)
+- `failproofai config --token <key> --machine-label <name>` ran a rename and ignored the key. It now sets the machine up under that name; with `--agents` on a connected machine the name is applied as a rename, and where the machine cannot connect (`--oss`, or no key) it is refused rather than dropped (#881)
+- `failproofai config` no longer runs setup with an option it does not know quietly ignored: an unknown option or a stray word is an error (#881)
+- `backfill` on an unconnected machine suggested `config --token <key>`, which puts the key in shell history. It points at `failproofai config` (#881)
+- `harness add-path` said `harness list` shows what is captured. It shows what is configured; the daemon's log says what it rejected (#881)
+- `--cli` in `policies --install`, `--uninstall`, `add` and `remove` named only 8 of the 12 agents and said "Missing value(s)" for a typo; it now says "Not an agent: claud (did you mean claude?)" and lists all 12 (#881)
+- The did-you-mean for an unknown command answered `install` with `uninstall`, `status` with `flush` and `-i` with `audit`, and suggested flags in a form that could not be run (#881)
+- `failproofai update` without sudo said to re-run `failproofai config` and printed a whole unit file to paste; it now says to run `sudo -v`, then `failproofai update` again. `uninstall` names the commands to run as root when it cannot remove the service (#881)
+- `failproofai uninstall` said settings "survive a reinstall" while it reset enabled policies, custom policy paths and policy parameters in policies-config.json; its question now says so (#881)
+- `policies remove --scope` with no value left `all` out of the valid scopes, and `policies add|remove` with an unknown flag pointed at `failproofai policy --help` (#881)
+- A new backfill request no longer replaces one still waiting for the daemon: requests merge, keeping the wider window, and are written atomically (#881)
+- A hook from an agent that `failproofai config` does not trace is logged once per session and evaluated as usual, never allowed because of the selection (#881)
+- A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#881)
+- Renaming an unconnected machine suggested `config --connect <url> --token <key>`, a key on the command line; it points at `failproofai config` (#881)
+- After every agent's hooks were removed, an unattended `failproofai config` re-run hooked all twelve again; a saved empty selection now stands (#881)
+- `failproofai config --disconnect` removed the cloud policy manifest but left the cached desired state, from which the daemon rebuilt the departed organisation's policies. Both are removed now (#881)
+- Reconnecting with a new key left the old key's capability slots in place, and batches the old key had been refused (401/403) stayed parked. A reconnect now reconciles the slots; batches refused under the same organisation are re-sent with the new key at once, and those from a different or unconfirmed organisation are set aside under `previous-org/`, never sent (#881)
+- Switching a machine to another organisation could send the old organisation's history to the new one: collector cursors and upload queues are machine-wide. The collector now records an organisation boundary, sends only events from after the switch, and moves batches still queued for the old organisation aside instead of delivering them (#881) A first connect, or a machine upgrading from an earlier version, draws no boundary: it backfills its usual window and sends what is already queued.
+
+### Dependencies
+
+- Update vulnerable existing build and SDK test lockfile dependencies reported by the PR's OSV scan (#880).
+- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` (RUSTSEC-2026-0338 to -0342), `ruzstd` 0.9.1 (RUSTSEC-2026-0344) and `rustls` 0.23.46 (RUSTSEC-2026-0346 to -0349) in `Cargo.lock`, which `main` now also carries from #901 (#881)
+
 ## 1.0.11-beta.0 — 2026-10-14
 
 ### Dependencies

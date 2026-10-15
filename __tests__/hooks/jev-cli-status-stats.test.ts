@@ -100,7 +100,8 @@ describe("failproofai jev status — activity comes from jevStats()", () => {
   it("absent: activity is still shown when there is no config", async () => {
     const human = await runJevCommand(["status"], RENDER);
     expect(human.exitCode).toBe(0);
-    expect(text(human)).toContain("Jev is off");
+    // The status row says it, in the redesign's `label  ○ value` shape.
+    expect(text(human)).toContain("status ○ off: there is no");
     expectStatsShown(human);
     expectOneDefaultCall();
 

@@ -304,6 +304,7 @@ async fn process_database(
             "openclaw",
             &ctx.session_id,
         )
+        .with_source(db_path)
         .with_label(spec.params.label.clone())
         .with_machine_id(spec.params.machine_id.clone())
         .with_user(spec.params.user.clone())

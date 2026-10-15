@@ -52,13 +52,14 @@ import * as compat from "./compat.js";
 import type { Adapter } from "./core.js";
 import * as core from "./core.js";
 
-export type FrameworkName = "langchain" | "ai" | "mastra" | "llamaindex";
+export type FrameworkName = "langchain" | "ai" | "mastra" | "llamaindex" | "otel";
 
 const REGISTRY: Record<FrameworkName, () => Promise<{ adapter: Adapter }>> = {
   langchain: () => import("./langchain.js"),
   ai: () => import("./ai.js"),
   mastra: () => import("./mastra.js"),
   llamaindex: () => import("./llamaindex.js"),
+  otel: () => import("./otel.js"),
 };
 
 /**
@@ -90,6 +91,8 @@ const DETECT: Record<FrameworkName, readonly string[]> = {
   ai: ["ai"],
   mastra: ["@mastra/core"],
   llamaindex: ["llamaindex", "@llamaindex/core"],
+  // Never auto-enable a second reporting path on an existing application.
+  otel: [],
 };
 
 const active = new Map<FrameworkName, Adapter>();

@@ -137,6 +137,7 @@ vi.mock("@/app/actions/update-policy-params", () => ({
 }));
 
 import HooksClient from "@/app/policies/hooks-client";
+import { getHookActivityAction } from "@/app/actions/get-hook-activity";
 
 /** The table row whose Tool cell reads `tool`. */
 async function rowFor(tool: string): Promise<HTMLElement> {
@@ -162,6 +163,11 @@ async function rowFor(tool: string): Promise<HTMLElement> {
  * it, so a blind retry would close the panel it had just opened.
  */
 async function openRow(user: ReturnType<typeof userEvent.setup>, tool: string, marker: string) {
+  // The initial filter effect refetches and clears expandedRow after 300ms.
+  // Waiting only for a visible row can click BEFORE that effect, so a panel
+  // successfully opened by this helper closes just after the assertion. Wait
+  // for the initial refetch before interacting; keep all UI assertions intact.
+  await waitFor(() => expect(vi.mocked(getHookActivityAction).mock.calls.length).toBeGreaterThanOrEqual(2));
   await waitFor(async () => {
     if (screen.queryByText(marker, { exact: false })) return;
     await user.click(await rowFor(tool));
@@ -172,6 +178,7 @@ async function openRow(user: ReturnType<typeof userEvent.setup>, tool: string, m
 describe("the activity tab with Jev rows", () => {
   beforeEach(() => {
     entries = [];
+    vi.mocked(getHookActivityAction).mockClear();
   });
 
   it("marks a Jev clear in the Decision cell and explains it in the detail panel", async () => {

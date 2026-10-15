@@ -74,6 +74,47 @@ standard library. See `skill/references/frameworks.md` for the per-framework
 mapping, and `docs/` for a per-framework integration guide with runnable
 examples beside it.
 
+## OpenTelemetry (opt in)
+
+Already emitting OpenTelemetry spans? Install `opentelemetry-sdk` separately,
+then attach FailproofAI's exporter without changing your existing adapters:
+
+```bash
+pip install opentelemetry-sdk
+```
+
+```python
+import failproofai_sdk
+from opentelemetry.sdk.trace import TracerProvider
+
+provider = TracerProvider()
+failproofai_sdk.instrument("otel", provider=provider)
+tracer = provider.get_tracer("my-agent")
+with tracer.start_as_current_span(
+    "agent", attributes={"gen_ai.operation.name": "invoke_agent"}
+):
+    pass
+provider.force_flush()
+```
+
+Without a `provider`, `instrument("otel")` uses the registered provider or creates
+one if none exists. You can also pass `failproofai_sdk.OtelSpanExporter()` to your
+own `SimpleSpanProcessor` or `BatchSpanProcessor`. `uninstrument("otel")` disables
+only our processor and leaves your provider and other exporters unchanged.
+
+The exporter writes durable OTLP/JSON requests to
+`$FAILPROOFAI_HOME/state/spool-otlp`, otherwise `~/.failproofai/state/spool-otlp`.
+It never sends HTTP or reads a Cloud key. Connect the daemon with
+`failproofai config` and ask an admin to enable Settings → OpenTelemetry.
+SDK delivery needs no local TCP listener. `spool_dir` explicitly overrides the
+destination for tests or managed deployments; `configure(base_dir=...)` continues
+to control only the original event adapters.
+
+A bare `instrument()` never enables OTEL. OpenTelemetry is imported only when
+requested, and the SDK still declares zero hard runtime dependencies. Your
+instrumentation controls prompt/content attributes; inspect them before exporting
+sensitive data. Flush your provider before short-lived processes exit.
+
 ## Scopes
 
 The same identity layer, for code the adapters do not cover. `session_id` and

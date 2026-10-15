@@ -262,10 +262,11 @@ describe("`policies add` with nothing after it", () => {
 
 describe("what the unified command actually does", () => {
   it("installs part of a pack and reports the part it did not take", async () => {
+    // The redesigned result (D14): what was turned on, then how to take the rest.
     const r = await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toMatch(/enabled \(1\//);
-    expect(r.stdout).toMatch(/not enabled/);
+    expect(r.stdout).toMatch(/✓ Turned on 1 policy from FailproofAI\/policies@\S+: your selection\./);
+    expect(r.stdout).toMatch(/Turn on the other \d+ with failproofai policies add FailproofAI\/policies --all/);
   });
 
   // Removed by the id the pack DECLARES, which is now the id it is installed
@@ -276,10 +277,19 @@ describe("what the unified command actually does", () => {
   // agreed with the other.
   it("uninstalls a whole pack by its id, which has a slash and so is a source", async () => {
     await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
+    // The listing shows the pack while it is installed, so its absence below
+    // is a finding — the old `✓ PACK` pin could no longer fail once the
+    // redesign stopped printing that label anywhere (D14).
+    const before = (await cli(["policies"])).stdout;
+    expect(before).toMatch(/pack\s+FailproofAI\/policies@\S+/);
+    expect(before).toMatch(/● block-rm-rf/);
     const removed = await cli(["policies", "remove", "FailproofAI/policies"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.stdout).toMatch(/Removed FailproofAI\/policies/);
-    expect((await cli(["policies"])).stdout).not.toMatch(/✓ PACK/);
+    const after = (await cli(["policies"])).stdout;
+    expect(after).toMatch(/failproof ai\s+v\S+\s+·\s+Policies/);
+    expect(after).not.toMatch(/pack\s+FailproofAI\/policies@/);
+    expect(after).not.toMatch(/● block-rm-rf/);
     // The half that would have caught the original drift: the id you INSTALL
     // by is the id you REMOVE by, whatever it happens to be.
     expect(removed.stdout).not.toMatch(/failproofai\/core|failproofai\/builtins/);
@@ -303,6 +313,24 @@ describe("what the unified command actually does", () => {
 
   it("suggests the new spelling, never the retired one, when it has more to offer", async () => {
     const r = await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
+    expect(r.stdout).toMatch(/failproofai policies add FailproofAI\/policies --all/);
     expect(r.stdout).not.toMatch(/failproofai pack (add|list)/);
+  });
+
+  it("lists every policy with --all, and refuses it beside --install", async () => {
+    // `--all` is the bare listing's own flag (D14): every policy ●/○, nothing
+    // folded. It is not an install option.
+    await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
+    const folded = await cli(["policies"]);
+    expect(folded.stdout).toMatch(/○ \d+ more off/);
+    expect(folded.stdout).toMatch(/See all \d+ with failproofai policies --all/);
+    const all = await cli(["policies", "--all"]);
+    expect(all.exitCode).toBe(0);
+    expect(all.stdout).toMatch(/● block-rm-rf/);
+    expect(all.stdout).toMatch(/○ block-sudo/);
+    expect(all.stdout).not.toMatch(/more off/);
+    const refused = await cli(["policies", "--install", "--all"]);
+    expect(refused.exitCode).not.toBe(0);
+    expect(refused.all).toMatch(/Unknown flag: --all/);
   });
 });

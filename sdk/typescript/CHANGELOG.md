@@ -8,9 +8,22 @@ Headings are `## <version> — <YYYY-MM-DD>`, and the section matching the versi
 in `src/version.ts` becomes that release's GitHub Release body. A release whose
 section is missing or empty is refused before anything is built.
 
-## 0.0.1-beta.1 — 2026-09-24
+## 0.0.1-beta.1 — 2026-10-15
+
+### Features
+
+- **OpenTelemetry spans to FailproofAI Cloud, without a network call in your
+  process.** `OtelSpanExporter`, or `instrument("otel", { spanProcessors })` before
+  you construct your provider, writes each finished batch of spans as OTLP/JSON to
+  the local spool (`~/.failproofai/state/spool-otlp`); the failproofai daemon
+  delivers it to Cloud with the machine's key and retries if Cloud is unreachable.
+  `@opentelemetry/sdk-trace-base` is only loaded when you call it.
 
 ### Fixes
+
+- **A blank `FAILPROOFAI_HOME` no longer means the current directory.** An empty or
+  whitespace-only value made the exporter and the custom-agents resolver write
+  under the working directory, where the daemon never reads. Blank now means unset.
 
 - **The integration fixtures stop carrying 32 open security advisories.** Nothing
   the published package ships changed — every fixture under `integration/fixtures/`

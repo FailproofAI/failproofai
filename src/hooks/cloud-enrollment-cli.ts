@@ -14,13 +14,12 @@ import {
   cloudCredentialPath,
 } from "./cloud-enrollment";
 import {
-  daemonRestartCommand,
   daemonServiceStatus,
   daemonStatusCommand,
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { TOKEN_ON_ARGV, optsFor, rows as kitRows, stack, warning } from "./tui";
+import { optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { clearJevCloudCredential, readVersionFile, readCredentials } from "./fp-config";
 // A CLI command's import, never the hook path's: `jev-cloud-connection` reaches
@@ -97,9 +96,8 @@ export interface CommandResult {
  * the one reader who cannot use them, and it made the id look like the machine's
  * name. The id still has to appear: labels default to the hostname and are free to
  * collide, so the label alone cannot identify a machine. Eight hex characters
- * distinguish any realistic fleet while staying readable.
- *
- * `failproofai config --status --verbose` prints the full id for support.
+ * distinguish any realistic fleet while staying readable. `full` gives the whole
+ * id; no command prints it today.
  */
 export function describeMachine(
   machineId: string,
@@ -181,11 +179,13 @@ function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[]
 /**
  * What `config --token` (and `config --connect … --token`) ends with, connected
  * or not: every Jev remedy sends people to that spelling, and the key is in
- * history either way. `jev setup --token` says the same first line.
+ * history either way. A `▲` notice: the state, then the fix, with the command
+ * in backticks so the printer paints it (`screenKit().notice`). `jev setup
+ * --token` says the same thing in `TOKEN_ON_ARGV`'s words.
  */
 export const CONFIG_TOKEN_HISTORY_WARNING = [
-  TOKEN_ON_ARGV,
-  "Next time, run `failproofai config` with the key in FAILPROOFAI_CLOUD_TOKEN (from a secret store, or `read -rs`) instead of --token — and rotate this one if it matters.",
+  "--token put the key in your shell history and, while this ran, the process list. Rotate it if that matters.",
+  "Next time, set FAILPROOFAI_CLOUD_TOKEN instead:  `read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN`",
 ];
 
 export async function runConnectCommand(opts: ConnectOptions): Promise<CommandResult> {
@@ -298,7 +298,9 @@ export async function runRenameCommand(
       exitCode: 1,
       lines: [
         "This machine is not connected to FailproofAI Cloud, so it has no name to change.",
-        "Connect it first: failproofai config --connect <url> --token <key>",
+        // `failproofai config`, not `--connect <url> --token <key>`: a key on
+        // the command line lands in shell history and the process list.
+        "Connect it first: `failproofai config`",
       ],
     };
   }
@@ -328,6 +330,62 @@ export async function runRenameCommand(
   // Exit 0 either way: the rename DID happen locally, and reporting failure for a
   // stored change would send the user round again to redo something that is done.
   return { exitCode: 0, lines };
+}
+
+/**
+ * Why `config --oss|--agents --machine-label <name>` cannot apply the name, or
+ * null when it can. Asked BEFORE setup, so a refusal changes nothing.
+ *
+ * Alongside a setup option the label is the name to connect under, and setup
+ * only connects when it is given a key. With no key and no saved connection
+ * there is nothing to name — unless somebody is at the prompt, where a key can
+ * still be pasted. --oss never connects. Before this check the label was
+ * dropped without a word and the run exited 0.
+ */
+export function machineLabelRefusal(opts: { oss: boolean; keyGiven: boolean; interactive: boolean }): string | null {
+  if (readCloudCredentials()) return null;
+  if (opts.oss) {
+    return (
+      "--machine-label names a machine connected to FailproofAI Cloud, and --oss leaves this one unconnected.\n" +
+      "Drop --machine-label, or set FAILPROOFAI_CLOUD_TOKEN and run  `failproofai config --machine-label <name>`."
+    );
+  }
+  if (opts.keyGiven || opts.interactive) return null;
+  return (
+    "--machine-label names a machine connected to FailproofAI Cloud, and this one is not connected.\n" +
+    "Set FAILPROOFAI_CLOUD_TOKEN to connect under that name, or drop --machine-label."
+  );
+}
+
+/**
+ * The name `config --oss|--agents --machine-label <name>` asked for, applied
+ * after setup ran. Null when there is nothing to report: no label, or setup
+ * already connected under it.
+ *
+ * Setup applies the label only when it connects. On a machine it left
+ * connected as it was — `--oss`, `--agents` with no new key, Enter on the saved
+ * key — this is the rename the flag asked for.
+ */
+export async function applyMachineLabelAfterSetup(
+  label: string | undefined,
+  deps: { verify?: typeof verifyCloudCredentials } = {},
+): Promise<CommandResult | null> {
+  const trimmed = label?.trim();
+  if (!trimmed) return null;
+  const creds = readCloudCredentials();
+  if (creds?.machineLabel === trimmed) return null;
+  if (!creds) {
+    // Reached only from the prompt (see machineLabelRefusal): a key could have
+    // been pasted, and open source was chosen instead.
+    return {
+      exitCode: 0,
+      lines: [
+        `▲ ${trimmed} was not applied: this machine is not connected to FailproofAI Cloud.`,
+        "  Name it as it connects:  `failproofai config --machine-label <name>`",
+      ],
+    };
+  }
+  return runRenameCommand(trimmed, deps);
 }
 
 export function runDisconnectCommand(): CommandResult {
@@ -399,15 +457,14 @@ export function runDisconnectCommand(): CommandResult {
     ...jevLines,
   ];
   if (removedIngest) {
-    // Named honestly. The collector manager starts once for the daemon's
-    // lifetime (`main.rs`) and the uploader caches its bearer key at
-    // construction, so nothing already running notices this file disappear —
-    // "stop being sent" was true only of the NEXT daemon start. Telling the
-    // user the step that makes it true beats a claim that quietly is not.
+    // A running failproofaid notices on its own: its collector manager polls
+    // the collector config, which includes this credential, and stops the
+    // collector within one interval once it is gone (`spawn_collector_manager`
+    // in main.rs). This line used to say to restart the daemon, written when
+    // the manager started once per daemon lifetime and cached the key.
     lines.push(
-      "  No new hook activity or transcripts will be queued. A running failproofaid",
-      "  keeps the key it started with, so restart it to stop the current process",
-      `  sending: ${daemonRestartCommand() ?? "restart failproofaid"}`,
+      "  No new hook activity or transcripts will be queued, and a running failproofaid",
+      "  stops sending within a few seconds: it notices the key is gone.",
     );
   }
   return { exitCode: 0, lines };
@@ -445,10 +502,7 @@ export interface ConnectionStatusReport {
  * the pause block together: rendered independently they computed two different
  * label columns and the window read as two commands' output stacked up.
  */
-export function connectionStatusReport(
-  daemonStatus = daemonServiceStatus,
-  verbose = false,
-): ConnectionStatusReport {
+export function connectionStatusReport(daemonStatus = daemonServiceStatus): ConnectionStatusReport {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {
     // Env wins over the file in the daemon, so reporting the file here would
@@ -489,7 +543,7 @@ export function connectionStatusReport(
   const detail: Array<[string, string]> = [];
   if (creds) {
     detail.push(["cloud", `connected to ${creds.url}`]);
-    detail.push(["machine", describeMachine(creds.machineId, creds.machineLabel, verbose)]);
+    detail.push(["machine", describeMachine(creds.machineId, creds.machineLabel)]);
     detail.push(["token", maskToken(creds.token)]);
     detail.push(["policy", "pulling centrally-managed policies"]);
   } else {
@@ -528,13 +582,9 @@ export function connectionStatusReport(
 }
 
 /** The same report, rendered on its own — for any caller printing only this. */
-export function connectionStatusLines(
-  daemonStatus = daemonServiceStatus,
-  /** Print the full machine id rather than a short prefix. */
-  verbose = false,
-): string[] {
+export function connectionStatusLines(daemonStatus = daemonServiceStatus): string[] {
   const opts = optsFor(process.stdout);
-  const report = connectionStatusReport(daemonStatus, verbose);
+  const report = connectionStatusReport(daemonStatus);
   return stack(
     kitRows(report.rows, opts),
     report.warnings.length > 0 ? warning(report.warnings, opts) : null,

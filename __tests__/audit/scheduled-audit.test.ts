@@ -249,7 +249,7 @@ describe("the interactive `failproofai audit` shares the lock", () => {
 
     await runAuditCli([]);
 
-    expect(h.launch).toHaveBeenCalledWith("start");
+    expect(h.launch).toHaveBeenCalledWith("start", { screen: false });
     expect(existsSync(auditLockFile())).toBe(false);
   });
 

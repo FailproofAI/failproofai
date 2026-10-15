@@ -18,6 +18,7 @@
  * 24-bit, the xterm-256 cube, or the 16 basic ANSI hues.
  */
 import * as readline from "node:readline";
+import { version as cliVersion } from "../../package.json";
 
 export type TTYIn = NodeJS.ReadableStream & {
   isTTY?: boolean;
@@ -40,6 +41,12 @@ export interface SelectOneOptions<T> {
   choices: SelectChoice<T>[];
   /** Static info lines rendered under the question (e.g. a review summary). */
   body?: string[];
+  /** Grey text after the heading — what the list is, e.g. "9 found on this machine". */
+  meta?: string;
+  /** The lines the prompt collapses to once answered, instead of `✓ <label>`. */
+  collapsed?: (value: T) => string[];
+  /** Let space pick the row as well as enter, for a menu that always took both. */
+  spaceSelects?: boolean;
   stdin?: TTYIn;
   stdout?: TTYOut;
 }
@@ -87,7 +94,23 @@ export interface MultiSelectOptions<T> {
   message: string;
   choices: MultiChoice<T>[];
   minSelected?: number;
+  /** What `✕` says when enter is pressed with fewer than `minSelected` ticked. */
+  minMessage?: string;
+  /** Replaces the key hints at the foot. Rarely right: the default IS the design. */
   hint?: string;
+  /**
+   * Grey text after the heading, redrawn on every toggle. Defaults to
+   * "n of m selected"; a function gets what is ticked now; `null` shows none.
+   */
+  meta?: string | null | ((checked: T[]) => string);
+  /**
+   * A tag after a row's name, already coloured — "will be added", "new on this
+   * machine" — recomputed on every toggle, so it can describe the change a
+   * toggle would make. Shown instead of the row's hint when present.
+   */
+  tag?: (value: T, checked: boolean) => string | undefined;
+  /** The lines the prompt collapses to once answered, instead of `✓ <summary>`. */
+  collapsed?: (values: T[]) => string[];
   /** Noun used when collapsing many selections to a count (e.g. "assistants"). */
   summaryNoun?: string;
   stdin?: TTYIn;
@@ -100,21 +123,15 @@ const ESC = "\x1B";
 export const TOKEN_ON_ARGV =
   "--token was on the command line: your shell history has it, and while this command ran any process of yours could read it from the process list.";
 
-// ── glyphs ────────────────────────────────────────────────────────────────
-// Exported so the other branded prompts (install-prompt.ts) share the exact
-// same set instead of hand-syncing copies.
-export const BAR = "│";
-const BAR_END = "└";
-export const STEP_ACTIVE = "◆";
-export const STEP_DONE = "◇";
 const RADIO_ON = "●";
 const RADIO_OFF = "○";
-export const CHECK_ON = "◼";
-export const CHECK_OFF = "◻";
-export const CARET = "❯";
+// The redesign's boxes: ■ ticked, □ not. Two new names rather than new values
+// for the two above, which install-prompt.ts still draws its own menus with.
+const CHECK_SELECTED = "■";
+const CHECK_EMPTY = "□";
 /** The return key, as the multi-select hints already spell it. */
 export const CARET_RETURN = "↵";
-const MARK = "\u25AE\u25AE"; // ▮▮ — the brand mark, per the design system
+ // ▮▮ — the brand mark, per the design system
 
 // ── color ─────────────────────────────────────────────────────────────────
 // The single source of truth for the brand palette — exported (via `paint`)
@@ -126,11 +143,11 @@ interface Hue {
    * xterm-256 index for the middle tier, verified as the nearest cube entry by
    * Euclidean distance rather than eyeballed.
    *
-   * Optional because `dim` has no honest answer: its `basic` is SGR 2, an
-   * ATTRIBUTE that steps down whatever foreground the user's theme is already
-   * using, and the cube's nearest grey (243, #767676) is a fixed colour that
-   * fights every theme that is not ours. So dim keeps the attribute at all
-   * three tiers and this stays undefined.
+   * Optional because the greys (`dim`, `ink3`, `track`) have no honest answer:
+   * their `basic` is SGR 2, an ATTRIBUTE that steps down whatever foreground the
+   * user's theme is already using, and the cube's nearest grey (243, #767676)
+   * is a fixed colour that fights every theme that is not ours. So a grey keeps
+   * the attribute below 24-bit and this stays undefined.
    */
   c256?: number;
   basic: string;
@@ -149,29 +166,30 @@ const HUES = {
   pink: { rgb: [228, 88, 125], c256: 168, basic: "95" }, // #e4587d — selection, enabled, the mark, the brand
   warn: { rgb: [227, 179, 65], c256: 179, basic: "33" },
   dim: { rgb: [107, 118, 132], basic: "2" },
+  // The 2026-10 screen language's two greys. Both are the designed hex at 24-bit
+  // and the SGR 2 ATTRIBUTE below it, for the reason `dim` gives above: a fixed
+  // cube grey fights every theme that is not ours, and the basic tier's "bright
+  // black" (90) is the BACKGROUND colour in Solarized Dark, so a label drawn in
+  // it would vanish.
+  //
+  // There is no `ink2`: descriptions use the terminal's own foreground at every
+  // tier. The designed #a7adb6 is tuned for a dark ground, nothing here can tell
+  // which ground it is on, and on a light one it measures about 2.2:1 — half of
+  // what today's dim descriptions get. `paint().ink2` is therefore the identity.
+  ink3: { rgb: [118, 127, 139], basic: "2" }, // #767f8b — kv labels, heading meta, key hints
+  track: { rgb: [62, 67, 76], basic: "2" }, // #3e434c — the empty part of a progress bar, never text
+  // A state, never branding: the ✕ on a failed line. 203 rather than 204, which
+  // is the nearest cube entry by distance but differs from the brand pink's 168
+  // only in its red channel and reads as pink at that tier — the one deliberate,
+  // eyeballed exception to the nearest-entry rule above.
+  err: { rgb: [240, 113, 120], c256: 203, basic: "31" }, // #f07178
 } satisfies Record<string, Hue>;
 
 export function colorsEnabled(out: TTYOut): boolean {
   return !!out.isTTY && !process.env.NO_COLOR;
 }
 
-/**
- * The raw ANSI opening sequence for a brand role, for callers that assemble
- * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`).
- * That file previously hardcoded its own 256-colour palette — a green and a
- * blue that appear nowhere in the brand — so `audit` looked like a different
- * product from `config`. Routing it here
- * keeps HUES the single source of truth: change a hue once and every surface
- * follows. Paints at the deepest tier the terminal admits to; the caller still
- * decides *whether* to colour at all.
- */
-export function brandAnsi(role: keyof typeof HUES): string {
-  return `${ESC}[${fg(HUES[role], colorTier())}m`;
-}
-
 export const ANSI_RESET = `${ESC}[0m`;
-export const ANSI_BOLD = `${ESC}[1m`;
-export const ANSI_DIM = `${ESC}[2m`;
 
 /** How much colour this terminal will actually render. */
 type ColorTier = "truecolor" | "ansi256" | "basic";
@@ -237,6 +255,13 @@ export function paint(on: boolean) {
     // to `pink` there, at which point it is deleted.
     softPink: mk(HUES.pink),
     warn: mk(HUES.warn),
+    // The 2026-10 roles. `ink2` is the terminal's own foreground on purpose —
+    // see the note on HUES — so it is the identity at every tier, and exists
+    // so a call site says which role it means rather than leaving text bare.
+    ink2: (s: string): string => s,
+    ink3: mk(HUES.ink3),
+    track: mk(HUES.track),
+    err: mk(HUES.err),
   };
 }
 
@@ -247,7 +272,6 @@ export function paint(on: boolean) {
 // (▀ top, ▄ bottom); `t` = teal, `p` = pink, `.` = transparent. Shown when
 // there's room, else a compact one-liner.
 const LOGO_MIN_COLS = 22;
-const TAGLINE = "end-to-end failure layer for ai agents";
 
 // Three editing rules, all learned the hard way:
 //   1. The two uprights must be the SAME width. In the artwork both are 93px of
@@ -372,130 +396,13 @@ export function summarize(labels: string[], noun = "selected"): string {
   return `${labels.length} ${noun} · ${head} +${labels.length - 3}`;
 }
 
-function writeLines(out: TTYOut, lines: string[]): void {
-  const cols = out.columns || 80;
-  out.write(lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n");
-}
-
 // ── framing ─────────────────────────────────────────────────────────────────
-
-/** The logomark + wordmark + tagline block (with a 2-space margin), color-aware.
- *  Shared by the wizard intro and the dashboard launch banner. On a too-narrow
- *  target it collapses to a single compact line. */
-export function renderBrandLogo(stdout: TTYOut = process.stdout): string[] {
-  const c = paint(colorsEnabled(stdout));
-  const cols = stdout.columns || 80;
-  if (cols < LOGO_MIN_COLS) {
-    return [`${c.pink(MARK)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
-  }
-  // NO_COLOR / non-TTY forces `basic`, which renderLogo draws monochrome — so
-  // the mark never emits an escape byte on a stream that asked for none.
-  const tier: ColorTier = colorsEnabled(stdout) ? colorTier() : "basic";
-  const lines = renderLogo(tier).map((l) => `  ${l}`);
-  lines.push("");
-  lines.push(`  fa${c.pink("il")}proof ai`);
-  lines.push(`  ${c.dim(TAGLINE)}`);
-  return lines;
-}
-
-/** Print the flow header — the brand logo, tagline, and the opening step. */
-export function intro(message: string, stdout: TTYOut = process.stdout): void {
-  if (!stdout.isTTY) return;
-  const c = paint(colorsEnabled(stdout));
-  const lines: string[] = ["", ...renderBrandLogo(stdout)];
-  lines.push(c.dim(BAR));
-  lines.push(`${c.guide(STEP_ACTIVE)}  ${c.bold(message)}`);
-  writeLines(stdout, lines);
-}
-
-/** The branded splash the dashboard prints on launch — logomark, wordmark, and a
- *  tidy version/links column. Returned as ready-to-print lines (caller writes
- *  them). Degrades to plain text off a TTY so it stays clean in piped logs. */
-export function renderLaunchBanner(version: string, stdout: TTYOut = process.stdout): string[] {
-  // paint() is identity when colors are off, so the link rows are built once
-  // and only the header block differs between TTY and piped output.
-  const c = paint(colorsEnabled(stdout));
-  const row = (label: string, value: string) => `  ${c.guide(label.padEnd(9))}${value}`;
-  const header = stdout.isTTY
-    ? renderBrandLogo(stdout)
-    : ["  failproof ai", `  ${TAGLINE}`];
-  return [
-    "",
-    ...header,
-    "",
-    row("version", c.pink(version)),
-    row("star", c.dim("https://github.com/failproofai/failproofai")),
-    row("docs", c.dim("https://docs.befailproof.ai/introduction")),
-    row("discord", c.dim("https://discord.befailproof.ai/")),
-    row("reddit", c.dim("https://www.reddit.com/r/failproofai/")),
-    "",
-  ];
-}
-
-/**
- * Print a step that is already SETTLED — the `◇ / message / summary` block
- * `selectOne` leaves behind when it resolves.
- *
- * Extracted because a flow assembled out of `promptText` had no way to show its
- * own history: `intro` opens the spine and `outro` closes it, and everything in
- * between was bare lines that made the frame look like it belonged to a
- * different command. `summary` is the answer, dimmed under the question, which
- * is what makes a completed step readable at a glance rather than a heading
- * with nothing under it.
- */
-export function step(
-  message: string,
-  summary?: string | string[],
-  stdout: TTYOut = process.stdout,
-): void {
-  const c = paint(colorsEnabled(stdout));
-  const rows = summary === undefined ? [] : Array.isArray(summary) ? summary : [summary];
-  if (!stdout.isTTY) {
-    if (rows.length) stdout.write(`${message}: ${rows.join(" ")}\n`);
-    return;
-  }
-  // Truncated to the terminal, because a summary that wraps loses the spine on
-  // its second row and the block stops reading as one step.
-  const cols = stdout.columns || 80;
-  const lines = [c.dim(BAR), truncate(`${c.dim(STEP_DONE)}  ${message}`, cols - 1)];
-  for (const r of rows) lines.push(truncate(`${c.dim(BAR)}  ${c.dim(r)}`, cols - 1));
-  writeLines(stdout, lines);
-}
-
-/**
- * Open a step and leave the cursor on it, for a prompt that draws its own line.
- *
- * The counterpart to {@link step}: `◆` in teal with the question in bold, then
- * a spine row the prompt is expected to hang off via `PromptTextOptions.prefix`.
- */
-export function stepOpen(message: string, stdout: TTYOut = process.stdout): void {
-  const c = paint(colorsEnabled(stdout));
-  if (!stdout.isTTY) return;
-  writeLines(stdout, [c.dim(BAR), `${c.guide(STEP_ACTIVE)}  ${c.bold(message)}`]);
-}
-
-/** Close the flow with a terminating └ line — pink on success, dim on cancel. */
-export function outro(
-  message: string,
-  opts: { ok?: boolean } = {},
-  stdout: TTYOut = process.stdout,
-): void {
-  const c = paint(colorsEnabled(stdout));
-  const ok = opts.ok !== false;
-  if (!stdout.isTTY) {
-    stdout.write(message + "\n");
-    return;
-  }
-  const end = ok ? c.pink(BAR_END) : c.dim(BAR_END);
-  const text = ok ? c.pink(message) : c.dim(message);
-  writeLines(stdout, [c.dim(BAR), `${end}  ${text}`]);
-}
 
 // ── shared render engine ─────────────────────────────────────────────────────
 
 type Region = { lastCount: number };
 
-const WINDOW = 8; // visible rows before the checklist scrolls
+const WINDOW = 12; // visible rows before a list scrolls; 12 reproduces every frame in the redesign
 
 /**
  * Redraw the region as ONE atomic frame.
@@ -510,12 +417,24 @@ const WINDOW = 8; // visible rows before the checklist scrolls
  * the terminal to hold what it has until the reset rather than painting each
  * chunk as it lands. Terminals that do not implement it ignore an unknown
  * private mode, so it costs nothing where it does not help.
+ *
+ * `frame` is for a caller that has to change a terminal mode alongside a frame
+ * — hide the cursor on the first, show it on the last — inside the SAME write,
+ * and for a last frame that must not be cut: lines are truncated so each one is
+ * exactly one row and the next cursor-up lands where it should, but a frame
+ * nothing will repaint stays in scrollback, where a cut is permanent.
  */
-function repaint(out: TTYOut, region: Region, lines: string[]): void {
+function repaint(
+  out: TTYOut,
+  region: Region,
+  lines: string[],
+  frame: { lead?: string; tail?: string; cut?: boolean } = {},
+): void {
   const cols = out.columns || 80;
-  const body = lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n";
+  const cut = frame.cut ?? true;
+  const body = lines.map((l) => (l === "" || !cut ? l : truncate(l, cols))).join("\n") + "\n";
   const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
-  out.write(`${ESC}[?2026h${clear}${body}${ESC}[?2026l`);
+  out.write(`${ESC}[?2026h${frame.lead ?? ""}${clear}${body}${frame.tail ?? ""}${ESC}[?2026l`);
   region.lastCount = lines.length;
 }
 
@@ -586,8 +505,10 @@ interface PromptSpec<R> {
   /** Static info lines rendered under the question. */
   body?: string[];
   choices: Array<{ label: string; section?: string }>;
-  /** Row content after the gutter, e.g. "● Label  hint". */
+  /** A whole row, cursor gutter included: " › ■ name  hint". */
   renderRow: (index: number, active: boolean, budget: number) => string;
+  /** Grey text after the heading, re-read on every frame. */
+  meta?: () => string | null | undefined;
   /** Extra line(s) above the footer (e.g. a min-selected warning). */
   warnLine?: () => string | null;
   /** When set, ← resolves `BACK` so the caller can step backwards. */
@@ -597,8 +518,19 @@ interface PromptSpec<R> {
   footer: string;
   /** Handle non-navigation keys. `{done}` finishes, `"redraw"` repaints. */
   onKey: (key: readline.Key, cursor: number) => { done: R } | "redraw" | undefined;
-  /** One-line ◇ summary for the collapsed log entry. */
+  /** The answer, said once the prompt collapses: `✓ <this>`. */
   summaryFor: (result: R | null) => string;
+  /** The collapsed lines, when a caller says the answer its own way. */
+  collapsed?: (result: R) => string[];
+}
+
+/**
+ * A prompt's heading: the question in bold UPPERCASE, with grey meta after it —
+ * the same shape as `screenKit().head`, so a picker and the screen around it
+ * read as one page.
+ */
+function promptHeading(c: ReturnType<typeof paint>, message: string, meta?: string | null): string {
+  return c.bold(message.toUpperCase()) + (meta ? `  ${c.ink3(meta)}` : "");
 }
 
 function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
@@ -609,8 +541,8 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
 
   const build = (): string[] => {
     const cols = stdout.columns || 80;
-    const lines: string[] = [c.dim(BAR), `${c.guide(STEP_ACTIVE)}  ${c.bold(p.message)}`];
-    for (const b of p.body ?? []) lines.push(`${c.dim(BAR)}  ${c.dim(b)}`);
+    const lines: string[] = [promptHeading(c, p.message, p.meta?.())];
+    for (const b of p.body ?? []) lines.push(`${INDENT}${c.ink2(b)}`);
 
     const rows = displayRows(choices);
     let cursorRow = 0;
@@ -620,22 +552,25 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
     const { start, end } = viewport(rows, cursorRow, WINDOW);
     const above = rows.slice(0, start).filter((r) => r.kind === "item").length;
     const below = rows.slice(end).filter((r) => r.kind === "item").length;
-    if (above > 0) lines.push(`${c.dim(BAR)}    ${c.dim(`↑ ${above} more`)}`);
+    if (above > 0) lines.push(`   ${c.ink2(`↑ ${above} more`)}`);
 
-    const budget = Math.max(6, cols - nameCol - 10);
+    // The room a row's hint has: the terminal, less the 3-column cursor gutter,
+    // the name column and the gap after it. A checklist's box takes two more,
+    // which its renderRow subtracts itself.
+    const budget = Math.max(6, cols - nameCol - 6);
     for (let ri = start; ri < end; ri++) {
       const row = rows[ri];
       if (row.kind === "header") {
-        lines.push(`${c.dim(BAR)}  ${c.dim(row.text)}`);
+        lines.push(`${INDENT}${c.bold(row.text)}`);
       } else {
-        lines.push(`${c.dim(BAR)}  ${p.renderRow(row.index, row.index === cursor, budget)}`);
+        lines.push(p.renderRow(row.index, row.index === cursor, budget));
       }
     }
-    if (below > 0) lines.push(`${c.dim(BAR)}    ${c.dim(`↓ ${below} more`)}`);
+    if (below > 0) lines.push(`   ${c.ink2(`↓ ${below} more`)}`);
 
     const warn = p.warnLine?.();
-    if (warn) lines.push(`${c.dim(BAR)}  ${warn}`);
-    lines.push(`${c.dim(BAR)}  ${c.dim(p.footer)}`);
+    if (warn) lines.push(warn);
+    lines.push("", c.ink3(p.footer));
     return lines;
   };
 
@@ -650,12 +585,18 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
     // `resolve(result)`, so pressing ← never settled the promise and the wizard
     // stopped responding entirely. `selectOne` fell through to `String(value)`
     // and rendered the literal text `Symbol(failproofai.back)`.
-    const summary = (result as unknown) === BACK ? "back" : p.summaryFor(result);
-    repaint(stdout, region, [
-      c.dim(BAR),
-      `${c.dim(STEP_DONE)}  ${p.message}`,
-      `${c.dim(BAR)}  ${c.dim(summary)}`,
-    ]);
+    const heading = promptHeading(c, p.message);
+    const lines =
+      (result as unknown) === BACK
+        ? [heading, c.ink3("back")]
+        : result === null
+          ? [heading, c.ink3(p.summaryFor(null))]
+          : p.collapsed
+            ? p.collapsed(result)
+            : [heading, `${c.guide("✓")} ${p.summaryFor(result)}`];
+    // Not cut: nothing repaints this frame, so it stays in scrollback, where a
+    // cut is permanent — and a summary names agents, hosts and orgs.
+    repaint(stdout, region, lines, { cut: false });
   };
 
   return new Promise<R | null>((resolve) => {
@@ -750,22 +691,23 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | Back | null
     c,
     body: opts.body,
     choices,
+    meta: () => opts.meta,
     renderRow: (index, active, budget) => {
       const choice = choices[index];
-      const dot = active ? c.pink(RADIO_ON) : c.dim(RADIO_OFF);
-      const rawLabel = choice.label.padEnd(nameCol);
-      const label = active ? c.pinkBold(rawLabel) : rawLabel;
+      const rawLabel = choice.hint ? choice.label.padEnd(nameCol) : choice.label;
+      const label = active ? c.bold(rawLabel) : rawLabel;
       const hint = choice.hint
-        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        ? `  ${c.ink2(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
         : "";
-      return `${dot} ${label}${hint}`;
+      return `${active ? c.pink(" › ") : "   "}${label}${hint}`;
     },
     allowBack: opts.allowBack,
-    footer: opts.allowBack
-      ? "↑/↓ navigate · enter to select · ← back · esc to cancel"
-      : "↑/↓ navigate · enter to select · esc to cancel",
+    footer: ["↑↓ move", "enter select", ...(opts.allowBack ? ["← back"] : []), "esc cancel"].join("  ·  "),
     onKey: (key, cursor) =>
-      key.name === "return" ? { done: choices[cursor].value } : undefined,
+      key.name === "return" || (opts.spaceSelects && key.name === "space")
+        ? { done: choices[cursor].value }
+        : undefined,
+    collapsed: opts.collapsed,
     summaryFor: (value) =>
       value === null
         ? "cancelled"
@@ -800,27 +742,40 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
     message: opts.message,
     c,
     choices,
+    meta: () => {
+      if (opts.meta === null) return null;
+      if (typeof opts.meta === "string") return opts.meta;
+      if (typeof opts.meta === "function") {
+        return opts.meta(choices.filter((_, i) => checked[i]).map((ch) => ch.value));
+      }
+      // Selector rows ("Everything available") are not one of the things counted.
+      const counted = choices.map((ch, i) => (ch.summaryExclude ? null : checked[i])).filter((v) => v !== null);
+      return `${counted.filter(Boolean).length} of ${counted.length} selected`;
+    },
     renderRow: (index, active, budget) => {
       const choice = choices[index];
-      const caret = active ? c.pink(CARET) : " ";
-      // Locked rows use the teal guide hue rather than selection pink, so they
+      // Locked rows use the mint guide hue rather than selection pink, so they
       // read as "already true" instead of "you picked this"; an unchecked
-      // locked row is a dim empty box — nothing there yet.
+      // locked row is an empty grey box — nothing there yet.
       const box = choice.locked
         ? checked[index]
-          ? c.guide(CHECK_ON)
-          : c.dim(CHECK_OFF)
+          ? c.guide(CHECK_SELECTED)
+          : c.ink3(CHECK_EMPTY)
         : checked[index]
-          ? c.pink(CHECK_ON)
-          : c.dim(CHECK_OFF);
-      const rawLabel = choice.label.padEnd(nameCol);
-      const label = active ? c.pinkBold(rawLabel) : checked[index] ? rawLabel : c.dim(rawLabel);
-      const hint = choice.hint
-        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
-        : "";
-      return `${caret} ${box} ${label}${hint}`;
+          ? c.pink(CHECK_SELECTED)
+          : c.ink3(CHECK_EMPTY);
+      const tag = opts.tag?.(choice.value, checked[index]);
+      const rawLabel = tag || choice.hint ? choice.label.padEnd(nameCol) : choice.label;
+      const label = active ? c.bold(rawLabel) : checked[index] ? rawLabel : c.ink2(rawLabel);
+      const trail = tag
+        ? `  ${tag}`
+        : choice.hint
+          ? `  ${c.ink2(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget - 2)))}`
+          : "";
+      return `${active ? c.pink(" › ") : "   "}${box} ${label}${trail}`;
     },
-    warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),
+    warnLine: () =>
+      warn ? `${c.err("✕")} ${opts.minMessage ?? `Select at least ${minSelected}.`}` : null,
     allowBack: opts.allowBack,
     // Reads the SAME `checked` array the prompt is driving, so what the caller
     // learns is exactly what was on screen when ← was pressed.
@@ -829,9 +784,10 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
       : undefined,
     footer:
       opts.hint ??
-      (opts.allowBack
-        ? "↑/↓ move · space select · ctrl+a all · ← back · enter confirm"
-        : "↑/↓ move · space select · ctrl+a all · enter confirm"),
+      ["↑↓ move", "space toggle", "a all", ...(opts.allowBack ? ["← back"] : []), "enter confirm", "esc cancel"].join(
+        "  ·  ",
+      ),
+    collapsed: opts.collapsed,
     onKey: (key, cursor) => {
       if (key.name === "space") {
         if (choices[cursor]?.locked) return "redraw"; // always on — not a choice
@@ -839,7 +795,9 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
         warn = false;
         return "redraw";
       }
-      if (key.ctrl && key.name === "a") {
+      // Plain `a`, as the redesign's hints spell it; ctrl+a stays as an alias,
+      // since GNU screen swallows it as its command prefix anyway.
+      if (key.name === "a") {
         const allOn = choices.every((ch, i) => checked[i] || ch.locked);
         for (let i = 0; i < checked.length; i++) {
           checked[i] = choices[i]?.locked ? true : !allOn;
@@ -895,6 +853,15 @@ export interface PromptTextOptions {
    * the scrollback of every recording of that session.
    */
   mask?: boolean;
+  /**
+   * Draw the 2026-10 field instead of the spine prompt: `  <message>  › <value>`
+   * — the label in the terminal's own ink at a ten-column label, a pink `›`, the
+   * hint in the label grey, and a refusal as a `✕` line under the field that is
+   * cleared again as soon as the value changes. `prefix` is ignored. For the
+   * screens that have moved to the new language; the spine form stays for the
+   * rest until they move.
+   */
+  field?: boolean;
   /** Return an error string to reject and re-ask, or null to accept. */
   validate?: (value: string) => string | null;
   stdin?: TTYIn;
@@ -959,9 +926,38 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
 
   return new Promise((resolve) => {
     let value = "";
+    // Whether a field's `✕` line is on the row under it right now.
+    let refused = false;
+    /**
+     * The field form, in ONE write per keystroke. The refusal goes on the row
+     * under the field and the field is drawn LAST, so the cursor ends where the
+     * typing is — the spine form moves back up after its error line and leaves
+     * the cursor at the end of the error instead. A refusal still on screen is
+     * cleared the moment the value changes, so a corrected answer never sits
+     * above the complaint about the old one.
+     */
+    const drawField = (cols: number, shown: string, error?: string) => {
+      const hint = hintText && value.length === 0 ? `  ${c.ink3(hintText)}` : "";
+      const line = truncate(`${INDENT}${opts.message.padEnd(10)}${c.pink("›")} ${shown}${hint}`, cols - 1);
+      if (error) {
+        const refusal = truncate(`${c.err("✕")} ${error}`, cols - 1);
+        stdout.write(`\n\x1b[2K${refusal}\x1b[1A\r\x1b[2K${line}`);
+        refused = true;
+        return;
+      }
+      // Down, clear, back up: the row under the field exists, because the
+      // refusal being cleared was written there.
+      const clearRefusal = refused ? "\x1b[1B\x1b[2K\x1b[1A" : "";
+      stdout.write(`${clearRefusal}\r\x1b[2K${line}`);
+      refused = false;
+    };
     const draw = (error?: string) => {
       const cols = stdout.columns || 80;
       const shown = opts.mask ? "•".repeat(value.length) : value;
+      if (opts.field) {
+        drawField(cols, shown, error);
+        return;
+      }
       // The hint is a PLACEHOLDER — an example of what belongs here — so it
       // steps aside as soon as there is a real answer to look at. Keeping both
       // on one line put the example and the input side by side, which is the
@@ -992,7 +988,10 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
       stdin.removeListener("keypress", onKey);
       stdin.setRawMode?.(wasRaw ?? false);
       stdin.pause();
-      stdout.write("\n");
+      // Past a field's refusal, when one is still showing (a cancel right after
+      // it), so whatever prints next starts on a clean row instead of on top of
+      // the complaint.
+      stdout.write(refused ? "\n\n" : "\n");
     };
 
     function onKey(str: string | undefined, key: readline.Key): void {
@@ -1029,6 +1028,326 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
   });
 }
 
+/**
+ * Run something that writes straight to the terminal — `sudo -v` and its
+ * password prompt — then erase whatever it wrote, so the step around it can
+ * collapse to one line.
+ *
+ * The rows are reserved FIRST: `reserve` newlines then back up, so that what
+ * the child prints never scrolls the screen. A scroll would move the saved
+ * cursor position off the line it was saved on, and the erase would then land
+ * below the prompt instead of on it. Three failed sudo attempts print about
+ * six lines, so ten is enough room. Without a terminal it just runs.
+ */
+export function collapseAfter<T>(stdout: TTYOut, reserve: number, run: () => T): T {
+  if (!stdout.isTTY) return run();
+  stdout.write(`${"\n".repeat(reserve)}${ESC}[${reserve}A${ESC}7`);
+  try {
+    return run();
+  } finally {
+    stdout.write(`${ESC}8${ESC}[J`);
+  }
+}
+
+// ── the cloud-key prompt ─────────────────────────────────────────────────────
+
+/** What `promptCloudKey` resolves when Tab is pressed: no new connection. */
+export const OPEN_SOURCE: unique symbol = Symbol("failproofai.open-source");
+export type OpenSource = typeof OPEN_SOURCE;
+
+/**
+ * What a key check found, in words the prompt prints as they are. `ok` with a
+ * `line` is a key that works for part of what it was asked: the caller says
+ * which part, as a `▲` line after the prompt collapses. `usable` marks a SAVED
+ * key that could not be checked (offline, a timeout) rather than one that was
+ * refused, so Enter can still keep it.
+ */
+export type KeyVerdict = { ok: true; line?: string } | { ok: false; line: string; usable?: boolean };
+
+export type CloudKeyAnswer =
+  | { kind: "typed"; key: string; note?: string }
+  | { kind: "saved"; verified: boolean };
+
+export interface CloudKeyPromptOptions {
+  /** The heading, e.g. "Connect to cloud". */
+  message: string;
+  /** Grey text after the heading: where the key will be sent. */
+  meta?: string;
+  /** What Tab does, for the key hints: "use open source instead", or "skip". */
+  tabHint: string;
+  /** The `✕` line for Enter on an empty field with no saved key to use. */
+  emptyError: string;
+  /** A key already on this machine: drawn at once, checked in the background. */
+  saved?: { masked: string; check: () => Promise<KeyVerdict> };
+  /** Checks a typed key. Never called for one shorter than `minLength`. */
+  check: (key: string) => Promise<KeyVerdict>;
+  minLength?: number;
+  /** The lines the prompt collapses to once answered. */
+  collapsed?: (answer: CloudKeyAnswer | OpenSource) => string[];
+  stdin?: TTYIn;
+  stdout?: TTYOut;
+}
+
+/**
+ * One masked `API key ›` field, with Tab as the way out to open source.
+ *
+ * Its own prompt rather than options on `promptText`, which keeps a one-row
+ * rule its other callers depend on. This one needs rows above and below the
+ * field: a saved key's state, a spinner while a key is checked, and a `✕` line
+ * that keeps the typed key in place so Enter can retry it.
+ *
+ * Three rules hold for every state:
+ *  - Tab inside a paste is part of the paste. A pasted key arrives as keys,
+ *    so a tab in it would otherwise switch to open source halfway through.
+ *    Bracketed paste is switched on for exactly this, and Enter inside a paste
+ *    (a copied trailing newline) never submits either.
+ *  - Keys are ignored while a typed key is being checked, Esc excepted: a
+ *    check can take ten seconds and leaving must stay possible.
+ *  - The terminal is put back on every way out: cursor, raw mode and paste
+ *    mode, including a process exit while the prompt is open.
+ */
+export function promptCloudKey(opts: CloudKeyPromptOptions): Promise<CloudKeyAnswer | OpenSource | null> {
+  const stdin: TTYIn = opts.stdin ?? process.stdin;
+  const stdout: TTYOut = opts.stdout ?? process.stdout;
+  // Nobody is there to type a key. The wizard never asks without a terminal;
+  // this answers the same way a cancel would rather than hang on a pipe.
+  if (!stdin.isTTY || !stdout.isTTY) return Promise.resolve(null);
+
+  const c = paint(colorsEnabled(stdout));
+  const kit = screenKit({ cols: stdout.columns || 80, color: colorsEnabled(stdout) });
+  const minLength = opts.minLength ?? 8;
+  const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  const region: Region = { lastCount: 0 };
+
+  let typed = "";
+  let inPaste = false;
+  // The saved key's state: being checked, works, could not be checked, or
+  // refused — and a refused key is treated as no saved key at all.
+  let savedState: "checking" | "works" | "unchecked" | "refused" | "none" = opts.saved ? "checking" : "none";
+  let savedLine = "";
+  let enterWaiting = false;
+  let checkingTyped = false;
+  let fieldError = "";
+  let refusedOnce = false;
+  let frame = 0;
+  let spinning = false;
+  let settled = false;
+  let spinDelay: ReturnType<typeof setTimeout> | null = null;
+  let spinTimer: ReturnType<typeof setInterval> | null = null;
+
+  const savedUsable = (): boolean => savedState === "checking" || savedState === "works" || savedState === "unchecked";
+
+  const spinGlyph = (): string => (spinning ? c.ink3(spinnerFrames[frame % spinnerFrames.length]) : " ");
+
+  const build = (): string[] => {
+    const lines: string[] = [promptHeading(c, opts.message, opts.meta)];
+    if (opts.saved) {
+      if (savedState === "checking") lines.push(`  ${spinGlyph()} Checking your saved key ${opts.saved.masked}…`);
+      else if (savedState === "works") lines.push(kit.ok(savedLine));
+      else if (savedState === "unchecked" || savedState === "refused") lines.push(kit.caution(savedLine));
+    }
+    lines.push(`${INDENT}${"API key".padEnd(10)}${c.pink("› ")}${"•".repeat(typed.length)}`);
+    if (checkingTyped) {
+      lines.push(`  ${spinGlyph()} Checking the key…`);
+      return lines;
+    }
+    if (fieldError) lines.push(kit.fail(fieldError));
+    // "type to replace it", not the reference's "type a new key to replace it":
+    // the reference is drawn at 104 columns, and at 80 the longer line is cut
+    // through the Tab hint, which is the only place Tab is mentioned.
+    const hints =
+      fieldError && refusedOnce
+        ? ["enter try again", `tab ${opts.tabHint}`, "esc cancel"]
+        : savedUsable() && typed.length === 0
+          ? ["enter use saved key", "type to replace it", `tab ${opts.tabHint}`]
+          : ["enter connect", `tab ${opts.tabHint}`, "esc cancel"];
+    lines.push("", kit.keys(hints));
+    return lines;
+  };
+
+  const draw = (): void => {
+    if (!settled) repaint(stdout, region, build());
+  };
+
+  const stopSpinner = (): void => {
+    if (spinDelay) clearTimeout(spinDelay);
+    if (spinTimer) clearInterval(spinTimer);
+    spinDelay = null;
+    spinTimer = null;
+    spinning = false;
+  };
+  // 150 ms before the first frame, so a check that answers at once never
+  // flashes a spinner; 80 ms a frame after that.
+  const startSpinner = (): void => {
+    stopSpinner();
+    spinDelay = setTimeout(() => {
+      spinning = true;
+      draw();
+      spinTimer = setInterval(() => {
+        frame++;
+        draw();
+      }, 80);
+      spinTimer.unref?.();
+    }, 150);
+    spinDelay.unref?.();
+  };
+
+  const restoreTerminal = (): void => {
+    stdout.write(`${ESC}[?2004l`);
+    showCursor(stdout);
+  };
+
+  return new Promise((resolve) => {
+    const wasRaw = stdin.isRaw;
+    const finish = (answer: CloudKeyAnswer | OpenSource | null): void => {
+      if (settled) return;
+      stopSpinner();
+      stdin.removeListener("keypress", onKey);
+      stdin.setRawMode?.(wasRaw ?? false);
+      stdin.pause();
+      process.removeListener("exit", restoreTerminal);
+      const lines =
+        answer === null
+          ? [promptHeading(c, opts.message), c.ink3("cancelled")]
+          : (opts.collapsed?.(answer) ?? [promptHeading(c, opts.message)]);
+      // The last frame, left in scrollback: never cut (see `repaint`). It names
+      // the org and the host the key went to.
+      repaint(stdout, region, lines, { cut: false });
+      settled = true;
+      restoreTerminal();
+      resolve(answer);
+    };
+
+    const keepSaved = (): void => {
+      if (savedState === "checking") {
+        // Enter waits for a check still in flight, and says so by spinning.
+        enterWaiting = true;
+        return;
+      }
+      finish({ kind: "saved", verified: savedState === "works" });
+    };
+
+    const submit = (): void => {
+      if (typed.length === 0) {
+        if (savedUsable()) return keepSaved();
+        fieldError = opts.emptyError;
+        refusedOnce = false;
+        return draw();
+      }
+      if (typed.length < minLength) {
+        fieldError = "That looks too short to be a key.";
+        refusedOnce = false;
+        return draw();
+      }
+      checkingTyped = true;
+      fieldError = "";
+      startSpinner();
+      draw();
+      const key = typed;
+      opts.check(key).then(
+        (verdict) => {
+          if (settled) return;
+          checkingTyped = false;
+          stopSpinner();
+          if (verdict.ok) return finish({ kind: "typed", key, note: verdict.line });
+          fieldError = verdict.line;
+          refusedOnce = true;
+          draw();
+        },
+        (err: unknown) => {
+          if (settled) return;
+          checkingTyped = false;
+          stopSpinner();
+          fieldError = `Couldn't check the key: ${err instanceof Error ? err.message : String(err)}`;
+          refusedOnce = true;
+          draw();
+        },
+      );
+    };
+
+    function onKey(str: string | undefined, key: readline.Key): void {
+      if (!key || settled) return;
+      if ((key.ctrl && (key.name === "c" || key.name === "d")) || key.name === "escape") return finish(null);
+      if (key.name === "paste-start") {
+        inPaste = true;
+        return;
+      }
+      if (key.name === "paste-end") {
+        inPaste = false;
+        return draw();
+      }
+      if (checkingTyped || enterWaiting) return;
+      if (key.name === "tab") {
+        if (!inPaste) finish(OPEN_SOURCE);
+        return;
+      }
+      if (key.name === "return" || key.name === "enter") {
+        if (!inPaste) submit();
+        return;
+      }
+      if (key.name === "backspace") {
+        typed = typed.slice(0, -1);
+        if (fieldError) fieldError = "";
+        return draw();
+      }
+      // A key is never whitespace, so a copied newline or space is dropped
+      // rather than becoming part of what gets sent.
+      if (str && !key.ctrl && !key.meta) {
+        const clean = str.replace(/\s+/g, "");
+        if (!clean) return;
+        typed += clean;
+        if (fieldError) fieldError = "";
+        if (!inPaste) draw();
+      }
+    }
+
+    process.once("exit", restoreTerminal);
+    readline.emitKeypressEvents(stdin);
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    hideCursor(stdout);
+    stdout.write(`${ESC}[?2004h`);
+    stdin.on("keypress", onKey);
+    if (opts.saved) startSpinner();
+    draw();
+
+    opts.saved?.check().then(
+      (verdict) => {
+        if (settled) return;
+        if (verdict.ok) {
+          savedState = "works";
+          savedLine = verdict.line ?? `Your saved key works: ${opts.saved?.masked}`;
+        } else {
+          savedState = verdict.usable ? "unchecked" : "refused";
+          savedLine = verdict.line;
+        }
+        if (!checkingTyped) stopSpinner();
+        if (enterWaiting) {
+          enterWaiting = false;
+          if (savedUsable()) return keepSaved();
+          // Enter was pressed on an empty field, and the saved key it waited
+          // for turned out refused: answer it as `submit` answers an empty
+          // field, rather than redrawing as if nothing had been pressed.
+          fieldError = opts.emptyError;
+          refusedOnce = false;
+        }
+        draw();
+      },
+      (err: unknown) => {
+        if (settled) return;
+        savedState = "unchecked";
+        savedLine = `Couldn't check your saved key: ${err instanceof Error ? err.message : String(err)}`;
+        if (!checkingTyped) stopSpinner();
+        if (enterWaiting) {
+          enterWaiting = false;
+          return keepSaved();
+        }
+        draw();
+      },
+    );
+  });
+}
+
 // ── the kit ──────────────────────────────────────────────────────────────────
 /**
  * The block builders every PRINTED surface is assembled from.
@@ -1043,9 +1362,7 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
  * answers to "how does this product state a fact".
  *
  * These are the one answer. Every builder is pure — `(spec, opts) => string[]` —
- * so a surface can be asserted at any width, with color on or off, without a pty;
- * that is the same shape `renderBrandLogo`, `reviewLines` and `buildSummary`
- * already have, and the reason they are the only rendering we can currently test.
+ * so a surface can be asserted at any width, with color on or off, without a pty.
  *
  * Callers pass `optsFor(stdout)` and print with `printBlock`, which owns the
  * outer margins so no surface has to remember them.
@@ -1202,7 +1519,11 @@ function closeSgr(text: string): string {
  *  single-ellipsis cut when it is plain. */
 function fit(cell: string, width: number): string {
   if (visibleWidth(cell) <= width) return cell;
-  return cell.includes(ESC) ? closeSgr(truncate(cell, width)) : ellipsize(cell, width);
+  // A coloured cell is cut on its visible width and still ends on `…`: cut
+  // bare, a shortened `description  ·  observe` lost its tag with nothing to
+  // say any of it was missing.
+  if (cell.includes(ESC)) return width <= 1 ? "…" : `${closeSgr(truncate(cell, width - 1))}…`;
+  return ellipsize(cell, width);
 }
 
 /** Pad a possibly-coloured cell to `width` visible columns. */
@@ -1246,10 +1567,17 @@ export function stack(...groups: Array<string[] | null | undefined>): string[] {
  * a URL, a session id. Cutting those loses characters silently and with no
  * ellipsis to admit it; letting the terminal wrap keeps them copyable, which is
  * the entire reason they are printed.
+ *
+ * Colour is decided again from the stream written to. A command renders its
+ * lines before it knows whether they succeed, so they are drawn for stdout,
+ * and a failure then goes to stderr: with stdout a terminal and stderr
+ * redirected, escape codes reached the log. A stream that cannot show colour
+ * gets none, whatever the lines were drawn for.
  */
 export function printBlock(stdout: TTYOut, lines: string[]): void {
   if (lines.length === 0) return;
-  stdout.write(["", ...lines.map(closeSgr), ""].join("\n") + "\n");
+  const shown = colorsEnabled(stdout) ? lines.map(closeSgr) : lines.map((l) => l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""));
+  stdout.write(["", ...shown, ""].join("\n") + "\n");
 }
 
 /**
@@ -1482,21 +1810,6 @@ export function chip(state: ChipState, opts?: RenderOpts): string {
   return pad(painted, CHIP_WIDTH);
 }
 
-/** A bulleted list, wrapped, with continuation lines aligned under the text —
- *  `uninstall` prints 200-column bullets today that wrap into column 0. */
-export function bullets(items: string[], opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const budget = Math.max(8, cols - INDENT.length - 4);
-  const out: string[] = [];
-  for (const item of items) {
-    const [first, ...rest] = wrap(item, budget);
-    if (first === undefined) continue;
-    out.push(`${INDENT}${c.pink("•")} ${first}`);
-    for (const line of rest) out.push(`${INDENT}  ${line}`);
-  }
-  return out;
-}
-
 /** A dim aside under a block. */
 export function note(text: string, opts?: RenderOpts): string[] {
   const { cols, c } = ctx(opts);
@@ -1534,12 +1847,6 @@ export function warning(lines: string[], opts?: RenderOpts): string[] {
   return gutterBlock(c.warn("\u25B2"), lines, opts);
 }
 
-/** The same, for the ones that destroy something. */
-export function danger(lines: string[], opts?: RenderOpts): string[] {
-  const { c } = ctx(opts);
-  return gutterBlock(c.pink("!"), lines, opts);
-}
-
 /** Nothing to show, said the same way everywhere: what is empty, then the one
  *  command that changes that. */
 export function emptyState(
@@ -1547,132 +1854,6 @@ export function emptyState(
   opts?: RenderOpts,
 ): string[] {
   return stack(note(spec.what, opts), spec.cmd ? nextStep(spec.cmd, spec.hint, opts) : null);
-}
-
-export interface HelpSpec {
-  usage: Array<[string, string?]>;
-  options?: Array<[string, string]>;
-  examples?: string[];
-  /** Free lines above the first section. */
-  lead?: string[];
-}
-
-/**
- * The description column for one block of entries, derived from its widest
- * described name and capped.
- *
- * Its own step because the callers differ on the SCOPE they compute it over —
- * {@link helpBlock} across usage and options together, {@link helpScreen} per
- * section — and neither should be restating the cap or the floor.
- */
-export function helpColumn(entries: Array<[string, string?]>): number {
-  // Only DESCRIBED entries set the column. A bare usage line — `failproofai
-  // flush [--wait] [--timeout <secs>]`, which describes itself — is 44
-  // characters and has nothing in the second column, so letting it vote pushed
-  // every real description on the screen out to column 38.
-  const named = entries.filter(([, d]) => d).map(([n]) => visibleWidth(n));
-  return Math.min(34, Math.max(12, ...named));
-}
-
-/** `<name>  <description>` at a column the caller fixed. */
-export function helpEntries(
-  items: Array<[string, string?]>,
-  nameWidth: number,
-  opts?: RenderOpts,
-): string[] {
-  const { cols, c } = ctx(opts);
-  const out: string[] = [];
-  for (const [raw, description] of items) {
-    // Pink is what you TYPE, dim is what it means, bold is the section it sits
-    // in. Three tones, the same three on every screen, so a flag looks like a
-    // flag whether you found it on `publish --help` or on the index. Decoration
-    // only: the column already separates the two halves, so the screen reads
-    // the same piped to a file or under NO_COLOR.
-    const name = c.pink(raw);
-    if (!description) {
-      out.push(`${INDENT}${name}`);
-      continue;
-    }
-    const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
-    const [first, ...rest] = wrap(description, budget);
-    // A name wider than the column takes its own line rather than shoving the
-    // description out — the top-level help has several of these today.
-    if (visibleWidth(raw) > nameWidth) {
-      out.push(`${INDENT}${name}`);
-      for (const line of [first, ...rest]) {
-        if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-      }
-      continue;
-    }
-    // Padded on the VISIBLE width, so a painted name still lands the column
-    // where an unpainted one does.
-    const gap = nameWidth - visibleWidth(raw);
-    out.push(`${INDENT}${name}${" ".repeat(gap)}  ${c.dim(first ?? "")}`);
-    for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-  }
-  return out;
-}
-
-/**
- * A usage/options/examples block, on one column across all three.
- *
- * The plain shape, for a surface with nothing else to say. A screen with prose
- * sections, a heading, or a footer wants {@link helpScreen}, which is what the
- * twelve `--help` screens use.
- */
-export function helpBlock(spec: HelpSpec, opts?: RenderOpts): string[] {
-  const nameWidth = helpColumn([...spec.usage, ...(spec.options ?? [])]);
-  const section = (label: string, body: string[]): string[] =>
-    body.length === 0 ? [] : [...rule(label, opts), ...body];
-  return stack(
-    spec.lead ? spec.lead.map((l) => `${INDENT}${l}`) : null,
-    section("usage", helpEntries(spec.usage, nameWidth, opts)),
-    section("options", helpEntries(spec.options ?? [], nameWidth, opts)),
-    section("examples", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
-  );
-}
-
-/**
- * Help is the one family of screens read at every width that belongs to no
- * terminal in particular. Capped at 80 so `publish --help` is the same shape in
- * a maximised window as in a tmux pane — and never wider than the terminal it
- * is actually in, so the cap can only ever narrow.
- */
-export const HELP_COLS = 80;
-
-/** {@link optsFor}, capped to {@link HELP_COLS}. Every help screen uses this. */
-export function helpOptsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
-  const base = optsFor(stdout);
-  return { cols: Math.min(base.cols, HELP_COLS), color: base.color };
-}
-
-export interface HelpHeading {
-  /** The command being documented. Omitted for the top-level index. */
-  command?: string;
-  version: string;
-  /** One line: what this command is for. */
-  tagline: string;
-}
-
-/**
- * The two lines every help screen opens with.
- *
- * The wordmark carries the same pink on `il` that {@link renderBrandLogo} tints,
- * so a help screen and the wizard are visibly one product rather than two that
- * happen to ship together. The version sits right-aligned and dim because it is
- * the fact you want when a help screen and its binary disagree, and the fact you
- * never want in the way otherwise.
- */
-export function helpHeading(spec: HelpHeading, opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const mark = `${c.bold("fa")}${c.pink("il")}${c.bold("proofai")}`;
-  const left = `${INDENT}${mark}${spec.command ? ` ${c.bold(spec.command)}` : ""}`;
-  const right = c.dim(`v${spec.version}`);
-  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
-  // Too narrow for both: the version goes under rather than wrapping into the
-  // middle of the name, where it reads as part of the command.
-  const head = gap < 2 ? [left, `${INDENT}${right}`] : [left + " ".repeat(gap) + right];
-  return [...head, ...note(spec.tagline, opts)];
 }
 
 /**
@@ -1688,46 +1869,325 @@ export type HelpSection =
   | { label: string; prose: string }
   | { label: string; lines: string[] };
 
-export interface HelpScreenSpec extends HelpHeading {
-  sections: HelpSection[];
-  /** Dim closing lines — where to read more. */
-  footer?: string[];
+// ── the 2026-10 screen language ─────────────────────────────────────────────
+/**
+ * The redesign's building blocks: open text on the terminal — the wordmark
+ * header, UPPERCASE headings at column 0, rows indented two, colour by role, and
+ * no boxes or rules. The byte-level target is `reference/screens.js` →
+ * `FP.primitives` in the design handoff; the bytes differ only where the tiers
+ * above say how a colour is spelled.
+ *
+ * Commands, URLs, paths and ids are never cut: they are the part a person
+ * copies, and half of one runs the wrong thing. Prose may be shortened with `…`
+ * when `fit` is on, which a caller sets only for a terminal — piped output is
+ * never cut.
+ *
+ * ONE exported factory rather than a dozen functions, on purpose. The CLI ships
+ * as a single scope-hoisted bundle, and a new top-level name that matches a
+ * local inside a builtin policy or an audit detector (`cmd`, `row`, `head`, …)
+ * makes the bundler rename that local. That changes the function source the
+ * audit cache keys on (`engineVersion` / `detectorVersion`), and every user's
+ * history is rescanned from zero at upgrade. Everything here lives inside the
+ * factory, so the bundle gains exactly one name.
+ */
+export interface ScreenKitOpts extends RenderOpts {
+  /** The version the header shows. Defaults to this build's. */
+  version?: string;
+  /** Shorten prose that does not fit `cols`, ending on `…`. Terminal only. */
+  fit?: boolean;
 }
 
-/**
- * A whole `--help`, assembled the same way twelve times.
- *
- * Before this, every screen was its own template literal: `USAGE` here and
- * `Usage:` there, a description column hand-counted per file, no version on the
- * page, and no colour on any of them while the index it was reached from had
- * all three. The screens still say exactly what their authors wrote — this owns
- * only the shape.
- */
-export function helpScreen(spec: HelpScreenSpec, opts?: RenderOpts): string[] {
+export function screenKit(opts: ScreenKitOpts = {}) {
   const { cols, c } = ctx(opts);
-  const width = Math.max(12, cols - INDENT.length * 2);
-  const groups: Array<string[] | null> = [helpHeading(spec, opts)];
-  for (const section of spec.sections) {
-    // Per SECTION, not per screen. One column across the whole page is what a
-    // screen of like-shaped entries wants, and it is exactly wrong on a screen
-    // that has both: `failproofai policies show <owner>/<repo>` is 40 columns
-    // and `--all` is 5, so a shared column left every flag description hanging
-    // 34 columns out with nothing under it. What made two screens read as two
-    // products was the INDENT and the heading, and those are shared here.
-    const body =
-      "entries" in section
-        ? [
-            ...helpEntries(section.entries, helpColumn(section.entries), opts),
-            ...(section.after?.length
-              ? ["", ...section.after.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`))]
-              : []),
-          ]
-        : "prose" in section
-          ? wrap(section.prose, width).map((l) => `${INDENT}${l}`)
-          : section.lines.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`));
-    if (body.length === 0) continue;
-    groups.push([...rule(section.label, opts), ...body]);
-  }
-  if (spec.footer?.length) groups.push(spec.footer.map((l) => `${INDENT}${c.dim(l)}`));
-  return stack(...groups);
+  const colour = opts.color ?? false;
+  const version = opts.version ?? cliVersion;
+  const sep = c.ink3("  ·  ");
+  // Never paint nothing: an empty span is two escapes with no text between.
+  const tint = (paintFn: (s: string) => string, s: string): string => (s ? paintFn(s) : "");
+
+  /** Typeable: every command on a screen is pink. */
+  const cmd = (s: string): string => c.pink(s);
+  const on = c.guide(RADIO_ON);
+  const off = c.ink3(RADIO_OFF);
+  /** A row whose thing could not run — a file that is missing or will not load. */
+  const failed = c.err("✕");
+  /** Picked and not picked: a pack's defaults on `policies show`, a checklist row. */
+  const selected = c.pink("■");
+  const unselected = c.ink3("□");
+  /** Grey text that qualifies a value rather than being one: `observe` beside a pack. */
+  const meta = (s: string): string => tint(c.ink3, s);
+
+  /** Prose shortened to `room` columns when fitting is on; untouched otherwise. */
+  const prose = (s: string, room: number): string =>
+    opts.fit && visibleWidth(s) > room ? fit(s, Math.max(1, room)) : s;
+
+  /** `failproof ai  v1.0.11  ·  Context` — the line every screen opens with. */
+  const header = (context?: string): string =>
+    `${c.bold("fa")}${c.pinkBold("il")}${c.bold("proof ai")}  ${c.ink3(`v${version}`)}` +
+    (context ? `${sep}${context}` : "");
+
+  /** An UPPERCASE heading, with optional grey meta after it. */
+  const head = (text: string, meta?: string): string =>
+    c.bold(text.toUpperCase()) + (meta ? `  ${c.ink3(meta)}` : "");
+
+  /**
+   * `name  description` rows on one column for the block: at least `minCol`
+   * wide, and always two spaces past the widest name. The design fixes its
+   * columns by hand, and the longest real policy name is exactly the 32 it
+   * fixes, so a fixed column runs that name into its description. Names are
+   * never cut; descriptions are prose and give up the room.
+   */
+  const rows = (items: Array<[string, string?]>, minCol = 0): string[] => {
+    const width = Math.max(minCol, ...items.map(([name, desc]) => (desc ? visibleWidth(name) + 2 : 0)));
+    return items.map(([name, desc]) => {
+      if (!desc) return `${INDENT}${name}`;
+      const lead = `${INDENT}${pad(name, width)}`;
+      return lead + prose(c.ink2(desc), cols - visibleWidth(lead));
+    });
+  };
+
+  /**
+   * Grey labels and their values, on one column at least nine wide — where the
+   * reference starts its values. Values are never cut: they are URLs, ids and
+   * counts, and a line that outgrows the terminal is left for it to wrap.
+   *
+   * An empty label continues the row above it, under the same value column —
+   * `config --status` lists each paused session that way.
+   */
+  const kv = (items: Array<[string, string]>, minLabel = 9): string[] => {
+    const width = Math.max(minLabel, ...items.map(([label]) => visibleWidth(label))) + 2;
+    return items.map(([label, value]) =>
+      value ? `${INDENT}${pad(tint(c.ink3, label), width)}${value}` : `${INDENT}${tint(c.ink3, label)}`,
+    );
+  };
+
+  /** `✓ Done, said in the past tense.` with optional grey detail. */
+  const ok = (text: string, detail?: string): string =>
+    `${c.guide("✓")} ${text}${detail ? `  ${c.ink3(detail)}` : ""}`;
+
+  /** `▲ Needs attention.  ·  the fix` */
+  const caution = (text: string, fix?: string): string =>
+    `${c.warn("▲")} ${text}${fix ? `${sep}${cmd(fix)}` : ""}`;
+
+  /** `✕ Failed, said plainly.  ·  the fix` */
+  const fail = (text: string, fix?: string): string =>
+    `${c.err("✕")} ${text}${fix ? `${sep}${cmd(fix)}` : ""}`;
+
+  /**
+   * A message as every notice prints it: the first line after one state glyph,
+   * each later line a fix line indented two (keeping any indentation of its
+   * own), and each `backticked` span painted as a command with the backticks
+   * dropped. A message author writes `Run  \`failproofai help\`  for usage.`,
+   * and it reads `Run  failproofai help  for usage.` in a pipe, with the
+   * command in pink on a terminal. Unbalanced backticks are left as written
+   * rather than guessed at.
+   *
+   * Never cut: a notice holds the reason something failed and the command that
+   * fixes it, and half of either is worse than a line the terminal wraps.
+   */
+  const notice = (state: "ok" | "caution" | "fail", message: string): string[] => {
+    const typeable = (line: string): string =>
+      (line.split("`").length - 1) % 2 === 0 ? line.replace(/`([^`]+)`/g, (_whole, typed: string) => cmd(typed)) : line;
+    const glyph = state === "ok" ? c.guide("✓") : state === "caution" ? c.warn("▲") : c.err("✕");
+    const [first = "", ...rest] = message.split("\n");
+    return [
+      `${glyph} ${typeable(first)}`,
+      ...rest.map((line) => (line.trim() === "" ? "" : `${INDENT}${typeable(line)}`)),
+    ];
+  };
+
+  /**
+   * `Continue? y/N` — the one question a destructive command asks, after the
+   * caller has printed what it would do. Only `y` or `yes`, in any case, then
+   * Enter, is a yes. Enter alone, anything else, Esc, Ctrl+C, Ctrl+D or the
+   * input closing is a no: the default answer to "remove these?" has to be the
+   * one that removes nothing, and one stray key must not be consent. Keys are
+   * read the way the pickers read them (raw, echoed here), so it behaves the
+   * same on every terminal. Callers ask only when there is one to answer on.
+   */
+  const confirm = (io: { stdin: TTYIn; stdout: TTYOut }, question = "Continue?"): Promise<boolean> =>
+    new Promise((resolve) => {
+      const { stdin, stdout } = io;
+      let typed = "";
+      let settled = false;
+      const wasRaw = stdin.isRaw;
+      const settle = (answer: boolean): void => {
+        if (settled) return;
+        settled = true;
+        stdin.removeListener("keypress", onKey);
+        stdin.removeListener("end", onEnd);
+        stdin.setRawMode?.(wasRaw ?? false);
+        stdin.pause();
+        stdout.write("\n");
+        resolve(answer);
+      };
+      function onEnd(): void {
+        settle(false);
+      }
+      function onKey(sequence: string | undefined, key: readline.Key | undefined): void {
+        const name = key?.name;
+        if ((key?.ctrl && (name === "c" || name === "d")) || name === "escape") settle(false);
+        else if (name === "return" || name === "enter") settle(/^y(es)?$/i.test(typed.trim()));
+        else if (name === "backspace") {
+          if (typed) {
+            typed = typed.slice(0, -1);
+            stdout.write("\b \b");
+          }
+        } else if (sequence && sequence.length === 1 && sequence >= " " && !key?.ctrl && !key?.meta) {
+          typed += sequence;
+          stdout.write(sequence);
+        }
+      }
+      stdout.write(`${question} ${c.ink3("y/N")} `);
+      readline.emitKeypressEvents(stdin);
+      stdin.setRawMode?.(true);
+      stdin.on("keypress", onKey);
+      stdin.on("end", onEnd);
+      stdin.resume();
+    });
+
+  /** Lowercase key hints at the foot of an interactive screen. */
+  const keys = (list: string[]): string => c.ink3(list.join("  ·  "));
+
+  /**
+   * A progress bar `width` cells wide and `fraction` full: the filled part pink,
+   * the rest the track grey. With colour off the rest is blank, because one
+   * unbroken run of `━` would show no progress at all.
+   */
+  const bar = (width: number, fraction: number): string => {
+    const filled = Math.round(Math.max(0, Math.min(1, fraction)) * width);
+    const rest = Math.max(0, width - filled);
+    return tint(c.pink, "━".repeat(filled)) + (colour ? tint(c.track, "━".repeat(rest)) : " ".repeat(rest));
+  };
+
+  /**
+   * The logomark with a two-space margin, or nothing on a terminal too narrow
+   * to draw it — the old `▮▮` one-liner is retired with the rest of that mark.
+   * Callers show it only on a TTY, and only on bare `failproofai` and at the
+   * start of a `config` run.
+   */
+  const logo = (): string[] => {
+    if (cols < LOGO_MIN_COLS) return [];
+    const tier: ColorTier = colour ? colorTier() : "basic";
+    return renderLogo(tier).map((line) => `${INDENT}${line}`);
+  };
+
+  /** A command's `--help`: usage, options and examples. Nothing else. */
+  const helpPage = (spec: {
+    name: string;
+    usage: Array<[string, string?]>;
+    options?: Array<[string, string]>;
+    examples?: string[];
+    /** The options column, when the design fixes a wider one than the data needs. */
+    optionsCol?: number;
+  }): string[] => {
+    // Option descriptions name flags and agent ids (`-u -c`, `goose`), which are
+    // never cut: one too wide for the terminal wraps under its own column
+    // rather than ending on `…`. Usage descriptions are prose, and shorten.
+    const options = (items: Array<[string, string]>, minCol: number): string[] => {
+      const width = Math.max(minCol, ...items.map(([name, desc]) => (desc ? visibleWidth(name) + 2 : 0)));
+      return items.flatMap(([name, desc]) => {
+        if (!desc) return [`${INDENT}${name}`];
+        const lead = `${INDENT}${pad(name, width)}`;
+        const room = cols - visibleWidth(lead);
+        if (!opts.fit || visibleWidth(desc) <= room) return [lead + c.ink2(desc)];
+        const under = " ".repeat(visibleWidth(lead));
+        return wrapAnsi(desc, Math.max(1, room)).map((part, i) => (i === 0 ? lead : under) + c.ink2(part));
+      });
+    };
+    const out = [header(spec.name), "", head("Usage"), ...rows(spec.usage)];
+    if (spec.options?.length) out.push("", head("Options"), ...options(spec.options, spec.optionsCol ?? 0));
+    if (spec.examples?.length) out.push("", head("Examples"), ...spec.examples.map((e) => `${INDENT}${cmd(e)}`));
+    return out;
+  };
+
+  /**
+   * A block that redraws in place: a progress screen.
+   *
+   * Every frame is ONE write, through the same atomic `repaint` the prompts use,
+   * and frames are held to one per 100 ms — the design's progress tempo — with
+   * the newest always landing. `build` runs only for a frame that is actually
+   * drawn, so a caller can ask after every event it hears about.
+   *
+   * The cursor is hidden while the block is live and shown again when it ends:
+   * on `done`, on exit, and on SIGINT or SIGTERM. A signal is re-raised once the
+   * cursor is back, so Ctrl+C still stops the command exactly as it did before
+   * anything was listening for it. TTY only: everywhere else the caller prints
+   * its last screen once, with no frames.
+   */
+  const live = (out: TTYOut) => {
+    const region: Region = { lastCount: 0 };
+    const every = 100;
+    let lastAt = 0;
+    let pending: (() => string[]) | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let hidden = false;
+    let over = false;
+
+    const showAgain = (): void => {
+      out.write(`${ESC}[?25h`);
+    };
+    const release = (): void => {
+      process.removeListener("exit", showAgain);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+    };
+    const onSignal = (signal: NodeJS.Signals): void => {
+      over = true;
+      if (timer) clearTimeout(timer);
+      release();
+      showAgain();
+      process.kill(process.pid, signal);
+    };
+    const flush = (): void => {
+      timer = null;
+      const build = pending;
+      pending = null;
+      if (!build || over) return;
+      lastAt = Date.now();
+      let lead = "";
+      if (!hidden) {
+        hidden = true;
+        lead = `${ESC}[?25l`;
+        process.once("exit", showAgain);
+        process.on("SIGINT", onSignal);
+        process.on("SIGTERM", onSignal);
+      }
+      repaint(out, region, build(), { lead });
+    };
+
+    return {
+      /** Ask for a frame; it is drawn now, or as soon as the tempo allows. */
+      draw(build: () => string[]): void {
+        if (over) return;
+        pending = build;
+        if (timer) return;
+        const wait = lastAt + every - Date.now();
+        if (wait <= 0) {
+          flush();
+          return;
+        }
+        timer = setTimeout(flush, wait);
+        timer.unref?.();
+      },
+      /**
+       * Draw the last frame at once and give the cursor back. Never cut: nothing
+       * repaints it, so it stays in scrollback exactly as written.
+       */
+      done(lines: string[]): void {
+        if (over) return;
+        over = true;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        pending = null;
+        release();
+        repaint(out, region, lines, { cut: false, tail: hidden ? `${ESC}[?25h` : "" });
+      },
+    };
+  };
+
+  return {
+    cols, sep, cmd, on, off, failed, selected, unselected, meta,
+    header, head, rows, kv, ok, caution, fail, notice, confirm, keys, bar, logo, helpPage, live,
+  };
 }

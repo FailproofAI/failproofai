@@ -43,6 +43,38 @@ Identical to the Python SDK: create an `events:add` key under **Admin → Keys**
 
 ## Configuration
 
+### OpenTelemetry spans (opt in)
+
+Install OpenTelemetry separately with `npm install @opentelemetry/api @opentelemetry/sdk-trace-base`.
+Then add FailproofAI to your provider's processors:
+
+```ts
+import * as failproofai from "@failproofai/sdk";
+import { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+
+const spanProcessors: SpanProcessor[] = [];
+await failproofai.instrument("otel", { spanProcessors });
+const provider = new BasicTracerProvider({ spanProcessors });
+const span = provider.getTracer("my-agent").startSpan("agent", {
+  attributes: { "gen_ai.operation.name": "invoke_agent" },
+});
+span.end();
+await provider.forceFlush();
+```
+
+For an existing provider, keep its other processors in the same list. Providers
+that expose `addSpanProcessor` can instead be passed as `{ provider }`. Without
+options, setup registers a new provider only if no provider is already registered.
+`OtelSpanExporter` can also be used directly with your own processor.
+
+Exports go through the connected FailproofAI daemon; the SDK sends no network
+requests and needs no key or local listener. Ask an admin to enable
+[OpenTelemetry ingest](/agenteye/opentelemetry). A bare `instrument()` does not
+enable this exporter. `uninstrument("otel")` disables only its own processor.
+Your span attributes control content capture; flush your provider before exit.
+OpenTelemetry stays an optional application dependency, not a hard SDK dependency.
+
 ```ts
 failproofai.configure({
   environment: "production",

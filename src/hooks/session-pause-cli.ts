@@ -1,26 +1,38 @@
 /**
- * `failproofai config --pause | --resume | --status`.
+ * `failproofai config --pause | --resume`.
  *
  * Lives on `config` rather than as its own verb because `config` is the single
  * place this product configures anything. The state it writes is NOT config
  * though — see session-pause.ts for why a pause must never reach a file that
  * gets committed.
+ *
+ * `--status` used to be answered here too. It is a whole-machine screen now
+ * (config-status.ts), which lists every pause among the rest of the machine's
+ * state; this module keeps the two commands that change a pause.
  */
 import {
   PAUSE_CEILING_MS,
   clearPause,
-  formatDuration,
   listActivePauses,
   parsePauseDuration,
   readActivePause,
   resolveSessionForCwd,
   writePause,
-  type ActivePause,
 } from "./session-pause";
-import { note, nextStep, optsFor, rows, stack } from "./tui";
+import { INDENT, optsFor, screenKit, type RenderOpts } from "./tui";
+
+/**
+ * How a clock time is written. Both default to the machine's own, which is what
+ * a person reading their terminal expects; tests pin them so the output does not
+ * depend on where the suite runs.
+ */
+export interface PauseClock {
+  locale?: string;
+  timeZone?: string;
+}
 
 export interface PauseCommandOptions {
-  action: "pause" | "resume" | "status";
+  action: "pause" | "resume";
   /** Raw `--pause <duration>` argument, if any. */
   duration?: string;
   /** Explicit `--session <id>`. */
@@ -29,24 +41,14 @@ export interface PauseCommandOptions {
   all?: boolean;
   cwd?: string;
   now?: number;
+  /** Width and colour. Defaults to the stream the result is printed on. */
+  render?: RenderOpts;
+  clock?: PauseClock;
 }
 
 export interface PauseCommandResult {
   exitCode: number;
   lines: string[];
-  /**
-   * The `--status` facts unrendered, so `config --status` can align them into
-   * the SAME label column as the connection block above them rather than each
-   * block computing its own. Absent for pause/resume, which are confirmations
-   * rather than readouts.
-   */
-  rows?: Array<[string, string]>;
-  /**
-   * Lines that are NOT rows — the note and the resume command. A caller merging
-   * `rows` into a wider readout must still print these; dropping them took the
-   * only instruction telling a paused user how to get unpaused.
-   */
-  trailer?: string[];
   /** For telemetry; never the session id itself. */
   affected: number;
 }
@@ -70,53 +72,58 @@ export function effectiveCeilingMs(): number {
   return PAUSE_CEILING_MS;
 }
 
-function describe(pause: ActivePause, now: number): string {
-  const remaining = formatDuration(Math.max(0, pause.expiresAt - now));
-  const at = new Date(pause.expiresAt).toLocaleTimeString();
-  const where = pause.cwd ? ` · ${pause.cwd}` : "";
-  // The session id is the row LABEL now, so it is not repeated here.
-  return `${remaining} left (until ${at})${where}`;
+/**
+ * `14:32`, or `2:32 PM` — the locale's own clock, to the minute.
+ *
+ * Seconds are dropped: a pause is minutes long, and `14:32:07` puts the one
+ * number a reader wants among two they do not.
+ */
+export function pauseClockTime(epochMs: number, clock: PauseClock = {}): string {
+  return new Date(epochMs).toLocaleTimeString(clock.locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    ...(clock.timeZone ? { timeZone: clock.timeZone } : {}),
+  });
+}
+
+/** `30 minutes`, `1 hour 30 minutes`, `45 seconds` — a duration in words. */
+export function pauseDurationWords(ms: number): string {
+  if (ms < 60_000) {
+    const seconds = Math.max(1, Math.round(ms / 1000));
+    return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  }
+  const minutes = Math.round(ms / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+  if (rest > 0) parts.push(`${rest} minute${rest === 1 ? "" : "s"}`);
+  return parts.join(" ");
 }
 
 export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
   const now = opts.now ?? Date.now();
   const cwd = opts.cwd ?? process.cwd();
-
-  if (opts.action === "status") {
-    const active = listActivePauses(now);
-    const renderOpts = optsFor(process.stdout);
-    // A row, because this is read as part of `config --status` — a bare sentence
-    // at column 0 under a block of aligned facts reads as output from a
-    // different command.
-    if (active.length === 0) {
-      const pairs: Array<[string, string]> = [["enforcement", "active — nothing is paused"]];
-      return { exitCode: 0, lines: rows(pairs, renderOpts), rows: pairs, affected: 0 };
-    }
-    const pairs: Array<[string, string]> = [
-      ["enforcement", `paused for ${active.length} session${active.length === 1 ? "" : "s"}`],
-      ...active.map((p) => [p.sessionId, describe(p, now).trim()] as [string, string]),
-    ];
-    const trailer = stack(
-      note("Cloud-managed policies keep enforcing regardless.", renderOpts),
-      nextStep("failproofai config --resume", "Resume early with:", renderOpts),
-    );
-    return {
-      exitCode: 0,
-      rows: pairs,
-      trailer,
-      lines: stack(rows(pairs, renderOpts), trailer),
-      affected: active.length,
-    };
-  }
+  // Painted for the stream it lands on: a result goes to stdout and a refusal to
+  // stderr, and only one of the two may be a terminal.
+  const kitFor = (ok: boolean) => screenKit(opts.render ?? optsFor(ok ? process.stdout : process.stderr));
+  // "this session" is the one resolved from this directory; a session named on
+  // the command line is named back, so a pause set from elsewhere says whose it is.
+  const target = (explicit: string | undefined) => (explicit ? `session ${explicit}` : "this session");
 
   if (opts.action === "resume") {
+    const kit = kitFor(true);
     if (opts.all) {
       const active = listActivePauses(now);
       let cleared = 0;
       for (const pause of active) if (clearPause(pause.sessionId)) cleared++;
       return {
         exitCode: 0,
-        lines: [cleared === 0 ? "Nothing was paused." : `Resumed enforcement for ${cleared} session(s).`],
+        lines: [
+          cleared === 0
+            ? "Nothing was paused."
+            : kit.ok(`Resumed enforcement for ${cleared} session${cleared === 1 ? "" : "s"}.`),
+        ],
         affected: cleared,
       };
     }
@@ -127,7 +134,11 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
     const cleared = clearPause(sessionId);
     return {
       exitCode: 0,
-      lines: [cleared ? "Enforcement resumed." : "Nothing was paused for that session."],
+      lines: [
+        cleared
+          ? kit.ok(`Resumed enforcement for ${target(opts.sessionId)}.`)
+          : `Nothing was paused for ${opts.sessionId ? `session ${opts.sessionId}` : "that session"}.`,
+      ],
       affected: cleared ? 1 : 0,
     };
   }
@@ -137,46 +148,55 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
   try {
     durationMs = parsePauseDuration(opts.duration, effectiveCeilingMs());
   } catch (err) {
-    return { exitCode: 1, lines: [err instanceof Error ? err.message : String(err)], affected: 0 };
+    return {
+      exitCode: 1,
+      lines: [kitFor(false).fail(err instanceof Error ? err.message : String(err))],
+      affected: 0,
+    };
   }
 
   const sessionId = opts.sessionId ?? resolveSessionForCwd(cwd, undefined, now);
   if (!sessionId) {
     // Deliberately an error, not a guess. Pausing the wrong session would leave
     // the user believing enforcement is off while it is on, or vice versa.
+    const kit = kitFor(false);
+    const retry = `failproofai config --pause${opts.duration ? ` ${opts.duration}` : ""} --session <id>`;
     return {
       exitCode: 1,
       lines: [
-        "No recent agent session found for this directory.",
-        "",
-        "A pause applies to one agent session, and the session id only appears once",
-        "an agent has run at least one tool call here. Either run your agent first,",
-        "or name the session explicitly:",
-        "",
-        "  failproofai config --pause --session <id>",
-        "",
-        "Session ids are listed in the dashboard's activity view.",
+        kit.fail("No recent agent session found for this directory."),
+        `${INDENT}Name one from the dashboard's activity view:  ${kit.cmd(retry)}`,
       ],
       affected: 0,
     };
   }
 
+  const kit = kitFor(true);
   const existing = readActivePause(sessionId, now);
   const pause = writePause({ sessionId, durationMs, cwd, setBy: "cli", now });
-  const until = new Date(pause.expiresAt).toLocaleTimeString();
+  // What was actually granted, not what was asked for: a renewal is capped at 8h
+  // from the FIRST pause in the run, so it can be shorter than requested, and a
+  // line repeating the request would misstate when enforcement comes back.
+  const granted = Math.max(0, pause.expiresAt - now);
+  const capped = pause.expiresAt < now + durationMs;
+  const when = `until ${pauseClockTime(pause.expiresAt, opts.clock)} (${pauseDurationWords(granted)})`;
+  const resume = opts.sessionId
+    ? `failproofai config --resume --session ${opts.sessionId}`
+    : "failproofai config --resume";
 
   return {
     exitCode: 0,
     lines: [
-      existing
-        ? `Enforcement pause extended · ${formatDuration(durationMs)} · resumes at ${until}`
-        : `Enforcement paused · ${formatDuration(durationMs)} · resumes at ${until}`,
-      "",
-      "  Builtin, custom and convention policies are suspended for this session.",
-      "  Cloud-managed policies keep enforcing.",
-      "",
-      "It lifts on its own — no action needed. To end it early:",
-      "  failproofai config --resume",
+      kit.ok(
+        existing
+          ? `Extended the pause for ${target(opts.sessionId)} ${when}.`
+          : `Paused enforcement for ${target(opts.sessionId)} ${when}.`,
+      ),
+      ...(capped
+        ? [`${INDENT}Capped at ${pauseDurationWords(PAUSE_CEILING_MS)} from when this pause began.`]
+        : []),
+      `${INDENT}Cloud-managed policies keep enforcing.`,
+      `${INDENT}Resume early:  ${kit.cmd(resume)}`,
     ],
     affected: 1,
   };

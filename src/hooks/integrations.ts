@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { writeConfigFileAtomic } from "./safe-config-write";
+import { codexSystemHooksPresent, type CodexSystemHookEntry } from "./codex-system-hooks";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import {
@@ -85,7 +86,7 @@ export class UnreadableAgentConfigError extends Error {
   }
 }
 
-function readJsonFile(path: string): Record<string, unknown> {
+export function readJsonFile(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   let raw: string;
   try {
@@ -527,6 +528,9 @@ export const codex: Integration = {
   },
 
   hooksInstalledInSettings(scope, cwd) {
+    // User scope may live in Codex's system config instead (see
+    // ./codex-system-hooks): Codex runs hooks from there without trust.
+    if (scope === "user" && codexSystemHooksPresent()) return true;
     const settingsPath = this.getSettingsPath(scope, cwd);
     if (!existsSync(settingsPath)) return false;
     try {
@@ -549,6 +553,18 @@ export const codex: Integration = {
     return binaryExists("codex");
   },
 };
+
+/**
+ * failproofai's user-scope Codex hooks, as the system config holds them: the
+ * same events, commands and timeouts `codex.buildHookEntry` writes to
+ * `~/.codex/hooks.json`.
+ */
+export function codexSystemHookEntries(binaryPath: string): CodexSystemHookEntry[] {
+  return CODEX_HOOK_EVENT_TYPES.map((eventType) => {
+    const entry = codex.buildHookEntry(binaryPath, eventType, "user") as { command: string; timeout: number };
+    return { event: CODEX_EVENT_MAP[eventType as CodexHookEventType], command: entry.command, timeout: entry.timeout };
+  });
+}
 
 // ── GitHub Copilot CLI integration ──────────────────────────────────────────
 //

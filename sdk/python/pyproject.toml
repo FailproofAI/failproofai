@@ -50,7 +50,7 @@ Changelog = "https://github.com/FailproofAI/failproofai/blob/main/sdk/python/CHA
 # `tomli` is `tomllib`'s backport: 3.10 has no stdlib TOML parser, and that test
 # reads this file to prove the promise, so on 3.10 it needs one rather than
 # skipping the check on the oldest interpreter we advertise.
-dev = ["pytest>=7", "tomli>=2; python_version<'3.11'", "pytest-asyncio>=1.3,<2"]
+dev = ["pytest>=7", "tomli>=2; python_version<'3.11'", "pytest-asyncio>=1.3,<2", "opentelemetry-sdk>=1.39,<2"]
 
 # Convenience aliases that pull the FRAMEWORK in. The adapter code always ships
 # in the base wheel and lazy-imports, so these gate nothing on our side — most
@@ -72,6 +72,7 @@ crewai = [
 ]
 llamaindex = ["llama-index-core>=0.14.23,<0.15"]
 pydantic-ai = ["pydantic-ai-slim>=2.0,<3"]      # 2.0 removed Agent(instrument=...)
+otel = ["opentelemetry-sdk>=1.39,<2"]          # optional SpanExporter / processor APIs
 
 [tool.setuptools.dynamic]
 version = { attr = "failproofai_sdk._version.__version__" }

@@ -548,7 +548,7 @@ export function canElevate(): boolean {
  * cannot elevate silently gets a clear reason and the manual commands
  * instead — it keeps working exactly as it did, on the in-process path.
  */
-function runPrivileged(command: string, args: string[]): void {
+export function runPrivileged(command: string, args: string[]): void {
   const root = typeof process.getuid === "function" && process.getuid() === 0;
   const [cmd, argv] = root ? [command, args] : ["sudo", ["-n", command, ...args]];
   execFileSync(cmd, argv, { stdio: "ignore", timeout: SERVICE_CMD_TIMEOUT_MS });
@@ -559,7 +559,7 @@ function runPrivileged(command: string, args: string[]): void {
  * caller is not root and cannot write there directly. `install -m` sets the
  * mode in the same step, so the file is never briefly world-writable.
  */
-function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
+export function writePrivilegedFile(destination: string, contents: string, mode = "0644"): void {
   // mkdtempSync, not a name built from pid + timestamp in the shared tmpdir.
   // That name is guessable, and `writeFileSync` follows a symlink already
   // sitting at the path — so on a multi-user box another local user could
@@ -1617,14 +1617,24 @@ export async function refreshDaemonToCliVersion(
 
   const result = await install();
   if (!result.installed) {
+    // Root is the usual reason, and the install's own `reason` for it is written
+    // for the wizard and the log: it says to re-run `failproofai config` and
+    // carries a full unit file to paste. From `update` the answer is shorter,
+    // and names this command: get sudo, then run it again. Never "run the CLI
+    // under sudo" — that would configure root's account instead of this one.
+    const needsRoot = /root privileges are required/.test(result.reason ?? "");
     return {
       ok: false,
-      lines: [
-        `failproofaid ${version} could not be installed: ${result.reason ?? "unknown reason"}`,
-        `The previous daemon is untouched. On a machine configured to require it,`,
-        `enforcement continues; collection and cloud policy may be stale until this`,
-        `succeeds. \`${daemonStatusCommand() ?? "systemctl status"}\` will say more.`,
-      ],
+      lines: needsRoot
+        ? [
+            `✕ failproofaid ${version} was not installed: root privileges are required. The previous daemon is untouched.`,
+            "  Run `sudo -v` and then `failproofai update` again.",
+          ]
+        : [
+            `✕ failproofaid ${version} could not be installed: ${(result.reason ?? "unknown reason").replace(/\.$/, "")}. ` +
+              "The previous daemon is untouched.",
+            `  See why with \`${daemonStatusCommand() ?? "systemctl status"}\`.`,
+          ],
     };
   }
   // RECORD THE VERSION, or the refresh is invisible to everything that asks.

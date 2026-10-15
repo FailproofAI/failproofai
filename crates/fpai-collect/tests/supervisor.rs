@@ -288,3 +288,37 @@ fn join_with_flush_gives_up_on_a_wedged_task_instead_of_hanging() {
         "join must respect its budget rather than waiting for the wedged task: took {elapsed:?}"
     );
 }
+
+#[test]
+fn a_slow_stop_hands_the_handle_back_and_a_later_wait_completes_it() {
+    // A collector busy uploading can take longer than one budget to stop.
+    // Giving up on it must not lose the handle: the daemon keeps it, starts
+    // nothing over the same queues, and starts the replacement once it stops.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let finished = Arc::new(AtomicBool::new(false));
+    let done = finished.clone();
+    let handle = spawn_supervised(
+        vec![TaskSpec::new("slow-to-stop", move |sd| {
+            let done = done.clone();
+            async move {
+                while !sd.is_set() {
+                    sd.sleep(Duration::from_millis(10)).await;
+                }
+                // Ignores the request for a while, like an in-flight upload.
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                done.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        })],
+        shutdown,
+    )
+    .expect("supervisor should start");
+    std::thread::sleep(Duration::from_millis(50));
+    let handle = match handle.stop_within(Duration::from_millis(50)) {
+        Ok(()) => panic!("a task still finishing its work cannot have stopped yet"),
+        Err(handle) => handle,
+    };
+    assert!(!finished.load(Ordering::SeqCst));
+    assert!(handle.stop_within(Duration::from_secs(2)).is_ok());
+    assert!(finished.load(Ordering::SeqCst));
+}

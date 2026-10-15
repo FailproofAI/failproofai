@@ -58,6 +58,35 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
 
 ## Configuration
 
+### OpenTelemetry spans (opt in)
+
+Install `opentelemetry-sdk` separately, then attach the optional exporter:
+
+```python
+import failproofai_sdk
+from opentelemetry.sdk.trace import TracerProvider
+
+provider = TracerProvider()
+failproofai_sdk.instrument("otel", provider=provider)
+with provider.get_tracer("my-agent").start_as_current_span(
+    "agent", attributes={"gen_ai.operation.name": "invoke_agent"}
+):
+    pass
+provider.force_flush()
+```
+
+Setup uses your registered provider if you omit `provider`, creating one only
+when none is registered. You can also pass `failproofai_sdk.OtelSpanExporter()`
+directly to your own span processor. Other exporters remain unchanged.
+
+The connected FailproofAI daemon delivers exports; the SDK needs no network
+setup, key, or local listener. An admin must enable
+[OpenTelemetry ingest](/agenteye/opentelemetry). A bare `instrument()` never
+enables OTEL. `uninstrument("otel")` disables only its own processor.
+Your instrumentation controls content capture. Flush the provider before exit.
+The SDK still declares zero hard runtime dependencies and imports OpenTelemetry
+only when requested.
+
 ```python
 import failproofai_sdk
 

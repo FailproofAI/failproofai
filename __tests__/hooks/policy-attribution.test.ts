@@ -30,6 +30,13 @@ vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: vi.fn(() => "test-id")
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(), hookLogWarn: vi.fn(), hookLogError: vi.fn(),
 }));
+vi.mock("../../src/hooks/untraced-note", () => ({
+  // Unmocked, the handler's once-per-session note reads the REAL
+  // ~/.failproofai/config.json and, when it leaves this agent untraced, writes
+  // state/untraced-notes.json there. The note decides nothing, so mocking it
+  // changes no outcome here.
+  noteUntracedAgent: vi.fn(() => false),
+}));
 vi.mock("../../src/hooks/pack-manifest", () => ({
   // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
   // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would

@@ -36,6 +36,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { writeJsonAtomically } from "../../lib/atomic-write";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -281,6 +282,14 @@ export interface FpConfig {
   };
   collector: {
     sessions: boolean;
+    /**
+     * Per-agent transcript transport overrides. Orthogonal to `agents.selected`,
+     * which gates collection: a traced agent using OTEL keeps its hooks, but
+     * must not also send transcripts. Retain the original OTEL key layout so
+     * upgrades and recovery snapshots can restore the previous preference.
+     */
+    agents?: Record<string, { sessions?: boolean }>;
+    otlp?: { enabled: boolean; port?: number };
     hooks: boolean;
     hooksVerbosity: "all" | "decisions" | "off";
     redact: "minimal" | "off";
@@ -368,6 +377,23 @@ export interface FpConfig {
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
+  /**
+   * Which agents failproofai traces: the remembered answer to `failproofai
+   * config`'s "which agents should failproofai trace?".
+   *
+   * `selected` drives every per-agent thing at once — which CLIs get hooks,
+   * which harnesses the daemon's collector reads, and which `backfill` re-sends.
+   * `seen` is every agent that was detected at the last setup, which is how a
+   * newly installed agent is recognised and offered as "new on this machine".
+   * Ids are the integration ids (`claude`, `codex`, …).
+   *
+   * ABSENT means today's behaviour, everything, and that is what every machine
+   * set up before this existed has. So `writeConfig` emits nothing in that case,
+   * and the daemon — which reads `agents.selected` from this same file — keeps
+   * collecting every harness. The direction matters: an unreadable or missing
+   * selection must never quietly switch tracing OFF.
+   */
+  agents?: { selected: string[]; seen: string[] };
 }
 
 /**
@@ -441,6 +467,45 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
     if (paths.length > 0) out[name] = { extraPaths: paths };
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function readAgentSessions(raw: unknown): FpConfig["collector"]["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const agents = Object.fromEntries(Object.entries(raw).flatMap(([agent, settings]) => {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return [];
+    const sessions = (settings as Record<string, unknown>).sessions;
+    return typeof sessions === "boolean" ? [[agent, { sessions }]] : [];
+  }));
+  return Object.keys(agents).length ? agents : undefined;
+}
+
+function readOtlpSettings(raw: unknown): FpConfig["collector"]["otlp"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const settings = raw as Record<string, unknown>;
+  return {
+    enabled: settings.enabled === true,
+    ...(typeof settings.port === "number" && Number.isInteger(settings.port) ? { port: settings.port } : {}),
+  };
+}
+
+/**
+ * `agents` → the in-memory shape. Kept as written (strings only, de-duplicated
+ * in order): the daemon owns the list of real agent ids and warns about an
+ * unknown one, so dropping it here would hide that warning behind a value the
+ * CLI had already rewritten — the same reasoning as {@link readSources}.
+ *
+ * `undefined` unless `selected` is an array, because absent means everything
+ * and a garbage value must fail in that direction too.
+ */
+function readAgents(raw: unknown): FpConfig["agents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const ids = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? [...new Set(v.filter((e): e is string => typeof e === "string" && e.trim() !== ""))]
+      : [];
+  const table = raw as Record<string, unknown>;
+  if (!Array.isArray(table.selected)) return undefined;
+  return { selected: ids(table.selected), seen: ids(table.seen) };
 }
 
 /**
@@ -532,6 +597,8 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
           typeof collector.environment === "string" ? collector.environment : "local",
         machineId: typeof collector.machine_id === "string" ? collector.machine_id : undefined,
         sources: readSources(collector.sources),
+        agents: readAgentSessions(collector.agents),
+        otlp: readOtlpSettings(collector.otlp),
       },
       // Only an explicit `false` switches it off. Absent, or any other value,
       // reads as on — the shipped default, and what a config with no
@@ -552,6 +619,7 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
             ? audit.reports_consented_at
             : undefined,
       },
+      agents: readAgents(parsed.agents),
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -594,10 +662,15 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["collector", "environment"],
   ["collector", "machine_id"],
   ["collector", "sources", "*", "extra_paths"],
+  ["collector", "agents", "*", "sessions"],
+  ["collector", "otlp", "enabled"],
+  ["collector", "otlp", "port"],
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
   ["audit", "reports_consented_at"],
+  ["agents", "selected"],
+  ["agents", "seen"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -669,6 +742,8 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
       // Omitted when unset rather than written null: the Rust side treats an
       // absent machine_id as "derive one", and an explicit null is not that.
       ...(c.machineId ? { machine_id: c.machineId } : {}),
+      ...(c.agents ? { agents: c.agents } : {}),
+      ...(c.otlp ? { otlp: c.otlp } : {}),
       // Extra capture paths per harness. Emitted ONLY when non-empty, so a
       // machine that never configured one gets a file byte-identical to what
       // this function produced before the field existed — the same reasoning as
@@ -708,6 +783,12 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
         ? {}
         : { reports_consented_at: config.audit.reportsConsentedAt }),
     },
+    // Written ONLY when a selection exists — absent means "every agent", and a
+    // machine that never chose keeps a file byte-identical to what this
+    // function wrote before the field existed.
+    ...(config.agents
+      ? { agents: { selected: config.agents.selected, seen: config.agents.seen } }
+      : {}),
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left
@@ -726,6 +807,8 @@ export function updateConfig(patch: {
   collector?: Partial<FpConfig["collector"]>;
   telemetry?: Partial<FpConfig["telemetry"]>;
   audit?: Partial<FpConfig["audit"]>;
+  /** Replace the agent selection; `null` removes it (back to "every agent"). */
+  agents?: FpConfig["agents"] | null;
 }): FpConfig {
   // `readConfigRaw`, not `readConfig` — this is the function EVERY mutation path
   // goes through (the wizard, `harness add-path`, `healDaemonFlag`, the telemetry
@@ -738,14 +821,30 @@ export function updateConfig(patch: {
     collector: { ...current.collector, ...patch.collector },
     telemetry: { ...current.telemetry, ...patch.telemetry },
     audit: { ...current.audit, ...patch.audit },
+    // Carried forward when the patch does not name it. Every other mutation
+    // path goes through here — the wizard's own connect step among them — and
+    // a selection dropped by an unrelated write would silently turn tracing
+    // back on for every agent the user switched off.
+    agents: patch.agents === undefined ? current.agents : (patch.agents ?? undefined),
   };
   writeConfig(next, raw);
   return next;
 }
 
+/**
+ * Whether failproofai traces this agent: hooked, collected and backfilled.
+ * True for every agent when no selection has been saved, which is today's
+ * behaviour and what every machine set up before the selection existed has.
+ */
+export function isAgentTraced(id: string, config: FpConfig = readConfig()): boolean {
+  return !config.agents || config.agents.selected.includes(id);
+}
+
 // ── credentials.json ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
+  /** Successful connection time, epoch milliseconds; resets stale refusal status. */
+  connectedAt?: number;
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
   /**
    * Which organisation this machine's credentials report into, as the server
@@ -762,7 +861,7 @@ export interface FpCredentials {
    * the one a key pasted from the wrong org gets silently wrong. Absent against
    * a server predating introspect, and in files written by an older CLI.
    */
-  org?: { id?: string; slug?: string; name?: string };
+  org?: { id?: string; slug?: string; name?: string; since?: number };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
   /**
@@ -798,6 +897,7 @@ export interface JevCloudCredential {
  * only local answer to "where does this machine's data go?".
  */
 const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
+  ["connectedAt"],
   ["cloud", "url"],
   ["cloud", "machine_id"],
   ["cloud", "machine_label"],
@@ -805,6 +905,7 @@ const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
   ["org", "id"],
   ["org", "slug"],
   ["org", "name"],
+  ["org", "since"],
   ["ingest", "url"],
   ["ingest", "key"],
   ["jev", "url"],
@@ -854,6 +955,9 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
     const out: FpCredentials = {};
+    if (typeof parsed.connectedAt === "number" && Number.isSafeInteger(parsed.connectedAt) && parsed.connectedAt >= 0) {
+      out.connectedAt = parsed.connectedAt;
+    }
     if (
       cloud &&
       typeof cloud.url === "string" &&
@@ -871,8 +975,10 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
       // Every field independently optional: a server may send fewer than three,
       // and a partial org record is still better than none for `--status`.
       const pick = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name) };
-      if (built.id || built.slug || built.name) out.org = built;
+      const since = typeof org.since === "number" && Number.isSafeInteger(org.since) && org.since >= 0
+        ? org.since : undefined;
+      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name), ...(since !== undefined ? { since } : {}) };
+      if (built.id || built.slug || built.name || since !== undefined) out.org = built;
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
@@ -901,6 +1007,7 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
  */
 export function writeCredentials(creds: FpCredentials, raw?: Record<string, unknown>): void {
   const out: Record<string, unknown> = {};
+  if (creds.connectedAt !== undefined) out.connectedAt = creds.connectedAt;
   if (creds.cloud) {
     out.cloud = {
       url: creds.cloud.url,
@@ -915,11 +1022,12 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   if (creds.jev) {
     out.jev = { url: creds.jev.url, key: creds.jev.key };
   }
-  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
+  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name || creds.org.since !== undefined)) {
     out.org = {
       ...(creds.org.id ? { id: creds.org.id } : {}),
       ...(creds.org.slug ? { slug: creds.org.slug } : {}),
       ...(creds.org.name ? { name: creds.org.name } : {}),
+      ...(creds.org.since !== undefined ? { since: creds.org.since } : {}),
     };
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {
@@ -945,7 +1053,7 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+  writeJsonAtomically(credentialsFile(), merged);
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {

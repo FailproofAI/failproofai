@@ -38,6 +38,7 @@ __all__ = [
     "propagate",
     "instrument",
     "uninstrument",
+    "OtelSpanExporter",
     "_writer",
 ]
 
@@ -121,6 +122,13 @@ def uninstrument(framework: str | None = None):
     from failproofai_sdk.integrations import uninstrument as _impl
 
     return _impl(framework)
+
+
+def __getattr__(name):
+    if name == "OtelSpanExporter":
+        from failproofai_sdk.integrations.otel import OtelSpanExporter
+        return OtelSpanExporter
+    raise AttributeError(name)
 
 
 # MUST be last: any `import failproofai_sdk.<sub>` binds the *module* onto this

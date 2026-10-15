@@ -28,6 +28,7 @@ That is the whole integration.
 | CrewAI | [crewai/](crewai/) | [crewai/examples/](crewai/examples/) |
 | LlamaIndex | [llama_index/](llama_index/) | [llama_index/examples/](llama_index/examples/) |
 | Pydantic AI | [pydantic_ai/](pydantic_ai/) | [pydantic_ai/examples/](pydantic_ai/examples/) |
+| OpenTelemetry (opt in) | [otel/](otel/) | [otel/examples/](otel/examples/) |
 | **no framework** (your own agent) | [manual/](manual/) | [manual/examples/](manual/examples/) |
 
 Using something else — AutoGen, Haystack, Semantic Kernel, your own loop? Read

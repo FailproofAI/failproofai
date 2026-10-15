@@ -61,13 +61,14 @@ ADAPTER_IMPORTS = {
     "crewai.py": {"crewai"},
     "llama_index.py": {"llama_index", "llama_index_instrumentation", "pydantic"},
     "pydantic_ai.py": {"pydantic_ai"},
+    "otel.py": {"opentelemetry"},
 }
 
 #: Framework top-level names that must never appear in `sys.modules` after a bare
 #: `import failproofai_sdk`.
 FRAMEWORK_ROOTS = {
     "langchain", "langchain_core", "langgraph", "crewai",
-    "llama_index", "llama_index_instrumentation", "pydantic", "pydantic_ai",
+    "llama_index", "llama_index_instrumentation", "pydantic", "pydantic_ai", "opentelemetry",
 }
 
 
@@ -142,6 +143,7 @@ def test_no_runtime_dependencies_are_declared():
 #: convenience library drifting in — anything here is one `--extra dev` away from a
 #: user's environment, and none of it is covered by the zero-dependency promise.
 ALLOWED_DEV_DEPENDENCIES = {
+    "opentelemetry-sdk": "real optional OTEL SpanExporter and processor contract tests; never a base dependency",
     "pytest": "the test runner",
     "pytest-asyncio": "the adapters are half-async; their scopes are exercised "
                       "under `async with`, which needs an async test runner",
@@ -159,6 +161,7 @@ FRAMEWORK_EXTRAS = {
     "crewai": {"crewai", "onnxruntime"},
     "llamaindex": {"llama-index-core"},
     "pydantic-ai": {"pydantic-ai-slim"},
+    "otel": {"opentelemetry-sdk"},
 }
 
 

@@ -1,47 +1,18 @@
 /**
- * Interactive searchable multi-select prompt for choosing hook policies.
- * Uses raw mode stdin with node:readline for keypress handling.
- * No external dependencies.
+ * Which agent CLIs a `policies --install / --uninstall` acts on, asked with the
+ * shared `selectOne` when more than one is detected.
  *
- * Rendering strategy: track line count, use cursor-up + clear-to-end-of-screen
- * (\x1B[NA\x1B[J) to avoid flickering. Lines are truncated to terminal width to
- * ensure lastLineCount stays accurate when the terminal is narrow.
- *
- * Keybindings: ↑↓ navigate · Space toggle · Ctrl+A all · Ctrl+S save · Esc clear search
+ * This file used to carry two hand-rolled raw-mode menus of its own: this one,
+ * with a two-write (non-atomic) repaint and an escape-gate that ignored pipes,
+ * and a searchable policy picker that nothing had called since `--install`
+ * stopped choosing policies. The picker is gone and the menu is `selectOne`,
+ * so it draws, windows and repaints like every other prompt in the CLI.
  */
-import * as readline from "node:readline";
-// Brand palette, ANSI-aware truncation, and glyphs shared with the configure
-// wizard (tui.ts) so every failproofai menu reads as one system.
-import {
-  paint,
-  truncate as truncateLine,
-  BAR,
-  STEP_ACTIVE as STEP,
-  STEP_DONE as DONE,
-  CHECK_ON as BOX_ON,
-  CHECK_OFF as BOX_OFF,
-} from "./tui";
-import { BUILTIN_POLICIES } from "./builtin-policies";
+import { colorsEnabled, optsFor, screenKit, selectOne, type SelectChoice } from "./tui";
 import { detectInstalledClis, getIntegration, listInstallableIds } from "./integrations";
 import { type IntegrationType } from "./types";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
-
-interface SelectItem {
-  name: string;
-  description: string;
-  category: string;
-  selected: boolean;
-  beta: boolean;
-}
-
-type DisplayRow =
-  | { kind: "header"; category: string; enabledCount: number; totalCount: number }
-  | { kind: "item"; item: SelectItem; filteredIndex: number };
-
-export interface PromptOptions {
-  includeBeta?: boolean;
-}
 
 /** Whether the prompt is being shown for an install or an uninstall flow.
  *  Drives heading + hint text so `policies --uninstall` no longer says
@@ -93,15 +64,17 @@ export async function resolveTargetClis(
       // Uninstall flow: no agent CLIs detected — nothing to remove from. Default to
       // claude so removeHooks operates over Claude's scopes (no-op if no settings file).
       console.log(
-        "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi)." +
-          "Defaulting to Claude Code; nothing will be removed if no settings file exists.\x1B[0m",
+        screenKit({ color: colorsEnabled(process.stdout) }).caution(
+          "No agent CLI was found on PATH, so this acts on Claude Code. Nothing is removed if it has no settings file.",
+        ),
       );
       fireDetectionEvent(["claude"], "defaulted_to_claude");
       return ["claude"];
     }
     console.log(
-      "\x1B[33mWarning: no agent CLI binary found in PATH (claude, codex, copilot, cursor-agent, opencode, pi)." +
-        "Defaulting to Claude Code; hooks will activate when an agent is installed.\x1B[0m",
+      screenKit({ color: colorsEnabled(process.stdout) }).caution(
+        "No agent CLI was found on PATH, so hooks go into Claude Code. They take effect once it is installed.",
+      ),
     );
     fireDetectionEvent(["claude"], "defaulted_to_claude");
     return ["claude"];
@@ -159,9 +132,8 @@ export function buildCliMenuOptions(
 
   const options: CliMenuOption[] = [];
   if (detected.length > 1) {
-    const verb = action === "uninstall" ? "Remove from" : "Install for";
     options.push({
-      label: `${verb} all ${detected.length} detected`,
+      label: `All ${detected.length} agents`,
       value: detected,
       detected: true,
       isAll: true,
@@ -187,446 +159,35 @@ export function buildCliMenuOptions(
 }
 
 /**
- * Interactive arrow-key single-select for "install/remove for which CLI?" when
- * multiple agent CLIs are detected.
+ * "Install / remove hooks for which agent?" when more than one is detected.
  *
- * Layout:
- *   • DETECTED section: an "Install for all detected" option (only when >1
- *     detected) followed by each detected CLI individually.
- *   • NOT INSTALLED section (install action only): each undetected CLI as a
- *     forward-install option, so users can prep hooks before adding the CLI.
- *
- * Cursor skips section headers — it only lands on selectable item rows.
+ * Detected agents first — with an "All N agents" row when there are several —
+ * then, for an install, every undetected agent as a forward install, so hooks
+ * can be in place before the agent is. Esc exits 130, as it always has: the
+ * caller has no "cancelled" path, and an install that quietly picked something
+ * would be worse.
  */
 async function promptCliTargetSelection(
   detected: IntegrationType[],
   action: CliPromptAction = "install",
 ): Promise<IntegrationType[]> {
-  const { options, undetected } = buildCliMenuOptions(detected, action);
-
-  type DisplayRow =
-    | { kind: "header"; title: string; hint?: string }
-    | { kind: "blank" }
-    | { kind: "item"; option: CliMenuOption; itemIndex: number };
-
-  function buildDisplayRows(): DisplayRow[] {
-    const rows: DisplayRow[] = [];
-    let itemIndex = 0;
-
-    rows.push({
-      kind: "header",
-      title: `Detected (${detected.length})`,
-    });
-    for (const opt of options) {
-      if (opt.detected) {
-        rows.push({ kind: "item", option: opt, itemIndex: itemIndex++ });
-      }
-    }
-
-    if (undetected.length > 0) {
-      rows.push({ kind: "blank" });
-      rows.push({
-        kind: "header",
-        title: `Not installed (${undetected.length})`,
-        hint: "install hooks ahead of time",
-      });
-      for (const opt of options) {
-        if (!opt.detected) {
-          rows.push({ kind: "item", option: opt, itemIndex: itemIndex++ });
-        }
-      }
-    }
-
-    return rows;
-  }
-
-  let cursor = 0;
-  let lastLineCount = 0;
-  let cursorHidden = false;
-
-  function hideCursor(): void {
-    if (!cursorHidden) {
-      process.stdout.write("\x1B[?25l");
-      cursorHidden = true;
-    }
-  }
-  function showCursor(): void {
-    if (cursorHidden) {
-      process.stdout.write("\x1B[?25h");
-      cursorHidden = false;
-    }
-  }
-
-  // Shared brand painter from tui.ts (NO_COLOR-gated like the rest of this file).
-  const { dim, bold, guide: teal, pink, pinkBold } = paint(!process.env.NO_COLOR);
-
-  const heading =
-    action === "uninstall" ? "Remove failproofai hooks" : "Install failproofai hooks";
-
-  function render(): void {
-    const cols = process.stdout.columns || 100;
-    hideCursor();
-
-    const g = dim(BAR);
-    const lines: string[] = [g, `${teal(STEP)}  ${bold(heading)}`];
-
-    for (const row of buildDisplayRows()) {
-      if (row.kind === "blank") {
-        lines.push(g);
-        continue;
-      }
-      if (row.kind === "header") {
-        const hint = row.hint ? `  ${dim("· " + row.hint)}` : "";
-        lines.push(`${g}  ${dim(row.title)}${hint}`);
-        continue;
-      }
-
-      const opt = row.option;
-      const isActive = row.itemIndex === cursor;
-      const caret = isActive ? pink("❯") : " ";
-      const marker = opt.isAll ? teal("★") : opt.detected ? pink("●") : dim("○");
-      const label = isActive
-        ? pinkBold(opt.label)
-        : opt.detected
-          ? opt.label
-          : dim(opt.label);
-      lines.push(`${g}  ${caret} ${marker}  ${label}`);
-    }
-
-    lines.push(g);
-    lines.push(`${g}  ${dim("↑/↓ move · ↵ select · esc cancel")}`);
-
-    if (lastLineCount > 0) {
-      process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
-    }
-    process.stdout.write(lines.map((l) => truncateLine(l, cols)).join("\n") + "\n");
-    lastLineCount = lines.length;
-  }
-
-  const itemCount = options.length;
-
-  return new Promise<IntegrationType[]>((resolve) => {
-    render();
-    readline.emitKeypressEvents(process.stdin);
-    const wasRaw = process.stdin.isRaw;
-    if (process.stdin.setRawMode) process.stdin.setRawMode(true);
-    process.stdin.resume();
-
-    function cleanup(): void {
-      showCursor();
-      process.stdin.removeListener("keypress", onKey);
-      if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw ?? false);
-      process.stdin.pause();
-    }
-
-    function onKey(_str: string | undefined, key: readline.Key): void {
-      if (!key) return;
-      if ((key.ctrl && (key.name === "c" || key.name === "d")) || key.name === "escape") {
-        cleanup();
-        process.stdout.write("\n");
-        process.exit(130); // SIGINT-equivalent
-      }
-      if (key.name === "up") {
-        cursor = cursor > 0 ? cursor - 1 : itemCount - 1;
-        render();
-      } else if (key.name === "down") {
-        cursor = cursor < itemCount - 1 ? cursor + 1 : 0;
-        render();
-      } else if (key.name === "return" || key.name === "space") {
-        cleanup();
-        process.stdout.write("\n");
-        resolve(options[cursor].value);
-      }
-    }
-
-    process.stdin.on("keypress", onKey);
+  const { options } = buildCliMenuOptions(detected, action);
+  const kit = screenKit(optsFor(process.stdout));
+  process.stdout.write(`\n${kit.header(action === "uninstall" ? "Remove hooks" : "Install hooks")}\n\n`);
+  const choices: SelectChoice<IntegrationType[]>[] = options.map((option) => ({
+    label: option.label,
+    value: option.value,
+    section: option.detected ? "found on this machine" : "not installed, set up ahead of time",
+  }));
+  const picked = await selectOne<IntegrationType[]>({
+    message: "Choose agents",
+    meta: `${detected.length} found on this machine`,
+    choices,
+    spaceSelects: true,
   });
-}
-
-/**
- * Show interactive searchable policy selector.
- * @param preSelected — policy names to pre-check (e.g. from existing config).
- *                      When omitted, uses each policy's defaultEnabled flag.
- * @param options     — prompt options (e.g. includeBeta)
- */
-export async function promptPolicySelection(
-  preSelected?: string[],
-  options: PromptOptions = {},
-): Promise<string[]> {
-  const { includeBeta = false } = options;
-
-  // If stdin is not a TTY (piped/CI), return defaults
-  if (!process.stdin.isTTY) {
-    const available = BUILTIN_POLICIES.filter((p) => includeBeta || !p.beta);
-    // Returned UNCHANGED, deliberately. This used to intersect with the builtin
-    // catalog, and manager.ts writes the result straight back — so a piped
-    // `policies --install` silently deleted every enabled name the catalog did
-    // not contain: a `failproofai/`-qualified name (a form the enforcement path
-    // explicitly accepts, `registerBuiltinPolicies` canonicalizes both), a beta
-    // policy enabled with `--beta`, and now any pack policy. The line that
-    // reports what was enabled prints only the survivors, so the loss was
-    // invisible. Carrying an unknown name costs nothing — registration looks it
-    // up in a Set and finds nothing — while dropping one destroys configuration.
-    if (preSelected) return [...preSelected];
-    return available.filter((p) => p.defaultEnabled).map((p) => p.name);
+  if (picked === null) {
+    process.stdout.write("\n");
+    process.exit(130); // SIGINT-equivalent
   }
-
-  const preSelectedSet = preSelected ? new Set(preSelected) : null;
-
-  const items: SelectItem[] = BUILTIN_POLICIES
-    .filter((p) => includeBeta || !p.beta)
-    .map((p) => ({
-      name: p.name,
-      description: p.description,
-      category: p.category,
-      selected: preSelectedSet ? preSelectedSet.has(p.name) : p.defaultEnabled,
-      beta: !!p.beta,
-    }));
-
-  // Everything the user has enabled that this picker cannot show a row for, for
-  // the same reason as the non-TTY branch above: the picker's universe is the
-  // builtin catalog, and resolving from it alone deletes anything else. Kept in
-  // their original order and appended to whatever the user picks.
-  const carried = preSelected
-    ? preSelected.filter((name) => !items.some((i) => i.name === name))
-    : [];
-
-  const total = items.length;
-  const WINDOW_SIZE = 10;
-
-  // Shared brand painter from tui.ts, bound to role names so a reader never has
-  // to decode which hue a role happens to use today (glyphs imported above).
-  const useColor = !process.env.NO_COLOR;
-  const c = paint(useColor);
-  const { dim, bold } = c;
-  const stepMark = c.guide; // ◆ step marker + live selected-count
-  const activeName = c.pinkBold; // row under the cursor
-  const selectedMark = c.pink; // checked boxes / selected names
-  const betaTag = c.softPink; // "beta" pill
-  // Fixed name column so descriptions align into a clean, scannable second column.
-  const NAME_COL = Math.min(34, Math.max(10, ...items.map((i) => i.name.length)));
-
-  let cursor = 0;
-  let search = "";
-  let lastLineCount = 0;
-  let cursorHidden = false;
-
-  function hideCursor(): void {
-    if (!cursorHidden) {
-      process.stdout.write("\x1B[?25l");
-      cursorHidden = true;
-    }
-  }
-
-  function showCursor(): void {
-    if (cursorHidden) {
-      process.stdout.write("\x1B[?25h");
-      cursorHidden = false;
-    }
-  }
-
-  function getFiltered(): SelectItem[] {
-    if (!search) return items;
-    const q = search.toLowerCase();
-    return items.filter(
-      (i) => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q),
-    );
-  }
-
-  // Build display rows: category header rows interspersed with item rows.
-  // Categories appear in the order they first appear in BUILTIN_POLICIES.
-  function buildDisplayRows(filtered: SelectItem[]): DisplayRow[] {
-    // Single pass: compute category order, enabled counts, and total counts together.
-    const categoryOrder: string[] = [];
-    const categoryEnabledCount = new Map<string, number>();
-    const categoryTotalCount = new Map<string, number>();
-    for (const p of items) {
-      if (!categoryEnabledCount.has(p.category)) {
-        categoryOrder.push(p.category);
-        categoryEnabledCount.set(p.category, 0);
-        categoryTotalCount.set(p.category, 0);
-      }
-      categoryTotalCount.set(p.category, categoryTotalCount.get(p.category)! + 1);
-      if (p.selected) categoryEnabledCount.set(p.category, categoryEnabledCount.get(p.category)! + 1);
-    }
-
-    const filteredByCategory = new Map<string, SelectItem[]>();
-    for (const item of filtered) {
-      const bucket = filteredByCategory.get(item.category) ?? [];
-      bucket.push(item);
-      filteredByCategory.set(item.category, bucket);
-    }
-
-    const rows: DisplayRow[] = [];
-    let idx = 0;
-    for (const cat of categoryOrder) {
-      const catFiltered = filteredByCategory.get(cat);
-      if (!catFiltered || catFiltered.length === 0) continue;
-      rows.push({ kind: "header", category: cat, enabledCount: categoryEnabledCount.get(cat)!, totalCount: categoryTotalCount.get(cat)! });
-      for (const item of catFiltered) {
-        rows.push({ kind: "item", item, filteredIndex: idx++ });
-      }
-    }
-    return rows;
-  }
-
-  function render(): void {
-    const cols = process.stdout.columns || 100;
-    hideCursor();
-
-    const filtered = getFiltered();
-    const shown = filtered.length;
-    if (shown > 0 && cursor >= shown) cursor = shown - 1;
-    const selectedCount = items.filter((i) => i.selected).length;
-
-    const g = dim(BAR);
-    const lines: string[] = [];
-
-    // header
-    lines.push(g);
-    lines.push(
-      `${stepMark(STEP)}  ${bold("Choose the policies to enable")}   ${dim("·")}   ` +
-        `${stepMark(String(selectedCount))} ${dim("selected")}`,
-    );
-
-    // search
-    const blockCursor = useColor ? "\x1B[7m \x1B[0m" : "_";
-    const countLabel = search ? dim(`${shown}/${total} shown`) : dim(`${total} policies`);
-    lines.push(`${g}  ${dim("filter ›")} ${search}${blockCursor}   ${countLabel}`);
-    lines.push(g);
-
-    if (shown === 0) {
-      lines.push(`${g}  ${dim(`no policies match “${search}”`)}`);
-      for (let i = 0; i < WINDOW_SIZE + 1; i++) lines.push(g);
-    } else {
-      const displayRows = buildDisplayRows(filtered);
-
-      let cursorDisplayRow = 0;
-      for (let i = 0; i < displayRows.length; i++) {
-        const row = displayRows[i];
-        if (row.kind === "item" && row.filteredIndex === cursor) {
-          cursorDisplayRow = i;
-          break;
-        }
-      }
-      let windowStart = cursorDisplayRow - Math.floor(WINDOW_SIZE / 2);
-      windowStart = Math.max(0, windowStart);
-      windowStart = Math.min(windowStart, Math.max(0, displayRows.length - WINDOW_SIZE));
-      const windowEnd = Math.min(displayRows.length, windowStart + WINDOW_SIZE);
-
-      const aboveItems = displayRows.slice(0, windowStart).filter((r) => r.kind === "item").length;
-      lines.push(aboveItems > 0 ? `${g}  ${dim(`↑ ${aboveItems} more`)}` : g);
-
-      for (let i = windowStart; i < windowEnd; i++) {
-        const row = displayRows[i];
-        if (row.kind === "header") {
-          lines.push(`${g}  ${dim(row.category.toUpperCase())}  ${dim(`${row.enabledCount}/${row.totalCount}`)}`);
-        } else {
-          const item = row.item;
-          const active = row.filteredIndex === cursor;
-          const box = item.selected ? selectedMark(BOX_ON) : dim(BOX_OFF);
-          const rawName = item.name.padEnd(NAME_COL);
-          const name = active ? activeName(rawName) : item.selected ? rawName : dim(rawName);
-          const beta = item.beta ? ` ${betaTag("beta")}` : "";
-          const descWidth = Math.max(8, cols - NAME_COL - 8 - (item.beta ? 5 : 0));
-          const desc = dim(truncateLine(item.description, descWidth));
-          lines.push(`${g}  ${box} ${name}${beta}  ${desc}`);
-        }
-      }
-      for (let i = windowEnd - windowStart; i < WINDOW_SIZE; i++) lines.push(g);
-
-      const belowItems = displayRows.slice(windowEnd).filter((r) => r.kind === "item").length;
-      lines.push(belowItems > 0 ? `${g}  ${dim(`↓ ${belowItems} more`)}` : g);
-    }
-
-    // footer
-    lines.push(g);
-    lines.push(`${g}  ${dim("↑/↓ move · space select · ctrl+a all · ↵ save · type to filter · esc clear")}`);
-
-    if (lastLineCount > 0) process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
-    process.stdout.write(lines.map((l) => truncateLine(l, cols)).join("\n") + "\n");
-    lastLineCount = lines.length;
-  }
-
-  return new Promise<string[]>((resolve) => {
-    render();
-
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    // Use a single data→keypress pipeline with no readline.Interface.
-    // readline.createInterface would register its own competing data listener
-    // and its close() call would unexpectedly pause stdin, breaking arrow keys.
-    readline.emitKeypressEvents(process.stdin);
-
-    function keypressHandler(_str: string | undefined, key: readline.Key): void {
-      if (!key) return;
-
-      if (key.ctrl && key.name === "c") {
-        cleanup();
-        process.exit(0);
-      }
-
-      const filtered = getFiltered();
-
-      if (key.name === "up") {
-        if (filtered.length > 0) {
-          cursor = cursor > 0 ? cursor - 1 : filtered.length - 1;
-        }
-        render();
-      } else if (key.name === "down") {
-        if (filtered.length > 0) {
-          cursor = cursor < filtered.length - 1 ? cursor + 1 : 0;
-        }
-        render();
-      } else if (key.name === "space") {
-        const item = filtered[cursor];
-        if (item) item.selected = !item.selected;
-        render();
-      } else if (key.name === "return" || (key.ctrl && key.name === "s")) {
-        // Save — collapse the picker to a one-line summary, then resolve.
-        cleanup();
-        const selected = items.filter((i) => i.selected).map((i) => i.name);
-        if (lastLineCount > 0) process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
-        // Carried entries are NAMED, not counted. "3 kept" reads as fine right
-        // up until someone needs to know which three.
-        const summary = carried.length > 0
-          ? `${selected.length} selected, kept ${carried.join(", ")}`
-          : `${selected.length} selected`;
-        process.stdout.write(
-          `${dim(BAR)}\n${dim(DONE)}  Policies\n${dim(BAR)}  ${dim(summary)}\n`,
-        );
-        resolve([...selected, ...carried]);
-      } else if (key.name === "escape") {
-        // Clear search filter
-        search = "";
-        cursor = 0;
-        render();
-      } else if (key.ctrl && key.name === "a") {
-        // Toggle all visible items
-        const allSelected = filtered.length > 0 && filtered.every((i) => i.selected);
-        for (const item of filtered) item.selected = !allSelected;
-        render();
-      } else if (key.name === "backspace" || key.name === "delete") {
-        if (search.length > 0) {
-          search = search.slice(0, -1);
-          cursor = 0;
-          render();
-        }
-      } else if (_str && _str.length === 1 && !key.ctrl && !key.meta) {
-        // All printable characters (including 'a', 's') go to search
-        search += _str;
-        cursor = 0;
-        render();
-      }
-    }
-
-    function cleanup(): void {
-      showCursor();
-      process.stdin.removeListener("keypress", keypressHandler);
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-    }
-
-    process.stdin.on("keypress", keypressHandler);
-  });
+  return picked;
 }

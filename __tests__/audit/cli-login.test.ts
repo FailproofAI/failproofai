@@ -214,6 +214,81 @@ describe("a preset address", () => {
   });
 });
 
+describe("the sign-in screen", () => {
+  /**
+   * The 2026-10 screen language: the `Audit` header, an UPPERCASE heading, a
+   * field per question and one `✓`/`✕` line per outcome. It used to open with
+   * the full logomark inside `config`'s `│ ◆ ◇ └` spine; the redesign keeps the
+   * mark to bare `failproofai` and `config` (LAUNCH-10).
+   */
+  let written: string[];
+  beforeEach(() => {
+    written = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    });
+  });
+  const screen = () => written.join("");
+
+  it("opens with the Audit header and a SIGN IN heading, and no logomark or spine", async () => {
+    promptTextMock.mockResolvedValueOnce("you@example.com").mockResolvedValueOnce("123456");
+    await runLogin();
+
+    const lines = screen().split("\n");
+    expect(lines[0]).toBe("");
+    expect(lines[1]).toMatch(/^failproof ai {2}v\S+ {2}· {2}Audit$/);
+    expect(lines[3]).toBe("SIGN IN");
+    expect(screen()).not.toMatch(/[│◆◇└▀▄█]/u);
+  });
+
+  it("asks through the new field, and states each outcome as a sentence", async () => {
+    promptTextMock.mockResolvedValueOnce("you@example.com").mockResolvedValueOnce("123456");
+    await runLogin();
+
+    expect(promptTextMock.mock.calls.map(([opts]) => [opts.message, opts.field])).toEqual([
+      ["email", true],
+      ["code", true],
+    ]);
+    expect(screen()).toContain("✓ Sent a code to you@example.com, valid for 10 minutes.\n");
+    expect(screen()).toContain("✓ Signed in as you@example.com.\n");
+  });
+
+  it("says a wrong code with a ✕ and asks again with the attempt on the hint", async () => {
+    promptTextMock
+      .mockResolvedValueOnce("you@example.com")
+      .mockResolvedValueOnce("000000")
+      .mockResolvedValueOnce("123456");
+    verifyMock
+      .mockRejectedValueOnce(new AuthApiError(401, "invalid_code", "that code is wrong"))
+      .mockResolvedValueOnce(TOKENS);
+    await runLogin();
+
+    expect(screen()).toContain("✕ That code was wrong or has expired.\n");
+    expect(promptTextMock.mock.calls[2]![0].hint).toBe("attempt 2 of 3");
+  });
+
+  it("shows a preset address as the field it would have been typed into", async () => {
+    promptTextMock.mockResolvedValueOnce("123456");
+    await runLogin("Preset@Example.com");
+    expect(screen()).toContain("\n  email     › preset@example.com\n✓ Sent a code to preset@example.com");
+  });
+
+  it("says nothing was changed when the sign-in is cancelled", async () => {
+    promptTextMock.mockResolvedValueOnce(null);
+    await expect(runLogin()).rejects.toThrow("Cancelled.");
+    expect(screen()).toContain("Cancelled. Nothing was changed.\n");
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+
+  it("says a code that could not be sent with a ✕, and leaves the reason to the error", async () => {
+    promptTextMock.mockResolvedValueOnce("you@example.com");
+    requestMock.mockRejectedValueOnce(new AuthApiError(429, "rate_limited", "slow down", 30));
+    await expect(runLogin()).rejects.toThrow(/too many attempts/i);
+    expect(screen()).toContain("✕ Could not send a login code.\n");
+  });
+});
+
 describe("an existing session that has already expired", () => {
   // `--schedule` printed `reports to <email>` and exited 0 for ANY session file
   // on disk, expiry unread — so somebody whose refresh token lapsed or was

@@ -115,6 +115,11 @@ describe("failproofai config --token (real binary)", () => {
     expect(r.stderr).toContain("shell history");
     expect(r.stderr).toContain("FAILPROOFAI_CLOUD_TOKEN");
     expect(r.stdout + r.stderr).not.toContain(KEY);
+    // One `▲` line and one fix line, the command plain in a pipe.
+    expect(r.stderr).toContain(
+      "▲ --token put the key in your shell history and, while this ran, the process list. Rotate it if that matters.\n" +
+        "  Next time, set FAILPROOFAI_CLOUD_TOKEN instead:  read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN",
+    );
   });
 });
 

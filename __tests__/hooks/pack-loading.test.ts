@@ -60,8 +60,14 @@ async function loadWith(packs: ResolvedPack[], paths: string[] = [artifact]) {
   return result.hooks as unknown as Tagged[];
 }
 
+// Loading a pack writes its ESM shim under <failproofai home>/state/shims. Left
+// on the default, every run of this file dropped one into the developer's real
+// ~/.failproofai.
+const priorFpHome = process.env.FAILPROOFAI_HOME;
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "fpai-pack-load-"));
+  process.env.FAILPROOFAI_HOME = join(root, "fp-home");
   const artifacts = join(root, "artifacts");
   mkdirSync(artifacts, { recursive: true });
   artifact = join(artifacts, `${SHA}.mjs`);
@@ -71,6 +77,8 @@ beforeEach(() => {
 
 afterEach(() => {
   clearCustomHooks();
+  if (priorFpHome === undefined) delete process.env.FAILPROOFAI_HOME;
+  else process.env.FAILPROOFAI_HOME = priorFpHome;
   rmSync(root, { recursive: true, force: true });
 });
 

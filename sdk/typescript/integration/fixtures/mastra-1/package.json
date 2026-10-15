@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "@types/node": "22.20.4"
+  },
+  "overrides": {
+    "@modelcontextprotocol/client": "2.2.0"
   }
 }

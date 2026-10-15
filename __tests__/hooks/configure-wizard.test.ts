@@ -133,6 +133,7 @@ import {
   planAgents,
   removeUserScopeHooks,
   resolveCloudUrl,
+  savedConnection,
   runConfigureWizard,
   maybeFirstRunConfigure,
   hasSeenLauncher,
@@ -145,6 +146,15 @@ import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 import { configFile as fpConfigFile, credentialsFile, launcherMarker } from "../../src/hooks/fp-home";
 import { readConfig as readFpConfig, updateConfig } from "../../src/hooks/fp-config";
 import { backfillRequestPath } from "../../src/hooks/backfill-request";
+
+it("savedConnection flags split keys instead of treating either as the saved connection", () => {
+  mkdirSync(dirname(credentialsFile()), { recursive: true });
+  writeFileSync(credentialsFile(), JSON.stringify({
+    cloud: { url: "https://cloud.example", machine_id: "m", token: "policy-token" },
+    ingest: { url: "https://cloud.example/v1/events", key: "ingest-token" },
+  }));
+  expect(savedConnection()?.splitKeys).toBe(true);
+});
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
 const mkTtyStdout = (): TTYOut => ({ isTTY: true, write: vi.fn(() => true), columns: 80 }) as unknown as TTYOut;

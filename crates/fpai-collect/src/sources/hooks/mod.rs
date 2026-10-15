@@ -190,6 +190,7 @@ async fn poll_once(
     let mut emitted = 0u64;
 
     for path in files {
+        writer.set_source(&path);
         let Ok(meta) = tokio::fs::metadata(&path).await else {
             continue;
         };

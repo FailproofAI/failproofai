@@ -43,6 +43,12 @@ function withTrueColor<T>(fn: () => T): T {
 
 const NO_REFUSALS = { total: 0, rejected: 0, credentialRejected: 0, byStatus: {} };
 
+it("reports split policy and ingest keys without revealing either", () => {
+  const f = facts();
+  if (f.cloud.kind === "file") f.cloud.splitKeys = true;
+  expect(renderStatusScreen(f, PLAIN).join("\n")).toContain("Policy and ingest use different keys");
+});
+
 /** A healthy connected machine — the reference screen's sample, as facts. */
 function facts(over: Partial<StatusFacts> = {}): StatusFacts {
   return {

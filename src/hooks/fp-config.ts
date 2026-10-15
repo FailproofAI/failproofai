@@ -36,6 +36,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { writeJsonAtomically } from "../../lib/atomic-write";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -808,6 +809,8 @@ export function isAgentTraced(id: string, config: FpConfig = readConfig()): bool
 // ── credentials.json ─────────────────────────────────────────────────────────
 
 export interface FpCredentials {
+  /** Successful connection time, epoch milliseconds; resets stale refusal status. */
+  connectedAt?: number;
   cloud?: { url: string; machineId: string; token: string; machineLabel?: string };
   /**
    * Which organisation this machine's credentials report into, as the server
@@ -824,7 +827,7 @@ export interface FpCredentials {
    * the one a key pasted from the wrong org gets silently wrong. Absent against
    * a server predating introspect, and in files written by an older CLI.
    */
-  org?: { id?: string; slug?: string; name?: string };
+  org?: { id?: string; slug?: string; name?: string; since?: number };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
   /**
@@ -860,6 +863,7 @@ export interface JevCloudCredential {
  * only local answer to "where does this machine's data go?".
  */
 const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
+  ["connectedAt"],
   ["cloud", "url"],
   ["cloud", "machine_id"],
   ["cloud", "machine_label"],
@@ -867,6 +871,7 @@ const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
   ["org", "id"],
   ["org", "slug"],
   ["org", "name"],
+  ["org", "since"],
   ["ingest", "url"],
   ["ingest", "key"],
   ["jev", "url"],
@@ -916,6 +921,9 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
     const out: FpCredentials = {};
+    if (typeof parsed.connectedAt === "number" && Number.isSafeInteger(parsed.connectedAt) && parsed.connectedAt >= 0) {
+      out.connectedAt = parsed.connectedAt;
+    }
     if (
       cloud &&
       typeof cloud.url === "string" &&
@@ -933,8 +941,10 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
       // Every field independently optional: a server may send fewer than three,
       // and a partial org record is still better than none for `--status`.
       const pick = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name) };
-      if (built.id || built.slug || built.name) out.org = built;
+      const since = typeof org.since === "number" && Number.isSafeInteger(org.since) && org.since >= 0
+        ? org.since : undefined;
+      const built = { id: pick(org.id), slug: pick(org.slug), name: pick(org.name), ...(since !== undefined ? { since } : {}) };
+      if (built.id || built.slug || built.name || since !== undefined) out.org = built;
     }
     if (ingest && typeof ingest.url === "string" && typeof ingest.key === "string" && ingest.url && ingest.key) {
       out.ingest = { url: ingest.url, key: ingest.key };
@@ -963,6 +973,7 @@ export function projectCredentials(parsed: Record<string, unknown>): FpCredentia
  */
 export function writeCredentials(creds: FpCredentials, raw?: Record<string, unknown>): void {
   const out: Record<string, unknown> = {};
+  if (creds.connectedAt !== undefined) out.connectedAt = creds.connectedAt;
   if (creds.cloud) {
     out.cloud = {
       url: creds.cloud.url,
@@ -977,11 +988,12 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   if (creds.jev) {
     out.jev = { url: creds.jev.url, key: creds.jev.key };
   }
-  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name)) {
+  if (creds.org && (creds.org.id || creds.org.slug || creds.org.name || creds.org.since !== undefined)) {
     out.org = {
       ...(creds.org.id ? { id: creds.org.id } : {}),
       ...(creds.org.slug ? { slug: creds.org.slug } : {}),
       ...(creds.org.name ? { name: creds.org.name } : {}),
+      ...(creds.org.since !== undefined ? { since: creds.org.since } : {}),
     };
   }
   if (creds.auth && (creds.auth.sessionToken || creds.auth.email)) {
@@ -1007,7 +1019,7 @@ export function writeCredentials(creds: FpCredentials, raw?: Record<string, unkn
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+  writeJsonAtomically(credentialsFile(), merged);
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {

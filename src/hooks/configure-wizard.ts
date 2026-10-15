@@ -920,6 +920,9 @@ export async function runConfigureWizard(
   // — no `connectToCloud`, which would reset collector settings — after
   // checking that it still works.
   const saved = savedConnection();
+  if (saved?.splitKeys) {
+    write([kit.caution("Saved policy and ingest keys differ. Paste one replacement key to reconcile them, or Tab to leave both unchanged.")]);
+  }
   const urlChoice = resolveCloudUrl(answers.url, saved?.url);
   // An unusable --url or FAILPROOFAI_CLOUD_URL is refused loudly, never a silent
   // fall-back to the hosted service: whoever set it wants THAT endpoint, and
@@ -965,7 +968,7 @@ export async function runConfigureWizard(
       meta: source ? `${host}  ·  from ${source}` : host,
       tabHint: saved ? "skip" : "use open source instead",
       emptyError: saved ? "Paste a key, or press tab to skip." : "Paste a key, or press tab to use open source.",
-      saved: saved
+      saved: saved && !saved.splitKeys
         ? {
             masked: maskToken(saved.token),
             check: async () => {
@@ -1282,6 +1285,7 @@ export async function runConfigureWizard(
         }),
       );
       connected = outcome.anyConfigured;
+      done.push(...(outcome.changes ?? []));
       done.push(...connectDoneLines(kit, outcome, host, cloud.org));
       if (outcome.ingest.ok && answers.noTranscripts === true) {
         done.push("  Decisions only: session transcripts are not sent (--no-transcripts).");
@@ -1346,11 +1350,12 @@ type CloudPlan =
  * one and the collector's ingest key. Reading only the first, as setup used to,
  * showed a collector-only machine as unconnected.
  */
-function savedConnection(): {
+export function savedConnection(): {
   url: string;
   token: string;
   org?: string;
   machineLabel?: string;
+  splitKeys?: boolean;
 } | null {
   const cloud = readCloudCredentials();
   const ingest = readIngestCredential();
@@ -1364,7 +1369,10 @@ function savedConnection(): {
   } catch {
     org = undefined;
   }
-  return { url, token, org, machineLabel: cloud?.machineLabel };
+  return {
+    url, token, org, machineLabel: cloud?.machineLabel,
+    ...(cloud && ingest && cloud.token !== ingest.key ? { splitKeys: true } : {}),
+  };
 }
 
 /**

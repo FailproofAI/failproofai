@@ -251,7 +251,7 @@ pub async fn sweep(
         }
 
         if SystemTime::now() >= next_failed_pass {
-            retry_parked(&delivery, &failed_dir, &sd).await;
+            retry_parked(&delivery, &failed_dir, &sd, FAILED_RETRY_MIN_AGE).await;
             next_failed_pass = SystemTime::now() + FAILED_RETRY_INTERVAL;
         }
 
@@ -274,6 +274,7 @@ pub async fn sweep(
                         delivery.deliver(path).await;
                     }
                 }
+                retry_parked(&delivery, &failed_dir, &sd, Duration::ZERO).await;
                 break;
             }
             if SystemTime::now() >= deadline {
@@ -337,7 +338,7 @@ fn sweepable(name: &str) -> bool {
     !name.starts_with('.') && ParkedName::parse(name).is_auto_retryable()
 }
 
-async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown) {
+async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown, min_age: Duration) {
     let Ok(mut rd) = tokio::fs::read_dir(failed_dir).await else {
         return;
     };
@@ -358,7 +359,7 @@ async fn retry_parked(delivery: &Delivery, failed_dir: &Path, sd: &Shutdown) {
         let Ok(modified) = meta.modified() else {
             continue;
         };
-        if now.duration_since(modified).unwrap_or_default() < FAILED_RETRY_MIN_AGE {
+        if now.duration_since(modified).unwrap_or_default() < min_age {
             continue;
         }
         found.push((modified, path));
@@ -393,6 +394,44 @@ async fn poll_shutdown(sd: &Shutdown) {
 mod tests {
     use super::*;
     use std::time::UNIX_EPOCH;
+
+    #[tokio::test]
+    async fn a_flush_redrives_fresh_retryable_batches_but_not_auth_refusals() {
+        use wiremock::matchers::{header, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(header("Authorization", "Bearer replacement"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let dir = tmpdir("flush-recovery");
+        let retryable = dir.join("session.a1.jsonl");
+        let refused = dir.join("refused.a1.c401.jsonl");
+        std::fs::write(&retryable, "{}\n").unwrap();
+        std::fs::write(&refused, "{}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "replacement".into(), dir.clone()).unwrap(),
+        ));
+        let sd = Shutdown::for_test(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        retry_parked(&delivery, &dir, &sd, FAILED_RETRY_MIN_AGE).await;
+        assert!(
+            retryable.exists(),
+            "ordinary retries must retain the age gate"
+        );
+        retry_parked(&delivery, &dir, &sd, Duration::ZERO).await;
+        assert!(!retryable.exists());
+        assert!(
+            refused.exists(),
+            "flush must not retry an unchanged refused key"
+        );
+        server.verify().await;
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn tmpdir(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(

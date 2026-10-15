@@ -17,12 +17,15 @@ from . import orgs as orgsmod
 from ._context import AppState
 from ._version import __version__
 from .commands import (
+    account_cmds,
     agent_cmds,
     alerts_cmds,
     audits_cmds,
     auth_cmds,
+    dashboards_cmds,
     errors_cmds,
     evals_cmds,
+    evaluators_cmds,
     events_cmds,
     fleet_cmds,
     guardrails_cmds,
@@ -33,6 +36,7 @@ from .commands import (
     policies_cmds,
     queries_cmds,
     sessions_cmds,
+    sentiment_cmds,
     settings_cmds,
     usage_cmds,
     users_cmds,
@@ -128,6 +132,12 @@ app = typer.Typer(
 # function Typer calls for this; falls back silently if its internals change.
 try:  # pragma: no cover - exercised via real command output, not unit assertions
     import typer.rich_utils as _rich_utils
+    # Keep generated subcommand help on the same shared screen primitives.
+    _rich_utils.Panel = output.Panel
+    _rich_utils.Table = output.Table
+    _rich_utils.STYLE_OPTION = output.theme.PINK
+    _rich_utils.STYLE_COMMANDS_TABLE_FIRST_COLUMN = output.theme.PINK
+    _rich_utils.STYLE_OPTION_ENVVAR = output.theme.LABEL
 
     import re as _re
 
@@ -327,7 +337,7 @@ def main(
             "must be a positive number of seconds.", param_hint="--timeout"
         )
     cfg = cfgmod.load_config()
-    output.configure(no_color=no_color, quiet=quiet, json=json_output)
+    output.configure(no_color=no_color, quiet=quiet, json=json_output, context=ctx.invoked_subcommand or "Cloud")
     # Resolve the credential BEFORE telemetry starts: the distinct-id depends on it.
     # `get_parameter_source` is what separates a flag from its env var — the values
     # alone cannot, and the precedence rules differ between the two (see resolve_auth).
@@ -452,6 +462,9 @@ orgs_cmds.register(app)
 events_cmds.register(app)
 sessions_cmds.register(app)
 evals_cmds.register(app)
+evaluators_cmds.register(app)
+dashboards_cmds.register(app)
+sentiment_cmds.register(app)
 errors_cmds.register(app)
 usage_cmds.register(app)
 list_cmds.register(app)
@@ -466,6 +479,7 @@ agent_cmds.register(app)
 policies_cmds.register(app)
 fleet_cmds.register(app)
 guardrails_cmds.register(app)
+account_cmds.register(app)
 
 
 def _elapsed_ms(start: float) -> int:

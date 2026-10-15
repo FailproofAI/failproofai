@@ -70,6 +70,8 @@ def events(
     * `fp --json events --session-id run-001 --all` — a run's full timeline: event types + summaries (light, fast)
     * `fp --json events --full --session-id run-001 --all | jq '.events[].payload'` — that run's raw payloads (full feed, bounded to one run)
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     cctx = require_auth(state)
     frm, to = resolve_dates(since, ts_from, ts_to)
@@ -155,5 +157,16 @@ def events(
         output.recheck_filters_hint(active_filters)
 
 
+def latency(ctx: typer.Context, since: Optional[str] = typer.Option(None, "--since")) -> None:
+    """Aggregate event latency."""
+    from . import _cloud
+    frm, to = resolve_dates(since, None, None)
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "GET", "/api/events/latency_aggregate",
+        params={"ts_from": frm, "ts_to": to}), "Event latency")
+
+
 def register(app: typer.Typer) -> None:
-    app.command("events", epilog=GLOBALS_EPILOG)(events)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(events)
+    group.command("latency", epilog=GLOBALS_EPILOG)(latency)
+    app.add_typer(group, name="events")

@@ -13,18 +13,99 @@ import json as _json
 import math
 import re
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import typer
 from rich.box import ROUNDED, SIMPLE_HEAD
 from rich.console import Console, Group
 from rich.padding import Padding
-from rich.panel import Panel
-from rich.rule import Rule
-from rich.table import Table
+from rich.panel import Panel as RichPanel
+from rich.rule import Rule as RichRule
+from rich.table import Table as RichTable
+from rich.measure import Measurement
 from rich.text import Text
 
 from . import theme
+from ._version import __version__
+
+_screen_started = False
+_screen_context = "Cloud"
+
+
+def wordmark(context: Optional[str] = None) -> Text:
+    line = Text("fa", style="bold")
+    line.append("il", style=f"bold {theme.PINK}")
+    line.append("proof ai", style="bold")
+    line.append(f" v{__version__} · {context or _screen_context}", style=theme.LABEL)
+    return line
+
+
+def heading(value: Any) -> Text:
+    text = value.copy() if isinstance(value, Text) else Text.from_markup(str(value))
+    # Change chrome, never the case of a resource name/id in a title.
+    name, sep, rest = text.plain.partition(" · ")
+    known = {"events", "sessions", "evals", "errors", "keys", "users", "queries", "settings",
+             "issues", "models", "chats", "audits", "findings", "commands", "version",
+             "permissions", "orgs", "assistant", "usage", "guardrails", "policies", "fleet",
+             "options", "arguments"}
+    if name.lower() in known:
+        text = Text(name.upper(), style=f"bold {theme.TEXT}") + Text(sep + rest, style=theme.LABEL)
+    return text
+
+
+def screen_header(console=None) -> None:
+    global _screen_started
+    if not _screen_started and not _quiet and not _json_out:
+        _screen_started = True
+        (console or _stdout).print(wordmark())
+        (console or _stdout).print()
+
+
+class Panel(RichPanel):
+    """Legacy cards rendered through the open-screen primitive, without boxes.
+
+    Keep RichPanel's constructor/attributes so existing renderers need no rewrite.
+    """
+    def __rich_console__(self, console, options):
+        global _screen_started
+        if not _screen_started and not _quiet and not _json_out:
+            _screen_started = True
+            yield wordmark()
+            yield Text("")
+        if self.title:
+            yield heading(self.title)
+        yield self.renderable
+        if self.subtitle:
+            yield heading(self.subtitle)
+
+    def __rich_measure__(self, console, options):
+        parts = [self.renderable]
+        if self.title:
+            parts.insert(0, heading(self.title))
+        return Measurement.get(console, options, Group(*parts))
+
+
+class Rule(RichRule):
+    """Legacy separators are intentionally invisible in the 2026-10 language."""
+    def __rich_console__(self, console, options):
+        return iter(())
+
+    def __rich_measure__(self, console, options):
+        return Measurement(0, 0)
+
+
+class Table(RichTable):
+    """Shared tables: grey labels, no borders/rules, fold instead of cut."""
+    def __init__(self, *args, **kwargs):
+        kwargs["box"] = None
+        kwargs["show_edge"] = False
+        kwargs["header_style"] = theme.LABEL
+        super().__init__(*args, **kwargs)
+
+    def add_column(self, *args, **kwargs):
+        kwargs["overflow"] = "fold"
+        kwargs["no_wrap"] = False
+        return super().add_column(*args, **kwargs)
 
 _stdout = Console()
 _stderr = Console(stderr=True)
@@ -33,14 +114,16 @@ _no_color = False
 _json_out = False
 
 
-def configure(*, no_color: bool = False, quiet: bool = False, json: bool = False) -> None:
+def configure(*, no_color: bool = False, quiet: bool = False, json: bool = False, context: str = "Cloud") -> None:
     """Reconfigure the consoles from the resolved global flags."""
-    global _stdout, _stderr, _quiet, _no_color, _json_out
+    global _stdout, _stderr, _quiet, _no_color, _json_out, _screen_started, _screen_context
     _stdout = Console(no_color=no_color)
     _stderr = Console(stderr=True, no_color=no_color)
     _quiet = quiet
     _no_color = no_color
     _json_out = json
+    _screen_started = False
+    _screen_context = context
 
 
 def is_json() -> bool:
@@ -70,6 +153,11 @@ def _ansi(text: str, **style: Any) -> str:
     """A click-styled string for use in input prompts, or plain when colour is off."""
     if _no_color:
         return text
+    # Click accepts RGB tuples, not Rich's hex colour strings.
+    for key in ("fg", "bg"):
+        color = style.get(key)
+        if isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            style[key] = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
     return typer.style(text, **style)
 
 
@@ -126,16 +214,30 @@ def print_table(
     title: Optional[str] = None,
     show_header: bool = True,
 ) -> None:
-    table = Table(
-        title=title, title_justify="left", header_style="bold", show_header=show_header
-    )
+    screen_header()
+    if title:
+        _stdout.print(Text(str(title).upper(), style="bold"))
+    widths = [max([len(str(column))] + [len(_cell(row[i])) for row in rows if i < len(row)]) for i, column in enumerate(columns)]
+    if len(columns) > 1 and sum(widths) + 3 * len(columns) > _stdout.width:
+        # On a narrow terminal, wrapped adjacent columns interleave copyable
+        # ids and URLs. Stack the fields so each value remains a whole line.
+        for row in rows:
+            for column, value in zip(columns, row):
+                _stdout.print(Text(str(column).upper(), style=theme.LABEL))
+                _stdout.print(Text("  " + _cell(value)), soft_wrap=True)
+            _stdout.print()
+        return
+    table = Table(show_header=show_header)
     for column in columns:
         table.add_column(str(column), overflow="fold")
     for row in rows:
         # Wrap each cell in Text so a value containing Rich markup (e.g. "[/]" or
         # "[red]" in a server-provided field) renders literally instead of raising
         # MarkupError mid-render (which would abort with a raw traceback).
-        table.add_row(*[Text(_cell(value)) for value in row])
+        table.add_row(*[
+            Text(_cell(value), style=theme.LABEL if list(columns) == ["Field", "Value"] and i == 0 else "")
+            for i, value in enumerate(row)
+        ])
     _stdout.print(table)
 
 
@@ -152,7 +254,7 @@ def info(message: str) -> None:
 
 def success(message: str) -> None:
     if not _quiet:
-        _stderr.print(message, style="green")
+        _stderr.print(Text("✓ ", style=theme.SUCCESS) + Text(message))
 
 
 def hint(message: str) -> None:
@@ -161,12 +263,12 @@ def hint(message: str) -> None:
 
 
 def error(message: str) -> None:
-    _stderr.print(message, style="bold red")
+    _stderr.print(Text("✕ ", style=theme.ERROR) + Text(message))
 
 
 def warn(message: str) -> None:
     if not _quiet:
-        _stderr.print(message, style="yellow")
+        _stderr.print(Text("▲ ", style=theme.PINK) + Text(message))
 
 
 def cli_warn(message: str) -> None:
@@ -187,7 +289,7 @@ def cli_warn(message: str) -> None:
 # here is stderr status chrome (never the --json data on stdout); the accent is
 # the project's pink/magenta. All gated on `_quiet`.
 
-_ACCENT = "magenta"
+_ACCENT = theme.PINK
 _NEUTRAL = "grey62"  # gray for 'already in that state' no-op boxes (neutral, not red/green)
 
 
@@ -196,7 +298,8 @@ def auth_header() -> None:
     if _quiet:
         return
     _stderr.print()
-    _stderr.print(f"  [bold {_ACCENT}]◆ fp[/]")
+    screen_header(_stderr)
+    _stderr.print(Text("SIGN IN", style="bold"))
     _stderr.print("  [dim]welcome — let's get you signed in with a one-time code[/]")
     _stderr.print()
 
@@ -212,7 +315,7 @@ def code_sent(email: str) -> None:
     """Confirm the one-time code was emailed (the completed `request_otp` step)."""
     if _quiet:
         return
-    _stderr.print(f"  [green]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
+    _stderr.print(f"  [{theme.SUCCESS}]✓[/] code sent to [bold {_ACCENT}]{email}[/]")
 
 
 def org_picker(slugs: Sequence[str], current: Optional[str] = None) -> None:
@@ -403,6 +506,7 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
     highlighted. Built from a `rich.Text` (literal body — no markup injection). The colour
     carries the meaning: **green** = success, **brand-accent** = neutral 'already-in-state'
     no-op, **red** = failure. One shape so they all read as one family."""
+    color = theme.SUCCESS if color == "green" else theme.PINK if color in ("red", "yellow", "cyan", "magenta") else color
     text = Text()
     indent = ""
     # A box may be mark-less (the colour/title carry the meaning, e.g. the red
@@ -415,7 +519,7 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
         text.append(f"\n{indent}")
         text.append(hint, style="dim")
     text.highlight_words(
-        ["fp login", "fp logout", "login --force"], style="bold cyan"
+        ["fp login", "fp logout", "login --force"], style=f"bold {theme.PINK}"
     )
     panel = Panel(
         text,
@@ -433,8 +537,12 @@ def _panel(mark: str, color: str, title: str, body: Text, hint: Optional[str] = 
 
 
 def _error_box(message: str, hint: Optional[str] = None) -> None:
-    """A red `✗` failure box — the chokepoint for every CLI error."""
-    _panel("✗", "red", "error", Text(message), hint)
+    """One failure line, followed by a grey recovery hint when present."""
+    _stderr.print(Text("✕ ", style=theme.ERROR) + Text(message))
+    if hint:
+        line = Text("  " + hint, style=theme.LABEL)
+        line.highlight_regex(r"(?:fp|failproofai)\s+[^`]+", style=theme.PINK)
+        _stderr.print(line)
 
 
 def _status_box(title: str, body: Text, hint: Optional[str] = None) -> None:
@@ -450,21 +558,8 @@ def version_banner(version: str) -> None:
     if _quiet:
         _stdout.print(version)
         return
-    body = Text()
-    body.append("◆  ", style=f"bold {_ACCENT}")
-    body.append("fp", style="bold")
-    body.append("  ")
-    body.append(f"v{version}", style=f"bold {_ACCENT}")
-    panel = Panel(
-        body,
-        border_style=_ACCENT,
-        title=f"[bold {_ACCENT}]version[/]",
-        title_align="left",
-        expand=False,
-        padding=(0, 1),
-    )
-    _stdout.print()
-    _stdout.print(Padding(panel, (0, 0, 0, 2)))
+    screen_header()
+    _stdout.print(Text(f"fp v{version}", style=theme.LABEL))
 
 
 # ── top-level help (the grouped `fp` / `fp help` / `fp --help` screen) ──
@@ -482,35 +577,42 @@ _TOP_LEVEL_GROUPS = [
         ("whoami", "Show the current user, active org, and perms.", ""),
     ]),
     ("OBSERVE", [
-        ("events", "List the raw per-step agent event trail.", ""),
-        ("sessions", "List agent runs — one row per run.", ""),
+        ("events", "List the raw per-step agent event trail.", "latency"),
+        ("sessions", "List agent runs — one row per run.", "show export history re-evaluate"),
         ("evals", "List scored agent evaluations.", "--aggregate"),
+        ("evaluators", "Author, test and deploy managed evaluators.", "list show create deploy draft dry-run enable disable label instances schema jobs backfill"),
+        ("sentiment", "Inspect conversation sentiment.", "summary messages sessions session"),
+        ("dashboards", "Manage dashboards and saved-query tiles.", "list show create update delete tiles"),
         ("errors", "List errored events.", "--aggregate"),
-        ("usage", "Show current org usage for the metering window.", ""),
+        ("usage", "Show current org usage for the metering window.", "windows"),
     ]),
     ("ENFORCE", [
-        ("policies", "Write cloud-managed policies.", "list show publish test compose enable disable delete"),
+        ("policies", "Write cloud-managed policies.", "list show publish test compose author backtest candidacy enable disable delete"),
         ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
         ("guardrails", "What enforcement actually blocked.", "summary timeline"),
     ]),
     ("MANAGE", [
-        ("orgs", "Switch and inspect the active org.", "list switch current perms"),
+        ("orgs", "Switch and inspect the active org.", "list switch current perms create"),
         ("keys", "Provision and manage API keys.", "list show create update disable regenerate"),
-        ("users", "Manage org members and their permissions.", "list show create update disable enable"),
-        ("query", "Run and manage saved SQL queries.", "list show create update delete run schema"),
-        ("alerts", "Define, edit, and test alerts.", "list show create update delete test"),
+        ("users", "Manage org members and their permissions.", "list show create update disable enable delete defaults"),
+        ("query", "Run and manage saved SQL queries.", "list show create update delete run schema compose export"),
+        ("alerts", "Define, edit, and test alerts.", "list show create update delete test recipients issues"),
         # `context-*` rather than the three names spelled out: this hint column
         # ellipsis-truncates at ~110 cols (see `desc_max` below) and this row was
         # already overflowing, so the long form would never render. The full list
         # is one level down, in `fp audits --help`, which walks the real
         # Click tree.
-        ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings context-*"),
-        ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment-* subscribe open"),
-        ("settings", "View and change org settings.", "list schema set"),
+        ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings finding ack mute dismiss resolve reopen assign context-* contracts"),
+        ("issues", "Triage and resolve issues.", "list count show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
+        ("settings", "View and change org settings.", "list schema set context-windows"),
+        ("roles", "Manage permission sets.", "list show create update delete"),
+        ("plan", "Inspect offers and team trial.", "claim"),
+        ("otel", "Control Cloud OTEL ingestion.", "status enable disable"),
+        ("slack", "Manage Slack integration.", "status disconnect"),
     ]),
     ("TOOLS", [
-        ("list", "List distinct values behind the filter dropdowns.", ""),
-        ("agent", "Chat with the FailproofAI Cloud assistant.", "health models chats ask show rename delete"),
+        ("list", "List distinct values behind the filter dropdowns.", "envs agents event_types score_filters models hooks tools error_types"),
+        ("agent", "Chat with the FailproofAI Cloud assistant.", "health models chats ask show rename delete brief"),
     ]),
 ]
 
@@ -530,17 +632,21 @@ def render_top_level_help() -> None:
     bold-white headings, BLUE command names, white one-line descriptions, FAINT subcommand hints,
     a FAINT footer), then aligned EXAMPLES. Presentation only — same routing, same commands.
     NO_COLOR keeps the box + bold headings + alignment, drops colour."""
+    global _screen_started
     total = sum(len(cmds) for _, cmds in _TOP_LEVEL_GROUPS)
 
     def _bullet(*parts) -> Text:
         line = Text("  · ", style=theme.FAINT)
         for text, style in parts:
+            if text.startswith("fp "):
+                style = theme.PINK
             line.append(text, style=style)
         return line
 
     # ── brand mark ──
     _stdout.print()
-    _stdout.print(Text("  ◆ fp", style=f"bold {theme.ACCENT}"))
+    _screen_started = True
+    _stdout.print(wordmark())
 
     # ── getting started ──
     _stdout.print()
@@ -572,9 +678,9 @@ def render_top_level_help() -> None:
         glob.append(g, style=theme.TEXT_DIM)
     _stdout.print(glob)
     eg = Text("    e.g.  ")
-    eg.append("fp --json events ", style=theme.TEXT_DIM)
+    eg.append("fp --json events ", style=theme.PINK)
     eg.append("✓", style=theme.SUCCESS)
-    eg.append("     fp events --json ", style=theme.TEXT_DIM)
+    eg.append("     fp events --json ", style=theme.PINK)
     eg.append("✗", style=theme.ERROR)
     _stdout.print(eg)
     mt = Text("    multi-tenant: set the org at login (", style=theme.FAINT)
@@ -624,7 +730,7 @@ def render_top_level_help() -> None:
             if hint:
                 cell.append("  ·  ", style=theme.FAINT)
                 cell.append(hint, style=theme.FAINT)
-            table.add_row(Text(name, style=theme.BLUE), cell)
+            table.add_row(Text(name, style=theme.PINK), cell)
     footer = Text()
     footer.append("run ", style=theme.FAINT)
     footer.append("fp <command> --help", style=theme.TEXT_DIM)
@@ -645,7 +751,7 @@ def render_top_level_help() -> None:
     ex.add_column(no_wrap=True)
     ex.add_column(no_wrap=True, overflow="ellipsis", max_width=max(SCORES_MIN_WIDTH, min(_stdout.width, 110) - 56))
     for cmd, why in _TOP_LEVEL_EXAMPLES:
-        ex.add_row(Text(cmd, style=theme.ACCENT), Text(why, style=theme.TEXT_DIM))
+        ex.add_row(Text(cmd, style=theme.PINK), Text(why, style=theme.TEXT_DIM))
     _stdout.print(Padding(ex, (0, 0, 0, 2)))
 
     _stdout.print()
@@ -730,7 +836,11 @@ def _perm_res_key(r: str):
 
 def _perm_act_key(a: str):
     """Action sort key: risk order (read → modify → invoke → destroy), then alphabetical."""
-    return (theme.PERM_RANK.get(theme.perm_color(a), 99), a)
+    # Risk ordering is semantic, not a function of the two accent colours.
+    rank = {"read": 0, "add": 1, "create": 1, "write": 1, "update": 1,
+            "use": 2, "trigger": 2, "run": 2, "ack": 2,
+            "delete": 3, "disable": 3, "regenerate": 3}
+    return (rank.get(a, 99), a)
 
 
 def _group_permissions(perms: Sequence[str]):
@@ -910,6 +1020,7 @@ def render_whoami(
     """The logged-in ``whoami`` view (stdout): an identity header, then the shared
     permissions + orgs panels. Presentation only; no legend."""
     c = _stdout
+    screen_header(c)
 
     # ── identity header (no box) ──
     c.print()
@@ -1316,15 +1427,10 @@ def render_events(items: Sequence[Any], *, order: Optional[str] = None,
 
 
 def _short_session(sid: str, *, full: bool = False) -> str:
-    """Truncate a long session id for the table (full id always kept in ``--json``):
-    ``sess-20260615-fcf97e01`` → ``sess-…fcf97e01`` (prefix + last 8); other long ids →
-    first 6 + ``…`` + last 6; short ids are left intact."""
-    if full or not sid or sid == "-":
-        return sid
-    if sid.startswith("sess-") and len(sid) > 14:
-        return "sess-…" + sid[-8:]
-    if len(sid) > 18:
-        return sid[:6] + "…" + sid[-6:]
+    """Return the full session id unchanged for copyable terminal output.
+
+    The legacy ``full`` argument remains accepted for compatibility.
+    """
     return sid
 
 
@@ -1803,6 +1909,8 @@ def render_eval_aggregate(data: dict, *, show_bar: Optional[bool] = None) -> Non
 
 
 def _truncate(s: str, n: int = 80) -> str:
+    if re.search(r"(?:https?://|\bfp\s|[0-9a-f]{8}-[0-9a-f-]{8,})", s, re.I):
+        return s
     return s[: n - 1] + "…" if len(s) > n else s
 
 
@@ -2009,19 +2117,16 @@ _KEY_STATUS = {
 
 
 def _short_id(value: str) -> str:
-    """A long id → ``1f58…9826`` (first 4 + ``…`` + last 4); short ids unchanged."""
-    return value[:4] + "…" + value[-4:] if len(value) > 9 else value
+    """Return the full id unchanged; the legacy helper name is retained."""
+    return value
 
 
 def _short_chat_id(value: str) -> str:
-    """A chat id → its short, copy-friendly handle: the segment before the first ``-`` (the first
-    8 hex of a UUID, e.g. ``07854990-dade-…`` → ``07854990``), or the first 8 chars when there's no
-    ``-``. The CLI resolves this prefix back to the full id against the chat list, while the server
-    keeps the full id intact."""
-    s = str(value or "")
-    if "-" in s:
-        return s.split("-", 1)[0]
-    return s[:8] if len(s) > 8 else s
+    """Return the full chat id without shortening it (empty when absent).
+
+    Commands still accept unambiguous prefixes, but rendered ids stay complete.
+    """
+    return str(value or "")
 
 
 def _fmt_key_created(iso: str) -> str:
@@ -2653,13 +2758,13 @@ def _sql_syntax_theme():
         class _FpSqlStyle(Style):
             background_color = "#0e0c12"  # overridden by Syntax(background_color="default")
             styles = {
-                Token: theme.TEXT,
+                Token: "",
                 Comment: f"italic {theme.FAINT}",
                 Keyword: f"bold {theme.ACCENT}",
                 Keyword.Type: theme.SCORE_HIGH,
                 Operator: theme.TEXT_DIM,
                 Operator.Word: f"bold {theme.ACCENT}",  # AND / OR / NOT
-                Name: theme.TEXT,
+                Name: "",
                 Name.Builtin: theme.SUCCESS,
                 Name.Function: theme.SUCCESS,
                 Name.Variable: theme.PERM_WRITE,  # :name / @var params
@@ -2791,6 +2896,8 @@ def _plain(*parts, console=None) -> None:
     ``--quiet`` for non-error chrome; callers that must always show pass ``console``)."""
     line = Text("  ")
     for text, style in parts:
+        if text.startswith("fp "):
+            style = theme.PINK
         line.append(text, style=style)
     (console or _stderr).print(line)
 
@@ -4609,7 +4716,7 @@ def confirm_issues_clear(scope_label: str, issues: int, findings: int) -> bool:
     h.append(f"{issues} issue{'' if issues == 1 else 's'}", style=f"bold {theme.ACCENT}")
     h.append(f" ({scope_label})", style=theme.LABEL)
     h.append("?", style=theme.TEXT)
-    tail = f"resolves them"
+    tail = "resolves them"
     if findings:
         tail += f" and {findings} audit finding{'' if findings == 1 else 's'}"
     tail += " — nothing is deleted or suppressed"
@@ -4815,13 +4922,12 @@ def render_agent_models(models: Sequence[str], *, default_model: Optional[str] =
 
 
 def render_agent_chats(chats: Sequence[dict]) -> None:
-    """The ``agent chats`` view (stdout): a boxed ``chats · {n}`` table with columns ``chat-id ·
-    title · messages · updated`` (newest first). ``chat-id`` is the SHORT, copy-friendly handle
-    (the first 8 hex before the UUID's first ``-``) that ``agent show``/``rename``/``delete``/``ask
-    --chat`` accept as a prefix; the ``title`` absorbs any width squeeze (``…``-truncated on a
-    budget). The count glows. Empty → ``no chats``."""
+    """The ``agent chats`` view (stdout): an open ``chats · {n}`` table with columns
+    ``chat-id · title · messages · updated`` (newest first). Chat ids are shown in full;
+    commands also accept unambiguous prefixes. The title absorbs width pressure
+    (``…``-truncated on a budget). Empty → ``no chats``."""
     items = sorted(chats, key=lambda c: c.get("updated_at") or "", reverse=True)  # newest first
-    ids = [_short_chat_id(str(c.get("id") or "-")) for c in items]  # short copy-friendly handle
+    ids = [_short_chat_id(str(c.get("id") or "-")) for c in items]  # full copyable ids
     titles = [str(c.get("title") or "untitled") for c in items]
     mcs = [str(c.get("message_count")) if c.get("message_count") is not None else "-" for c in items]
     ages = [_age_compact(c.get("updated_at")) for c in items]
@@ -4840,7 +4946,7 @@ def render_agent_chats(chats: Sequence[dict]) -> None:
         t = _truncate(titles[i], budget) if budget is not None else titles[i]
         updated = Text(ages[i], style=theme.TEXT_DIM) if ages[i] else Text("—", style=theme.FAINT)
         rows.append([
-            Text(ids[i], style=theme.TEXT_DIM),  # the short copy-friendly handle
+            Text(ids[i], style=theme.TEXT_DIM),  # the full copyable id
             Text(t, style=theme.TEXT),
             Text(mcs[i], style=theme.TEXT_DIM),
             updated,

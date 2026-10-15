@@ -17,6 +17,10 @@ The first stable release with the new terminal experience and OpenTelemetry. Eve
 - **Reconnecting with a different key replaces every saved credential,** and events the old key was refused are resent with the new one.
 - **The daemon no longer stops collecting** when a settings change or backfill arrives while it is busy.
 
+### Dependencies
+
+- Patch the TypeScript SDK's integration fixtures: `next` 16.3.6 → 16.4.1 (six advisories), `sharp` 0.35.5 and `source-map-js` 1.2.2 in `nextjs`, and `@modelcontextprotocol/sdk` 1.30.1 → 1.32.1 (GHSA-6qxp-vccf-f47h) in `mastra-0`, inside `@mastra/mcp@0.14.5`'s `^1.17.5` range. Dependabot's version of this PR also moved `ai` 4 → 5 in `ai-4` and `@mastra/core`/`@mastra/memory` 0.x → 1.x in `mastra-0`, the pin moves `SECURITY.md` rules out (and an unresolvable tree next to `@mastra/mcp@0.14.5`, which failed every integration shard), plus `ai` 7.0.111 → 7.0.141 in `nextjs`, whose pins must match its `ai-7` twin; none of those are applied (#902)
+
 ## 1.0.11-beta.5 — 2026-10-15
 
 ### Fixes

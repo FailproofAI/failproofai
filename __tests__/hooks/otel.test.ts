@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { runOtelCommand, OTEL_ORG_OFF, waitForCollectorConfig } from "../../src/hooks/otel-cli";
-import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, vscodeProbe, agentOtelWrites, OTEL_AGENTS } from "../../src/hooks/otel-writers";
+import { agentConfigPath, editAgentConfig, parseAgentConfig, vscodeSettingsPath, vscodeInstalled, vscodeProbe, agentOtelWrites, cloudOtlpBase, otlpDestination, OTEL_AGENTS } from "../../src/hooks/otel-writers";
 import { collectorHealthFile, configFile, credentialsFile, otelAgentStateFile, otelAgentStateDir, otlpSpoolDir, resettablePaths } from "../../src/hooks/fp-home";
 import { readConfig, updateConfig } from "../../src/hooks/fp-config";
 import { agentSessionsEnabled } from "../../src/hooks/collector-config";
@@ -49,7 +49,7 @@ describe("managed OTEL settings", () => {
     expect((await runOtelCommand(["enable", "claude"], options())).exitCode).toBe(0);
     const enabled = JSON.parse(readFileSync(path, "utf8"));
     expect(enabled.env.CLAUDE_CODE_ENABLE_TELEMETRY).toBe("1");
-    expect(enabled.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe("https://cloud.example");
+    expect(enabled.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe("https://cloud.example/otel");
     expect(enabled.env.OTEL_LOG_USER_PROMPTS).toBe("1");
     expect(enabled.env.EXISTING).toBe("yes");
     expect(enabled.hooks).toEqual({ keep: true });
@@ -75,6 +75,36 @@ describe("managed OTEL settings", () => {
     for (const name of ["OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_LOGS_HEADERS", "OTEL_EXPORTER_OTLP_METRICS_HEADERS"]) {
       expect(env[name]).toBe("Authorization=Bearer k_123");
     }
+  });
+
+  it("Cloud OTLP lives under <origin>/otel; per-signal endpoints carry the full path; the relay keeps /v1", async () => {
+    expect(cloudOtlpBase("https://cloud.example")).toBe("https://cloud.example/otel");
+    expect(cloudOtlpBase("https://cloud.example/")).toBe("https://cloud.example/otel");
+    expect(otlpDestination("https://cloud.example", false, 4318)).toBe("https://cloud.example/otel");
+    expect(otlpDestination("https://cloud.example", true, 4320)).toBe("http://127.0.0.1:4320");
+    const cloud = Object.fromEntries(agentOtelWrites("claude", cloudOtlpBase("https://cloud.example"), "k", false, true).map(w => [w.path[1], w.value]));
+    expect(cloud.OTEL_EXPORTER_OTLP_ENDPOINT).toBe("https://cloud.example/otel");
+    expect(cloud.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe("https://cloud.example/otel/v1/logs");
+    expect(cloud.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).toBe("https://cloud.example/otel/v1/metrics");
+    const local = Object.fromEntries(agentOtelWrites("claude", "http://127.0.0.1:4318", "k", true, true).map(w => [w.path[1], w.value]));
+    expect(local.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe("http://127.0.0.1:4318/v1/logs");
+    const env = await runOtelCommand(["env"], options());
+    expect(env.lines).toContain("export OTEL_EXPORTER_OTLP_ENDPOINT='https://cloud.example/otel'");
+    const localEnv = await runOtelCommand(["env", "--local"], options());
+    expect(localEnv.lines).toContain("export OTEL_EXPORTER_OTLP_ENDPOINT='http://127.0.0.1:4318'");
+  });
+
+  it("status calls settings written for Cloud's pre-/otel address not managed", async () => {
+    const path = agentConfigPath("claude", home);
+    seed(path, "{}\n");
+    expect((await runOtelCommand(["enable", "claude", "--yes"], options())).exitCode).toBe(0);
+    expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Claude Code: on by failproofai");
+    // What an earlier beta wrote: the bare origin, in the settings and the record.
+    for (const file of [path, configFile()]) writeFileSync(file, readFileSync(file, "utf8").replaceAll("https://cloud.example/otel", "https://cloud.example"));
+    expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Claude Code: on, not managed");
+    expect((await runOtelCommand(["enable", "claude", "--yes"], options())).exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(path, "utf8")).env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe("https://cloud.example/otel/v1/logs");
+    expect((await runOtelCommand(["status"], options())).lines.join("\n")).toContain("Claude Code: on by failproofai");
   });
 
   it("local Claude writes only documented content flags and never writes auth header variables", async () => {
@@ -150,7 +180,7 @@ describe("managed OTEL settings", () => {
     const parsed = parseAgentConfig(next, "codex");
     expect(parsed.otel).toMatchObject({
       environment: "keep",
-      exporter: { "otlp-http": { endpoint: "https://cloud.example/v1/logs", headers: { Authorization: "Bearer capture-test-secret" } } },
+      exporter: { "otlp-http": { endpoint: "https://cloud.example/otel/v1/logs", headers: { Authorization: "Bearer capture-test-secret" } } },
       log_user_prompt: false,
     });
     expect(parsed.otel).not.toHaveProperty("trace_exporter");
@@ -444,7 +474,7 @@ describe("opt-in, one path and status", () => {
     for (const agent of ["Claude Code", "Codex", "Copilot"]) expect(output).toContain(agent);
     expect(output).not.toContain("Gemini");
     expect(output).toContain("on by failproofai");
-    expect(output).toContain("https://cloud.example");
+    expect(output).toContain("Cloud (https://cloud.example/otel)");
     expect(output).toContain("http://127.0.0.1:4318");
     expect(output).toContain("org: unknown");
     expect(output).toContain("Relay:");
@@ -457,7 +487,7 @@ describe("opt-in, one path and status", () => {
     process.env.FAILPROOFAI_INGEST_URL = "http://127.0.0.1:18765/v1/events";
     await runOtelCommand(["enable", "codex"], options());
     let line = (await runOtelCommand(["status"], options())).lines.find(line => line.startsWith("Codex:"));
-    expect(line).toContain("destination: Cloud (http://127.0.0.1:18765)");
+    expect(line).toContain("destination: Cloud (http://127.0.0.1:18765/otel)");
     expect(line).not.toContain("local relay");
     await runOtelCommand(["enable", "codex", "--local"], options());
     line = (await runOtelCommand(["status"], options())).lines.find(line => line.startsWith("Codex:"));
@@ -535,9 +565,9 @@ describe("opt-in, one path and status", () => {
       seed(credentialsFile(), JSON.stringify({ ingest: { url, key: "capture-test-secret" } }));
       const env = await runOtelCommand(["env"], options());
       expect(env.exitCode).toBe(0);
-      expect(env.lines.join("\n")).toContain(new URL(url).origin);
+      expect(env.lines.join("\n")).toContain(`${new URL(url).origin}/otel`);
       expect((await runOtelCommand(["enable", "claude", "--yes"], options())).exitCode).toBe(0);
-      expect(JSON.parse(readFileSync(claude, "utf8")).env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(new URL(url).origin);
+      expect(JSON.parse(readFileSync(claude, "utf8")).env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(`${new URL(url).origin}/otel`);
       expect((await runOtelCommand(["disable", "claude"], options())).exitCode).toBe(0);
     }
   });

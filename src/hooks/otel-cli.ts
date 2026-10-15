@@ -16,7 +16,7 @@ import { validateCloudUrl } from "./cloud-enrollment";
 import { readJsonFile } from "./integrations";
 import { selectOne } from "./tui";
 import {
-  AGENT_LABELS, OTEL_AGENTS, agentConfigPath, agentOtelWrites, editAgentConfig,
+  AGENT_LABELS, OTEL_AGENTS, agentConfigPath, agentOtelWrites, editAgentConfig, otlpDestination, cloudOtlpBase,
   getSetting, parseAgentConfig, vscodeInstalled,
   type JsonObject, type OtelAgent, type SettingWrite,
 } from "./otel-writers";
@@ -191,7 +191,7 @@ async function enableAgent(agent: OtelAgent, yes: boolean, localFlag: boolean, c
   const local = localFlag || agent === "copilot";
   const port = readConfig().collector.otlp?.port ?? 4318;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("collector.otlp.port must be between 1 and 65535.");
-  const destination = local ? `http://127.0.0.1:${port}` : origin;
+  const destination = otlpDestination(origin, local, port);
   const original = existsSync(file) ? readFileSync(file, "utf8") : null;
   const parsed = parseAgentConfig(original ?? "", agent);
   const oldState = existing ? privateState(agent) : null;
@@ -309,8 +309,12 @@ async function status(options: OtelOptions): Promise<OtelResult> {
       try {
         const state = privateState(agent);
         const original = parseAgentConfig(state.original ?? "", agent);
+        const { key, origin } = credential();
+        // Cloud's address is recomputed, so settings written for an older
+        // address (or another Cloud) read as "not managed" until re-enabled.
+        const expectedDestination = record.local ? record.destination : cloudOtlpBase(origin);
         const expected = parseAgentConfig(editAgentConfig(state.original ?? "", agent,
-          agentOtelWrites(agent, record.destination, credential().key, record.local, record.content, original)), agent);
+          agentOtelWrites(agent, expectedDestination, key, record.local, record.content, original)), agent);
         managed = record.keys.every(k => JSON.stringify(getSetting(parsed, k.path)) === JSON.stringify(getSetting(expected, k.path)));
       } catch { /* Missing recovery state or key. */ }
     }
@@ -345,7 +349,7 @@ export async function runOtelCommand(args: string[], options: OtelOptions = {}):
       const consumed = rest.filter((_, i) => i !== index && i !== index + 1 || index < 0).filter(x => x !== "--local");
       if (consumed.length) throw new Error("env takes only --service <name> and --local.");
       const local = rest.includes("--local");
-      const endpoint = local ? `http://127.0.0.1:${readConfig().collector.otlp?.port ?? 4318}` : origin;
+      const endpoint = otlpDestination(origin, local, readConfig().collector.otlp?.port ?? 4318);
       const quote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
       const values = {
         OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",

@@ -66,6 +66,17 @@ describe("managed OTEL settings", () => {
     expect(readConfig().collector.otlp?.enabled).toBe(false);
   });
 
+  it("Cloud Claude sends the key as 'Bearer <key>' with a literal space on every signal", () => {
+    // Claude Code passes header values through as-is; an encoded "%20" reached
+    // Cloud as "Bearer%20<key>" and every batch was refused with 401.
+    const env = Object.fromEntries(
+      agentOtelWrites("claude", "https://cloud.example", "k_123", false, true).map(w => [w.path[1], w.value]),
+    );
+    for (const name of ["OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_LOGS_HEADERS", "OTEL_EXPORTER_OTLP_METRICS_HEADERS"]) {
+      expect(env[name]).toBe("Authorization=Bearer k_123");
+    }
+  });
+
   it("local Claude writes only documented content flags and never writes auth header variables", async () => {
     const path = agentConfigPath("claude", home);
     const before = '{"env":{"KEEP":"yes"}}\n';

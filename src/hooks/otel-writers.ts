@@ -192,7 +192,9 @@ export function agentOtelWrites(agent: OtelAgent, endpoint: string, key: string,
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_LOGS_EXPORTER: "otlp", OTEL_METRICS_EXPORTER: "otlp",
     OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
-    ...(!local ? { OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer%20${encodeURIComponent(key)}` } : {}),
+    // A literal space, as Claude Code's own docs write it: its exporter sends
+    // the value as-is, so the spec's "%20" arrived as "Bearer%20<key>" → 401.
+    ...(!local ? { OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${key}` } : {}),
     OTEL_LOG_USER_PROMPTS: content ? "1" : "0",
     OTEL_LOG_TOOL_DETAILS: content ? "1" : "0",
     // Tool output needs OTEL_LOG_TOOL_CONTENT; assistant responses follow OTEL_LOG_USER_PROMPTS, so omit OTEL_LOG_ASSISTANT_RESPONSES.

@@ -12,7 +12,7 @@ The first stable release with the new terminal experience and OpenTelemetry. Eve
 
 ### Fixes
 
-- Cloud's OpenTelemetry ingest moved to `<cloud>/otel`; direct exporters and the relay use `/otel/v1/<signal>`, while the local relay keeps `/v1/<signal>`. Re-run `otel disable <agent>` then `otel enable <agent>` after upgrading to rewrite older beta settings.
+- Cloud's OpenTelemetry ingest moved to `<cloud>/otel`; direct exporters and the relay use `/otel/v1/<signal>`, while the local relay keeps `/v1/<signal>`. Re-run `otel disable <agent>` then `otel enable <agent>` after upgrading to rewrite older beta settings. (#903)
 - **Switching a machine to another organisation is a clean break.** Nothing recorded before the switch is sent to the new organisation (transcripts, queued batches and OpenTelemetry alike), the old organisation's cloud policies stop, and the daemon accepts the new organisation's policies without a restart. A first connect still backfills the last week.
 - **Reconnecting with a different key replaces every saved credential,** and events the old key was refused are resent with the new one.
 - **The daemon no longer stops collecting** when a settings change or backfill arrives while it is busy.

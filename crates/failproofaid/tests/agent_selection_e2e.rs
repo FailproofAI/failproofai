@@ -293,6 +293,159 @@ fn file_source(source: &str, resumed: usize, window_days: u64) -> String {
     )
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn org_switch_never_delivers_old_records_even_after_backfill_reselect_and_idle_end() {
+    use serde_json::{Value, json};
+    use std::io::Write;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(|request: &wiremock::Request| {
+            let count = request
+                .body
+                .split(|b| *b == b'\n')
+                .filter(|l| !l.is_empty())
+                .count();
+            ResponseTemplate::new(200).set_body_json(json!({"accepted":count,"skipped":0}))
+        })
+        .mount(&server)
+        .await;
+    let s = Scratch::new("orgs");
+    let select = Some(r#"{"selected":["codex"],"seen":["codex"]}"#);
+    s.config(&config(select, ""));
+    let session_dir = s.home().join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let session =
+        session_dir.join("rollout-2026-10-14T00-00-00-019fb217-14a2-7193-8ceb-504b318e00ad.jsonl");
+    let old_ts = "2026-10-13T00:00:00.000Z";
+    let header = json!({"timestamp":old_ts,"type":"session_meta","payload":{
+        "id":"019fb217-14a2-7193-8ceb-504b318e00ad","cwd":"/proof","source":"exec"
+    }});
+    let old = json!({"timestamp":old_ts,"type":"response_item","payload":{
+        "type":"message","role":"assistant","content":[{"type":"output_text","text":"OLD_ORG_RECORD"}]
+    }});
+    std::fs::write(&session, format!("{header}\n{old}\n")).unwrap();
+    let write_identity = |id: &str, since: u64| {
+        std::fs::write(
+            s.fp().join("credentials.json"),
+            json!({
+                "ingest":{"url":server.uri(),"key":id}, "org":{"id":id,"since":since}
+            })
+            .to_string(),
+        )
+        .unwrap();
+    };
+    write_identity("A", 0);
+    let daemon = spawn_daemon(&s);
+    daemon.wait_for("collector started", 1);
+    // Wait until A's old transcript has actually arrived.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| String::from_utf8_lossy(&r.body).contains("OLD_ORG_RECORD"))
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "A's session did not arrive: {}",
+            daemon.stderr()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Poison/refused queues cannot be delivered; they must be quarantined.
+    std::fs::create_dir_all(s.fp().join("state/failed")).unwrap();
+    std::fs::write(
+        s.fp().join("state/failed/old.a1.c401.jsonl"),
+        format!("{old}\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        s.fp().join("state/failed/old.jsonl.poison"),
+        format!("{old}\n"),
+    )
+    .unwrap();
+    let boundary = ms(SystemTime::now());
+    write_identity("B", boundary);
+    daemon.wait_for("retained previous-org batches", 1);
+    daemon.wait_for("collector started", 2);
+    assert!(
+        s.fp()
+            .join("state/previous-org/A/failed/old.a1.c401.jsonl")
+            .exists()
+    );
+    let new_ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    let new = json!({"timestamp":new_ts,"type":"response_item","payload":{
+        "type":"message","role":"assistant","content":[{"type":"output_text","text":"NEW_ORG_RECORD"}]
+    }});
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&session)
+            .unwrap(),
+        "{new}"
+    )
+    .unwrap();
+    // Force a historical reread with a user backfill.
+    s.request(&json!({"kind":"user","sinceMs":0,"agents":["codex"]}).to_string());
+    daemon.wait_for("backfill requested", 1);
+    daemon.wait_for("collector started", 3);
+    // Untick and re-tick through the same request and selection files as CLI.
+    s.config(&config(Some(r#"{"selected":[]}"#), ""));
+    daemon.wait_for("collector started", 4);
+    s.request(
+        &json!({"kind":"added","requestedAtMs":ms(SystemTime::now()),"agents":["codex"]})
+            .to_string(),
+    );
+    s.config(&config(select, ""));
+    daemon.wait_for("backfill requested", 2);
+    daemon.wait_for("collector started", 5);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let requests = server.received_requests().await.unwrap();
+        let b: Vec<_> = requests
+            .iter()
+            .filter(|r| {
+                r.headers
+                    .get("authorization")
+                    .is_some_and(|v| v.to_str().ok() == Some("Bearer B"))
+            })
+            .collect();
+        if b.iter()
+            .any(|r| String::from_utf8_lossy(&r.body).contains("NEW_ORG_RECORD"))
+        {
+            assert!(
+                b.iter()
+                    .all(|r| !String::from_utf8_lossy(&r.body).contains("OLD_ORG_RECORD"))
+            );
+            for r in b {
+                for line in r.body.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
+                    let event: Value = serde_json::from_slice(line).unwrap();
+                    assert!(
+                        fpai_collect::org_boundary::timestamp_ms(&event).unwrap()
+                            >= boundary as i64
+                    );
+                }
+            }
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "B's new session did not arrive: {}",
+            daemon.stderr()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    drop(daemon);
+}
+
 #[test]
 fn with_no_agents_key_every_source_starts() {
     // The regression this feature must not cause: a config written before

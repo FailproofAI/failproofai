@@ -28,6 +28,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { failedDir } from "./fp-home";
+import { readCredentials } from "./fp-config";
 
 /**
  * Mirrors `POISON_SUFFIX` in `crates/fpai-collect/src/uploader.rs`. Kept as its
@@ -122,7 +123,11 @@ const EMPTY: DeliveryHealth = {
  * A missing directory is the healthy case on a machine that has never had a
  * batch refused, not an error — the collector creates it lazily.
  */
-export function deliveryHealth(home?: string, now: number = Date.now()): DeliveryHealth {
+export function deliveryHealth(
+  home?: string,
+  now: number = Date.now(),
+  connectedAt: number | undefined = home ? undefined : readCredentials().connectedAt,
+): DeliveryHealth {
   const dir = failedDir(home);
   if (!existsSync(dir)) return EMPTY;
 
@@ -144,21 +149,27 @@ export function deliveryHealth(home?: string, now: number = Date.now()): Deliver
   for (const name of entries) {
     // `.tmp` files are half-written renames, not parked batches.
     if (!name.includes(".jsonl")) continue;
-    total += 1;
-
     const parsed = parseParkedName(name);
+    let mtime: number;
+    try {
+      mtime = statSync(join(dir, name)).mtimeMs;
+    } catch {
+      continue; // Delivered or renamed during the scan.
+    }
+    if (
+      connectedAt !== undefined &&
+      parsed.clientStatus !== undefined &&
+      CREDENTIAL_STATUSES.has(parsed.clientStatus) &&
+      mtime < connectedAt
+    ) continue;
+    total += 1;
     if (parsed.clientStatus !== undefined) {
       rejected += 1;
       byStatus[parsed.clientStatus] = (byStatus[parsed.clientStatus] ?? 0) + 1;
       if (CREDENTIAL_STATUSES.has(parsed.clientStatus)) credentialRejected += 1;
     }
 
-    try {
-      const mtime = statSync(join(dir, name)).mtimeMs;
-      if (oldestMtime === undefined || mtime < oldestMtime) oldestMtime = mtime;
-    } catch {
-      // Vanished mid-scan — the collector just drained or renamed it.
-    }
+    if (oldestMtime === undefined || mtime < oldestMtime) oldestMtime = mtime;
   }
 
   return {

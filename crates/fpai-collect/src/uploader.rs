@@ -188,6 +188,7 @@ pub struct Uploader {
     redact: Redact,
     machine_id: String,
     metrics: Arc<UploadMetrics>,
+    since_ms: Option<u64>,
 }
 
 impl Uploader {
@@ -222,7 +223,13 @@ impl Uploader {
             redact: Redact::default(),
             machine_id: UNKNOWN_MACHINE_ID.to_string(),
             metrics: Arc::new(UploadMetrics::default()),
+            since_ms: None,
         })
+    }
+
+    pub fn with_boundary(mut self, since_ms: Option<u64>) -> Self {
+        self.since_ms = since_ms;
+        self
     }
 
     pub fn with_redact(mut self, redact: Redact) -> Self {
@@ -268,6 +275,9 @@ impl Uploader {
             Err(e) => return Err(UploadError::Io(e)),
         };
 
+        // SDK batches bypass SpoolWriter. Filter them at delivery as well,
+        // preserving the exact retained bytes for server-side deduplication.
+        let bytes = filter_boundary(&bytes, self.since_ms, crate::org_boundary::mtime_ms(path));
         let bytes = redact_batch(&bytes, self.redact);
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
             self.post_batch(path, chunk).await?;
@@ -566,6 +576,22 @@ impl Uploader {
         );
         move_file(path, &dest).await
     }
+}
+
+fn filter_boundary(bytes: &[u8], since: Option<u64>, fallback: Option<i64>) -> Vec<u8> {
+    if since.is_none() {
+        return bytes.to_vec();
+    }
+    bytes
+        .split_inclusive(|b| *b == b'\n')
+        .filter(|line| {
+            serde_json::from_slice::<serde_json::Value>(line)
+                .ok()
+                .is_some_and(|event| crate::org_boundary::allowed(&event, since, fallback))
+        })
+        .flatten()
+        .copied()
+        .collect()
 }
 
 /// `rename`, or copy-then-remove when the two paths are on different
@@ -1060,5 +1086,21 @@ mod tests {
             "no .partial may remain"
         );
         std::fs::remove_dir_all(&root).ok();
+    }
+    #[test]
+    fn sdk_delivery_filters_old_events_without_changing_retained_bytes() {
+        let bytes = b"{\"timestamp\":1791935999999,\"type\":\"old\"}\n{ \"timestamp\":1791936000000,\"type\":\"new\" }\n";
+        assert_eq!(
+            filter_boundary(bytes, Some(1_791_936_000_000), None),
+            b"{ \"timestamp\":1791936000000,\"type\":\"new\" }\n"
+        );
+        assert_eq!(
+            filter_boundary(b"{\"type\":\"unknown\"}\n", Some(100), Some(99)),
+            b""
+        );
+        assert_eq!(
+            filter_boundary(b"{\"type\":\"unknown\"}\n", Some(100), Some(100)),
+            b"{\"type\":\"unknown\"}\n"
+        );
     }
 }

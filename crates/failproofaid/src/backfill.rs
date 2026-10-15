@@ -283,11 +283,22 @@ pub struct Rewound {
 /// rather than by luck: re-reading is the documented recovery path for a damaged
 /// store, and redaction is deterministic, so a re-shipped event hashes identically
 /// and collapses into the row already on the server.
+#[cfg(test)]
 pub fn rewind(
     root: &Path,
     kind: Kind,
     scope: &Scope,
     hermes_extra_labels: &BTreeSet<String>,
+) -> Rewound {
+    rewind_with_boundary(root, kind, scope, hermes_extra_labels, None)
+}
+
+pub fn rewind_with_boundary(
+    root: &Path,
+    kind: Kind,
+    scope: &Scope,
+    hermes_extra_labels: &BTreeSet<String>,
+    boundary: Option<SystemTime>,
 ) -> Rewound {
     let mut done = Rewound::default();
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -306,14 +317,14 @@ pub fn rewind(
         match agents::owner_of(&name) {
             Some(Owner::Shared) => {
                 if matches!(kind, Kind::User { .. }) {
-                    forget(&dir, kind, &mut done);
+                    forget(&dir, kind, boundary, &mut done);
                 }
             }
             Some(Owner::Agent(agent)) => {
                 if !scope.agents.contains(&agent) {
                     continue;
                 }
-                forget(&dir, kind, &mut done);
+                forget(&dir, kind, boundary, &mut done);
                 for nested in subdirectories(&dir) {
                     let profile_store = agent == HERMES
                         && !nested
@@ -323,14 +334,14 @@ pub fn rewind(
                     if profile_store && matches!(kind, Kind::User { .. }) {
                         continue;
                     }
-                    forget(&nested, kind, &mut done);
+                    forget(&nested, kind, boundary, &mut done);
                 }
             }
             // Left by another daemon version. Only a request that means
             // everything reaches it — top level only, exactly as before.
             None => {
                 if scope.unscoped && matches!(kind, Kind::User { .. }) {
-                    forget(&dir, kind, &mut done);
+                    forget(&dir, kind, boundary, &mut done);
                 }
             }
         }
@@ -351,11 +362,16 @@ fn subdirectories(dir: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
-fn forget(dir: &Path, kind: Kind, done: &mut Rewound) {
+fn forget(dir: &Path, kind: Kind, boundary: Option<SystemTime>, done: &mut Rewound) {
     let mut store = CursorStore::load(dir.to_path_buf());
     let n = match kind {
-        Kind::User { since } => store.forget_modified_since(since),
-        Kind::Added => store.forget_all(),
+        Kind::User { since } => {
+            store.forget_modified_since(boundary.map_or(since, |b| b.max(since)))
+        }
+        Kind::Added => match boundary {
+            Some(since) => store.forget_modified_since(since),
+            None => store.forget_all(),
+        },
     };
     if n == 0 {
         return;
@@ -868,6 +884,31 @@ mod tests {
             if let Some(base) = self.files.parent() {
                 std::fs::remove_dir_all(base).ok();
             }
+        }
+    }
+
+    #[test]
+    fn both_user_and_added_rewinds_clamp_to_the_org_boundary() {
+        for kind in [Kind::Added, Kind::User { since: UNIX_EPOCH }] {
+            let layout = Layout::new("org-boundary");
+            let selection = AgentSelection::default();
+            let request = Request {
+                kind,
+                agents: Some(vec!["codex".into()]),
+            };
+            let scoped = scope(&request, &selection);
+            let since = SystemTime::now() - 2 * DAY;
+            rewind_with_boundary(&layout.root, kind, &scoped, &hermes_extras(), Some(since));
+            assert_eq!(
+                layout.count("codex"),
+                1,
+                "pre-boundary cursor must remain for {kind:?}"
+            );
+            assert_eq!(
+                layout.count("claude"),
+                2,
+                "an unrelated agent must not rewind"
+            );
         }
     }
 

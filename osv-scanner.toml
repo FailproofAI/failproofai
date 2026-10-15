@@ -30,7 +30,7 @@
 # reason = "No upstream fix yet; transitive via <pkg>; not reachable in our usage. Re-review by 2026-07-01."
 
 # ---------------------------------------------------------------------------
-# chromadb 1.1.1 — four advisories, none with a fixed version.
+# chromadb 1.5.9 — four advisories, none with a fixed version.
 #
 # Shared justification for all four entries below:
 #
@@ -38,6 +38,8 @@
 #   the dev/test lockfile that pins every extra so CI can exercise the adapters.
 #   No fixed version exists for any of them — OSV reports "0 vulnerabilities can
 #   be fixed" and an empty FIXED VERSION — so there is nothing to bump to.
+#   crewai 1.15.27 requires `chromadb~=1.5.9`, which moved the lock from 1.1.1
+#   to 1.5.9: the newest chromadb release, and still inside all four ranges.
 #
 #   `pip install failproofai-sdk` never brings chromadb: the SDK declares NO
 #   unconditional dependencies (every Requires-Dist in the built wheel is gated
@@ -66,22 +68,22 @@
 [[IgnoredVulns]]
 id = "GHSA-f4j7-r4q5-qw2c"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-05-18, alias PYSEC-2026-311). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-05-18, alias PYSEC-2026-311). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-2wm9-hf6c-p5cr"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-36p7-vc44-83pf"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 [[IgnoredVulns]]
 id = "GHSA-xph7-9rjv-w5fr"
 ignoreUntil = 2026-11-20
-reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
 
 # ---------------------------------------------------------------------------
 # nltk 3.10.3 — one advisory, no fixed version.

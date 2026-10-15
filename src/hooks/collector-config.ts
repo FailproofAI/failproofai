@@ -137,7 +137,7 @@ export function writeCollectorSettings(settings: CollectorSettings): void {
 
 export type KeyCheck =
   | { ok: true }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; status?: number };
 
 /**
  * Verify a key against the endpoint before writing it anywhere.
@@ -179,18 +179,19 @@ export async function validateIngestKey(
     if (res.status >= 300 && res.status < 400) {
       return {
         ok: false,
+        status: res.status,
         reason:
           "that URL redirects rather than accepting events — it looks like the dashboard, not the ingest API",
       };
     }
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, reason: `the server rejected that key (${res.status})` };
+      return { ok: false, status: res.status, reason: `the server rejected that key (${res.status})` };
     }
     if (res.status === 404) {
-      return { ok: false, reason: `no ingest endpoint at that URL (404)` };
+      return { ok: false, status: res.status, reason: `no ingest endpoint at that URL (404)` };
     }
     if (!res.ok) {
-      return { ok: false, reason: `the server answered ${res.status}` };
+      return { ok: false, status: res.status, reason: `the server answered ${res.status}` };
     }
     // A 2xx is not enough either. Ingest answers `{"accepted":N,"skipped":M}`;
     // anything else returning 200 (a proxy, a static host, a catch-all router)

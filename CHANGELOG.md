@@ -1,12 +1,13 @@
 # Changelog
 
-## 1.0.11-beta.1 — 2026-10-13
+## 1.0.11-beta.2 — 2026-10-15
 
 ### Features
 
 - Add opt-in coding-agent OpenTelemetry setup, reversible per-agent transcript switching, and a loopback OTLP relay (#880).
 - Add optional TypeScript and Python OpenTelemetry span exporters with durable OTLP/JSON spool delivery and no hard runtime dependencies (#880).
 - Port OpenTelemetry help and setup into the new TUI, retaining per-agent transcript overrides and reversible settings. OpenTelemetry stays out of `failproofai config`: it is opt-in, per agent, through `failproofai otel enable <agent>` (#880).
+- `failproofai otel` covers Claude Code, Codex and GitHub Copilot (VS Code). Copilot always uses the local relay, because its settings cannot carry an auth header (#880)
 - New terminal look for the CLI, step one: the palette gains the redesign's label grey, progress-track grey and a red for failures. Descriptions keep the terminal's own colour, and the greys fall back to the dim attribute below 24-bit, so every screen stays readable on light themes (#881)
 - Pickers in the new look: an UPPERCASE heading with a live "n of m selected", a `›` cursor and `■ □` boxes, twelve rows before scrolling, plain `a` to toggle all, and the key hints at the foot. The `policies -i` agent menu now uses the shared picker (#881)
 - Every `--help` page in the new look, cut to usage, options and examples, with every real flag and its real default. The index opens with three getting-started steps, then lists every command by what it is for. `policies add|remove|show --help` now prints the one policies page (#881)
@@ -34,6 +35,10 @@
 
 - Preserve Codex OTEL header comments, omit local Claude auth-header settings, and require an executable or Copilot extension before configuring VS Code (#880).
 - Keep Python OTEL imports lazy, label direct loopback destinations correctly, omit local Codex auth headers, and scope help options to each verb (#880).
+- `failproofai otel enable codex` now exports Codex's conversation logs only. Its runtime spans carry no conversation and created empty sessions in Cloud, so failproofai sets only the Codex logs exporter (#880)
+- `failproofai otel enable` no longer overwrites a prompt-capture opt-out: an existing Codex `log_user_prompt = false` is kept and reported, and re-enabling keeps the original setting rather than failproofai's last write (#880)
+- `failproofai otel disable codex` hands Codex back to transcript upload without re-sending rollouts OTEL already delivered: the collector resumes those files at their end, so only later appends are uploaded (#880)
+- `failproofai otel enable codex` waits for the daemon to confirm it has stopped Codex transcript upload before writing the Codex settings, so the same session is not uploaded twice; if the daemon does not confirm in time it says so and points at `failproofai otel status` (#880)
 - Codex skipped every failproofai hook in `~/.codex/hooks.json` until a person approved it in interactive `codex`, so headless `codex exec` enforced nothing while `failproofai config` said policies were enforcing. With sudo, user-scope Codex hooks now go into Codex's system config (`/etc/codex/config.toml`, in a marked block that keeps the rest of the file), which Codex runs without approval; uninstalling takes the block out. Without sudo, or on Windows, they stay in `hooks.json`, and `config` and `config --status` count Codex as enforcing only once its hooks are trusted, and otherwise say how to fix it (a Codex older than 0.129, which runs them unasked, keeps `hooks.json` with no warning) (#881)
 - `failproofai policies` showed nothing for a machine still on the pre-pack builtins, while those builtins were enforcing. It now says how many under BUILT IN, with the command that moves them into a pack (#881)
 - `failproofai config --disconnect` told you to restart the daemon to stop it sending. It stops on its own within a few seconds, because it polls the credential, and now says so (#881)
@@ -53,11 +58,24 @@
 - A backfill's first-sight window now applies only to the agents it names and lasts until a later request for that agent: a scoped backfill no longer widens every other source's window, and an agent added after a backfill starts on 7 days instead of inheriting the backfill's (#881)
 - Renaming an unconnected machine suggested `config --connect <url> --token <key>`, a key on the command line; it points at `failproofai config` (#881)
 - After every agent's hooks were removed, an unattended `failproofai config` re-run hooked all twelve again; a saved empty selection now stands (#881)
+- `failproofai config --disconnect` removed the cloud policy manifest but left the cached desired state, from which the daemon rebuilt the departed organisation's policies. Both are removed now (#881)
+- Reconnecting with a new key left the old key's capability slots in place, and batches the old key had been refused (401/403) stayed parked. A reconnect now reconciles the slots; batches refused under the same organisation are re-sent with the new key at once, and those from a different or unconfirmed organisation are set aside under `previous-org/`, never sent (#881)
+- Switching a machine to another organisation could send the old organisation's history to the new one: collector cursors and upload queues are machine-wide. The collector now records an organisation boundary, sends only events from after the switch, and moves batches still queued for the old organisation aside instead of delivering them (#881)
 
 ### Dependencies
 
 - Update vulnerable existing build and SDK test lockfile dependencies reported by the PR's OSV scan (#880).
-- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` 0.11.18 (RUSTSEC-2026-0338 to -0342) and `ruzstd` 0.9.1 (RUSTSEC-2026-0344) in `Cargo.lock` (#881)
+- Bump `next` to 16.3.8, `sharp` to 0.35.5 and `source-map-js` to 1.2.2, which OSV-Scanner flagged; the dashboard ships `next` and `sharp`. In the SDKs' dev lockfiles: `source-map-js` (TypeScript) and `banks`, `langgraph-sdk`, `multidict` and `pydantic-ai-slim` (Python). `quinn-proto` (RUSTSEC-2026-0338 to -0342), `ruzstd` 0.9.1 (RUSTSEC-2026-0344) and `rustls` 0.23.46 (RUSTSEC-2026-0346 to -0349) in `Cargo.lock`, which `main` now also carries from #901 (#881)
+
+## 1.0.11-beta.0 — 2026-10-14
+
+### Dependencies
+
+- Combine the open Dependabot PRs (#883, #884, #886–#898) into one: `next` and `eslint-config-next` 16.3.6 → 16.4.0, `eslint` 10.11.0 → 10.12.0, `@anthropic-ai/sdk` 0.128.0 → 0.133.0, `@types/node` 26.6.2 → 26.6.5, `lucide-react` 1.48.0 → 1.55.0, `@tanstack/react-virtual` 3.14.13 → 3.14.14, `@vitejs/plugin-react` 6.1.1 → 6.1.2, `jsdom` 30.1.1 → 30.1.2 and `posthog-node` 5.54.1 → 5.55.1; the Rust group (`serde_json` 1.0.152, `libc` 0.2.190, `tokio` 1.53.2, `getrandom` 0.4.3, `tokio-rustls` 0.26.6, `proptest` 1.12.0); `typer` 0.27.3 and `posthog` 7.67.0 in `fp-cloud-cli`; and `langchain-core` 1.6.9, `langgraph` 1.2.14, `crewai` 1.15.27 and `pydantic-ai-slim` 2.54.0 in the Python SDK's test lockfile. That last group also moves `langgraph-sdk` to 0.4.7, past #883's 0.4.4 (#901)
+- Clear the Supply Chain gate, which `main`'s daily scan had failed on 20 fixable advisories. The bumps above close nine (`next`, `pydantic-ai-slim`, `langgraph-sdk`). The other eleven are transitive or held by an override, so no Dependabot PR covered them: `banks` 2.5.1 and `multidict` 6.9.1 in `sdk/python/uv.lock`, `quinn-proto` 0.11.19 and `ruzstd` 0.9.1 in `Cargo.lock`, the `sharp` override 0.35.4 → 0.35.5 (libvips 1.3.4), and `source-map-js` 1.2.2 in `bun.lock` and `sdk/typescript/package-lock.json` (#901)
+- Bump `rustls` 0.23.45 → 0.23.46 in `Cargo.lock`, clearing RUSTSEC-2026-0346 through RUSTSEC-2026-0349, published after this PR's first scan. rustls is the TLS stack compiled into `failproofaid` through `reqwest`; nothing else in the lock moves (#901)
+- Patch `@modelcontextprotocol/client` 2.0.0 → 2.2.0 (GHSA-6qxp-vccf-f47h) in the `mastra-1` SDK integration fixture with an `overrides` entry. Dependabot's fix in #884 moved `@mastra/mcp` to 2.3.0, which needs `@mastra/core` ≥ 1.75 and so cannot install next to the fixture's 1.68.0 pin. The rest of #884 (`ai` 4 → 5 in `ai-4` and `mastra-0`) is the pin move `SECURITY.md` rules out, so it is not applied (#901)
+- OSV-Scanner: the four chromadb ignores now name 1.5.9, the version crewai 1.15.27 requires. It is the newest release and still affected, with no fix (#901)
 
 ## 1.0.10 — 2026-10-05
 

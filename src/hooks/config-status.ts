@@ -89,6 +89,7 @@ export type StatusCloud =
       machine?: string;
       pullsPolicies: boolean;
       sendsEvents: boolean;
+      splitKeys?: boolean;
     };
 
 /** Where the policies on this machine come from, counted. */
@@ -323,6 +324,7 @@ export async function gatherStatusFacts(deps: StatusDeps = {}): Promise<StatusFa
         ...(machineId ? { machine: describeMachine(machineId, creds?.machineLabel) } : {}),
         pullsPolicies: Boolean(creds),
         sendsEvents: Boolean(ingest),
+        ...(creds && ingest && creds.token !== ingest.key ? { splitKeys: true } : {}),
       };
     }
   }
@@ -594,6 +596,9 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
                 `${cloud.pullsPolicies ? "" : ", for reporting only"}`,
             ],
             ...(cloud.machine ? [["machine", cloud.machine] as [string, string]] : []),
+            ...(cloud.splitKeys
+              ? [["keys", `Policy and ingest use different keys; reconnect with ${kit.cmd("failproofai config")}.`] as [string, string]]
+              : []),
             ["delivery", deliveryValue()],
           ];
 

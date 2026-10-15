@@ -17,6 +17,7 @@ pub mod delivery;
 pub mod extra_paths;
 pub mod filetail;
 pub mod health;
+pub mod org_boundary;
 pub mod otlp;
 pub mod redact;
 pub mod sources;

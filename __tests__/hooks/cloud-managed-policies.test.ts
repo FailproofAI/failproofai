@@ -112,6 +112,24 @@ describe("policy effect", () => {
 });
 
 describe("clearActiveCloudManagedPolicies", () => {
+  it("removes cached desired state so a stopped daemon cannot reactivate it", () => {
+    const { root, policyPath } = fixture();
+    writeFileSync(join(root, "desired-state.json"), JSON.stringify({ deployment: 12 }));
+    expect(clearActiveCloudManagedPolicies()).toBe(true);
+    expect(existsSync(join(root, "active.json"))).toBe(false);
+    expect(existsSync(join(root, "desired-state.json"))).toBe(false);
+    expect(existsSync(policyPath)).toBe(true);
+  });
+
+  it("removes desired state even when no active manifest remains", () => {
+    const { root } = fixture();
+    rmSync(join(root, "active.json"));
+    writeFileSync(join(root, "desired-state.json"), "{}");
+    expect(clearActiveCloudManagedPolicies()).toBe(true);
+    expect(existsSync(join(root, "desired-state.json"))).toBe(false);
+    expect(clearActiveCloudManagedPolicies()).toBe(false);
+  });
+
   it("stops enforcement while leaving the verified artifacts on disk", () => {
     // `--disconnect` cleared the credential, which ends POLLING. Every artifact
     // already on disk stayed referenced by active.json and kept being loaded on

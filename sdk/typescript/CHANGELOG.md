@@ -84,6 +84,17 @@ section is missing or empty is refused before anything is built.
   advisories still open against it are the accepted kind, and the table above
   already carries them. (#869)
 
+- **`mastra-1` clears its one fixture advisory without moving a pin.**
+  GHSA-6qxp-vccf-f47h (high) is against `@modelcontextprotocol/client@2.0.0`,
+  which `@mastra/mcp@2.0.0` pins exactly. The fixture now carries an `overrides`
+  entry for the patched `2.2.0`. That release brings its own
+  `@modelcontextprotocol/core@2.2.0`, nested under it, and every other package
+  resolves as before. Dependabot's fix (#884) moved `@mastra/mcp` to `2.3.0`
+  instead. That release peers on `@mastra/core >=1.75.0-0`, so it cannot install
+  beside the fixture's `1.68.0`. The `mcp` and `mcp-toolsets` scenarios pass
+  against the override. This package's own dev lockfile also moves
+  `source-map-js` to `1.2.2` (GHSA-68fv-2mgg-jv7q). (#901)
+
 ## 0.0.1-beta.0 — 2026-09-23
 
 ### Added

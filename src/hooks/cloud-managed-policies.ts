@@ -148,8 +148,9 @@ export function resolveManagedPath(root: string, candidate: string): string {
 /**
  * Stop enforcing cloud-managed policies on this machine.
  *
- * Removes `active.json` only — the manifest that says which deployment is
- * live. The deployment directories and content-addressed artifacts are left
+ * Removes `active.json` and the cached `desired-state.json`: a stopped daemon
+ * must not rebuild a deployment after the machine disconnects. The deployment
+ * directories and content-addressed artifacts are left
  * alone: they are large, hash-verified on use, and inert once nothing points
  * at them, so keeping them makes a reconnect cheap and offline-safe.
  *
@@ -163,16 +164,19 @@ export function resolveManagedPath(root: string, candidate: string): string {
  * Returns true when a manifest was actually removed.
  */
 export function clearActiveCloudManagedPolicies(): boolean {
-  const activePath = resolve(cloudManagedPolicyRoot(), "active.json");
-  if (!existsSync(activePath)) return false;
-  try {
-    rmSync(activePath, { force: true });
-    return true;
-  } catch {
-    // Best-effort: `--disconnect` still clears the credentials, and reporting
-    // a failure to remove one file would obscure that the rest succeeded.
-    return false;
+  let removed = false;
+  for (const name of ["active.json", "desired-state.json"]) {
+    const path = resolve(cloudManagedPolicyRoot(), name);
+    if (!existsSync(path)) continue;
+    try {
+      rmSync(path, { force: true });
+      removed = true;
+    } catch {
+      // Try both independently: a failure removing one must not leave the
+      // other referenced merely because it came later in the list.
+    }
   }
+  return removed;
 }
 
 export function readActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {

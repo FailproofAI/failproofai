@@ -85,7 +85,7 @@ describe("a key carrying both permissions", () => {
 
   it("records the org, once, alongside the credentials", async () => {
     await connect(withPermissions("events:add", "policies:pull"));
-    expect(readCredentials().org).toEqual({ id: "org_123", slug: "acme", name: "Acme Inc" });
+    expect(readCredentials().org).toEqual({ id: "org_123", slug: "acme", name: "Acme Inc", since: expect.any(Number) });
   });
 });
 
@@ -188,7 +188,8 @@ describe("a server with no introspect endpoint", () => {
   it("omits the org rather than guessing one from the URL", async () => {
     // One deployment hosts many orgs — the host says nothing about which.
     await connect(introspecting({ kind: "unsupported" }));
-    expect(readCredentials().org).toBeUndefined();
+    expect(readCredentials().org?.id).toBeUndefined();
+    expect(readCredentials().org?.since).toEqual(expect.any(Number));
   });
 
   it("also falls back when introspect is unreachable", async () => {

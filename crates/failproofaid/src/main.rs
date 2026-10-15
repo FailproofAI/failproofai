@@ -402,6 +402,10 @@ fn spawn_collector_manager(
             // cursors for a whole tick — shipping what was written while they were
             // not traced, which is what the request exists to prevent. A `user`
             // request left for a stopped daemon is honoured here too.
+            while !prepare_collector_boundary() {
+                if daemon_shutdown.load(Ordering::Relaxed) { return; }
+                std::thread::sleep(Duration::from_millis(200));
+            }
             if let Some(request) = take_backfill_request() {
                 apply_backfill(request);
             }
@@ -455,9 +459,12 @@ fn spawn_collector_manager(
                 // and a config change arriving together produce one cycle
                 // rather than two.
                 if let Some(request) = take_backfill_request() {
-                    if let Some(running) = collector.take() {
-                        running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+                    if let Some(running) = collector.take()
+                        && !running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET) {
+                            tracing::error!("collector did not stop; refusing to start a second collector over shared queues");
+                            return;
                     }
+                    if !prepare_collector_boundary() { continue; }
                     apply_backfill(request);
                     // Read BEFORE the build, and recorded as what is running. A
                     // read after the spawn records an edit that landed in between
@@ -497,7 +504,7 @@ fn spawn_collector_manager(
                 let Some(next_cfg) = next else {
                     continue;
                 };
-                if running_cfg.as_ref() == Some(&next_cfg) {
+                if collector.is_some() && running_cfg.as_ref() == Some(&next_cfg) {
                     continue;
                 }
 
@@ -505,8 +512,10 @@ fn spawn_collector_manager(
                 // the new one. Two collectors sharing a spool directory would
                 // both claim the same batch files.
                 tracing::info!("collector configuration changed; cycling the collector");
-                if let Some(running) = collector.take() {
-                    running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET);
+                if let Some(running) = collector.take()
+                    && !running.join_with_flush(fpai_collect::DEFAULT_FLUSH_BUDGET) {
+                        tracing::error!("collector did not stop; refusing to start a second collector over shared queues");
+                        return;
                 }
 
                 if !next_cfg.is_enabled() {
@@ -538,6 +547,7 @@ fn spawn_collector_manager(
                     apply_backfill(request);
                 }
                 let next_cfg = current_collector_config().unwrap_or(next_cfg);
+                if !prepare_collector_boundary() { continue; }
 
                 let Some(next_collector) =
                     fpai_collect::spawn_supervised(collector_tasks(Some(next_cfg.clone())), daemon_shutdown.clone())
@@ -658,11 +668,21 @@ fn apply_backfill(request: backfill::Request) {
         .as_ref()
         .map(|c| hermes_extra_labels(&c.settings))
         .unwrap_or_default();
+    let boundary = cfg
+        .as_ref()
+        .and_then(|c| c.boundary.as_ref())
+        .map(|b| std::time::UNIX_EPOCH + Duration::from_millis(b.since));
+    let kind = match (request.kind, boundary) {
+        (backfill::Kind::User { since }, Some(boundary)) => backfill::Kind::User {
+            since: since.max(boundary),
+        },
+        (kind, _) => kind,
+    };
     let rewound = match paths::cursors_dir() {
-        Ok(root) => backfill::rewind(&root, request.kind, &scope, &hermes_extras),
+        Ok(root) => backfill::rewind_with_boundary(&root, kind, &scope, &hermes_extras, boundary),
         Err(_) => backfill::Rewound::default(),
     };
-    let window_days = backfill::record_window(request.kind, &scope.agents, now);
+    let window_days = backfill::record_window(kind, &scope.agents, now);
     tracing::info!(
         kind = request.kind.label(),
         agents = %scope.agents.join(","),
@@ -682,6 +702,29 @@ fn apply_backfill(request: backfill::Request) {
 fn current_collector_config() -> Option<fpai_collect::CollectorConfig> {
     let home = paths::failproofai_home().ok()?;
     fpai_collect::config::load(&home).ok()
+}
+
+/// Called only with no collector running. Failure keeps delivery off: starting
+/// under a new key with an unquarantined queue is not a recoverable shortcut.
+fn prepare_collector_boundary() -> bool {
+    let Some(cfg) = current_collector_config() else {
+        return false;
+    };
+    match fpai_collect::org_boundary::prepare(&cfg) {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!(
+                    batches = count,
+                    "retained previous-org batches outside delivery"
+                );
+            }
+            true
+        }
+        Err(err) => {
+            tracing::error!(%err, "collector disabled until previous-org queues can be isolated");
+            false
+        }
+    }
 }
 
 /// Cheap "should the collector be running?" check — reads the two small config
@@ -853,6 +896,16 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
         return Vec::new();
     }
 
+    // Use the exact configuration the tasks below are built from. A CLI edit
+    // between the manager's prepare and this read must not pair a new key with
+    // a queue the manager prepared for the previous boundary.
+    if let Err(err) = fpai_collect::org_boundary::prepare(&cfg) {
+        eprintln!(
+            "[failproofaid] collector disabled: previous-org queues could not be isolated: {err}"
+        );
+        return Vec::new();
+    }
+
     // `is_enabled()` already established there is one.
     let Some(ingest) = cfg.ingest.clone() else {
         return Vec::new();
@@ -865,6 +918,7 @@ fn collector_tasks(config: Option<fpai_collect::CollectorConfig>) -> Vec<fpai_co
     )
     .map(|u| {
         u.with_redact(cfg.settings.redact)
+            .with_boundary(cfg.boundary.as_ref().map(|b| b.since))
             .with_machine_id(cfg.settings.machine_id.as_deref())
     }) {
         Ok(u) => std::sync::Arc::new(u),

@@ -1,12 +1,26 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connectToCloud, describeOutcome, type ConnectInput } from "../../src/hooks/cloud-connection";
 import { readCredentials, writeCredentials } from "../../src/hooks/fp-config";
 import { credentialsFile, failedDir, cloudPoliciesDir } from "../../src/hooks/fp-home";
 import { flushRequestPath } from "../../src/hooks/flush-cli";
+
+// Records which ingest key was on disk at the moment recovery ran.
+const recovery = vi.hoisted(() => ({ keysOnDisk: [] as (string | undefined)[] }));
+vi.mock("../../src/hooks/credential-recovery", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../src/hooks/credential-recovery")>();
+  const { readCredentials: read } = await import("../../src/hooks/fp-config");
+  return {
+    ...actual,
+    recoverCredentialRefusals: (...args: Parameters<typeof actual.recoverCredentialRefusals>) => {
+      recovery.keysOnDisk.push(read().ingest?.key);
+      return actual.recoverCredentialRefusals(...args);
+    },
+  };
+});
 
 let home: string;
 let previousHome: string | undefined;
@@ -124,6 +138,14 @@ describe("credential refusal recovery", () => {
     expect(existsSync(join(failedDir(), "c.a1.c422.jsonl"))).toBe(true);
     expect(existsSync(join(failedDir(), "d.a3.c401.jsonl.poison"))).toBe(true);
     expect(existsSync(flushRequestPath())).toBe(true);
+  });
+  it("redrives only after the replacement key is on disk, so the flush never runs with the refused key", async () => {
+    park("a.a1.c401.jsonl");
+    recovery.keysOnDisk.length = 0;
+    await connect(["events:add", "policies:pull"]);
+    expect(recovery.keysOnDisk).toEqual(["replacement-valid"]);
+    expect(existsSync(flushRequestPath())).toBe(true);
+    expect(statSync(credentialsFile()).mtimeMs).toBeLessThanOrEqual(statSync(flushRequestPath()).mtimeMs);
   });
   it("different-org rotation archives refusals instead of redriving them", async () => {
     park("a.a1.c401.jsonl");

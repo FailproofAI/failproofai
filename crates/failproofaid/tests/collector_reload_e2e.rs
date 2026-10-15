@@ -374,3 +374,85 @@ fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
     daemon.wait_for("collector started", 2, Duration::from_secs(20));
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// `--connect` with a replacement key writes the credential, then recovers the
+/// batches the old key had refused and asks for a flush. When both land in one
+/// tick, the flush must be served by the collector running the NEW key: the
+/// old one retries with the refused key and re-parks them as 401.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flush_after_a_key_rotation_is_delivered_with_the_new_key() {
+    use wiremock::matchers::{header, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(header("Authorization", "Bearer replacement"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"accepted":1,"skipped":0})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let home = unique_home("flush-rotation");
+    make_home(&home, "unused");
+    let credentials = |key: &str| {
+        std::fs::write(
+            home.join("credentials.json"),
+            format!(
+                r#"{{"ingest":{{"url":"{}/v1/events","key":"{key}"}}}}"#,
+                server.uri()
+            ),
+        )
+        .unwrap();
+    };
+    credentials("revoked");
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    // Let the first deployment's start-up passes finish before the rotation.
+    std::thread::sleep(Duration::from_millis(1500));
+    // What the CLI does, in its order: credential first, then recovery.
+    let failed = home.join("state/failed");
+    std::fs::create_dir_all(&failed).unwrap();
+    credentials("replacement");
+    let recovered = failed.join("refused-batch.a1.jsonl");
+    std::fs::write(&recovered, "{\"marker\":\"RECOVERED\"}\n").unwrap();
+    std::fs::write(
+        home.join("state/flush-request.json"),
+        r#"{"requestedAtMs":1}"#,
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while recovered.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "recovered batch was never delivered: {:?}\n{}",
+            std::fs::read_dir(&failed)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name())
+                .collect::<Vec<_>>(),
+            daemon.stderr()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    for request in server.received_requests().await.unwrap() {
+        if String::from_utf8_lossy(&request.body).contains("RECOVERED") {
+            assert_eq!(
+                request.headers.get("authorization").unwrap(),
+                "Bearer replacement",
+                "the old deployment flushed the recovered batch with the refused key"
+            );
+        }
+    }
+    let leftovers: Vec<_> = std::fs::read_dir(&failed)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.contains("refused-batch"))
+        .collect();
+    assert!(leftovers.is_empty(), "re-parked: {leftovers:?}");
+    drop(daemon);
+    let _ = std::fs::remove_dir_all(&home);
+}

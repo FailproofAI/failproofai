@@ -368,10 +368,13 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     const { since: _drop, ...kept } = orgSwitch ? {} : (prev.org ?? {});
     next.org = { ...kept, ...since };
   }
+  writeCredentials(next);
+  // Only after the replacement key is on disk. Recovery requests a flush, and
+  // a flush served before the daemon sees the new key retries these batches
+  // with the key that was refused, re-parking them as definitive refusals.
   if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
     recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === known?.orgId && sameOrigin(prev.ingest.url)), prev.org?.id);
   }
-  writeCredentials(next);
   // Legacy JSON override remains supported; the consolidated file above is
   // published once, never as a mixture of previous and replacement slots.
   if (process.env.FAILPROOFAI_CLOUD_CREDENTIALS) {

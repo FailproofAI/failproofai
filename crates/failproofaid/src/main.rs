@@ -488,15 +488,23 @@ fn spawn_collector_manager(
                     continue;
                 }
 
+                let next = current_collector_config();
+
                 // Cheap by comparison with a backfill: nothing is rewound and
                 // the collector keeps running. Just tell the sweeper to stop
-                // waiting out its interval.
-                if take_flush_request() {
+                // waiting out its interval. Only a collector built from the
+                // config on disk may honour it: a key rotation writes the new
+                // credential and then asks for a flush of the batches the old
+                // key had refused. Flushed by the OLD deployment they 401 again
+                // and are re-parked as definitive. Otherwise the request stays
+                // on disk for the replacement's first tick.
+                if flush_may_run(next.as_ref(), running_cfg.as_ref(), collector.is_some())
+                    && take_flush_request()
+                {
                     flush_flag().store(true, Ordering::SeqCst);
                     tracing::info!("flush requested; delivering spooled batches now");
                 }
 
-                let next = current_collector_config();
                 // `None` means unreadable, not "disabled". A half-written file
                 // caught mid-save would otherwise tear down a healthy collector
                 // and, on the next tick, build a new one from the same bytes.
@@ -609,6 +617,18 @@ fn flush_flag() -> Arc<std::sync::atomic::AtomicBool> {
     FLUSH_NOW
         .get_or_init(|| Arc::new(std::sync::atomic::AtomicBool::new(false)))
         .clone()
+}
+
+/// Whether the running collector may serve a flush request: it is running and
+/// was built from exactly the config now on disk. `None` (unreadable, likely
+/// mid-save) defers too — it may be the very credential change the flush is
+/// meant to follow.
+fn flush_may_run(
+    on_disk: Option<&fpai_collect::CollectorConfig>,
+    running: Option<&fpai_collect::CollectorConfig>,
+    has_collector: bool,
+) -> bool {
+    has_collector && on_disk.is_some() && on_disk == running
 }
 
 /// True when a flush was requested. Removed before acting, like the backfill
@@ -2099,6 +2119,35 @@ mod tests {
         std::iter::once("failproofaid".to_string())
             .chain(rest.iter().map(|s| s.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn a_flush_waits_for_the_collector_built_from_the_config_on_disk() {
+        let home = std::env::temp_dir().join(format!(
+            "failproofaid-flush-gate-{}",
+            fpai_collect::uploader::new_request_id()
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        let load = |key: &str| {
+            std::fs::write(
+                home.join("credentials.json"),
+                format!(
+                    r#"{{"ingest":{{"url":"https://ingest.example/v1/events","key":"{key}"}}}}"#
+                ),
+            )
+            .unwrap();
+            fpai_collect::config::load(&home).unwrap()
+        };
+        let old = load("old");
+        let rotated = load("new");
+        assert!(super::flush_may_run(Some(&old), Some(&old), true));
+        // A rotation and its flush landing in one tick: the old deployment
+        // would retry the recovered batches with the refused key.
+        assert!(!super::flush_may_run(Some(&rotated), Some(&old), true));
+        assert!(!super::flush_may_run(None, Some(&old), true));
+        assert!(!super::flush_may_run(Some(&old), Some(&old), false));
+        assert!(!super::flush_may_run(Some(&old), None, true));
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

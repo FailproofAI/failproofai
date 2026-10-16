@@ -108,6 +108,18 @@ section is missing or empty is refused before anything is built.
   against the override. This package's own dev lockfile also moves
   `source-map-js` to `1.2.2` (GHSA-68fv-2mgg-jv7q). (#901)
 
+- **`nextjs` and `mastra-0` clear their fixable advisories, again without moving
+  a pin.** `nextjs` moves `next` to `16.4.1` (six advisories, fixed in `16.3.8`),
+  `sharp` to `0.35.5` (GHSA-wq5f-xc86-pv6w) and `source-map-js` to `1.2.2`
+  (GHSA-68fv-2mgg-jv7q). `mastra-0` moves `@modelcontextprotocol/sdk` from
+  `1.30.1` to `1.32.1` (GHSA-6qxp-vccf-f47h), inside the `^1.17.5` range
+  `@mastra/mcp@0.14.5` declares, so only the lockfile changes. Dependabot's
+  version of this PR also moved `ai-4` to `ai@5.0.52` and `mastra-0` to
+  `@mastra/core@1.77.0`, which cannot install beside `@mastra/mcp@0.14.5` and
+  failed every integration shard, and `nextjs`'s `ai` to `7.0.141`, off the
+  `ai-7` twin its routes' traces are compared against. None of those are
+  applied. (#902)
+
 ## 0.0.1-beta.0 — 2026-09-23
 
 ### Added

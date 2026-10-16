@@ -74,6 +74,18 @@ llamaindex = ["llama-index-core>=0.14.23,<0.15"]
 pydantic-ai = ["pydantic-ai-slim>=2.0,<3"]      # 2.0 removed Agent(instrument=...)
 otel = ["opentelemetry-sdk>=1.39,<2"]          # optional SpanExporter / processor APIs
 
+# Read by uv only when it resolves uv.lock, the dev/test lockfile. It is not package
+# metadata, so it never reaches anyone installing `failproofai-sdk[crewai]`.
+#
+# crewai pins `mcp~=1.28.1`, and mcp 1.8.0 through 1.29.1 carry GHSA-84m7-p3x7-pcfv
+# (unbounded Streamable HTTP sessions). The fix, 1.30.0, is outside that pin, so no
+# in-range update reaches it; this is the uv equivalent of an npm `overrides` entry.
+# The ceiling keeps crewai on the 1.x API it is written against. Delete this once a
+# crewai release allows 1.30: an override replaces crewai's own requirement outright,
+# so while it is here uv does not check the mcp version crewai asks for.
+[tool.uv]
+override-dependencies = ["mcp>=1.30.0,<2"]
+
 [tool.setuptools.dynamic]
 version = { attr = "failproofai_sdk._version.__version__" }
 

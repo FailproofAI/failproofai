@@ -24,5 +24,8 @@
     "@types/node": "22.20.4",
     "@types/react": "19.3.0",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "argparse": "2.0.1"
   }
 }

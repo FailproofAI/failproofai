@@ -12,7 +12,14 @@ section is missing or empty is refused before anything is built.
 
 ### Fixes
 
-- _Nothing yet._
+- **`nextjs` and `mastra-1` drop `sprintf-js`.** Every release through `1.1.3`
+  carries GHSA-hp3w-g68c-fv3c and none fixes it, so the fix is to take it out of
+  the tree. Both fixtures reached it only through `@mastra/core@1.68.0` →
+  `gray-matter@4.0.3` → `js-yaml@3.15.2` → `argparse@1.0.10`, and js-yaml 3 loads
+  `argparse` from its `js-yaml` CLI alone, never from the library `gray-matter`
+  calls. A fixture-local `overrides` entry moves `argparse` to `2.0.1`, which has no
+  dependencies. Each lockfile changes by those two packages and nothing else, and
+  `npm audit` on both now reports no findings. (#904)
 
 ## 0.0.1-beta.1 — 2026-10-15
 

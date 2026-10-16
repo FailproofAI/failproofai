@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.12-beta.0 — 2026-10-16
+
+### Dependencies
+
+- Patch `mcp` 1.28.1 → 1.30.0 (GHSA-84m7-p3x7-pcfv) in the Python SDK's test lockfile, the finding that turned `main`'s Supply Chain gate red. crewai pins `mcp~=1.28.1`, so the fix is a `[tool.uv] override-dependencies` entry in `sdk/python/pyproject.toml`; uv applies it only when resolving `uv.lock`, and the published package's metadata is unchanged (#904)
+- Remove `sprintf-js` (GHSA-hp3w-g68c-fv3c, no fixed release) from the `nextjs` and `mastra-1` SDK integration fixtures with an `argparse` 2.0.1 override. Both reached it through `@mastra/core` → `gray-matter` → `js-yaml@3` → `argparse@1`, and js-yaml 3 loads `argparse` only from its CLI, which nothing runs; every pin stays put (#904)
+
 ## 1.0.11 — 2026-10-15
 
 The first stable release with the new terminal experience and OpenTelemetry. Everything below in the `1.0.11-beta.*` sections ships here; the highlights:

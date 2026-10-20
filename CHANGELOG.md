@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.12-beta.0 — 2026-10-16
+## 1.0.12-beta.0 — 2026-10-20
 
 ### Dependencies
 

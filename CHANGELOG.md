@@ -4,11 +4,11 @@
 
 ### Features
 
-- **Log in to FailproofAI Cloud from `config`.** The connect step now opens with a menu: log in through the browser (the default), paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected is offered "keep" first, or "log in again" first when its saved key no longer works. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#TBD)
+- **Log in to FailproofAI Cloud from `config`.** The connect step now opens with a menu: log in through the browser (the default), paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected is offered "keep" first, or "log in again" first when its saved key no longer works. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#920)
 
 ### Fixes
 
-- `config` asks for your sudo password again before installing the daemon when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#TBD)
+- `config` asks for your sudo password again before installing the daemon when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
 
 ### Dependencies
 

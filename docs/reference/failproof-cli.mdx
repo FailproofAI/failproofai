@@ -25,7 +25,9 @@ failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-`failproofai config` is the whole of setup: it installs the `failproofaid` service (root once, via `sudo -n` — never an interactive password prompt), wires hooks into every agent CLI it finds, and connects to Cloud when a key is available. With no terminal — CI, a container, an agent driving it — it applies rather than asking, and exits 1 if anything it was asked to do did not happen.
+`failproofai config` is the whole of setup: it installs the `failproofaid` service (root once, via `sudo -n` — never an interactive password prompt), wires hooks into every agent CLI it finds, and connects to Cloud. With no terminal — CI, a container, an agent driving it — it applies rather than asking, and exits 1 if anything it was asked to do did not happen.
+
+In a terminal, the **Connect to cloud** step offers **Log in to FailproofAI Cloud** (the default), **Paste an API key**, or **Use open source**. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal picks up the approval by itself and shows who approved it and for which org. The key is minted only when setup finishes, after the daemon is installed. On a machine that is already connected, **Keep current connection** comes first, unless its saved key no longer works, in which case **Log in again** does; logging in again makes a new key and leaves the old one working until you revoke it. A Cloud from before browser login says so, and pasting a key still works.
 
 It chooses **no** policies. That is the second command's job, and without it a freshly configured machine enforces nothing but the always-on guard.
 
@@ -39,7 +41,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 
 | Command | Outcome |
 | --- | --- |
-| `failproofai config` | Set the machine up: agents, daemon, and Cloud when a key is present |
+| `failproofai config` | Set the machine up: agents, daemon, and Cloud — log in through the browser, paste a key, or stay open source |
 | `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/reference/jev-cloud) in observe mode, unless a `jev.json` already exists or `--no-transcripts` is given |
 | `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |

@@ -1348,6 +1348,258 @@ export function promptCloudKey(opts: CloudKeyPromptOptions): Promise<CloudKeyAns
   });
 }
 
+/** What starting a browser login produced. */
+export type BrowserLoginStart =
+  | { ok: true; url: string; expiresIn: number; interval: number }
+  /** `retryable` is false when trying again cannot help — an older server. */
+  | { ok: false; line: string; retryable: boolean };
+
+/** One "approved yet?" answer. */
+export type BrowserLoginPoll<T> =
+  | { state: "pending"; interval?: number }
+  | { state: "slow_down" }
+  | { state: "approved"; value: T }
+  | { state: "denied" }
+  | { state: "expired" }
+  /** Could not ask. Polling goes on: a dropped connection is not a refusal. */
+  | { state: "unreachable"; line: string };
+
+export interface BrowserLoginOptions<T> {
+  /** The heading, e.g. "Connect to cloud". */
+  message: string;
+  /** Grey text after the heading: the host the login goes to. */
+  meta?: string;
+  /** What is being connected, as the link and the browser page will name it. */
+  machineLabel: string;
+  start: () => Promise<BrowserLoginStart>;
+  poll: () => Promise<BrowserLoginPoll<T>>;
+  /** Try to open the link; false means "print it, do not open" (SSH, no display). */
+  open: (url: string) => boolean;
+  /** The lines the screen collapses to once approved. */
+  collapsed: (value: T) => string[];
+  stdin?: TTYIn;
+  stdout?: TTYOut;
+  /** Injectable clock, for tests. */
+  now?: () => number;
+}
+
+/**
+ * Wait for a person to finish logging in, in a browser.
+ *
+ * Gets a link, opens it (or prints it where a browser cannot be opened — the
+ * link works from any device, so an SSH session needs nothing else), then polls
+ * until the request is approved, refused or expired. Nothing is typed here: the
+ * account side happens entirely in the browser.
+ *
+ * Resolves `{ value }` once approved, `BACK` on Esc (the caller's menu is the
+ * way back out), or `null` on Ctrl-C. An expired or refused link offers a fresh
+ * one on Enter rather than ending the screen.
+ *
+ * The link is printed ABOVE the live region, not inside it: the region is
+ * repainted and cut to the terminal width, and a link that is cut cannot be
+ * clicked or copied.
+ */
+export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ value: T } | Back | null> {
+  const stdin: TTYIn = opts.stdin ?? process.stdin;
+  const stdout: TTYOut = opts.stdout ?? process.stdout;
+  if (!stdin.isTTY || !stdout.isTTY) return Promise.resolve(null);
+
+  const now = opts.now ?? Date.now;
+  const c = paint(colorsEnabled(stdout));
+  const kit = screenKit({ cols: stdout.columns || 80, color: colorsEnabled(stdout) });
+  const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  const region: Region = { lastCount: 0 };
+
+  type Phase = "starting" | "waiting" | "expired" | "denied" | "failed";
+  let phase: Phase = "starting";
+  let failLine = "";
+  let retryable = true;
+  let cautionLine = "";
+  let expiresAt = 0;
+  let interval = 2;
+  let frame = 0;
+  let settled = false;
+  let headingShown = false;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  let spinTimer: ReturnType<typeof setInterval> | null = null;
+  // Bumped on every new link, so a poll answer for an abandoned link is ignored.
+  let attempt = 0;
+
+  const countdown = (): string => {
+    const left = Math.max(0, Math.ceil((expiresAt - now()) / 1000));
+    return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  };
+
+  const build = (): string[] => {
+    const spin = c.ink3(spinnerFrames[frame % spinnerFrames.length]);
+    switch (phase) {
+      case "starting":
+        return [`${INDENT}${spin} Getting a link…`];
+      case "waiting":
+        return [
+          `${INDENT}${spin} Waiting for you to authorize in the browser  ${c.ink3(`· expires in ${countdown()}`)}`,
+          ...(cautionLine ? [kit.caution(cautionLine)] : []),
+          "",
+          kit.keys(["esc back", "ctrl-c cancel"]),
+        ];
+      case "expired":
+        return [kit.fail("That link expired."), "", kit.keys(["enter new link", "esc back"])];
+      case "denied":
+        return [kit.fail("The request was cancelled in the browser."), "", kit.keys(["enter try again", "esc back"])];
+      case "failed":
+        return [kit.fail(failLine), "", kit.keys(retryable ? ["enter try again", "esc back"] : ["esc back"])];
+    }
+  };
+
+  const draw = (): void => {
+    if (settled) return;
+    // Until a link has been printed above (which carries the heading), the
+    // heading lives in the region — so it shows while starting, and above a
+    // failure to start.
+    repaint(stdout, region, headingShown ? build() : [promptHeading(c, opts.message, opts.meta), ...build()]);
+  };
+
+  /** Write lines above the live region, where nothing repaints or cuts them. */
+  const printAbove = (lines: string[]): void => {
+    const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
+    stdout.write(`${clear}${lines.join("\n")}\n`);
+    region.lastCount = 0;
+  };
+
+  const clearPoll = (): void => {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = null;
+  };
+
+  const restoreTerminal = (): void => showCursor(stdout);
+
+  return new Promise((resolve) => {
+    const wasRaw = stdin.isRaw;
+
+    const finish = (answer: { value: T } | Back | null): void => {
+      if (settled) return;
+      clearPoll();
+      if (spinTimer) clearInterval(spinTimer);
+      stdin.removeListener("keypress", onKey);
+      stdin.setRawMode?.(wasRaw ?? false);
+      stdin.pause();
+      process.removeListener("exit", restoreTerminal);
+      const lines =
+        answer === null
+          ? [c.ink3("cancelled")]
+          : answer === BACK
+            ? []
+            : opts.collapsed(answer.value);
+      repaint(stdout, region, lines, { cut: false });
+      settled = true;
+      restoreTerminal();
+      resolve(answer);
+    };
+
+    const schedulePoll = (forAttempt: number): void => {
+      clearPoll();
+      pollTimer = setTimeout(() => void pollOnce(forAttempt), interval * 1000);
+    };
+
+    const pollOnce = async (forAttempt: number): Promise<void> => {
+      let answer: BrowserLoginPoll<T>;
+      try {
+        answer = await opts.poll();
+      } catch (err) {
+        answer = { state: "unreachable", line: err instanceof Error ? err.message : String(err) };
+      }
+      if (settled || forAttempt !== attempt) return;
+      switch (answer.state) {
+        case "approved":
+          return finish({ value: answer.value });
+        case "denied":
+          phase = "denied";
+          return draw();
+        case "expired":
+          phase = "expired";
+          return draw();
+        case "slow_down":
+          interval = Math.min(10, interval + 2);
+          break;
+        case "unreachable":
+          cautionLine = `Can't reach the server right now (${answer.line}) — still trying.`;
+          break;
+        case "pending":
+          cautionLine = "";
+          if (answer.interval && answer.interval > 0) interval = answer.interval;
+          break;
+      }
+      // The server is the authority on expiry, but a link that is past it by
+      // our own clock too is not worth another round trip.
+      if (now() > expiresAt + interval * 1000) {
+        phase = "expired";
+        return draw();
+      }
+      draw();
+      schedulePoll(forAttempt);
+    };
+
+    const begin = async (): Promise<void> => {
+      const mine = ++attempt;
+      clearPoll();
+      cautionLine = "";
+      phase = "starting";
+      draw();
+      let started: BrowserLoginStart;
+      try {
+        started = await opts.start();
+      } catch (err) {
+        started = { ok: false, line: err instanceof Error ? err.message : String(err), retryable: true };
+      }
+      if (settled || mine !== attempt) return;
+      if (!started.ok) {
+        phase = "failed";
+        failLine = started.line;
+        retryable = started.retryable;
+        return draw();
+      }
+      expiresAt = now() + started.expiresIn * 1000;
+      interval = started.interval > 0 ? started.interval : 2;
+      const opened = opts.open(started.url);
+      printAbove([
+        ...(headingShown ? [] : [promptHeading(c, opts.message, opts.meta)]),
+        opened
+          ? `${INDENT}Opening your browser to connect ${opts.machineLabel}. If it doesn't open, use this link:`
+          : `${INDENT}Open this link in any browser to connect ${opts.machineLabel}:`,
+        `${INDENT}${c.bold(started.url)}`,
+        "",
+      ]);
+      headingShown = true;
+      phase = "waiting";
+      draw();
+      schedulePoll(mine);
+    };
+
+    function onKey(_str: string | undefined, key: readline.Key): void {
+      if (!key || settled) return;
+      if (key.ctrl && (key.name === "c" || key.name === "d")) return finish(null);
+      if (key.name === "escape") return finish(BACK);
+      if ((key.name === "return" || key.name === "enter") && phase !== "waiting" && phase !== "starting") {
+        if (phase === "failed" && !retryable) return;
+        void begin();
+      }
+    }
+
+    process.once("exit", restoreTerminal);
+    readline.emitKeypressEvents(stdin);
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    hideCursor(stdout);
+    stdin.on("keypress", onKey);
+    spinTimer = setInterval(() => {
+      frame++;
+      if (phase === "waiting" || phase === "starting") draw();
+    }, 120);
+    spinTimer.unref?.();
+    void begin();
+  });
+}
+
 // ── the kit ──────────────────────────────────────────────────────────────────
 /**
  * The block builders every PRINTED surface is assembled from.

@@ -145,9 +145,11 @@ applies your `--add`/`--remove`, prints the complete resulting set, and writes
 that. Use `--set` only when you mean "exactly these, drop the rest".
 
 ```bash
+# A bare --add keeps its pinned version if the policy is already deployed.
+# Use id@version:effect to choose a specific version and effect.
 fp fleet deploy ci-runner-01 \
-    --add no-force-push \            # keeps its pinned version if already deployed
-    --add prod-guard@1:observe \     # id@version:effect
+    --add no-force-push \
+    --add prod-guard@1:observe \
     --remove old-rule
 ```
 

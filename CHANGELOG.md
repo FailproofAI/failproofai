@@ -4,7 +4,7 @@
 
 ### Docs
 
-- Fix the Cloud CLI fleet deployment example so its line continuations work when copied into a shell (#924).
+- Fix the Cloud CLI fleet deployment example so its line continuations work when copied into a shell (#925).
 
 ## 1.0.12-beta.0 — 2026-10-20
 

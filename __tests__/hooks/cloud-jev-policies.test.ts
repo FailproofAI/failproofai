@@ -828,6 +828,14 @@ describe("C10.5 parseCloudReply", () => {
     ["an unknown verdict", { verdict: { ...allowVerdict, outcomes: [{ ...cloudOutcome("a", "p", "none"), verdict: "maybe" }] } }],
     ["a bad policy id", { verdict: { ...allowVerdict, outcomes: [cloudOutcome("a", "../x", "none")] } }],
     ["names that are not names", { verdict: allowVerdict, droppedLocal: [7] }],
+    // Security review of #873: an outcome `asked` does not vouch for must not clear anything.
+    ["an outcome for a check Cloud did not ask", { verdict: { ...allowVerdict, outcomes: [cloudOutcome("acme-x", "no-prod-db", "none")] }, asked: [] }],
+    ["an outcome for a check other than the ones asked", { verdict: { ...allowVerdict, outcomes: [cloudOutcome("acme-x", "no-prod-db", "none")] }, asked: ["acme-y"] }],
+    [
+      "the same check answered twice",
+      { verdict: { ...allowVerdict, outcomes: [cloudOutcome("acme-x", "no-prod-db", "none"), cloudOutcome("acme-x", "no-prod-db", "none")] }, asked: ["acme-x"] },
+    ],
+    ["a denying check under a verdict that allows", { verdict: { ...allowVerdict, outcomes: [cloudOutcome("acme-x", "no-prod-db", "deny")] }, asked: ["acme-x"] }],
   ])("refuses %s as malformed", async (_why, block) => {
     const { parseCloudReply } = await import("@/src/hooks/semantic/cloud-jev");
     const { JevError } = await import("@/src/hooks/semantic/jev-client");
@@ -1036,6 +1044,24 @@ describe("C10.5 both reviewability: only its own Cloud outcomes clear it", () =>
     stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock(outcomes) } }));
     const result = await hook("psql -h prod-db -c 'select 1'");
     expect(result.evaluation?.decision).toBe(decision);
+  });
+
+  // Security review of #873: `asked: []` beside a fabricated `none` for the
+  // policy's own check used to clear the regex denial. The reply contradicts
+  // itself, so it is refused and the regex decides alone.
+  it.each([
+    ["asked: [] with a fabricated none", { asked: [] }],
+    ["asked names another check", { asked: ["acme-other"] }],
+    ["asked omitted", { asked: undefined }],
+  ])("a reply whose outcomes %s cannot clear it: the regex deny stands", async (_why, extra) => {
+    await connect();
+    deploy({ policies: [both], jevMode: "enforce" });
+    stubFetch((call) => ({
+      body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-x", "no-prod-db", "none")], extra) },
+    }));
+    const result = await hook("psql -h prod-db -c 'select 1'");
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.policyName).toBe("cloud/no-prod-db@3/block-prod-db");
   });
 
   it("an installed pack's check of the same name, answered locally, never clears it", async () => {

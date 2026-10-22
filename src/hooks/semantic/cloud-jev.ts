@@ -425,6 +425,23 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
   if (!Array.isArray(v.outcomes) || v.outcomes.length > MAX_LIST) malformed("verdict has no outcomes list");
   if (v.beyondTask !== undefined && typeof v.beyondTask !== "boolean") malformed("verdict beyondTask is not a flag");
   const outcomes = v.outcomes.map(parseOutcome);
+  const asked = names(block.asked, "asked");
+  // Each outcome must answer a check Cloud says it ASKED, once. The review
+  // clears a `both` policy's regex half from these outcomes, so one that
+  // `asked` does not vouch for — `asked: []` beside a fabricated `none` — is a
+  // contradiction, not a clear: the whole reply is refused, and the call is
+  // decided by the regex alone (security review of #873).
+  const askedSet = new Set(asked);
+  const seen = new Set<string>();
+  outcomes.forEach((o, i) => {
+    if (!askedSet.has(o.policy)) malformed(`outcome ${i} answers ${JSON.stringify(o.policy)}, which Cloud did not ask`);
+    const key = `${o.origin?.packId ?? ""}\u0000${o.policy}`;
+    if (seen.has(key)) malformed(`outcome ${i} answers ${JSON.stringify(o.policy)} twice`);
+    seen.add(key);
+  });
+  // A check that fired deny makes the verdict a deny; a reply that says
+  // otherwise contradicts itself.
+  if (outcomes.some((o) => o.verdict === "deny") && v.decision !== "deny") malformed("a check denied but the verdict does not");
   return {
     verdict: {
       decision: v.decision as SemanticVerdict["decision"],
@@ -439,7 +456,7 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
       scopeWithinRequest: nullableProbability(v.scopeWithinRequest, "scopeWithinRequest"),
       beyondTask: v.beyondTask === true,
     },
-    asked: names(block.asked, "asked"),
+    asked,
     droppedLocal: names(block.droppedLocal, "droppedLocal"),
     droppedCloud: names(block.droppedCloud, "droppedCloud"),
   };

@@ -15,6 +15,7 @@
 
 ### Fixes
 
+- **A FailproofAI Cloud Jev reply that contradicts itself can no longer clear a `both` policy's regex denial.** An outcome for a check the reply's `asked` does not name, a check answered twice, or a deny outcome under a non-deny verdict makes the whole reply malformed, and the review trusts a Cloud outcome only for a check in `asked`; either way the call is decided by the regex alone (security review of #873)
 - A cached policy repair now rechecks Cloud enrolment before writing state. A disconnect landing after the daemon read its desired-state snapshot cannot restore that organization's active deployment during post-poll repair.
 - Locally decided inert Jev calls and cached answers no longer count as fresh Cloud health successes. They cannot clear an outage streak or close the Cloud Jev circuit breaker without a successful Cloud response.
 - `failproofai config --disconnect` now sticks: the daemon's snapshot (`desired-state.json`) goes with `active.json`, the daemon no longer rebuilds `active.json` on a machine that is not enrolled, a poll in flight during the disconnect is discarded, and a machine put back on OSS has any leftover Cloud deployment removed. Before, the old org's policies and Jev mode came back within one maintenance interval. That cleanup runs only in the default cloud policy directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.

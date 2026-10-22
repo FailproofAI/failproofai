@@ -220,6 +220,11 @@ export function reviewerKey(o: Pick<PolicyOutcome, "policy" | "origin">): string
   return packId !== undefined && packId.startsWith("cloud:") ? cloudReviewerName(packId.slice("cloud:".length), o.policy) : o.policy;
 }
 
+/** Whether an outcome came from FailproofAI Cloud (its `cloud:<id>` origin; see `parseCloudReply`). */
+function isCloudOutcome(o: Pick<PolicyOutcome, "origin">): boolean {
+  return o.origin?.packId?.startsWith("cloud:") === true;
+}
+
 /** The semantic policy an attributable Jev verdict is filed under. */
 function jevDecider(outcome: Extract<SemanticOutcome, { status: "ok" }>) {
   const wanted = outcome.verdict.decision === "deny" ? "deny" : "instruct";
@@ -258,6 +263,15 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   const latencyMs = sent && !cached ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
   const outcomes = outcome.verdict.outcomes;
+  // A FailproofAI Cloud outcome is trusted only for a check the reply's own
+  // `asked` names. `parseCloudReply` already refuses a reply that contradicts
+  // itself; this keeps the review from relying on that alone, because a Cloud
+  // outcome is what clears a `both` policy's regex half. One it cannot vouch
+  // for — or a Cloud-origin outcome with no Cloud reply at all — means the
+  // picture is not one to clear anything on: the regex decides alone.
+  const cloudAsked = "cloud" in outcome ? new Set((outcome as CloudSemanticOutcome & { status: "ok" }).cloud.asked) : null;
+  const unvouched = outcomes.some((o) => isCloudOutcome(o) && !(cloudAsked?.has(o.policy) ?? false));
+  if (unvouched) return { kind: "fallback", reason: "malformed", latencyMs, model: null };
   // `null` when the injection probe was not in the request, which now means
   // only that no request was made: v1 asks it on every call it sends, with or
   // without a recorded human message (see `compile.ts`).

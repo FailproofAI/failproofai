@@ -43,7 +43,7 @@ function startDaemon(opts: { answerHooks: boolean; answerPolicyEvaluations?: boo
           const value = opts.answerPolicyEvaluations
             ? {
                 type: "policyResult",
-                protocolVersion: 1,
+                protocolVersion: 2,
                 decision: "allow",
                 policyNames: [],
                 reason: null,
@@ -53,7 +53,7 @@ function startDaemon(opts: { answerHooks: boolean; answerPolicyEvaluations?: boo
               }
             : {
                 type: "error",
-                protocolVersion: 1,
+                protocolVersion: 2,
                 message: "unknown variant `policyEvaluation`",
               };
           const body = Buffer.from(JSON.stringify(value), "utf-8");
@@ -65,8 +65,8 @@ function startDaemon(opts: { answerHooks: boolean; answerPolicyEvaluations?: boo
         const body = Buffer.from(
           JSON.stringify(
             msg.type === "ping"
-              ? { type: "pong", protocolVersion: 1 }
-              : { type: "hookResult", protocolVersion: 1, exitCode: 0, stdout: "", stderr: "" },
+              ? { type: "pong", protocolVersion: 2 }
+              : { type: "hookResult", protocolVersion: 2, exitCode: 0, stdout: "", stderr: "" },
           ),
           "utf-8",
         );
@@ -137,7 +137,7 @@ describe("hooks/daemon-service — health probe startup race", () => {
     expect(probe).toEqual({ ok: false, reason: "worker" });
   }, 40_000);
 
-  it("rejects a hook-compatible v1 daemon that lacks policyEvaluation", async () => {
+  it("rejects a hook-compatible daemon that lacks policyEvaluation", async () => {
     server = await startDaemon({ answerHooks: true, answerPolicyEvaluations: false });
     const { probeDaemonEndToEnd, probeDaemonPolicyEvaluation } = await import(
       "../../src/hooks/daemon-service"

@@ -55,7 +55,12 @@
  * - **A session pause.** It suspends local policy for minutes, and a warning
  *   about a policy set that is coming back shortly would be noise.
  */
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import {
+  cloudAuthorityDeclaration,
+  cloudReviewerNames,
+  readActiveCloudManagedPolicies,
+  readCloudJevMode,
+} from "./cloud-managed-policies";
 import { jevPacks } from "./effective-reviewers";
 import { resolve } from "node:path";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
@@ -202,9 +207,15 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
   }
 
   try {
-    for (const assignment of readActiveCloudManagedPolicies()) {
-      records.push({ authority: assignment.authority, reviewedBy: assignment.reviewedBy });
-    }
+    // Exactly as `handler.ts` registers them: a `both` policy is reviewable
+    // only while FailproofAI Cloud's Jev mode asks, and then only by its own
+    // Cloud checks (`cloud:<id>/<name>`), which this machine cannot list but
+    // Cloud answers for. No mode, `off`, or an `observe` assignment: hard.
+    const mode = readCloudJevMode();
+    const assignments = readActiveCloudManagedPolicies();
+    const cloudReviewers = cloudReviewerNames(assignments, mode);
+    if (cloudReviewers.length > 0) reviewers = new Set([...(reviewers ?? []), ...cloudReviewers]);
+    for (const assignment of assignments) records.push(cloudAuthorityDeclaration(assignment, mode));
   } catch {
     // Same fail-open as the handler's own read of this file.
   }
@@ -225,7 +236,12 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     customFiles = 0;
   }
 
-  return { ...countReviewable(records, reviewers), customFiles, jevChecks: reviewers?.size ?? 0 };
+  return {
+    ...countReviewable(records, reviewers),
+    customFiles,
+    // The checks THIS machine asks; a Cloud policy's checks are FailproofAI Cloud's.
+    jevChecks: reviewers ? [...reviewers].filter((name) => !name.startsWith("cloud:")).length : 0,
+  };
 }
 
 /**

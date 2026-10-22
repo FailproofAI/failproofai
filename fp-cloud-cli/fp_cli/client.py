@@ -23,7 +23,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import httpx
 
@@ -487,7 +487,37 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
         message or f"Request failed with status {response.status_code}.",
         status=response.status_code,
         request_id=request_id,
+        hint=_jev_budget_breakdown(response),
     )
+
+
+def _jev_budget_breakdown(response: httpx.Response) -> Optional[str]:
+    """The per-policy breakdown of a deploy's ``jev_budget_exceeded`` refusal.
+
+    The message carries only the total (``used``/``budget``); the body also lists
+    every Jev policy version the machine would carry with its question
+    characters (``policies: [{id, version, chars}]``), which is what tells an
+    operator WHICH policy to leave off. Largest first. ``None`` for any other
+    error, and for a publish refusal, which names no other policies.
+    """
+    try:
+        data = response.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("code") != "jev_budget_exceeded":
+        return None
+    rows = [
+        (str(p.get("id", "")), p.get("version"), p["chars"])
+        for p in data.get("policies") or []
+        if isinstance(p, dict) and isinstance(p.get("chars"), int)
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda row: -row[2])
+    parts = [f"{pid}@{version} {chars:,}" if version is not None else f"{pid} {chars:,}"
+             for pid, version, chars in rows]
+    return ("Jev question characters per policy: " + " · ".join(parts)
+            + " — deploy fewer of these Jev policies to this machine")
 
 
 def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
@@ -1643,22 +1673,43 @@ def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
 
 
 def publish_policy(
-    ctx: ClientContext, policy_id: str, source: str, description: str = ""
+    ctx: ClientContext,
+    policy_id: str,
+    source: Optional[str],
+    description: str = "",
+    *,
+    kind: Optional[str] = None,
+    semantic: Optional[List[Any]] = None,
 ) -> PolicyVersion:
     """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place.
 
-    Refuses Jev fields a cloud policy never reads before anything is sent, here
-    because `policies publish` and `policies compose --publish` both route through
-    it — and regardless of `--no-verify`, which only skips the syntax check.
+    ``kind`` is ``regex`` (JavaScript ``source`` only — what an omitted kind
+    means to the server), ``jev`` (Jev declarations in ``semantic``, no
+    ``source``) or ``both`` (the two together: the JavaScript is reviewable by
+    exactly its own checks). ``authority``/``reviewedBy`` are derived by the
+    server from the kind and are never sent.
+
+    Refuses Jev fields in the JAVASCRIPT before anything is sent, here because
+    `policies publish` and `policies compose --publish` both route through it —
+    and regardless of `--no-verify`, which only skips the syntax check. Jev
+    checks belong in ``semantic``, where they take effect.
     """
-    problem = cloud_publish_problem(source)
+    problem = cloud_publish_problem(source or "")
     if problem:
         raise ApiError(
             f"{policy_id} cannot be published as a cloud policy: {problem}",
-            hint=("Jev checks ship in a failproofai pack — `failproofai publish` — where "
-                  "semanticPolicies.add and authority: \"reviewable\" take effect"),
+            hint=("put Jev checks in the policy's Jev declarations — `--kind both --semantic "
+                  "checks.json` — or ship them in a failproofai pack with `failproofai publish`"),
         )
-    body = {"id": policy_id, "source": source, "description": description}
+    body: Dict[str, Any] = {"id": policy_id, "description": description}
+    # `source` is omitted for a Jev-only policy: the server takes absent (or
+    # empty) as "no JavaScript", which is what a `jev` version is.
+    if source:
+        body["source"] = source
+    if kind is not None:
+        body["kind"] = kind
+    if semantic is not None:
+        body["semantic"] = semantic
     return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
 
 
@@ -1708,12 +1759,43 @@ def get_deployment(ctx: ClientContext, machine_id: str) -> Optional[Deployment]:
 
 
 def deploy_policies(
-    ctx: ClientContext, machine_id: str, policies: Sequence[PolicyRef]
+    ctx: ClientContext,
+    machine_id: str,
+    policies: Sequence[PolicyRef],
+    jev_mode: Optional[str] = None,
 ) -> Deployment:
-    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set."""
+    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set.
+
+    ``jev_mode`` (``off|observe|enforce|local``) is sent only when given: the
+    server reads an ABSENT ``jevMode`` as "keep the machine's current one", so a
+    deploy that says nothing about Jev never changes it. ``local`` stops
+    FailproofAI Cloud overriding the machine's own mode.
+    """
     path = f"/api/enforcement/deployments/{machine_id}"
-    body = {"policies": [p.to_dict() for p in policies]}
+    body: Dict[str, Any] = {"policies": [p.to_dict() for p in policies]}
+    if jev_mode is not None:
+        body["jevMode"] = jev_mode
     return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
+
+
+def set_jev_mode(ctx: ClientContext, machine_id: str, jev_mode: str) -> Tuple[Deployment, bool]:
+    """PUT /api/enforcement/deployments/{id}/jev-mode — change ONLY the Jev mode.
+
+    ``jev_mode`` is ``off|observe|enforce|local`` (``local`` stops FailproofAI
+    Cloud overriding the machine's own mode). Unlike a deploy, this never
+    touches the machine's policy set: a deploy is a full replace of the set, and
+    the set a client can read leaves out disabled policies' assignments, so a
+    mode change sent as a deploy deleted them — and reverted any edit made since
+    the set was read. It still mints a new generation, which is how the machine
+    picks the mode up.
+
+    Returns the deployment and whether anything changed: setting the mode the
+    machine already has changes nothing and mints nothing (``changed: false``).
+    A machine with no deployment is a 404 — a deploy is how it gets its first.
+    """
+    path = f"/api/enforcement/deployments/{machine_id}/jev-mode"
+    data = _request_json(ctx, "PUT", path, json_body={"jevMode": jev_mode}) or {}
+    return Deployment.from_dict(data), bool(data.get("changed", True))
 
 
 def deployment_history(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:

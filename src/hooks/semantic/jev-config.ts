@@ -89,8 +89,8 @@
  */
 import { closeSync, constants as fsConstants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { readJevCloudCredential, type JevCloudCredential } from "../fp-config";
-import { jevConfigFile } from "../fp-home";
+import { readConfig, readCredentials, readJevCloudCredential, type JevCloudCredential } from "../fp-config";
+import { configFile, credentialsFile, jevConfigFile } from "../fp-home";
 
 export type { JevCloudCredential } from "../fp-config";
 
@@ -179,6 +179,15 @@ export const JEV_API_KEY_ENV = "FAILPROOFAI_JEV_API_KEY";
  * the evaluator; the two are pinned equal by a test.
  */
 export const JEV_CONFIG_DEFAULT_TIMEOUT_MS = 3_000;
+/**
+ * How long one call waits for FailproofAI Cloud when Cloud's Jev mode asks
+ * (CONTRACT C10.2). Longer than the local default above: the call makes one
+ * more hop (Cloud selects this machine's checks, forwards to Jev, and decides
+ * them) before it answers. A local BYOK `jev.json` keeps its own `timeoutMs`
+ * or the default; this one is fixed, because under a Cloud mode `jev.json` is
+ * not read at all. Past it, the regex decides alone, as for any fallback.
+ */
+export const CLOUD_JEV_TIMEOUT_MS = 5_000;
 /** Bounds on `timeoutMs`. Every millisecond of it can be added to a tool call. */
 export const MIN_JEV_TIMEOUT_MS = 100;
 export const MAX_JEV_TIMEOUT_MS = 10_000;
@@ -1088,6 +1097,159 @@ export function loadJevConfig(): JevConfig | null {
   } catch {
     return null;
   }
+}
+
+// ── FailproofAI Cloud sets the mode ──────────────────────────────────────────
+
+export interface CloudModeJevConfig {
+  /**
+   * The config to run with: provider `failproofai` on the Cloud Jev
+   * credential, with Cloud's mode — or null: Jev does not run.
+   */
+  config: JevConfig | null;
+  /**
+   * This machine's FailproofAI Cloud machine id (`credentials.json`
+   * `cloud.machine_id`), sent in the request's `cloud` block so Cloud can find
+   * the checks deployed to this machine. Null when there is none.
+   */
+  machineId: string | null;
+  /**
+   * Why Jev cannot run in Cloud's mode, for `errors.json` — null when it runs,
+   * and null for `off`, which is not a problem:
+   * - `transcripts_disabled`: connected for decisions only (`--no-transcripts`);
+   * - `jev_unconfigured`: no Cloud Jev credential at all;
+   * - `jev_unconfigured: <detail>`: one exists and cannot be used.
+   */
+  problem: string | null;
+}
+
+/** The contract's message for "Cloud set a Jev mode and this machine has no Cloud Jev credential". */
+export const JEV_UNCONFIGURED_PROBLEM = "jev_unconfigured";
+/** The contract's message for "Cloud set a Jev mode on a decisions-only connection" (CONTRACT C10.2). */
+export const TRANSCRIPTS_DISABLED_PROBLEM = "transcripts_disabled";
+
+/**
+ * The config to run when FailproofAI Cloud sets this machine's Jev mode
+ * (`active.json` `jevMode`) to `observe` or `enforce` (CONTRACT C10.2).
+ *
+ * The provider is ALWAYS FailproofAI Cloud, on the Cloud Jev credential
+ * (`credentials.json` `jev {url,key}`, only while its connection is still on
+ * this machine), at `<cloud base>/enforcement/v1/jev` — the checks Cloud
+ * deployed to this machine live there, and the verdict for them is computed
+ * there. A local `jev.json` is NOT used while Cloud sets a mode, BYOK provider
+ * or not: Cloud wins, a local `off` included.
+ *
+ * Jev does not run, and `problem` says why, when:
+ * 1. the machine was connected for decisions only (`collector.sessions` is not
+ *    `true` in `config.json` — what `--no-transcripts` writes): the standing
+ *    rule is that such a connection never switches Jev on, because a Jev call
+ *    sends the tool call and the recent prompt;
+ * 2. there is no Cloud Jev credential, or it cannot be used;
+ * 3. there is no FailproofAI Cloud machine id to name.
+ *
+ * Asked twice per gate event on a machine whose Cloud mode asks — once for the
+ * review, once for `errors.json` — and on every event in the warm worker, so
+ * the answer is kept until an input changes (see `jevInputsVersion`).
+ *
+ * Never throws.
+ */
+export function loadJevConfigForCloudMode(mode: JevConfigMode): CloudModeJevConfig {
+  if (mode === "off") return { config: null, machineId: null, problem: null };
+  const key = `${mode}\u0000${jevInputsVersion()}`;
+  if (cloudModeMemo?.key === key) return cloudModeMemo.value;
+  const value = computeCloudModeConfig(mode);
+  cloudModeMemo = { key, value };
+  return value;
+}
+
+let cloudModeMemo: { key: string; value: CloudModeJevConfig } | null = null;
+
+/** Forget the memoised answer. Tests only. */
+export function _resetJevConfigMemoForTest(): void {
+  cloudModeMemo = null;
+}
+
+/**
+ * Everything a Cloud-mode config load reads, as one version string: the
+ * credentials file and its directory (whose modes the loader checks), and
+ * `config.json` (the decisions-only switch), plus where those paths point. A
+ * file's version is its device, inode, mode, size and modification and change
+ * times to the nanosecond — an edit, a chmod and a replace-by-rename all move
+ * it, and the change time cannot be set back by the user.
+ */
+function jevInputsVersion(): string {
+  const credentials = credentialsFile();
+  const config = configFile();
+  return [
+    process.platform,
+    credentials,
+    statVersion(credentials),
+    statVersion(dirname(credentials)),
+    config,
+    statVersion(config),
+  ].join("\u0000");
+}
+
+function statVersion(path: string): string {
+  try {
+    const st = statSync(path, { bigint: true });
+    return `${st.dev}:${st.ino}:${st.mode}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
+  } catch (err) {
+    return `-${(err as NodeJS.ErrnoException).code ?? "error"}`;
+  }
+}
+
+function computeCloudModeConfig(mode: JevConfigMode): CloudModeJevConfig {
+  try {
+    // Decisions only: checked first, because no credential would change it.
+    if (readConfig().collector.sessions !== true) {
+      return { config: null, machineId: null, problem: TRANSCRIPTS_DISABLED_PROBLEM };
+    }
+    const credential = readJevCloudCredential();
+    if (credential.status === "absent") return { config: null, machineId: null, problem: JEV_UNCONFIGURED_PROBLEM };
+    if (credential.status === "refused") {
+      return {
+        config: null,
+        machineId: null,
+        problem: `${JEV_UNCONFIGURED_PROBLEM}: the FailproofAI Cloud Jev credential is refused — ${credential.problem}`,
+      };
+    }
+    const machineId = readCredentials().cloud?.machineId || null;
+    if (!machineId) {
+      return {
+        config: null,
+        machineId: null,
+        problem: `${JEV_UNCONFIGURED_PROBLEM}: this machine has no FailproofAI Cloud machine id (no policy connection in credentials.json)`,
+      };
+    }
+    const raw = {
+      provider: JEV_CLOUD_PROVIDER,
+      baseUrl: jevCloudBaseUrl(cloudBaseFor(credential.credential)),
+      mode,
+      timeoutMs: CLOUD_JEV_TIMEOUT_MS,
+    };
+    const r = validateJevConfig(raw, null, credential.credential);
+    return r.ok
+      ? { config: r.value, machineId, problem: null }
+      : { config: null, machineId, problem: `${JEV_UNCONFIGURED_PROBLEM}: the FailproofAI Cloud Jev credential — ${r.problem}` };
+  } catch (err) {
+    return { config: null, machineId: null, problem: `${JEV_UNCONFIGURED_PROBLEM}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * The Cloud base URL the Jev route hangs off: the connection's own URL when it
+ * is on the credential's origin (so a Cloud served under a path prefix keeps
+ * it, as `config --token` writes it), else the credential's origin.
+ */
+function cloudBaseFor(credential: JevCloudCredential): string {
+  try {
+    const cloud = readCredentials().cloud;
+    if (cloud?.url && new URL(cloud.url).origin === new URL(credential.url).origin) return cloud.url;
+  } catch {
+    // Fall through to the origin.
+  }
+  return credential.url;
 }
 
 export interface JevConfigFileForUpdate {

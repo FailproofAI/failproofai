@@ -121,7 +121,7 @@ describe("--pause", () => {
     const r = runPauseCommand({ action: "pause", cwd: "/tmp/p", now: NOW, render: PLAIN, clock: CLOCK });
     expect(r.lines).toEqual([
       "✓ Paused enforcement for this session until 14:16 (30 minutes).",
-      "  Cloud-managed policies keep enforcing.",
+      "  Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing.",
       "  Resume early:  failproofai config --resume",
     ]);
   });
@@ -159,7 +159,7 @@ describe("--pause", () => {
     expect(readActivePause("s1", later)!.expiresAt).toBe(NOW + PAUSE_CEILING_MS);
     expect(r.lines[0]).toBe("✓ Extended the pause for session s1 until 21:46 (1 hour).");
     expect(r.lines[1]).toBe("  Capped at 8 hours from when this pause began.");
-    expect(r.lines.join("\n")).toMatch(/Cloud-managed policies keep enforcing\./);
+    expect(r.lines.join("\n")).toMatch(/Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing\./);
   });
 
   it("names an explicit session back, and resumes it by id", () => {

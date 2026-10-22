@@ -32,7 +32,7 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { readActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
@@ -1245,7 +1245,14 @@ export interface PoliciesScreen {
   attention: { failed: boolean; text: string; fix?: string } | null;
   custom: PoliciesScreenRow[];
   convention: Array<{ scope: string; rows: PoliciesScreenRow[] }>;
-  cloud: { deployment: number; rows: PoliciesScreenRow[] } | null;
+  cloud: {
+    deployment: number | null;
+    rows: PoliciesScreenRow[];
+    /** FailproofAI Cloud's Jev mode for this machine, when the deployment sets one. */
+    jevMode?: CloudJevMode | null;
+    /** Problems reading the deployment, each one line. */
+    problems?: string[];
+  } | null;
   /**
    * Builtins this build enforces itself because no pack is installed: the
    * migration shim (`handler.ts` registers `enabledPolicies` when
@@ -1376,7 +1383,16 @@ export function renderPoliciesScreen(
   }
   if (screen.custom.length > 0) plain("Custom policies", undefined, screen.custom);
   for (const { scope, rows } of screen.convention) plain("Convention policies", scope, rows);
-  if (screen.cloud) plain("Cloud-managed", `deployment ${screen.cloud.deployment}`, screen.cloud.rows);
+  if (screen.cloud) {
+    const { deployment, rows, jevMode, problems } = screen.cloud;
+    plain("Cloud-managed", deployment !== null ? `deployment ${deployment}` : undefined, rows);
+    if (jevMode === "off") {
+      out.push(`${INDENT}Jev mode: off, set by FailproofAI Cloud (overrides jev.json).`);
+    } else if (jevMode) {
+      out.push(`${INDENT}Jev mode: ${jevMode}, set by FailproofAI Cloud. Jev checks run on FailproofAI Cloud; nothing of them is installed here.`);
+    }
+    for (const problem of problems ?? []) out.push(kit.caution(problem));
+  }
 
   if (folded > 0) out.push("", `See all ${total} with ${kit.cmd("failproofai policies --all")}`);
   return out;
@@ -1591,20 +1607,51 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
   // pushed to a fleet were the ones invisible to the person running the
   // command on it. Read-only: they belong to the deployment, which the heading
   // says, and `--uninstall <name>` cannot switch one off.
+  //
+  // Each policy's KIND is shown — `regex` (JS) or `both` (JS whose verdict
+  // its own Jev checks may clear) — with the Jev check names a `both` policy
+  // is reviewed by. Those checks, and every `jev` policy, run on FailproofAI
+  // Cloud (CONTRACT C10): nothing of them is on this machine, so no Jev-only
+  // policy is listed here, and the machine cannot count them.
   let cloud: PoliciesScreen["cloud"] = null;
   try {
-    const active = readActiveCloudManagedPolicies();
-    if (active.length > 0) {
+    let active: ReturnType<typeof readActiveCloudManagedPolicies> = [];
+    let jsProblem: string | null = null;
+    try {
+      active = readActiveCloudManagedPolicies();
+    } catch (err) {
+      // The Jev mode is read independently below; a machine Cloud set one on
+      // still gets its section, with this said.
+      jsProblem = err instanceof Error ? err.message : String(err);
+    }
+    let jev: ReturnType<typeof readCloudJevState> = { jevMode: null, deployment: null, errors: [] };
+    try {
+      jev = readCloudJevState();
+    } catch {
+      // Never throws by contract; guarded anyway, for the same reason as above.
+    }
+    if (active.length > 0 || jev.jevMode !== null) {
       cloud = {
-        deployment: active[0].deployment,
-        rows: active.map((artifact) => ({
-          state: "on" as const,
-          name: artifact.id,
-          description: `v${artifact.version}`,
-          // `observe` is evaluated and then has its verdict discarded, so the
-          // row says so rather than reading as plain enforcement.
-          ...(artifact.effect === "observe" ? { tag: "observe" } : {}),
-        })),
+        deployment: active[0]?.deployment ?? jev.deployment ?? null,
+        rows: active.map((artifact) => {
+          // Only a `both` policy carries a server-derived reviewer list (C1).
+          const both = artifact.authority === "reviewable" && (artifact.reviewedBy?.length ?? 0) > 0;
+          const checks = both ? (artifact.reviewedBy ?? []).join(", ") : "";
+          const tags = [
+            // `observe` is evaluated and then has its verdict discarded, so the
+            // row says so rather than reading as plain enforcement.
+            ...(artifact.effect === "observe" ? ["observe"] : []),
+            both ? "both" : "regex",
+            // An observe `both` has its Jev half withheld by Cloud (C9.3).
+            ...(both ? [artifact.effect === "observe" ? `${checks} (not asked while observed)` : `Jev checks: ${checks}`] : []),
+          ];
+          return { state: "on" as const, name: artifact.id, description: `v${artifact.version}`, tag: tags.join(" · ") };
+        }),
+        jevMode: jev.jevMode,
+        problems: [
+          ...(jsProblem !== null ? [`The Cloud JavaScript policies could not be read, so none of them is enforcing: ${jsProblem}`] : []),
+          ...jev.errors.map((e) => `${e.id}${e.version === null ? "" : ` v${e.version}`}: ${e.message}`),
+        ],
       };
     }
   } catch {

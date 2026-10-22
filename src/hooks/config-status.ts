@@ -578,7 +578,7 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
         `${pauseClockTime(pause.expiresAt, opts.clock)}${pause.cwd ? `${kit.sep}${pause.cwd}` : ""}`,
     ]),
     // An enforcement fact, not fine print: a pause suspends local policy only.
-    ...(facts.pauses.length > 0 ? [["", "Cloud-managed policies keep enforcing."] as [string, string]] : []),
+    ...(facts.pauses.length > 0 ? [["", "Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing."] as [string, string]] : []),
   ];
 
   const cloudRows: Array<[string, string]> =

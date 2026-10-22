@@ -139,6 +139,48 @@ fp fleet deploy ci-runner-01 --add no-force-push
 fp guardrails summary --since 24h
 ```
 
+A policy has a **kind**: `regex` (JavaScript — the default, and what every
+earlier version is), `jev` (Jev checks only, from a JSON file of declarations —
+each exactly a failproofai pack manifest's semantic entry), or `both`
+(JavaScript whose verdict its own Jev checks may clear, deployed as one).
+Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+`--jev-mode` sets a machine's Jev mode from FailproofAI Cloud, overriding the
+machine's own; omit it and the mode is left alone. Under `observe` or `enforce`
+the machine sends each checked tool call to FailproofAI Cloud, which asks the
+checks deployed to it. The mode is the machine's, so it covers installed packs'
+checks too, and in `enforce` Jev's checks **block** calls as well as clearing
+the regex verdicts they review. `fp fleet jev-mode` changes only the mode, and
+never rewrites a machine's policy set.
+
+```bash
+fp policies publish prod-db-intent --kind jev --semantic ./checks.json
+fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json
+fp fleet deploy ci-runner-01 --add prod-db-intent --jev-mode observe
+fp fleet jev-mode --all enforce   # the mode alone, every machine with a deployment
+fp fleet show ci-runner-01    # its Jev mode, and any policy errors it reported
+```
+
+Published policy versions do not contain agent-routing code. Each assignment
+can instead target every agent (the default), an integration including future
+profiles, or a particular profile reported by that machine. The same target
+applies to the regex and Jev parts of a `both` policy:
+
+```bash
+fp fleet deploy ci-runner-01 --add no-prod-db --target no-prod-db=hermes
+fp fleet deploy ci-runner-01 --target no-prod-db=hermes/agt_1234567890abcdef
+fp fleet deploy ci-runner-01 --all-agents no-prod-db  # explicitly remove targeting
+```
+
+Repeat `--target` for multiple alternatives on one assignment. `fp fleet
+show` and `fp fleet history` display the assigned scope; `--json` includes
+`agentTargets` on each targeted policy. A machine must report agent-scoping
+support before accepting a new target. When its identity cannot be resolved,
+a targeted policy does not match; unscoped policy remains in force.
+Newly installed shell hooks carry their settings scope. Reinstall older hooks
+to add the hint; without it, or for an integration that cannot report the
+source of multiple installed scopes, the machine reports
+`agent_scope_unresolved` rather than guessing which profile ran the call.
+
 **A deploy REPLACES a machine's whole policy set.** The server takes the full
 list and does not merge, so `fleet deploy` reads what the machine currently runs,
 applies your `--add`/`--remove`, prints the complete resulting set, and writes
@@ -256,4 +298,3 @@ working as an opt-out if it is ever switched back on. See
 cd fp-cloud-cli
 uv run --extra dev pytest
 ```
-

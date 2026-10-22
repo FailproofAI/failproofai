@@ -198,9 +198,11 @@ let connectPick: ConnectPick | null | undefined;
  * Queue answers for a run BY NAME. The prompts left are the CONNECT step and
  * the agents picker. `cloud` is still phrased as the key field's answer —
  * Tab, a typed key, the saved key, or Esc — and is routed through the CONNECT
- * menu the way a person would reach it. Without an answer queued, the cloud
- * step takes the menu's default and the picker takes Enter on whatever it
- * opened with.
+ * menu the way a person would reach it. On a machine with no working
+ * connection the browser login starts by itself first; unless a test says
+ * otherwise the person presses Tab there, which opens that menu. Without an
+ * answer queued, the cloud step takes the menu's default and the picker takes
+ * Enter on whatever it opened with.
  */
 function drive(answers: { cloud?: CloudKeyAnswer | OpenSource | null; agents?: IntegrationType[] | null }) {
   if ("cloud" in answers) {
@@ -259,6 +261,8 @@ beforeEach(() => {
   rmSync(launcherMarker(fileHome), { force: true });
   delete process.env.FAILPROOFAI_CLOUD_URL;
   vi.mocked(promptCloudKey).mockReset().mockResolvedValue(OPEN_SOURCE);
+  // Tab at the login that starts by itself: on to the menu.
+  vi.mocked(promptBrowserLogin).mockReset().mockResolvedValue(BACK as never);
   vi.mocked(multiSelect)
     .mockReset()
     .mockImplementation(async (opts) => opts.choices.filter((c) => c.checked).map((c) => c.value) as never);
@@ -439,6 +443,13 @@ describe("cloud helpers", () => {
     process.env.FAILPROOFAI_CLOUD_URL = "http://localhost:8080";
     expect(resolveCloudUrl(undefined, "https://self.example.com")).toEqual({ ok: true, url: "http://localhost:8080", source: "FAILPROOFAI_CLOUD_URL" });
     expect(resolveCloudUrl("http://localhost:9911", undefined)).toMatchObject({ url: "http://localhost:9911", source: "--url" });
+  });
+
+  it("checks a saved endpoint like a typed one: no plain http to a remote host", () => {
+    const r = resolveCloudUrl(undefined, "http://cloud.example.com");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain('the saved cloud address "http://cloud.example.com" cannot be used');
+    expect(resolveCloudUrl(undefined, "http://localhost:8080")).toEqual({ ok: true, url: "http://localhost:8080" });
   });
 
   it("refuses an unusable override instead of falling back to hosted", () => {
@@ -1454,14 +1465,57 @@ describe("browser login", () => {
     expect(claimLogin).not.toHaveBeenCalled();
   });
 
-  it("goes back to the menu on esc, and claims nothing", async () => {
-    vi.mocked(promptBrowserLogin).mockResolvedValueOnce(BACK as never);
-    connectPick = "login";
+  const connectMenus = () =>
+    vi.mocked(selectOne).mock.calls.filter((c) => (c[0] as { message: string }).message === "Connect to cloud");
+
+  it("starts the login by itself on a fresh machine, with no menu first", async () => {
     const result = await runConfigureWizard(ttyIO());
-    // Back at the menu, its default (open source) finished the run.
-    expect(vi.mocked(selectOne).mock.calls.filter((c) => (c[0] as { message: string }).message === "Connect to cloud")).toHaveLength(2);
+    expect(promptBrowserLogin).toHaveBeenCalledTimes(1);
+    expect(connectMenus()).toHaveLength(0);
+    expect(claimLogin).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ applied: true, connected: true });
+  });
+
+  it("opens the other options on tab at the login, and claims nothing", async () => {
+    vi.mocked(promptBrowserLogin).mockResolvedValueOnce(BACK as never);
+    connectPick = "oss";
+    const result = await runConfigureWizard(ttyIO());
+    expect(connectMenus()).toHaveLength(1);
+    expect(menuValues()).toEqual(["login", "key", "oss"]);
     expect(result).toMatchObject({ applied: true, mode: "oss" });
     expect(claimLogin).not.toHaveBeenCalled();
+  });
+
+  it("never starts a browser by itself on a machine connected with a working key", async () => {
+    writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
+    connectPick = "keep";
+    await runConfigureWizard(ttyIO());
+    expect(promptBrowserLogin).not.toHaveBeenCalled();
+    expect(menuValues()).toEqual(["keep", "login", "key"]);
+  });
+
+  it("starts the login by itself when the saved key is refused, and says why", async () => {
+    writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
+    vi.mocked(validateIngestKey).mockResolvedValueOnce({ ok: false, reason: "the server rejected that key (401)" });
+    const io = ttyIO();
+    await runConfigureWizard(io);
+    expect(promptBrowserLogin).toHaveBeenCalledTimes(1);
+    expect(connectMenus()).toHaveLength(0);
+    expect(printed(io.stdout)).toContain("Your saved key no longer works: the server rejected that key (401). Logging in again.");
+  });
+
+  it("drops an older cloud straight into the options, without login, and says why", async () => {
+    // As the screen does: a start that cannot work here leaves at once.
+    vi.mocked(promptBrowserLogin).mockImplementationOnce((async (opts: BrowserLoginOptions<unknown>) => {
+      const r = await opts.start();
+      return r.ok ? { value: approval } : BACK;
+    }) as never);
+    vi.mocked(startLogin).mockResolvedValueOnce({ kind: "unsupported" });
+    connectPick = "oss";
+    const io = ttyIO();
+    await runConfigureWizard(io);
+    expect(menuValues()).toEqual(["key", "oss"]);
+    expect(printed(io.stdout)).toContain("doesn't support logging in from here yet. Paste an API key instead.");
   });
 
   it("cancels the whole run on ctrl-c, writing nothing", async () => {
@@ -1541,6 +1595,35 @@ describe("browser login", () => {
     expect(claimLogin).toHaveBeenCalled();
     expect(printed(io2.stdout)).toContain("Scheduled audits stay off until it is refreshed.");
     vi.mocked(canElevate).mockReturnValue(true);
+  });
+
+  it("names the key to revoke when it was created but could not be put to use", async () => {
+    vi.mocked(claimLogin).mockResolvedValueOnce({
+      kind: "ok",
+      key: "k".repeat(64),
+      keyName: "failproofai · box",
+      org: { slug: "acme", name: "Acme" },
+      permissions: ["events:add", "policies:pull"],
+    } as never);
+    vi.mocked(connectToCloud).mockResolvedValueOnce({
+      policy: { ok: false, reason: "refused" },
+      ingest: { ok: false, reason: "refused" },
+      anyConfigured: false,
+    } as never);
+    const io = ttyIO();
+    await runConfigureWizard(io);
+    expect(printed(io.stdout)).toContain('The key "failproofai · box" was created but isn\'t in use here; revoke it');
+  });
+
+  it("keeps reporting the previous connection when logging in again creates no key", async () => {
+    writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
+    connectPick = "login";
+    vi.mocked(claimLogin).mockResolvedValueOnce({ kind: "expired" } as never);
+    const io = ttyIO();
+    const result = await runConfigureWizard(io);
+    // As "keep current connection" reports it: nothing new written, still cloud.
+    expect(result).toMatchObject({ applied: true, mode: "cloud" });
+    expect(printed(io.stdout)).toContain("This machine keeps its previous connection.");
   });
 
   it("starts with this machine's name and OS, and maps an older cloud to the key route", async () => {

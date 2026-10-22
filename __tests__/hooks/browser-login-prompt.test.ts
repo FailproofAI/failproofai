@@ -8,6 +8,7 @@ import {
   type BrowserLoginStart,
   type TTYIn,
   type TTYOut,
+  slowedDown,
 } from "../../src/hooks/tui";
 
 // Driven through a real PassThrough so Node's own keypress parser runs, like
@@ -26,7 +27,7 @@ function terminal(columns = 80) {
   (stdin as unknown as { isTTY: boolean }).isTTY = true;
   (stdin as unknown as { setRawMode: (on: boolean) => void }).setRawMode = () => {};
   const plain = () => written.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-  return { stdin, stdout, plain, type: (s: string) => stdin.write(s) };
+  return { stdin, stdout, plain, raw: () => written.join(""), type: (s: string) => stdin.write(s) };
 }
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -94,8 +95,9 @@ describe("promptBrowserLogin", () => {
     expect(t.plain()).toContain("Waiting for you to authorize in the browser");
   });
 
-  it("goes back on esc and cancels on ctrl-c, and stops polling either way", async () => {
+  it("leaves for the other options on tab or esc, cancels on ctrl-c, and stops polling", async () => {
     for (const [key, want] of [
+      ["\t", BACK],
       ["\u001b", BACK],
       ["\u0003", null],
     ] as const) {
@@ -143,20 +145,56 @@ describe("promptBrowserLogin", () => {
     expect(start).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry what cannot work, like an older server", async () => {
+  it("leaves at once for what cannot work, like an older server, without retrying", async () => {
     const t = terminal();
     const start = vi.fn(
       async (): Promise<BrowserLoginStart> => ({ ok: false, retryable: false, line: "this server doesn't support it" }),
     );
     const { pending, poll } = ask(t, [], { start });
-    await until(() => t.plain().includes("this server doesn't support it"));
-    expect(t.plain()).toContain("CONNECT TO CLOUD");
-    t.type("\r");
-    await tick(30);
+    expect(await pending).toBe(BACK);
     expect(start).toHaveBeenCalledTimes(1);
     expect(poll).not.toHaveBeenCalled();
-    t.type("\u001b");
+  });
+
+  it("shows tab as the way to the other options while waiting", async () => {
+    const t = terminal();
+    const { pending } = ask(t, []);
+    await until(() => t.plain().includes("Waiting for you"));
+    expect(t.plain()).toContain("tab more options");
+    t.type("\t");
+    await pending;
+  });
+
+  it("counts what to erase at the width when leaving, after a resize", async () => {
+    const t = terminal(40);
+    const { pending } = ask(t, [], { open: vi.fn(() => false) });
+    await until(() => t.plain().includes("Waiting for you"));
+    // Widened meanwhile: a reflowing terminal now shows the link on one row.
+    (t.stdout as unknown as { columns: number }).columns = 200;
+    t.type("\t");
     expect(await pending).toBe(BACK);
+    const ups = t.raw().match(/\x1b\[(\d+)A/g) ?? [];
+    // Heading, "Open this link…", link, blank — one row each now — and the 3-row region.
+    expect(Number(ups.at(-1)!.slice(2, -1))).toBe(7);
+  });
+
+  it("slows down when asked, and never speeds up", () => {
+    expect(slowedDown(2)).toBe(4);
+    expect(slowedDown(9)).toBe(10);
+    expect(slowedDown(15)).toBe(15);
+  });
+
+  it("takes the printed link with it when leaving, wrapped rows included", async () => {
+    // 40 columns: the 107-character link wraps onto three rows.
+    const t = terminal(40);
+    const { pending } = ask(t, [], { open: vi.fn(() => false) });
+    await until(() => t.plain().includes("Waiting for you"));
+    t.type("\t");
+    expect(await pending).toBe(BACK);
+    const ups = t.raw().match(/\x1b\[(\d+)A/g) ?? [];
+    const last = Number(ups.at(-1)!.slice(2, -1));
+    // Heading 1 + "Open this link…" 2 + link 3 + blank 1, and the 3-row waiting region.
+    expect(last).toBe(10);
   });
 
   it("keeps going through a dropped connection, and says so", async () => {

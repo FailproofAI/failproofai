@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   claimLogin,
+  displayText,
   isOpenableUrl,
   LOGIN_CLAIM_PATH,
   LOGIN_POLL_PATH,
@@ -144,6 +145,79 @@ describe("claimLogin", () => {
     });
     expect((await claim(503, "")).kind).toBe("unreachable");
     expect(await claim(201, { key_id: "no secret" })).toEqual({ kind: "refused", reason: "the server answered without a key" });
+  });
+});
+
+describe("what the server says, as the terminal prints it", () => {
+  const ESCAPES = "\u001b]0;pwned\u0007\u001b[2J\u001b[31mEvil\u001b[0m\u202eCo\u200b";
+
+  it("strips controls, bidi overrides and zero-width characters", () => {
+    expect(displayText(ESCAPES)).toBe("]0;pwned[2J[31mEvil[0mCo");
+    expect(displayText("\u0007\u202e ")).toBeUndefined();
+    expect(displayText(42)).toBeUndefined();
+  });
+
+  it("never passes an org, approver or key name through raw", async () => {
+    const approved = await pollLogin(
+      ORIGIN,
+      "s",
+      fetchOf(200, {
+        status: "approved",
+        org: { id: "o1", slug: "evil\u001b[2J", name: ESCAPES },
+        approved_by: "x@y.test\u001b]52;c;Zm9v\u0007",
+        key_name: "failproofai \u00b7 box\u202e",
+        permissions: ["events:add\u001b[1m"],
+      }) as unknown as typeof fetch,
+    );
+    expect(JSON.stringify(approved)).not.toMatch(/[\u0000-\u001f\u202e\u200b]/);
+    expect(approved).toMatchObject({
+      org: { slug: "evil[2J", name: "]0;pwned[2J[31mEvil[0mCo" },
+      approvedBy: "x@y.test]52;c;Zm9v",
+      keyName: "failproofai \u00b7 box",
+      permissions: ["events:add[1m"],
+    });
+
+    const claimed = await claimLogin(
+      ORIGIN,
+      "s",
+      fetchOf(201, { api_key: "k".repeat(64), org: { name: ESCAPES }, approved_by: "\u001b[2Ja@b.c" }) as unknown as typeof fetch,
+    );
+    expect(JSON.stringify({ ...claimed, key: undefined })).not.toMatch(/[\u0000-\u001f\u202e\u200b]/);
+
+    const refused = await startLogin(ORIGIN, MACHINE, fetchOf(400, { error: "nope\u001b[2J" }) as unknown as typeof fetch);
+    expect(refused).toEqual({ kind: "refused", reason: "nope[2J" });
+  });
+
+  it("prints the link as the URL parser serialises it, controls encoded", async () => {
+    const r = await startLogin(
+      ORIGIN,
+      MACHINE,
+      fetchOf(201, {
+        verification_url: `${ORIGIN}/cli/authorize?r=abc\u001b]52;c;x\u0007&x=\u202e`,
+        poll_secret: "s",
+      }) as unknown as typeof fetch,
+    );
+    expect(r.kind).toBe("ok");
+    const url = (r as { verificationUrl: string }).verificationUrl;
+    expect(url).not.toMatch(/[\u0000-\u001f\u007f-\uffff]/);
+    expect(url).toContain("%1B");
+  });
+
+  it("keeps the server's poll interval and expiry to a range it can live with", async () => {
+    const huge = await startLogin(
+      ORIGIN,
+      MACHINE,
+      fetchOf(201, { verification_url: `${ORIGIN}/cli/authorize?r=a`, poll_secret: "s", expires_in: 1e12, interval: 3e9 }) as unknown as typeof fetch,
+    );
+    expect(huge).toMatchObject({ expiresIn: 3600, interval: 30 });
+    const tiny = await startLogin(
+      ORIGIN,
+      MACHINE,
+      fetchOf(201, { verification_url: `${ORIGIN}/cli/authorize?r=a`, poll_secret: "s", expires_in: 1, interval: 0.001 }) as unknown as typeof fetch,
+    );
+    expect(tiny).toMatchObject({ expiresIn: 30, interval: 1 });
+    const pending = await pollLogin(ORIGIN, "s", fetchOf(200, { status: "pending", interval: 3e9 }) as unknown as typeof fetch);
+    expect(pending).toEqual({ kind: "pending", interval: 30 });
   });
 });
 

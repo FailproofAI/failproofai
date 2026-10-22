@@ -4,10 +4,11 @@
 
 ### Features
 
-- **Log in to FailproofAI Cloud from `config`.** The connect step now opens with a menu: log in through the browser (the default), paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected is offered "keep" first, or "log in again" first when its saved key no longer works. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#920)
+- **Log in to FailproofAI Cloud from `config`.** On a machine that is not connected (or whose saved key is refused), the connect step now starts a browser login straight away; Tab opens the other options: paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected with a working key gets a menu with "keep" first, so re-running setup never opens a browser by itself. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#920)
 
 ### Fixes
 
+- `config`'s cloud login prints what the server sends — org, approver, key name, errors, the link — without terminal control or bidi characters, keeps the server's poll interval and expiry to a sane range, checks a saved cloud address like a typed one, and names the key to revoke if one was created but could not be used (#920)
 - `config` asks for your sudo password again before installing the daemon, or refreshing its service definition, when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
 
 ### Dependencies

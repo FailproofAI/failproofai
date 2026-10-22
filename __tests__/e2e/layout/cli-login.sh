@@ -148,8 +148,8 @@ USER_ID=$(sql "select id from users where email = '$EMAIL'")
 keys_in_org() { sql "select count(*) from api_keys where org_id = '$ORG_ID' and created_via = 'cli_login'"; }
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 1 — a fresh machine logs in, and setup finishes on its own"
-run_config fresh "wait:CONNECT TO CLOUD,wait:Log in to FailproofAI Cloud,key:enter,url,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
+head1 "PHASE 1 — a fresh machine starts the login by itself, and setup finishes on its own"
+run_config fresh "wait:CONNECT TO CLOUD,url,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
 URL=$(wait_url fresh)
 has "the CLI printed the authorize link" "$URL" "$DASH/cli/authorize?r="
 LINK=$(link_token "$URL")
@@ -162,6 +162,8 @@ eq "approve answered 200" "$(cat "$OUT/status")" "200"
 T=$(wait_done fresh)
 eq "config exited 0" "$(cat "$OUT/fresh.rc")" "0"
 has "no display here, so it printed the link to open anywhere" "$T" "Open this link in any browser to connect $LABEL"
+hasnt "no menu before the login on a fresh machine" "$T" "Paste an API key"
+has "tab is offered as the way to the other options" "$T" "tab more options"
 has "the CLI shows who approved it, and where" "$T" "Logged in as $EMAIL · E2E Co ($SLUG)"
 has "the daemon installed" "$T" "failproofaid installed and running"
 has "the cloud connection was written" "$T" "Connected as"
@@ -215,9 +217,9 @@ eq "no key minted for an approval nobody claimed" "$(keys_in_org)" "$BEFORE"
 eq "the request is approved, never claimed" "$(sql "select status from cli_login_requests where link_token_hash = encode(sha256('$LINK'::bytea), 'hex')")" "approved"
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 5 — esc goes back to the menu without touching anything"
+head1 "PHASE 5 — tab leaves the login for the options without touching anything"
 BEFORE=$(keys_in_org)
-run_config esc "wait:Keep current connection,key:down,key:enter,url,key:esc,wait:Keep current connection,key:enter,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
+run_config esc "wait:Keep current connection,key:down,key:enter,url,key:tab,wait:Keep current connection,key:enter,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
 LINK=$(link_token "$(wait_url esc)")
 T=$(wait_done esc)
 eq "config exited 0 after keeping the connection" "$(cat "$OUT/esc.rc")" "0"
@@ -237,7 +239,7 @@ person "$SESSION" approve "{\"link_token\":\"$LINK1\",\"org_id\":\"$ORG_ID\"}" >
 eq "the expired link can no longer be approved" "$(cat "$OUT/status")" "410"
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 7 — a saved key that was revoked: logging in again comes first"
+head1 "PHASE 7 — a saved key that was revoked: logging in again starts by itself"
 # Revoke every live CLI key, so whichever one this machine holds is dead.
 for id in $(curl -s "$DASH/api/keys" -b "ae_session=$SESSION" -H "x-agenteye-org: $SLUG" | python3 -c '
 import sys,json
@@ -247,17 +249,19 @@ for k in json.load(sys.stdin):
     -H "origin: $DASH" -H 'content-type: application/json' -d '{}'
 done
 sleep 2
-run_config revoked "wait:your saved key no longer works,key:ctrl-c"
+run_config revoked "wait:saved key no longer works,url,key:ctrl-c"
 T=$(wait_done revoked)
-has "the menu leads with logging in again, and says why" "$T" "Log in again"
-has "…because the saved key no longer works" "$T" "recommended · your saved key no longer works"
+has "a refused saved key starts the login by itself, and says why" "$T" "Your saved key no longer works:"
+has "…logging in again" "$T" "Logging in again."
+has "…with a fresh link" "$T" "/cli/authorize?r="
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 8 — a cloud without browser login says so"
-run_config old "wait:CONNECT TO CLOUD,key:enter,wait:doesn't support logging in from here yet,key:esc,wait:CONNECT TO CLOUD,key:ctrl-c" \
+head1 "PHASE 8 — a cloud without browser login says so, and offers the rest"
+run_config old "wait:doesn't support logging in from here yet,wait:Paste an API key,key:ctrl-c" \
   FAILPROOFAI_CLOUD_URL=http://localhost:28080
 T=$(wait_done old)
-has "an older server is reported, and the key route stays open" "$T" "doesn't support logging in from here yet"
+has "an older server is reported, and the key route stays open" "$T" "doesn't support logging in from here yet. Paste an API key instead."
+hasnt "…and login is not offered again" "$T" "Log in again"
 
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 9 — the person side refuses what it must"

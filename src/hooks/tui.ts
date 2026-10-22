@@ -1351,7 +1351,8 @@ export function promptCloudKey(opts: CloudKeyPromptOptions): Promise<CloudKeyAns
 /** What starting a browser login produced. */
 export type BrowserLoginStart =
   | { ok: true; url: string; expiresIn: number; interval: number }
-  /** `retryable` is false when trying again cannot help — an older server. */
+  /** `retryable` is false when trying again cannot help — an older server. The
+   *  screen then leaves at once (`BACK`), so `line` is for the caller to show. */
   | { ok: false; line: string; retryable: boolean };
 
 /** One "approved yet?" answer. */
@@ -1383,6 +1384,12 @@ export interface BrowserLoginOptions<T> {
   now?: () => number;
 }
 
+/** The poll interval after a `slow_down`: two seconds slower, up to 10 — and
+ *  never faster, so a server already asking for more than 10 keeps its number. */
+export function slowedDown(interval: number): number {
+  return Math.max(interval, Math.min(10, interval + 2));
+}
+
 /**
  * Wait for a person to finish logging in, in a browser.
  *
@@ -1391,13 +1398,17 @@ export interface BrowserLoginOptions<T> {
  * until the request is approved, refused or expired. Nothing is typed here: the
  * account side happens entirely in the browser.
  *
- * Resolves `{ value }` once approved, `BACK` on Esc (the caller's menu is the
- * way back out), or `null` on Ctrl-C. An expired or refused link offers a fresh
- * one on Enter rather than ending the screen.
+ * Resolves `{ value }` once approved, `BACK` on Tab or Esc (the caller's menu
+ * of other options is the way on), or `null` on Ctrl-C. An expired or refused
+ * link offers a fresh one on Enter rather than ending the screen. A start that
+ * cannot work here (`retryable: false`) resolves `BACK` straight away: there is
+ * nothing to retry, so the caller says why above its options.
  *
  * The link is printed ABOVE the live region, not inside it: the region is
  * repainted and cut to the terminal width, and a link that is cut cannot be
- * clicked or copied.
+ * clicked or copied. Leaving with `BACK` erases it again, wrapped rows
+ * included: a link nobody is polling any more must not sit above the menu
+ * looking live.
  */
 export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ value: T } | Back | null> {
   const stdin: TTYIn = opts.stdin ?? process.stdin;
@@ -1413,13 +1424,16 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
   type Phase = "starting" | "waiting" | "expired" | "denied" | "failed";
   let phase: Phase = "starting";
   let failLine = "";
-  let retryable = true;
   let cautionLine = "";
   let expiresAt = 0;
   let interval = 2;
   let frame = 0;
   let settled = false;
   let headingShown = false;
+  // Lines printed above the region (heading + links), so BACK can take them
+  // away too. Counted in rows at the width when leaving, not when printed: a
+  // terminal that was resized meanwhile has re-wrapped them.
+  const above: string[] = [];
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let spinTimer: ReturnType<typeof setInterval> | null = null;
   // Bumped on every new link, so a poll answer for an abandoned link is ignored.
@@ -1440,14 +1454,14 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
           `${INDENT}${spin} Waiting for you to authorize in the browser  ${c.ink3(`· expires in ${countdown()}`)}`,
           ...(cautionLine ? [kit.caution(cautionLine)] : []),
           "",
-          kit.keys(["esc back", "ctrl-c cancel"]),
+          kit.keys(["tab more options", "ctrl-c cancel"]),
         ];
       case "expired":
-        return [kit.fail("That link expired."), "", kit.keys(["enter new link", "esc back"])];
+        return [kit.fail("That link expired."), "", kit.keys(["enter new link", "tab more options"])];
       case "denied":
-        return [kit.fail("Not authorized in the browser."), "", kit.keys(["enter try again", "esc back"])];
+        return [kit.fail("Not authorized in the browser."), "", kit.keys(["enter try again", "tab more options"])];
       case "failed":
-        return [kit.fail(failLine), "", kit.keys(retryable ? ["enter try again", "esc back"] : ["esc back"])];
+        return [kit.fail(failLine), "", kit.keys(["enter try again", "tab more options"])];
     }
   };
 
@@ -1464,6 +1478,7 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
     const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
     stdout.write(`${clear}${lines.join("\n")}\n`);
     region.lastCount = 0;
+    above.push(...lines);
   };
 
   const clearPoll = (): void => {
@@ -1484,6 +1499,11 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
       stdin.setRawMode?.(wasRaw ?? false);
       stdin.pause();
       process.removeListener("exit", restoreTerminal);
+      // Leaving for the menu takes the printed link with it.
+      if (answer === BACK) {
+        const cols = stdout.columns || 80;
+        for (const line of above) region.lastCount += Math.max(1, Math.ceil(visibleWidth(line) / cols));
+      }
       const lines =
         answer === null
           ? [c.ink3("cancelled")]
@@ -1519,7 +1539,7 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
           phase = "expired";
           return draw();
         case "slow_down":
-          interval = Math.min(10, interval + 2);
+          interval = slowedDown(interval);
           break;
         case "unreachable":
           cautionLine = `Can't reach the server right now (${answer.line}) — still trying.`;
@@ -1553,9 +1573,9 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
       }
       if (settled || mine !== attempt) return;
       if (!started.ok) {
+        if (!started.retryable) return finish(BACK);
         phase = "failed";
         failLine = started.line;
-        retryable = started.retryable;
         return draw();
       }
       expiresAt = now() + started.expiresIn * 1000;
@@ -1578,9 +1598,8 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
     function onKey(_str: string | undefined, key: readline.Key): void {
       if (!key || settled) return;
       if (key.ctrl && (key.name === "c" || key.name === "d")) return finish(null);
-      if (key.name === "escape") return finish(BACK);
+      if (key.name === "escape" || key.name === "tab") return finish(BACK);
       if ((key.name === "return" || key.name === "enter") && phase !== "waiting" && phase !== "starting") {
-        if (phase === "failed" && !retryable) return;
         void begin();
       }
     }

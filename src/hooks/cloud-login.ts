@@ -102,14 +102,35 @@ async function postJson(
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
 
+// Controls (a terminal executes them: clear the screen, retitle the window,
+// write the clipboard), bidi overrides and isolates, and zero-width formatting.
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
+/**
+ * A server-supplied string made safe to print. Org names are chosen by whoever
+ * created the org and the CLI prints the one it was approved into — the line
+ * that is meant to show who approved what — so none of it may reach the
+ * terminal as anything but text.
+ */
+export function displayText(v: unknown, max = 200): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.replace(INVISIBLE, "").trim().slice(0, max);
+  return t.length > 0 ? t : undefined;
+}
+
 function org(v: unknown): LoginOrg {
   const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-  return { id: str(o.id), slug: str(o.slug), name: str(o.name) };
+  return { id: str(o.id), slug: displayText(o.slug), name: displayText(o.name) };
 }
 
 function permissions(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((p): p is string => typeof p === "string") : [];
+  return Array.isArray(v) ? v.map((p) => displayText(p, 64)).filter((p): p is string => p !== undefined) : [];
 }
+
+/** A server's number, kept to a range this client can live with: a huge poll
+ *  interval overflows `setTimeout` into a 1 ms storm, a tiny one polls flat out. */
+const within = (v: unknown, lo: number, hi: number, fallback: number): number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : fallback;
 
 /**
  * Only an http(s) link is ever handed to the browser opener. The URL comes from
@@ -148,7 +169,7 @@ export async function startLogin(
   if (r.status !== 201 || !r.json) {
     return r.status >= 500
       ? { kind: "unreachable", reason: `the server answered ${r.status}` }
-      : { kind: "refused", reason: str(r.json?.error) ?? `the server answered ${r.status}` };
+      : { kind: "refused", reason: displayText(r.json?.error, 120) ?? `the server answered ${r.status}` };
   }
   const verificationUrl = str(r.json.verification_url);
   const pollSecret = str(r.json.poll_secret);
@@ -156,13 +177,14 @@ export async function startLogin(
     // A 201 without the fields is something other than this API.
     return { kind: "unsupported" };
   }
-  const n = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : d);
   return {
     kind: "ok",
-    verificationUrl,
+    // Re-serialised, never the raw string: it is printed, and the parser
+    // percent-encodes every control and non-ASCII character in it.
+    verificationUrl: new URL(verificationUrl).href,
     pollSecret,
-    expiresIn: n(r.json.expires_in, 600),
-    interval: n(r.json.interval, 2),
+    expiresIn: within(r.json.expires_in, 30, 3600, 600),
+    interval: within(r.json.interval, 1, 30, 2),
   };
 }
 
@@ -174,15 +196,15 @@ export async function pollLogin(origin: string, pollSecret: string, fetchImpl: F
   const j = r.json;
   switch (j.status) {
     case "pending":
-      return { kind: "pending", interval: typeof j.interval === "number" ? j.interval : undefined };
+      return { kind: "pending", interval: typeof j.interval === "number" ? within(j.interval, 1, 30, 2) : undefined };
     case "slow_down":
       return { kind: "slow_down" };
     case "approved":
       return {
         kind: "approved",
         org: org(j.org),
-        approvedBy: str(j.approved_by),
-        keyName: str(j.key_name),
+        approvedBy: displayText(j.approved_by),
+        keyName: displayText(j.key_name),
         permissions: permissions(j.permissions),
       };
     case "denied":
@@ -207,10 +229,10 @@ export async function claimLogin(origin: string, pollSecret: string, fetchImpl: 
       kind: "ok",
       key,
       keyId: str(j.key_id),
-      keyName: str(j.key_name),
+      keyName: displayText(j.key_name),
       org: org(j.org),
       permissions: permissions(j.permissions),
-      approvedBy: str(j.approved_by),
+      approvedBy: displayText(j.approved_by),
     };
   }
   if (r.status === 410) return { kind: "expired" };
@@ -218,6 +240,6 @@ export async function claimLogin(origin: string, pollSecret: string, fetchImpl: 
   if (r.status >= 500) return { kind: "unreachable", reason: `the server answered ${r.status}` };
   return {
     kind: "refused",
-    reason: str(j.status) ? `the login request is ${String(j.status)}` : `the server answered ${r.status}`,
+    reason: displayText(j.status, 40) ? `the login request is ${displayText(j.status, 40)}` : `the server answered ${r.status}`,
   };
 }

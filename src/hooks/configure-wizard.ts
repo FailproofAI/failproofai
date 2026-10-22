@@ -1027,9 +1027,12 @@ export async function runConfigureWizard(
       stdout,
     });
 
-  // The browser login. Resolves the approval, BACK to return to the menu, or
-  // null when the person cancelled the whole run.
+  // The browser login. Resolves the approval, BACK for the menu of other
+  // options (Tab / Esc, or a cloud that cannot do this), or null when the person
+  // cancelled the whole run.
   type Approval = Extract<CloudPlan, { kind: "login" }>;
+  // Set once the cloud says it has no browser login; the menu then drops it.
+  let loginUnsupported = false;
   const askLogin = (endpoint: string): Promise<{ value: Approval } | typeof BACK | null> => {
     let pollSecret = "";
     return promptBrowserLogin<Approval>({
@@ -1045,11 +1048,8 @@ export async function runConfigureWizard(
         }
         if (r.kind === "unsupported") {
           void emit("configure_cloud_login", { step: "unsupported" });
-          return {
-            ok: false,
-            retryable: false,
-            line: `${host} doesn't support logging in from here yet. Press esc and paste an API key instead.`,
-          };
+          loginUnsupported = true;
+          return { ok: false, retryable: false, line: `${host} doesn't support logging in from here yet.` };
         }
         return {
           ok: false,
@@ -1098,10 +1098,10 @@ export async function runConfigureWizard(
     });
   };
 
-  // The interactive CONNECT step. Log in through the browser, paste a key, or —
-  // with no connection yet — use open source. A machine that is already
-  // connected is offered "keep" first, unless its key no longer works, in which
-  // case logging in again comes first and says why.
+  // The interactive CONNECT step. A machine with no connection, or whose saved
+  // key is refused, starts the browser login straight away — Tab or Esc there
+  // opens the other options. A machine that is connected with a working key gets
+  // the menu, "keep" first, so re-running config never opens a browser by itself.
   const chooseConnection = async (): Promise<CloudPlan | null> => {
     const verdict =
       saved && !saved.splitKeys
@@ -1139,12 +1139,30 @@ export async function runConfigureWizard(
     const keep: SelectChoice<Pick> = { label: "Keep current connection", value: "keep", hint: keepHint };
     // No initial-cursor option on selectOne: the default is whatever is first.
     const choices = !saved ? [login, key, oss] : savedBroken ? [login, key, keep] : [keep, login, key];
+    const leftLogin = (result: Awaited<ReturnType<typeof askLogin>>): CloudPlan | null | typeof BACK => {
+      if (result === null || result === BACK) {
+        if (result === BACK && loginUnsupported) {
+          write([kit.caution(`${host} doesn't support logging in from here yet. Paste an API key instead.`), ""]);
+        }
+        return result;
+      }
+      return result.value;
+    };
+
+    if (url && (!saved || savedBroken)) {
+      if (savedBroken && verdict && !verdict.ok) {
+        write([kit.caution(`Your saved key no longer works: ${verdict.reason}. Logging in again.`)]);
+      }
+      void emit("configure_cloud_choice", { choice: "login", connected: Boolean(saved), auto: true });
+      const first = leftLogin(await askLogin(url));
+      if (first !== BACK) return first;
+    }
 
     for (;;) {
       const pick = await selectOne<Pick>({
         message: "Connect to cloud",
         meta: source ? `${host}  ·  from ${source}` : host,
-        choices,
+        choices: loginUnsupported ? choices.filter((c) => c.value !== "login") : choices,
         collapsed: (p) =>
           p === "keep" ? [...cloudLines(keptPlan), ""] : p === "oss" ? [...cloudLines({ kind: "oss" }), ""] : [],
         stdin,
@@ -1164,10 +1182,9 @@ export async function runConfigureWizard(
         write([kit.fail(badUrl ?? "No usable endpoint."), ""]);
         continue;
       }
-      const result = await askLogin(url);
-      if (result === null) return null;
+      const result = leftLogin(await askLogin(url));
       if (result === BACK) continue;
-      return result.value;
+      return result;
     }
   };
 
@@ -1485,12 +1502,14 @@ export async function runConfigureWizard(
   // is single-use — the server mints the key and hands it over exactly once.
   let token: string | null = cloud.kind === "connect" ? cloud.token : null;
   let orgLabel: string | undefined = cloud.kind === "connect" ? cloud.org : undefined;
+  let mintedName: string | undefined;
   if (cloud.kind === "login" && url) {
     const claimed = await transient("Creating this machine's key…", () => claimLogin(url, cloud.pollSecret));
     void emit("configure_cloud_login", { step: "claimed", ok: claimed.kind === "ok", reason: claimed.kind });
     if (claimed.kind === "ok") {
       token = claimed.key;
       orgLabel = loginOrgLabel(claimed.org);
+      mintedName = claimed.keyName;
     } else {
       hookLogWarn(`cloud login could not be completed: ${claimed.kind}`);
       done.push(
@@ -1536,11 +1555,21 @@ export async function runConfigureWizard(
       hookLogWarn(`cloud connection was not written: ${err instanceof Error ? err.message : String(err)}`);
       done.push(kit.caution("Couldn't connect; everything else was applied.", "failproofai config"));
     }
+    // The claim spent the approval and the key exists, but nothing here uses
+    // it: say which one, so it can be revoked rather than left live.
+    if (cloud.kind === "login" && !connected) {
+      done.push(`  The key ${mintedName ? `"${mintedName}" ` : ""}was created but isn't in use here; revoke it on ${host}'s keys page.`);
+    }
   } else if (cloud.kind === "kept" && cloud.how === "saved" && fp.mode !== "cloud") {
     // A home migrated from layout 1 carries keys but no mode, and would read
     // as open source everywhere that asks.
     updateConfig({ mode: "cloud" });
   }
+
+  // Logging in again on a connected machine, with no key at the end of it,
+  // changed nothing about the connection: the previous one is still there.
+  const keptOld = cloud.kind === "login" && !token && saved !== undefined;
+  if (keptOld) done.push("  This machine keeps its previous connection.");
 
   await applied;
   // Only now — a completed apply — is the launcher considered "seen", so
@@ -1559,7 +1588,7 @@ export async function runConfigureWizard(
       done,
       cwd,
       agents: selected.length,
-      connected: connected || cloud.kind === "kept",
+      connected: connected || cloud.kind === "kept" || keptOld,
       codexTrust,
     }),
   );
@@ -1572,7 +1601,7 @@ export async function runConfigureWizard(
     policies,
     daemonInstalled,
     connected,
-    mode: connected || cloud.kind === "kept" ? "cloud" : "oss",
+    mode: connected || cloud.kind === "kept" || keptOld ? "cloud" : "oss",
     agents: { selected, added, removed },
   };
 }
@@ -1644,7 +1673,15 @@ export function resolveCloudUrl(
   const env = process.env.FAILPROOFAI_CLOUD_URL?.trim();
   const fromFlag = flag?.trim();
   const override = fromFlag || env;
-  if (!override) return { ok: true, url: existing ?? cloudBaseFor(DEFAULT_INGEST_URL) };
+  if (!override) {
+    if (!existing) return { ok: true, url: cloudBaseFor(DEFAULT_INGEST_URL) };
+    // Checked like a typed one: login sends its secret and receives a key here
+    // before anything else would, and the file it came from can be edited.
+    const saved = validateCloudUrl(existing);
+    return saved.ok
+      ? { ok: true, url: existing }
+      : { ok: false, message: `the saved cloud address "${existing}" cannot be used: ${saved.reason}` };
+  }
   const source = fromFlag && fromFlag !== env ? "--url" : "FAILPROOFAI_CLOUD_URL";
   const validated = validateCloudUrl(cloudBaseFor(override));
   if (!validated.ok) {

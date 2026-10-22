@@ -24,7 +24,7 @@ import {
   OPENCLAW_EVENT_MAP,
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import { normalizeCliPayload } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
@@ -37,7 +37,7 @@ import type { TwoTierReview } from "./semantic/combine";
 import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
-import { loadAllCustomHooks } from "./custom-hooks-loader";
+import { loadAllCustomHooks, getCustomHooksSourceFingerprints } from "./custom-hooks-loader";
 import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
@@ -187,7 +187,8 @@ export interface EvaluateHookEventOptions {
     customHooks: CustomHook[];
     session: SessionMetadata;
     payload: Record<string, unknown>;
-  }) => Promise<HookEventOutcome | undefined>;
+    policyState: unknown;
+  }) => Promise<HookEventOutcome | { pending: Promise<HookEventOutcome> } | undefined>;
 }
 
 /**
@@ -630,9 +631,11 @@ export async function evaluateHookEvent(
       // than the status quo, which already failed open on five of the twelve —
       // just accidentally, and without saying so.
       let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      let cloudManagedLoadFailed = false;
       try {
         cloudManagedPolicies = readActiveCloudManagedPolicies();
       } catch (err) {
+        cloudManagedLoadFailed = true;
         const msg = err instanceof Error ? err.message : String(err);
         hookLogWarn(
           `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
@@ -658,6 +661,7 @@ export async function evaluateHookEvent(
       // enforcing underneath. See the fail-open note in pack-manifest.ts — the
       // day builtins become a fetched pack this posture has to change with them.
       let installedPacks: ResolvedPack[] = [];
+      let packReadFailed = false;
       try {
         const packResult = readInstalledPacks();
         installedPacks = packResult.packs;
@@ -666,6 +670,7 @@ export async function evaluateHookEvent(
           hookLogWarn(`pack ${err.id ?? "(unnamed)"} not loaded: ${err.reason}`);
         }
       } catch (err) {
+        packReadFailed = true;
         hookLogWarn(`pack manifest unreadable: ${err instanceof Error ? err.message : String(err)}`);
       }
 
@@ -689,14 +694,30 @@ export async function evaluateHookEvent(
       });
       customHooksList = loadResult.hooks;
       if (opts?.reuseOutcome) {
+        let reused: Awaited<ReturnType<NonNullable<EvaluateHookEventOptions["reuseOutcome"]>>>;
         try {
-          const reused = await opts.reuseOutcome({ config, customHooks: customHooksList, session, payload: parsed });
-          if (reused) {
-            replayed = true;
-            return reused;
+          const sourceFingerprints = getCustomHooksSourceFingerprints(loadResult);
+          // Unverified graphs cannot establish runtime equivalence safely.
+          if (sourceFingerprints && [...sourceFingerprints.values()].every((fingerprint) => fingerprint !== undefined)) {
+            reused = await opts.reuseOutcome({
+              config, customHooks: customHooksList, session, payload: parsed,
+              policyState: {
+                session, activePause, packsInstalledHere, installedPacks, packErrors, packReadFailed,
+                cloudManagedPolicies, cloudManagedLoadFailed,
+                sourceFingerprints: [...sourceFingerprints],
+                packFailures: [...loadResult.packFailures], packAliases: [...loadResult.packAliases],
+                jevConfig: existsSync(jevConfigFile()) ? readFileSync(jevConfigFile(), "utf8") : null,
+              },
+            });
           }
         } catch {
           // Reuse is an optimization; its failure must still evaluate policy.
+        }
+        if (reused) {
+          replayed = true;
+          // A released duplicate retries on the worker queue. Errors from that
+          // fresh evaluation must escape, never resume this discarded registry.
+          return "pending" in reused ? await reused.pending : reused;
         }
       }
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);

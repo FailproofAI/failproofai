@@ -17,10 +17,9 @@
  * evaluations could have request B's `clearPolicies()` wipe request A's
  * in-flight registration. Serializing keeps the existing registry code
  * correct with zero changes; a worker_threads/process pool is a valid
- * future enhancement if this becomes a real throughput bottleneck. The one
- * exception is the network wait of a two-tier (Jev) review, which happens
- * after the registry is no longer read and so does not hold the queue (see
- * `enqueue`).
+ * future enhancement if this becomes a real throughput bottleneck. Two-tier
+ * (Jev) network waits and duplicates waiting for their owners happen outside
+ * registry access and do not hold the queue (see `enqueue`).
  */
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
@@ -138,10 +137,11 @@ const TASK_DEADLINE_MS = 60_000;
  * for anyway, but recovered on the next call instead of never.
  *
  * A task may hand its place in the chain back early by calling `release`:
- * the next request starts while the task finishes on its own. Only the
- * two-tier (Jev) path does, at the point it stops reading the registry and
- * starts waiting on Jev's network answer (`EvaluateHookEventOptions.
- * releaseRegistry`). Without that, every hook on the machine — PostToolUse,
+ * the next request starts while the task finishes on its own. The two-tier
+ * (Jev) path releases when it stops reading the registry and starts waiting on
+ * Jev's network answer (`EvaluateHookEventOptions.releaseRegistry`). A waiting
+ * duplicate also releases; a retry reenters the queue and reloads its runtime.
+ * Without that, every hook on the machine — PostToolUse,
  * UserPromptSubmit, other agents' calls — would queue behind each gated call's
  * round trip, and a slow or unreachable provider would push the calls at the
  * back of the queue past the client's 30 s budget into fail-closed denies.
@@ -230,6 +230,58 @@ function enqueue(task: (release: () => void) => Promise<void>): void {
   processingChain = processingChain.then(() => new Promise<void>((settle) => runQueuedTask(task, settle))).catch(() => {});
 }
 
+function evaluateRequest(request: WorkerHookRequest, invocations: Map<string, HookInvocation>): Promise<HookEventOutcome> {
+  return new Promise((resolve, reject) => {
+    enqueue(async (release) => {
+      let invocation: HookInvocation | undefined;
+      try {
+        const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
+          awaitTelemetryFlush: false,
+          // Normalised here so no consumer has to know the wire spells
+          // "absent" as null.
+          fallbackCwd: request.cwd ?? undefined,
+          releaseRegistry: release,
+          reuseOutcome: async ({ config, customHooks, session, payload, policyState }) => {
+            const sessionId = payload.session_id;
+            const toolUseId = payload.tool_use_id;
+            if (typeof sessionId !== "string" || !sessionId || typeof toolUseId !== "string" || !toolUseId) return;
+            const customHookIdentity = customHooks.map((hook) => ({
+              ...hook,
+              implementation: String(hook.fn),
+            }));
+            const runtimeIdentity = createHash("sha256").update(JSON.stringify({
+              version,
+              packageRoot: process.env.FAILPROOFAI_PACKAGE_ROOT ?? process.argv[1] ?? "unknown",
+              cwd: session.cwd ?? process.cwd(),
+              config,
+              customHookIdentity,
+              policyState,
+            })).digest("hex");
+            const key = createHash("sha256").update(JSON.stringify([
+              request.cli, request.hookEvent, sessionId, toolUseId, runtimeIdentity,
+            ])).digest("hex");
+            const existing = invocations.get(key);
+            if (existing) {
+              // Waiting consumes no registry slot. A failed owner retries through
+              // this queue and reloads before evaluating against any registry.
+              release();
+              return { pending: existing.result.then((outcome) =>
+                outcome ?? evaluateRequest(request, invocations)) };
+            }
+            invocation = claimInvocation(invocations, key);
+          },
+        });
+        invocation?.complete(result);
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      } finally {
+        invocation?.complete();
+      }
+    });
+  });
+}
+
 function handleConnection(socket: Socket, shutdown: () => void, invocations: Map<string, HookInvocation>): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
@@ -306,64 +358,18 @@ function handleConnection(socket: Socket, shutdown: () => void, invocations: Map
         })
         .catch(() => {});
 
-      enqueue(async (release) => {
-        let invocation: HookInvocation | undefined;
-        try {
-          const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
-            awaitTelemetryFlush: false,
-            // Normalised here so no consumer has to know the wire spells
-            // "absent" as null.
-            fallbackCwd: request.cwd ?? undefined,
-            releaseRegistry: release,
-            reuseOutcome: async ({ config, customHooks, session, payload }) => {
-              const sessionId = payload.session_id;
-              const toolUseId = payload.tool_use_id;
-              if (typeof sessionId !== "string" || !sessionId || typeof toolUseId !== "string" || !toolUseId) return;
-              const customHookIdentity = customHooks.map((hook) => ({
-                name: hook.name,
-                description: hook.description,
-                match: hook.match,
-                implementation: String(hook.fn),
-                conventionScope: (hook as typeof hook & { __conventionScope?: string }).__conventionScope,
-              }));
-              const runtimeIdentity = createHash("sha256").update(JSON.stringify({
-                version,
-                packageRoot: process.env.FAILPROOFAI_PACKAGE_ROOT ?? process.argv[1] ?? "unknown",
-                cwd: session.cwd ?? process.cwd(),
-                config,
-                customHookIdentity,
-              })).digest("hex");
-              const key = createHash("sha256").update(JSON.stringify([
-                request.cli, request.hookEvent, sessionId, toolUseId, runtimeIdentity,
-              ])).digest("hex");
-              const existing = invocations.get(key);
-              if (existing) {
-                // The owner can be finishing a released two-tier review. This
-                // request keeps the registry while it waits, so a failed owner
-                // can fall back without another request clearing its policies.
-                const outcome = await existing.result;
-                if (outcome) return outcome;
-              }
-              invocation = claimInvocation(invocations, key);
-            },
-          });
-          invocation?.complete(result);
-          deliver(
-            encodeFrame({
-              type: "hookResult",
-              exitCode: result.exitCode,
-              stdout: result.stdout,
-              stderr: result.stderr,
-              evaluation: result.evaluation,
-            }),
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
-          deliver(encodeFrame({ type: "error", message: msg }));
-        } finally {
-          invocation?.complete();
-        }
+      void evaluateRequest(request, invocations).then((result) => {
+        deliver(encodeFrame({
+          type: "hookResult",
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          evaluation: result.evaluation,
+        }));
+      }, (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
+        deliver(encodeFrame({ type: "error", message: msg }));
       });
     }
   });

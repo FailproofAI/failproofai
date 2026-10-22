@@ -56,6 +56,13 @@ interface CachedPolicyModule {
  * functions prevents an unbounded ESM module-cache leak in the resident worker.
  * A source-tree change replaces this entry and imports one new module. */
 const policyModuleCache = new Map<string, CachedPolicyModule>();
+const loadSourceFingerprints = new WeakMap<LoadAllResult, Map<string, string | undefined>>();
+
+/** Every attempted source graph, including modules that register no hooks. */
+export function getCustomHooksSourceFingerprints(result: LoadAllResult): ReadonlyMap<string, string | undefined> | undefined {
+  return loadSourceFingerprints.get(result);
+}
+
 /**
  * Cap, for the reason `gitBranchCache` states and this cache did not carry
  * over: a warm worker touching many projects over its lifetime must not grow
@@ -197,6 +204,7 @@ async function loadSingleFile(
     outsidePack?: boolean;
     /** The worker defers diagnostics until invocation ownership is known. */
     deferTelemetry?: (emit: () => void) => void;
+    recordSourceFingerprint?: (fingerprint: string | undefined) => void;
   },
 ): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
@@ -204,6 +212,7 @@ async function loadSingleFile(
 
   let tmpFiles: string[] = [];
   try {
+    opts?.recordSourceFingerprint?.(undefined);
     const distIndex = await findDistIndex();
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
 
@@ -223,6 +232,7 @@ async function loadSingleFile(
     );
 
     const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
+    opts?.recordSourceFingerprint?.(fingerprint);
     const cached = policyModuleCache.get(absPath);
     if (cached?.fingerprint === fingerprint) {
       for (const hook of cached.hooks) customPolicies.add({ ...hook });
@@ -234,6 +244,7 @@ async function loadSingleFile(
     const hooksBefore = getCustomHooks().length;
     const semanticBefore = getSemanticRegistrations().length;
     await importWithDeadline(fileUrl);
+    const loadedHooks = getCustomHooks().slice(hooksBefore);
     const ignored = getSemanticRegistrations().slice(semanticBefore).map((d) => d?.name);
     if (opts?.outsidePack && ignored.length > 0 && !warnedSemanticOutsidePack.has(absPath)) {
       warnedSemanticOutsidePack.add(absPath);
@@ -245,9 +256,7 @@ async function loadSingleFile(
     if (policyModuleCache.size >= POLICY_MODULE_CACHE_MAX_ENTRIES) policyModuleCache.clear();
     policyModuleCache.set(absPath, {
       fingerprint,
-      hooks: getCustomHooks()
-        .slice(hooksBefore)
-        .map((hook) => ({ ...hook })),
+      hooks: loadedHooks.map((hook) => ({ ...hook })),
     });
     return null;
   } catch (err) {
@@ -425,6 +434,7 @@ export async function loadAllCustomHooks(
 
   const conventionSources: ConventionSource[] = [];
   const packFailures = new Map<string, PolicyLoadFailure>();
+  const sourceFingerprints = new Map<string, string | undefined>();
 
   const projectRoot = findProjectConfigDir(opts?.sessionCwd ?? process.cwd());
 
@@ -662,6 +672,7 @@ export async function loadAllCustomHooks(
             cloudManaged?.sha256 ?? pack?.sha256,
           outsidePack: !pack,
           deferTelemetry: opts?.deferTelemetry,
+          recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(absPath, fingerprint); },
         });
         // Every id behind these bytes. One artifact, one import, one failure —
         // but as many fail-closed guards as there are packs depending on it.
@@ -742,7 +753,10 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true, deferTelemetry: opts?.deferTelemetry });
+    await loadSingleFile(file, {
+      conventionScope: projectScope, outsidePack: true, deferTelemetry: opts?.deferTelemetry,
+      recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(file, fingerprint); },
+    });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
@@ -782,7 +796,10 @@ export async function loadAllCustomHooks(
   for (const file of userFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "user", outsidePack: true, deferTelemetry: opts?.deferTelemetry });
+    await loadSingleFile(file, {
+      conventionScope: "user", outsidePack: true, deferTelemetry: opts?.deferTelemetry,
+      recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(file, fingerprint); },
+    });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);
@@ -838,5 +855,7 @@ export async function loadAllCustomHooks(
     const winner = packByPath.get(path);
     if (winner && ids.length > 1) packAliases.set(winner.id, ids);
   }
-  return { hooks: allHooks, conventionSources, packFailures, packAliases };
+  const result = { hooks: allHooks, conventionSources, packFailures, packAliases };
+  loadSourceFingerprints.set(result, sourceFingerprints);
+  return result;
 }

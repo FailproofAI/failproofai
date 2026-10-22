@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createConnection, type Server, type Socket } from "node:net";
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,8 @@ import * as evaluator from "../../src/hooks/policy-evaluator";
 import * as loader from "../../src/hooks/custom-hooks-loader";
 import * as cloudPolicies from "../../src/hooks/cloud-managed-policies";
 import * as logger from "../../src/hooks/hook-logger";
+import * as packs from "../../src/hooks/pack-manifest";
+import type { ResolvedPack } from "../../src/hooks/pack-manifest";
 import { getAllHookActivityEntries, _resetForTest } from "../../src/hooks/hook-activity-store";
 import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 import { startWorkerServer } from "../../src/hooks/worker-server";
@@ -138,6 +141,189 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
     });
     return loaded.promise;
   }
+
+  function policyFile(source: string) {
+    const path = join(project, "runtime-policy.mjs");
+    writeFileSync(path, source);
+    writeFileSync(join(project, ".failproofai", "policies-config.json"), JSON.stringify({
+      enabledPolicies: [], customPoliciesPaths: [path],
+    }));
+    return { path, sha256: createHash("sha256").update(source).digest("hex") };
+  }
+
+  it("reloads a changed captured dependency instead of replaying the old allow", async () => {
+    const dependency = join(project, "decision.mjs");
+    writeFileSync(dependency, 'export const decision = "allow";');
+    policyFile(`import { customPolicies } from "failproofai";
+import { decision } from "./decision.mjs";
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
+  fn: async () => ({ decision, reason: "captured dependency" }) });`);
+    const req = request({ tool_input: { command: "echo guarded" } });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+    writeFileSync(dependency, 'export const decision = "deny";');
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("still reuses an unchanged source graph's captured closure", async () => {
+    policyFile(`import { customPolicies } from "failproofai";
+let calls = 0;
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
+  fn: async () => ({ decision: "deny", reason: "call-" + (++calls) }) });`);
+    const req = request({ tool_input: { command: "echo guarded" } });
+    const owner = await send(req);
+    expect(owner).toMatchObject({ evaluation: { decision: "deny", reason: "call-1" } });
+    expect(await send(req)).toEqual(owner);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(getAllHookActivityEntries()).toHaveLength(1);
+  });
+
+  it("invalidates a changed source graph even when it reuses a global function", async () => {
+    const source = `import { customPolicies } from "failproofai";
+globalThis.__fpaiDedupDecision = "allow";
+globalThis.__fpaiDedupGuard ??= async () => ({ decision: globalThis.__fpaiDedupDecision, reason: "global guard" });
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] }, fn: globalThis.__fpaiDedupGuard });`;
+    const artifact = policyFile(source);
+    const req = request({ tool_input: { command: "echo guarded" } });
+    try {
+      expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+      writeFileSync(artifact.path, source.replace('__fpaiDedupDecision = "allow"', '__fpaiDedupDecision = "deny"'));
+      expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+      expect(evaluate).toHaveBeenCalledTimes(2);
+    } finally {
+      delete (globalThis as Record<string, unknown>).__fpaiDedupDecision;
+      delete (globalThis as Record<string, unknown>).__fpaiDedupGuard;
+    }
+  });
+
+  it("evaluates normally when a hook has no verified source graph identity", async () => {
+    let decision: "allow" | "deny" = "allow";
+    const hook = { name: "unverified", fn: async () => ({ decision, reason: "unverified runtime" }) };
+    vi.spyOn(loader, "loadAllCustomHooks").mockResolvedValue({
+      hooks: [hook], conventionSources: [], packFailures: new Map(), packAliases: new Map(),
+    });
+    const req = request({ tool_input: { command: "echo guarded" } });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+    decision = "deny";
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("includes source graphs that register no hooks but change a guard's state", async () => {
+    const statePath = join(project, "runtime-state.mjs");
+    writeFileSync(statePath, 'globalThis.__fpaiDedupState = "allow";');
+    const guard = policyFile(`import { customPolicies } from "failproofai";
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
+  fn: async () => ({ decision: globalThis.__fpaiDedupState, reason: "shared state" }) });`);
+    writeFileSync(join(project, ".failproofai", "policies-config.json"), JSON.stringify({
+      enabledPolicies: [], customPoliciesPaths: [statePath, guard.path],
+    }));
+    const req = request({ tool_input: { command: "echo guarded" } });
+    try {
+      expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+      writeFileSync(statePath, 'globalThis.__fpaiDedupState = "deny";');
+      expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+      expect(evaluate).toHaveBeenCalledTimes(2);
+    } finally {
+      delete (globalThis as Record<string, unknown>).__fpaiDedupState;
+    }
+  });
+
+  it.each(["cloud", "pack"] as const)("does not alias %s observe and enforce metadata", async (kind) => {
+    const artifact = policyFile(`import { customPolicies } from "failproofai";
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
+  fn: async () => ({ decision: "deny", reason: "managed denial" }) });`);
+    let enforce: () => void;
+    if (kind === "cloud") {
+      const metadata = { ...artifact, id: "runtime-guard", version: 1, deployment: 1, effect: "observe" as const };
+      const read = vi.spyOn(cloudPolicies, "readActiveCloudManagedPolicies").mockReturnValue([metadata]);
+      enforce = () => { read.mockReturnValue([{ ...metadata, effect: "enforce" }]); };
+    } else {
+      const metadata: ResolvedPack = {
+        ...artifact, id: "acme/dedup", version: "1.0.0", source: "github:acme/dedup@v1.0.0",
+        effect: "observe", policies: [], enabled: null, clis: null,
+      };
+      vi.spyOn(packs, "hasInstalledRegexPacks").mockReturnValue(true);
+      const read = vi.spyOn(packs, "readInstalledPacks").mockReturnValue({ packs: [metadata], errors: [], warnings: [] });
+      enforce = () => { read.mockReturnValue({ packs: [{ ...metadata, effect: "enforce" }], errors: [], warnings: [] }); };
+    }
+    const req = request({ tool_input: { command: "echo guarded" } });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+    enforce();
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["selection", "default parameters"] as const)("includes pack %s in runtime equivalence", async (change) => {
+    const artifact = policyFile(`import { customPolicies } from "failproofai";
+customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
+  fn: async (ctx) => ({ decision: ctx.params?.blocked ? "deny" : "allow", reason: "pack params" }) });`);
+    const metadata: ResolvedPack = {
+      ...artifact, id: "acme/dedup", version: "1.0.0", source: "github:acme/dedup@v1.0.0",
+      effect: "enforce", enabled: change === "selection" ? [] : null, clis: null,
+      policies: [{ name: "runtime-guard", description: "runtime guard", defaultEnabled: true,
+        category: "Custom", match: { events: ["PreToolUse"] },
+        params: { blocked: { type: "boolean", description: "block this call", default: change === "selection" } } }],
+    };
+    vi.spyOn(packs, "hasInstalledRegexPacks").mockReturnValue(true);
+    const read = vi.spyOn(packs, "readInstalledPacks").mockReturnValue({ packs: [metadata], errors: [], warnings: [] });
+    const req = request({ tool_input: { command: "echo guarded" } });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+    const changed: ResolvedPack = change === "selection"
+      ? { ...metadata, enabled: ["runtime-guard"] }
+      : { ...metadata, policies: metadata.policies.map((p) => ({ ...p,
+          params: { blocked: { type: "boolean", description: "block this call", default: true } } })) };
+    read.mockReturnValue({ packs: [changed], errors: [], warnings: [] });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not replay an allow when a newly failed pack must fail closed", async () => {
+    const read = vi.spyOn(packs, "readInstalledPacks").mockReturnValue({ packs: [], errors: [], warnings: [] });
+    const req = request({ tool_input: { command: "echo guarded" } });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "allow" } });
+    read.mockReturnValue({ packs: [], errors: [{ id: "acme/dedup", reason: "artifact unavailable", effect: "enforce" }], warnings: [] });
+    expect(await send(req)).toMatchObject({ evaluation: { decision: "deny" } });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([[false, false], [true, false], [true, true]])("lets a third no-ID request finish before a pending duplicate (owner fails: %s, retry fails: %s)", async (fail, retryFails) => {
+    const other = join(dir, "other-project");
+    mkdirSync(join(other, ".failproofai"), { recursive: true });
+    writeFileSync(join(other, ".failproofai", "policies-config.json"), JSON.stringify({ enabledPolicies: [] }));
+    const gate = holdOwner(fail);
+    if (retryFails) {
+      evaluate.mockImplementationOnce(realEvaluate).mockRejectedValueOnce(new Error("retry evaluation failed"));
+    }
+    const owner = send();
+    await gate.started;
+    const loaded = observeNextLoad();
+    const duplicate = send();
+    await loaded;
+    const independent = send(request({ tool_use_id: undefined, cwd: other }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const first = await Promise.race([
+      independent.then((reply) => ({ kind: "independent", reply })),
+      new Promise<{ kind: string; reply?: Reply }>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: "blocked" }), 1_000);
+      }),
+    ]);
+    clearTimeout(timer);
+    gate.finish();
+    const [a, b, c] = await Promise.all([owner, duplicate, independent]);
+    expect(first.kind).toBe("independent");
+    expect(c).toMatchObject({ evaluation: { decision: "allow" } });
+    if (fail) {
+      expect(a).toMatchObject({ type: "error", message: "owner evaluation failed" });
+      expect(b).toMatchObject(retryFails
+        ? { type: "error", message: "retry evaluation failed" }
+        : { evaluation: { decision: "deny" } });
+      expect(evaluate).toHaveBeenCalledTimes(3);
+    } else {
+      expect(b).toEqual(a);
+      expect(evaluate).toHaveBeenCalledTimes(2);
+    }
+  });
 
   it("evaluates and records concurrent scope duplicates once and replays the exact deny reply", async () => {
     const [owner, duplicate] = await Promise.all([send(), send()]);
@@ -275,6 +461,9 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
     ["empty session", { session_id: "" }],
     ["empty invocation", { tool_use_id: "" }],
     ["non-string invocation", { tool_use_id: 42 }],
+    ["numeric session", { session_id: 42 }],
+    ["null session", { session_id: null }],
+    ["object session", { session_id: {} }],
   ])("never suppresses or waits for %s", async (_name, payload) => {
     const gate = holdOwner();
     const owner = send(request(payload));
@@ -319,11 +508,16 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
   });
 
   it("uses the normal deny path when runtime identity computation throws", async () => {
-    const fn = async () => ({ decision: "allow" as const });
-    fn.toString = () => { throw new Error("cannot fingerprint hook"); };
-    vi.spyOn(loader, "loadAllCustomHooks").mockResolvedValue({
-      hooks: [{ name: "opaque", fn }], conventionSources: [],
-      packFailures: new Map(), packAliases: new Map(),
+    const artifact = policyFile(`import { customPolicies } from "failproofai";
+customPolicies.add({ name: "opaque", fn: async () => ({ decision: "allow" }) });`);
+    writeFileSync(join(project, ".failproofai", "policies-config.json"), JSON.stringify({
+      enabledPolicies: ["block-sudo"], customPoliciesPaths: [artifact.path],
+    }));
+    const realLoad = loader.loadAllCustomHooks;
+    vi.spyOn(loader, "loadAllCustomHooks").mockImplementation(async (...args) => {
+      const result = await realLoad(...args);
+      result.hooks[0].fn.toString = () => { throw new Error("cannot fingerprint hook"); };
+      return result;
     });
     const first = await send();
     const second = await send();

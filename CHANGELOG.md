@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Deduplicate hook invocations in the daemon worker when the same tool call arrives from multiple installation scopes. Matching invocations share one policy evaluation, activity record and telemetry event, and receive the same reply; different runtimes and calls without stable invocation IDs continue to evaluate independently.
+- Deduplicate hook invocations in the daemon worker when the same tool call arrives from multiple installation scopes. Matching invocations share one policy evaluation, activity record and telemetry event, and receive the same reply; changed source graphs or enforcement metadata invalidate reuse. Waiting duplicates release the registry queue and reload before retrying failed owners, so unrelated calls keep running. Calls without stable invocation IDs continue to evaluate independently.
 
 ### Dependencies
 

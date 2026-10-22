@@ -146,7 +146,7 @@ import {
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
-import { readActiveCloudManagedPolicies, readCloudJevState, type CloudJevState } from "./cloud-managed-policies";
+import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevState } from "./cloud-managed-policies";
 import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, optsFor, paint, screenKit, stack, wrap, type RenderOpts } from "./tui";
@@ -1462,7 +1462,8 @@ interface CloudReviewers {
 /** Every Cloud JS policy that names Cloud checks in `reviewedBy` — a `both` policy. Never throws. */
 function cloudReviewers(): CloudReviewers[] {
   try {
-    return readActiveCloudManagedPolicies()
+    // Every assignment, agent-scoped ones included: this describes the machine.
+    return listActiveCloudManagedPolicies()
       .filter((p) => p.authority === "reviewable" && (p.reviewedBy?.length ?? 0) > 0)
       .map((p) => ({ policy: p.id, version: p.version, effect: p.effect, reviewedBy: [...(p.reviewedBy ?? [])] }));
   } catch {
@@ -1476,6 +1477,14 @@ function cloudProblemAdvice(problem: string): string[] {
     return [
       "Jev does not run here: this machine was connected for decisions only (--no-transcripts), and a Jev call sends each checked tool call and the recent prompt to FailproofAI Cloud.",
       "To use FailproofAI Cloud's Jev checks, reconnect without --no-transcripts (failproofai config --token <key>).",
+    ];
+  }
+  // Over plain http the credential is fine; enforce is what http refuses.
+  // Asking for another key there sent people after the wrong fix.
+  if (/plain http/.test(problem)) {
+    return [
+      "Jev does not run here: FailproofAI Cloud set enforce, and this machine is connected over plain http, where Jev runs only in observe mode.",
+      "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or set the machine's Jev mode to observe from FailproofAI Cloud.",
     ];
   }
   return [

@@ -13,7 +13,7 @@ import json as _json
 import math
 import re
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import typer
 from rich.box import ROUNDED, SIMPLE_HEAD
@@ -6150,18 +6150,33 @@ def _epoch_age(ms: Optional[int]) -> str:
     return _relative_age(datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat())
 
 
-def _agent_target_label(targets: Any) -> str:
-    """One assignment's scope, unscoped only when the field is absent."""
+def _agent_target_label(targets: Any, labels: Optional[Dict[str, str]] = None,
+                        *, with_id: bool = False) -> str:
+    """One assignment's scope, unscoped only when the field is absent.
+
+    ``labels`` maps an exact profile's ``agt_…`` id to the profile label the
+    machine reported (`.claude-work`), so the target reads as the profile a
+    person recognises. ``with_id`` keeps the id beside it, for the views a
+    selector is copied from. An id with no label stays the bare id.
+    """
     if not targets:
         return "all agents"
-    return ", ".join(
-        f"{target['integration']}/{target['instanceId']}"
-        if target.get("instanceId") else f"all {target['integration']}"
-        for target in targets
-    )
+    labels = labels or {}
+
+    def one(target: Dict[str, Any]) -> str:
+        instance = target.get("instanceId")
+        if not instance:
+            return f"all {target['integration']}"
+        name = labels.get(instance)
+        if not name:
+            return f"{target['integration']}/{instance}"
+        return f"{target['integration']}/{name}" + (f" ({instance})" if with_id else "")
+
+    return ", ".join(one(target) for target in targets)
 
 
-def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> None:
+def render_machine_policies(machine_id: str, dep: Any, machine: Any = None,
+                            agent_labels: Optional[Dict[str, str]] = None) -> None:
     """``fp fleet show`` — what a machine is told to run, and whether it has it.
 
     The first version printed the id, the generation and the policy list, which
@@ -6248,7 +6263,8 @@ def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> N
             row.append(p.id.ljust(width), style=theme.TEXT)
             row.append(f"   {f'v{p.version}'.ljust(vwidth)}  ", style=theme.TEXT_DIM)
             row.append_text(_effect(p.effect))
-            row.append("    " + _agent_target_label(getattr(p, "agent_targets", None)), style=theme.TEXT_DIM)
+            row.append("    " + _agent_target_label(getattr(p, "agent_targets", None), agent_labels,
+                                                    with_id=True), style=theme.TEXT_DIM)
             body.append(row)
     else:
         body.append(Text("  no policies deployed", style=theme.FAINT))
@@ -6761,7 +6777,8 @@ def policy_published_brief(p: Any) -> None:
     _notice_box(body, color=theme.SUCCESS, title="published")
 
 
-def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
+def render_deployment_history(machine_id: str, entries: Sequence[dict],
+                              agent_labels: Optional[Dict[str, str]] = None) -> None:
     """``fp fleet history`` — one row per generation, newest first.
 
     Was a bare `print` per line, which put an unaligned wall of timestamps and
@@ -6792,7 +6809,7 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
                                 for t in (p.get("agentTargets") or [])
                             )))
                for p in (e.get("policies") or [])}
-        scope = {p.get("id"): _agent_target_label(p.get("agentTargets"))
+        scope = {p.get("id"): _agent_target_label(p.get("agentTargets"), agent_labels)
                  for p in (e.get("policies") or [])}
         mode = e.get("jevMode") or "local"
         if prev is None:
@@ -6843,9 +6860,34 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
     title.append(machine_id, style=f"bold {theme.ACCENT}")
     title.append(" · ", style=theme.FAINT)
     title.append(f"{len(rows)} generations", style=theme.LABEL)
-    render_list_panel("history", header=["gen", "when", "n", "jev", "change", "policies"],
+    header = ["gen", "when", "n", "jev", "change", "policies"]
+    # Fit the panel to the terminal by giving up the expendable columns first.
+    # Every cell is no_wrap, so a table wider than the terminal had Rich shave
+    # ALL columns at once — and at 80 columns `gen`, `when` and `jev` were the
+    # ones that vanished, though `gen` is the argument `fp fleet rollback` takes.
+    # `policies` goes first (`n` still counts it, `change` says what moved),
+    # then `change` wraps rather than squeezing the four short columns.
+    last_col, last_col_max = "ellipsis", None
+    if rows:
+        def natural(i: int) -> int:
+            return max([len(header[i])] + [r[i].cell_len for r in rows])
+        # indent 2 + border 2 + panel padding 2, two spaces between columns,
+        # and a little slack for Rich's rounding.
+        chrome = 6 + 2
+        fixed = sum(natural(i) for i in range(4)) + 2 * 4 + chrome
+        room = _stdout.width - fixed
+        change_w, policies_w = natural(4), natural(5)
+        if change_w + 2 + policies_w > room:
+            if room - change_w - 2 >= 12:
+                last_col_max = room - change_w - 2
+            else:
+                header = header[:5]
+                rows = [r[:5] for r in rows]
+                last_col = "wrap"
+    render_list_panel("history", header=header,
                       rows=rows, days=days, order=None,
-                      empty_message="no deployment history", last_col="ellipsis", title=title)
+                      empty_message="no deployment history", last_col=last_col,
+                      last_col_max=last_col_max, title=title)
 
 
 def render_fleet_diff(rows: Sequence[dict]) -> None:

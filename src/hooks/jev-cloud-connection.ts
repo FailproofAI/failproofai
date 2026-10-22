@@ -86,7 +86,99 @@ export type CloudJevConfigWrite =
       /** Set when the kept file leaves Jev off here: refused, or switched off. */
       jevOff?: { why: "refused"; problem: string; fix?: string } | { why: "off" };
     }
+  /**
+   * The Cloud's own `jev.json` (provider `failproofai`, as `config` writes it)
+   * named another FailproofAI Cloud origin, and was pointed at this one: same
+   * mode, same everything else. A BYOK file is never touched.
+   */
+  | { status: "repointed"; path: string; from: string; baseUrl: string; mode: string }
   | { status: "error"; path: string; problem: string };
+
+/**
+ * Create `jev.json` for the Cloud provider unless one exists. Never throws and
+ * never replaces a file — except the Cloud's own file pointing at another
+ * FailproofAI Cloud origin, which is re-pointed here (`repointCloudJevConfig`):
+ * a reconnect on a new URL (http → https) otherwise left Jev off, refused for
+ * naming an origin the key was not issued for.
+ */
+export function writeCloudJevConfig(cloudBase: string): CloudJevConfigWrite {
+  const first = writeCloudJevConfigIfAbsent(cloudBase);
+  if (first.status === "kept" && first.provider === JEV_CLOUD_PROVIDER && first.otherOrigin) {
+    return repointCloudJevConfig(cloudBase, first);
+  }
+  return first;
+}
+
+/**
+ * Point the Cloud's `jev.json` at `cloudBase`, keeping every other field. The
+ * file is moved aside first and judged there (as `removeCloudJevConfig` does),
+ * so a BYOK file renamed into place meanwhile is never the one rewritten, and
+ * the new file is linked in no-clobber.
+ */
+function repointCloudJevConfig(cloudBase: string, found: Extract<CloudJevConfigWrite, { status: "kept" }>): CloudJevConfigWrite {
+  const path = jevConfigPath();
+  let baseUrl: string;
+  try {
+    baseUrl = jevCloudBaseUrl(cloudBase);
+  } catch {
+    return found;
+  }
+  let st: Stats;
+  try {
+    st = lstatSync(path);
+  } catch {
+    return found;
+  }
+  if (!st.isFile()) return found;
+  const aside = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.repointing`;
+  try {
+    renameSync(path, aside);
+  } catch {
+    return found;
+  }
+  let raw: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(aside, "utf8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>;
+  } catch {
+    raw = null;
+  }
+  if (!raw || raw.provider !== JEV_CLOUD_PROVIDER) {
+    // Not the Cloud's after all: back exactly as it was.
+    putBack(aside, path, st.mode & 0o777);
+    return found;
+  }
+  const body = `${JSON.stringify({ ...raw, baseUrl }, null, 2)}\n`;
+  const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, body, { mode: 0o600, flag: "wx" });
+    chmodSync(tmp, 0o600);
+    linkSync(tmp, path);
+  } catch {
+    // Something landed at the path meanwhile, or the write failed: the old
+    // file goes back (never over the new one) and nothing was re-pointed.
+    putBack(aside, path, st.mode & 0o777);
+    return found;
+  } finally {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // A stray temp file holds no key.
+    }
+  }
+  try {
+    unlinkSync(aside);
+  } catch {
+    // The aside copy is the old URL only; harmless if it lingers.
+  }
+  return {
+    status: "repointed",
+    path,
+    from: found.otherOrigin ?? "",
+    baseUrl,
+    mode: typeof raw.mode === "string" ? raw.mode : DEFAULT_JEV_MODE,
+  };
+}
 
 /**
  * Create `jev.json` for the Cloud provider unless one exists. Never throws and

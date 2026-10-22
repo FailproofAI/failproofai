@@ -250,7 +250,11 @@ export async function evaluatePolicies(
     twoTier: {
       activity: combined.activity,
       decidedByJev: combined.decidedByJev,
-      ...(combined.decidedByJev && review.kind === "answered" && review.origin ? { jevOrigin: review.origin } : {}),
+      // The deciding check's origin — and, in observe mode, the origin of the
+      // check that WOULD have decided (B12), so that row names its policy too.
+      ...((combined.decidedByJev || combined.observeVerdict) && review.kind === "answered" && review.origin
+        ? { jevOrigin: review.origin }
+        : {}),
       ...(combined.observeVerdict ? { observeVerdict: combined.observeVerdict } : {}),
     },
   };

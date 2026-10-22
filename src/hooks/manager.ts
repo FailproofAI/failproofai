@@ -32,7 +32,9 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
-import { readActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
+import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
+import { readCloudPolicyErrors } from "./cloud-policy-errors";
+import { readRosterLabels } from "./agent-roster";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledRegexPacks, readInstalledPacks } from "./pack-manifest";
@@ -363,7 +365,7 @@ export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
 
   // Cloud-managed policies, pushed from a deployment.
   try {
-    for (const artifact of readActiveCloudManagedPolicies()) {
+    for (const artifact of listActiveCloudManagedPolicies()) {
       if (artifact.effect === "observe") observing = true;
       else return null;
     }
@@ -409,7 +411,7 @@ export function enforcingPolicyCount(cwd?: string): { count: number; custom: boo
     // An unreadable manifest counts nothing, as it enforces nothing.
   }
   try {
-    for (const artifact of readActiveCloudManagedPolicies()) {
+    for (const artifact of listActiveCloudManagedPolicies()) {
       if (artifact.effect !== "observe") count++;
     }
   } catch {
@@ -1615,10 +1617,12 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
   // policy is listed here, and the machine cannot count them.
   let cloud: PoliciesScreen["cloud"] = null;
   try {
-    let active: ReturnType<typeof readActiveCloudManagedPolicies> = [];
+    // Every assignment, agent-scoped ones included (B4): this lists the
+    // machine's deployment, not what one hook would load.
+    let active: ReturnType<typeof listActiveCloudManagedPolicies> = [];
     let jsProblem: string | null = null;
     try {
-      active = readActiveCloudManagedPolicies();
+      active = listActiveCloudManagedPolicies();
     } catch (err) {
       // The Jev mode is read independently below; a machine Cloud set one on
       // still gets its section, with this said.
@@ -1630,6 +1634,24 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     } catch {
       // Never throws by contract; guarded anyway, for the same reason as above.
     }
+    // A Cloud JS policy that did not load (B5): the hook path records it in
+    // errors.json for the deployment in force, so the row says "not loaded"
+    // rather than ● on.
+    const loadErrors = new Map<string, string>();
+    try {
+      for (const e of readCloudPolicyErrors() ?? []) {
+        if (e.kind !== "regex" && e.kind !== "both") continue;
+        const artifact = active.find((a) => a.id === e.id);
+        if (artifact && (e.version === null || e.version === artifact.version)) loadErrors.set(e.id, e.message);
+      }
+    } catch {
+      // No report: every row reads as the deployment says.
+    }
+    const labels = active.some((a) => a.agentTargets?.some((tg) => tg.instanceId)) ? readRosterLabels() : new Map<string, string>();
+    const targetText = (targets: NonNullable<(typeof active)[number]["agentTargets"]>): string =>
+      `for ${targets
+        .map((tg) => (tg.instanceId ? `${tg.integration} / ${labels.get(tg.instanceId) ?? tg.instanceId}` : tg.integration))
+        .join(", ")}`;
     if (active.length > 0 || jev.jevMode !== null) {
       cloud = {
         deployment: active[0]?.deployment ?? jev.deployment ?? null,
@@ -1645,7 +1667,17 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
             ...(both ? ["both"] : []),
             // An observe `both` has its Jev half withheld by Cloud (C9.3).
             ...(both ? [artifact.effect === "observe" ? `${checks} (not asked while observed)` : `Jev checks: ${checks}`] : []),
+            ...(artifact.agentTargets?.length ? [targetText(artifact.agentTargets)] : []),
           ];
+          const failed = loadErrors.get(artifact.id);
+          if (failed !== undefined) {
+            return {
+              state: "failed" as const,
+              name: artifact.id,
+              description: `v${artifact.version}`,
+              tag: [...tags, `not loaded: ${failed}`].join(" · "),
+            };
+          }
           return {
             state: "on" as const,
             name: artifact.id,

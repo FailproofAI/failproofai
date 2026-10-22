@@ -575,6 +575,24 @@ fn user_profile_paths<'a>(
         .collect()
 }
 
+/// A user config moved out of the home by `CLAUDE_CONFIG_DIR` / `CODEX_HOME`.
+///
+/// The hook resolves those to `$DIR/settings.json` / `$DIR/hooks.json`. A
+/// project config always sits in a folder named exactly `.claude` / `.codex`,
+/// so any other folder is a relocated user config (`~/.claude-work`), not a
+/// project.
+fn is_relocated_user_config(integration: &str, settings_path: &Path) -> bool {
+    let project_folder = match integration {
+        "claude" => ".claude",
+        "codex" => ".codex",
+        _ => return false,
+    };
+    settings_path
+        .parent()
+        .and_then(Path::file_name)
+        .is_some_and(|name| name != project_folder)
+}
+
 /// The entry a hook sighting creates for a config the roster does not list.
 /// `user_paths` is the user-home discovery (`profiles_at`).
 fn sighted_profile(
@@ -593,6 +611,7 @@ fn sighted_profile(
     entry.last_seen_at = Some(at);
     entry.scope = if matches!(integration, "hermes" | "openclaw")
         || user_paths.contains(&(integration.to_owned(), entry.settings_path.clone()))
+        || is_relocated_user_config(integration, settings_path)
     {
         "user"
     } else {
@@ -718,6 +737,37 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_claude_config_dir_profile_is_user_scoped_not_project() {
+        let root = std::env::temp_dir().join(format!("fpai-roster-{}", new_instance_id().unwrap()));
+        let home = root.join("home");
+        let path = root.join("fpai/agents/roster.json");
+        // CLAUDE_CONFIG_DIR=~/.claude-work and CODEX_HOME=~/.codex-work.
+        let claude = home.join(".claude-work/settings.json");
+        let codex = home.join(".codex-work/hooks.json");
+        // A real project config keeps its project scope.
+        let project = root.join("repo/.claude/settings.json");
+        for file in [&claude, &codex, &project] {
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+        }
+        record_sighting(&path, &home, "claude", &claude).unwrap();
+        record_sighting(&path, &home, "codex", &codex).unwrap();
+        record_sighting(&path, &home, "claude", &project).unwrap();
+        let roster = read(&path).unwrap().unwrap();
+        let scope_of = |settings: &Path| {
+            let entry = roster
+                .agents
+                .iter()
+                .find(|entry| entry.settings_path == settings.to_string_lossy())
+                .unwrap();
+            (entry.profile_label.clone(), entry.scope.clone())
+        };
+        assert_eq!(scope_of(&claude), (".claude-work".into(), "user".into()));
+        assert_eq!(scope_of(&codex), (".codex-work".into(), "user".into()));
+        assert_eq!(scope_of(&project), (".claude".into(), "project".into()));
         fs::remove_dir_all(root).unwrap();
     }
 

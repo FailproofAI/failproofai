@@ -80,6 +80,7 @@ import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
 import { noteUntracedAgent } from "./untraced-note";
+import { isHealthProbe } from "./health-probe";
 import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "./agent-roster";
 import type { AgentIdentity } from "./agent-targets";
 
@@ -621,6 +622,12 @@ export async function evaluateHookEvent(
           payload_size: stdinPayload.length,
         });
       }
+    }
+
+    // The daemon health probe: proof the worker answers, not an agent event.
+    // Answered before anything records scope errors or activity (B3).
+    if (isHealthProbe(eventType, parsed)) {
+      return { exitCode: 0, stdout: "", stderr: "" };
     }
 
     normalizeCliPayload(cli, parsed);
@@ -1205,6 +1212,14 @@ export async function evaluateHookEvent(
               ...(attribution?.packVersion ? { packVersion: attribution.packVersion } : {}),
             };
           })()
+        : {}),
+      // Observe mode, nothing else decided: the Jev check that would have is
+      // named on the row, with its Cloud policy (B12). Before, the row read
+      // policyName/cloudPolicyId null, so "would have" never reached a policy.
+      // No `policySource`: nothing decided this call, and the policy page
+      // counts a source as a decision; `observed` carries the "would have".
+      ...(!result.policyName && observeVerdict
+        ? { policyName: observeVerdict.policyName, ...jevAttribution(result.twoTier?.jevOrigin) }
         : {}),
       ...(cloudDeployment !== undefined ? { cloudDeployment } : {}),
       // The point of observe mode is this record. Without it the rollout is

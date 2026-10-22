@@ -339,6 +339,50 @@ it("filters a targeted Cloud JS policy before import and runs it only for its se
   expect(ambiguous.evaluation?.decision).toBe("allow");
 });
 
+// B3 (e2e round 1): the daemon health probe went through the whole handler,
+// recorded agent_scope_unresolved (it has no cwd and no --agent-scope) and
+// wrote a fake SessionStart activity row on every probe.
+it("the daemon health probe records no scope error and no activity row", async () => {
+  deploy({ policies: [{
+    id: "scoped", version: 1, hooks: ["scoped-deny"], verdict: "deny",
+    agentTargets: [{ integration: "claude", instanceId: "agt_1234567890abcdef" }],
+  }] });
+  const store = await import("@/src/hooks/hook-activity-store");
+  store._resetForTest(join(home, "activity"));
+  const { evaluateHookEvent } = await import("@/src/hooks/handler");
+  const { HEALTH_PROBE_SOURCE } = await import("@/src/hooks/health-probe");
+  const probe = await evaluateHookEvent(
+    "SessionStart",
+    "claude",
+    JSON.stringify({ hook_event_name: "SessionStart", source: HEALTH_PROBE_SOURCE }),
+  );
+  expect(probe.exitCode).toBe(0);
+  expect(existsSync(errorsFile())).toBe(false);
+  expect(store.getAllHookActivityEntries()).toEqual([]);
+  // A real SessionStart from an agent session still goes the whole way.
+  await evaluateHookEvent("SessionStart", "claude", JSON.stringify({ hook_event_name: "SessionStart", source: "startup", session_id: "s-real", cwd: project }));
+  expect(store.getAllHookActivityEntries()).toHaveLength(1);
+  store._resetForTest();
+});
+
+// B15: disconnect left the org's policy source in cloud-policies/artifacts/.
+it("config --disconnect's clear removes the Cloud artifacts in the default directory", async () => {
+  delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+  cloudRoot = join(home, "policies", "cloud-policies");
+  deploy({ policies: [{ id: "guard", version: 1 }] });
+  expect(readdirSync(join(cloudRoot, "artifacts")).length).toBe(1);
+  const { clearActiveCloudManagedPolicies } = await import("@/src/hooks/cloud-managed-policies");
+  expect(clearActiveCloudManagedPolicies()).toBe(true);
+  expect(existsSync(join(cloudRoot, "artifacts"))).toBe(false);
+});
+
+it("never removes artifacts from an overridden Cloud policy directory", async () => {
+  deploy({ policies: [{ id: "guard", version: 1 }] });
+  const { clearActiveCloudManagedPolicies } = await import("@/src/hooks/cloud-managed-policies");
+  expect(clearActiveCloudManagedPolicies()).toBe(false);
+  expect(readdirSync(join(cloudRoot, "artifacts")).length).toBe(1);
+});
+
 async function registeredAfterOneEvent(): Promise<Map<string, RegisteredPolicy>> {
   await hook();
   const { getAllPolicies } = await import("@/src/hooks/policy-registry");
@@ -1099,6 +1143,29 @@ describe("C10.5 both reviewability: only its own Cloud outcomes clear it", () =>
     stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-prod-db", "prod-db", "deny")]) } }));
     const result = await hook("psql -h prod-db -c 'delete from users'");
     expect(result.evaluation?.decision).toBe("allow");
+  });
+
+  // B12: the observe row's policyName/cloudPolicyId were null, so a "would
+  // have" never reached the Cloud policy that would have decided it.
+  it("observe mode's activity row names the Jev check's policy and its Cloud policy", async () => {
+    await connect();
+    deploy({ jevMode: "observe" });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-prod-db", "prod-db", "deny")]) } }));
+    const result = await hook("psql -h prod-db -c 'delete from users'");
+    expect(result.evaluation?.decision).toBe("allow");
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row).toMatchObject({
+      decision: "allow",
+      jevDecision: "deny",
+      policyName: "semantic/acme-prod-db",
+      cloudPolicyId: "prod-db",
+      cloudVersion: 3,
+    });
+    // Nothing decided the call: no source, so it is not counted as a decision.
+    expect(row.policySource).toBeUndefined();
+    store._resetForTest();
   });
 });
 

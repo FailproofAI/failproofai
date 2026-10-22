@@ -15,6 +15,16 @@
 
 ### Fixes
 
+- Reconnecting the same FailproofAI Cloud organisation on a new URL (http → https, same key) is a reconnect, not an organisation switch: it no longer prints "Switched from X to X" or clears the Cloud policies until the next poll (#928)
+- A reconnect on a new URL points the `jev.json` that `config` wrote (provider `failproofai`) at the new URL, keeping its mode; a BYOK `jev.json` is never touched (#928)
+- The daemon health probe is answered before any scope, policy or activity logic: it no longer records `agent_scope_unresolved` in `errors.json` or writes a SessionStart activity row on every probe (#928)
+- `failproofai policies` lists agent-scoped Cloud policies with their targets (by profile label where the roster has one), shows a Cloud policy that failed to load as not loaded with its error, and counts agent-scoped policies as enforcing (#928)
+- Over plain http, the connect line says enforce (set locally or by FailproofAI Cloud) turns Jev off on the machine, and `jev status` names http as the cause instead of asking for a key with `jev:evaluate`; when FailproofAI Cloud already set the machine's Jev mode, the connect line says that mode and that Cloud's checks run on Cloud (#928)
+- A `jev.json` for the FailproofAI Cloud provider defaults to Cloud's 5000 ms timeout; `jev setup --provider failproofai` printed 3000 ms (#928)
+- An observe-mode activity row names the Jev check that would have decided and its Cloud policy and version (#928)
+- A policy whose load fails reading a missing data file is classified `file_not_found` (still fail-closed for packs), not `module_not_found` (#928)
+- `config --disconnect` removes the Cloud artifacts (the organisation's policy source) from the default Cloud policy directory; an overridden directory is still never touched (#928)
+- The daemon's agent roster labels a Claude or Codex profile in a relocated config directory (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) as `user`, not `project` (#928)
 - **A FailproofAI Cloud Jev reply that contradicts itself can no longer clear a `both` policy's regex denial.** An outcome for a check the reply's `asked` does not name, a check answered twice, or a deny outcome under a non-deny verdict makes the whole reply malformed, and the review trusts a Cloud outcome only for a check in `asked`; either way the call is decided by the regex alone (security review of #873)
 - A cached policy repair now rechecks Cloud enrolment before writing state. A disconnect landing after the daemon read its desired-state snapshot cannot restore that organization's active deployment during post-poll repair.
 - Locally decided inert Jev calls and cached answers no longer count as fresh Cloud health successes. They cannot clear an outage streak or close the Cloud Jev circuit breaker without a successful Cloud response.

@@ -63,7 +63,7 @@ import {
   type CollectorSettings,
 } from "./collector-config";
 import { recoverCredentialRefusals } from "./credential-recovery";
-import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { clearActiveCloudManagedPolicies, readCloudJevState } from "./cloud-managed-policies";
 import { rmSync } from "node:fs";
 import { backfillRequestPath } from "./backfill-request";
 
@@ -323,7 +323,12 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     prev.ingest ? { token: prev.ingest.key, url: prev.ingest.url } : undefined,
     prev.jev ? { token: prev.jev.key, url: prev.jev.url } : undefined,
   ].some((slot) => slot && (slot.token !== input.token || !sameOrigin(slot.url)));
-  const orgSwitch = hadConnection && (
+  // Both sides name their organisation: that alone decides. The same org on
+  // a new URL (http → https, a new host for the same Cloud) is a reconnect,
+  // not a switch — clearing its deployment would drop enforcement until the
+  // next poll, and "Switched from X to X" says nothing true.
+  const sameKnownOrg = Boolean(prev.org?.id && known?.orgId && prev.org.id === known.orgId);
+  const orgSwitch = hadConnection && !sameKnownOrg && (
     (prev.org?.id && known?.orgId && prev.org.id !== known.orgId) ||
     ((!prev.org?.id || !known?.orgId) && keyChanged) ||
     (previousPolicy && !sameOrigin(previousPolicy.url)) ||
@@ -432,11 +437,11 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       writeJevCloudCredential({ url: new URL(input.url).origin, key: input.token });
       // Loaded here and nowhere earlier: a connect whose key does not carry Jev
       // pulls in none of the Jev modules.
-      const { cloudJevRunningMode, existingJevConfig, removeCloudJevConfig, writeCloudJevConfigIfAbsent } = await import(
+      const { cloudJevRunningMode, existingJevConfig, removeCloudJevConfig, writeCloudJevConfig } = await import(
         "./jev-cloud-connection"
       );
       if (input.sessions === true) {
-        outcome.jev = { ok: true, config: writeCloudJevConfigIfAbsent(input.url) };
+        outcome.jev = { ok: true, config: writeCloudJevConfig(input.url) };
       } else {
         // `--no-transcripts` never switches Jev on (the user's decision). Jev
         // sends each checked tool call and the recent prompt to FailproofAI
@@ -512,6 +517,14 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
  * this machine now, and — the one case worth a second line — why an existing
  * `jev.json` was not touched.
  */
+function safeCloudJev(): ReturnType<typeof readCloudJevState> {
+  try {
+    return readCloudJevState();
+  } catch {
+    return { jevMode: null, deployment: null, errors: [] };
+  }
+}
+
 export function jevLines(outcome: ConnectOutcome): string[] {
   const jev = outcome.jev;
   if (!jev) return [];
@@ -538,19 +551,39 @@ export function jevLines(outcome: ConnectOutcome): string[] {
   }
   const config = jev.config;
   if (!config || config.status === "written") {
-    // Plain http (loopback only) is accepted in observe mode and nowhere else, so
-    // the enforce command would be refused there, by the CLI and the dashboard.
+    // Plain http (loopback only) is accepted in observe mode and nowhere else:
+    // in enforce mode — set here, or by FailproofAI Cloud — Jev is OFF on this
+    // machine rather than enforcing, by the CLI and the dashboard alike.
     const plainHttp = config?.status === "written" && new URL(config.baseUrl).protocol === "http:";
+    const httpLine = "            Over plain http Jev runs only in observe mode: enforce (set here or by FailproofAI Cloud) turns it off on this machine. For enforce, reconnect with `failproofai config --token <key> --url https://…`.";
+    // FailproofAI Cloud already set this machine's Jev mode (a reconnect, or a
+    // deployment that arrived first): that mode and Cloud's own checks decide,
+    // not the local jev.json or the packs installed here.
+    const cloudJev = safeCloudJev();
+    if (cloudJev.jevMode !== null) {
+      return [
+        cloudJev.jevMode === "off"
+          ? "  Jev       off on this machine: FailproofAI Cloud set its Jev mode to off."
+          : `  Jev       on through FailproofAI Cloud, mode ${cloudJev.jevMode} (set by FailproofAI Cloud); the Jev checks it deployed here run on FailproofAI Cloud.`,
+        ...(plainHttp && cloudJev.jevMode === "enforce" ? [httpLine] : []),
+      ];
+    }
     return [
       `  Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
       // The package ships no Jev checks, so "on" asks nothing until a pack
-      // gives it some — said here, where the user just turned it on.
+      // gives it some — said here, where the user just turned it on. Checks
+      // FailproofAI Cloud deploys to this machine run on Cloud whatever is here.
       ...(jevChecksDeclared()
         ? []
-        : ["            It has no checks installed yet, so it asks nothing. To enable it: `failproofai policies add FailproofAI/jev-policies`."]),
-      plainHttp
-        ? "            Enforce needs an https FailproofAI Cloud URL: reconnect with `failproofai config --token <key> --url https://…`. Over plain http Jev stays in observe mode."
-        : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
+        : ["            No Jev checks are installed on this machine; checks FailproofAI Cloud deploys here run on Cloud. To add local ones: `failproofai policies add FailproofAI/jev-policies`."]),
+      plainHttp ? httpLine : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
+    ];
+  }
+  if (config.status === "repointed") {
+    return [
+      config.mode === "off"
+        ? `  Jev       ${config.path} now points here instead of ${config.from}; it has Jev switched off (mode off), so Jev stays off. To turn it on: \`failproofai jev setup --mode observe\`.`
+        : `  Jev       ${config.path} now points here instead of ${config.from} (mode ${config.mode}).`,
     ];
   }
   if (config.status === "kept") {

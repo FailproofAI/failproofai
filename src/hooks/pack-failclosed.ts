@@ -54,6 +54,8 @@ export interface MissingGuard {
  */
 export const PERMANENT_LOAD_FAILURES: ReadonlySet<string> = new Set([
   "module_not_found",
+  // A data file the policy reads at load is as missing on the next call.
+  "file_not_found",
   "syntax_error",
   "runtime_error",
   "path_missing",

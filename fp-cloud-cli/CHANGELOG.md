@@ -63,6 +63,11 @@
   same comment-aware detection, as the dashboard's publish form; the server does not read
   the source, so nothing else refuses it for `fp`. (#833)
 
+### Fixed
+
+- `fp fleet history` keeps `gen`, `when` and `jev` visible at 80 columns (rollback needs `gen`): the policy list is shortened, then dropped, and `change` wraps first.
+- `fp fleet show` and `fp fleet history` name an exact-profile target by the profile label the machine reports (`claude/.claude-work`, with the `agt_…` id kept in `show`), falling back to the bare id.
+
 ## 0.0.1 — 2026-09-22
 
 **First stable release.** `0.0.1b1` and `0.0.1b2` are the two betas behind it; the

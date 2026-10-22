@@ -627,7 +627,15 @@ export function validateJevConfig(
     };
   }
 
-  const cfg: JevConfig = { provider: kind, apiKey, mode: DEFAULT_JEV_MODE, timeoutMs: JEV_CONFIG_DEFAULT_TIMEOUT_MS };
+  // The FailproofAI Cloud provider waits as long as a Cloud Jev mode does (B9):
+  // the same extra hop, and `jev setup --provider failproofai` printing 3000 ms
+  // misstated what FailproofAI Cloud is given.
+  const cfg: JevConfig = {
+    provider: kind,
+    apiKey,
+    mode: DEFAULT_JEV_MODE,
+    timeoutMs: kind === JEV_CLOUD_PROVIDER ? CLOUD_JEV_TIMEOUT_MS : JEV_CONFIG_DEFAULT_TIMEOUT_MS,
+  };
 
   if (o.baseUrl !== undefined) {
     const r = validateBaseUrl(o.baseUrl);

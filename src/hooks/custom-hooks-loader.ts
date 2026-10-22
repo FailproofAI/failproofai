@@ -176,7 +176,7 @@ async function importWithDeadline(fileUrl: string): Promise<void> {
  * Does NOT clear the registry — caller is responsible for that.
  */
 export interface PolicyLoadFailure {
-  type: "module_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
+  type: "module_not_found" | "file_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
   reason: string;
 }
 
@@ -250,8 +250,13 @@ async function loadSingleFile(
     return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
+    // An import that names no module, apart from a file the policy itself
+    // reads at load (a `readFileSync` of its data): both are ENOENT underneath,
+    // but "module not found" sent people looking for a missing package (B13).
+    const errorType = /Cannot find module|MODULE_NOT_FOUND|Cannot find package/i.test(msg)
       ? "module_not_found"
+      : /ENOENT/i.test(msg)
+        ? "file_not_found"
       : /SyntaxError|Unexpected token/i.test(msg)
         ? "syntax_error"
         : /timed out loading module/i.test(msg)

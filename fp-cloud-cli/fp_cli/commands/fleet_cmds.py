@@ -147,7 +147,8 @@ def fleet_show(
             "deployment": dep.to_dict() if dep else None,
         })
         return
-    output.render_machine_policies(machine_id, dep, machine)
+    output.render_machine_policies(machine_id, dep, machine,
+                                   agent_labels=api.agent_labels(cctx, machine_id))
 
 
 def fleet_deploy(
@@ -572,7 +573,8 @@ def fleet_history(
     if output.is_json():
         output.emit_json({"machineId": machine_id, "history": entries})
         return
-    output.render_deployment_history(machine_id, entries)
+    output.render_deployment_history(machine_id, entries,
+                                     agent_labels=api.agent_labels(cctx, machine_id))
 
 
 def fleet_rollback(

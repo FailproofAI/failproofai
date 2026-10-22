@@ -217,6 +217,15 @@ export function clearActiveCloudManagedPolicies(): boolean {
       // reporting one failed removal would obscure that the rest succeeded.
     }
   }
+  // The org's policy source goes too (B15): the content-addressed artifacts
+  // are the departed organisation's code, and nothing on a disconnected
+  // machine may use them; a reconnect downloads what its deployment names.
+  // Only here, in the directory the CLI owns (an override returned above).
+  try {
+    rmSync(resolve(root, "artifacts"), { recursive: true, force: true });
+  } catch {
+    // Best-effort, like the files above.
+  }
   return removed;
 }
 
@@ -503,7 +512,25 @@ export function readCloudAuthorityInputs(agent: AgentIdentity | null = null): Cl
   }
 }
 
+/**
+ * Every Cloud JS assignment in the deployment, whatever agent it targets — for
+ * LISTING only (`failproofai policies`), never for import: the hook path scopes
+ * with {@link readActiveCloudManagedPolicies} before any artifact is read.
+ * A listing that applied a hook's scope with no agent hid every agent-scoped
+ * policy (B4). Each artifact is still digest-checked, so a row is never shown
+ * for bytes that would be refused.
+ */
+export function listActiveCloudManagedPolicies(): CloudManagedPolicyArtifact[] {
+  return readActiveCloudManagedPoliciesFor(() => true);
+}
+
 export function readActiveCloudManagedPolicies(agent: AgentIdentity | null = null): CloudManagedPolicyArtifact[] {
+  return readActiveCloudManagedPoliciesFor((targets) => agentTargetsMatch(targets, agent));
+}
+
+function readActiveCloudManagedPoliciesFor(
+  applies: (targets: ReturnType<typeof parseAgentTargets>) => boolean,
+): CloudManagedPolicyArtifact[] {
   const root = cloudManagedPolicyRoot();
 
   // Parsed once per change of the file (`readActiveJson`). Each JS artifact is
@@ -520,7 +547,7 @@ export function readActiveCloudManagedPolicies(agent: AgentIdentity | null = nul
   // Scope before reading or importing any artifact: a foreign agent must not
   // execute policy code even to discover that it does not apply.
   const applicable = manifest.policies.filter((policy) =>
-    agentTargetsMatch(parseAgentTargets(policy.agentTargets, manifest.schemaVersion), agent));
+    applies(parseAgentTargets(policy.agentTargets, manifest.schemaVersion)));
   const seen = new Set<string>();
 
   return applicable.map((policy) => {

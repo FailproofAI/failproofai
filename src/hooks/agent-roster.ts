@@ -142,3 +142,31 @@ export function readRuntimeAgentIdentity(cli: IntegrationType, settingsPath: str
     return null;
   }
 }
+
+/**
+ * Display labels from the daemon's roster, by `agt_` id (`claude / .claude-work`
+ * style: integration, then the profile label). For listings only; never an
+ * identity — `readRuntimeAgentIdentity` is the only thing that decides which
+ * profile a hook is. Empty when the roster cannot be read.
+ */
+export function readRosterLabels(): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    const path = agentRosterFile();
+    const stat = lstatSync(path);
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0 || stat.size > MAX_ROSTER_BYTES) return out;
+    const roster: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (!roster || typeof roster !== "object" || Array.isArray(roster)) return out;
+    const data = roster as Record<string, unknown>;
+    if (data.schemaVersion !== 1 || !Array.isArray(data.agents) || data.agents.length > MAX_ROSTER_AGENTS) return out;
+    for (const entry of data.agents) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const record = entry as Record<string, unknown>;
+      if (typeof record.instanceId !== "string" || typeof record.profileLabel !== "string" || record.profileLabel === "") continue;
+      out.set(record.instanceId, record.profileLabel.slice(0, 80));
+    }
+  } catch {
+    // No roster: the bare ids are shown.
+  }
+  return out;
+}

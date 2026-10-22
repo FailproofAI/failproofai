@@ -4,12 +4,24 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-vi.mock("../../src/hooks/cloud-managed-policies", () => ({
-  readActiveCloudManagedPolicies: vi.fn(),
+vi.mock("../../src/hooks/cloud-managed-policies", () => {
+  const read = vi.fn();
+  // The listing reads every assignment (`listActive…`); one mock serves both.
+  return { readActiveCloudManagedPolicies: read, listActiveCloudManagedPolicies: read };
+});
+vi.mock("../../src/hooks/cloud-policy-errors", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/cloud-policy-errors")>()),
+  readCloudPolicyErrors: vi.fn(() => null),
+}));
+vi.mock("../../src/hooks/agent-roster", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/hooks/agent-roster")>()),
+  readRosterLabels: vi.fn(() => new Map()),
 }));
 
 import { listHooks } from "../../src/hooks/manager";
 import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
+import { readCloudPolicyErrors } from "../../src/hooks/cloud-policy-errors";
+import { readRosterLabels } from "../../src/hooks/agent-roster";
 
 const readActive = vi.mocked(readActiveCloudManagedPolicies);
 
@@ -80,6 +92,42 @@ describe("failproofai policies — cloud-managed section", () => {
     await listHooks(project);
     expect(text()).toMatch(/^CLOUD-MANAGED {2}deployment 7$/m);
     expect(text()).toMatch(/● org-guard\s+v3$/m);
+  });
+
+  // B4 (e2e round 1): agent-scoped assignments were filtered out of the listing.
+  it("lists agent-scoped policies with their targets, by profile label where the roster has one", async () => {
+    vi.mocked(readRosterLabels).mockReturnValue(new Map([["agt_0123456789abcdef", ".claude-work"]]));
+    readActive.mockReturnValue([
+      {
+        id: "claude-only", version: 2, effect: "enforce", sha256: "a", path: "p", deployment: 9,
+        agentTargets: [{ integration: "claude" }],
+      },
+      {
+        id: "one-profile", version: 1, effect: "enforce", sha256: "b", path: "q", deployment: 9,
+        agentTargets: [{ integration: "claude", instanceId: "agt_0123456789abcdef" }, { integration: "codex", instanceId: "agt_fedcba9876543210" }],
+      },
+    ]);
+    await listHooks(project);
+    expect(text()).toMatch(/● claude-only\s+v2 {2}· {2}for claude$/m);
+    expect(text()).toMatch(/● one-profile\s+v1 {2}· {2}for claude \/ \.claude-work, codex \/ agt_fedcba9876543210$/m);
+  });
+
+  // B5: a Cloud policy that failed to load read as ● on.
+  it("shows a Cloud policy that failed to load as not loaded, with its error", async () => {
+    vi.mocked(readCloudPolicyErrors).mockReturnValue([
+      { id: "broken", version: 4, kind: "regex", message: "syntax_error: Unexpected token" },
+      { id: "broken", version: 3, kind: "regex", message: "an older version's error" },
+    ]);
+    readActive.mockReturnValue([
+      { id: "broken", version: 4, effect: "enforce", sha256: "a", path: "p", deployment: 5 },
+      { id: "fine", version: 1, effect: "enforce", sha256: "b", path: "q", deployment: 5 },
+    ]);
+    await listHooks(project);
+    const broken = text().split("\n").find((l) => l.includes("broken")) ?? "";
+    expect(broken).not.toContain("●");
+    expect(broken).toContain("not loaded: syntax_error: Unexpected token");
+    expect(broken).not.toContain("older version");
+    expect(text()).toMatch(/● fine\s+v1$/m);
   });
 
   it("marks an observe policy as observing, never as enforcing — its verdict is discarded", async () => {

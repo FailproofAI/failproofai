@@ -649,3 +649,44 @@ def test_the_help_names_the_reasons_a_machine_cannot_ask(runner, argv):
             assert code in flat
         # A machine no longer parses Jev checks, so it cannot fail to.
         assert "could not parse" not in flat
+
+
+# ── e2e findings: exact-profile targets read as their label (B11) ─────────────
+
+_AGT = "agt_" + "1f" * 16
+_PROFILE_POLS = [{"id": "no-force-push", "version": 2, "effect": "enforce",
+                  "agentTargets": [{"integration": "claude", "instanceId": _AGT}]}]
+
+
+def _roster_route(agents, status=200):
+    return respx.get(f"{BASE}/api/enforcement/machines/m1/agents").mock(return_value=httpx.Response(
+        status, json={"machineId": "m1", "generation": 3, "agents": agents} if status == 200
+        else {"error": "not found"}))
+
+
+@respx.mock
+def test_fleet_show_and_history_name_an_exact_profile_by_its_label(logged_in, runner):
+    _fleet_routes(_PROFILE_POLS)
+    _roster_route([{"instanceId": _AGT, "integration": "claude", "profileLabel": ".claude-work",
+                    "scope": "user", "hookInstalled": True}])
+    respx.get(f"{BASE}/api/enforcement/deployments/m1/history").mock(return_value=httpx.Response(200, json=[
+        {"deployment": 5, "policies": _PROFILE_POLS, "updatedAt": "2026-09-30T01:00:00Z"}]))
+
+    shown = runner.invoke(app, ["fleet", "show", "m1"])
+    assert shown.exit_code == 0, shown.output
+    # The label a person recognises, with the id a selector needs beside it.
+    assert f"claude/.claude-work ({_AGT})" in shown.stdout
+
+    history = runner.invoke(app, ["fleet", "history", "m1"])
+    assert history.exit_code == 0, history.output
+    assert "claude/.claude-work" in history.stdout
+    assert _AGT not in history.stdout
+
+
+@respx.mock
+def test_an_exact_profile_without_a_reported_label_keeps_the_bare_id(logged_in, runner):
+    _fleet_routes(_PROFILE_POLS)
+    _roster_route([], status=404)
+    shown = runner.invoke(app, ["fleet", "show", "m1"])
+    assert shown.exit_code == 0, shown.output
+    assert f"claude/{_AGT}" in shown.stdout

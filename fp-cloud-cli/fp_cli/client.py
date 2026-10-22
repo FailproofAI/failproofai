@@ -1732,6 +1732,29 @@ def list_machines(ctx: ClientContext) -> List[Machine]:
     return [Machine.from_dict(m) for m in items]
 
 
+def machine_agents(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:
+    """GET /api/enforcement/machines/{id}/agents — the agent profiles the daemon
+    last reported: `[{instanceId, integration, profileLabel, scope, ...}]`."""
+    data = _get_json(ctx, f"/api/enforcement/machines/{machine_id}/agents")
+    items = data if isinstance(data, list) else (data or {}).get("agents", [])
+    return [a for a in items if isinstance(a, dict)]
+
+
+def agent_labels(ctx: ClientContext, machine_id: str) -> Dict[str, str]:
+    """`{instanceId: profileLabel}` for one machine, or `{}` when unavailable.
+
+    Best effort on purpose: it only names the `agt_…` ids an exact-profile
+    assignment carries. A server without the roster route, or a machine that
+    never reported one, falls back to the bare id rather than failing the view.
+    """
+    try:
+        agents = machine_agents(ctx, machine_id)
+    except Exception:  # noqa: BLE001 — a missing label must never fail the read
+        return {}
+    return {str(a["instanceId"]): str(a["profileLabel"])
+            for a in agents if a.get("instanceId") and a.get("profileLabel")}
+
+
 def rename_machine(ctx: ClientContext, machine_id: str, label: str) -> Dict[str, Any]:
     """PATCH /api/enforcement/machines/{id} — a human label, not the id."""
     path = f"/api/enforcement/machines/{machine_id}"

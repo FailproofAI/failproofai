@@ -26,7 +26,8 @@ import { createConnection, createServer, type Server, type Socket } from "node:n
 import { existsSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { version } from "../../package.json";
-import { evaluateHookEvent, type HookEventOutcome } from "./handler";
+import { evaluateHookEvent } from "./handler";
+import type { HookEventOutcome } from "./handler";
 import type { IntegrationType } from "./types";
 import { hookLogWarn } from "./hook-logger";
 

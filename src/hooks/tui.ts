@@ -1445,7 +1445,7 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
       case "expired":
         return [kit.fail("That link expired."), "", kit.keys(["enter new link", "esc back"])];
       case "denied":
-        return [kit.fail("The request was cancelled in the browser."), "", kit.keys(["enter try again", "esc back"])];
+        return [kit.fail("Not authorized in the browser."), "", kit.keys(["enter try again", "esc back"])];
       case "failed":
         return [kit.fail(failLine), "", kit.keys(retryable ? ["enter try again", "esc back"] : ["esc back"])];
     }

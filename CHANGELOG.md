@@ -8,7 +8,7 @@
 
 ### Fixes
 
-- `config` asks for your sudo password again before installing the daemon when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
+- `config` asks for your sudo password again before installing the daemon, or refreshing its service definition, when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
 
 ### Dependencies
 

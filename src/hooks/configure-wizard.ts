@@ -1285,21 +1285,31 @@ export async function runConfigureWizard(
   // default on macOS, fifteen on most Linux. A browser login, or simply a slow
   // agents screen, can outlast it, and the install below runs `sudo -n`, which
   // would then fail AFTER the person did everything else. Ask once more instead.
+  // The stale-unit refresh runs `sudo -n` too, so it is asked for the same way —
+  // but, as at the top, losing root there costs the scheduled audit, not setup.
   // Unattended runs never primed anything, so there is nothing to have expired.
-  if (daemonWanted && !unattended) {
+  if ((daemonWanted || daemonUnitStale) && !unattended) {
     let stillRoot = false;
     try {
       stillRoot = canElevate();
     } catch {
       stillRoot = false;
     }
-    if (!stillRoot && !elevate("Your sudo session expired while you were away. Installing failproofaid needs root again.")) {
-      write([
-        kit.fail("Couldn't get root, so setup stopped before changing anything."),
-        `  Re-run once you can use sudo:  ${kit.cmd("failproofai config")}`,
-      ]);
-      void emit("configure_aborted", { reason: "needs_root" });
-      return { applied: false, abort: "needs_root" };
+    if (!stillRoot && daemonWanted) {
+      if (!elevate("Your sudo session expired while you were away. Installing failproofaid needs root again.")) {
+        write([
+          kit.fail("Couldn't get root, so setup stopped before changing anything."),
+          `  Re-run once you can use sudo:  ${kit.cmd("failproofai config")}`,
+        ]);
+        void emit("configure_aborted", { reason: "needs_root" });
+        return { applied: false, abort: "needs_root" };
+      }
+    } else if (
+      !stillRoot &&
+      !elevate("Your sudo session expired while you were away. Refreshing failproofaid's service definition needs root again.")
+    ) {
+      done.push(kit.caution("No root, so its service definition stays as it is. Scheduled audits stay off until it is refreshed."));
+      daemonUnitStale = false;
     }
   }
   if (daemonWanted) {

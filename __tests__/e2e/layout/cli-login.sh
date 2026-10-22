@@ -157,7 +157,7 @@ PAGE=$(person "$SESSION" lookup "{\"link_token\":\"$LINK\"}")
 eq "the page sees a pending request" "$(echo "$PAGE" | jqp '["status"]')" "pending"
 eq "…for this machine" "$(echo "$PAGE" | jqp '["machine"]["label"]')" "$LABEL"
 eq "nothing is minted before approval" "$(keys_in_org)" "0"
-person "$SESSION" approve "{\"link_token\":\"$LINK\",\"org_id\":\"$ORG_ID\",\"jev\":true}" >/dev/null
+person "$SESSION" approve "{\"link_token\":\"$LINK\",\"org_id\":\"$ORG_ID\"}" >/dev/null
 eq "approve answered 200" "$(cat "$OUT/status")" "200"
 T=$(wait_done fresh)
 eq "config exited 0" "$(cat "$OUT/fresh.rc")" "0"
@@ -172,7 +172,7 @@ eq "daemon running under systemd" "$(dex 'systemctl is-active failproofaid@dev' 
 KEY=$(dex "python3 -c 'import json;d=json.load(open(\"/home/dev/.failproofai/credentials.json\"));print(d[\"cloud\"][\"token\"])'" | tr -d '\r')
 WHO=$(curl -s "$DASH/v1/auth/introspect" -H "authorization: Bearer $KEY")
 eq "the machine's key works, in the approved org" "$(echo "$WHO" | jqp '["org_slug"]')" "$SLUG"
-has "…with jev, as approved" "$WHO" "jev:evaluate"
+has "…with jev, which the approver holds" "$WHO" "jev:evaluate"
 for _ in $(seq 1 30); do
   [ "$(sql "select count(*) from enforcement_machines where org_id = '$ORG_ID'")" = 1 ] && break; sleep 1
 done
@@ -192,8 +192,8 @@ eq "a second key, the first one still live" "$(sql "select count(*) from api_key
 has "the second key carries a suffix, not a clash" "$(sql "select string_agg(name, ',' order by name) from api_keys where org_id = '$ORG_ID' and created_via = 'cli_login'")" "-2"
 
 # ═════════════════════════════════════════════════════════════════════════════
-head1 "PHASE 3 — cancelled in the browser, retried from the terminal"
-run_config deny "wait:Keep current connection,key:down,key:enter,url,wait:The request was cancelled in the browser.,key:enter,url,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
+head1 "PHASE 3 — not authorized in the browser, retried from the terminal"
+run_config deny "wait:Keep current connection,key:down,key:enter,url,wait:Not authorized in the browser.,key:enter,url,wait:WHICH AGENTS SHOULD FAILPROOFAI TRACE?,key:enter"
 LINK1=$(link_token "$(wait_url deny)")
 person "$SESSION" deny "{\"link_token\":\"$LINK1\"}" >/dev/null
 eq "deny answered 200" "$(cat "$OUT/status")" "200"

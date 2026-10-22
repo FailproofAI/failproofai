@@ -1517,6 +1517,32 @@ describe("browser login", () => {
     vi.mocked(canElevate).mockReturnValue(true);
   });
 
+  it("asks for sudo again before refreshing a stale unit, and carries on without it", async () => {
+    vi.mocked(daemonServiceNeedsUpgrade).mockReturnValue(true);
+    vi.mocked(primeElevation).mockClear().mockReturnValue(true);
+    // Root at the start; gone by apply.
+    vi.mocked(canElevate).mockReturnValue(false);
+    connectPick = "login";
+    const io = ttyIO();
+    const result = await runConfigureWizard(io);
+    expect(primeElevation).toHaveBeenCalledTimes(2);
+    expect(printed(io.stdout)).toContain("Refreshing failproofaid's service definition needs root again.");
+    expect(ensureDaemonServiceCurrent).toHaveBeenCalledTimes(1);
+    expect(result.applied).toBe(true);
+
+    // A second ask that fails costs the refresh, never the setup.
+    vi.mocked(ensureDaemonServiceCurrent).mockClear();
+    vi.mocked(primeElevation).mockReset().mockReturnValueOnce(true).mockReturnValueOnce(false);
+    connectPick = "login";
+    const io2 = ttyIO();
+    const carried = await runConfigureWizard(io2);
+    expect(carried.applied).toBe(true);
+    expect(ensureDaemonServiceCurrent).not.toHaveBeenCalled();
+    expect(claimLogin).toHaveBeenCalled();
+    expect(printed(io2.stdout)).toContain("Scheduled audits stay off until it is refreshed.");
+    vi.mocked(canElevate).mockReturnValue(true);
+  });
+
   it("starts with this machine's name and OS, and maps an older cloud to the key route", async () => {
     connectPick = "login";
     await runConfigureWizard(ttyIO(), { machineLabel: "build-box-7" });

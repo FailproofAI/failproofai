@@ -137,7 +137,7 @@ describe("promptBrowserLogin", () => {
   it("lets a refusal in the browser be retried", async () => {
     const t = terminal();
     const { pending, start } = ask(t, [{ state: "denied" }, { state: "approved", value: "second-go" }]);
-    await until(() => t.plain().includes("The request was cancelled in the browser."));
+    await until(() => t.plain().includes("Not authorized in the browser."));
     t.type("\r");
     expect(await pending).toEqual({ value: "second-go" });
     expect(start).toHaveBeenCalledTimes(2);

@@ -195,6 +195,8 @@ async function loadSingleFile(
      * file, whether or not Jev is configured — the declaration is dead either way.
      */
     outsidePack?: boolean;
+    /** The worker defers diagnostics until invocation ownership is known. */
+    deferTelemetry?: (emit: () => void) => void;
   },
 ): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
@@ -257,12 +259,16 @@ async function loadSingleFile(
         : /timed out loading module/i.test(msg)
           ? "load_timeout"
           : "runtime_error";
-    void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
-      error_type: errorType,
-      is_convention: !!opts?.conventionScope,
-      convention_scope: opts?.conventionScope ?? null,
-      file_basename: basename(absPath),
-    });
+    const emit = () => {
+      void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
+        error_type: errorType,
+        is_convention: !!opts?.conventionScope,
+        convention_scope: opts?.conventionScope ?? null,
+        file_basename: basename(absPath),
+      });
+    };
+    if (opts?.deferTelemetry) opts.deferTelemetry(emit);
+    else emit();
     if (opts?.strict) throw new Error(`Failed to load custom hooks from ${absPath}: ${msg}`);
     hookLogError(`failed to load custom hooks from ${absPath}: ${msg}`);
     return { type: errorType, reason: msg };
@@ -412,6 +418,7 @@ export async function loadAllCustomHooks(
     customPoliciesEnabled?: boolean;
     cloudManagedPolicies?: CloudManagedPolicyArtifact[];
     packs?: ResolvedPack[];
+    deferTelemetry?: (emit: () => void) => void;
   },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
@@ -654,6 +661,7 @@ export async function loadAllCustomHooks(
           verifyEntrySha:
             cloudManaged?.sha256 ?? pack?.sha256,
           outsidePack: !pack,
+          deferTelemetry: opts?.deferTelemetry,
         });
         // Every id behind these bytes. One artifact, one import, one failure —
         // but as many fail-closed guards as there are packs depending on it.
@@ -734,7 +742,7 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true });
+    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true, deferTelemetry: opts?.deferTelemetry });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
@@ -774,7 +782,7 @@ export async function loadAllCustomHooks(
   for (const file of userFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "user", outsidePack: true });
+    await loadSingleFile(file, { conventionScope: "user", outsidePack: true, deferTelemetry: opts?.deferTelemetry });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);

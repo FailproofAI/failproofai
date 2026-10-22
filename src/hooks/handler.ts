@@ -179,6 +179,15 @@ export interface EvaluateHookEventOptions {
    * leaves it unset.
    */
   releaseRegistry?: () => void;
+  /** The worker may reuse a reply once the effective runtime is known, before
+   * evaluating policies or recording the decision. Loading stays on the same
+   * registry queue and is not repeated just to fingerprint custom hooks. */
+  reuseOutcome?: (runtime: {
+    config: HooksConfig;
+    customHooks: CustomHook[];
+    session: SessionMetadata;
+    payload: Record<string, unknown>;
+  }) => Promise<HookEventOutcome | undefined>;
 }
 
 /**
@@ -442,6 +451,11 @@ export async function evaluateHookEvent(
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  const loadTelemetry: Array<() => void> = [];
+  const deferTelemetry = opts?.reuseOutcome
+    ? (emit: () => void) => { loadTelemetry.push(emit); }
+    : undefined;
+  let replayed = false;
   // A home from another layout resolves to no global config, so every builtin
   // silently stops firing — the machine looks protected and is not. Say so on
   // every call rather than deleting anything (a hook is unattended) or denying
@@ -624,10 +638,14 @@ export async function evaluateHookEvent(
           `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
             `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
         );
-        void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
-          event_type: eventType,
-          cli,
-        });
+        const emit = () => {
+          void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
+            event_type: eventType,
+            cli,
+          });
+        };
+        if (deferTelemetry) deferTelemetry(emit);
+        else emit();
       }
       // Recorded on every row once a machine is managed, whether or not a cloud
       // policy decided this event: "what was deployed here at the time" is a
@@ -667,8 +685,20 @@ export async function evaluateHookEvent(
         customPoliciesEnabled: config.customPoliciesEnabled,
         ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
         ...(installedPacks.length > 0 ? { packs: installedPacks } : {}),
+        ...(deferTelemetry ? { deferTelemetry } : {}),
       });
       customHooksList = loadResult.hooks;
+      if (opts?.reuseOutcome) {
+        try {
+          const reused = await opts.reuseOutcome({ config, customHooks: customHooksList, session, payload: parsed });
+          if (reused) {
+            replayed = true;
+            return reused;
+          }
+        } catch {
+          // Reuse is an optimization; its failure must still evaluate policy.
+        }
+      }
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
       conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 
@@ -1096,6 +1126,9 @@ export async function evaluateHookEvent(
       },
     };
   } finally {
+    if (!replayed) {
+      for (const emit of loadTelemetry) emit();
+    }
     if (opts?.awaitTelemetryFlush ?? true) {
       // Await any un-awaited (`void trackHookEvent(...)`) events fired during
       // this invocation. The one-shot CLI process calls process.exit() the

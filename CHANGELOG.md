@@ -2,6 +2,10 @@
 
 ## 1.0.12-beta.0 — 2026-10-22
 
+### Fixes
+
+- Deduplicate hook invocations in the daemon worker when the same tool call arrives from multiple installation scopes. Matching invocations share one policy evaluation, activity record and telemetry event, and receive the same reply; different runtimes and calls without stable invocation IDs continue to evaluate independently.
+
 ### Dependencies
 
 - Combine the open Dependabot PRs (#921, #922, #923) into one: `certifi` 2026.7.22 → 2026.10.19 (GHSA-6q48-6c7w-9gw2) in `fp-cloud-cli` and the Python SDK's test lockfile, and `vite` 8.3.0 → 8.3.4 in the TypeScript SDK's dev lockfile. The Supply Chain gate scans every lockfile, so none of the three could pass on its own (#926)

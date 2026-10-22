@@ -24,11 +24,45 @@
  */
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
-import { evaluateHookEvent } from "./handler";
+import { createHash } from "node:crypto";
+import { version } from "../../package.json";
+import { evaluateHookEvent, type HookEventOutcome } from "./handler";
 import type { IntegrationType } from "./types";
 import { hookLogWarn } from "./hook-logger";
 
 const MAX_FRAME_LEN = 16 * 1024 * 1024;
+const INVOCATION_TTL_MS = 10 * 60_000;
+const INVOCATION_WAIT_MS = 30_000;
+
+interface HookInvocation {
+  result: Promise<HookEventOutcome | undefined>;
+  complete: (outcome?: HookEventOutcome) => void;
+}
+
+/** A failed or over-budget owner releases its waiters into normal evaluation. */
+function claimInvocation(invocations: Map<string, HookInvocation>, key: string): HookInvocation {
+  let resolve!: (outcome?: HookEventOutcome) => void;
+  let settled = false;
+  const entry: HookInvocation = {
+    result: new Promise((r) => { resolve = r; }),
+    complete: (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (outcome) {
+        timer = setTimeout(() => invocations.delete(key), INVOCATION_TTL_MS);
+        timer.unref?.();
+      } else if (invocations.get(key) === entry) {
+        invocations.delete(key);
+      }
+      resolve(outcome);
+    },
+  };
+  let timer = setTimeout(() => entry.complete(), INVOCATION_WAIT_MS);
+  timer.unref?.();
+  invocations.set(key, entry);
+  return entry;
+}
 
 interface WorkerHookRequest {
   type: "hook";
@@ -195,7 +229,7 @@ function enqueue(task: (release: () => void) => Promise<void>): void {
   processingChain = processingChain.then(() => new Promise<void>((settle) => runQueuedTask(task, settle))).catch(() => {});
 }
 
-function handleConnection(socket: Socket, shutdown: () => void): void {
+function handleConnection(socket: Socket, shutdown: () => void, invocations: Map<string, HookInvocation>): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
   /**
@@ -272,6 +306,7 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
         .catch(() => {});
 
       enqueue(async (release) => {
+        let invocation: HookInvocation | undefined;
         try {
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
             awaitTelemetryFlush: false,
@@ -279,7 +314,39 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
             // "absent" as null.
             fallbackCwd: request.cwd ?? undefined,
             releaseRegistry: release,
+            reuseOutcome: async ({ config, customHooks, session, payload }) => {
+              const sessionId = payload.session_id;
+              const toolUseId = payload.tool_use_id;
+              if (typeof sessionId !== "string" || !sessionId || typeof toolUseId !== "string" || !toolUseId) return;
+              const customHookIdentity = customHooks.map((hook) => ({
+                name: hook.name,
+                description: hook.description,
+                match: hook.match,
+                implementation: String(hook.fn),
+                conventionScope: (hook as typeof hook & { __conventionScope?: string }).__conventionScope,
+              }));
+              const runtimeIdentity = createHash("sha256").update(JSON.stringify({
+                version,
+                packageRoot: process.env.FAILPROOFAI_PACKAGE_ROOT ?? process.argv[1] ?? "unknown",
+                cwd: session.cwd ?? process.cwd(),
+                config,
+                customHookIdentity,
+              })).digest("hex");
+              const key = createHash("sha256").update(JSON.stringify([
+                request.cli, request.hookEvent, sessionId, toolUseId, runtimeIdentity,
+              ])).digest("hex");
+              const existing = invocations.get(key);
+              if (existing) {
+                // The owner can be finishing a released two-tier review. This
+                // request keeps the registry while it waits, so a failed owner
+                // can fall back without another request clearing its policies.
+                const outcome = await existing.result;
+                if (outcome) return outcome;
+              }
+              invocation = claimInvocation(invocations, key);
+            },
           });
+          invocation?.complete(result);
           deliver(
             encodeFrame({
               type: "hookResult",
@@ -293,6 +360,8 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
           const msg = err instanceof Error ? err.message : String(err);
           hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
           deliver(encodeFrame({ type: "error", message: msg }));
+        } finally {
+          invocation?.complete();
         }
       });
     }
@@ -346,8 +415,9 @@ function requestExistingWorkerShutdown(socketPath: string): Promise<"stale" | "s
 }
 
 export function startWorkerServer(socketPath: string, shutdown?: () => void): Server {
+  const invocations = new Map<string, HookInvocation>();
   const server = createServer((socket) =>
-    handleConnection(socket, shutdown ?? (() => server.close())),
+    handleConnection(socket, shutdown ?? (() => server.close()), invocations),
   );
 
   const listen = () => {

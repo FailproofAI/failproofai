@@ -1,9 +1,12 @@
 # Changelog
 
-## 1.0.12-beta.0 — 2026-10-20
+## 1.0.12-beta.0 — 2026-10-22
 
 ### Dependencies
 
+- Combine the open Dependabot PRs (#921, #922, #923) into one: `certifi` 2026.7.22 → 2026.10.19 (GHSA-6q48-6c7w-9gw2) in `fp-cloud-cli` and the Python SDK's test lockfile, and `vite` 8.3.0 → 8.3.4 in the TypeScript SDK's dev lockfile. The Supply Chain gate scans every lockfile, so none of the three could pass on its own (#926)
+- Clear the Supply Chain gate's other findings, which no Dependabot PR covered: the root `vite` override 8.0.16 → 8.1.6 (five advisories), the smallest fixed release, which moves only `rolldown` 1.0.3 → 1.1.5 and its platform packages with it; `rustls-webpki` 0.103.16 and `webpki-roots` 1.0.10 in `Cargo.lock` (RUSTSEC-2026-0382, RUSTSEC-2026-0381); `vitest` 5.0.1 → 5.0.5 in the TypeScript SDK (GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp, in `@vitest/mocker`), which takes `vite` on to 8.3.5; and in the Python SDK's test lockfile, `pillow` 13.0.0 on Python 3.11+ and `uv` 0.11.33 → 0.13.5 (GHSA-hq85-5cpj-mr62), the latter through a second `[tool.uv] override-dependencies` entry because `crewai-cli` pins `uv~=0.11.6` (#926)
+- OSV-Scanner: accept `pillow` 12.3.0, the Python 3.10 slice of the Python SDK's test lockfile, with a `[[PackageOverrides]]` entry pinned to that version until 2026-11-20. Every fix for its 28 advisories is in 13.0.0, which requires Python 3.11, and new ones were still arriving, the case `SECURITY.md` keeps an override for. Dropping 3.10 retires it (#926)
 - Patch `aiohttp` 3.14.3 → 3.14.5 (GHSA-2g87-pp6c-29x5, GHSA-494j-54xm-rwp3, GHSA-5wr8-gcqf-gqf3) in the Python SDK's test lockfile, the finding that turned `main`'s Supply Chain gate and every open Dependabot PR red. It is transitive only (via `llama-index-core`, `instructor` and `kubernetes`), so Dependabot's grouped update never reaches it; 3.14.4 onward requires `yarl>=1.25.1`, so `yarl` moves 1.24.5 → 1.25.1 with it and nothing else changes (#918)
 - Patch `mcp` 1.28.1 → 1.30.0 (GHSA-84m7-p3x7-pcfv) in the Python SDK's test lockfile, the finding that turned `main`'s Supply Chain gate red. crewai pins `mcp~=1.28.1`, so the fix is a `[tool.uv] override-dependencies` entry in `sdk/python/pyproject.toml`; uv applies it only when resolving `uv.lock`, and the published package's metadata is unchanged (#904)
 - Remove `sprintf-js` (GHSA-hp3w-g68c-fv3c, no fixed release) from the `nextjs` and `mastra-1` SDK integration fixtures with an `argparse` 2.0.1 override. Both reached it through `@mastra/core` → `gray-matter` → `js-yaml@3` → `argparse@1`, and js-yaml 3 loads `argparse` only from its CLI, which nothing runs; every pin stays put (#904)

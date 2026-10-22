@@ -10,15 +10,15 @@
 #
 # Two mechanisms, and the reason to reach for each:
 #
-#   [[IgnoredVulns]] silences ONE advisory by id, and is what everything below
-#   uses. It is the narrowest thing that works: any OTHER advisory against the
-#   same package still blocks, including a newly FIXABLE one — which is the
-#   signal worth keeping, because a fixable finding is one we would act on.
+#   [[IgnoredVulns]] silences ONE advisory by id, and is what every entry below
+#   but the last uses. It is the narrowest thing that works: any OTHER advisory
+#   against the same package still blocks, including a newly FIXABLE one — which
+#   is the signal worth keeping, because a fixable finding is one we would act on.
 #
-#   [[PackageOverrides]] silences every advisory against a package, and is
-#   deliberately NOT used here. It also suppresses fixable findings, so it costs
-#   exactly the signal above; see SECURITY.md for the narrow case that justifies
-#   it and the conditions attached. Note the different date key there —
+#   [[PackageOverrides]] silences every advisory against a package, and is used
+#   once, for the pillow entry at the bottom. It also suppresses fixable findings,
+#   so it costs exactly the signal above; see SECURITY.md for the narrow case that
+#   justifies it and the conditions attached. Note the different date key there —
 #   `effectiveUntil`, not `ignoreUntil`.
 #
 # The scanner matches aliases, so ONE id per advisory is enough — listing a
@@ -128,3 +128,32 @@ reason = "nltk 3.10.3 (surfaced 2026-09-03, CVSS 8.3). No fixed version. Transit
 id = "GHSA-vfj7-8cjw-p6xm"
 ignoreUntil = 2026-11-20
 reason = "braces 3.0.3 (published 2026-09-18, CVSS 8.7). No fixed version. Dev-only, via @next/eslint-plugin-next -> fast-glob -> micromatch; not shipped and only fed this repo's own glob patterns. Re-review by 2026-11-20."
+
+# ---------------------------------------------------------------------------
+# pillow 12.3.0 — the Python 3.10 slice of sdk/python/uv.lock. A package
+# override rather than an id list, because this is the case SECURITY.md keeps
+# one for.
+#
+# Every fix for these advisories is in pillow 13.0.0, which requires Python
+# >= 3.11. The SDK still supports 3.10, so the lock forks: 13.0.0 for 3.11 and
+# up, and 12.3.0, the last release that installs on 3.10, for 3.10 alone. No
+# release fixes that slice and none will: Pillow has dropped 3.10, which reaches
+# end of life in October 2026 (PEP 619). The advisories are still arriving —
+# 9 on the 2026-10-20 scan, 28 by 2026-10-22 — so an id list would turn this
+# gate red on an unrelated PR with every new one.
+#
+# pillow is transitive via crewai (through pdfplumber) and llama-index-core, in
+# the dev/test lockfile only; the SDK declares no runtime dependencies. The
+# override is pinned to 12.3.0, so 13.0.0 — what every other supported Python
+# resolves — stays fully gated, and any change to the 3.10 slice re-opens it.
+# Dropping 3.10 from `requires-python` retires it. Same re-review date as the
+# entries above.
+# ---------------------------------------------------------------------------
+
+[[PackageOverrides]]
+name = "pillow"
+version = "12.3.0"
+ecosystem = "PyPI"
+vulnerability.ignore = true
+effectiveUntil = 2026-11-20
+reason = "pillow 12.3.0 is only the Python 3.10 slice of sdk/python/uv.lock: every fix is in 13.0.0, which requires Python >= 3.11 and is what 3.11+ resolves. Transitive via crewai and llama-index-core, dev/test lockfile only. Re-review by 2026-11-20."

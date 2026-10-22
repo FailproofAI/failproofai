@@ -83,8 +83,15 @@ otel = ["opentelemetry-sdk>=1.39,<2"]          # optional SpanExporter / process
 # The ceiling keeps crewai on the 1.x API it is written against. Delete this once a
 # crewai release allows 1.30: an override replaces crewai's own requirement outright,
 # so while it is here uv does not check the mcp version crewai asks for.
+#
+# The `uv` entry is the same case one level down. crewai depends on crewai-cli, which
+# pins `uv~=0.11.6`, and every uv before 0.13.4 carries GHSA-hq85-5cpj-mr62 (its
+# bundled CA store trusts an emSign root whose intermediate keys are compromised).
+# crewai-cli only shells out to `uv` from its own project commands, which no test here
+# runs. The ceiling keeps the CLI it calls on one minor. Delete it once a crewai-cli
+# release allows 0.13.4.
 [tool.uv]
-override-dependencies = ["mcp>=1.30.0,<2"]
+override-dependencies = ["mcp>=1.30.0,<2", "uv>=0.13.4,<0.14"]
 
 [tool.setuptools.dynamic]
 version = { attr = "failproofai_sdk._version.__version__" }

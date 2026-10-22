@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -196,8 +196,22 @@ describe("agent-scoped assignments", () => {
 });
 
 describe("clearActiveCloudManagedPolicies", () => {
+  // In the DEFAULT directory: an overridden one is never cleaned (see the last
+  // test here), so these move the fixture into a FAILPROOFAI_HOME first.
+  const inDefaultDir = () => {
+    const { root: shared, policyPath: sharedPolicy } = fixture();
+    const home = mkdtempSync(join(tmpdir(), "fpai-cloud-managed-home-"));
+    roots.push(home);
+    process.env.FAILPROOFAI_HOME = home;
+    delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    const root = cloudPoliciesDir();
+    mkdirSync(root, { recursive: true });
+    cpSync(shared, root, { recursive: true });
+    return { root, policyPath: join(root, sharedPolicy.slice(shared.length + 1)) };
+  };
+
   it("removes cached desired state so a stopped daemon cannot reactivate it", () => {
-    const { root, policyPath } = fixture();
+    const { root, policyPath } = inDefaultDir();
     writeFileSync(join(root, "desired-state.json"), JSON.stringify({ deployment: 12 }));
     expect(clearActiveCloudManagedPolicies()).toBe(true);
     expect(existsSync(join(root, "active.json"))).toBe(false);
@@ -206,7 +220,7 @@ describe("clearActiveCloudManagedPolicies", () => {
   });
 
   it("removes desired state even when no active manifest remains", () => {
-    const { root } = fixture();
+    const { root } = inDefaultDir();
     rmSync(join(root, "active.json"));
     writeFileSync(join(root, "desired-state.json"), "{}");
     expect(clearActiveCloudManagedPolicies()).toBe(true);

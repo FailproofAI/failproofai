@@ -1499,7 +1499,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
       body.cloud = { jevMode: null, modeSetBy: null, errors: cloud.errors };
       return { ...local, json: JSON.stringify(body, null, 2) };
     }
-    return { ...local, lines: [...local.lines, ...warning(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts)] };
+    return { ...local, lines: [...local.lines, ...jevWarn(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts)] };
   }
 
   const mode = cloud.jevMode;
@@ -1556,10 +1556,10 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
 
   const head =
     mode === "off"
-      ? title("failproofai jev status", `off — ${MODE_SET_BY_CLOUD}`, opts)
+      ? jevHeader("Jev status", `off — ${MODE_SET_BY_CLOUD}`, opts)
       : running
-        ? title("failproofai jev status", `on · ${mode} — ${jevRunsOnCloudLine(mode)}`, opts)
-        : title("failproofai jev status", `off — FailproofAI Cloud set ${mode}, and this machine cannot run it`, opts);
+        ? jevHeader("Jev status", `on · ${mode} — ${jevRunsOnCloudLine(mode)}`, opts)
+        : jevHeader("Jev status", `off — FailproofAI Cloud set ${mode}, and this machine cannot run it`, opts);
   const reviewerRows = reviewers.map((r): [string, string] => [
     `${r.policy} v${r.version}`,
     `${r.reviewedBy.join(", ")}${r.effect === "observe" ? " (not asked while observed)" : ""}`,
@@ -1568,11 +1568,11 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     stack(
       head,
       mode === "off"
-        ? note(
+        ? jevNote(
             `FailproofAI Cloud switched Jev off on this machine. That overrides ${jevConfigPath()} for as long as this machine is connected.`,
             opts,
           )
-        : note(
+        : jevNote(
             `${jevRunsOnCloudLine(mode)}. Every checked tool call goes to FailproofAI Cloud, which asks the Jev checks it ` +
               "deployed to this machine and this machine's installed packs' checks in one request; nothing of Cloud's checks is " +
               `installed here. ${jevConfigPath()} is not used while FailproofAI Cloud sets the mode. In enforce, Jev's own deny ` +
@@ -1580,7 +1580,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
             opts,
           ),
       cfg && route
-        ? rows(
+        ? jevRows(
             [
               ["runs on", "FailproofAI Cloud"],
               ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
@@ -1590,16 +1590,16 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
             ],
             opts,
           )
-        : rows([["mode", mode === "off" ? `${modeLine("off")} (${MODE_SET_BY_CLOUD})` : `${mode} (${MODE_SET_BY_CLOUD}) — not running`]], opts),
-      resolved.problem ? warning(cloudProblemAdvice(resolved.problem), opts) : null,
+        : jevRows([["mode", mode === "off" ? `${modeLine("off")} (${MODE_SET_BY_CLOUD})` : `${mode} (${MODE_SET_BY_CLOUD}) — not running`]], opts),
+      resolved.problem ? jevWarn(cloudProblemAdvice(resolved.problem), opts) : null,
       reviewerRows.length > 0
         ? stack(
-            rule("FailproofAI Cloud policies reviewed by their Cloud Jev checks", opts),
-            rows(reviewerRows, opts),
+            [screenKit(opts).head("Cloud reviewers", "FailproofAI Cloud policies reviewed by their Cloud Jev checks")],
+            jevRows(reviewerRows, opts),
           )
         : [],
-      cloud.errors.length > 0 ? warning(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts) : null,
-      coverage ? note(reviewableSummary(coverage), opts) : null,
+      cloud.errors.length > 0 ? jevWarn(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts) : null,
+      coverage ? jevNote(reviewableSummary(coverage), opts) : null,
       jevStatsLines(stats, opts),
     ),
   );

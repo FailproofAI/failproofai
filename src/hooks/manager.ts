@@ -1641,11 +1641,17 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
             // `observe` is evaluated and then has its verdict discarded, so the
             // row says so rather than reading as plain enforcement.
             ...(artifact.effect === "observe" ? ["observe"] : []),
-            both ? "both" : "regex",
+            // A plain JS policy stays the plain row it always was.
+            ...(both ? ["both"] : []),
             // An observe `both` has its Jev half withheld by Cloud (C9.3).
             ...(both ? [artifact.effect === "observe" ? `${checks} (not asked while observed)` : `Jev checks: ${checks}`] : []),
           ];
-          return { state: "on" as const, name: artifact.id, description: `v${artifact.version}`, tag: tags.join(" · ") };
+          return {
+            state: "on" as const,
+            name: artifact.id,
+            description: `v${artifact.version}`,
+            ...(tags.length > 0 ? { tag: tags.join(" · ") } : {}),
+          };
         }),
         jevMode: jev.jevMode,
         problems: [

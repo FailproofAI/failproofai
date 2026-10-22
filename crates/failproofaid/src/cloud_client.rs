@@ -2024,7 +2024,13 @@ mod tests {
         assert_eq!(good.jev_mode.as_deref(), Some("observe"));
         fs::remove_file(store.active_manifest_path()).unwrap();
 
-        maintenance_tick(&store, Ok(Some(offline_client())), false, &|| false, &|| false);
+        maintenance_tick(
+            &store,
+            Ok(Some(offline_client())),
+            false,
+            &|| false,
+            &|| false,
+        );
         assert_eq!(store.read_active().unwrap().unwrap(), good);
         assert!(!store.daemon_errors_path().exists());
         fs::remove_dir_all(store.root()).ok();

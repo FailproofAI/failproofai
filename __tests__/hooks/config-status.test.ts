@@ -256,7 +256,7 @@ describe("config --status — THIS MACHINE", () => {
       "  daemon     ● Running failproofaid 1.0.11",
       "  paused     1 session",
       "             0b1c2d3e-0000-4000-8000-000000000001  28m left, until 14:30  ·  /home/u/project",
-      "             Cloud-managed policies keep enforcing.",
+      "             Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing.",
     ]);
     expect(lines.slice(-2)).toEqual([
       "",

@@ -1522,6 +1522,7 @@ mod tests {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
             deployment: 0,
             policies: vec![],
+            jev_mode: None,
         };
         let refuse = |_: &DesiredPolicy| -> Result<Vec<u8>, String> { Err("no fetch".into()) };
         assert!(

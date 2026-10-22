@@ -1638,12 +1638,13 @@ describe("surfaces", () => {
     const { listHooks } = await import("@/src/hooks/manager");
     await listHooks(project);
     const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
-    expect(text).toMatch(/Cloud-managed — deployment 43 · FailproofAI Cloud/);
-    expect(text).toMatch(/no-prod-db\s+v3\s+both\s+acme-prod-db/);
-    expect(text).toMatch(/trial\s+v2\s+both\s+acme-trial \(not asked while observed\)/);
-    expect(text).toMatch(/plain\s+v1\s+regex/);
+    // main's policies screen: a CLOUD-MANAGED section, tags after the version.
+    expect(text).toMatch(/^CLOUD-MANAGED {2}deployment 43$/m);
+    expect(text).toMatch(/no-prod-db\s+v3 {2}· {2}both · Jev checks: acme-prod-db$/m);
+    expect(text).toMatch(/trial\s+v2 {2}· {2}observe · both · acme-trial \(not asked while observed\)$/m);
+    expect(text).toMatch(/● plain\s+v1$/m);
     expect(text).not.toMatch(/\bjev\s+acme/);
-    expect(text).toMatch(/Jev mode: observe — mode set by FailproofAI Cloud\. Jev checks run on\s+FailproofAI Cloud/);
+    expect(text).toMatch(/Jev mode: observe, set by FailproofAI Cloud\. Jev checks run on FailproofAI Cloud/);
   });
 
   it("config --disconnect's clear takes the Jev mode, the snapshot, both error reports and the budget record with active.json", async () => {

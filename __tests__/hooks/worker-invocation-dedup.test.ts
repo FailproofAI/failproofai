@@ -253,6 +253,8 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
         vi.spyOn(loader, "loadAllCustomHooks").mockResolvedValue({
           hooks: [{ name: "runtime-hook", match: {}, fn: async () => ({ decision: "allow" }) }],
           conventionSources: [],
+          packFailures: new Map(),
+          packAliases: new Map(),
         });
       }
       let changed = req;
@@ -319,7 +321,10 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
   it("uses the normal deny path when runtime identity computation throws", async () => {
     const fn = async () => ({ decision: "allow" as const });
     fn.toString = () => { throw new Error("cannot fingerprint hook"); };
-    vi.spyOn(loader, "loadAllCustomHooks").mockResolvedValue({ hooks: [{ name: "opaque", fn }], conventionSources: [] });
+    vi.spyOn(loader, "loadAllCustomHooks").mockResolvedValue({
+      hooks: [{ name: "opaque", fn }], conventionSources: [],
+      packFailures: new Map(), packAliases: new Map(),
+    });
     const first = await send();
     const second = await send();
     expect(first).toMatchObject({ type: "hookResult", evaluation: { decision: "deny" } });

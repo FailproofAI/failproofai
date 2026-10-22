@@ -29,10 +29,13 @@ import { evaluateHookEvent } from "./handler";
 import type { HookEventOutcome } from "./handler";
 import type { IntegrationType } from "./types";
 import { hookLogWarn } from "./hook-logger";
+import { DAEMON_RESPONSE_TIMEOUT_MS } from "./daemon-client";
 
 const MAX_FRAME_LEN = 16 * 1024 * 1024;
 const INVOCATION_TTL_MS = 10 * 60_000;
-const INVOCATION_WAIT_MS = 30_000;
+// The duplicate shares the caller's transport budget; reserve a window for fallback evaluation.
+const INVOCATION_FALLBACK_RESERVE_MS = 10_000;
+const INVOCATION_WAIT_MS = DAEMON_RESPONSE_TIMEOUT_MS - INVOCATION_FALLBACK_RESERVE_MS;
 
 interface HookInvocation {
   result: Promise<HookEventOutcome | undefined>;

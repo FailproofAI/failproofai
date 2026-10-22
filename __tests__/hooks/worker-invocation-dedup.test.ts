@@ -489,6 +489,27 @@ customPolicies.add({ name: "runtime-guard", match: { events: ["PreToolUse"] },
     expect(getAllHookActivityEntries()).toHaveLength(2);
   });
 
+  it("answers a pending duplicate with its fallback within the caller's transport budget", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const gate = holdOwner();
+    const owner = send();
+    await gate.started;
+    const loaded = observeNextLoad();
+    const duplicate = send();
+    let settled = false;
+    void duplicate.then(() => { settled = true; });
+    await loaded;
+    await vi.advanceTimersByTimeAsync(29_999);
+    try {
+      expect(settled).toBe(true);
+      expect(await duplicate).toMatchObject({ type: "hookResult", evaluation: { decision: "deny" } });
+      expect(evaluate).toHaveBeenCalledTimes(2);
+    } finally {
+      gate.finish();
+      await owner;
+    }
+  });
+
   it("bounds a pending duplicate's wait and evaluates normally when its owner never settles", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const gate = holdOwner();

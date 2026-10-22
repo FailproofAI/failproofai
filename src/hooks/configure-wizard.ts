@@ -1568,7 +1568,7 @@ export async function runConfigureWizard(
 
   // Logging in again on a connected machine, with no key at the end of it,
   // changed nothing about the connection: the previous one is still there.
-  const keptOld = cloud.kind === "login" && !token && saved !== undefined;
+  const keptOld = cloud.kind === "login" && !token && Boolean(saved);
   if (keptOld) done.push("  This machine keeps its previous connection.");
 
   await applied;

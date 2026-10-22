@@ -1532,10 +1532,12 @@ describe("browser login", () => {
     connectPick = "login";
     const io = ttyIO();
     const result = await runConfigureWizard(io);
-    expect(result).toMatchObject({ applied: true, connected: false });
+    // A fresh machine: nothing to keep, so it is not reported as connected.
+    expect(result).toMatchObject({ applied: true, connected: false, mode: "oss" });
     expect(connectToCloud).not.toHaveBeenCalled();
     expect(installHooks).toHaveBeenCalledTimes(1);
     expect(printed(io.stdout)).toContain("The login took too long to finish, so no key was created.");
+    expect(printed(io.stdout)).not.toContain("keeps its previous connection");
   });
 
   it("says the old key still works after logging in again on a connected machine", async () => {

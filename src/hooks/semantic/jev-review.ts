@@ -278,8 +278,13 @@ function checkPolicy(o: PolicyOutcome): string | undefined {
  * why, evidence, exempt and each probe's probability. `answers` holds the
  * machine's own answers and Cloud's for its checks (`<check>.<probe>`).
  */
-export function checkRecords(outcomes: ReadonlyArray<PolicyOutcome>, answers: Readonly<Record<string, number>>): JevCheckRecord[] {
-  return outcomes.slice(0, JEV_CHECKS_MAX).map((o) => {
+export function checkRecords(
+  outcomes: ReadonlyArray<PolicyOutcome>,
+  answers: Readonly<Record<string, number>>,
+  watched: ReadonlyArray<PolicyOutcome> = [],
+): JevCheckRecord[] {
+  const all = [...outcomes.map((o) => ({ o, watched: false })), ...watched.map((o) => ({ o, watched: true }))];
+  return all.slice(0, JEV_CHECKS_MAX).map(({ o, watched: isWatched }) => {
     const probes: Record<string, number> = {};
     const prefix = `${o.policy}.`;
     for (const [id, p] of Object.entries(answers)) {
@@ -299,6 +304,7 @@ export function checkRecords(outcomes: ReadonlyArray<PolicyOutcome>, answers: Re
       p: round2(o.evidence),
       ...(o.exempt !== null ? { exempt: round2(o.exempt) } : {}),
       ...(Object.keys(probes).length > 0 ? { probes } : {}),
+      ...(isWatched ? { watched: true as const } : {}),
     };
   });
 }
@@ -335,13 +341,15 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // not downgrade from a deny (see "A check that fired without consent keeps
   // the floor" in `combine.ts`).
   const warned = (o: (typeof outcomes)[number]) => o.verdict === "instruct" && o.intent !== "downgraded-task-step";
-  const cloudAnswers = "cloud" in outcome ? (outcome as CloudSemanticOutcome & { status: "ok" }).cloud.answers ?? {} : {};
+  const cloudSummary = "cloud" in outcome ? (outcome as CloudSemanticOutcome & { status: "ok" }).cloud : null;
+  const cloudAnswers = cloudSummary?.answers ?? {};
+  const watched = cloudSummary?.observed ?? [];
   return {
     kind: "answered",
     decision: outcome.verdict.decision,
     // What each asked check concluded, for the activity row. `[]` when the
     // request carried no check (globals only, or Cloud's short-circuit).
-    checks: sent ? checkRecords(outcomes, { ...outcome.answers, ...cloudAnswers }) : [],
+    checks: sent ? checkRecords(outcomes, { ...outcome.answers, ...cloudAnswers }, watched) : [],
     reason: outcome.verdict.reason,
     policyName: jevPolicyName(outcome),
     ...(jevDecider(outcome)?.origin ? { origin: jevDecider(outcome)?.origin } : {}),

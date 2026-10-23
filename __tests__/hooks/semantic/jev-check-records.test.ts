@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { toReview, checkRecords } from "../../../src/hooks/semantic/jev-review";
-import { cloudCheckAnswers, type CloudSemanticOutcome } from "../../../src/hooks/semantic/cloud-jev";
+import { cloudCheckAnswers, parseObservedOutcomes, type CloudSemanticOutcome } from "../../../src/hooks/semantic/cloud-jev";
 import { combineTwoTier, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { jevOutcome, sanitizeJevActivity, sanitizeJevChecks } from "../../../src/hooks/jev-activity";
 import type { PolicyOutcome } from "../../../src/hooks/semantic/types";
@@ -25,7 +25,7 @@ function outcome(over: Partial<PolicyOutcome> & Pick<PolicyOutcome, "policy" | "
   };
 }
 
-function reply(outcomes: PolicyOutcome[], asked: string[], answers: Record<string, number>): CloudSemanticOutcome {
+function reply(outcomes: PolicyOutcome[], asked: string[], answers: Record<string, number>, observed: PolicyOutcome[] = []): CloudSemanticOutcome {
   return {
     status: "ok",
     verdict: { decision: "allow", reason: null, outcomes, injectionSuspected: 0.07, scopeWithinRequest: null, beyondTask: false },
@@ -39,7 +39,7 @@ function reply(outcomes: PolicyOutcome[], asked: string[], answers: Record<strin
     model: "jev-1.13.0",
     modelVerified: true,
     via: "failproofai",
-    cloud: { asked, droppedLocal: [], droppedCloud: [], answers },
+    cloud: { asked, droppedLocal: [], droppedCloud: [], answers, observed },
   } as CloudSemanticOutcome;
 }
 
@@ -155,5 +155,35 @@ describe("the activity row keeps only well-formed records", () => {
     const ok = sanitizeJevActivity({ ...row, evaluator: "jev" as const, jevLatencyMs: 4 });
     expect(ok.jevChecks).toHaveLength(1);
     expect(jevOutcome(ok)).toBe("answered");
+  });
+});
+
+describe("checks of watched Cloud policies", () => {
+  const wire = (policy: string, verdict: string) => ({
+    policy, mode: "deny", userCanOverride: false, evidence: 0.97, exempt: null, userAsked: null,
+    targetNamedByUser: false, escalatedByInjection: false, verdict, origin: { cloudPolicyId: "watch-sudo", cloudVersion: 4 },
+  });
+
+  it("are read off `observed`, only for names it asked, and never break the reply", () => {
+    const got = parseObservedOutcomes({ observed: { asked: ["sudo-check"], verdict: { outcomes: [wire("sudo-check", "deny"), wire("other", "deny")] } } });
+    expect(got.map((o) => [o.policy, o.verdict, o.origin?.packId])).toEqual([["sudo-check", "deny", "cloud:watch-sudo"]]);
+    expect(parseObservedOutcomes({ observed: { asked: ["x"], verdict: { outcomes: [{ junk: 1 }] } } })).toEqual([]);
+    expect(parseObservedOutcomes({})).toEqual([]);
+    expect(parseObservedOutcomes(null)).toEqual([]);
+  });
+
+  it("are recorded as watched and never decide or clear", () => {
+    const watched = parseObservedOutcomes({ observed: { asked: ["sudo-check"], verdict: { outcomes: [wire("sudo-check", "deny")] } } });
+    const review = toReview(reply([], [], { "sudo-check.runs_sudo": 0.97 }, watched));
+    if (review.kind !== "answered") throw new Error("answered expected");
+    expect(review.decision).toBe("allow");
+    expect(review.asked).toEqual([]);
+    expect(review.checks).toEqual([
+      { check: "sudo-check", policy: "cloud/watch-sudo@4", verdict: "deny", why: "fired", p: 0.97, probes: { runs_sudo: 0.97 }, watched: true },
+    ]);
+    const combined = combineTwoTier([], review, "enforce");
+    expect(combined.final.decision).toBe("allow");
+    expect(jevOutcome(combined.activity)).toBe("answered");
+    expect(sanitizeJevChecks(combined.activity.jevChecks)?.[0]?.watched).toBe(true);
   });
 });

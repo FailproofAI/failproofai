@@ -15,7 +15,7 @@
 
 ### Fixes
 
-- An answered Jev call records each check it asked on its activity row and shipped decision (`jevChecks` / `jev_checks`): the check, its policy (`cloud/<id>@<v>` or `pack/<id>@<v>`), verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), evidence, exempt and probe answers — names, codes and numbers only. A call that asked no check (globals only, or FailproofAI Cloud's short-circuit) is `no-request`, not `answered` (#928)
+- An answered Jev call records each check it asked on its activity row and shipped decision (`jevChecks` / `jev_checks`): the check, its policy (`cloud/<id>@<v>` or `pack/<id>@<v>`), verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), evidence, exempt and probe answers — names, codes and numbers only; checks of watched (observe) Cloud policies, from the reply's `observed` block, are recorded with `watched: true` and never block. A call that asked no check (globals only, or FailproofAI Cloud's short-circuit) is `no-request`, not `answered` (#928)
 - The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)
 - `failproofai policies` shows a Cloud policy no hook has load-checked under the current deployment as not loaded yet, not ● on (the hook path records `cloud-policies/load-checked.json`), and says Jev-only Cloud policies are not listed on the machine (#928)
 - The daemon's roster re-scopes an existing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` entry from `project` to `user` on its next sighting, keeping its ID (#928)

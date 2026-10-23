@@ -267,6 +267,8 @@ export interface JevCheckRecord {
   exempt?: number;
   /** Each probe's answer by probe id, when the answers came back. */
   probes?: Record<string, number>;
+  /** A check of a watched (observe) Cloud policy: recorded, never enforced. */
+  watched?: true;
 }
 
 export const JEV_CHECKS_MAX = 32;
@@ -300,6 +302,7 @@ function sanitizeCheck(raw: unknown): JevCheckRecord | null {
     out.policy = r.policy;
   }
   if (isP(r.exempt)) out.exempt = round2(r.exempt);
+  if (r.watched === true) out.watched = true;
   if (r.probes && typeof r.probes === "object" && !Array.isArray(r.probes)) {
     const probes: Record<string, number> = {};
     for (const [id, v] of Object.entries(r.probes as Record<string, unknown>)) {

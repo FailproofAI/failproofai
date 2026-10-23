@@ -411,6 +411,9 @@ fn jev_check(raw: &Value) -> Option<Value> {
     if let Some(e) = r.get("exempt").and_then(probability) {
         out.insert("exempt".into(), json!(e));
     }
+    if r.get("watched") == Some(&Value::Bool(true)) {
+        out.insert("watched".into(), json!(true));
+    }
     if let Some(probes) = r.get("probes").and_then(Value::as_object) {
         let mut kept = Map::new();
         for (id, v) in probes {
@@ -1115,6 +1118,7 @@ mod rename_compat_tests {
                   "p": 0.444, "exempt": 0.03, "probes": { "force_push": 0.44, "Bad Id": 0.5 } },
                 { "check": "rm -rf /", "verdict": "none", "why": "exempt", "p": 0.9 },
                 { "check": "c-2", "verdict": "none", "why": "because", "p": 0.9 },
+                { "check": "c-4", "verdict": "deny", "why": "fired", "p": 0.9, "watched": true },
                 { "check": "c-3", "policy": "curl -d @x", "verdict": "deny", "why": "fired", "p": 2 },
             ],
         }))
@@ -1125,7 +1129,8 @@ mod rename_compat_tests {
             facts.checks,
             Some(vec![
                 json!({ "check": "c-1", "policy": "cloud/p@2", "verdict": "none",
-                "why": "not-detected", "p": 0.44, "exempt": 0.03, "probes": { "force_push": 0.44 } })
+                "why": "not-detected", "p": 0.44, "exempt": 0.03, "probes": { "force_push": 0.44 } }),
+                json!({ "check": "c-4", "verdict": "deny", "why": "fired", "p": 0.9, "watched": true }),
             ])
         );
         let mut m = Map::new();

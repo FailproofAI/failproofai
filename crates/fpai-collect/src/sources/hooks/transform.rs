@@ -1105,6 +1105,55 @@ impl AllowBucket {
 mod rename_compat_tests {
     use super::*;
 
+    #[test]
+    fn jev_checks_are_rebuilt_and_an_empty_list_is_no_request() {
+        let row: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "enforce", "jevLatencyMs": 8, "jevCleared": ["cloud/p@2/p"],
+            "jevChecks": [
+                { "check": "c-1", "policy": "cloud/p@2", "verdict": "none", "why": "not-detected",
+                  "p": 0.444, "exempt": 0.03, "probes": { "force_push": 0.44, "Bad Id": 0.5 } },
+                { "check": "rm -rf /", "verdict": "none", "why": "exempt", "p": 0.9 },
+                { "check": "c-2", "verdict": "none", "why": "because", "p": 0.9 },
+                { "check": "c-3", "policy": "curl -d @x", "verdict": "deny", "why": "fired", "p": 2 },
+            ],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&row).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::Answered);
+        assert_eq!(
+            facts.checks,
+            Some(vec![
+                json!({ "check": "c-1", "policy": "cloud/p@2", "verdict": "none",
+                "why": "not-detected", "p": 0.44, "exempt": 0.03, "probes": { "force_push": 0.44 } })
+            ])
+        );
+        let mut m = Map::new();
+        facts.apply_detail(&mut m);
+        assert_eq!(m["jev_checks"][0]["why"], "not-detected");
+
+        let empty: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "observe", "jevLatencyMs": 8, "jevCleared": [], "jevChecks": [],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&empty).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::NoRequest);
+        let mut m = Map::new();
+        facts.apply_detail(&mut m);
+        assert!(m.get("jev_checks").is_none() && m.get("jev_latency_ms").is_none());
+
+        // Unreadable entries only: dropped, not "nothing asked".
+        let junk: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "enforce", "jevLatencyMs": 8, "jevChecks": [{ "x": 1 }],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&junk).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::Answered);
+        assert!(facts.checks.is_none());
+    }
+
     /// A row written before the rename keeps its cloud attribution.
     ///
     /// These pages come from a DAEMON, so a machine that was cloud-connected

@@ -131,6 +131,27 @@ describe("installAgentSkill", () => {
     expect(readFileSync(skillFile(codex!), "utf8")).toBe("the full skill, from npx skills");
   });
 
+  it("leaves Codex to a failproofai skill in ~/.agents/skills, which Codex would list beside ours", () => {
+    const npx = join(home, ".agents", "skills", AGENT_SKILL_NAME);
+    mkdirSync(npx, { recursive: true });
+    writeFileSync(join(npx, "SKILL.md"), "the full skill, from npx skills -g");
+    process.env.CODEX_HOME = join(home, "moved-codex"); // ~/.agents stays under HOME regardless
+
+    expect(installAgentSkill(["codex", "claude"])).toEqual(["claude"]);
+    expect(existsSync(join(home, "moved-codex", "skills", AGENT_SKILL_NAME))).toBe(false);
+    expect(readFileSync(join(npx, "SKILL.md"), "utf8")).toBe("the full skill, from npx skills -g");
+  });
+
+  it("takes back its own Codex copy once ~/.agents/skills has one", () => {
+    const [codex] = agentSkillRoots("codex");
+    installAgentSkill(["codex"]);
+    expect(existsSync(skillFile(codex!))).toBe(true);
+    mkdirSync(join(home, ".agents", "skills", AGENT_SKILL_NAME), { recursive: true });
+
+    expect(installAgentSkill(["codex"])).toEqual([]);
+    expect(existsSync(join(codex!, AGENT_SKILL_NAME))).toBe(false);
+  });
+
   it("skips a folder it cannot write without failing the rest", () => {
     writeFileSync(join(home, ".codex"), "a file where the folder would go");
     expect(installAgentSkill(["codex", "claude"])).toEqual(["claude"]);

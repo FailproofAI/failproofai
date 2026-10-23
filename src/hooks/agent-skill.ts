@@ -125,17 +125,35 @@ export function agentSkillRoots(id: IntegrationType): string[] {
 }
 
 /**
+ * Whether `id` already has a `failproofai` skill from a folder it also reads,
+ * and would list ours beside it rather than pick one. Only Codex: it reads
+ * `~/.agents/skills` (always under HOME, whatever CODEX_HOME says) as well as
+ * its own folder and lists a name found in both twice (0.164.0) — and that is
+ * where `npx skills add FailproofAI/skills -g` puts the full skill for it.
+ */
+function listedTwice(id: IntegrationType): boolean {
+  return id === "codex" && existsSync(join(homedir(), ".agents", "skills", AGENT_SKILL_NAME));
+}
+
+/**
  * Write the skill for each agent in `ids`. Never fails setup: an agent whose
- * folder cannot be written is logged and skipped. Returns the agents that have
- * it now.
+ * folder cannot be written is logged and skipped. Returns the agents it was
+ * written for.
  */
 export function installAgentSkill(ids: readonly IntegrationType[]): IntegrationType[] {
   const installed: IntegrationType[] = [];
   for (const id of ids) {
     let wrote = false;
+    const covered = listedTwice(id);
     for (const root of agentSkillRoots(id)) {
       const dir = join(root, AGENT_SKILL_NAME);
-      if (existsSync(dir) && !existsSync(join(dir, AGENT_SKILL_MARKER))) continue;
+      const ours = existsSync(join(dir, AGENT_SKILL_MARKER));
+      // Covered already: a copy of ours from an earlier run is now the duplicate.
+      if (covered) {
+        if (ours) rmSync(dir, { recursive: true, force: true });
+        continue;
+      }
+      if (existsSync(dir) && !ours) continue;
       try {
         // Marker first: a run interrupted before it would leave a folder every
         // later run takes for someone else's and skips.

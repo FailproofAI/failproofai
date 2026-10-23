@@ -6,7 +6,7 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 
 ### Features
 
-- **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and `failproofai uninstall` removes only the ones `config` wrote (#920)
+- **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and Codex, which would list one in `~/.agents/skills` beside its own copy, is left to that one. `failproofai uninstall` removes only the ones `config` wrote (#920)
 
 ### Fixes
 

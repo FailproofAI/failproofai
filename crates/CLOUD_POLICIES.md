@@ -17,8 +17,9 @@ hook path; hooks evaluate only the last verified local deployment.
     └── <sha256>.mjs       a JS policy (kind regex / both)
 ```
 
-Nothing Jev-related is written here but the mode: a `jev` policy, and the Jev
-half of a `both` policy, live only on FailproofAI Cloud (CONTRACT C10). See
+Nothing Jev-related is written here but the mode and the Jev assignments'
+ids, effects and scopes (`jevPolicies`): a `jev` policy's checks, and the Jev
+half of a `both` policy's, live only on FailproofAI Cloud (CONTRACT C10). See
 "Cloud Jev" below for how the machine reaches them.
 
 - `desired-state.json` is the last complete desired-state snapshot received
@@ -52,7 +53,10 @@ the two in step.
       "reviewedBy": ["acme-prod-db-write"]
     }
   ],
-  "jevMode": "observe"
+  "jevMode": "enforce",
+  "jevPolicies": [
+    { "id": "no-prod-db", "version": 7, "effect": "observe", "agentTargets": [{ "integration": "claude" }] }
+  ]
 }
 ```
 
@@ -66,8 +70,16 @@ and writes back to disk, byte-identical JSON to what it always did.
   the client never supplies them. `authority` must be `hard` or `reviewable`,
   or the whole state is refused.
 - `jevMode` (`off | observe | enforce`), when present, is FailproofAI Cloud's
-  Jev mode for this machine; see "Cloud Jev". Absent means Cloud does not set
-  one. Any other value refuses the whole state.
+  Jev mode for this machine; see "Cloud Jev". Cloud derives it: `enforce` while
+  any `jev` or `both` policy is deployed to the machine, `off` when none is.
+  `observe` and absent are still accepted from older servers. Any other value
+  refuses the whole state.
+- `jevPolicies`, when present, lists every `jev` / `both` assignment whose Jev
+  checks Cloud asks for this machine: `id`, `version`, `effect` (`enforce |
+  observe`, absent = enforce) and `agentTargets` (schema 3 only; absent = every
+  agent). Never a question or a digest. A bad entry (unsafe or duplicate id,
+  unknown effect, targets on schema 2) refuses the whole state. Absent means
+  the server predates it: the CLI then treats the assignments as unknown.
 - A `semanticPolicies` list (sent by a pre-release server) is ignored and never
   fetched. An `active.json` a pre-release daemon wrote with that key still
   parses: the key is dropped on read and never written again.
@@ -87,7 +99,17 @@ Cloud's `jevMode` decides whether this machine uses Jev, and where:
 | `off` | no Jev at all, whatever `jev.json` says |
 | `observe` / `enforce` | sends the call to FailproofAI Cloud (`POST /enforcement/v1/jev/systemone`) on the Cloud Jev credential — `jev.json` is not used — and applies the answer in that mode |
 
-With a mode of `observe`/`enforce` EVERY gated tool call is sent, with the
+On a machine connected for policies the mode is FailproofAI Cloud's alone:
+`failproofai jev setup --mode` and the dashboard's Jev switch refuse, saying
+the mode is managed by FailproofAI Cloud, and write nothing. Plain http to a
+loopback host (`localhost`, `127.0.0.1`, `::1`) is accepted in every mode, for
+local stacks; any other http host is refused.
+
+With a mode of `observe`/`enforce` every gated tool call is sent — except,
+when `jevPolicies` is present, a call from an agent no Cloud Jev assignment
+targets and for which no installed pack has a check: that call is not sent,
+and its activity row carries no Jev fields (nor does any row whose review
+asked no check, Cloud's short-circuit included). Sent calls go with the
 global intent questions even when no installed pack has a check for it, plus
 a `cloud` block of tool-call metadata (`machineId`, the computed facts, the
 target scan, the human's recent turns, `intentMode`, and the names of the
@@ -96,7 +118,13 @@ checks, asks TypeSafe once, decides its own checks, and returns every answer
 plus its verdict. The CLI decides its pack checks from the answers as always,
 merges the two verdicts (Cloud first, most severe wins), and a `both`
 policy's `reviewedBy` is satisfied only by that policy's own Cloud outcomes.
-Cloud gets 5 s (`CLOUD_JEV_TIMEOUT_MS`); a Cloud failure or timeout is today's
+An `observe` assignment's checks are asked and recorded, never applied: an
+outcome Cloud marks `effect: "observe"`, or one whose `origin.cloudPolicyId`
+the deployment lists as `observe`, leaves the verdict (which is decided again
+from the enforced outcomes, never above Cloud's own), clears nothing, and a
+deny or warning from it lands on the row's `observed` list under its Cloud
+policy id and version, as an observe JS policy's does. An outcome may carry an
+optional `reason` used for that record. Cloud gets 5 s (`CLOUD_JEV_TIMEOUT_MS`); a Cloud failure or timeout is today's
 fallback: the regex decides alone and a `both` policy stays hard. A session
 pause does not stop Cloud's checks (Cloud JS assignments are exempt from a
 pause too): a paused session's calls still go to Cloud, without the installed

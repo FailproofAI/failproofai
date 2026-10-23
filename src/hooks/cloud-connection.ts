@@ -551,11 +551,6 @@ export function jevLines(outcome: ConnectOutcome): string[] {
   }
   const config = jev.config;
   if (!config || config.status === "written" || config.status === "repointed") {
-    // Plain http (loopback only) is accepted in observe mode and nowhere else:
-    // in enforce mode — set here, or by FailproofAI Cloud — Jev is OFF on this
-    // machine rather than enforcing, by the CLI and the dashboard alike.
-    const plainHttp = config !== undefined && new URL(config.baseUrl).protocol === "http:";
-    const httpLine = "            Over plain http Jev runs only in observe mode: enforce (set here or by FailproofAI Cloud) turns it off on this machine. For enforce, reconnect with `failproofai config --token <key> --url https://…`.";
     // What happened to jev.json, said first on a re-point; the mode lines
     // below are the same for both (N1).
     const lead =
@@ -567,12 +562,6 @@ export function jevLines(outcome: ConnectOutcome): string[] {
     const cloudJev = safeCloudJev();
     if (cloudJev.jevMode !== null) {
       if (cloudJev.jevMode === "off") return [...lead, `${indent}off on this machine: FailproofAI Cloud set its Jev mode to off.`];
-      if (plainHttp && cloudJev.jevMode === "enforce") {
-        return [
-          ...lead,
-          `${indent}off on this machine: FailproofAI Cloud set enforce, and over plain http Jev runs only in observe mode. For enforce, reconnect with \`failproofai config --token <key> --url https://…\`.`,
-        ];
-      }
       return [
         ...lead,
         `${indent}on through FailproofAI Cloud, mode ${cloudJev.jevMode} (set by FailproofAI Cloud); the Jev checks it deployed here run on FailproofAI Cloud.`,
@@ -594,7 +583,6 @@ export function jevLines(outcome: ConnectOutcome): string[] {
       ...(jevChecksDeclared()
         ? []
         : ["            No Jev checks are installed on this machine; checks FailproofAI Cloud deploys here run on Cloud. To add local ones: `failproofai policies add FailproofAI/jev-policies`."]),
-      ...(plainHttp ? [httpLine] : []),
     ];
   }
   if (config.status === "kept") {

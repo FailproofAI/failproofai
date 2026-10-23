@@ -1479,14 +1479,6 @@ function cloudProblemAdvice(problem: string): string[] {
       "To use FailproofAI Cloud's Jev checks, reconnect without --no-transcripts (failproofai config --token <key>).",
     ];
   }
-  // Over plain http the credential is fine; enforce is what http refuses.
-  // Asking for another key there sent people after the wrong fix.
-  if (/plain http/.test(problem)) {
-    return [
-      "Jev does not run here: FailproofAI Cloud set enforce, and this machine is connected over plain http, where Jev runs only in observe mode.",
-      "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or set the machine's Jev mode to observe from FailproofAI Cloud.",
-    ];
-  }
   return [
     `Jev cannot run here: ${problem}.`,
     "Connect with a key that carries jev:evaluate (failproofai config --token <key>). A local jev.json is not used while FailproofAI Cloud sets the mode.",

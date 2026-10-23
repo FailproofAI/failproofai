@@ -116,18 +116,13 @@ describe("connecting with a key that carries jev:evaluate", () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET), "http://localhost:8080/fp");
     expect(readCredentials().jev?.url).toBe("http://localhost:8080");
     expect(JSON.parse(readFileSync(jevConfigFile(), "utf8")).baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
-    // Plain http to loopback is fine in the observe mode connect writes.
+    // Plain http to loopback is fine in every mode (local testing).
     expect(loadJevConfig()?.baseUrl).toBe("http://localhost:8080/fp/enforcement/v1/jev");
-    // …and only there: `jev setup --mode enforce` (and the dashboard switch)
-    // refuses plain http, so the output must not name it as the next step.
     const text = describeOutcome(outcome, "machine-1", "http://localhost:8080/fp").join("\n");
     expect(text).toMatch(/Jev\s+configured through FailproofAI Cloud; waiting/);
-    expect(text).not.toContain("--mode enforce");
-    expect(text).toContain("For enforce, reconnect with `failproofai config --token <key> --url https://…`");
-    // The command it would have named really is refused, and the refusal names the step that works.
+    expect(text).not.toContain("plain http");
     const enforce = validateJevConfig({ ...JSON.parse(readFileSync(jevConfigFile(), "utf8")), mode: "enforce" }, null, { url: "http://localhost:8080", key: TOKEN });
-    expect(enforce.ok).toBe(false);
-    expect(!enforce.ok && enforce.problem).toContain("Reconnect to an https FailproofAI Cloud URL");
+    expect(enforce.ok).toBe(true);
   });
 
   it("never overwrites a BYOK jev.json, and says so in one line", async () => {
@@ -195,7 +190,7 @@ describe("connecting with a key that carries jev:evaluate", () => {
   // ran enforce, and over http, where Cloud's enforce leaves Jev off.
   it.each([
     ["https", URL_, "enforce", /now points here instead of[\s\S]*mode enforce \(set by FailproofAI Cloud\)/],
-    ["http", "http://localhost:48080", "enforce", /now points here instead of[\s\S]*off on this machine: FailproofAI Cloud set enforce, and over plain http/],
+    ["http", "http://localhost:48080", "enforce", /now points here instead of[\s\S]*mode enforce \(set by FailproofAI Cloud\)/],
     ["https", URL_, "off", /now points here instead of[\s\S]*FailproofAI Cloud set its Jev mode to off/],
   ])("a re-point over %s follows FailproofAI Cloud's mode (%s → %s)", async (_scheme, url, mode, expected) => {
     const other = url.startsWith("http:") ? "https://localhost:48443" : "http://localhost:48080";
@@ -262,22 +257,16 @@ describe("e2e round 1: the connect Jev line, http, and the Cloud timeout", () =>
     expect(text).toContain("checks FailproofAI Cloud deploys here run on Cloud");
   });
 
-  // B6: over http the line said Jev "stays in observe mode"; Cloud's enforce
-  // turns it off there.
-  it("over plain http, says enforce turns Jev off rather than staying in observe", async () => {
+  // Issue 5: loopback http runs Cloud's enforce like https does.
+  it("over plain http to loopback, Cloud enforce runs: no http caveat", async () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET), "http://localhost:48080");
     const text = describeOutcome(outcome, "machine-1", "http://localhost:48080").join("\n");
-    expect(text).toContain("enforce (set here or by FailproofAI Cloud) turns it off on this machine");
-    expect(text).not.toContain("stays in observe mode");
-  });
-
-  it("jev status under Cloud enforce over http names http as the cause, not the key", async () => {
-    await connect(withPermissions(...MACHINE_PRESET), "http://localhost:48080");
+    expect(text).not.toContain("plain http");
     seedCloudMode("enforce");
     const r = await runJevCommand(["status"], { render: { cols: 200, color: false } });
     const out = r.lines.join("\n");
-    expect(out).toContain("plain http");
-    expect(out).not.toContain("a key that carries jev:evaluate");
+    expect(out).not.toContain("plain http");
+    expect(out).not.toContain("Jev does not run here");
   });
 
   // B9: `jev setup --provider failproofai` printed 3000 ms; Cloud waits 5000.

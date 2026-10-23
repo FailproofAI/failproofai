@@ -428,13 +428,13 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(JSON.stringify(r)).not.toContain(KEY);
     });
 
-    it("keeps plain http to localhost out of enforce mode, as for every provider", () => {
+    it("takes plain http to localhost in enforce mode too, as for every provider", () => {
       const local = "http://localhost:8080";
       connect(local);
       writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "observe" }));
       expect(loadJevConfig()?.baseUrl).toBe(`${local}/enforcement/v1/jev`);
       writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "enforce" }));
-      expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
+      expect(loadJevConfig()).toMatchObject({ baseUrl: `${local}/enforcement/v1/jev`, mode: "enforce" });
     });
 
     it("is never read from a project's .failproofai", () => {

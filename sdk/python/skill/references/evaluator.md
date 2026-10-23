@@ -195,7 +195,9 @@ To score history, open **score past sessions** on the evaluation's page and
 check what is missing. Backfill supports enabled compatible hosted and customer
 worker evaluations, including code, Jev, and LLM judges. Existing results and
 queued, completed, skipped, or failed work stay unchanged; publishing a new
-version does not rerun those sessions. For model-backed history, checking is
+version does not rerun those sessions. Sessions that could not be queued are
+reported separately and can be retried by checking the same window again.
+For model-backed history, checking is
 free and model calls start only after you explicitly select **score**; usage
 charges apply.
 

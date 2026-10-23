@@ -41,9 +41,11 @@ Select **disable**. With no enabled version, it stops running on new sessions. T
 
 Evaluation runs forward: a version deployed now never scores a session that ended before it. **Code, Jev classifiers, and LLM judges can all score history.** Open **score past sessions** on the evaluation's page, choose a window of up to 90 days, and select **check what's missing** before starting. Each session-and-evaluation pair is an evaluation to run; conditions can skip sessions, and work already handled by another request is left alone.
 
+The preview counts missing evaluations before applying your condition. For example, an evaluation limited to one agent can include other agents in its preview; those sessions are skipped during scoring without a model call. Reopening the bulk scoring dialog or changing its enabled evaluations requires a fresh check.
+
 For Jev and LLM judges, model calls incur usage charges. Deploying a model-backed evaluation offers a history preview; scoring history starts only after you explicitly select **score**. Queued evaluations run as workers have capacity, and organizations share that capacity fairly.
 
-It fills gaps only. A session that already has a result for that evaluation keeps it. Queued, completed, skipped, and failed work is not queued again, and publishing a new version does not rerun old results. Running the same window twice scores nothing new. If some sessions could not be queued, the page reports them so you can check again and retry.
+It fills gaps only. A session that already has a result for that evaluation keeps it. Queued, completed, skipped, and failed work is not queued again, and publishing a new version does not rerun old results. Repeating the same window leaves those pairs unchanged. Sessions that could not be queued are reported separately; check the same window again to retry those missing pairs.
 
 To score one session again — after a fix, or for a session that never ended cleanly — select **re-evaluate** on its page. The new result is added to the session's history; earlier ones stay.
 

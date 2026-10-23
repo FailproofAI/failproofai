@@ -38,7 +38,7 @@ function reply(outcomes: PolicyOutcome[], asked: string[]): CloudSemanticOutcome
     model: "jev-1.13.0",
     modelVerified: true,
     via: "failproofai",
-    cloud: { asked, droppedLocal: [], droppedCloud: [] },
+    cloud: { asked, droppedLocal: [], droppedCloud: [], answers: {}, observed: [], observedAsked: [], observedOutcomes: [] },
   } as CloudSemanticOutcome;
 }
 

@@ -41,7 +41,7 @@ function withTrueColor<T>(fn: () => T): T {
   }
 }
 
-const NO_REFUSALS = { total: 0, rejected: 0, credentialRejected: 0, byStatus: {} };
+const NO_REFUSALS = { total: 0, rejected: 0, credentialRejected: 0, resending: 0, byStatus: {} };
 
 it("reports split policy and ingest keys without revealing either", () => {
   const f = facts();
@@ -296,7 +296,7 @@ describe("config --status — delivery", () => {
   });
 
   it("puts refused batches in the row, with their status and age", () => {
-    const refused = { total: 26, rejected: 26, credentialRejected: 26, byStatus: { 401: 26 }, oldestAgeMs: 134 * 60_000 };
+    const refused = { total: 26, rejected: 26, credentialRejected: 26, resending: 0, byStatus: { 401: 26 }, oldestAgeMs: 134 * 60_000 };
     expect(deliveryRow({ refused })).toBe("▲ 26 batches refused (401), oldest 2h14m");
   });
 
@@ -382,7 +382,7 @@ describe("config --status — the attention line", () => {
       },
       delivery: {
         ...facts().delivery!,
-        refused: { total: 3, rejected: 3, credentialRejected: 2, byStatus: { 401: 2, 422: 1 } },
+        refused: { total: 3, rejected: 3, credentialRejected: 2, resending: 0, byStatus: { 401: 2, 422: 1 } },
       },
       notEnforcing: "no-policies",
       policies: { ...facts().policies, refusedPacks: 1 },
@@ -415,7 +415,7 @@ describe("config --status — the attention line", () => {
       fix: "failproofai config",
     });
 
-    f.delivery = { ...f.delivery!, refused: { total: 1, rejected: 1, credentialRejected: 0, byStatus: { 422: 1 } } };
+    f.delivery = { ...f.delivery!, refused: { total: 1, rejected: 1, credentialRejected: 0, resending: 0, byStatus: { 422: 1 } } };
     expect(pickStatusAttention(f)).toEqual({
       severity: "caution",
       text: "Policies are not enforcing yet.",

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { toReview, checkRecords } from "../../../src/hooks/semantic/jev-review";
 import { cloudCheckAnswers, parseObservedOutcomes, type CloudSemanticOutcome } from "../../../src/hooks/semantic/cloud-jev";
-import { combineTwoTier, type RegexVerdict } from "../../../src/hooks/semantic/combine";
+import { combineTwoTier, type JevActivityFields, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { jevOutcome, sanitizeJevActivity, sanitizeJevChecks } from "../../../src/hooks/jev-activity";
 import type { PolicyOutcome } from "../../../src/hooks/semantic/types";
 
@@ -150,7 +150,7 @@ describe("the activity row keeps only well-formed records", () => {
   });
 
   it("only an answered (`jev`) row carries them", () => {
-    const row = { evaluator: "jev-fallback", jevMode: "enforce", jevChecks: [{ check: "c", verdict: "none", why: "exempt", p: 1 }] } as const;
+    const row: JevActivityFields = { evaluator: "jev-fallback", jevMode: "enforce", jevChecks: [{ check: "c", verdict: "none", why: "exempt", p: 1 }] };
     expect(sanitizeJevActivity({ ...row }).jevChecks).toBeUndefined();
     const ok = sanitizeJevActivity({ ...row, evaluator: "jev" as const, jevLatencyMs: 4 });
     expect(ok.jevChecks).toHaveLength(1);

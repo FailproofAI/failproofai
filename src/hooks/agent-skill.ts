@@ -150,7 +150,7 @@ export function installAgentSkill(ids: readonly IntegrationType[]): IntegrationT
       const ours = existsSync(join(dir, AGENT_SKILL_MARKER));
       // Covered already: a copy of ours from an earlier run is now the duplicate.
       if (covered) {
-        if (ours) rmSync(dir, { recursive: true, force: true });
+        if (ours) removeSkillDir(dir);
         continue;
       }
       if (existsSync(dir) && !ours) continue;
@@ -176,16 +176,18 @@ export function installedAgentSkillDirs(): string[] {
   return [...new Set(dirs)].filter((dir) => existsSync(join(dir, AGENT_SKILL_MARKER)));
 }
 
+/** Remove one skill folder; never throws, so neither setup nor uninstall stops on it. */
+function removeSkillDir(dir: string): boolean {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    return true;
+  } catch (err) {
+    hookLogWarn(`the failproofai skill was not removed from ${dir}: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
 /** Remove every skill folder failproofai wrote. Returns the folders removed. */
 export function removeAgentSkill(): string[] {
-  const removed: string[] = [];
-  for (const dir of installedAgentSkillDirs()) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-      removed.push(dir);
-    } catch (err) {
-      hookLogWarn(`the failproofai skill was not removed from ${dir}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  return removed;
+  return installedAgentSkillDirs().filter(removeSkillDir);
 }

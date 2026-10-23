@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import {
@@ -150,6 +150,19 @@ describe("installAgentSkill", () => {
 
     expect(installAgentSkill(["codex"])).toEqual([]);
     expect(existsSync(join(codex!, AGENT_SKILL_NAME))).toBe(false);
+  });
+
+  it("carries on when its old Codex copy can't be taken back", () => {
+    const [codex] = agentSkillRoots("codex");
+    installAgentSkill(["codex"]);
+    mkdirSync(join(home, ".agents", "skills", AGENT_SKILL_NAME), { recursive: true });
+    chmodSync(codex!, 0o555); // the copy inside can't be deleted (except by root)
+    try {
+      expect(() => installAgentSkill(["codex", "claude"])).not.toThrow();
+      expect(existsSync(skillFile(agentSkillRoots("claude")[0]!))).toBe(true);
+    } finally {
+      chmodSync(codex!, 0o755);
+    }
   });
 
   it("skips a folder it cannot write without failing the rest", () => {

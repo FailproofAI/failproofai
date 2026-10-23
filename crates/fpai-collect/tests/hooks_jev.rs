@@ -662,6 +662,16 @@ fn every_golden_row_parses_and_maps() {
     assert_eq!(e["jev_latency_ms"], 38.0);
     assert_eq!(e["jev_model"], "jev-1.13.0");
     assert_eq!(e["jev_mode"], "enforce");
+    // Each asked check's answer rides the decision, names and numbers only.
+    assert_eq!(
+        e["jev_checks"],
+        json!([
+            { "check": "destructive-delete", "policy": "pack/acme/guards@1.2.0", "verdict": "deny",
+              "why": "fired", "p": 0.91, "probes": { "deletes": 0.91, "irreplaceable": 0.95 } },
+            { "check": "force-push-guard", "policy": "cloud/no-force-push@2", "verdict": "none",
+              "why": "exempt", "p": 0.97, "exempt": 0.81, "probes": { "force_push": 0.97 } },
+        ])
+    );
 
     // 2: a fallback; the store already reduced the free-text reason.
     let e = end(2);

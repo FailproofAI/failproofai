@@ -73,6 +73,7 @@ import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
 import * as jevThrottle from "./jev-throttle";
 import { sessionProjectRoot } from "./session-root";
 import type { PolicyOutcome, SemanticInput } from "./types";
+import { JEV_CHECKS_MAX, JEV_CHECK_PROBES_MAX, JEV_PROBE_ID_RE, round2, type JevCheckRecord } from "../jev-activity";
 
 /**
  * T5's throttle as this file calls it. §7 declares only
@@ -248,6 +249,66 @@ export function fallbackCode(reason: string): string {
   return /^[a-z0-9][a-z0-9-]{0,63}$/.test(code) ? code : "error";
 }
 
+/** Why an outcome ended where it did (`JevCheckRecord.why`), from its own fields. */
+function checkWhy(o: PolicyOutcome): JevCheckRecord["why"] {
+  switch (o.verdict) {
+    case "none":
+      // Both deciders: under `fire` nothing fired; at or over it only the exemption stops it.
+      return o.evidence < DEFAULT_THRESHOLDS_V1.fire ? "not-detected" : "exempt";
+    case "overridden":
+      return o.intent === "op-requested" ? "op-requested" : o.intent === "task-step" ? "task-step" : "user-asked";
+    case "deny":
+      return o.escalatedByInjection ? "injection" : "fired";
+    default:
+      if (o.intent === "downgraded-task-step") return "downgraded";
+      return o.targetScanIncomplete ? "scan-incomplete" : "fired";
+  }
+}
+
+/** Who declared a check, as a registered-name prefix: `cloud/<id>@<v>` or `pack/<id>@<v>`. */
+function checkPolicy(o: PolicyOutcome): string | undefined {
+  const packId = o.origin?.packId;
+  if (!packId) return undefined;
+  const at = o.origin?.packVersion ? `@${o.origin.packVersion}` : "";
+  return packId.startsWith("cloud:") ? `cloud/${packId.slice("cloud:".length)}${at}` : `pack/${packId}${at}`;
+}
+
+/**
+ * Every asked check's answer, for the activity row (`jevChecks`): verdict,
+ * why, evidence, exempt and each probe's probability. `answers` holds the
+ * machine's own answers and Cloud's for its checks (`<check>.<probe>`).
+ */
+export function checkRecords(
+  outcomes: ReadonlyArray<PolicyOutcome>,
+  answers: Readonly<Record<string, number>>,
+  watched: ReadonlyArray<PolicyOutcome> = [],
+): JevCheckRecord[] {
+  const all = [...outcomes.map((o) => ({ o, watched: false })), ...watched.map((o) => ({ o, watched: true }))];
+  return all.slice(0, JEV_CHECKS_MAX).map(({ o, watched: isWatched }) => {
+    const probes: Record<string, number> = {};
+    const prefix = `${o.policy}.`;
+    for (const [id, p] of Object.entries(answers)) {
+      if (Object.keys(probes).length >= JEV_CHECK_PROBES_MAX) break;
+      if (!id.startsWith(prefix)) continue;
+      const part = id.slice(prefix.length);
+      // `exempt` has its own field; `user_asked` (v0) is a consent question, not a probe.
+      if (part === "exempt" || part === "user_asked" || !JEV_PROBE_ID_RE.test(part)) continue;
+      probes[part] = round2(p);
+    }
+    const policy = checkPolicy(o);
+    return {
+      check: o.policy,
+      ...(policy ? { policy } : {}),
+      verdict: o.verdict,
+      why: checkWhy(o),
+      p: round2(o.evidence),
+      ...(o.exempt !== null ? { exempt: round2(o.exempt) } : {}),
+      ...(Object.keys(probes).length > 0 ? { probes } : {}),
+      ...(isWatched ? { watched: true as const } : {}),
+    };
+  });
+}
+
 /**
  * @param cached - the answer came from T5's cache, not the provider: it is
  *   applied like any other, but its ~0 ms is not a latency (`latencyMs`
@@ -280,9 +341,15 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // not downgrade from a deny (see "A check that fired without consent keeps
   // the floor" in `combine.ts`).
   const warned = (o: (typeof outcomes)[number]) => o.verdict === "instruct" && o.intent !== "downgraded-task-step";
+  const cloudSummary = "cloud" in outcome ? (outcome as CloudSemanticOutcome & { status: "ok" }).cloud : null;
+  const cloudAnswers = cloudSummary?.answers ?? {};
+  const watched = cloudSummary?.observed ?? [];
   return {
     kind: "answered",
     decision: outcome.verdict.decision,
+    // What each asked check concluded, for the activity row. `[]` when the
+    // request carried no check (globals only, or Cloud's short-circuit).
+    checks: sent ? checkRecords(outcomes, { ...outcome.answers, ...cloudAnswers }, watched) : [],
     reason: outcome.verdict.reason,
     policyName: jevPolicyName(outcome),
     ...(jevDecider(outcome)?.origin ? { origin: jevDecider(outcome)?.origin } : {}),

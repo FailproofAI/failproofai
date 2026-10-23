@@ -113,6 +113,7 @@ The machine already sends its hook activity to FailproofAI Cloud (`events:add`).
 - a call Jev's own verdict decided (enforce mode) is attributed to **Jev**, and when the deciding check came from a pack, the record also names that pack and its version;
 - in observe mode, Jev's deny or warning appears as a **would-have**, next to the rollouts you are observing;
 - the policies Jev cleared, or would have cleared in observe mode, are counted per policy.
+- a decision Jev took part in (a block, a warning, a clear, or a would-have in observe mode) lists each check it asked and what that check concluded: verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), its evidence `p`, the `exempt` answer and each probe's answer. A check of a policy deployed to watch (observe) is listed too, marked watched; it never blocks. Jev answers with probabilities, not prose, so there is no free-text reason. Plain allows roll up into counts and do not carry this list.
 
 ## When Jev cannot answer
 

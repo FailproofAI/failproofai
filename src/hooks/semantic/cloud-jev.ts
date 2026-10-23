@@ -102,6 +102,18 @@ export interface CloudReplySummary {
   /** The machine's own groups Cloud dropped, with the pack that declared each (null when none did). */
   droppedLocal: Array<{ name: string; packId: string | null }>;
   droppedCloud: string[];
+  /**
+   * TypeSafe's answers to the Cloud checks' own questions (`<check>.<probe>`,
+   * `<check>.exempt`), for the activity row's per-check record. Ids and
+   * numbers only; the machine never decides from these (Cloud did).
+   */
+  answers: Record<string, number>;
+  /**
+   * Checks of WATCHED (observe-assigned) Cloud policies, decided apart into
+   * the reply's `observed` block: recorded on the activity row only. They
+   * never reach the verdict, any clear, or the merge.
+   */
+  observed: PolicyOutcome[];
 }
 
 export type CloudSemanticOutcome =
@@ -462,6 +474,34 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
   };
 }
 
+/**
+ * The reply's optional `observed: {verdict, asked}` — the outcomes of checks
+ * from watched Cloud policies, which never block. Read leniently and apart
+ * from {@link parseCloudReply}: they are only recorded, so a malformed block
+ * costs the record, never the call's verdict. Only outcomes `observed.asked`
+ * names, each once.
+ */
+export function parseObservedOutcomes(raw: unknown): PolicyOutcome[] {
+  try {
+    const block = (raw as Record<string, unknown> | null)?.observed as Record<string, unknown> | undefined;
+    if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+    const asked = new Set(names(block.asked, "observed.asked"));
+    const outcomes = ((block.verdict as Record<string, unknown> | undefined)?.outcomes ?? []) as unknown[];
+    if (!Array.isArray(outcomes) || outcomes.length > MAX_LIST) return [];
+    const seen = new Set<string>();
+    const out: PolicyOutcome[] = [];
+    outcomes.forEach((o, i) => {
+      const parsed = parseOutcome(o, i);
+      if (!asked.has(parsed.policy) || seen.has(parsed.policy)) return;
+      seen.add(parsed.policy);
+      out.push(parsed);
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 // ── The merge (CONTRACT C10.5) ───────────────────────────────────────────────
 
 const RANK: Record<SemanticVerdict["decision"], number> = { allow: 0, instruct: 1, deny: 2 };
@@ -539,6 +579,28 @@ function expectedQuestions(request: JevRequest, prepared: PreparedCall, dropped:
   return { ...request, questions };
 }
 
+/** A question id's own part, as declarations allow it (`force_push`, `exempt`). */
+const QUESTION_PART_RE = /^[a-z][a-z0-9_]{0,31}$/;
+
+/**
+ * The answers to the questions Cloud added for the checks it asked: every
+ * `<check>.<part>` id whose check is in `asked`, read leniently (a missing or
+ * malformed one is simply not recorded — Cloud has already decided).
+ */
+export function cloudCheckAnswers(response: JevResponse, asked: ReadonlyArray<string>): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (asked.length === 0) return out;
+  const names = new Set(asked);
+  const answers = response.answers && typeof response.answers === "object" ? response.answers : {};
+  for (const [id, a] of Object.entries(answers)) {
+    const dot = id.lastIndexOf(".");
+    if (dot <= 0 || !names.has(id.slice(0, dot)) || !QUESTION_PART_RE.test(id.slice(dot + 1))) continue;
+    const p = (a as { noul?: unknown } | null)?.noul;
+    if (isProbability(p)) out[id] = p;
+  }
+  return out;
+}
+
 /** Whatever answers a short-circuit reply carries, read leniently: none is required. */
 function presentAnswers(response: JevResponse): Record<string, number> {
   const out: Record<string, number> = {};
@@ -579,7 +641,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
       model: opts.model ?? DEFAULT_JEV_MODEL,
       modelVerified: true,
       via: "none",
-      cloud: { asked: [], droppedLocal: [], droppedCloud: [] },
+      cloud: { asked: [], droppedLocal: [], droppedCloud: [], answers: {}, observed: [] },
     };
   }
   let prepared: PreparedCall;
@@ -624,6 +686,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
     const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
     const response = await transport(request, signal);
     const reply = parseCloudReply(response.cloud);
+    const observed = parseObservedOutcomes(response.cloud);
 
     // Only the machine's own groups can be dropped from its side; a name it
     // did not send is not its to act on.
@@ -664,6 +727,8 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
         asked: reply.asked,
         droppedLocal: [...dropped].map((name) => ({ name, packId: own.get(name)?.origin?.packId ?? null })),
         droppedCloud: reply.droppedCloud,
+        answers: cloudCheckAnswers(response, [...reply.asked, ...observed.map((o) => o.policy)]),
+        observed,
       },
     };
   } catch (err) {

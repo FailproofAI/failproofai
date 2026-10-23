@@ -36,6 +36,10 @@ export const JEV_ACTIVITY_ROWS: HookActivityEntry[] = [
     jevLatencyMs: 38.4,
     jevModel: "jev-1.13.0",
     jevMode: "enforce",
+    jevChecks: [
+      { check: "destructive-delete", policy: "pack/acme/guards@1.2.0", verdict: "deny", why: "fired", p: 0.913, probes: { deletes: 0.913, irreplaceable: 0.95 } },
+      { check: "force-push-guard", policy: "cloud/no-force-push@2", verdict: "none", why: "exempt", p: 0.97, exempt: 0.81, probes: { force_push: 0.97 } },
+    ],
   },
   {
     ...base,

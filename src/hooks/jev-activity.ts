@@ -41,7 +41,7 @@ import type { HookActivityEntry } from "./hook-activity-store";
 
 export type JevActivityFields = Pick<
   HookActivityEntry,
-  "evaluator" | "jevDecision" | "jevCleared" | "jevFallbackReason" | "jevLatencyMs" | "jevModel" | "jevMode"
+  "evaluator" | "jevDecision" | "jevCleared" | "jevFallbackReason" | "jevLatencyMs" | "jevModel" | "jevMode" | "jevChecks"
 >;
 
 /** Every Jev key on an activity row, in the order they are documented. */
@@ -53,6 +53,7 @@ export const JEV_ACTIVITY_KEYS = [
   "jevLatencyMs",
   "jevModel",
   "jevMode",
+  "jevChecks",
 ] as const satisfies ReadonlyArray<keyof JevActivityFields>;
 
 const EVALUATORS = new Set(["jev", "jev-fallback"]);
@@ -219,6 +220,113 @@ export function normalizeJevFallbackReason(raw: unknown): string | undefined {
   return JEV_REASON_CODES.has(code) ? code : JEV_REASON_OTHER;
 }
 
+// ── Per-check answers ────────────────────────────────────────────────────────
+
+/** What one asked Jev check concluded. */
+export const JEV_CHECK_VERDICTS = ["none", "deny", "instruct", "overridden"] as const;
+
+/**
+ * Why a check ended where it did, as a closed code (read off its outcome,
+ * never text from the call):
+ * - `not-detected`: its probes did not hold (evidence under the fire threshold);
+ * - `exempt`: it fired, and its `exempt` question held;
+ * - `fired`: it fired and nothing softened it;
+ * - `injection`: it fired and the request also argued for its own approval;
+ * - `user-asked` (v0), `op-requested`, `task-step` (v1): the human's consent cleared it;
+ * - `downgraded`: a deny the human's task softened to a warning;
+ * - `scan-incomplete`: a clear withheld because the command scan may have missed a target.
+ */
+export const JEV_CHECK_WHY = [
+  "not-detected",
+  "exempt",
+  "fired",
+  "injection",
+  "user-asked",
+  "op-requested",
+  "task-step",
+  "downgraded",
+  "scan-incomplete",
+] as const;
+
+/**
+ * One Jev check that was asked on this call, and its answer: names, closed
+ * codes and probabilities only — never question text, the command or the
+ * human's words. Jev answers yes/no probabilities, not reasons, so `why` is
+ * the decider's own reading of them.
+ */
+export interface JevCheckRecord {
+  /** The check's name (`semantic/<check>` without the prefix). */
+  check: string;
+  /** Who declared it: `cloud/<policyId>@<version>` or `pack/<packId>@<version>`. Absent for a caller-supplied set. */
+  policy?: string;
+  verdict: (typeof JEV_CHECK_VERDICTS)[number];
+  why: (typeof JEV_CHECK_WHY)[number];
+  /** Evidence: the minimum over its probes, 2 decimals. */
+  p: number;
+  /** Its `exempt` answer, when it declares one. */
+  exempt?: number;
+  /** Each probe's answer by probe id, when the answers came back. */
+  probes?: Record<string, number>;
+  /** A check of a watched (observe) Cloud policy: recorded, never enforced. */
+  watched?: true;
+}
+
+export const JEV_CHECKS_MAX = 32;
+export const JEV_CHECK_PROBES_MAX = 8;
+/** A check name: a slug, `.` allowed (a Cloud check name may carry one). */
+export const JEV_CHECK_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** A probe id, as declarations allow it. */
+export const JEV_PROBE_ID_RE = /^[a-z][a-z0-9_]{0,31}$/;
+const CHECK_VERDICT_SET: ReadonlySet<string> = new Set(JEV_CHECK_VERDICTS);
+const CHECK_WHY_SET: ReadonlySet<string> = new Set(JEV_CHECK_WHY);
+
+const isP = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+/** A probability at 2 decimals — what the reason strings print. */
+export const round2 = (v: number): number => Math.round(v * 100) / 100;
+
+/** One record, rebuilt field by field, or null when it is not one. */
+function sanitizeCheck(raw: unknown): JevCheckRecord | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.check !== "string" || !JEV_CHECK_NAME_RE.test(r.check)) return null;
+  if (typeof r.verdict !== "string" || !CHECK_VERDICT_SET.has(r.verdict)) return null;
+  if (typeof r.why !== "string" || !CHECK_WHY_SET.has(r.why)) return null;
+  if (!isP(r.p)) return null;
+  const out: JevCheckRecord = {
+    check: r.check,
+    verdict: r.verdict as JevCheckRecord["verdict"],
+    why: r.why as JevCheckRecord["why"],
+    p: round2(r.p),
+  };
+  if (typeof r.policy === "string" && isJevPolicyName(r.policy) && !/\s/.test(r.policy) && /^(?:cloud|pack)\//.test(r.policy)) {
+    out.policy = r.policy;
+  }
+  if (isP(r.exempt)) out.exempt = round2(r.exempt);
+  if (r.watched === true) out.watched = true;
+  if (r.probes && typeof r.probes === "object" && !Array.isArray(r.probes)) {
+    const probes: Record<string, number> = {};
+    for (const [id, v] of Object.entries(r.probes as Record<string, unknown>)) {
+      if (Object.keys(probes).length >= JEV_CHECK_PROBES_MAX) break;
+      if (JEV_PROBE_ID_RE.test(id) && isP(v)) probes[id] = round2(v);
+    }
+    if (Object.keys(probes).length > 0) out.probes = probes;
+  }
+  return out;
+}
+
+/** A row's `jevChecks`, valid records only (at most {@link JEV_CHECKS_MAX}), or undefined when it is not a list. */
+export function sanitizeJevChecks(raw: unknown): JevCheckRecord[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: JevCheckRecord[] = [];
+  for (const item of raw) {
+    if (out.length >= JEV_CHECKS_MAX) break;
+    const rec = sanitizeCheck(item);
+    if (rec) out.push(rec);
+  }
+  // Every entry invalid: not "nothing asked" — the list is unreadable, so it goes.
+  return raw.length > 0 && out.length === 0 ? undefined : out;
+}
+
 /**
  * The Jev fields of `entry`, each one valid or absent. Non-Jev keys pass
  * through untouched, and an entry with no Jev keys comes back as the same
@@ -265,6 +373,11 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
   if (typeof out.jevModel === "string" && JEV_MODEL_RE.test(out.jevModel.trim())) out.jevModel = out.jevModel.trim();
   else drop("jevModel");
 
+  // Only on an answered call: a fallback or an unconsulted call asked nothing.
+  const checks = out.evaluator === "jev" ? sanitizeJevChecks(out.jevChecks) : undefined;
+  if (checks === undefined) drop("jevChecks");
+  else out.jevChecks = checks;
+
   return out;
 }
 
@@ -307,6 +420,9 @@ export function jevOutcome(raw: JevActivityFields): JevOutcome | null {
 function outcomeOf(e: JevActivityFields): JevOutcome | null {
   if (e.evaluator === "jev-fallback") return "fallback";
   if (e.evaluator !== "jev") return null;
+  // A request that carried no check (only the global intent questions, or a
+  // FailproofAI Cloud short-circuit) decided nothing: Jev had nothing to ask.
+  if (Array.isArray(e.jevChecks) && e.jevChecks.length === 0) return "no-request";
   if (e.jevCleared !== undefined || e.jevLatencyMs !== undefined || e.jevModel !== undefined) return "answered";
   if (e.jevDecision === "deny" || e.jevDecision === "instruct") return "answered";
   if (e.jevDecision === "allow") return "no-request";

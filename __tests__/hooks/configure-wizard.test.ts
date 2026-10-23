@@ -1626,6 +1626,21 @@ describe("browser login", () => {
     // As "keep current connection" reports it: nothing new written, still cloud.
     expect(result).toMatchObject({ applied: true, mode: "cloud" });
     expect(printed(io.stdout)).toContain("This machine keeps its previous connection.");
+    expect(printed(io.stdout)).not.toContain("no longer works");
+  });
+
+  it("does not report a refused saved key as a working connection when the new login creates no key", async () => {
+    writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
+    vi.mocked(validateIngestKey).mockResolvedValueOnce({ ok: false, reason: "the server rejected that key (401)" });
+    vi.mocked(claimLogin).mockResolvedValueOnce({ kind: "expired" } as never);
+    const io = ttyIO();
+    const result = await runConfigureWizard(io);
+    // Still on disk and still cloud (decision D4), but said for what it is.
+    expect(result).toMatchObject({ applied: true, mode: "cloud" });
+    expect(printed(io.stdout)).toContain(
+      "This machine keeps its previous connection, but its key no longer works. Run failproofai config again to log in.",
+    );
+    expect(printed(io.stdout)).not.toContain("keeps its previous connection.");
   });
 
   it("starts with this machine's name and OS, and maps an older cloud to the key route", async () => {

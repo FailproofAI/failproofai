@@ -5,6 +5,7 @@
 ### Fixes
 
 - `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)
+- `config` on a machine whose saved key was refused, when logging in again creates no key, says the kept connection's key no longer works and to run `config` again, instead of reporting the old connection as if it were fine (#920)
 
 ## 1.0.12-beta.0 — 2026-10-22
 

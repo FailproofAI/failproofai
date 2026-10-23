@@ -1098,6 +1098,10 @@ export async function runConfigureWizard(
     });
   };
 
+  // Whether the saved key was refused when the CONNECT step checked it — still
+  // true at the end of the run if a login there created no key.
+  let savedRefused = false;
+
   // The interactive CONNECT step. A machine with no connection, or whose saved
   // key is refused, starts the browser login straight away — Tab or Esc there
   // opens the other options. A machine that is connected with a working key gets
@@ -1108,6 +1112,7 @@ export async function runConfigureWizard(
         ? await transient("Checking your saved key…", () => checkCloudKey(saved.url, saved.token))
         : null;
     const savedBroken = verdict !== null && !verdict.ok && verdict.refused;
+    savedRefused = savedBroken;
     const keptPlan: CloudPlan =
       verdict && verdict.ok
         ? { kind: "kept", how: "saved", verified: true }
@@ -1567,9 +1572,17 @@ export async function runConfigureWizard(
   }
 
   // Logging in again on a connected machine, with no key at the end of it,
-  // changed nothing about the connection: the previous one is still there.
+  // changed nothing about the connection: the previous one is still there
+  // (never removed from this step, decision D4) — but not as if it worked when
+  // its key was refused.
   const keptOld = cloud.kind === "login" && !token && Boolean(saved);
-  if (keptOld) done.push("  This machine keeps its previous connection.");
+  if (keptOld) {
+    done.push(
+      savedRefused
+        ? "  This machine keeps its previous connection, but its key no longer works. Run failproofai config again to log in."
+        : "  This machine keeps its previous connection.",
+    );
+  }
 
   await applied;
   // Only now — a completed apply — is the launcher considered "seen", so

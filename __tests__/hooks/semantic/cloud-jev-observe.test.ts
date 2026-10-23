@@ -55,7 +55,7 @@ describe("parseCloudReply: observe assignments", () => {
     expect(reply.observed).toEqual([
       { cloudPolicyId: "prod-db", cloudVersion: 3, check: "prod-db-check", decision: "deny", reason: "Touches prod." },
     ]);
-    expect(reply.observedAsked).toEqual(["cloud:prod-db/prod-db-check"]);
+    expect(reply.observedAsked).toEqual(["prod-db-check"]);
   });
 
   it("the deployment's observe list applies even when Cloud folded the deny into its verdict", () => {
@@ -79,7 +79,7 @@ describe("parseCloudReply: observe assignments", () => {
   it("an observed check that found nothing is asked but has no would-have", () => {
     const reply = parseCloudReply(block([outcome("a", "obs", "none", { effect: "observe" })], "allow"));
     expect(reply.observed).toEqual([]);
-    expect(reply.observedAsked).toEqual(["cloud:obs/a"]);
+    expect(reply.observedAsked).toEqual(["a"]);
   });
 
   it("an unknown effect refuses the reply", () => {
@@ -88,6 +88,47 @@ describe("parseCloudReply: observe assignments", () => {
 
   it("an enforced deny under an allowing verdict is still a contradiction", () => {
     expect(() => parseCloudReply(block([outcome("a", "p", "deny")], "allow"))).toThrow(JevError);
+  });
+});
+
+describe("parseCloudReply: the observed block (the server's contract)", () => {
+  const observedBlock = (outcomes: Array<ReturnType<typeof outcome>>, decision: string, reason: string | null = null) => ({
+    verdict: { decision, reason, outcomes, injectionSuspected: 0.05, scopeWithinRequest: null, beyondTask: false },
+    asked: outcomes.map((o) => o.policy),
+  });
+
+  it("records the watched checks' would-haves and keeps them out of the verdict", () => {
+    const reply = parseCloudReply({
+      ...block([outcome("enf-check", "enf", "none")], "allow"),
+      observed: observedBlock([outcome("prod-db-check", "prod-db", "deny")], "deny", "Touches prod."),
+    });
+    expect(reply.verdict.decision).toBe("allow");
+    expect(reply.verdict.outcomes.map((o) => o.policy)).toEqual(["enf-check"]);
+    expect(reply.asked).toEqual(["enf-check"]);
+    expect(reply.observed).toEqual([
+      { cloudPolicyId: "prod-db", cloudVersion: 3, check: "prod-db-check", decision: "deny", reason: "Touches prod." },
+    ]);
+    expect(reply.observedAsked).toEqual(["prod-db-check"]);
+  });
+
+  it("a watched check that found nothing is asked, with no would-have", () => {
+    const reply = parseCloudReply({ ...block([], "allow"), observed: observedBlock([outcome("w", "obs", "none")], "allow") });
+    expect(reply.observed).toEqual([]);
+    expect(reply.observedAsked).toEqual(["w"]);
+  });
+
+  it.each([
+    ["an outcome it did not ask", { ...observedBlock([outcome("w", "obs", "none")], "allow"), asked: [] }],
+    ["the same outcome twice", { ...observedBlock([outcome("w", "obs", "none"), outcome("w", "obs", "none")], "allow") }],
+    ["a deny under an allowing verdict", observedBlock([outcome("w", "obs", "deny")], "allow")],
+    ["no verdict", { asked: [] }],
+    ["not an object", ["x"]],
+  ])("refuses the whole reply for %s", (_why, observed) => {
+    expect(() => parseCloudReply({ ...block([], "allow"), observed })).toThrow(JevError);
+  });
+
+  it("an absent or null observed block is no watched check", () => {
+    expect(parseCloudReply({ ...block([], "allow"), observed: null }).observedAsked).toEqual([]);
   });
 });
 
@@ -114,7 +155,7 @@ describe("toReview carries the observed checks, outside asked and notDenied", ()
     expect(review.decision).toBe("allow");
     expect(review.asked).toEqual([]);
     expect(review.notDenied).toEqual([]);
-    expect(review.observedAsked).toEqual(["cloud:obs/a"]);
+    expect(review.observedAsked).toEqual(["a"]);
     expect(review.observedCloud).toEqual([{ cloudPolicyId: "obs", cloudVersion: 3, decision: "deny", reason: expect.any(String) }]);
   });
 });

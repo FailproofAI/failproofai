@@ -118,13 +118,17 @@ checks, asks TypeSafe once, decides its own checks, and returns every answer
 plus its verdict. The CLI decides its pack checks from the answers as always,
 merges the two verdicts (Cloud first, most severe wins), and a `both`
 policy's `reviewedBy` is satisfied only by that policy's own Cloud outcomes.
-An `observe` assignment's checks are asked and recorded, never applied: an
-outcome Cloud marks `effect: "observe"`, or one whose `origin.cloudPolicyId`
-the deployment lists as `observe`, leaves the verdict (which is decided again
-from the enforced outcomes, never above Cloud's own), clears nothing, and a
-deny or warning from it lands on the row's `observed` list under its Cloud
-policy id and version, as an observe JS policy's does. An outcome may carry an
-optional `reason` used for that record. Cloud gets 5 s (`CLOUD_JEV_TIMEOUT_MS`); a Cloud failure or timeout is today's
+An `observe` assignment's checks are asked and recorded, never applied.
+Cloud's reply keeps them out of `cloud.verdict` / `cloud.asked` (blocking
+checks only) and returns them in `cloud.observed: { verdict, asked }`, present
+only when one was asked and held to the same rules as the verdict (an outcome
+only for a check it asked, once; a deny only under a deny verdict) — a
+violation refuses the whole reply. Their deny or warning lands on the row's
+`observed` list under its Cloud policy id and version, as an observe JS
+policy's does; they clear nothing. As defence, an outcome in `cloud.verdict`
+marked `effect: "observe"`, or whose policy `jevPolicies` lists as `observe`,
+is treated the same and the verdict decided again from the rest, never above
+Cloud's own. Cloud gets 5 s (`CLOUD_JEV_TIMEOUT_MS`); a Cloud failure or timeout is today's
 fallback: the regex decides alone and a `both` policy stays hard. A session
 pause does not stop Cloud's checks (Cloud JS assignments are exempt from a
 pause too): a paused session's calls still go to Cloud, without the installed

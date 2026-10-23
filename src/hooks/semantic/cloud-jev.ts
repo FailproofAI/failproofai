@@ -97,7 +97,7 @@ export interface CloudJevReply {
   droppedCloud: string[];
   /** What the checks of an `observe` assignment would have done (deny / instruct only). */
   observed: ObservedCloudCheck[];
-  /** Every check of an `observe` assignment Cloud asked, as `cloud:<id>/<name>` reviewer keys. */
+  /** Every check of an `observe` assignment Cloud asked (its name). */
   observedAsked: string[];
 }
 
@@ -463,7 +463,13 @@ const SEVERITY: Record<"deny" | "instruct", number> = { instruct: 1, deny: 2 };
  * check that fired (`deny`, or a warning). A check that found nothing, or that
  * the human asked for, would have done nothing.
  */
-function observedChecks(parsed: ReadonlyArray<ParsedCloudOutcome>): ObservedCloudCheck[] {
+function observedChecks(
+  parsed: ReadonlyArray<ParsedCloudOutcome>,
+  watched: { v: Record<string, unknown>; parsed: ParsedCloudOutcome[] } | null = null,
+): ObservedCloudCheck[] {
+  // The observed verdict's own reason, when exactly one of its checks fired.
+  const firing = watched?.parsed.filter((p) => p.outcome.verdict === "deny" || p.outcome.verdict === "instruct") ?? [];
+  const watchedReason = firing.length === 1 && typeof watched?.v.reason === "string" ? capReason(watched.v.reason) : null;
   const byPolicy = new Map<string, ObservedCloudCheck>();
   for (const p of parsed) {
     const verdict = p.outcome.verdict;
@@ -475,7 +481,7 @@ function observedChecks(parsed: ReadonlyArray<ParsedCloudOutcome>): ObservedClou
       cloudVersion: p.cloudVersion,
       check: p.outcome.policy,
       decision: verdict,
-      reason: p.reason ?? `Flagged by semantic review (semantic/${p.outcome.policy})`,
+      reason: p.reason ?? (firing[0] === p ? watchedReason : null) ?? `Flagged by semantic review (semantic/${p.outcome.policy})`,
     });
   }
   return [...byPolicy.values()];
@@ -486,18 +492,20 @@ function observedChecks(parsed: ReadonlyArray<ParsedCloudOutcome>): ObservedClou
  * A reply without one (a server that does not implement C10) is malformed:
  * nothing it says can be told apart from "Cloud has no checks here".
  */
-export function parseCloudReply(raw: unknown, observedPolicies: ReadonlyArray<string> = []): CloudJevReply {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) malformed("no cloud block");
-  const block = raw as Record<string, unknown>;
-  const v = block.verdict as Record<string, unknown> | undefined;
-  if (!v || typeof v !== "object" || Array.isArray(v)) malformed("no verdict");
-  if (typeof v.decision !== "string" || !DECISIONS.has(v.decision)) malformed("verdict has no decision");
-  if (v.reason !== null && v.reason !== undefined && typeof v.reason !== "string") malformed("verdict reason is not text");
-  if (!Array.isArray(v.outcomes) || v.outcomes.length > MAX_LIST) malformed("verdict has no outcomes list");
-  if (v.beyondTask !== undefined && typeof v.beyondTask !== "boolean") malformed("verdict beyondTask is not a flag");
+/** One verdict block (`verdict` + `asked`) validated, with every rule a reply's verdict is held to. */
+function parseVerdictBlock(
+  rawVerdict: unknown,
+  rawAsked: unknown,
+  what: string,
+): { v: Record<string, unknown>; parsed: ParsedCloudOutcome[]; asked: string[] } {
+  const v = rawVerdict as Record<string, unknown> | undefined;
+  if (!v || typeof v !== "object" || Array.isArray(v)) malformed(`no ${what}`);
+  if (typeof v.decision !== "string" || !DECISIONS.has(v.decision)) malformed(`${what} has no decision`);
+  if (v.reason !== null && v.reason !== undefined && typeof v.reason !== "string") malformed(`${what} reason is not text`);
+  if (!Array.isArray(v.outcomes) || v.outcomes.length > MAX_LIST) malformed(`${what} has no outcomes list`);
+  if (v.beyondTask !== undefined && typeof v.beyondTask !== "boolean") malformed(`${what} beyondTask is not a flag`);
   const parsed = v.outcomes.map(parseOutcome);
-  const outcomes = parsed.map((p) => p.outcome);
-  const asked = names(block.asked, "asked");
+  const asked = names(rawAsked, `${what} asked`);
   // Each outcome must answer a check Cloud says it ASKED, once. The review
   // clears a `both` policy's regex half from these outcomes, so one that
   // `asked` does not vouch for — `asked: []` beside a fabricated `none` — is a
@@ -505,26 +513,46 @@ export function parseCloudReply(raw: unknown, observedPolicies: ReadonlyArray<st
   // decided by the regex alone (security review of #873).
   const askedSet = new Set(asked);
   const seen = new Set<string>();
-  outcomes.forEach((o, i) => {
-    if (!askedSet.has(o.policy)) malformed(`outcome ${i} answers ${JSON.stringify(o.policy)}, which Cloud did not ask`);
+  parsed.forEach(({ outcome: o }, i) => {
+    if (!askedSet.has(o.policy)) malformed(`${what} outcome ${i} answers ${JSON.stringify(o.policy)}, which Cloud did not ask`);
     const key = `${o.origin?.packId ?? ""}\u0000${o.policy}`;
-    if (seen.has(key)) malformed(`outcome ${i} answers ${JSON.stringify(o.policy)} twice`);
+    if (seen.has(key)) malformed(`${what} outcome ${i} answers ${JSON.stringify(o.policy)} twice`);
     seen.add(key);
   });
+  return { v, parsed, asked };
+}
+
+export function parseCloudReply(raw: unknown, observedPolicies: ReadonlyArray<string> = []): CloudJevReply {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) malformed("no cloud block");
+  const block = raw as Record<string, unknown>;
+  const { v, parsed, asked } = parseVerdictBlock(block.verdict, block.asked, "verdict");
+  // `observed` (CONTRACT, fix round): the checks of watched (`observe`)
+  // assignments, decided apart, present only when one was asked. Held to the
+  // same rules as the verdict; recorded, never applied.
+  let watched: { v: Record<string, unknown>; parsed: ParsedCloudOutcome[]; asked: string[] } | null = null;
+  if (block.observed !== undefined && block.observed !== null) {
+    const o = block.observed as Record<string, unknown>;
+    if (typeof o !== "object" || Array.isArray(o)) malformed("observed is not an object");
+    watched = parseVerdictBlock(o.verdict, o.asked, "observed verdict");
+    if (watched.parsed.some((p) => p.outcome.verdict === "deny") && watched.v.decision !== "deny") {
+      malformed("an observed check denied but its verdict does not");
+    }
+  }
   // An `observe` assignment's checks (Cloud says so per outcome, or this
   // machine's deployment does) are recorded, never applied: they leave the
   // verdict, so they can neither deny nor clear anything.
   const observeIds = new Set(observedPolicies);
   const isObserved = (p: ParsedCloudOutcome) => p.observe || observeIds.has(p.cloudPolicyId);
   const enforced = parsed.filter((p) => !isObserved(p)).map((p) => p.outcome);
-  const observed = parsed.filter(isObserved);
+  const observedHere = parsed.filter(isObserved);
+  const observed = [...observedHere, ...(watched?.parsed ?? [])];
   // A check that fired deny makes the verdict a deny; a reply that says
   // otherwise contradicts itself.
   if (enforced.some((o) => o.verdict === "deny") && v.decision !== "deny") malformed("a check denied but the verdict does not");
   const cloudReason = typeof v.reason === "string" ? capReason(v.reason) : null;
   let decision = v.decision as SemanticVerdict["decision"];
   let reason = cloudReason;
-  if (observed.length > 0) {
+  if (observedHere.length > 0) {
     // Decided again from the enforced checks alone, never above what Cloud
     // said. Cloud's reason stands when the decision does; otherwise the
     // combine's generic line names the deciding check.
@@ -538,8 +566,8 @@ export function parseCloudReply(raw: unknown, observedPolicies: ReadonlyArray<st
     decision = capped;
   }
   return {
-    observed: observedChecks(observed),
-    observedAsked: observed.map((p) => `cloud:${p.cloudPolicyId}/${p.outcome.policy}`),
+    observed: observedChecks(observed, watched),
+    observedAsked: [...observedHere.map((p) => p.outcome.policy), ...(watched?.asked ?? [])],
     verdict: {
       decision,
       reason,

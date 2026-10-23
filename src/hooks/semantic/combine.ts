@@ -336,7 +336,7 @@ export type JevReview =
        * neither `asked` nor `notDenied`, so they clear nothing either.
        */
       observedCloud?: ReadonlyArray<ObservedCloudVerdict>;
-      /** The `observe` Cloud assignments' checks that were asked (reviewer keys); never in `asked`. */
+      /** The `observe` Cloud assignments' checks that were asked (names); never in `asked`. */
       observedAsked?: readonly string[];
       /**
        * Null when nothing had to be sent (no semantic policy applied), or when

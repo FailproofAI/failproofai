@@ -11,6 +11,7 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 ### Fixes
 
 - `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)
+- `config`, logging in again on a connected machine where the new key is created but can't be used, says the machine keeps its previous connection (which it does: nothing was written) instead of finishing as if it were open source (#920)
 - `config` on a machine whose saved key was refused, when logging in again creates no key, says the kept connection's key no longer works and to run `config` again, instead of reporting the old connection as if it were fine (#920)
 - `config` no longer sends the saved key to a saved cloud address it would refuse if typed (plain `http://` to another host) when checking that key (#920)
 - `config`'s browser login takes an expired or refused link off the screen when it prints a new one, so only the live link can be opened; and a cloud that answers the login route with a web page is treated as one without browser login (paste a key) instead of an error (#920)

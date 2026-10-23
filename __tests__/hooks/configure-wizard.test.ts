@@ -1675,6 +1675,31 @@ describe("browser login", () => {
     expect(printed(io.stdout)).not.toContain("no longer works");
   });
 
+  it("keeps reporting the previous connection when the new key is created but can't be used", async () => {
+    writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
+    connectPick = "login";
+    vi.mocked(claimLogin).mockResolvedValueOnce({
+      kind: "ok",
+      key: "k".repeat(64),
+      keyName: "failproofai · box",
+      org: { slug: "acme", name: "Acme" },
+      permissions: ["events:add", "policies:pull"],
+    } as never);
+    // Refused on both streams: connectToCloud writes nothing, so the saved key stays.
+    vi.mocked(connectToCloud).mockResolvedValueOnce({
+      policy: { ok: false, reason: "refused" },
+      ingest: { ok: false, reason: "refused" },
+      anyConfigured: false,
+    } as never);
+    const io = ttyIO();
+    const result = await runConfigureWizard(io);
+    expect(result).toMatchObject({ applied: true, connected: false, mode: "cloud" });
+    expect(printed(io.stdout)).toContain("This machine keeps its previous connection.");
+    expect(printed(io.stdout)).toContain('The key "failproofai · box" was created but isn\'t in use here; revoke it');
+    const props = vi.mocked(trackHookEvent).mock.calls.find((call) => call[1] === "configure_applied")![2];
+    expect(props).toMatchObject({ connected: false, mode: "cloud" });
+  });
+
   it("does not report a refused saved key as a working connection when the new login creates no key", async () => {
     writeIngestCredential({ url: "https://app.befailproof.ai/v1/events", key: "saved-key-3f2a" });
     vi.mocked(validateIngestKey).mockResolvedValueOnce({ ok: false, reason: "the server rejected that key (401)" });

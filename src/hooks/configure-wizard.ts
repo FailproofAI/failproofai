@@ -1563,11 +1563,12 @@ export async function runConfigureWizard(
     updateConfig({ mode: "cloud" });
   }
 
-  // Logging in again on a connected machine, with no key at the end of it,
-  // changed nothing about the connection: the previous one is still there
-  // (never removed from this step, decision D4) — but not as if it worked when
-  // its key was refused.
-  const keptOld = cloud.kind === "login" && !token && Boolean(saved);
+  // Logging in again on a connected machine, with nothing connected at the end
+  // of it — no key, or a key `connectToCloud` could not use, which writes
+  // nothing — changed nothing about the connection: the previous one is still
+  // there (never removed from this step, decision D4) — but not as if it worked
+  // when its key was refused.
+  const keptOld = cloud.kind === "login" && !connected && Boolean(saved);
   if (keptOld) {
     done.push(
       savedRefused

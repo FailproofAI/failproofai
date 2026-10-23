@@ -653,12 +653,21 @@ pub fn record_sighting(
         .iter_mut()
         .find(|entry| entry.integration == integration && entry.settings_path == settings);
     if let Some(entry) = record {
-        if entry.hook_installed
+        // An entry an earlier build recorded as `project` for a relocated user
+        // config (CLAUDE_CONFIG_DIR / CODEX_HOME) is re-scoped on its next
+        // sighting. Same entry, so its ID is unchanged.
+        let rescope =
+            entry.scope == "project" && is_relocated_user_config(integration, settings_path);
+        if !rescope
+            && entry.hook_installed
             && entry
                 .last_seen_at
                 .is_some_and(|at| now.saturating_sub(at) < 60_000)
         {
             return Ok(());
+        }
+        if rescope {
+            entry.scope = "user".to_owned();
         }
         entry.hook_installed = true;
         entry.last_seen_at = Some(now);
@@ -768,6 +777,36 @@ mod tests {
         assert_eq!(scope_of(&claude), (".claude-work".into(), "user".into()));
         assert_eq!(scope_of(&codex), (".codex-work".into(), "user".into()));
         assert_eq!(scope_of(&project), (".claude".into(), "project".into()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_upgraded_project_scoped_config_dir_entry_is_rescoped_keeping_its_id() {
+        let root = std::env::temp_dir().join(format!("fpai-roster-{}", new_instance_id().unwrap()));
+        let home = root.join("home");
+        let path = root.join("fpai/agents/roster.json");
+        let claude = home.join(".claude-work/settings.json");
+        fs::create_dir_all(claude.parent().unwrap()).unwrap();
+        record_sighting(&path, &home, "claude", &claude).unwrap();
+        // What an earlier build wrote: the same entry, scoped `project`.
+        let mut roster = read(&path).unwrap().unwrap();
+        let entry = roster
+            .agents
+            .iter_mut()
+            .find(|entry| entry.settings_path == claude.to_string_lossy())
+            .unwrap();
+        entry.scope = "project".into();
+        let id = entry.instance_id.clone();
+        fs::write(&path, serde_json::to_vec(&roster).unwrap()).unwrap();
+        record_sighting(&path, &home, "claude", &claude).unwrap();
+        let roster = read(&path).unwrap().unwrap();
+        let entry = roster
+            .agents
+            .iter()
+            .find(|entry| entry.settings_path == claude.to_string_lossy())
+            .unwrap();
+        assert_eq!(entry.scope, "user");
+        assert_eq!(entry.instance_id, id);
         fs::remove_dir_all(root).unwrap();
     }
 

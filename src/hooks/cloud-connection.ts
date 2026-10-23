@@ -550,40 +550,51 @@ export function jevLines(outcome: ConnectOutcome): string[] {
     ];
   }
   const config = jev.config;
-  if (!config || config.status === "written") {
+  if (!config || config.status === "written" || config.status === "repointed") {
     // Plain http (loopback only) is accepted in observe mode and nowhere else:
     // in enforce mode — set here, or by FailproofAI Cloud — Jev is OFF on this
     // machine rather than enforcing, by the CLI and the dashboard alike.
-    const plainHttp = config?.status === "written" && new URL(config.baseUrl).protocol === "http:";
+    const plainHttp = config !== undefined && new URL(config.baseUrl).protocol === "http:";
     const httpLine = "            Over plain http Jev runs only in observe mode: enforce (set here or by FailproofAI Cloud) turns it off on this machine. For enforce, reconnect with `failproofai config --token <key> --url https://…`.";
+    // What happened to jev.json, said first on a re-point; the mode lines
+    // below are the same for both (N1).
+    const lead =
+      config?.status === "repointed" ? [`  Jev       ${config.path} now points here instead of ${config.from}.`] : [];
+    const indent = lead.length > 0 ? "            " : "  Jev       ";
     // FailproofAI Cloud already set this machine's Jev mode (a reconnect, or a
     // deployment that arrived first): that mode and Cloud's own checks decide,
     // not the local jev.json or the packs installed here.
     const cloudJev = safeCloudJev();
     if (cloudJev.jevMode !== null) {
+      if (cloudJev.jevMode === "off") return [...lead, `${indent}off on this machine: FailproofAI Cloud set its Jev mode to off.`];
+      if (plainHttp && cloudJev.jevMode === "enforce") {
+        return [
+          ...lead,
+          `${indent}off on this machine: FailproofAI Cloud set enforce, and over plain http Jev runs only in observe mode. For enforce, reconnect with \`failproofai config --token <key> --url https://…\`.`,
+        ];
+      }
       return [
-        cloudJev.jevMode === "off"
-          ? "  Jev       off on this machine: FailproofAI Cloud set its Jev mode to off."
-          : `  Jev       on through FailproofAI Cloud, mode ${cloudJev.jevMode} (set by FailproofAI Cloud); the Jev checks it deployed here run on FailproofAI Cloud.`,
-        ...(plainHttp && cloudJev.jevMode === "enforce" ? [httpLine] : []),
+        ...lead,
+        `${indent}on through FailproofAI Cloud, mode ${cloudJev.jevMode} (set by FailproofAI Cloud); the Jev checks it deployed here run on FailproofAI Cloud.`,
       ];
     }
+    // No Cloud deployment has been read on this machine yet (a first connect,
+    // or the first after a disconnect): FailproofAI Cloud's Jev mode, when it
+    // sets one, arrives with that deployment and overrides jev.json — so the
+    // local mode is said as the fallback it is, not as a promise (N3).
+    const localMode = config?.status === "repointed" ? config.mode : "observe";
+    if (localMode === "off") {
+      return [...lead, `${indent}switched off in ${config?.path ?? "jev.json"} (mode off). FailproofAI Cloud's Jev mode, if it sets one, arrives with its first deployment. To turn it on: \`failproofai jev setup --mode observe\`.`];
+    }
     return [
-      `  Jev       on through FailproofAI Cloud, in observe mode: logged, not enforced (${config?.path ?? "jev.json"}).`,
-      // The package ships no Jev checks, so "on" asks nothing until a pack
-      // gives it some — said here, where the user just turned it on. Checks
-      // FailproofAI Cloud deploys to this machine run on Cloud whatever is here.
+      ...lead,
+      `${indent}configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides. Until then, and if Cloud sets none: ${localMode} (${config?.path ?? "jev.json"}). Check with \`failproofai jev status\`.`,
+      // The package ships no Jev checks, so local "on" asks nothing until a
+      // pack gives it some. Checks FailproofAI Cloud deploys run on Cloud.
       ...(jevChecksDeclared()
         ? []
         : ["            No Jev checks are installed on this machine; checks FailproofAI Cloud deploys here run on Cloud. To add local ones: `failproofai policies add FailproofAI/jev-policies`."]),
-      plainHttp ? httpLine : "            Enforce it with `failproofai jev setup --mode enforce`, or from the dashboard.",
-    ];
-  }
-  if (config.status === "repointed") {
-    return [
-      config.mode === "off"
-        ? `  Jev       ${config.path} now points here instead of ${config.from}; it has Jev switched off (mode off), so Jev stays off. To turn it on: \`failproofai jev setup --mode observe\`.`
-        : `  Jev       ${config.path} now points here instead of ${config.from} (mode ${config.mode}).`,
+      ...(plainHttp ? [httpLine] : []),
     ];
   }
   if (config.status === "kept") {

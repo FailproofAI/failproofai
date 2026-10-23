@@ -15,6 +15,9 @@
 
 ### Fixes
 
+- The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)
+- `failproofai policies` shows a Cloud policy no hook has load-checked under the current deployment as not loaded yet, not ● on (the hook path records `cloud-policies/load-checked.json`), and says Jev-only Cloud policies are not listed on the machine (#928)
+- The daemon's roster re-scopes an existing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` entry from `project` to `user` on its next sighting, keeping its ID (#928)
 - Reconnecting the same FailproofAI Cloud organisation on a new URL (http → https, same key) is a reconnect, not an organisation switch: it no longer prints "Switched from X to X" or clears the Cloud policies until the next poll (#928)
 - A reconnect on a new URL points the `jev.json` that `config` wrote (provider `failproofai`) at the new URL, keeping its mode; a BYOK `jev.json` is never touched (#928)
 - The daemon health probe is answered before any scope, policy or activity logic: it no longer records `agent_scope_unresolved` in `errors.json` or writes a SessionStart activity row on every probe (#928)

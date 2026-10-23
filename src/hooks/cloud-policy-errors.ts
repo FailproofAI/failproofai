@@ -201,6 +201,54 @@ export function writeCloudPolicyErrors(errors: ReadonlyArray<CloudPolicyError>):
   }
 }
 
+// ── Which Cloud JS policies a hook has load-checked (N4) ────────────────────
+//
+// `failproofai policies` must not draw a Cloud policy as ● on before any hook
+// has imported it: only the hook path loads Cloud JavaScript, and only the hook
+// path writes `errors.json`, so right after a deployment a broken policy has
+// no error yet. The hook path records here which `id@version`s of which
+// deployment it has load-checked (loaded, or failed into `errors.json`); the
+// listing shows the rest as not loaded yet. Union across hooks, since an
+// agent-scoped policy is only ever loaded by its own agent's hooks.
+
+export const CLOUD_LOAD_CHECKED_FILE = "load-checked.json";
+
+export interface CloudLoadChecked {
+  deployment: number;
+  checked: string[];
+}
+
+export function cloudLoadCheckedPath(): string {
+  return resolve(cloudManagedPolicyRoot(), CLOUD_LOAD_CHECKED_FILE);
+}
+
+/** The record, or null when absent or unreadable. */
+export function readCloudLoadChecked(): CloudLoadChecked | null {
+  try {
+    const raw = JSON.parse(readFileSync(cloudLoadCheckedPath(), "utf8")) as Record<string, unknown>;
+    if (!Number.isSafeInteger(raw.deployment) || !Array.isArray(raw.checked)) return null;
+    return { deployment: raw.deployment as number, checked: raw.checked.filter((c): c is string => typeof c === "string") };
+  } catch {
+    return null;
+  }
+}
+
+/** Add `policies` to the record for `deployment` (a new deployment starts afresh). Never throws; writes only on change. */
+export function recordCloudLoadChecked(deployment: number, policies: ReadonlyArray<{ id: string; version: number }>): void {
+  try {
+    if (!existsSync(resolve(cloudManagedPolicyRoot(), "active.json"))) return;
+    const path = cloudLoadCheckedPath();
+    const prior = readCloudLoadChecked();
+    const base = prior && prior.deployment === deployment ? prior.checked : [];
+    const next = [...new Set([...base, ...policies.map((p) => `${p.id}@${p.version}`)])].sort();
+    if (prior && prior.deployment === deployment && next.length === base.length) return;
+    const text = `${JSON.stringify({ deployment, checked: next }, null, 2)}\n`;
+    writeAtomic(path, text);
+  } catch {
+    // A record that cannot be written costs only the listing's accuracy.
+  }
+}
+
 export interface CloudPolicyErrorInputs {
   /** `readActiveCloudManagedPolicies` threw: the whole JS half is not enforcing. */
   manifestError?: string | null;

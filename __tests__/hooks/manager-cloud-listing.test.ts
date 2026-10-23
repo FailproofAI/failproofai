@@ -12,6 +12,7 @@ vi.mock("../../src/hooks/cloud-managed-policies", () => {
 vi.mock("../../src/hooks/cloud-policy-errors", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/hooks/cloud-policy-errors")>()),
   readCloudPolicyErrors: vi.fn(() => null),
+  readCloudLoadChecked: vi.fn(),
 }));
 vi.mock("../../src/hooks/agent-roster", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/hooks/agent-roster")>()),
@@ -20,7 +21,7 @@ vi.mock("../../src/hooks/agent-roster", async (importOriginal) => ({
 
 import { listHooks } from "../../src/hooks/manager";
 import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
-import { readCloudPolicyErrors } from "../../src/hooks/cloud-policy-errors";
+import { readCloudLoadChecked, readCloudPolicyErrors } from "../../src/hooks/cloud-policy-errors";
 import { readRosterLabels } from "../../src/hooks/agent-roster";
 
 const readActive = vi.mocked(readActiveCloudManagedPolicies);
@@ -46,6 +47,11 @@ describe("failproofai policies — cloud-managed section", () => {
     process.env.FAILPROOFAI_PACK_DIR = join(home, "packs");
     vi.stubEnv("HOME", home);
     vi.stubEnv("USERPROFILE", home);
+    // By default every listed policy has been load-checked by a hook (N4 has its own test).
+    vi.mocked(readCloudLoadChecked).mockImplementation(() => {
+      const listed = (readActive() ?? []) as Array<{ id: string; version: number; deployment: number }>;
+      return listed.length > 0 ? { deployment: listed[0].deployment, checked: listed.map((p) => `${p.id}@${p.version}`) } : null;
+    });
     out = [];
     spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
       out.push(a.map(String).join(" "));
@@ -128,6 +134,27 @@ describe("failproofai policies — cloud-managed section", () => {
     expect(broken).toContain("not loaded: syntax_error: Unexpected token");
     expect(broken).not.toContain("older version");
     expect(text()).toMatch(/● fine\s+v1$/m);
+  });
+
+  // N4 (e2e round 2): a broken Cloud policy read ● on until a hook had loaded it.
+  it("shows a Cloud policy no hook has load-checked under this deployment as not loaded yet", async () => {
+    readActive.mockReturnValue([
+      { id: "checked", version: 2, effect: "enforce", sha256: "a", path: "p", deployment: 11 },
+      { id: "fresh", version: 1, effect: "enforce", sha256: "b", path: "q", deployment: 11 },
+    ]);
+    vi.mocked(readCloudLoadChecked).mockReturnValue({ deployment: 11, checked: ["checked@2", "fresh@0"] });
+    await listHooks(project);
+    expect(text()).toMatch(/● checked\s+v2$/m);
+    const fresh = text().split("\n").find((l) => l.includes("fresh")) ?? "";
+    expect(fresh).not.toContain("●");
+    expect(fresh).toContain("not loaded yet");
+  });
+
+  it("a record of another deployment counts for nothing", async () => {
+    readActive.mockReturnValue([{ id: "guard", version: 1, effect: "enforce", sha256: "a", path: "p", deployment: 12 }]);
+    vi.mocked(readCloudLoadChecked).mockReturnValue({ deployment: 11, checked: ["guard@1"] });
+    await listHooks(project);
+    expect(text()).toContain("not loaded yet");
   });
 
   it("marks an observe policy as observing, never as enforcing — its verdict is discarded", async () => {

@@ -1585,7 +1585,8 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
             `${jevRunsOnCloudLine(mode)}. Every checked tool call goes to FailproofAI Cloud, which asks the Jev checks it ` +
               "deployed to this machine and this machine's installed packs' checks in one request; nothing of Cloud's checks is " +
               `installed here. ${jevConfigPath()} is not used while FailproofAI Cloud sets the mode. In enforce, Jev's own deny ` +
-              "checks block calls as well as clearing the regex policies they review.",
+              "checks block calls as well as clearing the regex policies they review. Jev-only Cloud policies are not on this machine, so they are " +
+              "not listed here; fp fleet show and the dashboard list them.",
             opts,
           ),
       cfg && route

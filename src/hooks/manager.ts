@@ -33,7 +33,7 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
 import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
-import { readCloudPolicyErrors } from "./cloud-policy-errors";
+import { readCloudLoadChecked, readCloudPolicyErrors } from "./cloud-policy-errors";
 import { readRosterLabels } from "./agent-roster";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
@@ -1392,6 +1392,9 @@ export function renderPoliciesScreen(
       out.push(`${INDENT}Jev mode: off, set by FailproofAI Cloud (overrides jev.json).`);
     } else if (jevMode) {
       out.push(`${INDENT}Jev mode: ${jevMode}, set by FailproofAI Cloud. Jev checks run on FailproofAI Cloud; nothing of them is installed here.`);
+      // Jev-only Cloud policies never reach the machine (N6): say so, or an
+      // empty section reads as "Cloud deployed nothing".
+      out.push(`${INDENT}Jev-only Cloud policies are not listed here; see them with ${kit.cmd("fp fleet show")} or on the dashboard.`);
     }
     for (const problem of problems ?? []) out.push(kit.caution(problem));
   }
@@ -1647,6 +1650,16 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     } catch {
       // No report: every row reads as the deployment says.
     }
+    // Only the hook path imports Cloud JavaScript (N4): a policy no hook has
+    // load-checked under this deployment is not yet known to load, so it is
+    // not drawn as ● on.
+    let loadChecked: Set<string> | null = null;
+    try {
+      const record = readCloudLoadChecked();
+      loadChecked = new Set(record && record.deployment === active[0]?.deployment ? record.checked : []);
+    } catch {
+      loadChecked = new Set();
+    }
     const labels = active.some((a) => a.agentTargets?.some((tg) => tg.instanceId)) ? readRosterLabels() : new Map<string, string>();
     const targetText = (targets: NonNullable<(typeof active)[number]["agentTargets"]>): string =>
       `for ${targets
@@ -1676,6 +1689,14 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
               name: artifact.id,
               description: `v${artifact.version}`,
               tag: [...tags, `not loaded: ${failed}`].join(" · "),
+            };
+          }
+          if (!loadChecked?.has(`${artifact.id}@${artifact.version}`)) {
+            return {
+              state: "off" as const,
+              name: artifact.id,
+              description: `v${artifact.version}`,
+              tag: [...tags, "not loaded yet: it loads at the next agent tool call"].join(" · "),
             };
           }
           return {

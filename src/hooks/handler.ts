@@ -73,6 +73,7 @@ import {
   jevBudgetPath,
   readJevBudgetDrops,
   writeCloudPolicyErrors,
+  recordCloudLoadChecked,
 } from "./cloud-policy-errors";
 import { hasInstalledRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
@@ -438,6 +439,10 @@ async function recordCloudPolicyErrors(input: {
         agentScopeUnresolved: input.agentScopeUnresolved,
       }),
     );
+    // After the report: what this hook load-checked (N4). A failure is in
+    // errors.json first, so the listing never sees a checked policy without
+    // its error.
+    if (input.jsPolicies.length > 0) recordCloudLoadChecked(input.jsPolicies[0].deployment, input.jsPolicies);
   } catch (err) {
     hookLogInfo(`could not record Cloud policy errors: ${err instanceof Error ? err.message : String(err)}`);
   }

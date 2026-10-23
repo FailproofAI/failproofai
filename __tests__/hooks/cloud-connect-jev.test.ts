@@ -105,8 +105,9 @@ describe("connecting with a key that carries jev:evaluate", () => {
     expect(r.status === "ok" && r.keySource).toBe("cloud");
 
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
-    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in observe mode/);
-    expect(text).toContain("--mode enforce");
+    // N3: no deployment read yet, so Cloud's mode is awaited, not promised.
+    expect(text).toMatch(/Jev\s+configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode/);
+    expect(text).toContain("Until then, and if Cloud sets none: observe");
     expect(text).not.toContain(TOKEN);
     expect(configuredPaths(outcome)).toContain(credentialsFile());
   });
@@ -120,7 +121,7 @@ describe("connecting with a key that carries jev:evaluate", () => {
     // …and only there: `jev setup --mode enforce` (and the dashboard switch)
     // refuses plain http, so the output must not name it as the next step.
     const text = describeOutcome(outcome, "machine-1", "http://localhost:8080/fp").join("\n");
-    expect(text).toMatch(/Jev\s+on through FailproofAI Cloud, in observe mode/);
+    expect(text).toMatch(/Jev\s+configured through FailproofAI Cloud; waiting/);
     expect(text).not.toContain("--mode enforce");
     expect(text).toContain("For enforce, reconnect with `failproofai config --token <key> --url https://…`");
     // The command it would have named really is refused, and the refusal names the step that works.
@@ -190,6 +191,25 @@ describe("connecting with a key that carries jev:evaluate", () => {
     expect(readdirTmp()).toEqual([]);
   });
 
+  // N1 (e2e round 2): the re-point line printed "(mode observe)" while Cloud
+  // ran enforce, and over http, where Cloud's enforce leaves Jev off.
+  it.each([
+    ["https", URL_, "enforce", /now points here instead of[\s\S]*mode enforce \(set by FailproofAI Cloud\)/],
+    ["http", "http://localhost:48080", "enforce", /now points here instead of[\s\S]*off on this machine: FailproofAI Cloud set enforce, and over plain http/],
+    ["https", URL_, "off", /now points here instead of[\s\S]*FailproofAI Cloud set its Jev mode to off/],
+  ])("a re-point over %s follows FailproofAI Cloud's mode (%s → %s)", async (_scheme, url, mode, expected) => {
+    const other = url.startsWith("http:") ? "https://localhost:48443" : "http://localhost:48080";
+    seedJev({ provider: "failproofai", baseUrl: `${other}/enforcement/v1/jev`, mode: "observe" });
+    const dir = resolve(home, "policies", "cloud-policies");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, "active.json"), JSON.stringify({ schemaVersion: 2, deployment: 24, policies: [], jevMode: mode }));
+    const outcome = await connect(withPermissions(...MACHINE_PRESET), url);
+    expect(outcome.jev?.config).toMatchObject({ status: "repointed" });
+    const text = describeOutcome(outcome, "machine-1", url).join("\n");
+    expect(text).toMatch(expected);
+    expect(text).not.toContain("(mode observe)");
+  });
+
   it("re-points a switched-off Cloud jev.json too, and it stays off", async () => {
     seedJev({ provider: "failproofai", baseUrl: "https://staging.befailproof.ai/enforcement/v1/jev", mode: "off" });
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
@@ -238,7 +258,7 @@ describe("e2e round 1: the connect Jev line, http, and the Cloud timeout", () =>
   it("without a Cloud mode, says Cloud's checks run on Cloud even with none installed here", async () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
-    expect(text).toContain("in observe mode");
+    expect(text).toContain("if Cloud sets none: observe");
     expect(text).toContain("checks FailproofAI Cloud deploys here run on Cloud");
   });
 

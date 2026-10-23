@@ -365,6 +365,17 @@ it("the daemon health probe records no scope error and no activity row", async (
   store._resetForTest();
 });
 
+// N4: the hook path records which Cloud policies it load-checked, per deployment.
+it("a hook records the Cloud policies it load-checked; a new deployment starts afresh", async () => {
+  deploy({ policies: [{ id: "guard", version: 1 }] });
+  await hook();
+  const { readCloudLoadChecked } = await import("@/src/hooks/cloud-policy-errors");
+  expect(readCloudLoadChecked()).toEqual({ deployment: 43, checked: ["guard@1"] });
+  deploy({ policies: [{ id: "guard", version: 2 }], deployment: 44 });
+  await hook();
+  expect(readCloudLoadChecked()).toEqual({ deployment: 44, checked: ["guard@2"] });
+});
+
 // B15: disconnect left the org's policy source in cloud-policies/artifacts/.
 it("config --disconnect's clear removes the Cloud artifacts in the default directory", async () => {
   delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
@@ -1728,6 +1739,8 @@ describe("surfaces", () => {
       out.push(...String(chunk).split("\n"));
       return true;
     });
+    // A hook load-checks the deployment first (N4), as on a real machine.
+    await hook();
     const { listHooks } = await import("@/src/hooks/manager");
     await listHooks(project);
     const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
@@ -1738,6 +1751,8 @@ describe("surfaces", () => {
     expect(text).toMatch(/● plain\s+v1$/m);
     expect(text).not.toMatch(/\bjev\s+acme/);
     expect(text).toMatch(/Jev mode: observe, set by FailproofAI Cloud\. Jev checks run on FailproofAI Cloud/);
+    // N6: Jev-only Cloud policies never reach the machine; the section says so.
+    expect(text).toMatch(/Jev-only Cloud policies are not listed here; see them with fp fleet show/);
   });
 
   it("config --disconnect's clear takes the Jev mode, the snapshot, both error reports and the budget record with active.json", async () => {

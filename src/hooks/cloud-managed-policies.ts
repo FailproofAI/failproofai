@@ -205,7 +205,7 @@ export function clearActiveCloudManagedPolicies(): boolean {
   // Either manifest counts as a removed deployment: a stopped daemon would
   // rebuild `active.json` from the snapshot alone.
   let removed = false;
-  for (const name of [DESIRED_STATE_FILE, CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE, JEV_BUDGET_FILE, "active.json"]) {
+  for (const name of [DESIRED_STATE_FILE, CLOUD_POLICY_ERRORS_FILE, DAEMON_POLICY_ERRORS_FILE, JEV_BUDGET_FILE, "load-checked.json", "active.json"]) {
     const path = resolve(root, name);
     if (!existsSync(path)) continue;
     try {

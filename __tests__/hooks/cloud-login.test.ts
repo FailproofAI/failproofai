@@ -53,6 +53,10 @@ describe("startLogin", () => {
     expect(await startLogin(ORIGIN, MACHINE, fetchOf(201, { hello: "world" }) as unknown as typeof fetch)).toEqual({
       kind: "unsupported",
     });
+    // The web app serving its login page in the route's place.
+    expect(
+      await startLogin(ORIGIN, MACHINE, fetchOf(200, "<!doctype html><title>sign in</title>", { "content-type": "text/html" }) as unknown as typeof fetch),
+    ).toEqual({ kind: "unsupported" });
   });
 
   it("never hands a non-http link to the browser opener", async () => {

@@ -1443,24 +1443,6 @@ export async function runConfigureWizard(
     pruneOldDaemonBinaries();
   }
 
-  const connectedAfterPlan = connecting || cloud.kind === "kept";
-  // Telemetry runs concurrently with the rest of apply (never rejects,
-  // 5s-bounded) and is awaited before returning. `cli` carries the selected
-  // agent ids, as it always has (and as hooks_installed does): a fixed list of
-  // product ids, never user content. The agents_* fields add counts only.
-  const applied = emit("configure_applied", {
-    target: "user",
-    scopes: ["user"],
-    cli: selected,
-    cli_count: selected.length,
-    policy_count: (readScopedHooksConfig("user", cwd).enabledPolicies ?? []).length,
-    connected: connecting,
-    mode: connectedAfterPlan ? "cloud" : "oss",
-    agents_selected: selected.length,
-    agents_detected: plan.detected.size,
-    agents_changed: added.length + removed.length > 0,
-  });
-
   // Hooks, at user scope, for the chosen agents. Whatever policies are enabled
   // there are carried through untouched: `replace: true` would otherwise switch
   // off policies the user had turned on, and setup must never reduce
@@ -1508,6 +1490,7 @@ export async function runConfigureWizard(
   let token: string | null = cloud.kind === "connect" ? cloud.token : null;
   let orgLabel: string | undefined = cloud.kind === "connect" ? cloud.org : undefined;
   let mintedName: string | undefined;
+  let claimedOrg: LoginOrg | undefined;
   if (cloud.kind === "login" && url) {
     const claimed = await transient("Creating this machine's key…", () => claimLogin(url, cloud.pollSecret));
     void emit("configure_cloud_login", { step: "claimed", ok: claimed.kind === "ok", reason: claimed.kind });
@@ -1515,6 +1498,7 @@ export async function runConfigureWizard(
       token = claimed.key;
       orgLabel = loginOrgLabel(claimed.org);
       mintedName = claimed.keyName;
+      claimedOrg = claimed.org;
     } else {
       hookLogWarn(`cloud login could not be completed: ${claimed.kind}`);
       done.push(
@@ -1541,6 +1525,8 @@ export async function runConfigureWizard(
           machineLabel,
           // Both streams unless the run said `--no-transcripts`.
           sessions: answers.noTranscripts !== true,
+          // The org the login was approved into, for when introspect can't say.
+          org: claimedOrg,
         }),
       );
       connected = outcome.anyConfigured;
@@ -1583,8 +1569,25 @@ export async function runConfigureWizard(
         : "  This machine keeps its previous connection.",
     );
   }
+  const cloudAfter = connected || cloud.kind === "kept" || keptOld;
 
-  await applied;
+  // Sent once the connection's outcome is known — a login whose claim then
+  // failed must not count as connected. Never rejects, 5s-bounded. `cli`
+  // carries the selected agent ids, as it always has (and as hooks_installed
+  // does): a fixed list of product ids, never user content. The agents_*
+  // fields add counts only.
+  await emit("configure_applied", {
+    target: "user",
+    scopes: ["user"],
+    cli: selected,
+    cli_count: selected.length,
+    policy_count: policies.length,
+    connected,
+    mode: cloudAfter ? "cloud" : "oss",
+    agents_selected: selected.length,
+    agents_detected: plan.detected.size,
+    agents_changed: added.length + removed.length > 0,
+  });
   // Only now — a completed apply — is the launcher considered "seen", so
   // first-run onboarding stops offering itself on every command.
   markLauncherSeen();
@@ -1601,7 +1604,7 @@ export async function runConfigureWizard(
       done,
       cwd,
       agents: selected.length,
-      connected: connected || cloud.kind === "kept" || keptOld,
+      connected: cloudAfter,
       codexTrust,
     }),
   );
@@ -1614,7 +1617,7 @@ export async function runConfigureWizard(
     policies,
     daemonInstalled,
     connected,
-    mode: connected || cloud.kind === "kept" || keptOld ? "cloud" : "oss",
+    mode: cloudAfter ? "cloud" : "oss",
     agents: { selected, added, removed },
   };
 }
@@ -1730,6 +1733,11 @@ export async function checkCloudKey(
   url: string,
   key: string,
 ): Promise<{ ok: true; org?: string; note?: string } | { ok: false; refused: boolean; reason: string }> {
+  // Checked here rather than trusted: a saved address comes from a file that
+  // can be edited, and an http one to another host would carry the key in
+  // the clear. Not a verdict on the key, so not `refused`.
+  const target = validateCloudUrl(url);
+  if (!target.ok) return { ok: false, refused: false, reason: `the address ${url} can't be used: ${target.reason}` };
   const identity = await introspectKey(url, key);
   if (identity.kind === "rejected") return { ok: false, refused: true, reason: "the server did not accept it" };
   if (identity.kind === "unreachable") return { ok: false, refused: false, reason: identity.reason };

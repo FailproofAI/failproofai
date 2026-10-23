@@ -1481,6 +1481,15 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
     above.push(...lines);
   };
 
+  /** Fold what was printed above into the region, so the next repaint erases
+   *  it too — the heading goes with it and returns to the region. */
+  const forgetAbove = (): void => {
+    const cols = stdout.columns || 80;
+    for (const line of above) region.lastCount += Math.max(1, Math.ceil(visibleWidth(line) / cols));
+    above.length = 0;
+    headingShown = false;
+  };
+
   const clearPoll = (): void => {
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
@@ -1500,10 +1509,7 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
       stdin.pause();
       process.removeListener("exit", restoreTerminal);
       // Leaving for the menu takes the printed link with it.
-      if (answer === BACK) {
-        const cols = stdout.columns || 80;
-        for (const line of above) region.lastCount += Math.max(1, Math.ceil(visibleWidth(line) / cols));
-      }
+      if (answer === BACK) forgetAbove();
       const lines =
         answer === null
           ? [c.ink3("cancelled")]
@@ -1564,6 +1570,9 @@ export function promptBrowserLogin<T>(opts: BrowserLoginOptions<T>): Promise<{ v
       clearPoll();
       cautionLine = "";
       phase = "starting";
+      // A retry: the expired or refused link is dead, so it leaves the screen
+      // rather than sit above the new one, where it could still be opened.
+      forgetAbove();
       draw();
       let started: BrowserLoginStart;
       try {

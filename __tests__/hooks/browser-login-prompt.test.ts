@@ -125,6 +125,21 @@ describe("promptBrowserLogin", () => {
     expect(t.plain()).toContain(`${LINK}-second`);
   });
 
+  it("takes the dead link off the screen when a retry prints a new one", async () => {
+    const t = terminal(40);
+    const urls = [LINK, `${LINK}-second`];
+    const start = vi.fn(async (): Promise<BrowserLoginStart> => started(urls.shift()));
+    const { pending } = ask(t, [{ state: "expired" }, { state: "approved", value: "v" }], { start, open: vi.fn(() => false) });
+    await until(() => t.plain().includes("That link expired."));
+    const before = t.raw().length;
+    t.type("\r");
+    expect(await pending).toEqual({ value: "v" });
+    const ups = t.raw().slice(before).match(/\x1b\[(\d+)A/g) ?? [];
+    // The first repaint after enter climbs over the old heading 1 + "Open this
+    // link…" 2 + link 3 + blank 1, and the 3-row expired region.
+    expect(Number(ups[0]!.slice(2, -1))).toBe(10);
+  });
+
   it("calls a link expired by its own clock without waiting for the server to say so", async () => {
     const t = terminal();
     let clock = 1_000_000;

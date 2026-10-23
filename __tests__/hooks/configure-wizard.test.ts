@@ -466,16 +466,23 @@ describe("cloud helpers", () => {
 
   it("accepts half a key with a note, and refuses one that can do neither", async () => {
     vi.mocked(introspectKey).mockResolvedValueOnce({ kind: "ok", identity: { permissions: ["events:add"] } });
-    expect(await checkCloudKey("u", "k")).toMatchObject({ ok: true, note: expect.stringContaining("policies:pull") });
+    expect(await checkCloudKey("https://x.example.com", "k")).toMatchObject({ ok: true, note: expect.stringContaining("policies:pull") });
     vi.mocked(introspectKey).mockResolvedValueOnce({ kind: "ok", identity: { permissions: ["jev:evaluate"] } });
-    expect(await checkCloudKey("u", "k")).toEqual({ ok: false, refused: true, reason: "it is missing the events:add permission" });
+    expect(await checkCloudKey("https://x.example.com", "k")).toEqual({ ok: false, refused: true, reason: "it is missing the events:add permission" });
   });
 
   it("tells a refusal from not being able to ask", async () => {
     vi.mocked(introspectKey).mockResolvedValueOnce({ kind: "rejected" });
-    expect(await checkCloudKey("u", "k")).toMatchObject({ ok: false, refused: true });
+    expect(await checkCloudKey("https://x.example.com", "k")).toMatchObject({ ok: false, refused: true });
     vi.mocked(introspectKey).mockResolvedValueOnce({ kind: "unreachable", reason: "ENOTFOUND" });
-    expect(await checkCloudKey("u", "k")).toEqual({ ok: false, refused: false, reason: "ENOTFOUND" });
+    expect(await checkCloudKey("https://x.example.com", "k")).toEqual({ ok: false, refused: false, reason: "ENOTFOUND" });
+  });
+
+  it("never sends a key to an address it would refuse as typed", async () => {
+    const r = await checkCloudKey("http://cloud.example.com", "k");
+    expect(r).toMatchObject({ ok: false, refused: false });
+    expect(introspectKey).not.toHaveBeenCalled();
+    expect(validateIngestKey).not.toHaveBeenCalled();
   });
 
   it("falls back to the ingest probe on a server too old for introspect", async () => {
@@ -483,7 +490,7 @@ describe("cloud helpers", () => {
     expect(await checkCloudKey("https://x.example.com", "k")).toMatchObject({ ok: false, refused: true });
     expect(vi.mocked(validateIngestKey).mock.calls[0]![0]).toEqual({ url: "https://x.example.com/v1/events", key: "k" });
     vi.mocked(validateIngestKey).mockResolvedValueOnce({ ok: false, reason: "could not reach the server (fetch failed)" });
-    expect(await checkCloudKey("u", "k")).toMatchObject({ ok: false, refused: false });
+    expect(await checkCloudKey("https://x.example.com", "k")).toMatchObject({ ok: false, refused: false });
   });
 
   it("collapses the CONNECT step to what was checked, never what was written", () => {
@@ -1538,6 +1545,30 @@ describe("browser login", () => {
     expect(installHooks).toHaveBeenCalledTimes(1);
     expect(printed(io.stdout)).toContain("The login took too long to finish, so no key was created.");
     expect(printed(io.stdout)).not.toContain("keeps its previous connection");
+    // The completion event reports what happened, not what was planned.
+    const props = vi.mocked(trackHookEvent).mock.calls.find((call) => call[1] === "configure_applied")![2];
+    expect(props).toMatchObject({ connected: false, mode: "oss" });
+  });
+
+  it("does not send the saved key to a saved address it would refuse as typed", async () => {
+    writeIngestCredential({ url: "http://cloud.example.com/v1/events", key: "saved-key-3f2a" });
+    connectPick = "keep";
+    await runConfigureWizard(ttyIO());
+    expect(introspectKey).not.toHaveBeenCalled();
+    expect(validateIngestKey).not.toHaveBeenCalled();
+  });
+
+  it("saves the org the login was approved into", async () => {
+    vi.mocked(claimLogin).mockResolvedValueOnce({
+      kind: "ok",
+      key: "k".repeat(64),
+      keyName: "failproofai · box",
+      org: { id: "o-1", slug: "acme", name: "Acme" },
+      permissions: ["events:add", "policies:pull"],
+    } as never);
+    connectPick = "login";
+    await runConfigureWizard(ttyIO());
+    expect(vi.mocked(connectToCloud).mock.calls[0]![0]).toMatchObject({ org: { id: "o-1", slug: "acme", name: "Acme" } });
   });
 
   it("says the old key still works after logging in again on a connected machine", async () => {

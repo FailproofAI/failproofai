@@ -162,9 +162,12 @@ export async function startLogin(
     fetchImpl,
   );
   if ("error" in r) return { kind: "unreachable", reason: r.error };
-  // No such route, or the web app redirecting an unknown path: a cloud from
-  // before this feature. Not an error — the key prompt still connects it.
-  if (r.status === 404 || (r.status >= 300 && r.status < 400)) return { kind: "unsupported" };
+  // No such route, the web app redirecting an unknown path, or serving a page
+  // (200, not JSON) in its place: a cloud from before this feature. Not an
+  // error — the key prompt still connects it.
+  if (r.status === 404 || (r.status >= 300 && r.status < 400) || (r.status === 200 && !r.json)) {
+    return { kind: "unsupported" };
+  }
   if (r.status === 429) return { kind: "refused", reason: "too many login attempts from here — wait a minute" };
   if (r.status !== 201 || !r.json) {
     return r.status >= 500

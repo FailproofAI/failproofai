@@ -53,6 +53,20 @@ function connect(permissions: string[] | null, over: Partial<ConnectInput> = {})
   });
 }
 
+describe("the org a key reports into", () => {
+  it("is taken from the caller when introspect can't answer", async () => {
+    const result = await connect(null, { org: { id: "B", slug: "beta", name: "Beta" } });
+    expect(readCredentials().org).toMatchObject({ id: "B", slug: "beta", name: "Beta" });
+    expect(result.org).toEqual({ id: "B", slug: "beta", name: "Beta" });
+    expect(result.changes?.join("\n")).toContain("Switched from A to Beta");
+  });
+
+  it("is introspect's answer when there is one", async () => {
+    await connect(["events:add", "policies:pull"], { org: { id: "B", name: "Beta" } });
+    expect(readCredentials().org?.id).toBe("A");
+  });
+});
+
 describe("replacement credentials", () => {
   it("collector-only removes previous policy and Jev keys and active policies", async () => {
     mkdirSync(cloudPoliciesDir(), { recursive: true });

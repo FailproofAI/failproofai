@@ -58,7 +58,7 @@
 import {
   cloudAuthorityDeclaration,
   cloudReviewerNames,
-  readActiveCloudManagedPolicies,
+  listActiveCloudManagedPolicies,
   readCloudJevMode,
 } from "./cloud-managed-policies";
 import { jevPacks } from "./effective-reviewers";
@@ -212,7 +212,9 @@ export function surveyReviewableCoverage(cwd?: string): ReviewableCoverage {
     // Cloud checks (`cloud:<id>/<name>`), which this machine cannot list but
     // Cloud answers for. No mode, `off`, or an `observe` assignment: hard.
     const mode = readCloudJevMode();
-    const assignments = readActiveCloudManagedPolicies();
+    // Listed for every agent: this survey has no agent, and the hook-scoped
+    // read with none drops each agent-targeted assignment.
+    const assignments = listActiveCloudManagedPolicies();
     const cloudReviewers = cloudReviewerNames(assignments, mode);
     if (cloudReviewers.length > 0) reviewers = new Set([...(reviewers ?? []), ...cloudReviewers]);
     for (const assignment of assignments) records.push(cloudAuthorityDeclaration(assignment, mode));

@@ -16,6 +16,7 @@
 
 ### Fixes
 
+- `failproofai config --status` and `jev status` count agent-scoped Cloud policies; a deployment whose policies all target one agent read "None installed".
 - An answered Jev call records each check it asked on its activity row and shipped decision (`jevChecks` / `jev_checks`): the check, its policy (`cloud/<id>@<v>` or `pack/<id>@<v>`), verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), evidence, exempt and probe answers — names, codes and numbers only; checks of watched (observe) Cloud policies, from the reply's `observed` block, are recorded with `watched: true` and never block. A call that asked no check (globals only, or FailproofAI Cloud's short-circuit) is `no-request`, not `answered` (#928)
 - A Jev review that asked no check (Cloud's short-circuit included) stamps no Jev fields on the activity row.
 - Plain http to a loopback host (`localhost`, `127.0.0.1`, `::1`) is accepted in enforce mode too, so a local FailproofAI Cloud works for testing; other http hosts stay refused.

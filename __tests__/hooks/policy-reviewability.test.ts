@@ -370,6 +370,26 @@ describe("surveying a real machine", () => {
     expect(surveyReviewableCoverage(project)).toEqual({ enabled: 3, reviewable: 1, customFiles: 0, jevChecks: 16 });
   });
 
+  it("counts an agent-targeted cloud assignment, which has no agent to match here", () => {
+    writeConfig({ enabledPolicies: [] });
+    const artifact = "// a cloud artifact this test never executes\n";
+    const digest = createHash("sha256").update(artifact).digest("hex");
+    writeFileSync(join(cloudRoot, `${digest}.mjs`), artifact);
+    writeFileSync(
+      join(cloudRoot, "active.json"),
+      JSON.stringify({
+        schemaVersion: 3,
+        deployment: 4,
+        jevMode: "enforce",
+        policies: [
+          { id: "codex-guard", version: 1, sha256: digest, path: `${digest}.mjs`, agentTargets: [{ integration: "codex", instanceId: "agt_0123456789abcdef0123456789abcdef" }] },
+        ],
+      }),
+    );
+    // The targeted assignment + the always-on guard.
+    expect(surveyReviewableCoverage(project).enabled).toBe(2);
+  });
+
   it("counts the custom policy files it cannot read without running them", () => {
     writeConfig({ enabledPolicies: [], customPoliciesPaths: ["/nowhere/a.mjs", "/nowhere/b.mjs"] });
     expect(surveyReviewableCoverage(project).customFiles).toBe(2);

@@ -27,7 +27,7 @@ import { readCloudCredentials } from "./cloud-enrollment";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { listActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readIngestCredential } from "./collector-config";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
@@ -259,7 +259,10 @@ export function summarizePolicySources(cwd?: string): StatusPolicies {
   }
 
   try {
-    for (const artifact of readActiveCloudManagedPolicies()) {
+    // Every assignment, whatever agent it targets: a hook's agent scope applied
+    // with no agent hid each targeted policy ("None installed" beside a
+    // deployment that enforces), the status twin of B4.
+    for (const artifact of listActiveCloudManagedPolicies()) {
       if (artifact.effect === "observe") summary.observing++;
       else summary.cloudOn++;
     }

@@ -8,7 +8,7 @@ import * as failproofai from "npm:@failproofai/sdk";
 import { telemetry, wrapModel } from "npm:@failproofai/sdk/ai";
 import { generateText, stepCountIs, tool } from "npm:ai@6.0.288";
 import { MockLanguageModelV3 } from "npm:ai@6.0.288/test";
-import { z } from "npm:zod@4.6.5";
+import { z } from "npm:zod@4.6.6";
 
 const usage = (input: number, output: number) => ({
   inputTokens: { total: input, noCache: input, cacheRead: undefined, cacheWrite: undefined },

@@ -38,6 +38,7 @@ const EXPECTED_ORDER = [
   "warn-background-process", "warn-repeated-tool-calls", "require-commit-before-stop",
   "require-push-before-stop", "require-pr-before-stop",
   "require-no-conflicts-before-stop", "require-ci-green-before-stop",
+  "require-battery-green-before-stop",
 ];
 
 describe("policy catalog / implementation split", () => {

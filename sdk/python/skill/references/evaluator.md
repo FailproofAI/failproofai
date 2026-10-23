@@ -190,9 +190,14 @@ python evaluator.py              # or: npx failproofai-evaluator ./evals.js
 ```
 
 Then finish a session from an instrumented agent and watch for a **customer**
-result on it. Evaluation runs forward: a worker started now scores sessions that
-finish while it runs. The dashboard's "score sessions you already have" backfill
-covers hosted evaluations only; there is no backfill for a worker's own evaluations.
+result on it. By default, registered evaluations score new completed sessions.
+To score history, open **score past sessions** on the evaluation's page and
+check what is missing. Backfill supports enabled compatible hosted and customer
+worker evaluations, including code, Jev, and LLM judges. Existing results and
+queued, completed, skipped, or failed work stay unchanged; publishing a new
+version does not rerun those sessions. For model-backed history, checking is
+free and model calls start only after you explicitly select **score**; usage
+charges apply.
 
 ## Deploy it as a pod
 

@@ -162,16 +162,22 @@ describe("toReview carries the observed checks, outside asked and notDenied", ()
 
 describe("active.json jevPolicies", () => {
   let dir: string;
-  let saved: string | undefined;
+  let saved: Record<string, string | undefined>;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "fpai-jevpolicies-"));
-    saved = process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
+    saved = { FAILPROOFAI_CLOUD_POLICY_DIR: process.env.FAILPROOFAI_CLOUD_POLICY_DIR, FAILPROOFAI_HOME: process.env.FAILPROOFAI_HOME };
     process.env.FAILPROOFAI_CLOUD_POLICY_DIR = dir;
+    // Hermetic: the reader treats a `config.json` saying `mode: oss`
+    // (disconnected) as no deployment, and the runner's real home may hold one
+    // that another test or step wrote.
+    process.env.FAILPROOFAI_HOME = join(dir, "home");
     _resetCloudManagedCachesForTest();
   });
   afterEach(() => {
-    if (saved === undefined) delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
-    else process.env.FAILPROOFAI_CLOUD_POLICY_DIR = saved;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     _resetCloudManagedCachesForTest();
     rmSync(dir, { recursive: true, force: true });
   });

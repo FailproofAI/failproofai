@@ -197,6 +197,8 @@ worker evaluations, including code, Jev, and LLM judges. Existing results and
 queued, completed, skipped, or failed work stay unchanged; publishing a new
 version does not rerun those sessions. Sessions that could not be queued are
 reported separately and can be retried by checking the same window again.
+If a history scan is too large, narrow its window or evaluation scope and check
+again; a refused scan queues nothing.
 For model-backed history, checking is
 free and model calls start only after you explicitly select **score**; usage
 charges apply.

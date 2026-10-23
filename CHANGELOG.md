@@ -4,7 +4,7 @@
 
 ### Docs
 
-- Clarify bulk history scoring for code, Jev, and LLM judges, explicit model-cost approval, condition skips, fresh previews, fair shared capacity, and enqueue-failure retries for hosted and customer workers (#930)
+- Clarify bulk history scoring for code, Jev, and LLM judges, explicit model-cost approval, condition skips, fresh previews, large-scan refusals, fair shared capacity, and enqueue-failure retries for hosted and customer workers (#930)
 
 ### Security
 

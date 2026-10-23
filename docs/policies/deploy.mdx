@@ -136,23 +136,21 @@ yet, and targeted assignments do not match it until a slot frees up.
 
 A Cloud policy can carry Jev checks as well as, or instead of, JavaScript. Its kind is `jev` (Jev checks only) or `both` (JavaScript whose verdict its own checks may clear). It deploys, toggles and rolls back exactly like any other policy.
 
-Jev checks run on FailproofAI Cloud; nothing is installed on the machine. The machine receives only the JavaScript of a `both` policy and the Jev mode you set for it. With a mode of `observe` or `enforce`, each checked tool call goes to FailproofAI Cloud, which asks the checks deployed to that machine and returns their verdict.
+Jev checks run on FailproofAI Cloud; nothing is installed on the machine. The machine receives only the JavaScript of a `both` policy. While a `jev` or `both` policy is deployed to it, FailproofAI Cloud turns Jev on for the machine, and each checked tool call of an agent the policy targets goes to FailproofAI Cloud, which asks the checks deployed to that agent and returns their verdict. With none deployed, Jev is off there. There is no Jev mode to set by hand.
 
 ```bash
 fp policies publish prod-db-intent --kind jev --semantic ./checks.json
-fp fleet deploy <machine-id> --add prod-db-intent --jev-mode observe
+fp fleet deploy <machine-id> --add prod-db-intent:observe
 ```
 
-An effect applies to JavaScript only. To trial Jev checks without them deciding anything, set the machine's Jev mode to `observe`, then to `enforce` once the policy page shows what they would have done. In `enforce`, Jev's checks **block** calls as well as clearing the JavaScript verdicts they review. The mode is the machine's: it also governs the checks of any pack installed there. To change only the mode, run `fp fleet jev-mode <machine-id> observe`. The policy set is left exactly as it is.
-
-A `both` policy deployed with `:observe` sends only its JavaScript, which is observed. Its Jev checks are not asked while it is observed, as with an observe pack.
+To trial Jev checks without them deciding anything, deploy the policy with `:observe`: its checks are asked and their answers recorded as "would have", and they neither block nor clear anything. Redeploy it as `enforce` once the policy page shows what they would have done; then Jev's checks **block** calls as well as clearing the JavaScript verdicts they review. A `both` policy deployed with `:observe` observes both halves.
 
 A `both` policy's JavaScript can be cleared only by its own checks' answers from FailproofAI Cloud. An installed pack's check of the same name never clears it. If FailproofAI Cloud cannot be reached, or sets no mode that asks, the policy stays **hard**: every deny of its JavaScript stands.
 
 Agent targeting works for Jev-only policies too. For a `both` policy, the
 assignment's one target governs **both** its local JavaScript and its Cloud Jev
-checks; a call outside that target runs neither half. Keep the machine's Jev
-mode in `observe` while trialing scoped checks, just as you would for an
+checks; a call outside that target runs neither half. Keep the
+policy at `observe` while trialing scoped checks, just as you would for an
 unscoped Jev rollout.
 
 A machine reports what stops it from asking, and `fp fleet show <machine-id>` lists it under policy errors:

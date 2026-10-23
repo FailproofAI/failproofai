@@ -43,10 +43,6 @@ VALID_EFFECTS = ("enforce", "observe")
 #: JavaScript reviewable by its own Jev checks (`both`).
 VALID_KINDS = ("regex", "jev", "both")
 
-#: The Jev modes a deployment may set. `local` stops FailproofAI Cloud
-#: overriding the machine's own mode (the server stores it as no value).
-JEV_MODES = ("off", "observe", "enforce", "local")
-
 #: The server's (and the machine's) cap on Jev declarations per policy version.
 MAX_JEV_DECLARATIONS = 24
 AGENT_INTEGRATIONS = frozenset({
@@ -120,22 +116,6 @@ class DeployPlan:
     removed: List[PolicyRef]
     changed: List[Tuple[PolicyRef, PolicyRef]]
     unchanged: List[PolicyRef]
-    #: `--jev-mode` as given (`off|observe|enforce|local`), or None when the
-    #: command said nothing about Jev — which the server reads as "keep it".
-    jev_mode: Optional[str] = None
-    #: The mode FailproofAI Cloud sets on the machine now (None = local).
-    jev_mode_before: Optional[str] = None
-
-    @property
-    def jev_mode_after(self) -> Optional[str]:
-        """What the machine's Cloud-set mode will be (None = local)."""
-        if self.jev_mode is None:
-            return self.jev_mode_before
-        return None if self.jev_mode == "local" else self.jev_mode
-
-    @property
-    def jev_mode_changes(self) -> bool:
-        return self.jev_mode is not None and self.jev_mode_after != self.jev_mode_before
 
     @property
     def set_changes(self) -> bool:
@@ -144,7 +124,7 @@ class DeployPlan:
 
     @property
     def is_noop(self) -> bool:
-        return not (self.set_changes or self.jev_mode_changes)
+        return not self.set_changes
 
     def to_dict(self) -> Dict[str, object]:
         out: Dict[str, object] = {
@@ -157,13 +137,6 @@ class DeployPlan:
             "unchanged": [p.to_dict() for p in self.unchanged],
             "noop": self.is_noop,
         }
-        if self.jev_mode is not None:
-            # `local` on both sides: the wire word, not the stored NULL.
-            out["jevMode"] = {
-                "from": self.jev_mode_before or "local",
-                "to": self.jev_mode_after or "local",
-                "changed": self.jev_mode_changes,
-            }
         return out
 
 
@@ -237,8 +210,6 @@ def plan_deploy(
     replace: Optional[Sequence[str]] = None,
     latest: Optional[Dict[str, int]] = None,
     disabled: Optional[set] = None,
-    jev_mode: Optional[str] = None,
-    current_jev_mode: Optional[str] = None,
     kinds: Optional[Dict[Tuple[str, int], str]] = None,
     targets: Sequence[str] = (),
     all_agents: Sequence[str] = (),
@@ -249,16 +220,13 @@ def plan_deploy(
     with "these as well" has no single obvious reading, and guessing one would
     be guessing about somebody's fleet.
 
-    `jev_mode` is `--jev-mode`; `current_jev_mode` what Cloud sets now (None =
-    local). `kinds` maps `(id, version)` to the version's kind, so an `observe`
-    effect on a Jev-only version — which the server refuses, because a Jev
-    rollout is observed through the Jev MODE — is refused here, before a plan is
-    drawn and confirmed for a write that cannot happen.
+    There is no Jev mode to set: FailproofAI Cloud derives a machine's Jev mode
+    from what is deployed to it (enforce while any `jev`/`both` policy is,
+    off otherwise), and a Jev rollout is observed per policy with an `observe`
+    effect like any other. `kinds` (`(id, version)` → kind) is accepted for
+    callers that already have it.
     """
-    if jev_mode is not None and jev_mode not in JEV_MODES:
-        raise RefUsageError(
-            f"--jev-mode {jev_mode!r} is not one of {', '.join(JEV_MODES)}"
-        )
+    del kinds
     latest = latest or {}
     current_list = list(current or [])
     current_map = {p.id: p for p in current_list}
@@ -314,13 +282,6 @@ def plan_deploy(
         result_map[pid] = dataclass_replace(result_map[pid], agent_targets=grouped.get(pid))
 
     result = sorted(result_map.values(), key=lambda p: p.id)
-    for ref in result:
-        if ref.effect == "observe" and (kinds or {}).get((ref.id, ref.version)) == "jev":
-            raise RefUsageError(
-                f"{ref.id}@{ref.version} is a Jev policy, and an effect does not apply to Jev "
-                "checks — deploy it as enforce and use --jev-mode observe to watch Jev without "
-                "it deciding anything"
-            )
     added, removed, changed, unchanged = [], [], [], []
     for pid, ref in sorted(result_map.items()):
         was = current_map.get(pid)
@@ -342,14 +303,7 @@ def plan_deploy(
         removed=removed,
         changed=changed,
         unchanged=unchanged,
-        jev_mode=jev_mode,
-        jev_mode_before=current_jev_mode,
     )
-
-
-def jev_mode_after(mode: str) -> Optional[str]:
-    """What a `--jev-mode`/`jev-mode` word leaves stored: `local` is None (Cloud stops overriding)."""
-    return None if mode == "local" else mode
 
 
 def version_kinds(policies: Iterable[PolicyVersion]) -> Dict[Tuple[str, int], str]:

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createConnection, type Server, type Socket } from "node:net";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as handler from "../../src/hooks/handler";
@@ -97,7 +97,8 @@ describe("worker invocation dedup (real socket, evaluator and activity store)", 
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     _resetForTest();
-    // Retain isolated artifacts for inspection; no writes reach the real home.
+    rmSync(dir, { recursive: true, force: true });
+    expect(existsSync(dir)).toBe(false);
   });
 
   function request(payload: Record<string, unknown> = {}, hookEvent = "PreToolUse", cli = "claude") {

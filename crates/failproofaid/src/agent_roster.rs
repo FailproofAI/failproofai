@@ -259,11 +259,37 @@ fn profiles_at(home: &Path) -> Vec<AgentProfile> {
                 && let Some(item) = profile("openclaw", label, entry.path().join("openclaw.json"))
             {
                 out.push(item);
+            } else if let Some((integration, file)) = relocated_profile_file(&name)
+                && entry.path().join(file).exists()
+                && let Some(item) = profile(integration, &name, entry.path().join(file))
+            {
+                // `CLAUDE_CONFIG_DIR=~/.claude-work` / `CODEX_HOME=~/.codex-work`:
+                // labelled by its folder, as a hook sighting of it is.
+                out.push(item);
             }
         }
     }
     out.sort_by(|a, b| (&a.integration, &a.settings_path).cmp(&(&b.integration, &b.settings_path)));
     out
+}
+
+/// A sibling home a `CLAUDE_CONFIG_DIR` / `CODEX_HOME` profile conventionally
+/// lives in (`~/.claude-<name>`, `~/.codex-<name>`), and the user config the
+/// hook resolves inside it.
+fn relocated_profile_file(name: &str) -> Option<(&'static str, &'static str)> {
+    if name
+        .strip_prefix(".claude-")
+        .is_some_and(|rest| !rest.is_empty())
+    {
+        Some(("claude", "settings.json"))
+    } else if name
+        .strip_prefix(".codex-")
+        .is_some_and(|rest| !rest.is_empty())
+    {
+        Some(("codex", "hooks.json"))
+    } else {
+        None
+    }
 }
 
 fn unused_instance_id(active: &mut HashSet<String>) -> io::Result<String> {
@@ -838,6 +864,79 @@ mod tests {
         assert_eq!(scope_of(&claude), (".claude-work".into(), "user".into()));
         assert_eq!(scope_of(&codex), (".codex-work".into(), "user".into()));
         assert_eq!(scope_of(&project), (".claude".into(), "project".into()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_hooked_config_dir_sibling_is_traced_with_its_label_before_any_hook_runs() {
+        let root = std::env::temp_dir().join(format!("fpai-roster-{}", new_instance_id().unwrap()));
+        let home = root.join("home");
+        let path = root.join("fpai/agents/roster.json");
+        let hooked =
+            r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"failproofai --hook PreToolUse"}]}]}}"#;
+        for (dir, file, text) in [
+            (".claude-work", "settings.json", hooked),
+            (".codex-work", "hooks.json", hooked),
+            (".claude-idle", "settings.json", "{}"),
+            // No config file: not a profile.
+            (".claude-backup", "notes.txt", hooked),
+        ] {
+            fs::create_dir_all(home.join(dir)).unwrap();
+            fs::write(home.join(dir).join(file), text).unwrap();
+        }
+        let roster = refresh(&path, &home).unwrap();
+        let mut traced: Vec<_> = roster
+            .traced()
+            .map(|agent| {
+                (
+                    agent.integration.as_str(),
+                    agent.profile_label.as_str(),
+                    agent.scope.as_str(),
+                )
+            })
+            .collect();
+        traced.sort_unstable();
+        assert_eq!(
+            traced,
+            [
+                ("claude", ".claude-work", "user"),
+                ("codex", ".codex-work", "user")
+            ]
+        );
+        assert!(
+            !roster
+                .agents
+                .iter()
+                .any(|agent| agent.profile_label == ".claude-backup")
+        );
+        // The hook's later sighting of the same file keeps the same entry.
+        let id = |roster: &AgentRoster| {
+            roster
+                .agents
+                .iter()
+                .find(|agent| agent.profile_label == ".claude-work")
+                .unwrap()
+                .instance_id
+                .clone()
+        };
+        let before = id(&roster);
+        record_sighting(
+            &path,
+            &home,
+            "claude",
+            &home.join(".claude-work/settings.json"),
+        )
+        .unwrap();
+        let after = read(&path).unwrap().unwrap();
+        assert_eq!(id(&after), before);
+        assert_eq!(
+            after
+                .agents
+                .iter()
+                .filter(|agent| agent.profile_label == ".claude-work")
+                .count(),
+            1
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

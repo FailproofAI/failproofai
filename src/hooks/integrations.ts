@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { writeConfigFileAtomic } from "./safe-config-write";
-import { codexSystemHooksPresent, type CodexSystemHookEntry } from "./codex-system-hooks";
+import { codexHome, codexSystemHooksPresent, type CodexSystemHookEntry } from "./codex-system-hooks";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import {
@@ -253,6 +253,21 @@ export function settingsPathsFor(
   return paths && paths.length > 0 ? paths : [integration.getSettingsPath(scope, cwd)];
 }
 
+// ── Agent profile homes ─────────────────────────────────────────────────────
+
+/**
+ * The user-scope config folder of the Claude Code profile this command runs
+ * for: `CLAUDE_CONFIG_DIR` when set (`~/.claude-work`), else `~/.claude`. The
+ * hook resolves the same variable (`runtimeAgentSettingsPath`), so install,
+ * uninstall and the roster all name one file per profile.
+ */
+export function claudeConfigDir(): string {
+  const dir = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return dir ? resolve(dir) : resolve(homedir(), ".claude");
+}
+
+export { codexHome };
+
 // ── Claude Code integration ─────────────────────────────────────────────────
 
 export const claudeCode: Integration = {
@@ -265,7 +280,7 @@ export const claudeCode: Integration = {
     const base = cwd ? resolve(cwd) : process.cwd();
     switch (scope) {
       case "user":
-        return resolve(homedir(), ".claude", "settings.json");
+        return resolve(claudeConfigDir(), "settings.json");
       case "project":
         return resolve(base, ".claude", "settings.json");
       case "local":
@@ -439,7 +454,7 @@ export const codex: Integration = {
     const base = cwd ? resolve(cwd) : process.cwd();
     switch (scope) {
       case "user":
-        return resolve(homedir(), ".codex", "hooks.json");
+        return resolve(codexHome(), "hooks.json");
       case "project":
         return resolve(base, ".codex", "hooks.json");
       case "local":

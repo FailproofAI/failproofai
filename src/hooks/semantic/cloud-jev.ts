@@ -102,6 +102,12 @@ export interface CloudReplySummary {
   /** The machine's own groups Cloud dropped, with the pack that declared each (null when none did). */
   droppedLocal: Array<{ name: string; packId: string | null }>;
   droppedCloud: string[];
+  /**
+   * TypeSafe's answers to the Cloud checks' own questions (`<check>.<probe>`,
+   * `<check>.exempt`), for the activity row's per-check record. Ids and
+   * numbers only; the machine never decides from these (Cloud did).
+   */
+  answers: Record<string, number>;
 }
 
 export type CloudSemanticOutcome =
@@ -539,6 +545,28 @@ function expectedQuestions(request: JevRequest, prepared: PreparedCall, dropped:
   return { ...request, questions };
 }
 
+/** A question id's own part, as declarations allow it (`force_push`, `exempt`). */
+const QUESTION_PART_RE = /^[a-z][a-z0-9_]{0,31}$/;
+
+/**
+ * The answers to the questions Cloud added for the checks it asked: every
+ * `<check>.<part>` id whose check is in `asked`, read leniently (a missing or
+ * malformed one is simply not recorded — Cloud has already decided).
+ */
+export function cloudCheckAnswers(response: JevResponse, asked: ReadonlyArray<string>): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (asked.length === 0) return out;
+  const names = new Set(asked);
+  const answers = response.answers && typeof response.answers === "object" ? response.answers : {};
+  for (const [id, a] of Object.entries(answers)) {
+    const dot = id.lastIndexOf(".");
+    if (dot <= 0 || !names.has(id.slice(0, dot)) || !QUESTION_PART_RE.test(id.slice(dot + 1))) continue;
+    const p = (a as { noul?: unknown } | null)?.noul;
+    if (isProbability(p)) out[id] = p;
+  }
+  return out;
+}
+
 /** Whatever answers a short-circuit reply carries, read leniently: none is required. */
 function presentAnswers(response: JevResponse): Record<string, number> {
   const out: Record<string, number> = {};
@@ -579,7 +607,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
       model: opts.model ?? DEFAULT_JEV_MODEL,
       modelVerified: true,
       via: "none",
-      cloud: { asked: [], droppedLocal: [], droppedCloud: [] },
+      cloud: { asked: [], droppedLocal: [], droppedCloud: [], answers: {} },
     };
   }
   let prepared: PreparedCall;
@@ -664,6 +692,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
         asked: reply.asked,
         droppedLocal: [...dropped].map((name) => ({ name, packId: own.get(name)?.origin?.packId ?? null })),
         droppedCloud: reply.droppedCloud,
+        answers: cloudCheckAnswers(response, reply.asked),
       },
     };
   } catch (err) {

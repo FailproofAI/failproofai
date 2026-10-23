@@ -236,7 +236,7 @@ import type { PolicyAuthority } from "../policy-types";
 // shape check the row's own `jevModel` does. Importing them makes a rename a
 // compile error here. `jev-activity.ts` is pure (no node imports, no semantic
 // modules), so this costs the hook path nothing.
-import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT } from "../jev-activity";
+import { JEV_MODEL_RE, JEV_REASON_REQUEST_CUT, type JevCheckRecord } from "../jev-activity";
 
 export type Decision = "allow" | "deny" | "instruct";
 export type JevMode = "observe" | "enforce";
@@ -287,6 +287,11 @@ export type JevReview =
       origin?: { packId: string; packVersion?: string };
       /** Semantic policies whose questions were in the request that was answered. */
       asked: readonly string[];
+      /**
+       * What each asked check concluded (`jevChecks` on the activity row).
+       * Recorded only; nothing here decides from it. Absent: not recorded.
+       */
+      checks?: readonly JevCheckRecord[];
       /**
        * Of `asked`, the ones whose answer lets a reviewable regex verdict be
        * cleared: `none`, `overridden`, or a deny the human's task softened to
@@ -380,6 +385,7 @@ export interface JevActivityFields {
   jevLatencyMs?: number;
   jevModel?: string;
   jevMode: JevMode;
+  jevChecks?: JevCheckRecord[];
 }
 
 /**
@@ -518,6 +524,7 @@ export function combineTwoTier(
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),
     ...(review.model ? { jevModel: review.model } : {}),
     jevMode: mode,
+    ...(review.checks ? { jevChecks: [...review.checks] } : {}),
   };
 
   if (mode === "observe") {

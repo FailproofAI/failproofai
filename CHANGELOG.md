@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.0.12-beta.1 — 2026-10-23
+## 1.0.12 — 2026-10-23
+
+The stable release of logging in to FailproofAI Cloud from `config` in your browser. Everything below in the `1.0.12-beta.*` sections ships here too.
 
 ### Fixes
 

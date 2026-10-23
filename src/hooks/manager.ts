@@ -334,6 +334,35 @@ export function integrationsInstalledAt(scope: HookScope, cwd?: string): Integra
  */
 export type NotEnforcingReason = "no-hooks" | "no-policies" | "observe-only";
 
+/** Machine-wide assignments, like the listing: a `both` policy counts once. */
+function cloudPolicyStatus(): { count: number; observing: boolean } {
+  let count = 0;
+  let observing = false;
+  const jsIds = new Set<string>();
+  try {
+    for (const artifact of listActiveCloudManagedPolicies()) {
+      jsIds.add(artifact.id);
+      if (artifact.effect === "observe") observing = true;
+      else count++;
+    }
+  } catch {
+    // The listing reports an unreadable JS deployment; Jev is read independently.
+  }
+  try {
+    const { jevMode } = readCloudJevState();
+    if (jevMode === "enforce" || jevMode === "observe") {
+      for (const assignment of readCloudJevAssignments() ?? []) {
+        if (jsIds.has(assignment.id)) continue;
+        if (jevMode === "observe" || assignment.effect === "observe") observing = true;
+        else count++;
+      }
+    }
+  } catch {
+    // No readable Jev state: neither enforcement nor observation is known.
+  }
+  return { count, observing };
+}
+
 export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
   const wired = deduplicateScopes(HOOK_SCOPES, cwd).some((scope) => hooksInstalledInSettings(scope, cwd));
   if (!wired) return "no-hooks";
@@ -363,15 +392,11 @@ export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
     // An unreadable manifest is reported by the listing itself.
   }
 
-  // Cloud-managed policies, pushed from a deployment.
-  try {
-    for (const artifact of listActiveCloudManagedPolicies()) {
-      if (artifact.effect === "observe") observing = true;
-      else return null;
-    }
-  } catch {
-    // No deployment, or an unreadable one: nothing enforces from there.
-  }
+  // Cloud JS enforces independently of Jev mode. Jev-only assignments enforce
+  // only in Cloud's enforce mode, and watch only while Jev is not off.
+  const cloud = cloudPolicyStatus();
+  if (cloud.count > 0) return null;
+  observing ||= cloud.observing;
 
   // A configured custom policy file, or convention files on disk. Loading them
   // to ask what they hold would import user code on every launch, so their
@@ -392,10 +417,11 @@ export function notEnforcingReason(cwd?: string): NotEnforcingReason | null {
  * How many policies enforce on this machine, for the line that says so.
  *
  * Counted the same way `notEnforcingReason` decides, so the two never disagree:
- * pack policies that are taken and not switched off, cloud-managed policies, and
- * the legacy builtins of a machine still on the migration shim — observe-only
- * ones excluded. Custom policy files cannot be counted without importing them,
- * so their presence is reported on its own.
+ * pack policies that are taken and not switched off, Cloud JS policies and
+ * Jev-only assignments in Cloud's enforce mode, and the legacy builtins of a
+ * machine still on the migration shim — observe-only ones excluded, `both`
+ * assignments counted once. Custom policy files cannot be counted without
+ * importing them, so their presence is reported on its own.
  */
 export function enforcingPolicyCount(cwd?: string): { count: number; custom: boolean } {
   const config = readMergedHooksConfig(cwd);
@@ -410,13 +436,7 @@ export function enforcingPolicyCount(cwd?: string): { count: number; custom: boo
   } catch {
     // An unreadable manifest counts nothing, as it enforces nothing.
   }
-  try {
-    for (const artifact of listActiveCloudManagedPolicies()) {
-      if (artifact.effect !== "observe") count++;
-    }
-  } catch {
-    // No deployment.
-  }
+  count += cloudPolicyStatus().count;
   if (!hasInstalledRegexPacks()) count += config.enabledPolicies.length;
   const projectDir = resolve(findProjectConfigDir(cwd ?? process.cwd()), ".failproofai", "policies");
   const custom =

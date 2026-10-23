@@ -208,8 +208,11 @@ That verifies the credentials against the server before storing anything, then
 writes the `cloud` object of `~/.failproofai/credentials.json` (mode 0600; the
 layout-1 `cloud.json` is still read when `credentials.json` is absent).
 `--disconnect` removes it together with `desired-state.json` (first, so nothing
-can rebuild the pointer from it), `active.json`, the two error files and
-`jev-budget.json`, and
+can rebuild the pointer from it), `active.json`, the two error files,
+`jev-budget.json`, `load-checked.json` and the content-addressed `artifacts/`
+directory. The departed organisation's policy source is removed; a reconnect
+downloads the artifacts its deployment names. CLI cleanup runs only in the
+default directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.
 `--status` reports the connection with the token masked.
 
 A disconnect sticks. The daemon never rebuilds `active.json` on a machine that

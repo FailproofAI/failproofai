@@ -197,13 +197,14 @@ pub struct Uploader {
     credential_refusals: std::sync::atomic::AtomicBool,
 }
 
-/// What to do with a batch the server refuses for a credential (401/403).
+/// Credential-refusal policy. Both variants preserve the entire source batch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnCredentialRefusal {
     /// Park it as a definitive refusal (`.c401`). A fresh batch.
     Park,
-    /// Delete it. A parked batch re-sent with a key the server has since
-    /// accepted: refused again by THAT key, it never will be accepted.
+    /// Legacy redrive policy, retained for caller compatibility. Like `Park`,
+    /// reparks the original: a refusal of one chunk says nothing about chunks
+    /// not yet sent, even when the key accepted a different batch.
     Drop,
 }
 
@@ -296,7 +297,7 @@ impl Uploader {
     }
 
     /// Ask for another re-send pass after the next accepted delivery: one
-    /// re-send could not reach a verdict (a server or network error).
+    /// re-send could not reach a verdict, or a bounded pass left a remainder.
     pub fn note_credential_refusals(&self) {
         self.credential_refusals.store(true, Ordering::SeqCst);
     }
@@ -311,11 +312,11 @@ impl Uploader {
         self.upload_file_with(path, OnCredentialRefusal::Park).await
     }
 
-    /// [`Self::upload_file`], choosing what a credential refusal does.
+    /// [`Self::upload_file`], accepting the legacy credential-refusal policy.
     pub async fn upload_file_with(
         &self,
         path: &Path,
-        on_refusal: OnCredentialRefusal,
+        _on_refusal: OnCredentialRefusal,
     ) -> Result<(), UploadError> {
         let bytes = match tokio::fs::read(path).await {
             Ok(b) => b,
@@ -328,7 +329,7 @@ impl Uploader {
         let bytes = filter_boundary(&bytes, self.since_ms, crate::org_boundary::mtime_ms(path));
         let bytes = redact_batch(&bytes, self.redact);
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
-            self.post_batch(path, chunk, on_refusal).await?;
+            self.post_batch(path, chunk).await?;
         }
 
         match tokio::fs::remove_file(path).await {
@@ -340,12 +341,7 @@ impl Uploader {
 
     /// POST one body, retrying per policy. `path` is used only for parking and
     /// log context — this never deletes it.
-    async fn post_batch(
-        &self,
-        path: &Path,
-        bytes: Vec<u8>,
-        on_refusal: OnCredentialRefusal,
-    ) -> Result<(), UploadError> {
+    async fn post_batch(&self, path: &Path, bytes: Vec<u8>) -> Result<(), UploadError> {
         let mut attempt: u32 = 0;
         let batch_id = batch_id(path);
 
@@ -428,24 +424,6 @@ impl Uploader {
                     // than "you are wrong". Treating them as definitive would
                     // park a batch the server explicitly asked us to resend.
                     let retryable = status.is_server_error() || code == 408 || code == 429;
-                    if !retryable
-                        && is_credential_status(code)
-                        && on_refusal == OnCredentialRefusal::Drop
-                    {
-                        tracing::warn!(
-                            file = %path.display(),
-                            request_id = %request_id,
-                            batch_id = %batch_id,
-                            status = code,
-                            "a batch an earlier key had refused was refused again by the current key; dropping it"
-                        );
-                        if let Err(err) = tokio::fs::remove_file(path).await
-                            && err.kind() != std::io::ErrorKind::NotFound
-                        {
-                            return Err(UploadError::Io(err));
-                        }
-                        return Err(UploadError::Client { status: code });
-                    }
                     if !retryable {
                         if is_credential_status(code) {
                             self.credential_refusals.store(true, Ordering::SeqCst);

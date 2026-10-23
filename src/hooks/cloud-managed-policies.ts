@@ -170,10 +170,11 @@ export function resolveManagedPath(root: string, candidate: string): string {
  * Stop enforcing cloud-managed policies on this machine.
  *
  * Removes `desired-state.json` FIRST, then `active.json` — the manifest that
- * says which deployment is live — both error reports and the Jev budget record.
- * The content-addressed artifacts are left alone: they are large, hash-verified
- * on use, and inert once nothing points at them, so keeping them makes a
- * reconnect cheap.
+ * says which deployment is live — both error reports, the Jev budget record,
+ * the load-check record and the content-addressed `artifacts/` directory.
+ * The departed organisation's policy source is removed too; a reconnect
+ * downloads the artifacts its deployment names. Cleanup runs only in the
+ * CLI-owned default directory, never a `FAILPROOFAI_CLOUD_POLICY_DIR` override.
  *
  * The snapshot has to go, and before the pointer. It is what the daemon's
  * maintenance lane rebuilds a lost `active.json` from, and it used to be left

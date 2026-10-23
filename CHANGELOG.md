@@ -23,7 +23,7 @@
 - A regex Cloud (or local) deny that decided before FailproofAI Cloud's Jev answered is recorded as that policy's row, without `evaluator: "jev"` (#928)
 - Plain http to a loopback host (`localhost`, `127.0.0.1`, `::1`) is accepted in enforce mode too, so a local FailproofAI Cloud works for testing; other http hosts stay refused.
 - The daemon reports only traced agents to FailproofAI Cloud: one entry per hooked profile (each Hermes and OpenClaw profile under its own label).
-- After an accepted delivery the daemon re-sends batches an earlier key refused (401/403) with the current key, dropping one only if that key refuses it too; `config --status` says the cloud is refusing this machine's key only when the current key is refused.
+- After an accepted delivery the daemon re-sends batches an earlier key refused (401/403) with the current key; repeated refusals preserve and repark the entire original, including unsent chunks. Replay runs in one globally gated, watcher/sweeper-owned background task, capped at one batch and 30 seconds, cancelled on shutdown, and yields to fresh deliveries; unfinished work is scheduled after the next accepted delivery. `config --status` says the cloud is refusing this machine's key only when the current key is refused.
 - `failproofai policies` shows a deployed Cloud policy as on; the transient "not loaded yet" state is gone.
 - The connect Jev line is one short line: `managed by FailproofAI Cloud · <mode>` (`off — no Jev policy deployed`, or `waiting for its first deployment` before one is read) (#928)
 - The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)

@@ -79,6 +79,136 @@ fn wait_until(budget: Duration, mut cond: impl FnMut() -> bool) -> bool {
     cond()
 }
 
+#[tokio::test]
+async fn refused_backlog_is_bounded_and_each_fresh_delivery_progresses_first() {
+    let server = ok_server().await;
+    let spool = tmpdir("priority-spool");
+    let failed = tmpdir("priority-failed");
+    for i in 0..5 {
+        fs::write(
+            failed.join(format!("old-{i}.a1.c401.jsonl")),
+            format!("{{\"old\":{i}}}\n"),
+        )
+        .unwrap();
+    }
+    let d = delivery(&server, &failed);
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let watcher = tokio::spawn(fpai_collect::delivery::watch(
+        d,
+        vec![spool.clone()],
+        Shutdown::for_test(shutdown.clone()),
+    ));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    for i in 0..5 {
+        let fresh = spool.join(format!("fresh-{i}.jsonl"));
+        let body = format!("{{\"fresh\":{i}}}\n");
+        let tmp = fresh.with_extension("tmp");
+        fs::write(&tmp, &body).unwrap();
+        fs::rename(tmp, &fresh).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while fresh.exists() || fs::read_dir(&failed).unwrap().count() != 4 - i {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the watcher must deliver fresh work and one bounded replay");
+        assert!(!fresh.exists());
+        assert_eq!(
+            fs::read_dir(&failed).unwrap().count(),
+            4 - i,
+            "one pass may retry only one refused batch"
+        );
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), (i + 1) * 2);
+        assert_eq!(requests[i * 2].body, body.as_bytes());
+        assert!(
+            String::from_utf8_lossy(&requests[i * 2 + 1].body).contains("\"old\""),
+            "fresh work must precede background redrive"
+        );
+    }
+    // No new uploader or explicit redrive was needed: the retry flag carried
+    // the remainder from one accepted delivery to the next.
+    shutdown.store(true, Ordering::Relaxed);
+    tokio::time::timeout(Duration::from_secs(2), watcher)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    fs::remove_dir_all(spool).unwrap();
+    fs::remove_dir_all(failed).unwrap();
+}
+
+#[tokio::test]
+async fn slow_refused_replay_does_not_stall_fresh_watcher_events_and_stops_with_owner() {
+    use wiremock::matchers::body_string;
+    let server = MockServer::start().await;
+    let old_body = "{\"old\":1}\n";
+    Mock::given(method("POST"))
+        .and(body_string(old_body))
+        .respond_with(ResponseTemplate::new(503).set_delay(Duration::from_secs(10)))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"accepted": 1})))
+        .mount(&server)
+        .await;
+    let spool = tmpdir("slow-replay-spool");
+    let failed = tmpdir("slow-replay-failed");
+    let old = failed.join("old.a1.c401.jsonl");
+    fs::write(&old, old_body).unwrap();
+    let d = delivery(&server, &failed);
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let watcher = tokio::spawn(fpai_collect::delivery::watch(
+        d,
+        vec![spool.clone()],
+        Shutdown::for_test(shutdown.clone()),
+    ));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    publish_batch(&spool, "first").await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.body == old_body.as_bytes())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("accepted watcher delivery must start background replay");
+
+    publish_batch(&spool, "second").await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fs::read_dir(&spool).unwrap().count() != 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("fresh watcher events must progress while replay is still waiting");
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    shutdown.store(true, Ordering::Relaxed);
+    tokio::time::timeout(Duration::from_secs(2), watcher)
+        .await
+        .expect("shutdown must cancel the owned slow replay")
+        .unwrap()
+        .unwrap();
+    assert_eq!(fs::read(&old).unwrap(), old_body.as_bytes());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        3,
+        "no detached retries after shutdown"
+    );
+    fs::remove_dir_all(spool).unwrap();
+    fs::remove_dir_all(failed).unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_watcher_fires_on_the_rename_the_spool_writer_actually_performs() {
     let server = ok_server().await;

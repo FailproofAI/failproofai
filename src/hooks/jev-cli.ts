@@ -147,7 +147,7 @@ import {
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevState } from "./cloud-managed-policies";
-import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
+import { CLOUD_MANAGED_JEV_MODE, cloudManagesJevMode, readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, optsFor, paint, screenKit, stack, wrap, type RenderOpts } from "./tui";
 
@@ -366,6 +366,9 @@ function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } 
     return { cloudConnected: false, keyCarriesJev: false };
   }
 }
+
+/** What `jev setup --mode` says on a machine whose Jev mode FailproofAI Cloud sets. */
+const CLOUD_MANAGED_MODE_LINES = [CLOUD_MANAGED_JEV_MODE, "Deploy or remove Jev policies in FailproofAI Cloud to change it. Nothing was written."];
 
 /** The one line `status` titles a connected machine whose key has no Jev with. */
 const KEY_LACKS_JEV_TITLE = "off — no Jev key is stored for this machine's FailproofAI Cloud connection";
@@ -689,6 +692,9 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values, bools } = parsed;
+  // A machine connected for policies has its Jev mode set by FailproofAI Cloud
+  // alone: enforce while a Jev policy is deployed to it, off when none is.
+  if (values.has("--mode") && cloudManagesJevMode()) return fail(CLOUD_MANAGED_MODE_LINES);
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
   // One source for the key, so no run has to decide which of two the person
   // meant. The message names the recommended one first.

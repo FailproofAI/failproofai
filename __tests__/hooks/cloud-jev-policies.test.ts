@@ -1971,3 +1971,49 @@ describe("read once per change", () => {
     });
   });
 });
+
+// ── Fix round: per-policy observe, jevPolicies scoping, no Jev fields unasked ─
+
+describe("Cloud Jev assignments on the machine (jevPolicies)", () => {
+  it("an observe assignment's deny is recorded under its Cloud policy and never applied", async () => {
+    await connect();
+    deploy({ jevMode: "enforce", extra: { jevPolicies: [{ id: "prod-db", version: 3, effect: "observe" }] } });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-prod-db", "prod-db", "deny")]) } }));
+    const result = await hook("psql -h prod-db -c 'delete from users'");
+    expect(result.evaluation?.decision).toBe("allow");
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row.observed).toContainEqual(expect.objectContaining({ policyId: "prod-db", version: 3, decision: "deny" }));
+    expect(row.policySource).toBeUndefined();
+    store._resetForTest();
+  });
+
+  it("no Cloud call for an agent no Cloud Jev check targets, and no Jev fields on its row", async () => {
+    await connect();
+    deploy({ jevMode: "enforce", extra: { jevPolicies: [] } });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    const seen = stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([]) } }));
+    await hook("cat README.md");
+    expect(seen).toHaveLength(0);
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row.evaluator).toBeUndefined();
+    expect(row.jevMode).toBeUndefined();
+    store._resetForTest();
+  });
+
+  it("an older deployment without the list still asks Cloud, and a short-circuit stamps no Jev fields", async () => {
+    await connect();
+    deploy({ jevMode: "enforce" });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    const seen = stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: { ...cloudBlock([]), verdict: allowVerdict } } }));
+    await hook("cat README.md");
+    expect(seen).toHaveLength(1);
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row.evaluator).toBeUndefined();
+    expect(row.jevMode).toBeUndefined();
+    store._resetForTest();
+  });
+});

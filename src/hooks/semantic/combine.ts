@@ -331,6 +331,14 @@ export type JevReview =
        */
       requestCut: boolean;
       /**
+       * What the checks of an `observe` FailproofAI Cloud assignment would have
+       * done. Recorded on the row's `observed` list, never applied: they are in
+       * neither `asked` nor `notDenied`, so they clear nothing either.
+       */
+      observedCloud?: ReadonlyArray<ObservedCloudVerdict>;
+      /** The `observe` Cloud assignments' checks that were asked (reviewer keys); never in `asked`. */
+      observedAsked?: readonly string[];
+      /**
        * Null when nothing had to be sent (no semantic policy applied), or when
        * the answer came from the throttle's cache: a hit's ~0 ms is not a
        * provider latency.
@@ -389,6 +397,14 @@ export interface JevActivityFields {
  * and pack policies already use, so FailproofAI Cloud's policy page counts it
  * with no change on its side.
  */
+/** One observe Cloud assignment's would-have (see `JevReview.observedCloud`). */
+export interface ObservedCloudVerdict {
+  cloudPolicyId: string;
+  cloudVersion: number;
+  decision: "deny" | "instruct";
+  reason: string;
+}
+
 export interface ObserveVerdict {
   /** `semantic/<check>` — the name enforce mode would have attributed it to. */
   policyName: string;

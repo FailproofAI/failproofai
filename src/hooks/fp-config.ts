@@ -941,6 +941,25 @@ export function readCredentials(): FpCredentials {
 }
 
 /**
+ * Whether FailproofAI Cloud sets this machine's Jev mode: it is connected for
+ * policies (a machine id in `credentials.json`). Cloud then runs Jev in enforce
+ * while a Jev policy is deployed here and switches it off when none is; local
+ * mode settings do not apply. Never throws.
+ */
+export function cloudManagesJevMode(): boolean {
+  try {
+    const cloud = readCredentials().cloud;
+    return Boolean(cloud?.url && cloud.machineId);
+  } catch {
+    return false;
+  }
+}
+
+/** The one line a local mode switch answers with on such a machine. */
+export const CLOUD_MANAGED_JEV_MODE =
+  "Jev mode is managed by FailproofAI Cloud on this machine: enforce while a Jev policy is deployed here, off when none is.";
+
+/**
  * Project a parsed credentials object onto {@link FpCredentials}.
  *
  * Split out for the reason {@link projectConfig} is: the layout-2 → 3 carry

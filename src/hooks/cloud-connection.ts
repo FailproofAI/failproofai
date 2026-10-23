@@ -573,7 +573,7 @@ export function jevLines(outcome: ConnectOutcome): string[] {
     // local mode is said as the fallback it is, not as a promise (N3).
     const localMode = config?.status === "repointed" ? config.mode : "observe";
     if (localMode === "off") {
-      return [...lead, `${indent}switched off in ${config?.path ?? "jev.json"} (mode off). FailproofAI Cloud's Jev mode, if it sets one, arrives with its first deployment. To turn it on: \`failproofai jev setup --mode observe\`.`];
+      return [...lead, `${indent}switched off in ${config?.path ?? "jev.json"} (mode off) until FailproofAI Cloud's Jev mode arrives with this machine's first deployment; from then on FailproofAI Cloud decides.`];
     }
     return [
       ...lead,
@@ -590,7 +590,7 @@ export function jevLines(outcome: ConnectOutcome): string[] {
     if (config.otherOrigin) {
       lines.push(
         config.jevOff?.why === "off"
-          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here and turn it on: \`failproofai jev setup --provider failproofai --mode observe\`.`
+          ? `            It points at ${config.otherOrigin} and has Jev switched off (mode off), so Jev is off. To point it here: \`failproofai jev setup --provider failproofai\`.`
           : `            It points at ${config.otherOrigin}, so Jev stays off until you run \`failproofai jev setup --provider failproofai\`.`,
       );
     } else if (config.jevOff?.why === "refused") {
@@ -598,11 +598,11 @@ export function jevLines(outcome: ConnectOutcome): string[] {
         `            It was refused (${config.jevOff.problem}), so Jev is off. ${config.jevOff.fix ? `Fix: \`${config.jevOff.fix}\`.` : "Write a valid one: `failproofai jev setup --provider failproofai`."}`,
       );
     } else if (config.jevOff?.why === "off") {
-      lines.push("            It has Jev switched off (mode off), so Jev is off. To turn it on: `failproofai jev setup --mode observe`.");
+      lines.push("            It has Jev switched off (mode off) until FailproofAI Cloud's Jev mode arrives with this machine's first deployment; from then on FailproofAI Cloud decides.");
     }
     if (jev.stillOn) {
       lines.push(
-        `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. To switch it off: \`failproofai jev setup --mode off\`.`,
+        `            Jev is still on through FailproofAI Cloud (${jev.stillOn} mode): it sends each checked tool call and the recent prompt to FailproofAI Cloud. FailproofAI Cloud sets its mode: off when no Jev policy is deployed here.`,
       );
     }
     return lines;

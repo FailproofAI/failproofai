@@ -400,6 +400,55 @@ export function readCloudJevState(): CloudJevState {
   return { jevMode, deployment, errors };
 }
 
+// ── Which Cloud Jev checks this agent has (jevPolicies) ─────────────────────
+
+/** One `jev` / `both` assignment whose Jev checks FailproofAI Cloud asks here. */
+export interface CloudJevAssignment {
+  id: string;
+  version: number;
+  effect: PolicyEffect;
+  agentTargets?: AgentTarget[];
+}
+
+/**
+ * `active.json`'s `jevPolicies`: the Cloud Jev assignments of this deployment
+ * (ids, effects and scopes, never a question). `null` when the manifest does
+ * not carry the list (a server that predates it) or carries one this build
+ * cannot read: then nothing is known, and every gated call is still sent to
+ * Cloud, as before. Never throws.
+ */
+export function readCloudJevAssignments(): CloudJevAssignment[] | null {
+  try {
+    const active = readActiveRaw();
+    if (!active || !Array.isArray(active.jevPolicies)) return null;
+    const schema = active.schemaVersion as number;
+    const out: CloudJevAssignment[] = [];
+    for (const raw of active.jevPolicies as unknown[]) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+      const entry = raw as Record<string, unknown>;
+      if (typeof entry.id !== "string" || !POLICY_ID_RE.test(entry.id)) return null;
+      if (!Number.isSafeInteger(entry.version) || (entry.version as number) < 0) return null;
+      if (entry.effect !== undefined && entry.effect !== "enforce" && entry.effect !== "observe") return null;
+      const targets = parseAgentTargets(entry.agentTargets, schema);
+      out.push({
+        id: entry.id,
+        version: entry.version as number,
+        effect: entry.effect === "observe" ? "observe" : "enforce",
+        ...(targets ? { agentTargets: targets } : {}),
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** The Cloud Jev assignments that apply to `agent`, or null when unknown (see {@link readCloudJevAssignments}). */
+export function cloudJevAssignmentsFor(agent: AgentIdentity | null): CloudJevAssignment[] | null {
+  const all = readCloudJevAssignments();
+  return all === null ? null : all.filter((a) => agentTargetsMatch(a.agentTargets, agent));
+}
+
 // ── `both` policies: reviewed by their OWN Cloud checks ─────────────────────
 
 /**

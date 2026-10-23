@@ -71,6 +71,28 @@ pub struct DesiredState {
     /// sends one is ignored here, like any other field this build does not know.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jev_mode: Option<String>,
+    /// The `jev` and `both` assignments whose Jev checks FailproofAI Cloud asks
+    /// for this machine: id, version, effect and agent scope only — never a
+    /// declaration (CONTRACT C10). The CLI reads it to skip the Cloud Jev call
+    /// for an agent no Cloud check targets, and to record an `observe`
+    /// assignment's answers as observed. Absent (a server that predates it)
+    /// means unknown: the CLI asks Cloud on every gated call, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev_policies: Option<Vec<JevAssignment>>,
+}
+
+/// One Cloud Jev assignment as the machine sees it: no question, no digest.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JevAssignment {
+    pub id: String,
+    pub version: u64,
+    /// Absent means `enforce`, like a JS assignment's.
+    #[serde(default)]
+    pub effect: PolicyEffect,
+    /// Only schema 3 may carry this. Absent means all agents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_targets: Option<Vec<AgentTarget>>,
 }
 
 /// The Jev modes FailproofAI Cloud may set. `local` is the server's word for
@@ -132,6 +154,7 @@ impl From<LegacyDesiredState> for DesiredState {
             policies: old.policies.into_iter().map(DesiredPolicy::from).collect(),
             // A pre-rename daemon predates the Cloud Jev mode.
             jev_mode: None,
+            jev_policies: None,
         }
     }
 }
@@ -262,6 +285,10 @@ pub struct ActiveDeployment {
     /// `deny_unknown_fields`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jev_mode: Option<String>,
+    /// Carried from `DesiredState::jev_policies` in the same write. Skipped
+    /// when unset, so an older server's deployment writes the same bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev_policies: Option<Vec<JevAssignment>>,
 }
 
 /// The `active.json` key a pre-release build of this branch wrote when it
@@ -710,6 +737,7 @@ impl PolicyStore {
             deployment: desired.deployment,
             policies: active_policies,
             jev_mode: desired.jev_mode.clone(),
+            jev_policies: desired.jev_policies.clone(),
         };
         let manifest_bytes = serde_json::to_vec_pretty(&active)?;
         // The per-deployment `manifest.json` is gone with `deployments/<n>/`. It
@@ -1090,6 +1118,25 @@ fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> 
             "jevMode {mode:?} is not one of {JEV_MODES:?}"
         )));
     }
+    let mut jev_ids = HashSet::new();
+    for assignment in desired.jev_policies.iter().flatten() {
+        validate_policy_identity(&assignment.id)?;
+        if let Some(targets) = &assignment.agent_targets
+            && (desired.schema_version < SCOPED_DESIRED_STATE_SCHEMA_VERSION
+                || !validate_targets(targets))
+        {
+            return Err(ReconcileError::InvalidDesiredState(format!(
+                "Jev policy {} has invalid agentTargets for schema {}",
+                assignment.id, desired.schema_version
+            )));
+        }
+        if !jev_ids.insert(assignment.id.as_str()) {
+            return Err(ReconcileError::InvalidDesiredState(format!(
+                "duplicate Jev policy id {}",
+                assignment.id
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -1265,6 +1312,7 @@ mod tests {
                 agent_targets: None,
             }],
             jev_mode: None,
+            jev_policies: None,
         };
         let round_tripped: ActiveDeployment =
             serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
@@ -1301,6 +1349,7 @@ mod tests {
                 agent_targets: None,
             }],
             jev_mode: None,
+            jev_policies: None,
         }
     }
 
@@ -1523,6 +1572,7 @@ mod tests {
             deployment: 0,
             policies: vec![],
             jev_mode: None,
+            jev_policies: None,
         };
         let refuse = |_: &DesiredPolicy| -> Result<Vec<u8>, String> { Err("no fetch".into()) };
         assert!(
@@ -1752,6 +1802,7 @@ pub(crate) mod cloud_jev_tests {
                 agent_targets: None,
             }],
             jev_mode: Some("observe".into()),
+            jev_policies: None,
         }
     }
 
@@ -1928,6 +1979,71 @@ pub(crate) mod cloud_jev_tests {
     }
 
     /// The JS half, the derived authority and the Jev mode, in one atomic write.
+    #[test]
+    fn jev_assignments_ride_into_active_json_with_effect_and_scope() {
+        let store = temp_store("jev-assignments");
+        let mut state = jev_state(9);
+        state.schema_version = SCOPED_DESIRED_STATE_SCHEMA_VERSION;
+        state.jev_mode = Some("enforce".into());
+        state.jev_policies = Some(
+            serde_json::from_str(
+                r#"[{"id":"prod-db","version":2,"effect":"observe","agentTargets":[{"integration":"claude"}]},
+                    {"id":"no-prod-db","version":3}]"#,
+            )
+            .unwrap(),
+        );
+        assert!(store.reconcile(&state, &serve).unwrap().activated);
+        let active = store.read_active().unwrap().unwrap();
+        let jev = active.jev_policies.unwrap();
+        assert_eq!(jev[0].effect, PolicyEffect::Observe);
+        assert_eq!(
+            jev[0].agent_targets.as_ref().unwrap()[0].integration,
+            "claude"
+        );
+        assert_eq!(
+            jev[1].effect,
+            PolicyEffect::Enforce,
+            "absent effect is enforce"
+        );
+        let text = fs::read_to_string(store.active_manifest_path()).unwrap();
+        assert!(text.contains("\"jevPolicies\""), "{text}");
+
+        // Absent stays absent: an older server's deployment writes the same bytes.
+        let plain = temp_store("jev-assignments-absent");
+        plain.reconcile(&jev_state(9), &serve).unwrap();
+        let text = fs::read_to_string(plain.active_manifest_path()).unwrap();
+        assert!(!text.contains("jevPolicies"), "{text}");
+        fs::remove_dir_all(store.root()).ok();
+        fs::remove_dir_all(plain.root()).ok();
+    }
+
+    #[test]
+    fn a_bad_jev_assignment_refuses_the_whole_state() {
+        let parse = |json: &str| -> Vec<JevAssignment> { serde_json::from_str(json).unwrap() };
+        // Targets need schema 3.
+        let mut scoped_on_2 = jev_state(4);
+        scoped_on_2.jev_policies = Some(parse(
+            r#"[{"id":"a","version":1,"agentTargets":[{"integration":"codex"}]}]"#,
+        ));
+        assert!(validate_desired_state(&scoped_on_2).is_err());
+        let mut dup = jev_state(4);
+        dup.jev_policies = Some(parse(r#"[{"id":"a","version":1},{"id":"a","version":2}]"#));
+        assert!(validate_desired_state(&dup).is_err());
+        let mut unsafe_id = jev_state(4);
+        unsafe_id.jev_policies = Some(parse(r#"[{"id":"../x","version":1}]"#));
+        assert!(validate_desired_state(&unsafe_id).is_err());
+        // An unknown effect does not even parse.
+        assert!(
+            serde_json::from_str::<Vec<JevAssignment>>(
+                r#"[{"id":"a","version":1,"effect":"maybe"}]"#
+            )
+            .is_err()
+        );
+        let mut ok = jev_state(4);
+        ok.jev_policies = Some(parse(r#"[{"id":"a","version":1,"effect":"observe"}]"#));
+        assert!(validate_desired_state(&ok).is_ok());
+    }
+
     #[test]
     fn a_both_policy_and_the_jev_mode_activate_in_one_write() {
         let store = temp_store("both");
@@ -2389,6 +2505,7 @@ mod pre_rename_state_tests {
                 agent_targets: None,
             }],
             jev_mode: None,
+            jev_policies: None,
         }
     }
 
@@ -2410,6 +2527,7 @@ mod pre_rename_state_tests {
                 agent_targets: None,
             }],
             jev_mode: None,
+            jev_policies: None,
         };
         let text = serde_json::to_string(&state).unwrap();
         assert!(

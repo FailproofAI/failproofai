@@ -165,7 +165,8 @@ describe("connecting with a key that carries jev:evaluate", () => {
     const outcome = await connect(withPermissions(...MACHINE_PRESET));
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
     expect(text).toContain("switched off");
-    expect(text).toContain("jev setup --mode observe");
+    expect(text).toContain("FailproofAI Cloud decides");
+    expect(text).not.toContain("--mode");
   });
 
   // B2 (e2e round 1): `config`'s own jev.json (provider failproofai) left on
@@ -212,7 +213,8 @@ describe("connecting with a key that carries jev:evaluate", () => {
     expect(JSON.parse(readFileSync(jevConfigFile(), "utf8")).mode).toBe("off");
     const text = describeOutcome(outcome, "machine-1", URL_).join("\n");
     expect(text).toContain("switched off");
-    expect(text).toContain("jev setup --mode observe");
+    expect(text).toContain("FailproofAI Cloud decides");
+    expect(text).not.toContain("--mode");
   });
 
   it("never re-points a BYOK jev.json", async () => {

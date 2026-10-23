@@ -90,10 +90,28 @@ export interface CloudJevBlock {
 
 /** FailproofAI Cloud's reply block, validated. Its outcomes carry a pack-shaped `cloud:<id>` origin. */
 export interface CloudJevReply {
+  /** The ENFORCED checks' verdict: an observe assignment's outcomes are in `observed`, not here. */
   verdict: SemanticVerdict;
   asked: string[];
   droppedLocal: string[];
   droppedCloud: string[];
+  /** What the checks of an `observe` assignment would have done (deny / instruct only). */
+  observed: ObservedCloudCheck[];
+  /** Every check of an `observe` assignment Cloud asked, as `cloud:<id>/<name>` reviewer keys. */
+  observedAsked: string[];
+}
+
+/**
+ * One `observe` Cloud assignment's would-have: recorded on the activity row's
+ * `observed` list like an observe JS policy's, never applied, never a clear.
+ * One per policy, its most severe check.
+ */
+export interface ObservedCloudCheck {
+  cloudPolicyId: string;
+  cloudVersion: number;
+  check: string;
+  decision: "deny" | "instruct";
+  reason: string;
 }
 
 /** What the Cloud review adds to a `SemanticOutcome`, for the verdict log and the budget report. */
@@ -102,6 +120,8 @@ export interface CloudReplySummary {
   /** The machine's own groups Cloud dropped, with the pack that declared each (null when none did). */
   droppedLocal: Array<{ name: string; packId: string | null }>;
   droppedCloud: string[];
+  observed: ObservedCloudCheck[];
+  observedAsked: string[];
 }
 
 export type CloudSemanticOutcome =
@@ -113,6 +133,8 @@ export interface CloudSemanticOptions extends SemanticOptions {
   machineId: string;
   /** Explicit null = v2 request with unresolved identity (no scoped checks). */
   agent?: AgentIdentity | null;
+  /** Cloud policy ids whose Jev assignment on this machine is `observe` (`active.json` `jevPolicies`). */
+  observedPolicies?: ReadonlyArray<string>;
 }
 
 // ── The request ──────────────────────────────────────────────────────────────
@@ -366,8 +388,19 @@ const DECISIONS = new Set(["allow", "deny", "instruct"]);
 const VERDICTS = new Set(["deny", "instruct", "overridden", "none"]);
 const INTENTS = new Set(["op-requested", "task-step", "downgraded-task-step"]);
 
+/** One Cloud outcome as parsed: the outcome, and what only the reply can say about it. */
+interface ParsedCloudOutcome {
+  outcome: PolicyOutcome;
+  cloudPolicyId: string;
+  cloudVersion: number;
+  /** The assignment's effect, when Cloud says (`effect`); absent reads as `enforce`. */
+  observe: boolean;
+  /** Cloud's own line for this check, when it sends one. */
+  reason: string | null;
+}
+
 /** One Cloud outcome, rebuilt field by field so nothing but these fields crosses over. */
-function parseOutcome(raw: unknown, i: number): PolicyOutcome {
+function parseOutcome(raw: unknown, i: number): ParsedCloudOutcome {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) malformed(`outcome ${i} is not an object`);
   const o = raw as Record<string, unknown>;
   if (!isName(o.policy)) malformed(`outcome ${i} has no policy name`);
@@ -391,7 +424,9 @@ function parseOutcome(raw: unknown, i: number): PolicyOutcome {
   ) {
     malformed(`outcome ${i} has no Cloud origin`);
   }
-  return {
+  if (o.effect !== undefined && o.effect !== "enforce" && o.effect !== "observe") malformed(`outcome ${i} has an unknown effect`);
+  if (o.reason !== undefined && o.reason !== null && typeof o.reason !== "string") malformed(`outcome ${i} reason is not text`);
+  const outcome: PolicyOutcome = {
     policy: o.policy,
     mode: o.mode,
     ...(typeof o.userCanOverride === "boolean" ? { userCanOverride: o.userCanOverride } : {}),
@@ -408,6 +443,42 @@ function parseOutcome(raw: unknown, i: number): PolicyOutcome {
     ...(o.intent !== undefined ? { intent: o.intent as PolicyOutcome["intent"] } : {}),
     ...(o.targetScanIncomplete === true ? { targetScanIncomplete: true as const } : {}),
   };
+  return {
+    outcome,
+    cloudPolicyId: origin.cloudPolicyId as string,
+    cloudVersion: origin.cloudVersion as number,
+    observe: o.effect === "observe",
+    reason: typeof o.reason === "string" ? capReason(o.reason) : null,
+  };
+}
+
+function capReason(reason: string): string {
+  return reason.length > MAX_CLOUD_REASON_CHARS ? `${reason.slice(0, MAX_CLOUD_REASON_CHARS - 1)}…` : reason;
+}
+
+const SEVERITY: Record<"deny" | "instruct", number> = { instruct: 1, deny: 2 };
+
+/**
+ * The would-haves of the observed outcomes: per Cloud policy, its most severe
+ * check that fired (`deny`, or a warning). A check that found nothing, or that
+ * the human asked for, would have done nothing.
+ */
+function observedChecks(parsed: ReadonlyArray<ParsedCloudOutcome>): ObservedCloudCheck[] {
+  const byPolicy = new Map<string, ObservedCloudCheck>();
+  for (const p of parsed) {
+    const verdict = p.outcome.verdict;
+    if (verdict !== "deny" && verdict !== "instruct") continue;
+    const prev = byPolicy.get(p.cloudPolicyId);
+    if (prev && SEVERITY[prev.decision] >= SEVERITY[verdict]) continue;
+    byPolicy.set(p.cloudPolicyId, {
+      cloudPolicyId: p.cloudPolicyId,
+      cloudVersion: p.cloudVersion,
+      check: p.outcome.policy,
+      decision: verdict,
+      reason: p.reason ?? `Flagged by semantic review (semantic/${p.outcome.policy})`,
+    });
+  }
+  return [...byPolicy.values()];
 }
 
 /**
@@ -415,7 +486,7 @@ function parseOutcome(raw: unknown, i: number): PolicyOutcome {
  * A reply without one (a server that does not implement C10) is malformed:
  * nothing it says can be told apart from "Cloud has no checks here".
  */
-export function parseCloudReply(raw: unknown): CloudJevReply {
+export function parseCloudReply(raw: unknown, observedPolicies: ReadonlyArray<string> = []): CloudJevReply {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) malformed("no cloud block");
   const block = raw as Record<string, unknown>;
   const v = block.verdict as Record<string, unknown> | undefined;
@@ -424,7 +495,8 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
   if (v.reason !== null && v.reason !== undefined && typeof v.reason !== "string") malformed("verdict reason is not text");
   if (!Array.isArray(v.outcomes) || v.outcomes.length > MAX_LIST) malformed("verdict has no outcomes list");
   if (v.beyondTask !== undefined && typeof v.beyondTask !== "boolean") malformed("verdict beyondTask is not a flag");
-  const outcomes = v.outcomes.map(parseOutcome);
+  const parsed = v.outcomes.map(parseOutcome);
+  const outcomes = parsed.map((p) => p.outcome);
   const asked = names(block.asked, "asked");
   // Each outcome must answer a check Cloud says it ASKED, once. The review
   // clears a `both` policy's regex half from these outcomes, so one that
@@ -439,19 +511,39 @@ export function parseCloudReply(raw: unknown): CloudJevReply {
     if (seen.has(key)) malformed(`outcome ${i} answers ${JSON.stringify(o.policy)} twice`);
     seen.add(key);
   });
+  // An `observe` assignment's checks (Cloud says so per outcome, or this
+  // machine's deployment does) are recorded, never applied: they leave the
+  // verdict, so they can neither deny nor clear anything.
+  const observeIds = new Set(observedPolicies);
+  const isObserved = (p: ParsedCloudOutcome) => p.observe || observeIds.has(p.cloudPolicyId);
+  const enforced = parsed.filter((p) => !isObserved(p)).map((p) => p.outcome);
+  const observed = parsed.filter(isObserved);
   // A check that fired deny makes the verdict a deny; a reply that says
   // otherwise contradicts itself.
-  if (outcomes.some((o) => o.verdict === "deny") && v.decision !== "deny") malformed("a check denied but the verdict does not");
+  if (enforced.some((o) => o.verdict === "deny") && v.decision !== "deny") malformed("a check denied but the verdict does not");
+  const cloudReason = typeof v.reason === "string" ? capReason(v.reason) : null;
+  let decision = v.decision as SemanticVerdict["decision"];
+  let reason = cloudReason;
+  if (observed.length > 0) {
+    // Decided again from the enforced checks alone, never above what Cloud
+    // said. Cloud's reason stands when the decision does; otherwise the
+    // combine's generic line names the deciding check.
+    const own: SemanticVerdict["decision"] = enforced.some((o) => o.verdict === "deny")
+      ? "deny"
+      : enforced.some((o) => o.verdict === "instruct") || v.beyondTask === true
+        ? "instruct"
+        : "allow";
+    const capped = RANK[own] <= RANK[decision] ? own : decision;
+    if (capped !== decision) reason = null;
+    decision = capped;
+  }
   return {
+    observed: observedChecks(observed),
+    observedAsked: observed.map((p) => `cloud:${p.cloudPolicyId}/${p.outcome.policy}`),
     verdict: {
-      decision: v.decision as SemanticVerdict["decision"],
-      reason:
-        typeof v.reason === "string"
-          ? v.reason.length > MAX_CLOUD_REASON_CHARS
-            ? `${v.reason.slice(0, MAX_CLOUD_REASON_CHARS - 1)}…`
-            : v.reason
-          : null,
-      outcomes,
+      decision,
+      reason,
+      outcomes: enforced,
       injectionSuspected: nullableProbability(v.injectionSuspected, "injectionSuspected"),
       scopeWithinRequest: nullableProbability(v.scopeWithinRequest, "scopeWithinRequest"),
       beyondTask: v.beyondTask === true,
@@ -579,7 +671,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
       model: opts.model ?? DEFAULT_JEV_MODEL,
       modelVerified: true,
       via: "none",
-      cloud: { asked: [], droppedLocal: [], droppedCloud: [] },
+      cloud: { asked: [], droppedLocal: [], droppedCloud: [], observed: [], observedAsked: [] },
     };
   }
   let prepared: PreparedCall;
@@ -623,7 +715,7 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? envNumber("FAILPROOFAI_JEV_TIMEOUT_MS", DEFAULT_JEV_TIMEOUT_MS));
     const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
     const response = await transport(request, signal);
-    const reply = parseCloudReply(response.cloud);
+    const reply = parseCloudReply(response.cloud, opts.observedPolicies);
 
     // Only the machine's own groups can be dropped from its side; a name it
     // did not send is not its to act on.
@@ -636,7 +728,8 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
     // answers to demand. The local verdict is then an empty allow whatever the
     // answers — `decide` with nothing selected reads no per-policy answer, and
     // no warning can fire without one.
-    const shortCircuit = kept.length === 0 && reply.asked.length === 0 && reply.verdict.outcomes.length === 0;
+    const shortCircuit =
+      kept.length === 0 && reply.asked.length === 0 && reply.verdict.outcomes.length === 0 && reply.observedAsked.length === 0;
     const answers = shortCircuit ? presentAnswers(response) : readAnswers(expectedQuestions(request, prepared, dropped), response);
 
     const local =
@@ -664,6 +757,8 @@ export async function evaluateCloudSemantic(input: SemanticInput, opts: CloudSem
         asked: reply.asked,
         droppedLocal: [...dropped].map((name) => ({ name, packId: own.get(name)?.origin?.packId ?? null })),
         droppedCloud: reply.droppedCloud,
+        observed: reply.observed,
+        observedAsked: reply.observedAsked,
       },
     };
   } catch (err) {

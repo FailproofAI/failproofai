@@ -38,7 +38,7 @@ import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks, type LoadAllResult } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
+import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled, packJevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -58,6 +58,7 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import {
   cloudJevAsks,
+  cloudJevAssignmentsFor,
   withCloudAuthority,
   readActiveCloudManagedPolicies,
   readCloudJevMode,
@@ -305,6 +306,8 @@ interface CloudJevRoute {
   deployment: number | null;
   mode: "observe" | "enforce";
   agent: AgentIdentity | null;
+  /** Cloud policies whose Jev assignment here is `observe`: their answers are recorded, never applied. */
+  observedPolicies: string[];
 }
 
 /**
@@ -346,7 +349,13 @@ async function readJevConfig(agent?: AgentIdentity | null): Promise<{
       return {
         config: resolved.config,
         defaultMode: DEFAULT_JEV_MODE,
-        cloud: { machineId: resolved.machineId, deployment: cloud.deployment, mode: cloud.jevMode, agent: agent ?? null },
+        cloud: {
+          machineId: resolved.machineId,
+          deployment: cloud.deployment,
+          mode: cloud.jevMode,
+          agent: agent ?? null,
+          observedPolicies: (cloudJevAssignmentsFor(agent ?? null) ?? []).filter((a) => a.effect === "observe").map((a) => a.id),
+        },
       };
     }
     if (!existsSync(jevConfigFile())) return null;
@@ -475,6 +484,11 @@ async function startTwoTier(
   // must not switch off what the org assigned centrally).
   if (activePause && !cloudAsks) return null;
   if (!cloudAsks && !jevChecksInstalled()) return null;
+  // No Cloud Jev check is assigned to this agent (the deployment says so) and
+  // no installed pack's check takes part: nothing to ask, so no Cloud call
+  // and no Jev fields on the row. An older deployment without the list
+  // (`null`) still sends every call, as before.
+  if (cloudAsks && cloudJevAssignmentsFor(agent)?.length === 0 && (activePause || !packJevChecksInstalled())) return null;
   const loaded = await readJevConfig(agent);
   if (!loaded) return null;
   // Paused, and the config is not Cloud's after all (read in between): the
@@ -1157,6 +1171,11 @@ export async function evaluateHookEvent(
         decision: observeVerdict.decision,
         reason: observeVerdict.reason,
       });
+    }
+    // An `observe` Cloud Jev assignment's checks: filed under their Cloud
+    // policy, like an observe Cloud JS policy's verdict.
+    for (const o of result.twoTier?.observedCloud ?? []) {
+      observedResults.push({ policyId: o.cloudPolicyId, version: o.cloudVersion, decision: o.decision, reason: o.reason });
     }
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);

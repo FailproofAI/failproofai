@@ -49,6 +49,8 @@ import { cloudReviewerNames, readCloudAuthorityInputs, readCloudJevMode } from "
 import type { AgentIdentity } from "./agent-targets";
 
 let cached: ReadonlySet<string> | null = null;
+/** Whether the installed packs alone (not Cloud) declared any check, for the cached answer. */
+let cachedPackChecks = false;
 let cachedContested: ReadonlyMap<string, string[]> = new Map();
 /** The agent the current registration pass is for; see {@link forgetEffectiveReviewerNames}. */
 let reviewerCli: string | undefined;
@@ -185,9 +187,11 @@ export function effectiveReviewerNames(): ReadonlySet<string> {
   if (cached) return cached;
   let names: ReadonlySet<string> = NO_REVIEWERS;
   cachedContested = new Map();
+  cachedPackChecks = false;
   try {
     const packs = jevPacks(readInstalledPacks().packs, reviewerCli);
     names = reviewerNamesFor(packs);
+    cachedPackChecks = names.size > 0;
     cachedContested = contestedSemanticNames(packs);
   } catch {
     // See above: an unreadable manifest declares no checks.
@@ -222,6 +226,16 @@ export function contestedReviewerNames(): ReadonlyMap<string, string[]> {
  */
 export function jevChecksInstalled(): boolean {
   return effectiveReviewerNames().size > 0;
+}
+
+/**
+ * Whether an installed pack (not FailproofAI Cloud) gives Jev a check for this
+ * agent: the part of {@link jevChecksInstalled} a Cloud review needs to know
+ * when deciding whether a call has anything of the machine's own to ask.
+ */
+export function packJevChecksInstalled(): boolean {
+  effectiveReviewerNames();
+  return cachedPackChecks;
 }
 
 /**

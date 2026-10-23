@@ -172,7 +172,14 @@ export interface JevCallContext {
    * to Cloud with this machine's id, and the deployment it was made under
    * scopes the answer cache (a new deployment can change Cloud's checks).
    */
-  cloud?: { machineId: string; deployment: number | null; mode: "observe" | "enforce"; agent?: AgentIdentity | null };
+  cloud?: {
+    machineId: string;
+    deployment: number | null;
+    mode: "observe" | "enforce";
+    agent?: AgentIdentity | null;
+    /** Cloud policies whose Jev assignment here is `observe`: recorded, never applied. */
+    observedPolicies?: ReadonlyArray<string>;
+  };
   /**
    * A session pause is active. It suspends local policy, so no installed
    * pack's check is asked; FailproofAI Cloud's checks are exempt from a pause
@@ -269,7 +276,8 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // outcome is what clears a `both` policy's regex half. One it cannot vouch
   // for — or a Cloud-origin outcome with no Cloud reply at all — means the
   // picture is not one to clear anything on: the regex decides alone.
-  const cloudAsked = "cloud" in outcome ? new Set((outcome as CloudSemanticOutcome & { status: "ok" }).cloud.asked) : null;
+  const cloudSummary = "cloud" in outcome ? (outcome as CloudSemanticOutcome & { status: "ok" }).cloud : null;
+  const cloudAsked = cloudSummary ? new Set(cloudSummary.asked) : null;
   const unvouched = outcomes.some((o) => isCloudOutcome(o) && !(cloudAsked?.has(o.policy) ?? false));
   if (unvouched) return { kind: "fallback", reason: "malformed", latencyMs, model: null };
   // `null` when the injection probe was not in the request, which now means
@@ -324,6 +332,18 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     requestCut: outcome.requestCut && sent,
     latencyMs,
     model,
+    // An `observe` Cloud assignment's checks: asked, recorded, never applied.
+    ...(sent && cloudSummary?.observedAsked?.length ? { observedAsked: cloudSummary.observedAsked } : {}),
+    ...(cloudSummary?.observed?.length
+      ? {
+          observedCloud: cloudSummary.observed.map((o) => ({
+            cloudPolicyId: o.cloudPolicyId,
+            cloudVersion: o.cloudVersion,
+            decision: o.decision,
+            reason: o.reason,
+          })),
+        }
+      : {}),
   };
 }
 
@@ -429,6 +449,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
         ...options,
         machineId: cloud.machineId,
         agent: cloud.agent,
+        observedPolicies: cloud.observedPolicies ?? [],
         // Paused: no installed pack's check is sent, only the globals, and
         // Cloud's own checks are selected and decided on Cloud as ever.
         ...(call.localPaused ? { policies: [] } : {}),

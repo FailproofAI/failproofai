@@ -25,6 +25,7 @@ import {
   type JevReview,
   type RegexVerdict,
   type ObserveVerdict,
+  type ObservedCloudVerdict,
   type TwoTierReview,
 } from "./semantic/combine";
 // The code, not a copy of the string: the log line below turns on it, and a
@@ -64,6 +65,8 @@ export interface EvaluationResult {
     jevOrigin?: { packId: string; packVersion?: string };
     /** Observe mode: Jev's own deny/instruct, recorded as a "would have" (see `ObserveVerdict`). */
     observeVerdict?: ObserveVerdict;
+    /** An `observe` Cloud Jev assignment's would-haves (see `JevReview.observedCloud`). */
+    observedCloud?: ReadonlyArray<ObservedCloudVerdict>;
   };
 }
 
@@ -217,6 +220,12 @@ export async function evaluatePolicies(
     twoTier.releaseRegistry?.();
     review = await twoTier.review;
   }
+  // Jev asked no check about this call (Cloud's short-circuit, or nothing
+  // selected): it took no part, so the row carries no Jev fields at all — the
+  // regex result, exactly as without a review.
+  if (review.kind === "answered" && review.asked.length === 0 && review.decision === "allow" && !review.observedAsked?.length) {
+    return formatVerdict(eventType, session, toolName, regexOnly(collected.verdicts));
+  }
   const combined = combineTwoTier(collected.verdicts, review, twoTier.mode);
   if (combined.cleared.length > 0) {
     hookLogInfo(`jev ${twoTier.mode === "observe" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);
@@ -256,6 +265,7 @@ export async function evaluatePolicies(
         ? { jevOrigin: review.origin }
         : {}),
       ...(combined.observeVerdict ? { observeVerdict: combined.observeVerdict } : {}),
+      ...(review.kind === "answered" && review.observedCloud?.length ? { observedCloud: review.observedCloud } : {}),
     },
   };
 }

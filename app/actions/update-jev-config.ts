@@ -101,6 +101,7 @@ import { chmodSync, existsSync, statSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { headers } from "next/headers";
 import { writeJsonAtomically } from "@/lib/atomic-write";
+import { CLOUD_MANAGED_JEV_MODE, cloudManagesJevMode } from "@/src/hooks/fp-config";
 import {
   hostnameFromHostHeader,
   isLoopbackHostname,
@@ -489,6 +490,7 @@ export async function setJevModeAction(requested: string): Promise<JevWriteResul
   if (mode === null) {
     return { ok: false, problem: 'mode must be "off", "observe" or "enforce".' };
   }
+  if (cloudManagesJevMode()) return { ok: false, problem: CLOUD_MANAGED_JEV_MODE };
 
   const existingFile = readJevConfigFileForUpdate();
   if (existingFile === null) {

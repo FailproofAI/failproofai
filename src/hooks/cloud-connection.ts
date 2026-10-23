@@ -55,7 +55,6 @@ import {
   PERMISSION_POLICIES,
 } from "./cloud-introspect";
 import type { CloudJevConfigWrite } from "./jev-cloud-connection";
-import { jevChecksDeclared } from "./effective-reviewers";
 import {
   ingestPath,
   validateIngestKey,
@@ -560,30 +559,15 @@ export function jevLines(outcome: ConnectOutcome): string[] {
     // deployment that arrived first): that mode and Cloud's own checks decide,
     // not the local jev.json or the packs installed here.
     const cloudJev = safeCloudJev();
-    if (cloudJev.jevMode !== null) {
-      if (cloudJev.jevMode === "off") return [...lead, `${indent}off on this machine: FailproofAI Cloud set its Jev mode to off.`];
-      return [
-        ...lead,
-        `${indent}on through FailproofAI Cloud, mode ${cloudJev.jevMode} (set by FailproofAI Cloud); the Jev checks it deployed here run on FailproofAI Cloud.`,
-      ];
-    }
-    // No Cloud deployment has been read on this machine yet (a first connect,
-    // or the first after a disconnect): FailproofAI Cloud's Jev mode, when it
-    // sets one, arrives with that deployment and overrides jev.json — so the
-    // local mode is said as the fallback it is, not as a promise (N3).
-    const localMode = config?.status === "repointed" ? config.mode : "observe";
-    if (localMode === "off") {
-      return [...lead, `${indent}switched off in ${config?.path ?? "jev.json"} (mode off) until FailproofAI Cloud's Jev mode arrives with this machine's first deployment; from then on FailproofAI Cloud decides.`];
-    }
-    return [
-      ...lead,
-      `${indent}configured through FailproofAI Cloud; waiting for FailproofAI Cloud's Jev mode, which arrives with this machine's first deployment (within ~30 s) and decides. Until then, and if Cloud sets none: ${localMode} (${config?.path ?? "jev.json"}). Check with \`failproofai jev status\`.`,
-      // The package ships no Jev checks, so local "on" asks nothing until a
-      // pack gives it some. Checks FailproofAI Cloud deploys run on Cloud.
-      ...(jevChecksDeclared()
-        ? []
-        : ["            No Jev checks are installed on this machine; checks FailproofAI Cloud deploys here run on Cloud. To add local ones: `failproofai policies add FailproofAI/jev-policies`."]),
-    ];
+    // One line: FailproofAI Cloud decides the mode, whatever jev.json says, so
+    // the local fallback and the packs installed here are not worth a line.
+    const state =
+      cloudJev.jevMode === null
+        ? "waiting for its first deployment"
+        : cloudJev.jevMode === "off"
+          ? "off — no Jev policy deployed"
+          : cloudJev.jevMode;
+    return [...lead, `${indent}managed by FailproofAI Cloud · ${state}`];
   }
   if (config.status === "kept") {
     const lines = [`  Jev       key stored; ${config.path} already exists and was left as configured.`];

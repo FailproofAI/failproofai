@@ -25,6 +25,7 @@
 - The daemon reports only traced agents to FailproofAI Cloud: one entry per hooked profile (each Hermes and OpenClaw profile under its own label).
 - After an accepted delivery the daemon re-sends batches an earlier key refused (401/403) with the current key, dropping one only if that key refuses it too; `config --status` says the cloud is refusing this machine's key only when the current key is refused.
 - `failproofai policies` shows a deployed Cloud policy as on; the transient "not loaded yet" state is gone.
+- The connect Jev line is one short line: `managed by FailproofAI Cloud · <mode>` (`off — no Jev policy deployed`, or `waiting for its first deployment` before one is read) (#928)
 - The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)
 - `failproofai policies` lists Jev-only Cloud policies from the manifest's `jevPolicies` (version, `jev`, observe, agent targets) like the other Cloud policies; only a manifest without the list keeps the "not listed here" note (#928)
 - The daemon's roster re-scopes an existing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` entry from `project` to `user` on its next sighting, keeping its ID (#928)

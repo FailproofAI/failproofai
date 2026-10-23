@@ -2,6 +2,10 @@
 
 ## 1.0.12-beta.0 — 2026-10-22
 
+### Features
+
+- `fpai-collect` builds without SQLite: the SQLite pollers (goose, opencode, hermes, devin, OpenClaw 2026.9.2+) move behind a default-on `sqlite` cargo feature, so a service that only needs the transcript converters and redaction can depend on the crate with `default-features = false` — AgentEye's server does, to import Claude Code and Codex transcripts, and its sqlx links a different `libsqlite3-sys`. The daemon builds with the feature and is unchanged; CI now also lints the crate without it
+
 ### Dependencies
 
 - Combine the open Dependabot PRs (#921, #922, #923) into one: `certifi` 2026.7.22 → 2026.10.19 (GHSA-6q48-6c7w-9gw2) in `fp-cloud-cli` and the Python SDK's test lockfile, and `vite` 8.3.0 → 8.3.4 in the TypeScript SDK's dev lockfile. The Supply Chain gate scans every lockfile, so none of the three could pass on its own (#926)

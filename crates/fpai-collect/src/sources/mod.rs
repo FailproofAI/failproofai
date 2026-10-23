@@ -22,16 +22,38 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 pub mod cursor;
+#[cfg(feature = "sqlite")]
 pub mod devin;
 pub mod factory;
+#[cfg(feature = "sqlite")]
 pub mod goose;
+#[cfg(feature = "sqlite")]
 pub mod hermes;
 pub mod hooks;
 pub mod openclaw;
+#[cfg(feature = "sqlite")]
 pub mod opencode;
 pub mod pi;
 
 use serde_json::{Map, Value, json};
+
+/// Format epoch milliseconds as the RFC3339-with-microseconds string ingest
+/// requires.
+///
+/// Microseconds are forced rather than left to RFC3339's variable precision, so
+/// every source emits one shape and the hook stream and this one sort against
+/// each other on a shared session timeline.
+///
+/// Lives here rather than in `goose` (which re-exports it) so the cursor file
+/// source keeps it when the `sqlite` feature, and with it goose, is off.
+pub fn to_rfc3339_micros(epoch_ms: i64, micros: u32) -> Option<String> {
+    let nanos = (epoch_ms as i128) * 1_000_000 + (micros as i128) * 1_000;
+    let dt = time::OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?;
+    const FMT: &[time::format_description::BorrowedFormatItem<'_>] = time::macros::format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z"
+    );
+    dt.format(FMT).ok()
+}
 
 /// The `human_input` twin of a prompt a person typed.
 ///

@@ -266,6 +266,13 @@ jobs:
         if: steps.crates.outputs.present == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # AgentEye's server depends on fpai-collect WITHOUT the `sqlite` feature
+      # (its sqlx links a different libsqlite3-sys). The workspace build always
+      # has the feature on, so nothing else here would notice that shape break.
+      - name: cargo clippy (fpai-collect without sqlite)
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy -p fpai-collect --no-default-features --all-targets -- -D warnings
+
       - name: cargo test
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace

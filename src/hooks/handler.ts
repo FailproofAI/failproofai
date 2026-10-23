@@ -24,7 +24,7 @@ import {
   OPENCLAW_EVENT_MAP,
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
 import { normalizeCliPayload } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
@@ -37,7 +37,7 @@ import type { TwoTierReview } from "./semantic/combine";
 import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
-import { loadAllCustomHooks } from "./custom-hooks-loader";
+import { loadAllCustomHooks, getCustomHooksSourceFingerprints } from "./custom-hooks-loader";
 import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
@@ -179,6 +179,16 @@ export interface EvaluateHookEventOptions {
    * leaves it unset.
    */
   releaseRegistry?: () => void;
+  /** The worker may reuse a reply once the effective runtime is known, before
+   * evaluating policies or recording the decision. Loading stays on the same
+   * registry queue and is not repeated just to fingerprint custom hooks. */
+  reuseOutcome?: (runtime: {
+    config: HooksConfig;
+    customHooks: CustomHook[];
+    session: SessionMetadata;
+    payload: Record<string, unknown>;
+    policyState: unknown;
+  }) => Promise<HookEventOutcome | { pending: Promise<HookEventOutcome> } | undefined>;
 }
 
 /**
@@ -442,6 +452,11 @@ export async function evaluateHookEvent(
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
   const startTime = performance.now();
+  const loadTelemetry: Array<() => void> = [];
+  const deferTelemetry = opts?.reuseOutcome
+    ? (emit: () => void) => { loadTelemetry.push(emit); }
+    : undefined;
+  let replayed = false;
   // A home from another layout resolves to no global config, so every builtin
   // silently stops firing — the machine looks protected and is not. Say so on
   // every call rather than deleting anything (a hook is unattended) or denying
@@ -616,18 +631,24 @@ export async function evaluateHookEvent(
       // than the status quo, which already failed open on five of the twelve —
       // just accidentally, and without saying so.
       let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      let cloudManagedLoadFailed = false;
       try {
         cloudManagedPolicies = readActiveCloudManagedPolicies();
       } catch (err) {
+        cloudManagedLoadFailed = true;
         const msg = err instanceof Error ? err.message : String(err);
         hookLogWarn(
           `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
             `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
         );
-        void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
-          event_type: eventType,
-          cli,
-        });
+        const emit = () => {
+          void trackHookEvent(getInstanceId(), "cloud_managed_load_error", {
+            event_type: eventType,
+            cli,
+          });
+        };
+        if (deferTelemetry) deferTelemetry(emit);
+        else emit();
       }
       // Recorded on every row once a machine is managed, whether or not a cloud
       // policy decided this event: "what was deployed here at the time" is a
@@ -640,6 +661,7 @@ export async function evaluateHookEvent(
       // enforcing underneath. See the fail-open note in pack-manifest.ts — the
       // day builtins become a fetched pack this posture has to change with them.
       let installedPacks: ResolvedPack[] = [];
+      let packReadFailed = false;
       try {
         const packResult = readInstalledPacks();
         installedPacks = packResult.packs;
@@ -648,6 +670,7 @@ export async function evaluateHookEvent(
           hookLogWarn(`pack ${err.id ?? "(unnamed)"} not loaded: ${err.reason}`);
         }
       } catch (err) {
+        packReadFailed = true;
         hookLogWarn(`pack manifest unreadable: ${err instanceof Error ? err.message : String(err)}`);
       }
 
@@ -667,8 +690,36 @@ export async function evaluateHookEvent(
         customPoliciesEnabled: config.customPoliciesEnabled,
         ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
         ...(installedPacks.length > 0 ? { packs: installedPacks } : {}),
+        ...(deferTelemetry ? { deferTelemetry } : {}),
       });
       customHooksList = loadResult.hooks;
+      if (opts?.reuseOutcome) {
+        let reused: Awaited<ReturnType<NonNullable<EvaluateHookEventOptions["reuseOutcome"]>>>;
+        try {
+          const sourceFingerprints = getCustomHooksSourceFingerprints(loadResult);
+          // Unverified graphs cannot establish runtime equivalence safely.
+          if (sourceFingerprints && [...sourceFingerprints.values()].every((fingerprint) => fingerprint !== undefined)) {
+            reused = await opts.reuseOutcome({
+              config, customHooks: customHooksList, session, payload: parsed,
+              policyState: {
+                session, activePause, packsInstalledHere, installedPacks, packErrors, packReadFailed,
+                cloudManagedPolicies, cloudManagedLoadFailed,
+                sourceFingerprints: [...sourceFingerprints],
+                packFailures: [...loadResult.packFailures], packAliases: [...loadResult.packAliases],
+                jevConfig: existsSync(jevConfigFile()) ? readFileSync(jevConfigFile(), "utf8") : null,
+              },
+            });
+          }
+        } catch {
+          // Reuse is an optimization; its failure must still evaluate policy.
+        }
+        if (reused) {
+          replayed = true;
+          // A released duplicate retries on the worker queue. Errors from that
+          // fresh evaluation must escape, never resume this discarded registry.
+          return "pending" in reused ? await reused.pending : reused;
+        }
+      }
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
       conventionHookNames = new Set(loadResult.conventionSources.flatMap((s) => s.hookNames));
 
@@ -1096,6 +1147,9 @@ export async function evaluateHookEvent(
       },
     };
   } finally {
+    if (!replayed) {
+      for (const emit of loadTelemetry) emit();
+    }
     if (opts?.awaitTelemetryFlush ?? true) {
       // Await any un-awaited (`void trackHookEvent(...)`) events fired during
       // this invocation. The one-shot CLI process calls process.exit() the

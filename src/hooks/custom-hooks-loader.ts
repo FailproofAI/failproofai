@@ -56,6 +56,13 @@ interface CachedPolicyModule {
  * functions prevents an unbounded ESM module-cache leak in the resident worker.
  * A source-tree change replaces this entry and imports one new module. */
 const policyModuleCache = new Map<string, CachedPolicyModule>();
+const loadSourceFingerprints = new WeakMap<LoadAllResult, Map<string, string | undefined>>();
+
+/** Every attempted source graph, including modules that register no hooks. */
+export function getCustomHooksSourceFingerprints(result: LoadAllResult): ReadonlyMap<string, string | undefined> | undefined {
+  return loadSourceFingerprints.get(result);
+}
+
 /**
  * Cap, for the reason `gitBranchCache` states and this cache did not carry
  * over: a warm worker touching many projects over its lifetime must not grow
@@ -195,6 +202,9 @@ async function loadSingleFile(
      * file, whether or not Jev is configured — the declaration is dead either way.
      */
     outsidePack?: boolean;
+    /** The worker defers diagnostics until invocation ownership is known. */
+    deferTelemetry?: (emit: () => void) => void;
+    recordSourceFingerprint?: (fingerprint: string | undefined) => void;
   },
 ): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
@@ -202,6 +212,7 @@ async function loadSingleFile(
 
   let tmpFiles: string[] = [];
   try {
+    opts?.recordSourceFingerprint?.(undefined);
     const distIndex = await findDistIndex();
     const distUrl = distIndex ? pathToFileURL(distIndex).href : null;
 
@@ -221,6 +232,7 @@ async function loadSingleFile(
     );
 
     const fingerprint = await fingerprintTemporaryTree(tmpFiles, tmpSuffix);
+    opts?.recordSourceFingerprint?.(fingerprint);
     const cached = policyModuleCache.get(absPath);
     if (cached?.fingerprint === fingerprint) {
       for (const hook of cached.hooks) customPolicies.add({ ...hook });
@@ -232,6 +244,7 @@ async function loadSingleFile(
     const hooksBefore = getCustomHooks().length;
     const semanticBefore = getSemanticRegistrations().length;
     await importWithDeadline(fileUrl);
+    const loadedHooks = getCustomHooks().slice(hooksBefore);
     const ignored = getSemanticRegistrations().slice(semanticBefore).map((d) => d?.name);
     if (opts?.outsidePack && ignored.length > 0 && !warnedSemanticOutsidePack.has(absPath)) {
       warnedSemanticOutsidePack.add(absPath);
@@ -243,9 +256,7 @@ async function loadSingleFile(
     if (policyModuleCache.size >= POLICY_MODULE_CACHE_MAX_ENTRIES) policyModuleCache.clear();
     policyModuleCache.set(absPath, {
       fingerprint,
-      hooks: getCustomHooks()
-        .slice(hooksBefore)
-        .map((hook) => ({ ...hook })),
+      hooks: loadedHooks.map((hook) => ({ ...hook })),
     });
     return null;
   } catch (err) {
@@ -257,12 +268,16 @@ async function loadSingleFile(
         : /timed out loading module/i.test(msg)
           ? "load_timeout"
           : "runtime_error";
-    void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
-      error_type: errorType,
-      is_convention: !!opts?.conventionScope,
-      convention_scope: opts?.conventionScope ?? null,
-      file_basename: basename(absPath),
-    });
+    const emit = () => {
+      void trackHookEvent(getInstanceId(), "custom_hooks_load_error", {
+        error_type: errorType,
+        is_convention: !!opts?.conventionScope,
+        convention_scope: opts?.conventionScope ?? null,
+        file_basename: basename(absPath),
+      });
+    };
+    if (opts?.deferTelemetry) opts.deferTelemetry(emit);
+    else emit();
     if (opts?.strict) throw new Error(`Failed to load custom hooks from ${absPath}: ${msg}`);
     hookLogError(`failed to load custom hooks from ${absPath}: ${msg}`);
     return { type: errorType, reason: msg };
@@ -412,12 +427,14 @@ export async function loadAllCustomHooks(
     customPoliciesEnabled?: boolean;
     cloudManagedPolicies?: CloudManagedPolicyArtifact[];
     packs?: ResolvedPack[];
+    deferTelemetry?: (emit: () => void) => void;
   },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
 
   const conventionSources: ConventionSource[] = [];
   const packFailures = new Map<string, PolicyLoadFailure>();
+  const sourceFingerprints = new Map<string, string | undefined>();
 
   const projectRoot = findProjectConfigDir(opts?.sessionCwd ?? process.cwd());
 
@@ -654,6 +671,8 @@ export async function loadAllCustomHooks(
           verifyEntrySha:
             cloudManaged?.sha256 ?? pack?.sha256,
           outsidePack: !pack,
+          deferTelemetry: opts?.deferTelemetry,
+          recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(absPath, fingerprint); },
         });
         // Every id behind these bytes. One artifact, one import, one failure —
         // but as many fail-closed guards as there are packs depending on it.
@@ -734,7 +753,10 @@ export async function loadAllCustomHooks(
   for (const file of projectFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: projectScope, outsidePack: true });
+    await loadSingleFile(file, {
+      conventionScope: projectScope, outsidePack: true, deferTelemetry: opts?.deferTelemetry,
+      recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(file, fingerprint); },
+    });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId(projectScope, basename(file), hook.name);
@@ -774,7 +796,10 @@ export async function loadAllCustomHooks(
   for (const file of userFiles) {
     loadedPaths.add(file);
     const hooksBefore = getCustomHooks().length;
-    await loadSingleFile(file, { conventionScope: "user", outsidePack: true });
+    await loadSingleFile(file, {
+      conventionScope: "user", outsidePack: true, deferTelemetry: opts?.deferTelemetry,
+      recordSourceFingerprint: (fingerprint) => { sourceFingerprints.set(file, fingerprint); },
+    });
     const newHooks = getCustomHooks().slice(hooksBefore);
     for (const hook of newHooks) {
       (hook as CustomHook & { __policyId?: string }).__policyId = conventionPolicyId("user", basename(file), hook.name);
@@ -830,5 +855,7 @@ export async function loadAllCustomHooks(
     const winner = packByPath.get(path);
     if (winner && ids.length > 1) packAliases.set(winner.id, ids);
   }
-  return { hooks: allHooks, conventionSources, packFailures, packAliases };
+  const result = { hooks: allHooks, conventionSources, packFailures, packAliases };
+  loadSourceFingerprints.set(result, sourceFingerprints);
+  return result;
 }

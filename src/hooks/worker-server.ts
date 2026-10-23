@@ -17,18 +17,55 @@
  * evaluations could have request B's `clearPolicies()` wipe request A's
  * in-flight registration. Serializing keeps the existing registry code
  * correct with zero changes; a worker_threads/process pool is a valid
- * future enhancement if this becomes a real throughput bottleneck. The one
- * exception is the network wait of a two-tier (Jev) review, which happens
- * after the registry is no longer read and so does not hold the queue (see
- * `enqueue`).
+ * future enhancement if this becomes a real throughput bottleneck. Two-tier
+ * (Jev) network waits and duplicates waiting for their owners happen outside
+ * registry access and do not hold the queue (see `enqueue`).
  */
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { version } from "../../package.json";
 import { evaluateHookEvent } from "./handler";
+import type { HookEventOutcome } from "./handler";
 import type { IntegrationType } from "./types";
 import { hookLogWarn } from "./hook-logger";
+import { DAEMON_RESPONSE_TIMEOUT_MS } from "./daemon-client";
 
 const MAX_FRAME_LEN = 16 * 1024 * 1024;
+const INVOCATION_TTL_MS = 10 * 60_000;
+// The duplicate shares the caller's transport budget; reserve a window for fallback evaluation.
+const INVOCATION_FALLBACK_RESERVE_MS = 10_000;
+const INVOCATION_WAIT_MS = DAEMON_RESPONSE_TIMEOUT_MS - INVOCATION_FALLBACK_RESERVE_MS;
+
+interface HookInvocation {
+  result: Promise<HookEventOutcome | undefined>;
+  complete: (outcome?: HookEventOutcome) => void;
+}
+
+/** A failed or over-budget owner releases its waiters into normal evaluation. */
+function claimInvocation(invocations: Map<string, HookInvocation>, key: string): HookInvocation {
+  let resolve!: (outcome?: HookEventOutcome) => void;
+  let settled = false;
+  const entry: HookInvocation = {
+    result: new Promise((r) => { resolve = r; }),
+    complete: (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (outcome) {
+        timer = setTimeout(() => invocations.delete(key), INVOCATION_TTL_MS);
+        timer.unref?.();
+      } else if (invocations.get(key) === entry) {
+        invocations.delete(key);
+      }
+      resolve(outcome);
+    },
+  };
+  let timer = setTimeout(() => entry.complete(), INVOCATION_WAIT_MS);
+  timer.unref?.();
+  invocations.set(key, entry);
+  return entry;
+}
 
 interface WorkerHookRequest {
   type: "hook";
@@ -103,10 +140,11 @@ const TASK_DEADLINE_MS = 60_000;
  * for anyway, but recovered on the next call instead of never.
  *
  * A task may hand its place in the chain back early by calling `release`:
- * the next request starts while the task finishes on its own. Only the
- * two-tier (Jev) path does, at the point it stops reading the registry and
- * starts waiting on Jev's network answer (`EvaluateHookEventOptions.
- * releaseRegistry`). Without that, every hook on the machine — PostToolUse,
+ * the next request starts while the task finishes on its own. The two-tier
+ * (Jev) path releases when it stops reading the registry and starts waiting on
+ * Jev's network answer (`EvaluateHookEventOptions.releaseRegistry`). A waiting
+ * duplicate also releases; a retry reenters the queue and reloads its runtime.
+ * Without that, every hook on the machine — PostToolUse,
  * UserPromptSubmit, other agents' calls — would queue behind each gated call's
  * round trip, and a slow or unreachable provider would push the calls at the
  * back of the queue past the client's 30 s budget into fail-closed denies.
@@ -195,7 +233,59 @@ function enqueue(task: (release: () => void) => Promise<void>): void {
   processingChain = processingChain.then(() => new Promise<void>((settle) => runQueuedTask(task, settle))).catch(() => {});
 }
 
-function handleConnection(socket: Socket, shutdown: () => void): void {
+function evaluateRequest(request: WorkerHookRequest, invocations: Map<string, HookInvocation>): Promise<HookEventOutcome> {
+  return new Promise((resolve, reject) => {
+    enqueue(async (release) => {
+      let invocation: HookInvocation | undefined;
+      try {
+        const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
+          awaitTelemetryFlush: false,
+          // Normalised here so no consumer has to know the wire spells
+          // "absent" as null.
+          fallbackCwd: request.cwd ?? undefined,
+          releaseRegistry: release,
+          reuseOutcome: async ({ config, customHooks, session, payload, policyState }) => {
+            const sessionId = payload.session_id;
+            const toolUseId = payload.tool_use_id;
+            if (typeof sessionId !== "string" || !sessionId || typeof toolUseId !== "string" || !toolUseId) return;
+            const customHookIdentity = customHooks.map((hook) => ({
+              ...hook,
+              implementation: String(hook.fn),
+            }));
+            const runtimeIdentity = createHash("sha256").update(JSON.stringify({
+              version,
+              packageRoot: process.env.FAILPROOFAI_PACKAGE_ROOT ?? process.argv[1] ?? "unknown",
+              cwd: session.cwd ?? process.cwd(),
+              config,
+              customHookIdentity,
+              policyState,
+            })).digest("hex");
+            const key = createHash("sha256").update(JSON.stringify([
+              request.cli, request.hookEvent, sessionId, toolUseId, runtimeIdentity,
+            ])).digest("hex");
+            const existing = invocations.get(key);
+            if (existing) {
+              // Waiting consumes no registry slot. A failed owner retries through
+              // this queue and reloads before evaluating against any registry.
+              release();
+              return { pending: existing.result.then((outcome) =>
+                outcome ?? evaluateRequest(request, invocations)) };
+            }
+            invocation = claimInvocation(invocations, key);
+          },
+        });
+        invocation?.complete(result);
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      } finally {
+        invocation?.complete();
+      }
+    });
+  });
+}
+
+function handleConnection(socket: Socket, shutdown: () => void, invocations: Map<string, HookInvocation>): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
   /**
@@ -271,29 +361,18 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
         })
         .catch(() => {});
 
-      enqueue(async (release) => {
-        try {
-          const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
-            awaitTelemetryFlush: false,
-            // Normalised here so no consumer has to know the wire spells
-            // "absent" as null.
-            fallbackCwd: request.cwd ?? undefined,
-            releaseRegistry: release,
-          });
-          deliver(
-            encodeFrame({
-              type: "hookResult",
-              exitCode: result.exitCode,
-              stdout: result.stdout,
-              stderr: result.stderr,
-              evaluation: result.evaluation,
-            }),
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
-          deliver(encodeFrame({ type: "error", message: msg }));
-        }
+      void evaluateRequest(request, invocations).then((result) => {
+        deliver(encodeFrame({
+          type: "hookResult",
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          evaluation: result.evaluation,
+        }));
+      }, (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
+        deliver(encodeFrame({ type: "error", message: msg }));
       });
     }
   });
@@ -346,8 +425,9 @@ function requestExistingWorkerShutdown(socketPath: string): Promise<"stale" | "s
 }
 
 export function startWorkerServer(socketPath: string, shutdown?: () => void): Server {
+  const invocations = new Map<string, HookInvocation>();
   const server = createServer((socket) =>
-    handleConnection(socket, shutdown ?? (() => server.close())),
+    handleConnection(socket, shutdown ?? (() => server.close()), invocations),
   );
 
   const listen = () => {

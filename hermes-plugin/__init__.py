@@ -104,6 +104,17 @@ def _profile_name() -> str:
 
 def _profile_settings_path(profile: str) -> str | None:
     """Evidence of the profile running this plugin, not a transcript guess."""
+    try:
+        # The host's own resolver first: it honours a per-task profile
+        # override as well as HERMES_HOME, so each profile of a multi-profile
+        # gateway reports its own config (and roster identity), not the
+        # process-wide one.
+        from hermes_constants import get_hermes_home
+
+        hosted = Path(get_hermes_home()).expanduser() / "config.yaml"
+        return str(hosted.absolute()) if hosted.is_file() else None
+    except Exception:
+        pass
     configured = os.environ.get("HERMES_HOME", "").strip()
     if configured:
         selected = Path(configured).expanduser() / "config.yaml"

@@ -8,6 +8,7 @@ import {
   deliveryHealth,
   deliveryHealthLine,
   describeAge,
+  readLastDeliveredAt,
 } from "../../src/hooks/delivery-health";
 
 let home: string;
@@ -93,6 +94,7 @@ describe("hooks/delivery-health deliveryHealth", () => {
         rejected: 0,
         credentialRejected: 0,
         byStatus: {},
+        resending: 0,
       });
     } finally {
       rmSync(fresh, { recursive: true, force: true });
@@ -118,6 +120,34 @@ describe("hooks/delivery-health deliveryHealth", () => {
 
     const health = deliveryHealth(home);
     expect(health.oldestAgeMs).toBeGreaterThanOrEqual(3 * 60 * 60 * 1000 - 5_000);
+  });
+});
+
+describe("hooks/delivery-health — refusals the current key has outlived", () => {
+  it("does not count a 401 parked before the last accepted delivery as refused", () => {
+    // A key regenerated on the dashboard: the old collector's last batch 401s,
+    // the reconnect brings the new secret, and deliveries succeed again.
+    park("codex-x-0.a1.c401.jsonl", 60_000);
+    park("other-0.a1.c404.jsonl", 60_000);
+    const health = deliveryHealth(home, Date.now(), undefined, Date.now() - 1_000);
+    expect(health.credentialRejected).toBe(0);
+    expect(health.resending).toBe(1);
+    expect(health.byStatus).toEqual({ 404: 1 });
+    expect(deliveryHealthLine(health)).not.toContain("--connect");
+  });
+
+  it("still blames the key when the refusal is newer than the last accepted delivery", () => {
+    park("codex-x-0.a1.c401.jsonl");
+    const health = deliveryHealth(home, Date.now(), undefined, Date.now() - 3_600_000);
+    expect(health.credentialRejected).toBe(1);
+    expect(health.resending).toBe(0);
+  });
+
+  it("reads the last accepted delivery from the collector's health file", () => {
+    park("codex-x-0.a1.c401.jsonl", 60_000);
+    const state = join(home, ".failproofai", "state");
+    writeFileSync(join(state, "collector-health.json"), JSON.stringify({ ts: Date.now() / 1000, delivery: { last_ok_ts: Math.floor(Date.now() / 1000) } }));
+    expect(readLastDeliveredAt(home)).toBeGreaterThan(Date.now() - 5_000);
   });
 });
 

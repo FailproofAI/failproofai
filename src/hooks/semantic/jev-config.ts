@@ -327,8 +327,7 @@ function credentialQueryProblem(url: URL): string | null {
  * An endpoint base URL: https, or http to a loopback host only (a local proxy).
  * No credentials in the URL — not as userinfo, not as a query parameter — and no
  * fragment, because a key belongs in the key field, where it is sent as a bearer
- * and never printed. `validateJevConfig` further accepts the loopback http form
- * only in observe mode.
+ * and never printed. Loopback http is accepted in every mode.
  */
 export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string" || raw.trim() === "") return { ok: false, problem: "baseUrl must be a non-empty string" };
@@ -481,14 +480,6 @@ export function providerHostConflict(provider: string, url: string): string | nu
   return known === "cloudflare"
     ? `${host} is Cloudflare Workers AI, which provider custom cannot reach — its endpoint is per-account and its answers are wrapped, and a custom endpoint is asked in TypeSafe's own shape at <url>/systemone`
     : null;
-}
-
-function isPlainHttp(url: string): boolean {
-  try {
-    return new URL(url).protocol === "http:";
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -697,23 +688,11 @@ export function validateJevConfig(
     cfg.mode = mode;
   }
 
-  // Plain http reaches only a loopback host (`validateBaseUrl`), and nothing
-  // authenticates the server there: while the local proxy is down, any process
-  // of this user — the agent being judged included — can bind its port and
-  // answer "none" to every question. In enforce mode that answer clears
-  // reviewable denies; in observe mode it changes nothing, and `off` sends
-  // nothing at all, so enforce is the one mode it is refused in.
-  if (cfg.baseUrl !== undefined && isPlainHttp(cfg.baseUrl) && cfg.mode === "enforce") {
-    return {
-      ok: false,
-      problem:
-        "plain http (to localhost) is accepted only with mode observe: in enforce mode Jev's answers can clear a deny, " +
-        "and while the local proxy is down any process on this machine could take its port and answer. " +
-        (cfg.provider === JEV_CLOUD_PROVIDER
-          ? "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or keep mode observe"
-          : "Use https, or mode observe"),
-    };
-  }
+  // Plain http reaches only a loopback host (`validateBaseUrl`) and is
+  // accepted in every mode, enforce included, so a local stack can be tested
+  // as it runs in production. Risk: nothing authenticates a loopback server,
+  // so while it is down any process of this user could bind its port and
+  // answer; use https wherever that matters.
 
   return { ok: true, value: cfg };
 }

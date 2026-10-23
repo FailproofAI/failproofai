@@ -71,8 +71,8 @@ pub struct Reclaimable(HashSet<String>);
 
 impl Reclaimable {
     #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    pub fn contains(&self, instance_id: &str) -> bool {
+        self.0.contains(instance_id)
     }
 
     pub fn from_report(reported: &AgentRoster, protected: &HashSet<String>) -> Self {
@@ -133,6 +133,20 @@ pub struct AgentRoster {
     pub schema_version: u32,
     pub generation: u64,
     pub agents: Vec<AgentProfile>,
+}
+
+impl AgentRoster {
+    /// The profiles FailproofAI Cloud is told about: only those our hook is
+    /// installed in (or was sighted in recently). An agent CLI merely present
+    /// on the machine is not traced, so listing it in Cloud's agent picker
+    /// offered targets that could never fire. Unhooked entries stay in the
+    /// local roster so a profile keeps its stable ID across an uninstall and
+    /// reinstall; Cloud accepts a new exact-profile target only for a profile
+    /// it holds as hooked, so leaving them out of the report narrows nothing
+    /// the reclaim logic (`Reclaimable`) relies on.
+    pub fn traced(&self) -> impl Iterator<Item = &AgentProfile> {
+        self.agents.iter().filter(|agent| agent.hook_installed)
+    }
 }
 
 pub fn roster_path() -> io::Result<PathBuf> {
@@ -746,6 +760,53 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_traced_profiles_are_reported_one_per_profile_with_its_label() {
+        let root = std::env::temp_dir().join(format!("fpai-roster-{}", new_instance_id().unwrap()));
+        let home = root.join("home");
+        let hermes_hooked = "plugins:\n  enabled:\n    - failproofai\n";
+        let openclaw_hooked = r#"{"plugins":{"entries":{"failproofai":{"enabled":true}}}}"#;
+        for (dir, file, text) in [
+            (".hermes", "config.yaml", hermes_hooked),
+            (".hermes-smoke", "config.yaml", hermes_hooked),
+            (".hermes/profiles/idle", "config.yaml", "model: x\n"),
+            (".openclaw", "openclaw.json", openclaw_hooked),
+            (".openclaw-sanity", "openclaw.json", openclaw_hooked),
+            (".codex", "hooks.json", "{}"),
+            (".cursor", "hooks.json", "{}"),
+        ] {
+            fs::create_dir_all(home.join(dir)).unwrap();
+            fs::write(home.join(dir).join(file), text).unwrap();
+        }
+        let path = root.join("fpai/agents/roster.json");
+        let roster = refresh(&path, &home).unwrap();
+        let mut traced: Vec<_> = roster
+            .traced()
+            .map(|agent| (agent.integration.as_str(), agent.profile_label.as_str()))
+            .collect();
+        traced.sort_unstable();
+        assert_eq!(
+            traced,
+            [
+                ("hermes", "default"),
+                ("hermes", "smoke"),
+                ("openclaw", "default"),
+                ("openclaw", "sanity"),
+            ]
+        );
+        // Unhooked installs keep a local identity (stable across a reinstall)
+        // but are never part of what Cloud is told.
+        assert!(
+            roster
+                .agents
+                .iter()
+                .any(|agent| agent.integration == "codex" && !agent.hook_installed)
+        );
+        let ids: HashSet<_> = roster.traced().map(|agent| &agent.instance_id).collect();
+        assert_eq!(ids.len(), 4, "one identity per profile");
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -490,7 +490,7 @@ _TOP_LEVEL_GROUPS = [
     ]),
     ("ENFORCE", [
         ("policies", "Write cloud-managed policies.", "list show publish test compose enable disable delete"),
-        ("fleet", "Deploy policies to machines.", "list show deploy jev-mode diff history rollback rename"),
+        ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
         ("guardrails", "What enforcement actually blocked.", "summary timeline"),
     ]),
     ("MANAGE", [
@@ -6312,16 +6312,6 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
     footer.append(f"polic{'y' if n == 1 else 'ies'} after this change", style=theme.LABEL)
     lines.append(Text())
     lines.append(footer)
-    if getattr(plan, "jev_mode", None) is not None:
-        before = plan.jev_mode_before or "local"
-        after = plan.jev_mode_after or "local"
-        jev = Text("  jev mode  ", style=theme.LABEL)
-        if plan.jev_mode_changes:
-            jev.append(f"{before} → ", style=theme.FAINT)
-            jev.append(after, style=f"bold {theme.ACCENT}")
-        else:
-            jev.append(f"{after} (unchanged)", style=theme.TEXT_DIM)
-        lines.append(jev)
 
     head = Text(plan.machine_id, style=f"bold {theme.TEXT}")
     if plan.base is not None:
@@ -6480,65 +6470,6 @@ def deployment_rolled_back(
         else:
             body.append(f"jev mode {jev_to} (unchanged)", style=theme.LABEL)
     _notice_box(body, color=theme.SUCCESS, title="rolled back")
-
-
-def render_jev_mode_plan(rows: Sequence[dict]) -> None:
-    """The mode-only change, per machine: ``from → to``, the set untouched."""
-    out = []
-    for r in rows:
-        changed = bool(r.get("changed"))
-        mode = Text()
-        if changed:
-            mode.append(f"{r.get('from')} → ", style=theme.FAINT)
-            mode.append(str(r.get("to")), style=f"bold {theme.ACCENT}")
-        else:
-            mode.append(f"{r.get('to')} (unchanged)", style=theme.TEXT_DIM)
-        out.append([Text(str(r.get("machineId")), style=theme.TEXT), mode])
-    n = sum(1 for r in rows if r.get("changed"))
-    title = Text()
-    title.append("jev mode", style=f"bold {theme.ACCENT}")
-    title.append(" · ", style=theme.FAINT)
-    title.append(f"{n} of {len(rows)} to change", style=theme.LABEL)
-    title.append(" · policy sets untouched", style=theme.FAINT)
-    render_list_panel("jev mode", header=["machine", "jev mode"], rows=out, days=set(), order=None,
-                      empty_message="no machines", title=title)
-
-
-def jev_mode_applied(rows: Sequence[dict]) -> None:
-    """``✓ jev mode observe → enforce on N machines``, and any that failed."""
-    done = [r for r in rows if r.get("changed") and not r.get("error")]
-    failed = [r for r in rows if r.get("error")]
-    for r in done:
-        body = Text()
-        body.append("✓ ", style=theme.SUCCESS)
-        body.append("jev mode ", style=theme.TEXT)
-        body.append(f"{r.get('from')} → ", style=theme.FAINT)
-        body.append(str(r.get("to")), style=f"bold {theme.ACCENT}")
-        body.append(" on ", style=theme.TEXT)
-        body.append(str(r.get("machineId")), style=theme.ACCENT)
-        if r.get("deployment") is not None:
-            body.append("  ·  ", style=theme.FAINT)
-            body.append(f"now on deployment #{r.get('deployment')}", style=theme.LABEL)
-        _notice_box(body, color=theme.SUCCESS, title="jev mode")
-    for r in failed:
-        body = Text()
-        body.append("✗ ", style=theme.ERROR)
-        body.append(str(r.get("machineId")), style=theme.ACCENT)
-        body.append("  ·  ", style=theme.FAINT)
-        body.append(str(r.get("error")), style=theme.TEXT)
-        _notice_box(body, color=theme.ERROR, title="jev mode not changed")
-
-
-def jev_mode_unchanged(machine_ids: Sequence[str], mode: str) -> None:
-    """Every machine already has the mode. Calm, like a no-op deploy."""
-    body = Text()
-    body.append("=  ", style=theme.FAINT)
-    body.append(", ".join(machine_ids) if len(machine_ids) <= 3 else f"{len(machine_ids)} machines",
-                style=theme.ACCENT)
-    body.append(f" already {'has' if len(machine_ids) == 1 else 'have'} jev mode {mode}", style=theme.TEXT)
-    body.append("  ·  ", style=theme.FAINT)
-    body.append("nothing changed", style=theme.LABEL)
-    _notice_box(body, color=theme.ACCENT, title="no change")
 
 
 def machine_renamed(machine_id: str, label: str) -> None:
@@ -6819,7 +6750,7 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict],
                 [("+", f"{i} → {scope[i]}") for i in sorted(set(cur) - set(prev))]
                 + [("-", i) for i in sorted(set(prev) - set(cur))]
                 + [("~", f"{i} → {scope[i]}") for i in sorted(set(cur) & set(prev)) if cur[i] != prev[i]]
-                # A mode-only generation (`fp fleet jev-mode`) read as "no
+                # A mode-only generation (a legacy jev-mode change) read as "no
                 # change", which is exactly the change a rollback brings back.
                 + ([("~", f"jev {prev_mode}→{mode}")] if mode != prev_mode else [])
             )

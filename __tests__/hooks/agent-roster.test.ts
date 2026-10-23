@@ -95,6 +95,28 @@ describe("runtime agent identity", () => {
     expect(agentTargetsMatch(exact, null)).toBe(false);
   });
 
+  it("resolves each OpenClaw profile to its own config", () => {
+    const saved = ["OPENCLAW_CONFIG_PATH", "OPENCLAW_STATE_DIR", "OPENCLAW_HOME", "OPENCLAW_PROFILE"].map(
+      (key) => [key, process.env[key]] as const,
+    );
+    try {
+      for (const [key] of saved) delete process.env[key];
+      const home = "/home/u";
+      expect(runtimeAgentSettingsPath("openclaw", undefined, home)).toBe("/home/u/.openclaw/openclaw.json");
+      process.env.OPENCLAW_PROFILE = "sanity";
+      expect(runtimeAgentSettingsPath("openclaw", undefined, home)).toBe("/home/u/.openclaw-sanity/openclaw.json");
+      process.env.OPENCLAW_PROFILE = "../x";
+      expect(runtimeAgentSettingsPath("openclaw", undefined, home)).toBe("/home/u/.openclaw/openclaw.json");
+      process.env.OPENCLAW_STATE_DIR = "/srv/oc-work";
+      expect(runtimeAgentSettingsPath("openclaw", undefined, home)).toBe("/srv/oc-work/openclaw.json");
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("resolves a profile admitted to a full roster, and only up to the daemon's ceiling", () => {
     const root = mkdtempSync(join(tmpdir(), "fpai-agent-roster-"));
     roots.push(root);

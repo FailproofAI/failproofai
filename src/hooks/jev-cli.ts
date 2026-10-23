@@ -147,7 +147,7 @@ import {
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevState } from "./cloud-managed-policies";
-import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
+import { CLOUD_MANAGED_JEV_MODE, cloudManagesJevMode, readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, optsFor, paint, screenKit, stack, wrap, type RenderOpts } from "./tui";
 
@@ -366,6 +366,9 @@ function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } 
     return { cloudConnected: false, keyCarriesJev: false };
   }
 }
+
+/** What `jev setup --mode` says on a machine whose Jev mode FailproofAI Cloud sets. */
+const CLOUD_MANAGED_MODE_LINES = [CLOUD_MANAGED_JEV_MODE, "Deploy or remove Jev policies in FailproofAI Cloud to change it. Nothing was written."];
 
 /** The one line `status` titles a connected machine whose key has no Jev with. */
 const KEY_LACKS_JEV_TITLE = "off — no Jev key is stored for this machine's FailproofAI Cloud connection";
@@ -689,6 +692,9 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values, bools } = parsed;
+  // A machine connected for policies has its Jev mode set by FailproofAI Cloud
+  // alone: enforce while a Jev policy is deployed to it, off when none is.
+  if (values.has("--mode") && cloudManagesJevMode()) return fail(CLOUD_MANAGED_MODE_LINES);
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
   // One source for the key, so no run has to decide which of two the person
   // meant. The message names the recommended one first.
@@ -1477,14 +1483,6 @@ function cloudProblemAdvice(problem: string): string[] {
     return [
       "Jev does not run here: this machine was connected for decisions only (--no-transcripts), and a Jev call sends each checked tool call and the recent prompt to FailproofAI Cloud.",
       "To use FailproofAI Cloud's Jev checks, reconnect without --no-transcripts (failproofai config --token <key>).",
-    ];
-  }
-  // Over plain http the credential is fine; enforce is what http refuses.
-  // Asking for another key there sent people after the wrong fix.
-  if (/plain http/.test(problem)) {
-    return [
-      "Jev does not run here: FailproofAI Cloud set enforce, and this machine is connected over plain http, where Jev runs only in observe mode.",
-      "Reconnect to an https FailproofAI Cloud URL (failproofai config --token <key> --url https://…), or set the machine's Jev mode to observe from FailproofAI Cloud.",
     ];
   }
   return [

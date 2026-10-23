@@ -945,9 +945,10 @@ impl CloudClient {
             .pop_if_empty()
             .push(&self.machine_id)
             .push("agents");
+        // Only traced profiles: an unhooked agent CLI is not an enforcement
+        // target (see `AgentRoster::traced`).
         let agents: Vec<_> = roster
-            .agents
-            .iter()
+            .traced()
             .map(|agent| {
                 serde_json::json!({
                     "instanceId": agent.instance_id,
@@ -3079,6 +3080,10 @@ mod tests {
         let settings = home.join(".hermes/config.yaml");
         fs::create_dir_all(settings.parent().unwrap()).unwrap();
         fs::write(&settings, "plugins: failproofai").unwrap();
+        // Present but not traced: never reported.
+        let unhooked = home.join(".claude/settings.json");
+        fs::create_dir_all(unhooked.parent().unwrap()).unwrap();
+        fs::write(&unhooked, "{}").unwrap();
         let roster_path = root.join("agents/roster.json");
         let roster = agent_roster::refresh(&roster_path, &home).unwrap();
         let generation = roster.generation;
@@ -3121,7 +3126,9 @@ mod tests {
                 serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
             assert_eq!(body["schemaVersion"], 1);
             assert_eq!(body["generation"], generation);
+            assert_eq!(body["agents"].as_array().unwrap().len(), 1, "{body}");
             assert_eq!(body["agents"][0]["integration"], "hermes");
+            assert_eq!(body["agents"][0]["hookInstalled"], true);
             assert!(
                 body["agents"][0]["instanceId"]
                     .as_str()
@@ -3156,9 +3163,21 @@ mod tests {
         .unwrap();
         let report = client.report_agent_roster(&roster, false).unwrap();
         server.join().unwrap();
+        let hooked = roster.traced().next().unwrap().instance_id.clone();
+        let unreported = roster
+            .agents
+            .iter()
+            .find(|agent| !agent.hook_installed)
+            .unwrap()
+            .instance_id
+            .clone();
         assert!(
-            matches!(report, RosterReport::Sent(Some(r)) if r.is_empty()),
+            matches!(&report, RosterReport::Sent(Some(r)) if !r.contains(&hooked)),
             "a hooked profile is never reclaimable"
+        );
+        assert!(
+            matches!(&report, RosterReport::Sent(Some(r)) if r.contains(&unreported)),
+            "an unreported, unhooked profile Cloud cannot target may be reclaimed"
         );
         // No server is listening now. This must still succeed from the
         // in-process generation cache, and must not make another PUT, even

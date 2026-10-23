@@ -23,11 +23,20 @@
  * `is_auto_retryable()` excludes it from the retry pass — that is correct, and
  * re-litigating it here would burn the budget of batches that could succeed.
  * The gap was never the detection. It was that the detection was mute.
+ *
+ * A credential refusal is only evidence about the CURRENT key while nothing
+ * has been accepted since. A key regenerated on the dashboard leaves the
+ * running collector on the old secret until the daemon's next config tick, so
+ * a batch or two is refused while the new key already works. Those parked
+ * before the collector's last accepted delivery (`delivery.last_ok_ts`) are
+ * counted as `resending`, not refused: the daemon re-sends them with the key
+ * that works (`Delivery::redrive_refused`) and drops one only if that key
+ * refuses it too.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { failedDir } from "./fp-home";
+import { collectorHealthFile, failedDir } from "./fp-home";
 import { readCredentials } from "./fp-config";
 
 /**
@@ -106,6 +115,13 @@ export interface DeliveryHealth {
   credentialRejected: number;
   /** Count per client status, e.g. `{ 401: 26 }`. */
   byStatus: Record<number, number>;
+  /**
+   * Credential refusals parked BEFORE the last delivery the server accepted.
+   * The key in use now works, so these are not counted as refused: the daemon
+   * re-sends them with that key (`Delivery::redrive_refused`, fpai-collect)
+   * and drops one only if the current key refuses it too.
+   */
+  resending: number;
   /** Age of the oldest parked batch, in ms. Undefined when none are parked. */
   oldestAgeMs?: number;
 }
@@ -115,7 +131,22 @@ const EMPTY: DeliveryHealth = {
   rejected: 0,
   credentialRejected: 0,
   byStatus: {},
+  resending: 0,
 };
+
+/**
+ * `delivery.last_ok_ts` from the collector's health file, in ms, or undefined.
+ * The last upload the server ACCEPTED (`UploadMetrics::last_ok_ts`).
+ */
+export function readLastDeliveredAt(home?: string): number | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(collectorHealthFile(home), "utf8")) as { delivery?: { last_ok_ts?: unknown } };
+    const ts = raw?.delivery?.last_ok_ts;
+    return typeof ts === "number" && Number.isFinite(ts) && ts > 0 ? ts * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Summarise `failed/` without touching it.
@@ -127,6 +158,7 @@ export function deliveryHealth(
   home?: string,
   now: number = Date.now(),
   connectedAt: number | undefined = home ? undefined : readCredentials().connectedAt,
+  lastDeliveredAt: number | undefined = home ? undefined : readLastDeliveredAt(),
 ): DeliveryHealth {
   const dir = failedDir(home);
   if (!existsSync(dir)) return EMPTY;
@@ -144,6 +176,7 @@ export function deliveryHealth(
   let total = 0;
   let rejected = 0;
   let credentialRejected = 0;
+  let resending = 0;
   let oldestMtime: number | undefined;
 
   for (const name of entries) {
@@ -162,6 +195,17 @@ export function deliveryHealth(
       CREDENTIAL_STATUSES.has(parsed.clientStatus) &&
       mtime < connectedAt
     ) continue;
+    // Refused with a key that has worked since: the latest delivery attempt
+    // was accepted, so the CURRENT key is not the one being refused.
+    if (
+      lastDeliveredAt !== undefined &&
+      parsed.clientStatus !== undefined &&
+      CREDENTIAL_STATUSES.has(parsed.clientStatus) &&
+      mtime <= lastDeliveredAt
+    ) {
+      resending += 1;
+      continue;
+    }
     total += 1;
     if (parsed.clientStatus !== undefined) {
       rejected += 1;
@@ -177,6 +221,7 @@ export function deliveryHealth(
     rejected,
     credentialRejected,
     byStatus,
+    resending,
     ...(oldestMtime !== undefined ? { oldestAgeMs: Math.max(0, now - oldestMtime) } : {}),
   };
 }

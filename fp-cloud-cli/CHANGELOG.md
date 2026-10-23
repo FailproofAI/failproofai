@@ -10,24 +10,15 @@
   `both` (JavaScript reviewable by exactly its own checks; the server derives the authority).
   The kind follows from what is given when `--kind` is omitted, and a kind that contradicts its
   inputs is exit 2 before anything is sent. The positional source still works.
-- `fp fleet deploy … --jev-mode off|observe|enforce|local` sets the machine's Jev mode from
-  FailproofAI Cloud (overriding the machine's own; `local` hands it back). Omitted, the request
-  carries no `jevMode` and the mode is unchanged; `--jev-mode` alone is a valid deploy. An
-  `observe` effect on a `jev` policy is refused (exit 2) — Jev is observed through the mode.
-- `fp fleet jev-mode <machine…|--all> <mode>` changes only the Jev mode, through its own
-  route (`PUT /api/enforcement/deployments/{id}/jev-mode`), never the policy set — and
-  `fp fleet deploy --jev-mode` with no change to the set now uses it too. A deploy is a full
-  replace of the set the CLI read, which leaves out disabled policies' assignments, so a
-  mode change sent as a deploy deleted them and reverted concurrent edits.
-- `fp fleet rollback` says which Jev mode it restores (`jev mode <now> → <then>`, and
-  `jevModeBefore` in `--json`); `fp fleet history` shows each generation's Jev mode and marks a
-  mode-only generation as a change.
-- The `--jev-mode` and `fleet jev-mode` help says what `enforce` does: Jev's checks block calls
-  as well as clearing what they review, machine-wide (installed packs' checks included); an
-  `observe` effect on a `both` policy withholds its Jev checks.
-- The `fleet deploy`, `fleet jev-mode` and `policies publish` help says Jev checks run on
-  FailproofAI Cloud and nothing is installed on the machine, and `fleet show`/`fleet jev-mode`
-  name the reasons a machine with a mode cannot ask (`jev_unconfigured`, `transcripts_disabled`)
+- No Jev mode is set by hand: FailproofAI Cloud derives a machine's Jev mode from what is
+  deployed to it (on while a `jev`/`both` policy is, off otherwise), so `fp fleet deploy` has
+  no `--jev-mode` and there is no `fp fleet jev-mode`. An `observe` effect applies to `jev`
+  and `both` policies like any other: their checks are recorded and decide nothing.
+- `fp fleet rollback` says when the Jev mode differs (`jev mode <now> → <then>`, and
+  `jevModeBefore` in `--json`); `fp fleet history` shows each generation's Jev mode.
+- The `fleet deploy` and `policies publish` help says Jev checks run on
+  FailproofAI Cloud and nothing is installed on the machine, and `fleet show`
+  names the reasons a machine with a mode cannot ask (`jev_unconfigured`, `transcripts_disabled`)
   and the `jev_budget` report.
 - `fp policies list/show` print each version's kind and Jev check names (`show` also the
   declarations); `fp fleet list/show` print the machine's Jev mode and the policy errors it

@@ -37,7 +37,9 @@ use tokio::sync::Semaphore;
 
 use crate::spool::is_batch_file;
 use crate::supervisor::{Shutdown, TaskError};
-use crate::uploader::{ParkedName, Uploader, batch_id};
+use crate::uploader::{
+    OnCredentialRefusal, ParkedName, UploadError, Uploader, batch_id, is_credential_status,
+};
 
 /// Concurrent uploads across the watcher and sweeper combined.
 ///
@@ -139,8 +141,18 @@ impl Delivery {
             return; // semaphore closed — shutting down
         };
 
-        match self.uploader.upload_file(&path).await {
-            Ok(()) => tracing::debug!(file = %path.display(), "uploaded"),
+        let delivered = self.uploader.upload_file(&path).await;
+        drop(_permit);
+        drop(_guard);
+        match delivered {
+            Ok(()) => {
+                tracing::debug!(file = %path.display(), "uploaded");
+                // The server just accepted the key in use: whatever an earlier
+                // key had refused can go now (see `redrive_refused`).
+                if self.uploader.take_credential_refusals() {
+                    self.redrive_refused().await;
+                }
+            }
             // The batch id ties this to the attempt and park lines, which
             // carry the request ids.
             Err(err) => tracing::warn!(
@@ -149,6 +161,89 @@ impl Delivery {
                 %err,
                 "upload failed"
             ),
+        }
+    }
+}
+
+impl Delivery {
+    /// Re-send every batch parked as a credential refusal (`.c401` / `.c403`),
+    /// oldest first, with the key in use now. Called only after a delivery the
+    /// server accepted with that key.
+    ///
+    /// Why: a key regenerated on the dashboard (or a reconnect with a new one)
+    /// leaves the RUNNING collector on the old secret until the daemon's next
+    /// config tick cycles it, and whatever it sends in between is refused and
+    /// parked as definitive — never retried, and counted by `config --status`
+    /// as "the cloud is refusing this machine's key" for ever after, while
+    /// events reach the dashboard fine. The CLI's own redrive at `--connect`
+    /// (`credential-recovery.ts`) runs before that window closes, so it cannot
+    /// catch the last of them.
+    ///
+    /// A batch the current key refuses too is dropped: that key is accepted
+    /// (this pass only runs after an accepted delivery), so the batch itself
+    /// is what the server will not take.
+    pub async fn redrive_refused(&self) {
+        let failed_dir = self.uploader.failed_dir().to_path_buf();
+        let Ok(mut rd) = tokio::fs::read_dir(&failed_dir).await else {
+            return;
+        };
+        let mut found: Vec<(SystemTime, PathBuf)> = Vec::new();
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.starts_with('.') {
+                continue;
+            }
+            let parked = ParkedName::parse(name);
+            if parked.poison || !parked.client_status.is_some_and(is_credential_status) {
+                continue;
+            }
+            let modified = entry
+                .metadata()
+                .await
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            found.push((modified, path));
+        }
+        if found.is_empty() {
+            return;
+        }
+        found.sort_by_key(|(t, _)| *t);
+        tracing::info!(
+            count = found.len(),
+            "re-sending batches an earlier key had refused"
+        );
+        for (_, path) in found {
+            let Some(_guard) = self.claim(&path) else {
+                continue;
+            };
+            let Ok(_permit) = self.permits.clone().acquire_owned().await else {
+                return;
+            };
+            match self
+                .uploader
+                .upload_file_with(&path, OnCredentialRefusal::Drop)
+                .await
+            {
+                Ok(()) => {
+                    tracing::info!(file = %path.display(), "re-sent a batch an earlier key had refused")
+                }
+                // Refused again by the key that works: dropped by the uploader.
+                Err(UploadError::Client { status }) if is_credential_status(status) => {}
+                Err(err) => {
+                    // Still parked as a credential refusal (no verdict on it):
+                    // try again after the next accepted delivery.
+                    self.uploader.note_credential_refusals();
+                    tracing::warn!(
+                        file = %path.display(),
+                        batch_id = %batch_id(&path),
+                        %err,
+                        "could not re-send a batch an earlier key had refused"
+                    );
+                }
+            }
         }
     }
 }
@@ -396,7 +491,7 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     #[tokio::test]
-    async fn a_flush_redrives_fresh_retryable_batches_but_not_auth_refusals() {
+    async fn a_flush_redrives_retryable_batches_and_an_accepted_key_resends_refusals() {
         use wiremock::matchers::{header, method};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let server = MockServer::start().await;
@@ -406,7 +501,7 @@ mod tests {
                 ResponseTemplate::new(200)
                     .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
             )
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
         let dir = tmpdir("flush-recovery");
@@ -425,12 +520,88 @@ mod tests {
         );
         retry_parked(&delivery, &dir, &sd, Duration::ZERO).await;
         assert!(!retryable.exists());
+        // The key just delivered, so the batch a key had refused goes with it.
         assert!(
-            refused.exists(),
-            "flush must not retry an unchanged refused key"
+            !refused.exists(),
+            "an accepted delivery re-sends what a refused key had parked"
         );
         server.verify().await;
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refusal_the_current_key_repeats_is_dropped_and_others_are_kept() {
+        use wiremock::matchers::{body_string, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string("{\"refused\":1}\n"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+            )
+            .mount(&server)
+            .await;
+        let failed = tmpdir("redrive-failed");
+        let spool = tmpdir("redrive-spool");
+        let refused_again = failed.join("a-0.a1.c401.jsonl");
+        let resendable = failed.join("b-0.a1.c403.jsonl");
+        let not_credential = failed.join("c-0.a1.c404.jsonl");
+        std::fs::write(&refused_again, "{\"refused\":1}\n").unwrap();
+        std::fs::write(&resendable, "{\"ok\":1}\n").unwrap();
+        std::fs::write(&not_credential, "{\"ok\":2}\n").unwrap();
+        let fresh = spool.join("hooks-a-1-0.jsonl");
+        std::fs::write(&fresh, "{\"ok\":3}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "current".into(), failed.clone()).unwrap(),
+        ));
+        delivery.deliver(fresh.clone()).await;
+        assert!(!fresh.exists());
+        assert!(!resendable.exists(), "re-sent with the key that works");
+        assert!(
+            !refused_again.exists(),
+            "refused again by that key: dropped"
+        );
+        assert!(
+            not_credential.exists(),
+            "a non-credential refusal is not this pass's"
+        );
+        assert_eq!(
+            std::fs::read_dir(&failed).unwrap().count(),
+            1,
+            "nothing re-parked"
+        );
+        std::fs::remove_dir_all(failed).unwrap();
+        std::fs::remove_dir_all(spool).unwrap();
+    }
+
+    #[tokio::test]
+    async fn refusals_wait_for_an_accepted_delivery() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        let failed = tmpdir("redrive-wait-failed");
+        let spool = tmpdir("redrive-wait-spool");
+        let old = failed.join("a-0.a1.c401.jsonl");
+        std::fs::write(&old, "{}\n").unwrap();
+        let fresh = spool.join("hooks-a-1-0.jsonl");
+        std::fs::write(&fresh, "{}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "revoked".into(), failed.clone()).unwrap(),
+        ));
+        delivery.deliver(fresh).await;
+        assert!(old.exists(), "a key that is refused re-sends nothing");
+        assert!(failed.join("hooks-a-1-0.a1.c401.jsonl").exists());
+        std::fs::remove_dir_all(failed).unwrap();
+        std::fs::remove_dir_all(spool).unwrap();
     }
 
     fn tmpdir(name: &str) -> PathBuf {

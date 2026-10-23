@@ -136,25 +136,17 @@ describe("failproofai policies — cloud-managed section", () => {
     expect(text()).toMatch(/● fine\s+v1$/m);
   });
 
-  // N4 (e2e round 2): a broken Cloud policy read ● on until a hook had loaded it.
-  it("shows a Cloud policy no hook has load-checked under this deployment as not loaded yet", async () => {
+  // A deployed policy is on; a load failure (errors.json) is what says otherwise.
+  it("shows a deployed Cloud policy as on before any hook has loaded it, with no transient state", async () => {
     readActive.mockReturnValue([
       { id: "checked", version: 2, effect: "enforce", sha256: "a", path: "p", deployment: 11 },
       { id: "fresh", version: 1, effect: "enforce", sha256: "b", path: "q", deployment: 11 },
     ]);
-    vi.mocked(readCloudLoadChecked).mockReturnValue({ deployment: 11, checked: ["checked@2", "fresh@0"] });
+    vi.mocked(readCloudLoadChecked).mockReturnValue(null);
     await listHooks(project);
     expect(text()).toMatch(/● checked\s+v2$/m);
-    const fresh = text().split("\n").find((l) => l.includes("fresh")) ?? "";
-    expect(fresh).not.toContain("●");
-    expect(fresh).toContain("not loaded yet");
-  });
-
-  it("a record of another deployment counts for nothing", async () => {
-    readActive.mockReturnValue([{ id: "guard", version: 1, effect: "enforce", sha256: "a", path: "p", deployment: 12 }]);
-    vi.mocked(readCloudLoadChecked).mockReturnValue({ deployment: 11, checked: ["guard@1"] });
-    await listHooks(project);
-    expect(text()).toContain("not loaded yet");
+    expect(text()).toMatch(/● fresh\s+v1$/m);
+    expect(text()).not.toContain("not loaded yet");
   });
 
   it("marks an observe policy as observing, never as enforcing — its verdict is discarded", async () => {

@@ -33,7 +33,7 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
 import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
-import { readCloudLoadChecked, readCloudPolicyErrors } from "./cloud-policy-errors";
+import { readCloudPolicyErrors } from "./cloud-policy-errors";
 import { readRosterLabels } from "./agent-roster";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
@@ -1650,16 +1650,10 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     } catch {
       // No report: every row reads as the deployment says.
     }
-    // Only the hook path imports Cloud JavaScript (N4): a policy no hook has
-    // load-checked under this deployment is not yet known to load, so it is
-    // not drawn as ● on.
-    let loadChecked: Set<string> | null = null;
-    try {
-      const record = readCloudLoadChecked();
-      loadChecked = new Set(record && record.deployment === active[0]?.deployment ? record.checked : []);
-    } catch {
-      loadChecked = new Set();
-    }
+    // A policy deployed here is drawn ● on. Only the hook path imports Cloud
+    // JavaScript, so one that fails to load is known only after a tool call,
+    // and then shows as not loaded (errors.json, above) — never as a transient
+    // "not loaded yet" state of its own.
     const labels = active.some((a) => a.agentTargets?.some((tg) => tg.instanceId)) ? readRosterLabels() : new Map<string, string>();
     const targetText = (targets: NonNullable<(typeof active)[number]["agentTargets"]>): string =>
       `for ${targets
@@ -1689,14 +1683,6 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
               name: artifact.id,
               description: `v${artifact.version}`,
               tag: [...tags, `not loaded: ${failed}`].join(" · "),
-            };
-          }
-          if (!loadChecked?.has(`${artifact.id}@${artifact.version}`)) {
-            return {
-              state: "off" as const,
-              name: artifact.id,
-              description: `v${artifact.version}`,
-              tag: [...tags, "not loaded yet: it loads at the next agent tool call"].join(" · "),
             };
           }
           return {

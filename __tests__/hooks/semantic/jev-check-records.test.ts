@@ -39,7 +39,7 @@ function reply(outcomes: PolicyOutcome[], asked: string[], answers: Record<strin
     model: "jev-1.13.0",
     modelVerified: true,
     via: "failproofai",
-    cloud: { asked, droppedLocal: [], droppedCloud: [], answers, observed },
+    cloud: { asked, droppedLocal: [], droppedCloud: [], answers, observedOutcomes: observed, observed: [], observedAsked: observed.map((o) => o.policy) },
   } as CloudSemanticOutcome;
 }
 

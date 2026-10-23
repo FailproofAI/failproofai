@@ -434,6 +434,7 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
       if (!settled) controller.abort();
     },
     authorityOf,
+    ...(call.cloud ? { cloud: true } : {}),
   });
 
   let route: ReturnType<typeof transportForConfig>;

@@ -371,6 +371,8 @@ export interface TwoTierReview {
    * network instead of holding every hook on the machine behind it.
    */
   releaseRegistry?: () => void;
+  /** The review goes to FailproofAI Cloud (its Jev mode asked), not a local `jev.json`. */
+  cloud?: boolean;
   /** Effective authority + the reviewing semantic policies (empty unless reviewable). */
   authorityOf(p: { name: string; authority?: PolicyAuthority; reviewedBy?: string[] }): {
     authority: PolicyAuthority;

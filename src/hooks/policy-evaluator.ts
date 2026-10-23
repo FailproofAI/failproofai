@@ -226,6 +226,13 @@ export async function evaluatePolicies(
   if (review.kind === "answered" && review.asked.length === 0 && review.decision === "allow" && !review.observedAsked?.length) {
     return formatVerdict(eventType, session, toolName, regexOnly(collected.verdicts));
   }
+  // A hard regex deny decided before FailproofAI Cloud's Jev answered, and the
+  // request was dropped: Jev took no part, so the row is the regex (Cloud or
+  // local) policy's, with no Jev fields. A local `jev.json` keeps its
+  // `not-consulted` row, which `jev status` counts.
+  if (review.kind === "not-consulted" && twoTier.cloud) {
+    return formatVerdict(eventType, session, toolName, regexOnly(collected.verdicts));
+  }
   const combined = combineTwoTier(collected.verdicts, review, twoTier.mode);
   if (combined.cleared.length > 0) {
     hookLogInfo(`jev ${twoTier.mode === "observe" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);

@@ -2054,6 +2054,24 @@ describe("Cloud Jev assignments on the machine (jevPolicies)", () => {
     store._resetForTest();
   });
 
+  it("a regex-only Cloud deny decided before Cloud's Jev answered is a Cloud row with no Jev fields", async () => {
+    await connect();
+    deploy({
+      policies: [{ id: "no-force-push", version: 6, hooks: ["no-force-push"], verdict: "deny" }],
+      jevMode: "enforce",
+      extra: { jevPolicies: [{ id: "prod-db", version: 3, effect: "enforce" }] },
+    });
+    const store = await import("@/src/hooks/hook-activity-store");
+    store._resetForTest(join(home, "activity"));
+    stubFetch((call) => ({ body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([]) } }));
+    const result = await hook("git push --force origin main");
+    expect(result.evaluation?.decision).toBe("deny");
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(row).toMatchObject({ decision: "deny", policySource: "cloud", cloudPolicyId: "no-force-push", cloudVersion: 6 });
+    for (const key of ["evaluator", "jevMode", "jevDecision", "jevFallbackReason", "jevChecks"]) expect(row[key], key).toBeUndefined();
+    store._resetForTest();
+  });
+
   it("an older deployment without the list still asks Cloud, and a short-circuit stamps no Jev fields", async () => {
     await connect();
     deploy({ jevMode: "enforce" });

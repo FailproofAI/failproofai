@@ -1012,7 +1012,7 @@ describe("C10.5 evaluateCloudSemantic", () => {
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") return;
     expect(outcome.verdict).toMatchObject({ decision: "allow", reason: null, outcomes: [] });
-    expect(outcome.cloud).toEqual({ asked: [], droppedLocal: [], droppedCloud: [] });
+    expect(outcome.cloud).toEqual({ asked: [], droppedLocal: [], droppedCloud: [], answers: {}, observed: [], observedAsked: [], observedOutcomes: [] });
   });
 
   it("decides the pack checks from the answers, minus the groups Cloud dropped, and merges Cloud's verdict first", async () => {

@@ -114,6 +114,10 @@ the hook does not report which one ran), **targeted assignments do not match**;
 unscoped policies still apply. Look for `agent_scope_unresolved` under that
 machine's policy errors.
 
+A machine reports only the agents it traces: one entry per profile whose
+config carries the FailproofAI hook (Hermes and OpenClaw get one per profile,
+named by its label). An agent CLI that is merely installed is not listed.
+
 Each machine keeps up to 256 profiles in its roster. A profile's ID never
 changes while it is listed. When the roster is full and a new profile with a
 FailproofAI hook appears (its hook runs, or its config carries the hook), the

@@ -78,7 +78,15 @@ export function runtimeAgentSettingsPath(
     const config = process.env.OPENCLAW_CONFIG_PATH;
     if (config?.trim()) return resolve(config);
     const state = process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME;
-    return resolve(state?.trim() ? state : resolve(userHome, ".openclaw"), "openclaw.json");
+    if (state?.trim()) return resolve(state, "openclaw.json");
+    // `openclaw --profile <name>` runs from `~/.openclaw-<name>`; a gateway
+    // that exports only the profile name must still resolve to that profile's
+    // config, not the default one (each profile has its own roster identity).
+    const profile = process.env.OPENCLAW_PROFILE?.trim();
+    if (profile && profile !== "default" && /^[A-Za-z0-9._-]{1,80}$/.test(profile) && !profile.startsWith(".")) {
+      return resolve(userHome, `.openclaw-${profile}`, "openclaw.json");
+    }
+    return resolve(userHome, ".openclaw", "openclaw.json");
   }
   const relative = USER_SETTINGS[cli];
   if (!relative) return null;

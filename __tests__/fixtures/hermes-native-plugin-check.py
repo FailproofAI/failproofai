@@ -586,6 +586,24 @@ class HostCompatibilityTests(unittest.TestCase):
             self.assertIsNone(retry)
             self.assertEqual(instance.ledger.path.parent.stat().st_mode & 0o777, 0o700)
 
+    def test_the_profile_identity_follows_the_host_home_resolver(self) -> None:
+        # A per-task profile override must report that profile's config, so
+        # the daemon roster attributes the call to it and not to HERMES_HOME's.
+        with tempfile.TemporaryDirectory() as tmp:
+            env_home = Path(tmp) / "from-env"
+            env_home.mkdir()
+            (env_home / "config.yaml").write_text("plugins: {}\n")
+            override = Path(tmp) / "from-host"
+            override.mkdir()
+            (override / "config.yaml").write_text("plugins: {}\n")
+            with patch.dict("os.environ", {"HERMES_HOME": str(env_home)}):
+                with patch.dict(sys.modules, host_modules(home=override)):
+                    selected = plugin._profile_settings_path("default")
+                with patch.dict(sys.modules, host_modules()):
+                    fallback = plugin._profile_settings_path("default")
+            self.assertEqual(selected, str((override / "config.yaml").absolute()))
+            self.assertEqual(fallback, str((env_home / "config.yaml").absolute()))
+
     def test_the_host_home_resolver_wins_over_hermes_home(self) -> None:
         # hermes_constants.get_hermes_home() also honours a per-task profile
         # override, which HERMES_HOME alone cannot see.

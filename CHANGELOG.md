@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.12-beta.2 — 2026-10-23
+
+### Fixes
+
+- Preserve entire credential-refused batches after a later upload chunk fails; replay is bounded, cancellable, and does not stall fresh deliveries (#928).
+- Include Jev-only Cloud assignments in enforcement status only when their effective Cloud mode enforces, counting hybrid policies once (#928).
+
+### Release
+
+- Prepare the current Cloud-policy branch with its own unpublished beta version; `1.0.12-beta.1` is already published and does not contain these final fixes (#928).
+
 ## 1.0.12-beta.1 — 2026-10-23
 
 ### Features

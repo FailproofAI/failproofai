@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.12-beta.0 — 2026-10-23
+
+### Docs
+
+- Clarify bulk history scoring for code, Jev, and LLM judges, explicit model-cost approval, fair shared capacity, and retrying enqueue failures (#930)
+
 ## 1.0.12-beta.0 — 2026-10-22
 
 ### Dependencies

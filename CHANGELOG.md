@@ -8,7 +8,7 @@
 
 ### Security
 
-- Pin Zod to 4.6.6 to fix oversized-collection validation memory exhaustion (GHSA-mrhx-c7xc-m3w5) (#930)
+- Pin Zod to 4.6.6 in the root dependency graph and independently installed TypeScript SDK integration fixtures to fix oversized-collection validation memory exhaustion (GHSA-mrhx-c7xc-m3w5) (#930)
 
 ## 1.0.12-beta.0 — 2026-10-22
 

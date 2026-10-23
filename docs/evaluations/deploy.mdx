@@ -39,9 +39,11 @@ Select **disable**. With no enabled version, it stops running on new sessions. T
 
 ## Score sessions you already have
 
-Evaluation runs forward: a version deployed now never scores a session that ended before it. To score history, open **score sessions you already have** on the eval authoring page, choose a window of up to 90 days and, optionally, a single evaluation, and count before you run. The count is exactly what will run, and each session-and-evaluation pair in it is a billable evaluation.
+Evaluation runs forward: a version deployed now never scores a session that ended before it. **Code, Jev classifiers, and LLM judges can all score history.** Open **score past sessions** on the evaluation's page, choose a window of up to 90 days, and select **check what's missing** before starting. Each session-and-evaluation pair is an evaluation to run; conditions can skip sessions, and work already handled by another request is left alone.
 
-It fills gaps only. A session that already has a result for that evaluation keeps it, and running the same window twice scores nothing new.
+For Jev and LLM judges, model calls incur usage charges. Deploying a model-backed evaluation offers a history preview; scoring history starts only after you explicitly select **score**. Queued evaluations run as workers have capacity, and organizations share that capacity fairly.
+
+It fills gaps only. A session that already has a result for that evaluation keeps it. Queued, completed, skipped, and failed work is not queued again, and publishing a new version does not rerun old results. Running the same window twice scores nothing new. If some sessions could not be queued, the page reports them so you can check again and retry.
 
 To score one session again — after a fix, or for a session that never ended cleanly — select **re-evaluate** on its page. The new result is added to the session's history; earlier ones stay.
 

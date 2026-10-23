@@ -101,6 +101,9 @@ vi.mock("../../src/hooks/integrations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/integrations")>();
   return { ...actual, detectInstalledClis: vi.fn(() => ["claude"]) };
 });
+// Agents' skill folders can sit outside HOME (CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME…),
+// so no wizard test writes one; agent-skill.test.ts covers the writing.
+vi.mock("../../src/hooks/agent-skill", () => ({ installAgentSkill: vi.fn((ids: string[]) => ids) }));
 
 import {
   BACK,
@@ -165,6 +168,7 @@ import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 import { configFile as fpConfigFile, credentialsFile, launcherMarker } from "../../src/hooks/fp-home";
 import { readConfig as readFpConfig, updateConfig } from "../../src/hooks/fp-config";
 import { backfillRequestPath } from "../../src/hooks/backfill-request";
+import { installAgentSkill } from "../../src/hooks/agent-skill";
 
 it("savedConnection flags split keys instead of treating either as the saved connection", () => {
   mkdirSync(dirname(credentialsFile()), { recursive: true });
@@ -270,6 +274,7 @@ beforeEach(() => {
   vi.mocked(runPostSetupAudit).mockClear();
   vi.mocked(trackHookEvent).mockClear();
   vi.mocked(detectInstalledClis).mockReset().mockReturnValue(["claude"]);
+  vi.mocked(installAgentSkill).mockReset().mockImplementation((ids) => [...ids]);
   vi.mocked(notEnforcingReason).mockReset().mockReturnValue("no-policies");
   vi.mocked(enforcingPolicyCount).mockReset().mockReturnValue({ count: 0, custom: false });
   vi.mocked(connectToCloud)
@@ -688,6 +693,15 @@ describe("runConfigureWizard", () => {
     expect(call[4]).toBe("configure-wizard");
     expect(call[7]).toEqual(["claude"]);
     expect(call[8]).toEqual({ replace: true, quiet: true });
+  });
+
+  it("adds the failproofai skill to every detected agent, and any ticked, traced or not", async () => {
+    vi.mocked(detectInstalledClis).mockReturnValue(["claude", "goose"]);
+    drive({ agents: ["goose", "codex"] });
+    const io = ttyIO();
+    await runConfigureWizard(io);
+    expect(installAgentSkill).toHaveBeenCalledWith(["claude", "codex", "goose"]);
+    expect(printed(io.stdout)).toContain("Added the failproofai skill to 3 agents.");
   });
 
   it("saves the selection, and what it saw", async () => {

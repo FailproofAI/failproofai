@@ -4,6 +4,10 @@
 
 The stable release of logging in to FailproofAI Cloud from `config` in your browser. Everything below in the `1.0.12-beta.*` sections ships here too.
 
+### Features
+
+- **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and `failproofai uninstall` removes only the ones `config` wrote (#920)
+
 ### Fixes
 
 - `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)

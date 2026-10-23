@@ -41,7 +41,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 
 | Command | Outcome |
 | --- | --- |
-| `failproofai config` | Set the machine up: agents, daemon, and Cloud — log in through the browser, paste a key, or stay open source |
+| `failproofai config` | Set the machine up: agents, daemon, and Cloud — log in through the browser, paste a key, or stay open source. Every agent on the machine also gets a small `failproofai` skill that points it at the [FailproofAI skills](https://github.com/FailproofAI/skills) online |
 | `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/reference/jev-cloud) in observe mode, unless a `jev.json` already exists or `--no-transcripts` is given |
 | `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
@@ -75,7 +75,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai config --resume` | Resume one paused local session; add `--all` to clear all pauses |
 | `failproofai update` | Finish package migrations and update the daemon |
 | `failproofai migrate --dry-run` | Preview or run pending home-layout migrations |
-| `failproofai uninstall` | Remove hooks and the daemon before removing the package |
+| `failproofai uninstall` | Remove hooks, the `failproofai` skill and the daemon before removing the package |
 | `failproofai --version` | Print the installed package version |
 | `failproofai --help` | Show commands and global usage |
 
@@ -185,5 +185,5 @@ npm rm -g failproofai
 Run `failproofai <command> --help` for version-specific details.
 
 <Warning>
-  Run `failproofai uninstall` before `npm rm -g failproofai`; npm does not remove installed agent hooks or the daemon service.
+  Run `failproofai uninstall` before `npm rm -g failproofai`; npm does not remove installed agent hooks, the `failproofai` skill or the daemon service.
 </Warning>

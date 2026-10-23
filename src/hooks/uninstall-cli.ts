@@ -47,6 +47,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
 import { CODEX_MANAGED_BEGIN, CODEX_MANAGED_END, codexSystemConfigPath, codexSystemHooksPresent } from "./codex-system-hooks";
 import { optsFor, screenKit, type RenderOpts } from "./tui";
 
@@ -110,6 +111,8 @@ export interface UninstallResult {
 /** Everything this machine has that uninstalling would remove. */
 interface Leftovers {
   clis: IntegrationType[];
+  /** The failproofai skill folders `config` wrote into agents. */
+  skillDirs: string[];
   /** failproofai's block in Codex's system config, which only root can remove. */
   codexSystemPath: string | null;
   servicePath: string | null;
@@ -149,6 +152,7 @@ function survey(cwd?: string): Leftovers {
   const servicePath = isDaemonSupportedPlatform() ? daemonServiceFilePath() : null;
   return {
     clis,
+    skillDirs: installedAgentSkillDirs(),
     codexSystemPath: codexSystemHooksPresent() ? codexSystemConfigPath() : null,
     servicePath,
     serviceInstalled: !!servicePath && existsSync(servicePath),
@@ -166,7 +170,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   const lines: string[] = [];
 
   const nothingToDo =
-    found.clis.length === 0 && !found.serviceInstalled && !found.daemonConfigured &&
+    found.clis.length === 0 && found.skillDirs.length === 0 && !found.serviceInstalled && !found.daemonConfigured &&
     !(opts.purge && found.homeExists);
   if (nothingToDo) {
     return {
@@ -191,6 +195,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   const purging = Boolean(opts.purge && found.homeExists);
   const removals: string[] = [];
   if (found.clis.length > 0) removals.push(`failproofai's hooks from ${many(found.clis.length, "agent")}`);
+  if (found.skillDirs.length > 0) removals.push(`the failproofai skill from ${many(found.skillDirs.length, "agent folder")}`);
   if (found.serviceInstalled) removals.push("the failproofaid service (needs sudo)");
   if (purging) removals.push(home);
   const releasesDaemon = found.daemonConfigured && !found.serviceInstalled;
@@ -319,6 +324,12 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
           "Finish with  `failproofai policies --uninstall --scope all`",
       );
     }
+  }
+
+  if (found.skillDirs.length > 0) {
+    const left = found.skillDirs.length - removeAgentSkill().length;
+    if (left === 0) lines.push(kit.ok(`Removed the failproofai skill from ${many(found.skillDirs.length, "agent folder")}.`));
+    else failures.push(`Could not remove the failproofai skill from ${many(left, "agent folder")}:\n${installedAgentSkillDirs().join("\n")}`);
   }
 
   if (found.serviceInstalled) {

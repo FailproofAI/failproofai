@@ -79,10 +79,21 @@ A judge produces a **score** like any other scored evaluation, so it charts, fil
 
 Scores are stable for clear-cut cases but not bit-for-bit deterministic. Treat a single borderline score as a prompt to go and read the session, not as a verdict.
 
+## Score past sessions
+
+Use **score past sessions** to run a judge on completed sessions that are missing
+its result. Choose a window, check what's missing for free, then press the score
+button to start. Scoring incurs model usage charges; publishing a judge does not
+start paid history scoring.
+
+Backfill keeps the results a session already has, even after you publish a new
+version. Conditions may skip sessions. To deliberately score a session again,
+use its **re-evaluate** action. See [scoring sessions you already have](/evaluations/deploy#score-sessions-you-already-have)
+for the window and batch limits.
+
 ## Limits
 
 - **Testing is not available yet.** A dry run has no session assignment behind it, and that assignment is what authorises spending your model budget — so there is nothing for a test call to charge. Deploy against a narrow condition and read the first few results.
-- **Backfill is not available.** Backfilling a code evaluation over months of history is free; doing it with a judge would spend your entire budget in minutes.
 - **Editing the criteria publishes a new version.** Old and new scores are not comparable, so they are kept apart rather than mixed into one trend line.
 - **A judge always produces a score**, never a metric or an assertion.
 

@@ -6,6 +6,10 @@
 
 - Clarify bulk history scoring for code, Jev, and LLM judges, explicit model-cost approval, condition skips, fresh previews, fair shared capacity, and enqueue-failure retries for hosted and customer workers (#930)
 
+### Security
+
+- Pin Zod to 4.6.6 to fix oversized-collection validation memory exhaustion (GHSA-mrhx-c7xc-m3w5) (#930)
+
 ## 1.0.12-beta.0 — 2026-10-22
 
 ### Dependencies

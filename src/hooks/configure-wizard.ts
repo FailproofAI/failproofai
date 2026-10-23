@@ -1474,10 +1474,7 @@ export async function runConfigureWizard(
   // The failproofai skill, in every agent this machine has and any ticked
   // without being detected — traced or not, an agent asked about FailproofAI
   // should know it. A pointer to the skill online (see agent-skill.ts).
-  const withSkill = installAgentSkill(INTEGRATION_TYPES.filter((id) => plan.detected.has(id) || selected.includes(id)));
-  if (withSkill.length > 0) {
-    done.push(kit.ok(`Added the failproofai skill to ${withSkill.length} ${withSkill.length === 1 ? "agent" : "agents"}.`));
-  }
+  installAgentSkill(INTEGRATION_TYPES.filter((id) => plan.detected.has(id) || selected.includes(id)));
 
   // Agents traced again start fresh (see `requestFreshStart`). Only on a
   // rerun: its baseline is the selection the daemon actually filtered on. With

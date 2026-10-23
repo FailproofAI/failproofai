@@ -701,7 +701,8 @@ describe("runConfigureWizard", () => {
     const io = ttyIO();
     await runConfigureWizard(io);
     expect(installAgentSkill).toHaveBeenCalledWith(["claude", "codex", "goose"]);
-    expect(printed(io.stdout)).toContain("Added the failproofai skill to 3 agents.");
+    // Silent: the summary is about enforcement and the connection.
+    expect(printed(io.stdout)).not.toContain("skill");
   });
 
   it("saves the selection, and what it saw", async () => {

@@ -32,7 +32,7 @@ import { getInstanceId, hashToId } from "../../lib/telemetry-id";
 import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir } from "./fp-home";
-import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
+import { listActiveCloudManagedPolicies, readCloudJevAssignments, readCloudJevState, type CloudJevMode } from "./cloud-managed-policies";
 import { readCloudPolicyErrors } from "./cloud-policy-errors";
 import { readRosterLabels } from "./agent-roster";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
@@ -1254,6 +1254,8 @@ export interface PoliciesScreen {
     jevMode?: CloudJevMode | null;
     /** Problems reading the deployment, each one line. */
     problems?: string[];
+    /** The manifest names its Jev assignments (`jevPolicies`), so Jev-only policies are among `rows`. */
+    jevListed?: boolean;
   } | null;
   /**
    * Builtins this build enforces itself because no pack is installed: the
@@ -1392,9 +1394,12 @@ export function renderPoliciesScreen(
       out.push(`${INDENT}Jev mode: off, set by FailproofAI Cloud (overrides jev.json).`);
     } else if (jevMode) {
       out.push(`${INDENT}Jev mode: ${jevMode}, set by FailproofAI Cloud. Jev checks run on FailproofAI Cloud; nothing of them is installed here.`);
-      // Jev-only Cloud policies never reach the machine (N6): say so, or an
-      // empty section reads as "Cloud deployed nothing".
-      out.push(`${INDENT}Jev-only Cloud policies are not listed here; see them with ${kit.cmd("fp fleet show")} or on the dashboard.`);
+      // A manifest from a server that predates `jevPolicies` does not name its
+      // Jev-only policies: say so, or an empty section reads as "Cloud
+      // deployed nothing".
+      if (!screen.cloud.jevListed) {
+        out.push(`${INDENT}Jev-only Cloud policies are not listed here; see them with ${kit.cmd("fp fleet show")} or on the dashboard.`);
+      }
     }
     for (const problem of problems ?? []) out.push(kit.caution(problem));
   }
@@ -1616,8 +1621,9 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
   // Each policy's KIND is shown — `regex` (JS) or `both` (JS whose verdict
   // its own Jev checks may clear) — with the Jev check names a `both` policy
   // is reviewed by. Those checks, and every `jev` policy, run on FailproofAI
-  // Cloud (CONTRACT C10): nothing of them is on this machine, so no Jev-only
-  // policy is listed here, and the machine cannot count them.
+  // Cloud (CONTRACT C10): no question is on this machine, but the manifest's
+  // `jevPolicies` names each Jev assignment, so a Jev-only policy gets a row
+  // (tagged `jev`) like the JS ones.
   let cloud: PoliciesScreen["cloud"] = null;
   try {
     // Every assignment, agent-scoped ones included (B4): this lists the
@@ -1654,15 +1660,37 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
     // JavaScript, so one that fails to load is known only after a tool call,
     // and then shows as not loaded (errors.json, above) — never as a transient
     // "not loaded yet" state of its own.
-    const labels = active.some((a) => a.agentTargets?.some((tg) => tg.instanceId)) ? readRosterLabels() : new Map<string, string>();
+    // Jev-only assignments (`jevPolicies`): ids, versions, effects and scopes,
+    // never a question. A `both` policy is in both lists and is drawn once,
+    // from its JS row. Null from a server that predates the list.
+    let jevAssignments: ReturnType<typeof readCloudJevAssignments> = null;
+    try {
+      jevAssignments = readCloudJevAssignments();
+    } catch {
+      // Never throws by contract.
+    }
+    const jsIds = new Set(active.map((a) => a.id));
+    const jevOnly = (jevAssignments ?? []).filter((a) => !jsIds.has(a.id));
+    const labels = [...active, ...jevOnly].some((a) => a.agentTargets?.some((tg) => tg.instanceId))
+      ? readRosterLabels()
+      : new Map<string, string>();
     const targetText = (targets: NonNullable<(typeof active)[number]["agentTargets"]>): string =>
       `for ${targets
         .map((tg) => (tg.instanceId ? `${tg.integration} / ${labels.get(tg.instanceId) ?? tg.instanceId}` : tg.integration))
         .join(", ")}`;
-    if (active.length > 0 || jev.jevMode !== null) {
+    if (active.length > 0 || jevOnly.length > 0 || jev.jevMode !== null) {
+      const jevRows: PoliciesScreenRow[] = jevOnly.map((a) => {
+        const tags = [
+          ...(a.effect === "observe" ? ["observe"] : []),
+          "jev",
+          ...(a.agentTargets?.length ? [targetText(a.agentTargets)] : []),
+        ];
+        return { state: "on" as const, name: a.id, description: `v${a.version}`, tag: tags.join(" · ") };
+      });
       cloud = {
         deployment: active[0]?.deployment ?? jev.deployment ?? null,
-        rows: active.map((artifact) => {
+        jevListed: jevAssignments !== null,
+        rows: [...active.map((artifact) => {
           // Only a `both` policy carries a server-derived reviewer list (C1).
           const both = artifact.authority === "reviewable" && (artifact.reviewedBy?.length ?? 0) > 0;
           const checks = both ? (artifact.reviewedBy ?? []).join(", ") : "";
@@ -1691,7 +1719,7 @@ export async function listHooks(cwd?: string, { all = false }: { all?: boolean }
             description: `v${artifact.version}`,
             ...(tags.length > 0 ? { tag: tags.join(" · ") } : {}),
           };
-        }),
+        }), ...jevRows],
         jevMode: jev.jevMode,
         problems: [
           ...(jsProblem !== null ? [`The Cloud JavaScript policies could not be read, so none of them is enforcing: ${jsProblem}`] : []),

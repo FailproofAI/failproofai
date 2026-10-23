@@ -1755,6 +1755,36 @@ describe("surfaces", () => {
     expect(text).toMatch(/Jev-only Cloud policies are not listed here; see them with fp fleet show/);
   });
 
+  it("policies lists the Jev-only Cloud policies the manifest names (jevPolicies), once each, with no 'not listed' note", async () => {
+    deploy({
+      policies: [{ id: "no-prod-db", version: 3, authority: "reviewable", reviewedBy: ["acme-prod-db"] }],
+      jevMode: "enforce",
+      extra: {
+        schemaVersion: 3,
+        jevPolicies: [
+          { id: "no-prod-db", version: 3, effect: "enforce" },
+          { id: "force-push-owned", version: 6, effect: "enforce", agentTargets: [{ integration: "codex" }] },
+          { id: "prod-db-watch", version: 2, effect: "observe" },
+        ],
+      },
+    });
+    const out: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      out.push(...String(chunk).split("\n"));
+      return true;
+    });
+    await hook();
+    const { listHooks } = await import("@/src/hooks/manager");
+    await listHooks(project);
+    const text = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
+    expect(text).toMatch(/no-prod-db\s+v3 {2}· {2}both · Jev checks: acme-prod-db$/m);
+    expect(text.match(/no-prod-db/g)).toHaveLength(1);
+    expect(text).toMatch(/● force-push-owned\s+v6 {2}· {2}jev · for codex$/m);
+    expect(text).toMatch(/● prod-db-watch\s+v2 {2}· {2}observe · jev$/m);
+    expect(text).not.toMatch(/not listed here/);
+  });
+
   it("config --disconnect's clear takes the Jev mode, the snapshot, both error reports and the budget record with active.json", async () => {
     // The default directory is owned by the CLI. An overridden directory may
     // be shared and must not be cleaned up on disconnect.

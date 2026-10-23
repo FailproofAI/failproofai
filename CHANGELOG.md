@@ -24,7 +24,7 @@
 - After an accepted delivery the daemon re-sends batches an earlier key refused (401/403) with the current key, dropping one only if that key refuses it too; `config --status` says the cloud is refusing this machine's key only when the current key is refused.
 - `failproofai policies` shows a deployed Cloud policy as on; the transient "not loaded yet" state is gone.
 - The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)
-- `failproofai policies` says Jev-only Cloud policies are not listed on the machine (#928)
+- `failproofai policies` lists Jev-only Cloud policies from the manifest's `jevPolicies` (version, `jev`, observe, agent targets) like the other Cloud policies; only a manifest without the list keeps the "not listed here" note (#928)
 - The daemon's roster re-scopes an existing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` entry from `project` to `user` on its next sighting, keeping its ID (#928)
 - Reconnecting the same FailproofAI Cloud organisation on a new URL (http → https, same key) is a reconnect, not an organisation switch: it no longer prints "Switched from X to X" or clears the Cloud policies until the next poll (#928)
 - A reconnect on a new URL points the `jev.json` that `config` wrote (provider `failproofai`) at the new URL, keeping its mode; a BYOK `jev.json` is never touched (#928)

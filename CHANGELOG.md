@@ -4,7 +4,7 @@
 
 ### Features
 
-- `fpai-collect` builds without SQLite: the SQLite pollers (goose, opencode, hermes, devin, OpenClaw 2026.9.2+) move behind a default-on `sqlite` cargo feature, so a service that only needs the transcript converters and redaction can depend on the crate with `default-features = false` — AgentEye's server does, to import Claude Code and Codex transcripts, and its sqlx links a different `libsqlite3-sys`. The daemon builds with the feature and is unchanged; CI now also lints the crate without it
+- `fpai-collect` builds without SQLite: the SQLite pollers (goose, opencode, hermes, devin, OpenClaw 2026.9.2+) move behind a default-on `sqlite` cargo feature, so a service that only needs the transcript converters and redaction can depend on the crate with `default-features = false` — AgentEye's server does, to import Claude Code and Codex transcripts, and its sqlx links a different `libsqlite3-sys`. The daemon builds with the feature and is unchanged; CI now also lints the crate without it (#929)
 
 ### Dependencies
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.12-beta.1 — 2026-10-23
+
+### Fixes
+
+- `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)
+
 ## 1.0.12-beta.0 — 2026-10-22
 
 ### Features

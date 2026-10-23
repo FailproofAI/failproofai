@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.12-beta.0 — 2026-10-23
+
+### Docs
+
+- Clarify bulk history scoring for code, Jev, and LLM judges, explicit model-cost approval, condition skips, fresh previews, large-scan refusals, fair shared capacity, and enqueue-failure retries for hosted and customer workers (#930)
+
+### Security
+
+- Pin Zod to 4.6.6 in the root dependency graph and independently installed TypeScript SDK integration fixtures to fix oversized-collection validation memory exhaustion (GHSA-mrhx-c7xc-m3w5) (#930)
+
 ## 1.0.12-beta.0 — 2026-10-22
 
 ### Dependencies

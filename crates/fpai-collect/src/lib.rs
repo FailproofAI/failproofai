@@ -22,6 +22,7 @@ pub mod otlp;
 pub mod redact;
 pub mod sources;
 pub mod spool;
+#[cfg(feature = "sqlite")]
 pub mod sqlitepoll;
 pub mod supervisor;
 #[cfg(test)]

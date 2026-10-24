@@ -25,7 +25,7 @@
  * Hermes the first 57 — so the description is short and leads with what it is
  * for.
  */
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { listHermesProfiles } from "../../lib/hermes-profiles";
@@ -132,7 +132,7 @@ export function agentSkillRoots(id: IntegrationType): string[] {
  * where `npx skills add FailproofAI/skills -g` puts the full skill for it.
  */
 function listedTwice(id: IntegrationType): boolean {
-  return id === "codex" && existsSync(join(homedir(), ".agents", "skills", AGENT_SKILL_NAME));
+  return id === "codex" && existsSync(join(homedir(), ".agents", "skills", AGENT_SKILL_NAME, "SKILL.md"));
 }
 
 /**
@@ -154,14 +154,24 @@ export function installAgentSkill(ids: readonly IntegrationType[]): IntegrationT
         continue;
       }
       if (existsSync(dir) && !ours) continue;
+      let created = false;
+      let marked = false;
       try {
         // Marker first: a run interrupted before it would leave a folder every
         // later run takes for someone else's and skips.
-        mkdirSync(dir, { recursive: true });
+        mkdirSync(root, { recursive: true });
+        if (!existsSync(dir)) {
+          mkdirSync(dir);
+          created = true;
+        }
         writeConfigFileAtomic(join(dir, AGENT_SKILL_MARKER), "", { backup: false, symlinks: "replace" });
+        marked = true;
         writeConfigFileAtomic(join(dir, "SKILL.md"), AGENT_SKILL_MD, { backup: false, symlinks: "replace" });
         wrote = true;
       } catch (err) {
+        if (created && !marked) {
+          try { rmdirSync(dir); } catch { /* Preserve a directory that is no longer empty. */ }
+        }
         hookLogWarn(`the failproofai skill was not written to ${dir}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }

@@ -9,7 +9,7 @@ not depend on — so they are invoked deliberately.
 | `layout-reset.sh` | nothing | fresh/stale/future layout detection, reset semantics, OSS silence, hook warn-don't-delete-don't-deny |
 | `cloud-collector.sh` | an AgentEye stack | real connect against a live server, daemon + collector writing layout-2 paths, decisions reaching ClickHouse, disconnect back to OSS |
 | `systemd-service.sh` | Docker | REAL `systemctl enable --now` as root in a privileged container: service lifecycle, fail-closed, self-heal, reinstall |
-| `cli-login.sh` | an AgentEye stack (dashboard + mailpit + its Postgres), Docker, `bun run build` + the release daemon | `config`'s browser login through a real pty in a systemd container: approve, re-login, deny + retry, abandon after approval (no key minted), esc, expiry, revoked saved key, older server, and the person-side refusals (Origin, form posts, no session, start rate limit) |
+| `cli-login.sh` | an AgentEye stack (dashboard + mailpit + its Postgres), an older Cloud server without `/api/auth/cli/*` routes, Docker, `bun run build` + the release daemon | `config`'s browser login through a real pty in a systemd container: approve, re-login, deny + retry, abandon after approval (no key minted), esc, expiry, revoked saved key, older server, and the person-side refusals (Origin, form posts, no session, start rate limit) |
 
 `systemd-service.sh` exists because the service half cannot be tested on a
 developer machine without a password prompt, and a container gives real systemd
@@ -33,8 +33,9 @@ bash __tests__/e2e/layout/layout-reset.sh
 bash __tests__/e2e/layout/systemd-service.sh
 
 # cli-login.sh drives the real wizard against a running AgentEye; point it at
-# that stack's dashboard, mailpit API and Postgres container.
-DASH=http://localhost:3000 MAILPIT=http://localhost:8026 PG_CONTAINER=agenteye-postgres-1 \
+# that stack's dashboard, mailpit API and Postgres container. OLD_CLOUD must
+# answer requests but lack the CLI login routes; it defaults to localhost:28080.
+DASH=http://localhost:3000 MAILPIT=http://localhost:8026 OLD_CLOUD=http://localhost:28080 PG_CONTAINER=agenteye-postgres-1 \
   bash __tests__/e2e/layout/cli-login.sh
 
 # cloud-collector.sh expects the stack on the remapped ports (18080/18123) so it

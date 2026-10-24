@@ -12,6 +12,7 @@
 # Needs, all local:
 #   - an AgentEye stack: dashboard on $DASH, mailpit API on $MAILPIT, and its
 #     Postgres reachable through `docker exec $PG_CONTAINER psql`
+#   - an older Cloud on $OLD_CLOUD that answers requests but has no CLI login routes
 #   - this repo built: `bun run build` (dist/) and
 #     `cargo build --release --bin failproofaid`
 #   - Docker. The container uses the HOST network, because the CLI only sends
@@ -28,6 +29,7 @@ set -uo pipefail
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DASH=${DASH:-http://localhost:3000}
 MAILPIT=${MAILPIT:-http://localhost:8026}
+OLD_CLOUD=${OLD_CLOUD:-http://localhost:28080}
 PG_CONTAINER=${PG_CONTAINER:-agenteye-postgres-1}
 C=${C:-fpai-e2e-login}
 KEEP=${KEEP:-0}  # 1 = leave the container up afterwards, for poking at
@@ -109,6 +111,7 @@ wait_done() { # <name> -> transcript
 head1 "PHASE 0 — preconditions"
 curl -s -m 5 -o /dev/null "$DASH/login" && ok "dashboard is up on $DASH" || bad "dashboard is up" "$DASH/login"
 curl -s -m 5 -o /dev/null "$MAILPIT/api/v1/messages" && ok "mailpit is up on $MAILPIT" || bad "mailpit is up" "$MAILPIT"
+curl -s -m 5 -o /dev/null "$OLD_CLOUD" && ok "older cloud is up on $OLD_CLOUD" || bad "older cloud is up" "$OLD_CLOUD"
 [ -n "$(sql 'select 1' 2>/dev/null)" ] && ok "Postgres reachable via $PG_CONTAINER" || bad "Postgres reachable" "$PG_CONTAINER"
 [ -f "$R/dist/cli.mjs" ] && ok "CLI built" || bad "CLI built" "run: bun run build"
 [ -x "$R/target/release/failproofaid" ] && ok "daemon built" || bad "daemon built" "run: cargo build --release --bin failproofaid"
@@ -258,7 +261,7 @@ has "…with a fresh link" "$T" "/cli/authorize?r="
 # ═════════════════════════════════════════════════════════════════════════════
 head1 "PHASE 8 — a cloud without browser login says so, and offers the rest"
 run_config old "wait:doesn't support logging in from here yet,wait:Paste an API key,key:ctrl-c" \
-  FAILPROOFAI_CLOUD_URL=http://localhost:28080
+  FAILPROOFAI_CLOUD_URL="$OLD_CLOUD"
 T=$(wait_done old)
 has "an older server is reported, and the key route stays open" "$T" "doesn't support logging in from here yet. Paste an API key instead."
 hasnt "…and login is not offered again" "$T" "Log in again"

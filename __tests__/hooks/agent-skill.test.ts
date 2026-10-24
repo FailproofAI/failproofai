@@ -146,7 +146,9 @@ describe("installAgentSkill", () => {
     const [codex] = agentSkillRoots("codex");
     installAgentSkill(["codex"]);
     expect(existsSync(skillFile(codex!))).toBe(true);
-    mkdirSync(join(home, ".agents", "skills", AGENT_SKILL_NAME), { recursive: true });
+    const npx = join(home, ".agents", "skills", AGENT_SKILL_NAME);
+    mkdirSync(npx, { recursive: true });
+    writeFileSync(join(npx, "SKILL.md"), "the full skill");
 
     expect(installAgentSkill(["codex"])).toEqual([]);
     expect(existsSync(join(codex!, AGENT_SKILL_NAME))).toBe(false);
@@ -155,7 +157,9 @@ describe("installAgentSkill", () => {
   it("carries on when its old Codex copy can't be taken back", () => {
     const [codex] = agentSkillRoots("codex");
     installAgentSkill(["codex"]);
-    mkdirSync(join(home, ".agents", "skills", AGENT_SKILL_NAME), { recursive: true });
+    const npx = join(home, ".agents", "skills", AGENT_SKILL_NAME);
+    mkdirSync(npx, { recursive: true });
+    writeFileSync(join(npx, "SKILL.md"), "the full skill");
     chmodSync(codex!, 0o555); // the copy inside can't be deleted (except by root)
     try {
       expect(() => installAgentSkill(["codex", "claude"])).not.toThrow();
@@ -168,6 +172,15 @@ describe("installAgentSkill", () => {
   it("skips a folder it cannot write without failing the rest", () => {
     writeFileSync(join(home, ".codex"), "a file where the folder would go");
     expect(installAgentSkill(["codex", "claude"])).toEqual(["claude"]);
+  });
+
+  it("keeps the Codex copy when the shared skill folder has no SKILL.md", () => {
+    const [codex] = agentSkillRoots("codex");
+    installAgentSkill(["codex"]);
+    mkdirSync(join(home, ".agents", "skills", AGENT_SKILL_NAME), { recursive: true });
+
+    expect(installAgentSkill(["codex"])).toEqual(["codex"]);
+    expect(readFileSync(skillFile(codex!), "utf8")).toBe(AGENT_SKILL_MD);
   });
 
   it("writes every Hermes profile", () => {

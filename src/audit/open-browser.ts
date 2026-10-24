@@ -32,17 +32,16 @@ export function canOpenBrowser(
 }
 
 /** Open a URL with the platform's default handler. Never throws. */
-export function openUrl(url: string): void {
+export function openUrl(url: string, platform: NodeJS.Platform = process.platform): void {
   let cmd: string;
   let args: string[];
-  if (process.platform === "darwin") {
+  if (platform === "darwin") {
     cmd = "open";
     args = [url];
-  } else if (process.platform === "win32") {
-    // `start` is a cmd builtin; the empty "" is the (required) window-title arg
-    // so a URL containing `&` or spaces isn't mis-parsed as the title.
-    cmd = "cmd";
-    args = ["/c", "start", "", url];
+  } else if (platform === "win32") {
+    // ShellExecute via rundll32 avoids interpreting URL characters as cmd.exe syntax.
+    cmd = "rundll32.exe";
+    args = ["url.dll,FileProtocolHandler", url];
   } else {
     cmd = "xdg-open";
     args = [url];

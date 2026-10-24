@@ -101,7 +101,7 @@ describe("the skill file", () => {
 
   it("points at the umbrella skill and its siblings online", () => {
     const base = "https://raw.githubusercontent.com/FailproofAI/skills/main/skills";
-    for (const name of ["failproofai", "failproofai-policy-author", "failproofai-policy-publish", "fp-cloud-cli", "failproofai-sdk", "failproofai-eval-brainstorm"]) {
+    for (const name of ["failproofai", "failproofai-policy-author", "failproofai-policy-publish", "fp-cloud-cli", "failproofai-sdk", "failproofai-eval-brainstorm", "failproofai-eval-author", "failproofai-alert-author", "failproofai-audit-author"]) {
       expect(AGENT_SKILL_MD).toContain(`${base}/${name}/SKILL.md`);
     }
   });

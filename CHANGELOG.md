@@ -10,6 +10,8 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 
 - **`fp` can do what the Cloud dashboard does.** Author, draft, dry-run, deploy and backfill evaluations (code, LLM judge and Jev) with `fp evaluators`; manage dashboards and tiles; author, backtest and check candidacy for policies of every kind; read sentiment; import sessions; manage roles, agent contracts and context windows; filter issues by facets. Existing commands, flags, `--json` output and exit codes are unchanged; see `fp-cloud-cli/CHANGELOG.md` (#933)
 
+- The `failproofai` skill `config` installs also points agents at the evaluation, alert and audit authoring skills (#933)
+
 - `fpai-collect` can now build without SQLite: its SQLite pollers are behind a default-on `sqlite` Cargo feature. AgentEye uses `default-features = false` to import Claude Code and Codex transcripts with the daemon's converters and redaction, while the daemon's default build remains unchanged (#929)
 
 ### Fixes

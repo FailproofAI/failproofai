@@ -65,6 +65,9 @@ For focused work, read the matching skill too. Each has the same layout, with it
 - FailproofAI Cloud and the \`fp\` CLI: ${SKILLS_RAW}/fp-cloud-cli/SKILL.md
 - Adding the SDK to an agent, or running an evaluator: ${SKILLS_RAW}/failproofai-sdk/SKILL.md
 - Planning evaluations: ${SKILLS_RAW}/failproofai-eval-brainstorm/SKILL.md
+- Writing an evaluation: ${SKILLS_RAW}/failproofai-eval-author/SKILL.md
+- Writing an alert: ${SKILLS_RAW}/failproofai-alert-author/SKILL.md
+- Writing an audit: ${SKILLS_RAW}/failproofai-audit-author/SKILL.md
 `;
 
 /** An agent's own override for where it keeps its files, else the default. */

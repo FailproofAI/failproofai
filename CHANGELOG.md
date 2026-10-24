@@ -1,6 +1,103 @@
 # Changelog
 
+## 1.0.12 — 2026-10-23
+
+The stable release of logging in to FailproofAI Cloud from `config` in your browser, and of Cloud-managed Jev and hybrid policies scoped to agents. Everything below in the `1.0.12-beta.*` sections ships here too.
+
+### Features
+
+- **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and Codex, which would list one in `~/.agents/skills` beside its own copy, is left to that one. `failproofai uninstall` removes only the ones `config` wrote (#920)
+
+- `fpai-collect` can now build without SQLite: its SQLite pollers are behind a default-on `sqlite` Cargo feature. AgentEye uses `default-features = false` to import Claude Code and Codex transcripts with the daemon's converters and redaction, while the daemon's default build remains unchanged (#929)
+
+### Fixes
+
+- `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)
+- `config`, logging in again on a connected machine where the new key is created but can't be used, says the machine keeps its previous connection (which it does: nothing was written) instead of finishing as if it were open source (#920)
+- `config` on a machine whose saved key was refused, when logging in again creates no key, says the kept connection's key no longer works and to run `config` again, instead of reporting the old connection as if it were fine (#920)
+- `config` no longer sends the saved key to a saved cloud address it would refuse if typed (plain `http://` to another host) when checking that key (#920)
+- `config`'s browser login takes an expired or refused link off the screen when it prints a new one, so only the live link can be opened; and a cloud that answers the login route with a web page is treated as one without browser login (paste a key) instead of an error (#920)
+- `config` saves the org a browser login was approved into even when the follow-up check of the new key can't reach the server, instead of leaving the saved org empty or stale; and its completion event reports whether the machine actually connected, not whether it set out to (#920)
+- Preserve entire credential-refused batches after a later upload chunk fails; replay is bounded, cancellable, and does not stall fresh deliveries (#928).
+- Include Jev-only Cloud assignments in enforcement status only when their effective Cloud mode enforces, counting hybrid policies once (#928).
+
+### Dependencies
+
+- Update `undici` 7.29.1 → 7.30.1 and `zod` 4.4.3 → 4.6.6 in the root lockfile, and refresh `setuptools` and `filelock` in the Python SDK's dev/test lockfile to clear new supply-chain findings. Python 3.10 still resolves `filelock` 4.1.0, because its fixed release requires Python 3.11; a version-pinned exception for that dev/test-only slice expires on 2026-11-20.
+
+## 1.0.12-beta.1 — 2026-10-23
+
+### Features
+
+- FailproofAI Cloud sets a connected machine's Jev mode (enforce while a Jev policy is deployed, off when none is); `jev setup --mode` and the dashboard switch say so and write nothing. A watched (observe) Jev policy's answers, from the reply's `observed` block, are recorded as would-haves and never deny or clear. `jevPolicies` in desired state (id, effect, agent scope) lets the machine skip the Cloud Jev call for an agent no Cloud check targets. `fp` no longer sets a Jev mode by hand (no `fleet deploy --jev-mode`, no `fleet jev-mode`).
+- Cloud-managed assignments can target integrations or individual agent profiles. The daemon keeps an owner-only, stable profile roster and reports it to FailproofAI Cloud; scoped schema-3 deployments filter JavaScript before import and send agent identity for Cloud Jev selection. `fp fleet deploy --target POLICY=INTEGRATION[/agt_ID]` narrows a machine assignment; `--all-agents POLICY` clears its scope.
+- A machine's agent roster holds up to 256 profiles (previously 64). When it is full, a newly hooked profile takes the slot of an unhooked profile that FailproofAI Cloud confirms no assignment names and it would not accept as a target. A profile an exact target uses keeps its ID, Jev-only assignments count, and a hook sighting waits in memory until it gets a slot. (#873)
+- The CLI, daemon and native Hermes plugin now use local daemon protocol v2 for agent-profile identity. After upgrading the CLI, reinstall/restart the daemon with `failproofai config` before resuming hook evaluation; an older daemon's response is rejected rather than silently losing the selected profile.
+- Newly installed shell hooks and OpenCode shims identify the user, project or local settings scope that launched them. When a legacy or package-level hook cannot prove its source, a scoped Cloud assignment is withheld and `agent_scope_unresolved` is reported rather than using the daemon worker's own environment as the agent's identity.
+- **Jev policies deploy from FailproofAI Cloud, individually, and run there.** A Cloud policy has a kind — `regex` (JavaScript, as before), `jev` (Jev checks only) or `both` (JavaScript reviewable by its own checks). Jev checks run on FailproofAI Cloud; nothing is installed on the machine: the daemon receives a `both` policy's JavaScript (with the server-derived `authority`/`reviewedBy`) and the machine's Jev mode, and nothing else Jev-related. `failproofai policies` lists `both` policies with the Cloud checks that review them.
+- **FailproofAI Cloud sets a machine's Jev mode.** `off` switches Jev off whatever `jev.json` says. `observe`/`enforce` send every gated tool call to FailproofAI Cloud on the machine's Cloud Jev credential (`jev.json` is not used): the machine's own questions — the global intent questions always, plus its installed packs' checks — and a `cloud` block of tool-call metadata; Cloud asks its checks for that machine in the same request and returns their verdict, which the machine merges with its packs' (Cloud first, most severe wins) before the regex combine. A `both` policy is cleared only by its own Cloud checks' outcomes, never by a pack's check of the same name. Cloud gets 5 s to answer (a local `jev.json` keeps its own timeout); a Cloud failure or timeout is today's fallback: the regex decides alone. A session pause does not stop Cloud's checks, as it never stopped Cloud JS policies: a paused session's calls still go to FailproofAI Cloud, with no installed pack's check in them. `failproofai jev status` says "Jev checks run on FailproofAI Cloud (mode: …)" and names each `both` policy's Cloud reviewers.
+- **Machines report the Cloud policies they could not apply.** A Cloud JS policy that fails to load, a Cloud Jev mode the machine cannot act on (`jev_unconfigured`: no Cloud Jev credential; `transcripts_disabled`: connected with `--no-transcripts`, which never asks), and an installed pack's check FailproofAI Cloud left out of a request for the question budget (`jev_budget: dropped <name>`, kept for the deployment it happened under in `cloud-policies/jev-budget.json`) are written to `cloud-policies/errors.json` and sent on the daemon's next poll (`policyErrors`), so the fleet page and `fp fleet show` list them. `config --disconnect` clears the reports with the deployment.
+- `fp policies publish --kind regex|jev|both [--source] [--semantic]`; `fp policies list/show` print the kind and Jev check names, `fp fleet list/show` the machine's Jev mode and reported policy errors, `fp fleet history` each generation's Jev mode, and `fp fleet rollback` the Jev mode it restores.
+
+### Fixes
+
+- `policies --install` / `--uninstall` for Claude Code and Codex write the profile `CLAUDE_CONFIG_DIR` / `CODEX_HOME` names (previously always `~/.claude` / `~/.codex`), the same file the hook resolves; the daemon's roster finds a hooked `~/.claude-<name>` / `~/.codex-<name>` profile before its first hook runs, labelled by its folder (#928)
+- `failproofai config --status` and `jev status` count agent-scoped Cloud policies; a deployment whose policies all target one agent read "None installed".
+- An answered Jev call records each check it asked on its activity row and shipped decision (`jevChecks` / `jev_checks`): the check, its policy (`cloud/<id>@<v>` or `pack/<id>@<v>`), verdict, why (`not-detected`, `exempt`, `fired`, `op-requested`, …), evidence, exempt and probe answers — names, codes and numbers only; checks of watched (observe) Cloud policies, from the reply's `observed` block, are recorded with `watched: true` and never block. A call that asked no check (globals only, or FailproofAI Cloud's short-circuit) is `no-request`, not `answered` (#928)
+- A Jev review that asked no check (Cloud's short-circuit included) stamps no Jev fields on the activity row.
+- A regex Cloud (or local) deny that decided before FailproofAI Cloud's Jev answered is recorded as that policy's row, without `evaluator: "jev"` (#928)
+- Plain http to a loopback host (`localhost`, `127.0.0.1`, `::1`) is accepted in enforce mode too, so a local FailproofAI Cloud works for testing; other http hosts stay refused.
+- The daemon reports only traced agents to FailproofAI Cloud: one entry per hooked profile (each Hermes and OpenClaw profile under its own label).
+- After an accepted delivery the daemon re-sends batches an earlier key refused (401/403) with the current key; repeated refusals preserve and repark the entire original, including unsent chunks. Replay runs in one globally gated, watcher/sweeper-owned background task, capped at one batch and 30 seconds, cancelled on shutdown, and yields to fresh deliveries; unfinished work is scheduled after the next accepted delivery. `config --status` says the cloud is refusing this machine's key only when the current key is refused.
+- `failproofai policies` shows a deployed Cloud policy as on; the transient "not loaded yet" state is gone.
+- The connect Jev line is one short line: `managed by FailproofAI Cloud · <mode>` (`off — no Jev policy deployed`, or `waiting for its first deployment` before one is read) (#928)
+- The connect Jev line follows FailproofAI Cloud's mode and plain http on a re-point too, and before any Cloud deployment has been read it says Jev is waiting for Cloud's mode rather than promising observe (#928)
+- `failproofai policies` lists Jev-only Cloud policies from the manifest's `jevPolicies` (version, `jev`, observe, agent targets) like the other Cloud policies; only a manifest without the list keeps the "not listed here" note (#928)
+- The daemon's roster re-scopes an existing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` entry from `project` to `user` on its next sighting, keeping its ID (#928)
+- Reconnecting the same FailproofAI Cloud organisation on a new URL (http → https, same key) is a reconnect, not an organisation switch: it no longer prints "Switched from X to X" or clears the Cloud policies until the next poll (#928)
+- A reconnect on a new URL points the `jev.json` that `config` wrote (provider `failproofai`) at the new URL, keeping its mode; a BYOK `jev.json` is never touched (#928)
+- The daemon health probe is answered before any scope, policy or activity logic: it no longer records `agent_scope_unresolved` in `errors.json` or writes a SessionStart activity row on every probe (#928)
+- `failproofai policies` lists agent-scoped Cloud policies with their targets (by profile label where the roster has one), shows a Cloud policy that failed to load as not loaded with its error, and counts agent-scoped policies as enforcing (#928)
+- Over plain http, the connect line says enforce (set locally or by FailproofAI Cloud) turns Jev off on the machine, and `jev status` names http as the cause instead of asking for a key with `jev:evaluate`; when FailproofAI Cloud already set the machine's Jev mode, the connect line says that mode and that Cloud's checks run on Cloud (#928)
+- A `jev.json` for the FailproofAI Cloud provider defaults to Cloud's 5000 ms timeout; `jev setup --provider failproofai` printed 3000 ms (#928)
+- An observe-mode activity row names the Jev check that would have decided and its Cloud policy and version (#928)
+- A policy whose load fails reading a missing data file is classified `file_not_found` (still fail-closed for packs), not `module_not_found` (#928)
+- `config --disconnect` removes the Cloud artifacts (the organisation's policy source) from the default Cloud policy directory; an overridden directory is still never touched (#928)
+- The daemon's agent roster labels a Claude or Codex profile in a relocated config directory (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) as `user`, not `project` (#928)
+- **A FailproofAI Cloud Jev reply that contradicts itself can no longer clear a `both` policy's regex denial.** An outcome for a check the reply's `asked` does not name, a check answered twice, or a deny outcome under a non-deny verdict makes the whole reply malformed, and the review trusts a Cloud outcome only for a check in `asked`; either way the call is decided by the regex alone (security review of #873)
+- A cached policy repair now rechecks Cloud enrolment before writing state. A disconnect landing after the daemon read its desired-state snapshot cannot restore that organization's active deployment during post-poll repair.
+- Locally decided inert Jev calls and cached answers no longer count as fresh Cloud health successes. They cannot clear an outage streak or close the Cloud Jev circuit breaker without a successful Cloud response.
+- `failproofai config --disconnect` now sticks: the daemon's snapshot (`desired-state.json`) goes with `active.json`, the daemon no longer rebuilds `active.json` on a machine that is not enrolled, a poll in flight during the disconnect is discarded, and a machine put back on OSS has any leftover Cloud deployment removed. Before, the old org's policies and Jev mode came back within one maintenance interval. That cleanup runs only in the default cloud policy directory, never in one `FAILPROOFAI_CLOUD_POLICY_DIR` names.
+- An observed `both` policy, whose Jev half FailproofAI Cloud does not ask, registers hard, and `jev status` does not count it reviewable.
+- On-machine delivery of Cloud Jev checks, from earlier builds of this release, is gone: a `semanticPolicies` list from a server is ignored and never fetched, and one left in an `active.json` is dropped on read, so the machine keeps enforcing.
+- Policy error reports carry no local paths: the home directory becomes `~` and other absolute paths their last segment, on the CLI and again in the daemon, including a path after `:` such as `file:///tmp/x.mjs` (a URL's `//host` is left alone).
+- An artifact fetch that never got an HTTP answer no longer shows as a policy error for a poll or two.
+- A FailproofAI Cloud-side fix shows on the fleet page at the daemon's next poll, not the machine's next tool call: `policyErrors` leaves out `errors.json` entries about a policy no longer deployed (or deployed at another version), and a `jev_unconfigured`, `transcripts_disabled` or pack budget drop once Cloud's Jev mode no longer asks.
+- The hook path reads `active.json` and the Cloud Jev credential once per change of those files, not several times per tool call.
+- `failproofai policies` still lists the Cloud section when the Cloud JavaScript could not be read but a Jev mode is set; a machine whose deployment carries only a Jev mode records its Cloud deployment on activity rows.
+- **A failing or rate-limited FailproofAI Cloud Jev is no longer silent, and no longer slows every tool call.** After 3 Cloud Jev failures in a row (timeout, no connection, a 5xx, an unusable reply) the machine skips Cloud Jev for 60 s, deciding by the regex alone, then lets one call through; an answer closes it again. A 429 is not a failure (its Retry-After is honoured as before). `errors.json` reports `jev_unavailable: …` while the breaker is open and `jev_rate_limited: <n> calls fell back to regex in the last 10 min` while FailproofAI Cloud refuses calls for the organization's Jev rate limit; both clear once a call is answered, and the daemon stops sending them once Cloud's mode no longer asks.
+- An installed pack's check FailproofAI Cloud dropped because an organization Cloud check has its name is reported as `jev_name_clash: <name> (the FailproofAI Cloud check is used)`, not as a budget drop.
+- A pack check's `jev_budget` / `jev_name_clash` report clears at the daemon's next poll once Cloud redeploys the machine, changes its Jev mode, or the pack is uninstalled, instead of at the machine's next tool call.
+- `config --pause` says FailproofAI Cloud's Jev checks keep running during a pause, as Cloud-managed policies do. A known inert tool (TodoWrite, Task) under a Cloud Jev mode is answered from its name before any envelope is built; an overlong reason in FailproofAI Cloud's reply is cut, not refused; and the daemon removes the Jev check files an earlier build of this release left in `cloud-policies/artifacts/` at the next activation.
+- `config --connect … --no-transcripts` (and `config --token … --no-transcripts`) removes a `jev.json` that runs Jev through FailproofAI Cloud, by the rule `config --disconnect` uses (a BYOK file, or a Cloud one switched off, stays), and says in one line that Jev via FailproofAI Cloud stays off on this machine. Before, a file left by an earlier connection with transcripts on kept sending each checked tool call to FailproofAI Cloud.
+- A change to the CLI's Jev selection, questions or decision now fails a test until FailproofAI Cloud's port of them is updated with it: the parity fixtures Cloud is pinned by (`__tests__/fixtures/cloud-jev/`, with their generator) are replayed through the current code.
+- **Redacting secrets from the `cloud` block can no longer make FailproofAI Cloud clear a check the machine would not.** Cloud's target checks compare the call's targets with the human's words by substring, and a redaction marker could name a target (`<redacted:assigned secret>` named `./secret`) or hide one the human did name. The machine now runs those checks on both the redacted block and the unredacted call and, where they differ, sends the scan incomplete, which clears nothing; the human's redacted words carry a letter-free placeholder, and a block cut for size keeps a sign that a human spoke.
+
+### Docs
+
+- `crates/CLOUD_POLICIES.md` documents the Jev mode and `both` fields of desired-state and `active.json`, how the machine calls FailproofAI Cloud Jev, and the `policyErrors` report, and its stale `cloud-managed/`, `deployments/` and `cloud.json` names are fixed; the Cloud CLI reference, the deploy guide and the FailproofAI Cloud Jev page cover Jev policies, which run on FailproofAI Cloud, and the Cloud-set Jev mode.
+- The FailproofAI Cloud Jev docs (`crates/CLOUD_POLICIES.md`, the Cloud Jev page, the deploy guide) give the 5 s Cloud wait, say a session pause does not stop FailproofAI Cloud's Jev checks, describe the circuit breaker, and list `jev_rate_limited`, `jev_unavailable` and `jev_name_clash`.
+
 ## 1.0.12-beta.0 — 2026-10-22
+
+### Features
+
+- **Log in to FailproofAI Cloud from `config`.** On a machine that is not connected (or whose saved key is refused), the connect step now starts a browser login straight away; Tab opens the other options: paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected with a working key gets a menu with "keep" first, so re-running setup never opens a browser by itself. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#920)
+
+### Fixes
+
+- `config`'s cloud login prints what the server sends — org, approver, key name, errors, the link — without terminal control or bidi characters, keeps the server's poll interval and expiry to a sane range, checks a saved cloud address like a typed one, and names the key to revoke if one was created but could not be used (#920)
+- `config` asks for your sudo password again before installing the daemon, or refreshing its service definition, when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
 
 ### Dependencies
 
@@ -161,6 +258,7 @@ Action needed if you use `instruct` policies with Hermes: an `instruct` no longe
 - Uploads, `fp` calls and evaluator calls carry a request id; the daemon also sends batch and machine ids, and `fp` errors show a `ref` (#872)
 
 ### Fixes
+
 
 - The daemon logs each failed upload attempt at warning level with its request id and batch id, so every attempt of a batch can be found; before, only the last one was visible (#872)
 - Parking a failed batch works when the spool and state directories are on different filesystems (e.g. separate Docker volumes); before, the batch stayed in the spool and was re-sent on every sweep. The move is crash-safe: the original is deleted only after the copy's directory entry is on disk (#872)

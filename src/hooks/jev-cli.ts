@@ -108,6 +108,8 @@ import {
   inspectJevConfig,
   jevCloudBaseUrl,
   jevConfigPath,
+  loadJevConfigForCloudMode,
+  TRANSCRIPTS_DISABLED_PROBLEM,
   providerForUrl,
   providerHostConflict,
   readJevConfigFileForUpdate,
@@ -144,7 +146,8 @@ import {
   type ReviewableCoverage,
 } from "./policy-reviewability";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
-import { readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
+import { listActiveCloudManagedPolicies, readCloudJevState, type CloudJevState } from "./cloud-managed-policies";
+import { CLOUD_MANAGED_JEV_MODE, cloudManagesJevMode, readCredentials, readJevCloudCredential, type JevCloudCredential } from "./fp-config";
 import type { JevRequest } from "./semantic/types";
 import { TOKEN_ON_ARGV, optsFor, paint, screenKit, stack, wrap, type RenderOpts } from "./tui";
 
@@ -363,6 +366,9 @@ function cloudConnection(): { cloudConnected: boolean; keyCarriesJev: boolean } 
     return { cloudConnected: false, keyCarriesJev: false };
   }
 }
+
+/** What `jev setup --mode` says on a machine whose Jev mode FailproofAI Cloud sets. */
+const CLOUD_MANAGED_MODE_LINES = [CLOUD_MANAGED_JEV_MODE, "Deploy or remove Jev policies in FailproofAI Cloud to change it. Nothing was written."];
 
 /** The one line `status` titles a connected machine whose key has no Jev with. */
 const KEY_LACKS_JEV_TITLE = "off — no Jev key is stored for this machine's FailproofAI Cloud connection";
@@ -686,6 +692,9 @@ async function setupRun(argv: string[], deps: JevCliDeps, opts: RenderOpts): Pro
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values, bools } = parsed;
+  // A machine connected for policies has its Jev mode set by FailproofAI Cloud
+  // alone: enforce while a Jev policy is deployed to it, off when none is.
+  if (values.has("--mode") && cloudManagesJevMode()) return fail(CLOUD_MANAGED_MODE_LINES);
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
   // One source for the key, so no run has to decide which of two the person
   // meant. The message names the recommended one first.
@@ -1418,7 +1427,193 @@ function safeCoverage(): ReviewableCoverage | null {
   }
 }
 
+// ── status: FailproofAI Cloud ────────────────────────────────────────────────
+//
+// FailproofAI Cloud can SET this machine's Jev mode (`active.json` `jevMode`).
+// With `observe`/`enforce` the Jev checks Cloud deployed here run ON Cloud —
+// nothing of them is on this machine (CONTRACT C10) — every gated tool call
+// goes there on the Cloud Jev credential, and `jev.json` is not used. With
+// `off`, Jev is off whatever `jev.json` says. So `status` answers from Cloud
+// first; without a Cloud mode the local answer stands.
+//
+// What it can show about Cloud's checks is only what the machine knows: the
+// mode, and the `reviewedBy` names of the deployment's `both` policies — the
+// Cloud checks that may clear their regex half. Never a check's contents: the
+// machine does not have them.
+
+/** Label for everything Cloud decided here. Customer-facing: never "AgentEye". */
+const MODE_SET_BY_CLOUD = "mode set by FailproofAI Cloud";
+
+/** The one sentence the contract fixes for `jev status` under a Cloud mode (C10.5). */
+export function jevRunsOnCloudLine(mode: string): string {
+  return `Jev checks run on FailproofAI Cloud (mode: ${mode})`;
+}
+
+function safeCloudJev(): CloudJevState {
+  try {
+    return readCloudJevState();
+  } catch {
+    return { jevMode: null, deployment: null, errors: [] };
+  }
+}
+
+/** A `both` policy's Cloud reviewers, as the deployment names them. */
+interface CloudReviewers {
+  policy: string;
+  version: number;
+  effect: "enforce" | "observe";
+  reviewedBy: string[];
+}
+
+/** Every Cloud JS policy that names Cloud checks in `reviewedBy` — a `both` policy. Never throws. */
+function cloudReviewers(): CloudReviewers[] {
+  try {
+    // Every assignment, agent-scoped ones included: this describes the machine.
+    return listActiveCloudManagedPolicies()
+      .filter((p) => p.authority === "reviewable" && (p.reviewedBy?.length ?? 0) > 0)
+      .map((p) => ({ policy: p.id, version: p.version, effect: p.effect, reviewedBy: [...(p.reviewedBy ?? [])] }));
+  } catch {
+    return [];
+  }
+}
+
+/** What to do about a Cloud mode this machine cannot act on. */
+function cloudProblemAdvice(problem: string): string[] {
+  if (problem === TRANSCRIPTS_DISABLED_PROBLEM) {
+    return [
+      "Jev does not run here: this machine was connected for decisions only (--no-transcripts), and a Jev call sends each checked tool call and the recent prompt to FailproofAI Cloud.",
+      "To use FailproofAI Cloud's Jev checks, reconnect without --no-transcripts (failproofai config --token <key>).",
+    ];
+  }
+  return [
+    `Jev cannot run here: ${problem}.`,
+    "Connect with a key that carries jev:evaluate (failproofai config --token <key>). A local jev.json is not used while FailproofAI Cloud sets the mode.",
+  ];
+}
+
 async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
+  const cloud = safeCloudJev();
+  if (cloud.jevMode === null && cloud.errors.length === 0) return localStatus(argv, opts);
+  const parsed = parseFlags(argv, new Set(["--json"]));
+  if (typeof parsed === "string" || parsed.positionals.length > 0) return localStatus(argv, opts);
+  const asJson = parsed.bools.has("--json");
+
+  if (cloud.jevMode === null) {
+    // A mode this build cannot read is no mode: jev.json decides. Said beside it.
+    const local = await localStatus(argv, opts);
+    if (asJson && local.json !== undefined) {
+      const body = JSON.parse(local.json) as Record<string, unknown>;
+      body.cloud = { jevMode: null, modeSetBy: null, errors: cloud.errors };
+      return { ...local, json: JSON.stringify(body, null, 2) };
+    }
+    return { ...local, lines: [...local.lines, ...jevWarn(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts)] };
+  }
+
+  const mode = cloud.jevMode;
+  const resolved = loadJevConfigForCloudMode(mode);
+  const reviewers = cloudReviewers();
+  let stats: JevStats | null = null;
+  try {
+    stats = await jevStats();
+  } catch {
+    stats = null;
+  }
+  const cfg = resolved.config;
+  const coverage = cfg ? safeCoverage() : null;
+  const route = cfg ? jevRoute(cfg) : null;
+  const running = cfg !== null;
+
+  if (asJson) {
+    const body: Record<string, unknown> = {
+      path: jevConfigPath(),
+      status: running ? "ok" : mode === "off" ? "off" : "unconfigured",
+      mode,
+      modeSetBy: "FailproofAI Cloud",
+      ...(mode !== "off" ? { runsOn: "FailproofAI Cloud" } : {}),
+      ...(cfg && route
+        ? {
+            provider: cfg.provider,
+            providerLabel: providerLabel(cfg.provider),
+            endpoint: shownEndpoint(cfg.provider, route.endpoint),
+            model: route.model,
+            modelIsDefault: route.modelIsDefault,
+            timeoutMs: cfg.timeoutMs,
+          }
+        : {}),
+      ...(resolved.problem ? { problem: resolved.problem } : {}),
+      cloud: { jevMode: mode, modeSetBy: "FailproofAI Cloud", reviewers, errors: cloud.errors },
+      ...(coverage
+        ? {
+            reviewablePolicies: {
+              enabled: coverage.enabled,
+              reviewable: coverage.reviewable,
+              customPolicyFiles: coverage.customFiles,
+              // The checks THIS machine's packs give; Cloud's are asked on Cloud.
+              jevChecks: coverage.jevChecks,
+              // "No checks installed" is not a problem here: FailproofAI Cloud's
+              // checks are asked whatever this machine has installed.
+              problem: coverage.jevChecks === 0 ? null : reviewableProblem(coverage),
+            },
+          }
+        : {}),
+      stats,
+    };
+    return ok([], JSON.stringify(body, null, 2));
+  }
+
+  const head =
+    mode === "off"
+      ? jevHeader("Jev status", `off — ${MODE_SET_BY_CLOUD}`, opts)
+      : running
+        ? jevHeader("Jev status", `on · ${mode} — ${jevRunsOnCloudLine(mode)}`, opts)
+        : jevHeader("Jev status", `off — FailproofAI Cloud set ${mode}, and this machine cannot run it`, opts);
+  const reviewerRows = reviewers.map((r): [string, string] => [
+    `${r.policy} v${r.version}`,
+    `${r.reviewedBy.join(", ")}${r.effect === "observe" ? " (not asked while observed)" : ""}`,
+  ]);
+  return ok(
+    stack(
+      head,
+      mode === "off"
+        ? jevNote(
+            `FailproofAI Cloud switched Jev off on this machine. That overrides ${jevConfigPath()} for as long as this machine is connected.`,
+            opts,
+          )
+        : jevNote(
+            `${jevRunsOnCloudLine(mode)}. Every checked tool call goes to FailproofAI Cloud, which asks the Jev checks it ` +
+              "deployed to this machine and this machine's installed packs' checks in one request; nothing of Cloud's checks is " +
+              `installed here. ${jevConfigPath()} is not used while FailproofAI Cloud sets the mode. In enforce, Jev's own deny ` +
+              "checks block calls as well as clearing the regex policies they review. Jev-only Cloud policies are not on this machine, so they are " +
+              "not listed here; fp fleet show and the dashboard list them.",
+            opts,
+          ),
+      cfg && route
+        ? jevRows(
+            [
+              ["runs on", "FailproofAI Cloud"],
+              ["endpoint", shownEndpoint(cfg.provider, route.endpoint)],
+              ["model", route.modelIsDefault ? `${route.model} (provider default)` : route.model],
+              ["mode", `${modeLine(mode)} (${MODE_SET_BY_CLOUD})`],
+              ["timeout", `${cfg.timeoutMs} ms`],
+            ],
+            opts,
+          )
+        : jevRows([["mode", mode === "off" ? `${modeLine("off")} (${MODE_SET_BY_CLOUD})` : `${mode} (${MODE_SET_BY_CLOUD}) — not running`]], opts),
+      resolved.problem ? jevWarn(cloudProblemAdvice(resolved.problem), opts) : null,
+      reviewerRows.length > 0
+        ? stack(
+            [screenKit(opts).head("Cloud reviewers", "FailproofAI Cloud policies reviewed by their Cloud Jev checks")],
+            jevRows(reviewerRows, opts),
+          )
+        : [],
+      cloud.errors.length > 0 ? jevWarn(cloud.errors.map((e) => `${e.id}: ${e.message}`), opts) : null,
+      coverage ? jevNote(reviewableSummary(coverage), opts) : null,
+      jevStatsLines(stats, opts),
+    ),
+  );
+}
+
+async function localStatus(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set(["--json"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
   if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);

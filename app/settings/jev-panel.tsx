@@ -45,7 +45,7 @@
  * and a save leaves whatever is stored alone.
  *
  * Client-side validation here is a convenience only. Every rule — the URL
- * scheme, plain http being refused outside observe mode, cloudflare's account id
+ * scheme (plain http to loopback only), cloudflare's account id
  * — is enforced server-side by the same `validateJevConfig` the loader runs.
  *
  * ## FailproofAI Cloud

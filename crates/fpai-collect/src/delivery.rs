@@ -37,7 +37,7 @@ use tokio::sync::Semaphore;
 
 use crate::spool::is_batch_file;
 use crate::supervisor::{Shutdown, TaskError};
-use crate::uploader::{ParkedName, Uploader, batch_id};
+use crate::uploader::{ParkedName, Uploader, batch_id, is_credential_status};
 
 /// Concurrent uploads across the watcher and sweeper combined.
 ///
@@ -72,6 +72,10 @@ const FAILED_RETRY_INTERVAL: Duration = Duration::from_secs(3600);
 const FAILED_RETRY_MIN_AGE: Duration = Duration::from_secs(300);
 /// Parked batches per retry pass.
 const FAILED_RETRY_MAX_FILES: usize = 16;
+/// At most one refused batch after a fresh delivery, so the serial watcher
+/// and sweeper return to fresh work instead of draining a credential backlog.
+const REFUSED_REDRIVE_MAX_FILES: usize = 1;
+const REFUSED_REDRIVE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Bound on the filesystem-event channel. Overflow is survivable precisely
 /// because the sweeper is the guarantee — a dropped event costs latency, not
@@ -84,6 +88,23 @@ pub struct Delivery {
     uploader: Arc<Uploader>,
     permits: Arc<Semaphore>,
     in_flight: Arc<Mutex<HashSet<PathBuf>>>,
+    replay_gate: Arc<Semaphore>,
+    replay_ready: std::sync::atomic::AtomicBool,
+}
+
+/// Cancellation must leave another pass scheduled and release the global gate.
+struct ReplayGuard {
+    uploader: Arc<Uploader>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+    completed: bool,
+}
+
+impl Drop for ReplayGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.uploader.note_credential_refusals();
+        }
+    }
 }
 
 /// Removes a path from the in-flight set on scope exit, including during an
@@ -108,6 +129,8 @@ impl Delivery {
             uploader,
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_UPLOADS)),
             in_flight: Arc::new(Mutex::new(HashSet::new())),
+            replay_gate: Arc::new(Semaphore::new(1)),
+            replay_ready: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -120,6 +143,21 @@ impl Delivery {
         if !set.insert(path.to_path_buf()) {
             return None;
         }
+        Some(InFlightGuard {
+            set: self.in_flight.clone(),
+            path: path.to_path_buf(),
+        })
+    }
+
+    /// Background work yields to every claimed fresh upload, including those
+    /// waiting for a permit. Check and claim together; never wait for our own
+    /// in-flight entry (or another redrive) to disappear.
+    fn claim_refused(&self, path: &Path) -> Option<InFlightGuard> {
+        let mut set = self.in_flight.lock().ok()?;
+        if !set.is_empty() {
+            return None;
+        }
+        set.insert(path.to_path_buf());
         Some(InFlightGuard {
             set: self.in_flight.clone(),
             path: path.to_path_buf(),
@@ -139,8 +177,16 @@ impl Delivery {
             return; // semaphore closed — shutting down
         };
 
-        match self.uploader.upload_file(&path).await {
-            Ok(()) => tracing::debug!(file = %path.display(), "uploaded"),
+        let delivered = self.uploader.upload_file(&path).await;
+        drop(_permit);
+        drop(_guard);
+        match delivered {
+            Ok(()) => {
+                tracing::debug!(file = %path.display(), "uploaded");
+                // The owning watcher/sweeper schedules replay separately.
+                // Never await background retries on the fresh-delivery path.
+                self.replay_ready.store(true, Ordering::SeqCst);
+            }
             // The batch id ties this to the attempt and park lines, which
             // carry the request ids.
             Err(err) => tracing::warn!(
@@ -149,6 +195,122 @@ impl Delivery {
                 %err,
                 "upload failed"
             ),
+        }
+    }
+
+    /// One globally gated task, tracked by its supervisor-owned caller's
+    /// JoinSet. Dropping that owner aborts replay; shutdown is also observed
+    /// inside it. No detached task or polling/wait-for-self loop.
+    fn schedule_refused(self: &Arc<Self>, tasks: &mut tokio::task::JoinSet<()>, sd: &Shutdown) {
+        while tasks.try_join_next().is_some() {}
+        if sd.is_set() || !self.replay_ready.load(Ordering::SeqCst) {
+            return;
+        }
+        let Ok(permit) = self.replay_gate.clone().try_acquire_owned() else {
+            return;
+        };
+        if !self.uploader.take_credential_refusals() {
+            return;
+        }
+        self.replay_ready.store(false, Ordering::SeqCst);
+        let mut guard = ReplayGuard {
+            uploader: self.uploader.clone(),
+            _permit: permit,
+            completed: false,
+        };
+        let delivery = self.clone();
+        let sd = sd.clone();
+        tasks.spawn(async move {
+            tokio::select! {
+                biased;
+                _ = poll_shutdown(&sd) => {}
+                result = tokio::time::timeout(REFUSED_REDRIVE_TIMEOUT, delivery.redrive_refused()) => {
+                    guard.completed = result.is_ok();
+                }
+            }
+            drop(guard);
+        });
+    }
+}
+
+impl Delivery {
+    /// Re-send a bounded number of credential refusals (`.c401` / `.c403`),
+    /// oldest first, with the key in use now. Called only after a delivery the
+    /// server accepted with that key.
+    ///
+    /// Why: a key regenerated on the dashboard (or a reconnect with a new one)
+    /// leaves the RUNNING collector on the old secret until the daemon's next
+    /// config tick cycles it, and whatever it sends in between is refused and
+    /// parked as definitive — never retried, and counted by `config --status`
+    /// as "the cloud is refusing this machine's key" for ever after, while
+    /// events reach the dashboard fine. The CLI's own redrive at `--connect`
+    /// (`credential-recovery.ts`) runs before that window closes, so it cannot
+    /// catch the last of them.
+    ///
+    /// A repeated refusal reparks the entire original batch, including any
+    /// unsent chunks. Remainders and busy gates schedule another pass after
+    /// the next accepted delivery, without blocking fresh uploads.
+    pub async fn redrive_refused(&self) {
+        let failed_dir = self.uploader.failed_dir().to_path_buf();
+        let Ok(mut rd) = tokio::fs::read_dir(&failed_dir).await else {
+            return;
+        };
+        let mut found: Vec<(SystemTime, PathBuf)> = Vec::new();
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.starts_with('.') {
+                continue;
+            }
+            let parked = ParkedName::parse(name);
+            if parked.poison || !parked.client_status.is_some_and(is_credential_status) {
+                continue;
+            }
+            let modified = entry
+                .metadata()
+                .await
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            found.push((modified, path));
+        }
+        if found.is_empty() {
+            return;
+        }
+        found.sort_by_key(|(t, _)| *t);
+        if found.len() > REFUSED_REDRIVE_MAX_FILES {
+            self.uploader.note_credential_refusals();
+        }
+        tracing::info!(
+            count = found.len().min(REFUSED_REDRIVE_MAX_FILES),
+            "re-sending batches an earlier key had refused"
+        );
+        for (_, path) in found.into_iter().take(REFUSED_REDRIVE_MAX_FILES) {
+            let Some(_guard) = self.claim_refused(&path) else {
+                self.uploader.note_credential_refusals();
+                return;
+            };
+            let Ok(_permit) = self.permits.clone().try_acquire_owned() else {
+                self.uploader.note_credential_refusals();
+                return;
+            };
+            match self.uploader.upload_file(&path).await {
+                Ok(()) => {
+                    tracing::info!(file = %path.display(), "re-sent a batch an earlier key had refused")
+                }
+                Err(err) => {
+                    // Still parked as a credential refusal (no verdict on it):
+                    // try again after the next accepted delivery.
+                    self.uploader.note_credential_refusals();
+                    tracing::warn!(
+                        file = %path.display(),
+                        batch_id = %batch_id(&path),
+                        %err,
+                        "could not re-send a batch an earlier key had refused"
+                    );
+                }
+            }
         }
     }
 }
@@ -211,15 +373,18 @@ pub async fn watch(
     }
     tracing::info!(watched, of = dirs.len(), "spool watcher started");
 
+    let mut replays = tokio::task::JoinSet::new();
     loop {
         tokio::select! {
             biased;
             _ = poll_shutdown(&sd) => {
                 drop(watcher);
+                replays.shutdown().await;
                 return Ok(());
             }
             Some(path) = rx.recv() => {
                 delivery.deliver(path).await;
+                delivery.schedule_refused(&mut replays, &sd);
             }
         }
     }
@@ -239,19 +404,23 @@ pub async fn sweep(
     // event for those files is never coming — they were published while
     // nothing was listening.
     let mut next_failed_pass = SystemTime::now();
+    let mut replays = tokio::task::JoinSet::new();
 
     loop {
         for dir in &dirs {
             for path in stale_batches(dir, SWEEP_MIN_AGE, SWEEP_MAX_FILES).await {
                 if sd.is_set() {
+                    replays.shutdown().await;
                     return Ok(());
                 }
                 delivery.deliver(path).await;
+                delivery.schedule_refused(&mut replays, &sd);
             }
         }
 
         if SystemTime::now() >= next_failed_pass {
             retry_parked(&delivery, &failed_dir, &sd, FAILED_RETRY_MIN_AGE).await;
+            delivery.schedule_refused(&mut replays, &sd);
             next_failed_pass = SystemTime::now() + FAILED_RETRY_INTERVAL;
         }
 
@@ -269,18 +438,22 @@ pub async fn sweep(
                 for dir in &dirs {
                     for path in stale_batches(dir, Duration::ZERO, usize::MAX).await {
                         if sd.is_set() {
+                            replays.shutdown().await;
                             return Ok(());
                         }
                         delivery.deliver(path).await;
+                        delivery.schedule_refused(&mut replays, &sd);
                     }
                 }
                 retry_parked(&delivery, &failed_dir, &sd, Duration::ZERO).await;
+                delivery.schedule_refused(&mut replays, &sd);
                 break;
             }
             if SystemTime::now() >= deadline {
                 break;
             }
             if !sd.sleep(FLUSH_POLL_INTERVAL).await {
+                replays.shutdown().await;
                 return Ok(());
             }
         }
@@ -396,7 +569,7 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     #[tokio::test]
-    async fn a_flush_redrives_fresh_retryable_batches_but_not_auth_refusals() {
+    async fn a_flush_redrives_retryable_batches_and_an_accepted_key_resends_refusals() {
         use wiremock::matchers::{header, method};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let server = MockServer::start().await;
@@ -406,7 +579,7 @@ mod tests {
                 ResponseTemplate::new(200)
                     .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
             )
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
         let dir = tmpdir("flush-recovery");
@@ -425,12 +598,181 @@ mod tests {
         );
         retry_parked(&delivery, &dir, &sd, Duration::ZERO).await;
         assert!(!retryable.exists());
+        assert!(delivery.uploader.take_credential_refusals());
+        delivery.redrive_refused().await;
+        // The key just delivered, so the batch a key had refused goes with it.
         assert!(
-            refused.exists(),
-            "flush must not retry an unchanged refused key"
+            !refused.exists(),
+            "an accepted delivery re-sends what a refused key had parked"
         );
         server.verify().await;
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refusal_the_current_key_repeats_is_reparked_and_others_are_kept() {
+        use wiremock::matchers::{body_string, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string("{\"refused\":1}\n"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"accepted": 1, "skipped": 0})),
+            )
+            .mount(&server)
+            .await;
+        let failed = tmpdir("redrive-failed");
+        let spool = tmpdir("redrive-spool");
+        let refused_again = failed.join("a-0.a1.c401.jsonl");
+        let resendable = failed.join("b-0.a1.c403.jsonl");
+        let not_credential = failed.join("c-0.a1.c404.jsonl");
+        std::fs::write(&refused_again, "{\"refused\":1}\n").unwrap();
+        std::fs::write(&resendable, "{\"ok\":1}\n").unwrap();
+        std::fs::write(&not_credential, "{\"ok\":2}\n").unwrap();
+        std::fs::File::open(&refused_again)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(UNIX_EPOCH))
+            .unwrap();
+        let fresh = spool.join("hooks-a-1-0.jsonl");
+        std::fs::write(&fresh, "{\"ok\":3}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "current".into(), failed.clone()).unwrap(),
+        ));
+        delivery.deliver(fresh.clone()).await;
+        assert!(!fresh.exists());
+        assert!(delivery.uploader.take_credential_refusals());
+        delivery.redrive_refused().await;
+        assert!(
+            delivery.uploader.take_credential_refusals(),
+            "the bounded pass must schedule its remainder"
+        );
+        assert!(
+            !refused_again.exists(),
+            "refused again by that key: renamed into another park"
+        );
+        assert_eq!(
+            std::fs::read(failed.join("a-0.a2.c401.jsonl")).unwrap(),
+            b"{\"refused\":1}\n"
+        );
+        delivery.redrive_refused().await;
+        assert_eq!(
+            std::fs::read(failed.join("a-0.a3.c401.jsonl.poison")).unwrap(),
+            b"{\"refused\":1}\n",
+            "exhausting retries must preserve the last local copy too"
+        );
+        delivery.redrive_refused().await;
+        assert!(!resendable.exists(), "re-sent with the key that works");
+        assert!(
+            not_credential.exists(),
+            "a non-credential refusal is not this pass's"
+        );
+        assert_eq!(
+            std::fs::read_dir(&failed).unwrap().count(),
+            2,
+            "the repeated refusal must keep its last local copy"
+        );
+        std::fs::remove_dir_all(failed).unwrap();
+        std::fs::remove_dir_all(spool).unwrap();
+    }
+
+    #[tokio::test]
+    async fn aborting_an_owned_replay_releases_the_gate_and_schedules_remainder() {
+        let failed = tmpdir("replay-abort");
+        let delivery = Arc::new(Delivery::new(Arc::new(
+            Uploader::new("http://127.0.0.1:1".into(), "k".into(), failed.clone()).unwrap(),
+        )));
+        delivery.replay_ready.store(true, Ordering::SeqCst);
+        let sd = Shutdown::for_test(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let mut tasks = tokio::task::JoinSet::new();
+        delivery.schedule_refused(&mut tasks, &sd);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(delivery.replay_gate.available_permits(), 0);
+        delivery.schedule_refused(&mut tasks, &sd);
+        assert_eq!(tasks.len(), 1, "replay must be globally gated");
+        tasks.shutdown().await;
+        assert_eq!(delivery.replay_gate.available_permits(), 1);
+        assert!(delivery.uploader.take_credential_refusals());
+        assert!(delivery.in_flight.lock().unwrap().is_empty());
+        std::fs::remove_dir_all(failed).unwrap();
+    }
+
+    #[tokio::test]
+    async fn refused_redrive_yields_to_fresh_claims_and_busy_permits_without_waiting() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"accepted": 1})),
+            )
+            .mount(&server)
+            .await;
+        let failed = tmpdir("redrive-priority");
+        let refused = failed.join("old.a1.c403.jsonl");
+        std::fs::write(&refused, "{}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "current".into(), failed.clone()).unwrap(),
+        ));
+        delivery.uploader.take_credential_refusals();
+        let fresh = delivery.claim(Path::new("fresh.jsonl")).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), delivery.redrive_refused())
+            .await
+            .expect("background work must not wait on fresh claims");
+        assert!(delivery.uploader.take_credential_refusals());
+        assert!(refused.exists());
+        assert!(server.received_requests().await.unwrap().is_empty());
+        drop(fresh);
+
+        let permits = delivery
+            .permits
+            .clone()
+            .acquire_many_owned(MAX_CONCURRENT_UPLOADS as u32)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), delivery.redrive_refused())
+            .await
+            .expect("background work must not queue for a permit");
+        assert!(delivery.uploader.take_credential_refusals());
+        assert!(delivery.in_flight.lock().unwrap().is_empty());
+        assert!(server.received_requests().await.unwrap().is_empty());
+        drop(permits);
+
+        tokio::time::timeout(Duration::from_secs(1), delivery.redrive_refused())
+            .await
+            .expect("a redrive must not wait on its own claim");
+        assert!(!refused.exists());
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        std::fs::remove_dir_all(failed).unwrap();
+    }
+
+    #[tokio::test]
+    async fn refusals_wait_for_an_accepted_delivery() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        let failed = tmpdir("redrive-wait-failed");
+        let spool = tmpdir("redrive-wait-spool");
+        let old = failed.join("a-0.a1.c401.jsonl");
+        std::fs::write(&old, "{}\n").unwrap();
+        let fresh = spool.join("hooks-a-1-0.jsonl");
+        std::fs::write(&fresh, "{}\n").unwrap();
+        let delivery = Delivery::new(Arc::new(
+            Uploader::new(server.uri(), "revoked".into(), failed.clone()).unwrap(),
+        ));
+        delivery.deliver(fresh).await;
+        assert!(old.exists(), "a key that is refused re-sends nothing");
+        assert!(failed.join("hooks-a-1-0.a1.c401.jsonl").exists());
+        std::fs::remove_dir_all(failed).unwrap();
+        std::fs::remove_dir_all(spool).unwrap();
     }
 
     fn tmpdir(name: &str) -> PathBuf {

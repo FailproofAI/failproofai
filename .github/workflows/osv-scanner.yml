@@ -27,7 +27,7 @@ name: Supply Chain
 
 on:
   pull_request:
-    branches: [main, feat/tui-ux]
+    branches: [main, staging, feat/tui-ux]
   push:
     branches: [main]
   schedule:

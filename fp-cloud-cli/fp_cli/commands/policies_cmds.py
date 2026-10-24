@@ -10,6 +10,7 @@ single most surprising thing here, so every success path says so.
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import typer
@@ -18,8 +19,8 @@ from .. import client as api
 from .. import output, theme
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
 from .. import _click_compat as click  # the Click Typer is running; see _click_compat
-from ..enforcement import RefError, RefUsageError, read_source
-from ..policy_check import check_syntax, run_policy
+from ..enforcement import RefError, RefUsageError, parse_semantic, read_source, resolve_kind
+from ..policy_check import SyntaxResult, check_syntax, run_policy
 from ..errors import ApiError, NotFoundError
 from . import _write
 
@@ -36,10 +37,14 @@ _KEY_MODE_REASON = (
 def policies_list(ctx: typer.Context) -> None:
     """List every published policy version, newest of each policy first.
 
-    Shows `policy · version · state · description`, one row per VERSION —
+    Shows `policy · version · kind · state · description`, one row per VERSION —
     versions are immutable and every one stays addressable, so a policy
     published three times is three rows. The title counts distinct policies and
     captions the version total, the way the dashboard's library does.
+
+    `kind` is `regex` (JavaScript), `jev` (Jev checks only) or `both`
+    (JavaScript its own Jev checks may clear); a `jev`/`both` row names its
+    checks and the characters they take of a machine's Jev question budget.
 
     `state` is active, disabled (kept but not enforced) or archived (deleted;
     machines already carrying it keep it until redeployed). Needs
@@ -64,9 +69,11 @@ def policies_show(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
 ) -> None:
-    """Show one policy, including its full source.
+    """Show one policy, including its full source and its Jev checks.
 
-    Needs `policies:read`. With `--json`: the policy object with `source`.
+    Needs `policies:read`. With `--json`: the policy object with `source`,
+    `kind`, and for `jev`/`both` its `semantic` declarations, `semanticSha256`
+    and the server-derived `authority`/`reviewedBy`.
 
     Example:
 
@@ -96,6 +103,8 @@ def policies_show(
                                    source_bytes=len((match.source or "").encode("utf-8")))
     if match.source:
         output.info(match.source)
+    if match.semantic:
+        output.info(json.dumps(match.semantic, indent=2))
 
 
 def policies_publish(
@@ -103,7 +112,19 @@ def policies_publish(
     policy_id: str = typer.Argument(..., help="Policy id (letters, numbers, '.', '_', '-')."),
     source: Optional[str] = typer.Argument(
         None,
-        help="Path to the policy source, @path, or - for stdin. Omit to paste it.",
+        help="Path to the JavaScript source, @path, or - for stdin. Omit to paste it. Same as --source.",
+    ),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex (JavaScript), jev (Jev checks only) or both (JavaScript its own Jev checks may "
+             "clear). Default: follows from what you give — --semantic alone is jev, with source both.",
+    ),
+    source_opt: Optional[str] = typer.Option(
+        None, "--source", help="The JavaScript source: a path, @path, or - for stdin.",
+    ),
+    semantic_path: Optional[str] = typer.Option(
+        None, "--semantic",
+        help="A JSON file holding the Jev declarations (a JSON array): a path, @path, or - for stdin.",
     ),
     description: str = typer.Option("", "--description", help="One-line description."),
     no_verify: bool = typer.Option(
@@ -112,13 +133,29 @@ def policies_publish(
 ) -> None:
     """Publish a policy — mints a NEW VERSION; it never edits one in place.
 
-    The source is parse-checked with node before it is sent. Nothing downstream
-    does this: the server validates the id and a size ceiling, and a broken
-    policy otherwise fails on the machine at enforcement time. `--no-verify`
-    skips it; a host without node publishes with a warning rather than a block.
-    Jev fields a cloud policy never reads (`semanticPolicies.add`, `authority:
-    "reviewable"`) are refused regardless — ship those in a pack with
-    `failproofai publish`.
+    A policy has a **kind**:
+
+    * `regex` — JavaScript (`--source`, or the positional source): what publish
+      has always done, and the default.
+    * `jev` — Jev checks only (`--semantic checks.json`): a JSON array of Jev
+      declarations, each `{name, title, appliesTo, mode, userCanOverride,
+      probes:[{id, instructions, criteria:{true,false}}], guidance, ...}` —
+      exactly a failproofai pack manifest's semantic entry. No JavaScript.
+    * `both` — the two together. FailproofAI Cloud makes the JavaScript's
+      verdict reviewable by exactly its own checks, and deploys them as one.
+
+    Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+    A machine gets a `both` policy's JavaScript, and asks FailproofAI Cloud
+    about each checked tool call while its Jev mode is `observe` or `enforce`.
+
+    The JavaScript is parse-checked with node before it is sent. Nothing
+    downstream does this: the server validates the id and a size ceiling, and a
+    broken policy otherwise fails on the machine at enforcement time.
+    `--no-verify` skips it; a host without node publishes with a warning rather
+    than a block. Jev fields in the JavaScript (`semanticPolicies.add`,
+    `authority: "reviewable"`) are refused regardless — put Jev checks in
+    `--semantic`. The server checks each declaration (limits, reserved
+    FailproofAI names, names unique in the org) and says which one it refused.
 
     Source can come from a path, `@path`, a pipe, `-`, or an interactive paste
     when you give none and stdin is a terminal.
@@ -134,21 +171,42 @@ def policies_publish(
     * `fp policies publish no-force-push ./rule.mjs`
     * `cat rule.mjs | fp policies publish no-force-push`
     * `fp policies publish no-force-push -` — read stdin explicitly
+    * `fp policies publish prod-db-intent --kind jev --semantic ./checks.json`
+    * `fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies publish", _KEY_MODE_REASON)
     cctx = require_auth(state)
 
+    if source is not None and source_opt is not None:
+        raise click.UsageError("give the JavaScript source once — positionally or with --source, not both")
+    source = source if source is not None else source_opt
+    if source == "-" and semantic_path == "-":
+        raise click.UsageError("only one of the JavaScript source and --semantic can come from stdin")
+
+    # Whether JavaScript is coming is decided WITHOUT reading stdin: a Jev-only
+    # publish must not sit waiting for a paste nobody is going to give.
+    wants_source = source is not None or kind in ("regex", "both") or (kind is None and semantic_path is None)
+    try:
+        resolved_kind = resolve_kind(kind, has_source=wants_source, has_semantic=semantic_path is not None)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
+
     def _paste_prompt() -> None:
         output.hint("paste the policy source, then press Ctrl-D")
 
+    text: Optional[str] = None
+    semantic = None
     try:
-        text = read_source(source, prompt=_paste_prompt)
+        if semantic_path is not None:
+            semantic = parse_semantic(read_source(semantic_path, isatty=False))
+        if wants_source:
+            text = read_source(source, prompt=_paste_prompt)
     except RefUsageError as exc:
         raise click.UsageError(str(exc))
     except RefError as exc:
         raise ApiError(str(exc))
-    if not text.strip():
+    if wants_source and not (text or "").strip():
         raise ApiError("policy source is empty — nothing to publish")
 
     # Nothing downstream parses this. The server checks the id and a size
@@ -156,7 +214,9 @@ def policies_publish(
     # place for a syntax error to surface. `--no-verify` exists because a
     # machine without node should still be able to publish, not because
     # skipping is ever a good idea.
-    if not no_verify:
+    syn = SyntaxResult(ok=True, checked=False,
+                       message="not checked" if text else "no JavaScript source")
+    if text and not no_verify:
         syn = check_syntax(text)
         if not syn.ok:
             raise ApiError(
@@ -167,7 +227,13 @@ def policies_publish(
         if not syn.checked and not output.is_json():
             output.warn(syn.message)
 
-    created = api.publish_policy(cctx, policy_id, text, description)
+    created = api.publish_policy(
+        cctx, policy_id, text, description,
+        # Sent only when it says something the server's default does not, so a
+        # plain JavaScript publish is the same request it has always been.
+        kind=None if resolved_kind == "regex" and kind is None else resolved_kind,
+        semantic=semantic,
+    )
 
     # Which machines already carry this policy, and at which version. Publishing
     # deploys nothing, so this is the one thing the card must not guess at: it
@@ -191,7 +257,7 @@ def policies_publish(
         output.emit_json({**created.to_dict(), "carriers": carriers, "syntax": syn.to_dict()})
         return
     output.render_policy_published(created, carriers=carriers,
-                                   source_bytes=len(text.encode("utf-8")))
+                                   source_bytes=len((text or "").encode("utf-8")))
 
 
 def policies_enable(

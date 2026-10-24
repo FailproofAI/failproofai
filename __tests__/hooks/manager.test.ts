@@ -169,7 +169,7 @@ describe("hooks/manager", () => {
         expect(hook.__failproofai_hook__).toBe(true);
         expect(hook.type).toBe("command");
         expect(hook.timeout).toBe(60);
-        expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType}`);
+        expect(hook.command).toBe(`"/usr/local/bin/failproofai" --hook ${eventType} --agent-scope user`);
       }
     });
 
@@ -317,7 +317,7 @@ describe("hooks/manager", () => {
 
       expect(written.hooks.PreToolUse).toHaveLength(1);
       expect(written.hooks.PreToolUse[0].hooks[0].command).toBe(
-        '"/usr/local/bin/failproofai" --hook PreToolUse',
+        '"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope user',
       );
     });
 
@@ -348,7 +348,7 @@ describe("hooks/manager", () => {
       const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       const written = JSON.parse(content as string);
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"C:\\Program Files\\failproofai\\failproofai.exe" --hook PreToolUse');
+      expect(hook.command).toBe('"C:\\Program Files\\failproofai\\failproofai.exe" --hook PreToolUse --agent-scope user');
 
       Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     });
@@ -396,7 +396,7 @@ describe("hooks/manager", () => {
 
       for (const [eventType, matchers] of Object.entries(written.hooks)) {
         const hook = (matchers as Array<{ hooks: Array<Record<string, unknown>> }>)[0].hooks[0];
-        expect(hook.command).toBe(`npx -y failproofai --hook ${eventType}`);
+        expect(hook.command).toBe(`npx -y failproofai --hook ${eventType} --agent-scope project`);
       }
     });
 
@@ -411,7 +411,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse');
+      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope user');
     });
 
     it("local scope uses absolute binary path, not npx", async () => {
@@ -425,7 +425,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       const hook = written.hooks.PreToolUse[0].hooks[0];
-      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse');
+      expect(hook.command).toBe('"/usr/local/bin/failproofai" --hook PreToolUse --agent-scope local');
     });
 
     it("re-install on project scope migrates absolute-path hooks to npx format", async () => {
@@ -455,7 +455,7 @@ describe("hooks/manager", () => {
       const written = JSON.parse(content as string);
 
       expect(written.hooks.PreToolUse[0].hooks[0].command).toBe(
-        "npx -y failproofai --hook PreToolUse",
+        "npx -y failproofai --hook PreToolUse --agent-scope project",
       );
     });
 

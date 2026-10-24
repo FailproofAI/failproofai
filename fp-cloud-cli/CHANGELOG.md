@@ -4,6 +4,27 @@
 
 ### Added
 
+- `fp fleet deploy --target POLICY=INTEGRATION[/agt_ID]` scopes a machine's assignment; repeat the flag to include multiple alternatives. `--all-agents POLICY` explicitly clears its scope. Deploy plans, show, history, rollback and JSON readback retain assignment targets.
+- `fp policies publish <id> --kind regex|jev|both [--source f.mjs] [--semantic f.json]`: a
+  FailproofAI Cloud policy can carry Jev checks — `jev` (declarations only, no JavaScript) or
+  `both` (JavaScript reviewable by exactly its own checks; the server derives the authority).
+  The kind follows from what is given when `--kind` is omitted, and a kind that contradicts its
+  inputs is exit 2 before anything is sent. The positional source still works.
+- No Jev mode is set by hand: FailproofAI Cloud derives a machine's Jev mode from what is
+  deployed to it (on while a `jev`/`both` policy is, off otherwise), so `fp fleet deploy` has
+  no `--jev-mode` and there is no `fp fleet jev-mode`. An `observe` effect applies to `jev`
+  and `both` policies like any other: their checks are recorded and decide nothing.
+- `fp fleet rollback` says when the Jev mode differs (`jev mode <now> → <then>`, and
+  `jevModeBefore` in `--json`); `fp fleet history` shows each generation's Jev mode.
+- The `fleet deploy` and `policies publish` help says Jev checks run on
+  FailproofAI Cloud and nothing is installed on the machine, and `fleet show`
+  names the reasons a machine with a mode cannot ask (`jev_unconfigured`, `transcripts_disabled`)
+  and the `jev_budget` report.
+- `fp policies list/show` print each version's kind and Jev check names (`show` also the
+  declarations); `fp fleet list/show` print the machine's Jev mode and the policy errors it
+  reported, and `--json` carries `kind`/`semantic`/`semanticSha256`/`authority`/`reviewedBy`,
+  `jevMode` and `policyErrors`/`policyErrorsAt` when the server sends them.
+
 - `jev:evaluate` is a known permission — Jev through FailproofAI Cloud, charged to the
   org's plan — so `fp keys` and `fp users` accept it instead of refusing it as unknown,
   and the `admin` preset carries it, as the server's built-in admin set now does. The
@@ -13,9 +34,15 @@
   (`events:add` + `policies:pull` + `jev:evaluate`), for an enrolled machine using Jev through
   FailproofAI Cloud. `fp keys` also refuses `jev:evaluate` without both prerequisites itself
   (exit 2, naming what is missing) instead of sending the key for the server's 422. (#833)
+- `fp policies list` and `fp policies show` print what a `jev`/`both` version's checks take of a
+  machine's Jev question budget (`jevChars`), and a deploy refused with `jev_budget_exceeded`
+  lists each Jev policy's share, largest first (the `hint` under `--json`), so the refusal says
+  which policy to leave off.
 
 ### Changed
 
+- `fp policies publish`'s refusal of Jev fields in the JavaScript now says where Jev checks go:
+  the policy's own declarations, `--kind both --semantic checks.json`.
 - `fp guardrails summary` shows how many machines run Jev in each mode, reading the summary's
   `jev.machines.observe` and `jev.machines.enforce`.
 - `fp policies publish` (and `policies compose --publish`) refuses a source carrying Jev
@@ -26,6 +53,11 @@
   it stays hard. Ship Jev checks in a pack with `failproofai publish`. Same rule, and the
   same comment-aware detection, as the dashboard's publish form; the server does not read
   the source, so nothing else refuses it for `fp`. (#833)
+
+### Fixed
+
+- `fp fleet history` keeps `gen`, `when` and `jev` visible at 80 columns (rollback needs `gen`): the policy list is shortened, then dropped, and `change` wraps first.
+- `fp fleet show` and `fp fleet history` name an exact-profile target by the profile label the machine reports (`claude/.claude-work`, with the `agt_…` id kept in `show`), falling back to the bare id.
 
 ## 0.0.1 — 2026-09-22
 

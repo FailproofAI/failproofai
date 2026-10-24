@@ -7,6 +7,7 @@
  * `configure-wizard.ts` calls the functions here directly, the same
  * relationship it already has with `manager.ts`'s `installHooks()`.
  */
+import { HEALTH_PROBE_SOURCE } from "./health-probe";
 import {
   existsSync,
   mkdirSync,
@@ -1030,7 +1031,7 @@ export async function probeDaemon(): Promise<DaemonProbe> {
             cli: "claude",
             stdin: JSON.stringify({
               hook_event_name: "SessionStart",
-              source: "failproofai-health-probe",
+              source: HEALTH_PROBE_SOURCE,
             }),
           },
           { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },

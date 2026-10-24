@@ -446,14 +446,17 @@ def cloud_publish_problem(source: str) -> Optional[str]:
     if not source or len(source) > _MAX_SCAN:
         return None
     if _find_call(source, _SEMANTIC_CALL) != -1:
-        return ("semanticPolicies.add does nothing in a cloud policy: Jev reads semantic checks only "
-                "from a failproofai pack. Remove it to publish the rest, or ship the file with "
-                "`failproofai publish`.")
+        return ("semanticPolicies.add does nothing in a cloud policy's JavaScript: Jev reads semantic "
+                "checks only from a failproofai pack or from the policy's own Jev declarations. Put the "
+                "check in a JSON file and publish with `--kind both --semantic checks.json` (or `--kind "
+                "jev`), or ship the file with `failproofai publish`.")
     # Every registration: any of them can carry a reviewable declaration.
     at = _find_call(source, _ADD_CALL)
     while at != -1:
         if _direct_props(source, at).get("authority") == "reviewable":
-            return ("a cloud policy is always hard, so Jev never clears it and authority/reviewedBy "
-                    "are ignored. Remove them to publish it as a hard policy.")
+            return ("a cloud policy's JavaScript is always hard as written: its authority comes from "
+                    "its kind, never from the source, so authority/reviewedBy here are ignored. Remove "
+                    "them, and publish with `--kind both --semantic checks.json` to make it reviewable "
+                    "by its own Jev checks.")
         at = _find_call(source, _ADD_CALL, at + len(_ADD))
     return None

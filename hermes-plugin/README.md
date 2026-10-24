@@ -165,23 +165,25 @@ decision, because otherwise corrupted retry state could block a turn forever.
 ## Local protocol
 
 Requests and responses use the existing length-prefixed failproofaid Unix
-socket protocol, version 1.
+socket protocol, version 2. A v1 daemon must be upgraded before it can safely
+evaluate agent/profile-scoped policies.
 
 ```json
 {
   "type": "policyEvaluation",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "integration": "hermes",
   "event": "pre_tool_call",
   "payload": {},
-  "cwd": "/workspace/project"
+  "cwd": "/workspace/project",
+  "agentSettingsPath": "/path/to/the/hermes/profile"
 }
 ```
 
 ```json
 {
   "type": "policyResult",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "decision": "instruct",
   "policyNames": ["custom/approved-write-route"],
   "reason": "Use the approved write route.",

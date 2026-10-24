@@ -195,7 +195,7 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
       ...(capped
         ? [`${INDENT}Capped at ${pauseDurationWords(PAUSE_CEILING_MS)} from when this pause began.`]
         : []),
-      `${INDENT}Cloud-managed policies keep enforcing.`,
+      `${INDENT}Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing.`,
       `${INDENT}Resume early:  ${kit.cmd(resume)}`,
     ],
     affected: 1,

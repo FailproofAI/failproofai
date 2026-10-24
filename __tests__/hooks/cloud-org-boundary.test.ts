@@ -95,10 +95,25 @@ describe("cloud organisation recording boundary", () => {
     await connect(undefined, { token: "old" });
     expect(readCredentials().org?.since).toBe(100);
   });
-  it("changing origin resets the boundary even if org id and token are the same", async () => {
+  // B1 (e2e round 1): the same organisation on a new URL — http → https, a new
+  // host for the same Cloud — is a reconnect. Treating it as a switch printed
+  // "Switched from A to A" and cleared the org's Cloud policies until the next poll.
+  it("changing origin for the same known org is not a switch: boundary, backfill and policies stay", async () => {
+    previous("A");
+    const policies = join(home, "policies", "cloud-policies");
+    mkdirSync(policies, { recursive: true });
+    writeFileSync(join(policies, "active.json"), "{}");
+    vi.spyOn(Date, "now").mockReturnValue(4000);
+    const result = await connect("A", { token: "old", url: "http://other.example:8080" });
+    expect(readCredentials().org?.since).toBe(100);
+    expect(existsSync(backfillRequestPath())).toBe(true);
+    expect(existsSync(join(policies, "active.json"))).toBe(true);
+    expect(describeOutcome(result, "m", "http://other.example:8080").join("\n")).not.toMatch(/Switched from/);
+  });
+  it("changing origin with either org unknown still resets the boundary", async () => {
     previous("A");
     vi.spyOn(Date, "now").mockReturnValue(4000);
-    await connect("A", { token: "old", url: "https://other.example" });
+    await connect(undefined, { token: "old", url: "https://other.example" });
     expect(readCredentials().org?.since).toBe(4000);
   });
   it("a failed org switch keeps credentials and pending backfill untouched", async () => {

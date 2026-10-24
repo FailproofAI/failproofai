@@ -17,6 +17,10 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 - `config`'s browser login takes an expired or refused link off the screen when it prints a new one, so only the live link can be opened; and a cloud that answers the login route with a web page is treated as one without browser login (paste a key) instead of an error (#920)
 - `config` saves the org a browser login was approved into even when the follow-up check of the new key can't reach the server, instead of leaving the saved org empty or stale; and its completion event reports whether the machine actually connected, not whether it set out to (#920)
 
+### Dependencies
+
+- Update `undici` 7.29.1 → 7.30.1 and `zod` 4.4.3 → 4.6.6 in the root lockfile, and refresh `setuptools` and `filelock` in the Python SDK's dev/test lockfile to clear new supply-chain findings. Python 3.10 still resolves `filelock` 4.1.0, because its fixed release requires Python 3.11; the three known advisories for that dev/test-only slice are time-boxed through 2026-11-20.
+
 ## 1.0.12-beta.0 — 2026-10-22
 
 ### Features

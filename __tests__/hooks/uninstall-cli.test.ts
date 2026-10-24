@@ -24,10 +24,21 @@ let servicePath: string;
 let serviceExists = true;
 let configured = true;
 let installedClis: string[] = ["claude", "codex"];
+let skillDirs: string[] = [];
 
 vi.mock("../../src/hooks/manager", () => ({
   removeHooks: vi.fn(async () => {
     calls.push("removeHooks");
+  }),
+}));
+
+vi.mock("../../src/hooks/agent-skill", () => ({
+  installedAgentSkillDirs: () => skillDirs,
+  removeAgentSkill: vi.fn(() => {
+    calls.push("removeAgentSkill");
+    const removed = skillDirs;
+    skillDirs = [];
+    return removed;
   }),
 }));
 
@@ -78,6 +89,7 @@ beforeEach(() => {
   serviceExists = true;
   configured = true;
   installedClis = ["claude", "codex"];
+  skillDirs = [];
 });
 
 afterEach(() => {
@@ -116,6 +128,31 @@ describe("hooks/uninstall-cli", () => {
     expect(calls).not.toContain("uninstallDaemonService");
     expect(calls).not.toContain("removeHooks");
     expect(res.lines.join("\n")).toMatch(/would deny every tool call/);
+  });
+
+  it("removes the failproofai skill config wrote, after daemonConfigured comes down", async () => {
+    skillDirs = ["/h/.claude/skills/failproofai", "/h/.codex/skills/failproofai"];
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const plan = await runUninstallCommand({ dryRun: true });
+    expect(plan.lines.join("\n")).toContain("the failproofai skill from 2 agent folders");
+    expect(calls).not.toContain("removeAgentSkill");
+
+    const res = await runUninstallCommand({ yes: true });
+    expect(res.exitCode).toBe(0);
+    expect(calls.indexOf("setDaemonConfigured(false)")).toBeLessThan(calls.indexOf("removeAgentSkill"));
+    expect(res.lines.join("\n")).toContain("Removed the failproofai skill from 2 agent folders.");
+  });
+
+  it("has something to uninstall when only the skill is left", async () => {
+    installedClis = [];
+    configured = false;
+    serviceExists = false;
+    rmSync(servicePath, { force: true });
+    skillDirs = ["/h/.claude/skills/failproofai"];
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true });
+    expect(res.lines.join("\n")).not.toContain("Nothing to uninstall");
+    expect(calls).toContain("removeAgentSkill");
   });
 
   it("refuses without --yes when there is no way to confirm", async () => {

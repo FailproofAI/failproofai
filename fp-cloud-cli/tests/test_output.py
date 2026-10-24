@@ -1590,6 +1590,29 @@ def test_history_says_no_change_only_when_nothing_moved(capsys):
     assert "no change" in capsys.readouterr().out
 
 
+def test_history_keeps_gen_when_and_jev_on_an_80_column_terminal(capsys):
+    """At 80 columns every no_wrap cell got shaved at once and `gen`, `when` and
+    `jev` vanished — but `gen` is what `fp fleet rollback` takes."""
+    _wide_stdout(80)
+    pols = [{"id": f"long-policy-name-{i:02d}", "version": 1, "effect": "enforce",
+             "agentTargets": [{"integration": "claude", "instanceId": "agt_" + "ab" * 16}]}
+            for i in range(4)]
+    entries = [{"deployment": g, "updatedAt": f"2026-08-{10 + g:02d}T13:49:00Z",
+                "jevMode": "observe" if g % 2 else None, "policies": pols[:g]}
+               for g in range(1, 5)]
+    output.render_deployment_history("m", entries)
+    out = capsys.readouterr().out
+    assert max(len(ln) for ln in out.splitlines()) <= 80
+    header = next(ln for ln in out.splitlines() if "change" in ln)
+    for col in ("gen", "when", "jev"):
+        assert col in header, (col, out)
+    for g in range(1, 5):
+        row = next((ln for ln in out.splitlines() if f"#{g} " in ln), None)
+        assert row is not None, (g, out)
+        assert f"08-{10 + g:02d} 13:49:00" in row, out
+        assert ("observe" if g % 2 else "local") in row, out
+
+
 def test_clearing_a_label_is_not_reported_as_renaming_to_blank(capsys):
     """`fp fleet rename m ""` clears the override server-side, and the card
     said `labelled m as ` — a sentence with a hole in it, describing neither

@@ -11,12 +11,15 @@ vi.mock("../../src/hooks/pack-manifest", () => ({
   hasInstalledRegexPacks: vi.fn(() => false),
 }));
 vi.mock("../../src/hooks/cloud-managed-policies", () => ({
+  listActiveCloudManagedPolicies: vi.fn(() => []),
+  // The hook-scoped read: with no agent it drops targeted policies, so the
+  // status must never count from it.
   readActiveCloudManagedPolicies: vi.fn(() => []),
 }));
 
 import { summarizePolicySources } from "../../src/hooks/config-status";
 import { hasInstalledRegexPacks, readInstalledPacks } from "../../src/hooks/pack-manifest";
-import { readActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
+import { listActiveCloudManagedPolicies } from "../../src/hooks/cloud-managed-policies";
 
 let dir: string;
 let project: string;
@@ -32,7 +35,7 @@ beforeEach(() => {
   mkdirSync(project, { recursive: true });
   vi.mocked(readInstalledPacks).mockReturnValue({ packs: [], errors: [] } as never);
   vi.mocked(hasInstalledRegexPacks).mockReturnValue(false);
-  vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([]);
+  vi.mocked(listActiveCloudManagedPolicies).mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -111,12 +114,19 @@ describe("summarizePolicySources", () => {
   });
 
   it("counts cloud-managed policies by effect", () => {
-    vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([
+    vi.mocked(listActiveCloudManagedPolicies).mockReturnValue([
       { id: "c1", effect: "enforce" },
       { id: "c2", effect: "enforce" },
       { id: "c3", effect: "observe" },
     ] as never);
     expect(summarizePolicySources(project)).toMatchObject({ cloudOn: 2, observing: 1 });
+  });
+
+  it("counts an agent-targeted cloud policy, which the hook-scoped read would hide", () => {
+    vi.mocked(listActiveCloudManagedPolicies).mockReturnValue([
+      { id: "codex-only", effect: "enforce", agentTargets: [{ integration: "codex" }] },
+    ] as never);
+    expect(summarizePolicySources(project)).toMatchObject({ cloudOn: 1 });
   });
 
   it("counts custom policy files and convention files, once each", () => {
@@ -146,7 +156,7 @@ describe("summarizePolicySources", () => {
     vi.mocked(readInstalledPacks).mockImplementation(() => {
       throw new Error("boom");
     });
-    vi.mocked(readActiveCloudManagedPolicies).mockImplementation(() => {
+    vi.mocked(listActiveCloudManagedPolicies).mockImplementation(() => {
       throw new Error("bad manifest");
     });
     expect(summarizePolicySources(project)).toMatchObject({ packOn: 0, cloudOn: 0, packsInstalled: 0 });

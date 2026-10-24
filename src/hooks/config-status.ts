@@ -27,7 +27,7 @@ import { readCloudCredentials } from "./cloud-enrollment";
 import { CODEX_UNTRUSTED_NOTICE, codexHookTrust, type CodexHookTrust } from "./codex-system-hooks";
 import { describeMachine } from "./cloud-enrollment-cli";
 import { cloudBaseFor } from "./cloud-connection";
-import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { listActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readIngestCredential } from "./collector-config";
 import { discoverPolicyFiles } from "./custom-hooks-loader";
 import { daemonSocketPresent, isDaemonConfigured } from "./daemon-client";
@@ -259,7 +259,10 @@ export function summarizePolicySources(cwd?: string): StatusPolicies {
   }
 
   try {
-    for (const artifact of readActiveCloudManagedPolicies()) {
+    // Every assignment, whatever agent it targets: a hook's agent scope applied
+    // with no agent hid each targeted policy ("None installed" beside a
+    // deployment that enforces), the status twin of B4.
+    for (const artifact of listActiveCloudManagedPolicies()) {
       if (artifact.effect === "observe") summary.observing++;
       else summary.cloudOn++;
     }
@@ -525,7 +528,10 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
       return kit.caution(`No report from failproofaid for ${formatDuration(now - health.writtenAt)}`);
     }
     if (!health.delivering) return `${kit.off} Not delivering, failproofaid has no key`;
-    const backlog = queued === 0 ? "nothing queued" : `${many(queued, "batch", "batches")} queued`;
+    // Batches an earlier key had refused wait for the daemon to re-send them
+    // with the key that works now: queued, not refused.
+    const pending = queued + (refused.resending ?? 0);
+    const backlog = pending === 0 ? "nothing queued" : `${many(pending, "batch", "batches")} queued`;
     const stuck =
       queued > 0 &&
       (oldestQueuedMs ?? 0) > STATUS_QUEUE_STUCK_MS &&
@@ -578,7 +584,7 @@ export function renderStatusScreen(facts: StatusFacts, opts: ScreenKitOpts & { c
         `${pauseClockTime(pause.expiresAt, opts.clock)}${pause.cwd ? `${kit.sep}${pause.cwd}` : ""}`,
     ]),
     // An enforcement fact, not fine print: a pause suspends local policy only.
-    ...(facts.pauses.length > 0 ? [["", "Cloud-managed policies keep enforcing."] as [string, string]] : []),
+    ...(facts.pauses.length > 0 ? [["", "Cloud-managed policies, and FailproofAI Cloud's Jev checks, keep enforcing."] as [string, string]] : []),
   ];
 
   const cloudRows: Array<[string, string]> =

@@ -836,6 +836,7 @@ describe("toReview", () => {
       reason: null,
       policyName: "semantic/secret-exposure",
       asked: ["secret-exposure"],
+      checks: [{ check: "secret-exposure", verdict: "instruct", why: "fired", p: 0.95 }],
       // A warning nobody consented to clears nothing, and from a check that
       // can deny it withdraws every clear on the call.
       notDenied: [],

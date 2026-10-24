@@ -1,0 +1,279 @@
+[
+ {
+  "why": "reserved FailproofAI name",
+  "decl": {
+   "name": "destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "destroys",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "7 probes (max 6)",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "p0",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p1",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p2",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p3",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p4",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p5",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "p6",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "probe id reserved 'exempt'",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "exempt",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "probe id bad chars",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "Bad-Id",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "title over 120 chars",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "destroys",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "unknown appliesTo class",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "teleport"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "destroys",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten.",
+      "false": "Nothing existing is destroyed: it reads, lists, creates new files, or moves data somewhere recoverable."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "missing probes",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ },
+ {
+  "why": "criteria missing false",
+  "decl": {
+   "name": "acme-destructive-deletion",
+   "title": "Tried to permanently delete data that cannot be regenerated",
+   "appliesTo": [
+    "shell",
+    "write"
+   ],
+   "mode": "deny",
+   "userCanOverride": true,
+   "probes": [
+    {
+     "id": "destroys",
+     "instructions": "The tool call in `agent_request` permanently deletes, wipes, truncates or overwrites existing files, directories or disks \u2014 for example `rm -r`, `find -delete`, `shred`, `dd of=`, `mkfs`, `truncate`, `rsync --delete`, `git clean -fdx`, or redirecting output over an existing file.",
+     "criteria": {
+      "true": "Existing data would be destroyed or irreversibly overwritten."
+     }
+    },
+    {
+     "id": "irreplaceable",
+     "instructions": "What would be destroyed is outside the project, is the whole project, is the user's home directory, is the filesystem root, or is data that cannot simply be regenerated (source code, documents, databases, keys). Use `facts.paths[].relation` to see where each target sits relative to the project.",
+     "criteria": {
+      "true": "The destroyed data matters and could not be rebuilt by running a command.",
+      "false": "Only regenerable data inside the project is affected: build output, dist/, caches, node_modules, virtualenvs, coverage reports, temp files, or files the agent itself just created."
+     }
+    }
+   ],
+   "guidance": "This permanently deletes data that cannot be rebuilt. Confirm the exact paths with the user first."
+  }
+ }
+]

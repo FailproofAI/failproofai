@@ -432,10 +432,16 @@ export type CodexHookTrust =
   /** In hooks.json and not all trusted: Codex skips the untrusted ones. */
   | { kind: "untrusted"; path: string; untrusted: number; total: number };
 
+/** The Codex profile's home: `CODEX_HOME` when set, else `~/.codex`. */
+export function codexHome(): string {
+  const dir = process.env.CODEX_HOME?.trim();
+  return dir ? resolve(dir) : resolve(homedir(), ".codex");
+}
+
 export interface CodexTrustDeps extends CodexSystemDeps {
-  /** `~/.codex/hooks.json`. */
+  /** `$CODEX_HOME/hooks.json` (`~/.codex/hooks.json`). */
   hooksJsonPath?: string;
-  /** `~/.codex/config.toml`, where Codex keeps `[hooks.state]`. */
+  /** `$CODEX_HOME/config.toml`, where Codex keeps `[hooks.state]`. */
   userConfigPath?: string;
 }
 
@@ -452,7 +458,7 @@ export function codexHookTrust(deps: CodexTrustDeps = {}): CodexHookTrust {
   const systemPath = resolvedPath(deps);
   if (systemPath && codexSystemHooksPresent({ path: systemPath })) return { kind: "system", path: systemPath };
 
-  const hooksJsonPath = deps.hooksJsonPath ?? resolve(homedir(), ".codex", "hooks.json");
+  const hooksJsonPath = deps.hooksJsonPath ?? resolve(codexHome(), "hooks.json");
   const ours = failproofaiCodexHookIdentities(hooksJsonPath);
   if (ours.length === 0) return { kind: "none" };
 
@@ -462,7 +468,7 @@ export function codexHookTrust(deps: CodexTrustDeps = {}): CodexHookTrust {
   let trustedHashes = new Map<string, string>();
   try {
     trustedHashes = parseCodexTrustedHashes(
-      readFileSync(deps.userConfigPath ?? resolve(homedir(), ".codex", "config.toml"), "utf8"),
+      readFileSync(deps.userConfigPath ?? resolve(codexHome(), "config.toml"), "utf8"),
     );
   } catch {
     // No user config: nothing is trusted.

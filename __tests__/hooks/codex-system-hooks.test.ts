@@ -234,15 +234,21 @@ describe("trust", () => {
   };
 
   it("computes Codex's own hash for a failproofai hook", () => {
-    // Codex 0.162.1 hooks/list reported exactly this currentHash.
+    // Codex 0.162.1 hooks/list reported exactly this currentHash, for the entry
+    // as it was before hooks named their scope (`--agent-scope`): the live
+    // anchor for the hash itself.
+    const withoutScope = (e: Record<string, unknown>) => ({ ...e, command: String(e.command).replace(/ --agent-scope user$/, "") });
     const entry = codex.buildHookEntry(BIN, "pre_tool_use", "user") as Record<string, unknown>;
-    expect(codexHookHash("PreToolUse", null, entry)).toBe(
+    expect(String(entry.command)).toMatch(/ --agent-scope user$/);
+    expect(codexHookHash("PreToolUse", null, withoutScope(entry))).toBe(
       "sha256:a38a73af7b65aed439e83f5862e6894eeeec40a7f15ee44311bb4100df755be7",
     );
     const stop = codex.buildHookEntry(BIN, "permission_request", "user") as Record<string, unknown>;
-    expect(codexHookHash("PermissionRequest", null, stop)).toBe(
+    expect(codexHookHash("PermissionRequest", null, withoutScope(stop))).toBe(
       "sha256:5909f53157dc846188f16e03686d8da586bef0ef0e4a1cefed7f0b9b3ac9fd7b",
     );
+    // The scope is part of the command, so it is part of what Codex trusts.
+    expect(codexHookHash("PreToolUse", null, entry)).not.toBe(codexHookHash("PreToolUse", null, withoutScope(entry)));
   });
 
   it("keys each hook as Codex does: path, snake_case event, group and handler index", () => {

@@ -337,7 +337,40 @@ describe("surveying a real machine", () => {
     expect(reviewableProblem(coverage)).toBe(NO_JEV_CHECKS_PROBLEM);
   });
 
-  it("reads a cloud assignment's authority, which only the deployment decides", () => {
+  // CONTRACT C10.5: only the deployment decides a Cloud assignment's authority,
+  // and only its OWN Cloud Jev checks review it — while Cloud's Jev mode asks.
+  it("reads a cloud assignment's authority, which only the deployment decides, reviewed only by its own Cloud checks", () => {
+    writeConfig({ enabledPolicies: [] });
+    const artifact = "// a cloud artifact this test never executes\n";
+    const digest = createHash("sha256").update(artifact).digest("hex");
+    writeFileSync(join(cloudRoot, `${digest}.mjs`), artifact);
+    const activate = (jevMode?: string) =>
+      writeFileSync(
+        join(cloudRoot, "active.json"),
+        JSON.stringify({
+          schemaVersion: 2,
+          deployment: 7,
+          policies: [
+            { id: "deploy-guard", version: 1, sha256: digest, path: `${digest}.mjs`, authority: "reviewable", reviewedBy: ["production-infra-change"] },
+            { id: "audit-only", version: 1, sha256: digest, path: `${digest}.mjs` },
+          ],
+          ...(jevMode ? { jevMode } : {}),
+        }),
+      );
+    // An installed pack declares a check of the same name: it never stands in.
+    installPack(null);
+
+    activate();
+    // Two assignments + the always-on guard, none reviewable without a Cloud mode.
+    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 3, reviewable: 0, customFiles: 0, jevChecks: 16 });
+
+    activate("enforce");
+    // With one, the assignment is reviewable by its own Cloud check; the count
+    // of checks THIS machine asks stays the pack's.
+    expect(surveyReviewableCoverage(project)).toEqual({ enabled: 3, reviewable: 1, customFiles: 0, jevChecks: 16 });
+  });
+
+  it("counts an agent-targeted cloud assignment, which has no agent to match here", () => {
     writeConfig({ enabledPolicies: [] });
     const artifact = "// a cloud artifact this test never executes\n";
     const digest = createHash("sha256").update(artifact).digest("hex");
@@ -345,20 +378,16 @@ describe("surveying a real machine", () => {
     writeFileSync(
       join(cloudRoot, "active.json"),
       JSON.stringify({
-        schemaVersion: 2,
-        deployment: 7,
+        schemaVersion: 3,
+        deployment: 4,
+        jevMode: "enforce",
         policies: [
-          { id: "deploy-guard", version: 1, sha256: digest, path: `${digest}.mjs`, authority: "reviewable", reviewedBy: ["production-infra-change"] },
-          { id: "audit-only", version: 1, sha256: digest, path: `${digest}.mjs` },
+          { id: "codex-guard", version: 1, sha256: digest, path: `${digest}.mjs`, agentTargets: [{ integration: "codex", instanceId: "agt_0123456789abcdef0123456789abcdef" }] },
         ],
       }),
     );
-    // The check the deployment names lives in FailproofAI/jev-policies.
-    installPack(null);
-
-    const coverage = surveyReviewableCoverage(project);
-    // Two assignments + the always-on guard, one of them reviewable.
-    expect(coverage).toEqual({ enabled: 3, reviewable: 1, customFiles: 0, jevChecks: 16 });
+    // The targeted assignment + the always-on guard.
+    expect(surveyReviewableCoverage(project).enabled).toBe(2);
   });
 
   it("counts the custom policy files it cannot read without running them", () => {

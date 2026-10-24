@@ -23,7 +23,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import httpx
 
@@ -487,7 +487,37 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
         message or f"Request failed with status {response.status_code}.",
         status=response.status_code,
         request_id=request_id,
+        hint=_jev_budget_breakdown(response),
     )
+
+
+def _jev_budget_breakdown(response: httpx.Response) -> Optional[str]:
+    """The per-policy breakdown of a deploy's ``jev_budget_exceeded`` refusal.
+
+    The message carries only the total (``used``/``budget``); the body also lists
+    every Jev policy version the machine would carry with its question
+    characters (``policies: [{id, version, chars}]``), which is what tells an
+    operator WHICH policy to leave off. Largest first. ``None`` for any other
+    error, and for a publish refusal, which names no other policies.
+    """
+    try:
+        data = response.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("code") != "jev_budget_exceeded":
+        return None
+    rows = [
+        (str(p.get("id", "")), p.get("version"), p["chars"])
+        for p in data.get("policies") or []
+        if isinstance(p, dict) and isinstance(p.get("chars"), int)
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda row: -row[2])
+    parts = [f"{pid}@{version} {chars:,}" if version is not None else f"{pid} {chars:,}"
+             for pid, version, chars in rows]
+    return ("Jev question characters per policy: " + " · ".join(parts)
+            + " — deploy fewer of these Jev policies to this machine")
 
 
 def _get_json(ctx: ClientContext, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
@@ -1643,22 +1673,43 @@ def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
 
 
 def publish_policy(
-    ctx: ClientContext, policy_id: str, source: str, description: str = ""
+    ctx: ClientContext,
+    policy_id: str,
+    source: Optional[str],
+    description: str = "",
+    *,
+    kind: Optional[str] = None,
+    semantic: Optional[List[Any]] = None,
 ) -> PolicyVersion:
     """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place.
 
-    Refuses Jev fields a cloud policy never reads before anything is sent, here
-    because `policies publish` and `policies compose --publish` both route through
-    it — and regardless of `--no-verify`, which only skips the syntax check.
+    ``kind`` is ``regex`` (JavaScript ``source`` only — what an omitted kind
+    means to the server), ``jev`` (Jev declarations in ``semantic``, no
+    ``source``) or ``both`` (the two together: the JavaScript is reviewable by
+    exactly its own checks). ``authority``/``reviewedBy`` are derived by the
+    server from the kind and are never sent.
+
+    Refuses Jev fields in the JAVASCRIPT before anything is sent, here because
+    `policies publish` and `policies compose --publish` both route through it —
+    and regardless of `--no-verify`, which only skips the syntax check. Jev
+    checks belong in ``semantic``, where they take effect.
     """
-    problem = cloud_publish_problem(source)
+    problem = cloud_publish_problem(source or "")
     if problem:
         raise ApiError(
             f"{policy_id} cannot be published as a cloud policy: {problem}",
-            hint=("Jev checks ship in a failproofai pack — `failproofai publish` — where "
-                  "semanticPolicies.add and authority: \"reviewable\" take effect"),
+            hint=("put Jev checks in the policy's Jev declarations — `--kind both --semantic "
+                  "checks.json` — or ship them in a failproofai pack with `failproofai publish`"),
         )
-    body = {"id": policy_id, "source": source, "description": description}
+    body: Dict[str, Any] = {"id": policy_id, "description": description}
+    # `source` is omitted for a Jev-only policy: the server takes absent (or
+    # empty) as "no JavaScript", which is what a `jev` version is.
+    if source:
+        body["source"] = source
+    if kind is not None:
+        body["kind"] = kind
+    if semantic is not None:
+        body["semantic"] = semantic
     return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
 
 
@@ -1679,6 +1730,29 @@ def list_machines(ctx: ClientContext) -> List[Machine]:
     data = _get_json(ctx, "/api/enforcement/machines")
     items = data if isinstance(data, list) else data.get("machines", [])
     return [Machine.from_dict(m) for m in items]
+
+
+def machine_agents(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:
+    """GET /api/enforcement/machines/{id}/agents — the agent profiles the daemon
+    last reported: `[{instanceId, integration, profileLabel, scope, ...}]`."""
+    data = _get_json(ctx, f"/api/enforcement/machines/{machine_id}/agents")
+    items = data if isinstance(data, list) else (data or {}).get("agents", [])
+    return [a for a in items if isinstance(a, dict)]
+
+
+def agent_labels(ctx: ClientContext, machine_id: str) -> Dict[str, str]:
+    """`{instanceId: profileLabel}` for one machine, or `{}` when unavailable.
+
+    Best effort on purpose: it only names the `agt_…` ids an exact-profile
+    assignment carries. A server without the roster route, or a machine that
+    never reported one, falls back to the bare id rather than failing the view.
+    """
+    try:
+        agents = machine_agents(ctx, machine_id)
+    except Exception:  # noqa: BLE001 — a missing label must never fail the read
+        return {}
+    return {str(a["instanceId"]): str(a["profileLabel"])
+            for a in agents if a.get("instanceId") and a.get("profileLabel")}
 
 
 def rename_machine(ctx: ClientContext, machine_id: str, label: str) -> Dict[str, Any]:
@@ -1708,11 +1782,16 @@ def get_deployment(ctx: ClientContext, machine_id: str) -> Optional[Deployment]:
 
 
 def deploy_policies(
-    ctx: ClientContext, machine_id: str, policies: Sequence[PolicyRef]
+    ctx: ClientContext,
+    machine_id: str,
+    policies: Sequence[PolicyRef],
 ) -> Deployment:
-    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set."""
+    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set.
+
+    Never carries a Jev mode: FailproofAI Cloud derives it from the set.
+    """
     path = f"/api/enforcement/deployments/{machine_id}"
-    body = {"policies": [p.to_dict() for p in policies]}
+    body: Dict[str, Any] = {"policies": [p.to_dict() for p in policies]}
     return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
 
 

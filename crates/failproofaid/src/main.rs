@@ -1,3 +1,4 @@
+mod agent_roster;
 mod agents;
 mod audit_lane;
 mod backfill;

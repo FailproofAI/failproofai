@@ -144,6 +144,13 @@ pub struct HookRow {
     /// `observe` | `enforce`.
     #[serde(rename = "jevMode", default, deserialize_with = "lenient")]
     pub jev_mode: Option<String>,
+    /// Every Jev check asked on an answered call and what it concluded —
+    /// names, closed codes and probabilities (`JevCheckRecord` in
+    /// `src/hooks/jev-activity.ts`). Rebuilt record by record in
+    /// [`jev_checks`] before it is emitted. `[]`: the request carried no
+    /// check, so Jev decided nothing.
+    #[serde(rename = "jevChecks", default, deserialize_with = "lenient")]
+    pub jev_checks: Option<Vec<Value>>,
 }
 
 /// Deserialize `T`, or `None` when the value is absent, null, or the wrong
@@ -337,6 +344,105 @@ fn is_policy_name(s: &str) -> bool {
         && (!s.chars().any(is_js_whitespace) || has_registered_namespace(s))
 }
 
+/// `JEV_CHECKS_MAX` / `JEV_CHECK_PROBES_MAX` in `jev-activity.ts`.
+pub const JEV_CHECKS_MAX: usize = 32;
+pub const JEV_CHECK_PROBES_MAX: usize = 8;
+const JEV_CHECK_VERDICTS: &[&str] = &["none", "deny", "instruct", "overridden"];
+const JEV_CHECK_WHY: &[&str] = &[
+    "not-detected",
+    "exempt",
+    "fired",
+    "injection",
+    "user-asked",
+    "op-requested",
+    "task-step",
+    "downgraded",
+    "scan-incomplete",
+];
+
+/// `JEV_CHECK_NAME_RE`: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
+fn is_check_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric())
+        && s.len() <= 128
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// `JEV_PROBE_ID_RE`: `^[a-z][a-z0-9_]{0,31}$`.
+fn is_probe_id(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+        && s.len() <= 32
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+fn probability(v: &Value) -> Option<f64> {
+    v.as_f64()
+        .filter(|p| p.is_finite() && (0.0..=1.0).contains(p))
+        .map(|p| (p * 100.0).round() / 100.0)
+}
+
+/// One `jevChecks` record rebuilt field by field (`sanitizeCheck` in
+/// `jev-activity.ts`), or `None` when it is not one.
+fn jev_check(raw: &Value) -> Option<Value> {
+    let r = raw.as_object()?;
+    let check = r.get("check")?.as_str().filter(|c| is_check_name(c))?;
+    let verdict = r
+        .get("verdict")?
+        .as_str()
+        .filter(|v| JEV_CHECK_VERDICTS.contains(v))?;
+    let why = r
+        .get("why")?
+        .as_str()
+        .filter(|w| JEV_CHECK_WHY.contains(w))?;
+    let p = probability(r.get("p")?)?;
+    let mut out = Map::new();
+    out.insert("check".into(), json!(check));
+    if let Some(policy) = r.get("policy").and_then(Value::as_str).filter(|p| {
+        is_policy_name(p)
+            && !p.chars().any(char::is_whitespace)
+            && (p.starts_with("cloud/") || p.starts_with("pack/"))
+    }) {
+        out.insert("policy".into(), json!(policy));
+    }
+    out.insert("verdict".into(), json!(verdict));
+    out.insert("why".into(), json!(why));
+    out.insert("p".into(), json!(p));
+    if let Some(e) = r.get("exempt").and_then(probability) {
+        out.insert("exempt".into(), json!(e));
+    }
+    if r.get("watched") == Some(&Value::Bool(true)) {
+        out.insert("watched".into(), json!(true));
+    }
+    if let Some(probes) = r.get("probes").and_then(Value::as_object) {
+        let mut kept = Map::new();
+        for (id, v) in probes {
+            if kept.len() >= JEV_CHECK_PROBES_MAX {
+                break;
+            }
+            if let (true, Some(p)) = (is_probe_id(id), probability(v)) {
+                kept.insert(id.clone(), json!(p));
+            }
+        }
+        if !kept.is_empty() {
+            out.insert("probes".into(), Value::Object(kept));
+        }
+    }
+    Some(Value::Object(out))
+}
+
+/// A row's `jevChecks`, valid records only (`sanitizeJevChecks`): `None` when
+/// absent, or when every entry was unreadable (that is not "nothing asked").
+pub fn jev_checks(raw: Option<&Vec<Value>>) -> Option<Vec<Value>> {
+    let raw = raw?;
+    let out: Vec<Value> = raw
+        .iter()
+        .filter_map(jev_check)
+        .take(JEV_CHECKS_MAX)
+        .collect();
+    (raw.is_empty() || !out.is_empty()).then_some(out)
+}
+
 /// What happened to Jev on one call. `evaluator: "jev"` alone does not say:
 /// when a hard policy denies, the combine rules abort Jev and record
 /// `{ evaluator: "jev", jevMode }`, and when no semantic policy applies to the
@@ -396,6 +502,8 @@ pub struct JevFacts {
     pub cleared: Vec<String>,
     pub latency_ms: Option<f64>,
     pub model: Option<String>,
+    /// The asked checks' records (answered calls only).
+    pub checks: Option<Vec<Value>>,
 }
 
 impl JevFacts {
@@ -454,8 +562,15 @@ impl JevFacts {
         // instruct verdict (the evaluator reaches those only from answers). An
         // allow and nothing else is the no-request shape; no readable Jev
         // field at all is the not-consulted shape.
+        let checks = (evaluator == "jev")
+            .then(|| jev_checks(row.jev_checks.as_ref()))
+            .flatten();
         let outcome = if evaluator == "jev-fallback" {
             JevOutcome::Fallback
+        } else if checks.as_ref().is_some_and(Vec::is_empty) {
+            // A request that carried no check (only the global intent
+            // questions, or a FailproofAI Cloud short-circuit) decided nothing.
+            JevOutcome::NoRequest
         } else if row.jev_cleared.is_some()
             || latency_ms.is_some()
             || model.is_some()
@@ -478,6 +593,7 @@ impl JevFacts {
             cleared,
             latency_ms,
             model,
+            checks,
         })
     }
 
@@ -514,6 +630,9 @@ impl JevFacts {
         }
         if let Some(model) = &self.model {
             m.insert("jev_model".into(), json!(model));
+        }
+        if let Some(checks) = self.checks.as_ref().filter(|c| !c.is_empty()) {
+            m.insert("jev_checks".into(), json!(checks));
         }
     }
 }
@@ -988,6 +1107,57 @@ impl AllowBucket {
 #[cfg(test)]
 mod rename_compat_tests {
     use super::*;
+
+    #[test]
+    fn jev_checks_are_rebuilt_and_an_empty_list_is_no_request() {
+        let row: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "enforce", "jevLatencyMs": 8, "jevCleared": ["cloud/p@2/p"],
+            "jevChecks": [
+                { "check": "c-1", "policy": "cloud/p@2", "verdict": "none", "why": "not-detected",
+                  "p": 0.444, "exempt": 0.03, "probes": { "force_push": 0.44, "Bad Id": 0.5 } },
+                { "check": "rm -rf /", "verdict": "none", "why": "exempt", "p": 0.9 },
+                { "check": "c-2", "verdict": "none", "why": "because", "p": 0.9 },
+                { "check": "c-4", "verdict": "deny", "why": "fired", "p": 0.9, "watched": true },
+                { "check": "c-3", "policy": "curl -d @x", "verdict": "deny", "why": "fired", "p": 2 },
+            ],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&row).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::Answered);
+        assert_eq!(
+            facts.checks,
+            Some(vec![
+                json!({ "check": "c-1", "policy": "cloud/p@2", "verdict": "none",
+                "why": "not-detected", "p": 0.44, "exempt": 0.03, "probes": { "force_push": 0.44 } }),
+                json!({ "check": "c-4", "verdict": "deny", "why": "fired", "p": 0.9, "watched": true }),
+            ])
+        );
+        let mut m = Map::new();
+        facts.apply_detail(&mut m);
+        assert_eq!(m["jev_checks"][0]["why"], "not-detected");
+
+        let empty: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "observe", "jevLatencyMs": 8, "jevCleared": [], "jevChecks": [],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&empty).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::NoRequest);
+        let mut m = Map::new();
+        facts.apply_detail(&mut m);
+        assert!(m.get("jev_checks").is_none() && m.get("jev_latency_ms").is_none());
+
+        // Unreadable entries only: dropped, not "nothing asked".
+        let junk: HookRow = serde_json::from_value(json!({
+            "timestamp": 1, "sessionId": "s", "decision": "allow", "evaluator": "jev",
+            "jevMode": "enforce", "jevLatencyMs": 8, "jevChecks": [{ "x": 1 }],
+        }))
+        .unwrap();
+        let facts = JevFacts::of(&junk).unwrap();
+        assert_eq!(facts.key.outcome, JevOutcome::Answered);
+        assert!(facts.checks.is_none());
+    }
 
     /// A row written before the rename keeps its cloud attribution.
     ///

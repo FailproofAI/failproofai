@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.12 — 2026-10-23
+## 1.0.12-beta.2 — 2026-10-24
 
-The stable release of logging in to FailproofAI Cloud from `config` in your browser, and of Cloud-managed Jev and hybrid policies scoped to agents. Everything below in the `1.0.12-beta.*` sections ships here too.
+A beta of logging in to FailproofAI Cloud from `config` in your browser, and of Cloud-managed Jev and hybrid policies scoped to agents, published at `next` (`npm i -g failproofai@next`). Everything below in the earlier `1.0.12-beta.*` sections ships here too.
 
 ### Features
 

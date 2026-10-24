@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "failproofaid"
-version = "1.0.12"
+version = "1.0.12-beta.2"
 dependencies = [
  "fpai-collect",
  "fpai-ipc",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "fpai-collect"
-version = "1.0.12"
+version = "1.0.12-beta.2"
 dependencies = [
  "axum",
  "getrandom 0.4.3",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "fpai-ipc"
-version = "1.0.12"
+version = "1.0.12-beta.2"
 dependencies = [
  "libc",
  "proptest",

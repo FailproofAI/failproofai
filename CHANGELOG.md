@@ -21,7 +21,7 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 
 ### Dependencies
 
-- Update `undici` 7.29.1 → 7.30.1 and `zod` 4.4.3 → 4.6.6 in the root lockfile, and refresh `setuptools` and `filelock` in the Python SDK's dev/test lockfile to clear new supply-chain findings. Python 3.10 still resolves `filelock` 4.1.0, because its fixed release requires Python 3.11; the three known advisories for that dev/test-only slice are time-boxed through 2026-11-20.
+- Update `undici` 7.29.1 → 7.30.1 and `zod` 4.4.3 → 4.6.6 in the root lockfile, and refresh `setuptools` and `filelock` in the Python SDK's dev/test lockfile to clear new supply-chain findings. Python 3.10 still resolves `filelock` 4.1.0, because its fixed release requires Python 3.11; a version-pinned exception for that dev/test-only slice expires on 2026-11-20.
 
 ## 1.0.12-beta.0 — 2026-10-22
 

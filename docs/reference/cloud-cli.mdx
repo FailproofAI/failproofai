@@ -80,7 +80,7 @@ Creation enables the evaluator. Deploy creates a new immutable version, then
 disables older enabled versions. A failed follow-up leaves the new version
 published: inspect `evaluators list --all` before retrying.
 Judge dry-runs are refused by Cloud. Jev dry-runs spend model budget.
-Backfill excludes judge/Jev and accepts at most 90 days.
+Backfill covers code, judge and Jev evaluators and accepts at most 90 days; it queues only sessions an evaluator has not scored yet. Judge and Jev backfills spend model budget, so run `fp evaluators backfill --dry-run` first.
 Human output shows per-session dry-run results before creating/deploying.
 Failed previews stop the write unless you explicitly pass `--force` after review.
 </Warning>
@@ -99,13 +99,13 @@ fp --json evaluators dry-run --file evaluator.json
 | `fp evaluators list` | `--key`, `--all` |
 | `fp evaluators show KEY[@VERSION]` | Full source/envelope |
 | `fp evaluators create` | `--key`, `--name`, `--version`, repeated `--label`, `--condition EXPR\|@file`, one source, repeated `--dry-run-on`, `--disabled`, explicit `--force` for failed previews |
-| `fp evaluators deploy KEY` | Same source flags; `--version`, code-only `--backfill 7d`, `--force`; numeric versions auto-increment; KEY supplies a missing spec-file `eval_key` |
+| `fp evaluators deploy KEY` | Same source flags; `--version`, `--backfill 7d` (any kind, 1–90 days), `--force`; numeric versions auto-increment; KEY supplies a missing spec-file `eval_key` |
 | `fp evaluators draft "intent"` | Session; `--kind code\|judge\|jev`, `--out` |
 | `fp evaluators dry-run` | Source flags or `--file`, repeated `--session` (maximum 10); none = compile only |
 | `fp evaluators enable\|disable KEY[@VERSION]` | Toggle |
 | `fp evaluators label KEY[@VERSION]` | Repeated `--add`, `--remove` |
 | `fp evaluators instances\|schema\|jobs` | Inspect managed fleet/schema/jobs |
-| `fp evaluators backfill` | `--from`, `--to`, `--key`, `--dry-run` |
+| `fp evaluators backfill` | `--from`, `--to`, `--key`, `--dry-run`; code, judge and Jev |
 
 Code flags are `--code FILE|-`, `--result-kind score|metric|assertion`,
 `--timeout S`. Judge flags are `--judge --criteria TEXT`, repeated `--step` and
@@ -134,18 +134,22 @@ a readable view. CSV exports remain plain CSV for piping.
 | `fp dashboards list\|show ID\|create\|update ID\|delete ID` | Create `--name`, `--description`, `--file` definition; update preserves unmentioned fields |
 | `fp dashboards tiles ID list\|add\|update TILE\|remove TILE\|layout` | Add `--query ID --chart TYPE --title`; config/geometry or layout via `--file` |
 | `fp sessions show\|export\|history\|re-evaluate ID` | Export `--out`; history is evaluation history |
+| `fp sessions import FILE...` | Claude Code transcripts, Codex rollouts or event JSONL (`.gz` ok); `--format auto\|failproofai\|claude\|codex`, `--env`, `--dry-run`; needs `events:add` |
 | `fp events latency` | `--since` |
 | `fp sentiment summary\|messages\|sessions\|session ID` | `--since`; list `--limit`; messages `--session-id` |
 | `fp query compose "question"` | Session; `--run` |
 | `fp query export [ID]` | Or `--sql`; `--format csv\|json`, `--out` |
 | `fp alerts recipients` / `fp alerts issues ID` | Issues can `--create --title --summary` or `--create --file` |
 | `fp audits contracts list\|show ID\|create\|update ID` | `--agent-id`, `--body TEXT\|@file`, `--file` JSON; update `--enabled/--disabled` |
-| `fp policies author "intent"\|backtest FILE_OR_ID\|candidacy --issue ID` | Session; never auto-publishes |
+| `fp policies author "intent" [--kind regex\|jev\|both]` | Session; drafts a policy from your org's events, never publishes |
+| `fp policies backtest [FILE_OR_ID]` | Session; regex replays the module; `jev`/`both` (published, or `--semantic checks.json`) estimate for free, `--run [--sample N]` spends Jev allowance; `--kind`, `--hours`, `--agent-id`, `--env` |
+| `fp policies candidacy --issue ID` | Session; could a policy prevent this issue |
+| `fp issues facets` | Values the inbox filters can take, with counts |
 | `fp agent brief` | Session; `--range 24h\|7d` |
 | `fp orgs create --name N [--slug S]` | Session; derives omitted slug, does not switch org |
 | `fp roles list\|show NAME\|create\|update NAME\|delete NAME` | Permission sets; create `--name --permission`; update replace `--permission` or merge `--add/--remove`; `--description`, `--file` |
 | `fp users delete ID` / `fp users defaults` | Deletion by id |
-| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | Offers and trial; plan/claim require a signed-in session |
+| `fp usage windows` / `fp plan` / `fp plan claim OFFER` | `usage windows` needs an API key; plan (offers and trial) and claim require a signed-in session |
 | `fp settings context-windows list\|set MODEL TOKENS\|delete MODEL` | 0–1000000 tokens |
 | `fp otel status\|enable\|disable` | Cloud org ingest switch, not local capture |
 | `fp slack status\|disconnect` | Session |
@@ -278,6 +282,9 @@ fp errors [OPTIONS]
 | `fp list hooks` | List hook names. |
 | `fp list tools` | List tool names. |
 | `fp list error_types` | List error types. |
+| `fp list trigger_events` | List hook trigger events. |
+| `fp list eval_envs` | List environments with evaluation results. |
+| `fp list metric_keys` | List evaluation metric keys. |
 
 ### Organizations
 
@@ -410,8 +417,8 @@ Include context during creation when the first run needs it. Creation commits th
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp issues list` | List issues. Archived issues are hidden. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | Count open or selected issue states. | `--state` |
+| `fp issues list` | List issues. Archived issues are hidden unless `--archived only` or `all`. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id`; filters `--agent-id`, `--env`, `--machine`, `--source`, `--audit-id`, `--assignee` (email, `me`, `unassigned`), `--archived`, `--search`, `--since` |
+| `fp issues count` | Count open or selected issue states. | `--state`; `--alert-id`; the same filters as `list` |
 | `fp issues show INCIDENT_ID` | Show issue details, comments, subscribers, and activity. | — |
 | `fp issues open` | Open a manual or alert-linked issue. | required `--summary`; optional `--title`, `--alert-id`, `--severity` |
 | `fp issues ack INCIDENT_ID` | Acknowledge an issue. | — |
@@ -465,7 +472,7 @@ Which machines run which policies.  **Session-only**, same reason as above.
 | --- | --- | --- |
 | `fp fleet list` | List enrolled machines and their deployment generation. | — |
 | `fp fleet show MACHINE_ID` | The policy set a machine currently runs, the Jev mode FailproofAI Cloud derived from it, and the policy errors it reported. | — |
-| `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. Jev is on for a machine while a `jev` or `both` policy is deployed to it; trial one with `:observe`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. Jev is on for a machine while a `jev` or `both` policy is deployed to it; trial one with `:observe`. | `--add`; `--remove`; `--set`; `--target POLICY=INTEGRATION[/agt_ID]` (scope one assignment to an integration or one agent; repeat to OR); `--all-agents POLICY` (clear that scope); `--create`; `--yes`, `-y` |
 | `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
 | `fp fleet history MACHINE_ID` | Past deployments for a machine, with the Jev mode each one had. | — |
 | `fp fleet rollback MACHINE_ID GENERATION` | Reinstate a past generation's policy set as a new generation. | `--yes`, `-y` |

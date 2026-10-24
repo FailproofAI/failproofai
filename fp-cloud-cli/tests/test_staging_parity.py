@@ -186,3 +186,13 @@ def test_usage_windows_needs_a_key(logged_in, runner):
         result = runner.invoke(app, ["--json", "usage", "windows"])
         assert not mock.calls
     assert result.exit_code == 2
+
+
+def test_sessions_import_public_format_name_maps_to_the_wire_name(logged_in, runner, tmp_path):
+    f = tmp_path / "events.jsonl"
+    f.write_text('{"event_type":"agent_start"}\n')
+    with respx.mock as mock:
+        route = mock.post(f"{BASE}/api/events/import").respond(200, json={})
+        result = runner.invoke(app, ["--json", "sessions", "import", str(f), "--format", "failproofai"])
+    assert result.exit_code == 0, result.output
+    assert route.calls[0].request.url.params["format"] == "agenteye"

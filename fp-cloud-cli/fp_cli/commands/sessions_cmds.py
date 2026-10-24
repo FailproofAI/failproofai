@@ -161,7 +161,7 @@ def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> No
 def import_sessions(
     ctx: typer.Context,
     files: List[str] = typer.Argument(..., metavar="FILE...", help="Event JSONL, Claude Code transcripts or Codex rollouts (.gz ok)."),
-    format: str = typer.Option("auto", "--format", help="auto | agenteye | claude | codex."),
+    format: str = typer.Option("auto", "--format", help="auto | failproofai (FailproofAI event JSONL) | claude | codex."),
     env: Optional[str] = typer.Option(None, "--env", help="Environment for events that name none (server default: upload)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Convert and report; store nothing."),
 ) -> None:
@@ -175,7 +175,9 @@ def import_sessions(
     import gzip
     import time
     from pathlib import Path
-    validate_choice(format, ("auto", "agenteye", "claude", "codex"), flag="--format")
+    validate_choice(format, ("auto", "failproofai", "agenteye", "claude", "codex"), flag="--format")
+    # The server names FailproofAI's own event JSONL `agenteye`; `failproofai` is its public name.
+    wire_format = "agenteye" if format == "failproofai" else format
     payloads = []
     for name in files:
         path = Path(name)
@@ -194,7 +196,7 @@ def import_sessions(
     results = []
     for name, rel, data in payloads:
         result = api.import_events_file(cctx, data, {
-            "format": format, "path": rel, "environment": env,
+            "format": wire_format, "path": rel, "environment": env,
             "dry_run": "true" if dry_run else None, "existing_before": before,
         })
         results.append({"file": name, "result": result})

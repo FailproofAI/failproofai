@@ -259,7 +259,7 @@ Jev dry-runs spend model budget. Rubrics need 3–5 distinct levels, worst first
 Thresholds are 0–1; judge/Jev always return a score. `deploy` creates the new
 immutable version before disabling older enabled versions. If disabling fails,
 the CLI names the published id; inspect `list --all` and recover explicitly.
-`--backfill 7d` is code-only; `evaluators backfill --from T --to T` accepts ≤90 days.
+`--backfill 7d` works for every kind (judge/Jev spend model budget); `evaluators backfill --from T --to T` accepts ≤90 days and `--dry-run` counts the work first.
 
 Human output shows each `--dry-run-on` session's outcome before creation or
 deployment. Any failed run stops the write; after reviewing the failure, an

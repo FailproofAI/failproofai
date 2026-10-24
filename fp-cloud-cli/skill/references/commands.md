@@ -17,6 +17,7 @@ command**, **`--json` to parse**, **branch on exit codes**.
 - [issues](#issues)
 - [query](#query)
 - [agent](#agent)
+- [policies · fleet · guardrails](#policies--fleet--guardrails)
 - [Author an evaluator](#author-an-evaluator)
 - [Cloud dashboard parity](#cloud-dashboard-parity)
 
@@ -31,6 +32,9 @@ Set on the CLI, **before** the subcommand. Precedence: flag > env var > config f
 | `--api-key <k>` | `FP_API_KEY` | Scoped API key — authenticate as a credential instead of as a signed-in user. Never saved to the config file. |
 | `--json` | `FP_JSON` | Machine-readable JSON to stdout, nothing else. |
 | `--insecure` / `--secure` | `FP_INSECURE` | Skip / require TLS verification (for self-signed dev certs; saved at login). |
+| `--timeout <secs>` | | Per-request HTTP timeout in seconds (default 30). Server-side limits (e.g. the policy composer's 30s) are not lifted by it. |
+| `--quiet` / `-q` | | Suppress status lines and hints on stderr. |
+| `--no-color` | `NO_COLOR` | Plain, uncoloured human output. |
 | `--version` | | Print version (also `fp version`). |
 
 Config dir resolves as `FP_HOME` > `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli`; `FP_HOME` is used as-is, `FAILPROOFAI_HOME` gets `fpcli/` appended. Telemetry is currently disabled globally while its send path is made fully non-blocking. `FP_ANALYTICS_DISABLED=1` and `DO_NOT_TRACK=1` remain supported opt-out controls for when telemetry is re-enabled.
@@ -51,17 +55,18 @@ Exactly one credential is in play per invocation, chosen in this order:
 - **The key is never persisted.** A session token is saved by `login` and expires on its own; an API key is valid until someone revokes it, so the CLI keeps it out of the config file entirely. Supply it per invocation, normally via `FP_API_KEY`.
 - **`--api-key ""` means "no override", not "fall back".** Mode stays *key*, the credential is empty, and the command exits 4 — it will not quietly use a saved session. (Same rule as `--token ""`.) An empty *environment variable* is a different story: `FP_API_KEY=""` reads as unset and falls through to the next credential, so an unset CI variable can silently run as whichever human is logged in on that machine. Pass the flag if you need the strict behaviour.
 - **A rejected key is exit 4**, same as an expired session. Report it; don't retry and don't switch credentials.
-- **Session-only commands:** `login`, `logout`, `orgs *`, `agent *`, `keys update`, and all of `policies *`, `fleet *`, `guardrails *`. In key mode each exits **2** *before making any request* — there's no user to sign in or switch orgs for, no private assistant thread to own, and the enforcement write routes are root-only and deliberately absent from `/v1`. `keys update` is in this list and not a special case: it calls `deny_in_key_mode` as the FIRST statement of the command body, so it exits 2 with zero HTTP calls like the rest, because `keys:update` cannot be granted to any API key.
+- **Session-only commands:** `login`, `logout`, `orgs *` (incl. `orgs create`), `agent *` (incl. `agent brief`), `keys update`, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, and every `policies` subcommand except `test`, plus all of `fleet *` and `guardrails *`. `policies test` runs locally and makes no request, so it works with a key too. In key mode each session-only command exits **2** *before making any request* — there's no user to sign in or switch orgs for, no private assistant thread to own, and the enforcement write routes are root-only and deliberately absent from `/v1`. `keys update` is in this list and not a special case: it calls `deny_in_key_mode` as the FIRST statement of the command body, so it exits 2 with zero HTTP calls like the rest, because `keys:update` cannot be granted to any API key.
+- **Key-only command:** `usage windows` is served on the versioned API only — with a signed-in session it exits **2** without a request and asks for `--api-key`.
 - **Name the org when using a key.** Key mode sends the org only when you supply it (`--org <slug>` / `FP_ORG`) — it never reuses the saved active org from `login`. A key bound to one organization only ever acts on that one; a key that is not bound to a single organization falls back to the deployment's default, and you get plausible-looking data from the wrong tenant with no error and no warning. Naming the key's own org is a no-op; naming a different one is rejected. Both beat guessing.
 
 ## Shared input conventions
 - **`--json`** on any command → pure JSON on stdout (no Rich chrome). Mutations under `--json` auto-skip their confirm prompt.
 - **`--yes` / `-y`** explicitly skips a confirm prompt. (Confirms are also auto-skipped on a non-TTY — i.e. whenever Claude runs it — so always confirm with the user yourself first.)
 - **`--all` + `--limit`**: `--limit` (`-n`) defaults to **50**; `--all` auto-paginates (client chunks of 200) **up to `--limit`**, NOT without bound. So a bare `--all` still stops at 50 rows. For a full sweep on `events/sessions/evals/errors`, pass a high explicit cap: **`--all --limit 1000`** (or higher). To just get window totals, use `--aggregate` (covers the whole window regardless of row caps).
-- **`--fields a,b,c`** projects only those keys (where supported: sessions/evals, keys, query list).
+- **`--fields a,b,c`** projects only those keys (where supported: `events`, `errors`, `sessions`, `evals`, `keys list`, `query list`). `events --fields payload` switches to the full feed.
 - **Policy source** (`policies publish` / `policies test`) comes from a path, `@path`, a pipe, `-`, or an interactive paste. A path that is not readable UTF-8 text — a binary file pointed at by mistake — is refused by name (**exit 2**), as is a missing path; neither reaches the server.
 - **`--since <window>`** relative window — one of `15m`, `1h`, `6h`, `24h`, `7d`, `all` (any other value is a usage error, exit 2). `--from`/`--to` take ISO timestamps **with `T` and a timezone** (e.g. `2026-06-01T00:00:00Z`) — space-separated or tz-less is a usage error (exit 2).
-- **`--file payload.json`** (or `--file -` for stdin) supplies a full JSON request body on `alerts`, `settings set`, and `users create/update` — mutually exclusive with the discrete flags. Saved-query SQL uses `--sql @file.sql`.
+- **`--file payload.json`** (or `--file -` for stdin) supplies a JSON request body on `alerts create/update`, `audits create/edit`, `settings set`, `roles create/update`, `dashboards create/update` and `dashboards tiles add/update/layout`, `audits contracts create/update`, `alerts issues --create`, and `evaluators create/deploy/dry-run` (an evaluator spec). On `alerts` the flags layer on top of the file; elsewhere the file and the discrete flags are mutually exclusive. `users create/update` take **no** `--file`. Saved-query SQL uses `--sql @file.sql`.
 - **Multi-value filters** are CSV → `IN (...)` (union within a filter, AND across filters): `--event-type tool_use,tool_result`. `--search` is repeated/OR (matches ANY term), payload-only.
 
 ## Identity
@@ -92,7 +97,9 @@ free-text term, so broad searches can still be expensive. To get the raw `payloa
 into the **full feed** with `--full` (or `--fields payload`) — that read is slow at scale,
 so keep it bounded (pair `--full` with one `--session-id`).
 e.g. `fp --json events --full --session-id run-1 --all | jq '.events[].payload'`.
-Filters: `--session-id <id>` `--agent-id <id>` `--event-type <csv>` `--env <csv>` `--since <window>` / `--from`/`--to` `--search <term>` (repeatable, payload OR-match).
+Filters: `--session-id <id>` `--agent-id <id>` `--event-type <csv>` `--env <csv>` `--since <window>` / `--from`/`--to` `--search <term>` (repeatable, payload OR-match). Paging/shape: `--limit/-n` (50) `--all` `--cursor <c>` `--page-size N` `--order asc|desc` `--fields a,b` `--full`.
+
+`fp events latency [--since <window>]` — latency and token aggregate (the breakdowns page's numbers).
 
 #### Getting the raw payload
 The default `events`/`errors` reads are payload-free. Only `--full` (or `--fields payload`)
@@ -105,24 +112,28 @@ scale.
 - **Precise / by id (avoids the heavy list query):** `fp --json query run --sql "SELECT id, event_type, payload FROM events WHERE session_id = '<SESSION_ID>' ORDER BY ts"` — or `WHERE id = <EVENT_ID>`. Reads `payload` directly via the read-only SQL runner; a bounded `WHERE` is fast.
 
 ### sessions
-`fp sessions [filters] [--all]` — agent runs: time/env/agent/session/status (no scores). Filters: `--session-id --agent-id --env --status <error|...> --since`. JSON rows still carry `scores`.
+`fp sessions [filters] [--all]` — agent runs: time/env/agent/session/status (no scores). Filters: `--session-id --agent-id --env --status <error|...> --since --from --to`. Paging/shape: `--limit/-n` `--all` `--cursor` `--page-size` `--fields` `--full-ids`; `--agents` expands each run's agent roster. JSON rows still carry `scores`.
+
+Sub-commands on one session: `sessions show <id>` (overview + event timeline), `sessions export <id> [--out FILE]` (full session JSON; `--out` refuses to overwrite), `sessions history <id>` (its evaluation history), `sessions re-evaluate <id>` (re-runs every enabled evaluator on it; needs `evaluations:trigger`; a write — confirm first).
+
+`fp sessions import FILE... [--format auto|failproofai|claude|codex] [--env ENV] [--dry-run]` — import sessions from files (event JSONL, Claude Code transcripts, Codex rollouts; `.gz` accepted), as the dashboard's Import sessions dialog does. Each file is sent on its own; sessions already in the org are skipped whole; secrets are redacted the way the collector redacts them live. Claude Code / Codex files take the session id from the file name, so pass the original files. (`failproofai` = FailproofAI's own event JSONL.) `--dry-run` converts and reports, storing nothing. Needs `events:add`. JSON `{files:[{file, result}]}`.
 
 ### evals
 `fp evals [filters] [--score key:min..max] [--scores-full] [--all]` — evaluation results + scores.
 `fp evals --aggregate [--since 7d]` — rollup: `{total, status_counts, score_stats, timeline}` (status mix + per-metric score stats). `--score helpfulness:..0.5` = max 0.5; `helpfulness:0.8..` = min 0.8; `helpfulness:0.5..0.9` = range.
 
 ### errors
-`fp errors [filters] [--all]` — errored events (time/event/env/agent/session/summary), from the light payload-free feed; the `summary` is the server-computed field, and `--json` rows carry no payload. For a run's raw payload use `fp events --full --session-id <id>`. Filters incl. `--error-type <csv>`.
+`fp errors [filters] [--all]` — errored events (time/event/env/agent/session/summary), from the light payload-free feed; the `summary` is the server-computed field, and `--json` rows carry no payload. For a run's raw payload use `fp events --full --session-id <id>`. Filters: `--error-type <csv>` `--event-type <csv>` `--env` `--agent-id` `--session-id` `--search <term>` `--since`/`--from`/`--to`; paging/shape `--limit/-n` `--all` `--cursor` `--page-size` `--order` `--fields` `--full-ids`.
 `fp errors --aggregate [--since 7d]` — `{total, sessions, agents, last_ts, bins}`.
 
 ### usage
 `fp usage` — the active org's current fixed 30-day metering window, grouped for human
 reading. Needs `usage:read`. `fp --json usage` returns the dashboard contract unchanged:
 `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at`, and `stale_after`. It has no
-filters and is read-only; `usage windows` lists historical windows.
+filters and is read-only. `usage windows` lists the metering windows — **API key only** (`--api-key` with `usage:read`): the dashboard has no session route for it, so a signed-in session gets exit 2 before any request.
 
 ### list
-`fp list <kind>` — discover valid filter values. Kinds: `envs agents event_types score_filters models hooks tools error_types`. JSON `{kind, values}`. Run this before filtering by a value you're unsure of.
+`fp list <kind>` — discover valid filter values. Kinds: `envs agents event_types score_filters models hooks tools error_types trigger_events eval_envs metric_keys` (`eval_envs` = environments with evaluation results, `metric_keys` = evaluation metric names; both need `evaluations:read`). JSON `{kind, values}`. Run this before filtering by a value you're unsure of.
 
 ## keys
 API keys; the secret is shown **once** on create/regenerate (capture it then). Referenced by **name**.
@@ -139,9 +150,10 @@ Permission token format (for `--add`/`--remove`): `slug:action` flat, or `slug:a
 Referenced by **email** (UUID id also accepted).
 - `users list [--show-id] [--active-only]` — `[lock] email · access · perms · joined · status`.
 - `users show <email>` — identity + all grants.
-- `users create [EMAIL] [--permission-set <set>] [--add tok] [--remove tok]` — `--permission-set` one of the builtin sets (`admin`/`standard`/`read-only`) or a custom set name (client-validated; unknown → exit 2). `--add`/`--remove` take compact permission tokens.
+- `users create EMAIL [--permission-set <set>] [--add tok] [--remove tok]` (EMAIL is required) — `--permission-set` one of the builtin sets (`admin`/`standard`/`read-only`) or a custom set name (client-validated; unknown → exit 2). `--add`/`--remove` take compact permission tokens.
 - `users update <email>` — assign a set, or incrementally `--add`/`--remove`. Predicts the resulting grants and confirms.
 - `users disable <email>` / `users enable <email>` — disable has protected/self guards.
+- `users delete <id>` — remove a member **by id** (not email); also revokes their CLI key. `users defaults` — the grants a new member gets.
 
 **Multi-token `--add`:** Click options aren't variadic — `--add a b` breaks. Use `--add a,b` (comma), `--add a --add b` (repeat), or `--add "a b"` (quoted).
 
@@ -151,6 +163,20 @@ A fixed registry — you read/inspect/change existing keys, you cannot create ne
 - `settings schema` — `key · type · accepts · description` (what each key accepts).
 - `settings set <key> (--value V | --json-value JSON | --file f)` — exactly one value source. Unknown key → exit 6. No-op if unchanged. Server validation errors surface as `✗ <message>` (e.g. range bounds). Some keys are sensitive (signing secrets, sign-in allowlist) — confirm carefully.
   - `allowed_sign_ins` restricts which of the organization's members may sign in; it does not grant access to anyone else. An **empty list means no restriction** (every member can sign in), so clearing it widens access rather than removing it. A non-empty list admits only matching addresses and locks out every other member. Entries are exact addresses or `*@domain.tld`; a bare `*` is rejected — use an empty list. Saving a list that does not include your own address is refused, because you could not sign in again.
+
+## alerts
+Alert rules, referenced by **name** (a UUID-shaped id is also accepted). Reads need `alerts:read`, writes `alerts:write`.
+- `alerts list [--show-id]` — `name · severity · trigger · status · open issues`, newest first.
+- `alerts show <name>` — identity + trigger + evaluation + channels cards.
+- `alerts create <name> [--file alert.json] [--description …] [--severity info|warning|critical] [--trigger-kind metric_threshold|custom_sql|evaluation_score|eval_compound|per_event] [--trigger-spec JSON] [--channels JSON] [--eval-interval-secs N] [--min-breaches N] [--eval-window N]` — `--trigger-kind` + `--trigger-spec` (the condition, shaped per kind) and `--severity` are the core; the rest have server defaults. `--file` is a full AlertInput and the flags layer on top. Name collision → exit 2. New alerts start enabled. JSON `{id, created_at}`.
+  e.g. `fp alerts create high-errors --trigger-kind metric_threshold --severity warning --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'`
+- `alerts update <name> [--name NEW] [same flags as create] [--yes]` — flag-only edits re-send the current alert with your change (the server replaces the whole alert, so this needs read **and** write); `--file` replaces it wholesale. Confirms first. JSON `{id, updated_at}`.
+- `alerts delete <name> [--yes]` — amber preview incl. the open-issue count it orphans, then confirm. Cannot be undone.
+- `alerts test <name> [--channels JSON] [--yes]` — **really sends** a test notification to the alert's channels (or the `--channels` override; default slack/webhook/email). Success means dispatched, not delivered. JSON `{ok, synthetic_incident_id}`.
+- `alerts recipients` — the recipient directory the dashboard's pickers use (members and saved addresses).
+- `alerts issues <alert-id> [--create (--title T [--summary S] | --file body.json)]` — list the issues one alert raised, or raise one under it (needs `issues:create`).
+
+Alert **channels** (default email recipients, Slack webhook, generic webhook URL + signing secret) are org settings: `fp settings schema` lists the `alerts.*` keys, `fp settings set` changes them.
 
 ## audits
 Scheduled sweeps over agent activity, and the **findings** they produce. Audits are referenced by **name** (UUID id also accepted); findings by **id** (short ids shown in the table, `--show-id` for the full ones).
@@ -174,6 +200,7 @@ Context is a **separate sub-resource on purpose**: `audits edit` read-merges the
 - `audits resolve <id> [--yes]` — you fixed it. Leaves **no** suppression, so a genuine recurrence reopens the issue it graduated to. Confirms first.
 - `audits reopen <id>` — back to `open` **and** clears any mute/dismiss suppression. The undo for the three above.
 - `audits assign <id> --to <email>` — set the owner; the status is untouched. `--to` is required (exit 2 without it).
+- `audits contracts list|show <id>|create|update <id>` — **agent contracts**: what each agent is supposed to do, read by every audit. `create --agent-id <agent> --body "markdown"|@file.md` (or `--file` API JSON `{agent_id, body, enabled}`); `update <id> [--agent-id] [--body] [--enabled|--disabled] [--file]` keeps unmentioned fields. Body ≤ 5000 chars. There is no delete. Reads `audits:read`, writes `audits:write`.
 
 The title column truncates to whatever width is left so the fixed columns always survive — read the full text with `audits finding <id>` or `--json`. A bad `--status`, `--window-mode`, `--sensitivity`, a non-ISO-8601 `--schedule-anchor`, or an out-of-range `--schedule-interval-secs`/`--lookback-window-secs` is rejected before any request (exit 2). `--schedule-anchor` pins the fixed UTC slot runs land on (`anchor + N * interval`), so a slow run or `audits run` can't drift the cadence; omit it on create and the server uses the next 09:00 UTC. An unknown audit name → exit 6; an unknown or malformed finding id → calm `✗ no finding …`, exit 6. Reads need `audits:read`, every mutation `audits:write`.
 
@@ -183,11 +210,13 @@ The title column truncates to whatever width is left so the fixed columns always
 
 ## issues
 The single board for everything needing human attention — alert breaches (`source: alert`), hand-raised issues (`manual`), and audit findings (`audit`). Referenced by id (short ids accepted, `--show-id` shows them). This group was **renamed from `incidents`**; the old name no longer exists. Reads and ack/comment need `issues:read`; opening, assigning, and subscribing others need `issues:create`; resolving, closing, archiving and clearing need `issues:close` (and `clear` also needs `audits:write`, because it resolves the findings behind the issues).
-- `issues list [--state firing|acknowledged|resolved|closed] [--alert-id <id>] [--limit N] [--show-id]` — there is **no** `--severity` filter on this command. Archived issues are hidden.
-- `issues count`
+- `issues list [--state firing|acknowledged|resolved|closed] [--alert-id <id>] [--limit N] [--show-id] [inbox filters]` — there is **no** `--severity` filter on this command. Archived issues are hidden unless `--archived only|all`.
+- **Inbox filters** (all CSV, all optional, on `list`, `count` and `facets`): `--agent-id` · `--env` · `--machine` · `--source alert|audit|manual` · `--audit-id` · `--assignee <email>|me|unassigned` · `--archived false|only|all` · `--search <text>` (title or summary, case-insensitive) · `--since <window>` (opened within). `count` and `facets` also take `--alert-id`.
+- `issues count [--state …] [filters]` — JSON `{count}`; with no `--state` the server counts open ones (firing + acknowledged).
+- `issues facets [--state …] [filters]` — the values each filter can take right now, with counts (the inbox filter bar).
 - `issues show <id>` — identity + comments + subscribers + **activity log** (read this before acting). An audit-born issue (`source: audit`) carries the full finding it graduated from and back-links to the audit/run.
 - `issues ack <id>` · `issues assign <id> --assignee <member>` (repeatable; omit to clear all assignees; each must be an operator) · `issues resolve <id>` (calm confirm). **On an audit issue these stay in sync with the finding** — resolving the issue resolves the underlying audit finding, so it can't reappear on the next run (equivalently, triage it with `audits resolve <finding-id>`; both surfaces agree).
-- `issues close <id>` (calm confirm) — the second terminal state: **"we're done with it", not "we fixed it"** (won't fix / not a problem / stale). The difference from `resolve` is what happens next: a **resolved** issue REOPENS when its audit finding recurs, a **closed** one does not. On an audit issue this marks the finding `dismissed`; it does **not** write the org-wide fingerprint suppression that `audits dismiss` writes, so closing one issue never hides that pattern in your other audits. Exit 9 if the issue already ended — an issue ends once, and neither terminal state may overwrite the other.
+- `issues close <id>` (calm confirm) — the second terminal state: **"we're done with it", not "we fixed it"** (won't fix / not a problem / stale). The difference from `resolve` is what happens next: a **resolved** issue REOPENS when its audit finding recurs, a **closed** one does not. On an audit issue this marks the finding `dismissed`; it does **not** write the org-wide fingerprint suppression that `audits dismiss` writes, so closing one issue never hides that pattern in your other audits. If the issue already ended the server answers 409 and `fp` exits **1** — an issue ends once, and neither terminal state may overwrite the other.
 - `issues archive <id>` · `issues unarchive <id>` — take an issue off the board / put it back. **Orthogonal to state**: archiving resolves nothing and never overwrites how an issue ended, and it works on a live issue too. No confirm (it destroys nothing). A fresh alert breach or a recurring audit finding un-archives a live issue automatically, so archive can hide a problem but cannot keep hiding one that is still happening; a `closed` issue is the exception and stays hidden.
 - `issues clear (--audit <id> | --all-audits | --everything) [--dry-run] [--yes]` — **the "we changed our agents, give us a fresh board" command.** Resolves every open issue in the scope in one server-side transaction, plus the audit findings behind them. Exactly one scope flag is required. Needs `issues:close` **and** `audits:write`. **Nothing is deleted and nothing is suppressed** — a pattern the agent changes genuinely fixed stays gone, one they did not comes back on the next run and reopens its issue; for permanent silence use `audits mute`/`dismiss` instead. Always `--dry-run` first: the count comes from the server using the same scope predicate the write uses, so it is the real size of the scope — but it is a count, not a lease: the write re-runs the predicate, so anything that entered the scope since the preview is cleared too, and the closing line reports what actually changed.
 - `issues open --summary <text> (--title <text> | --alert-id <id>) [--title ...] [--severity ...]` — `--title` is **required** for a standalone issue (nothing to borrow a name from); with `--alert-id` it is optional and defaults to the alert's name. Missing `--title` on the standalone path → exit 2.
@@ -212,7 +241,8 @@ Saved ClickHouse SQL + ad-hoc runner. Saved queries referenced by **name**.
 Built-in assistant. Chats referenced by a **short chat-id** (first 8 hex; prefix-resolved).
 - `agent health` · `agent models` (available models for `--model`, default marked).
 - `agent chats` — `chat-id · title · messages · updated`.
-- `agent ask "MESSAGE" [--chat <short-id>] [--model <m>]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout.
+- `agent ask "MESSAGE" [--chat <short-id>] [--model <m>] [--page-context <text>] [--approve]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout. Charts/tables the assistant produces are rendered (their SQL runs through `queries:run`, SELECT/WITH only). When the assistant asks to **write** something, a terminal prompts; scripts and `--json` decline unless `--approve` was given — only pass it when the user explicitly authorized the write.
+- `agent brief [--range 24h|7d]` — the assistant-curated home brief.
 - `agent show <short-id>` — transcript. `agent rename <short-id> --title "…"` · `agent delete <short-id>`.
 - Ambiguous prefix → exit 2; unknown chat → exit 6.
 
@@ -230,21 +260,26 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
   - `both` — JavaScript plus its own Jev checks, deployed and toggled as one. FailproofAI Cloud makes the JavaScript's verdict `reviewable` by exactly its own checks (`authority`/`reviewedBy` are derived by the server, never sent).
 
   Without `--kind` it follows from what you give (`--semantic` alone is `jev`, with source `both`); a kind that contradicts its inputs is **exit 2**, before anything is sent. `fp` checks only the shape of the file (a non-empty list of named objects, ≤24); the server checks the rest — the limits, FailproofAI's 16 reserved check names (**422 `reserved_jev_name`**), and names unique across the org — and names the declaration it refused. SOURCE is a path, `@path`, `-`, a pipe, or omitted to paste on a TTY (Ctrl-D ends); `--semantic` takes a path, `@path` or `-` (only one of the two may be stdin). The JavaScript is **parse-checked with node** before it is sent; nothing downstream does this, and a broken policy otherwise fails on the machine at enforcement time. `--no-verify` skips it, and a host without node publishes with a warning rather than a block. JavaScript carrying Jev fields — `semanticPolicies.add(...)`, or `authority: "reviewable"` on a registration — is refused before sending (**exit 1**, not skipped by `--no-verify`; commented-out code does not count): put Jev checks in `--semantic` (`--kind both`), where they take effect. **Publishing deploys nothing** — the version is unused until `fleet deploy` puts it on a machine.
-- `policies enable <id>` · `policies disable <id> [-y]` — **disable REMOVES the policy from every deployment carrying it**, reissuing each affected machine at a new generation (visible in `fleet history`). `enable` is the exact inverse — it puts the policy back into every deployment it was removed from, reissuing those machines again. Nothing needs redeploying by hand, and `machinesUpdated` in the JSON reports the count for both directions.
-- `policies test [SOURCE] [--tool Bash] [--command "…"] [--file PATH] [--event PreToolUse] [--expect allow|deny|instruct]` — run a policy LOCALLY and print what it decides. Executes the real file (bare `import { deny } from "failproofai"` and all) against a synthetic context; nothing is published, nothing installed. Needs `node`. `--expect` asserts the decision and exits 1 when it differs — a correct `deny` is a PASSING test, so the decision alone never sets the exit code. JSON `{ok, decision, policies:[{name,decision,reason}], expected, met}`; `decision` is the strictest any registered policy returned.
+- `policies enable <id> [-y]` · `policies disable <id> [-y]` — **disable REMOVES the policy from every deployment carrying it**, reissuing each affected machine at a new generation (visible in `fleet history`). `enable` is the exact inverse — it puts the policy back into every deployment it was removed from, reissuing those machines again. Nothing needs redeploying by hand, and `machinesUpdated` in the JSON reports the count for both directions.
+- `policies test [SOURCE] [--tool Bash] [--command "…"] [--file PATH] [--event PreToolUse] [--expect allow|deny|instruct]` — run a policy LOCALLY and print what it decides. Makes no request, so unlike the rest of `policies` it also works with an API key. Executes the real file (bare `import { deny } from "failproofai"` and all) against a synthetic context; nothing is published, nothing installed. Needs `node`. `--expect` asserts the decision and exits 1 when it differs — a correct `deny` is a PASSING test, so the decision alone never sets the exit code. JSON `{ok, decision, policies:[{name,decision,reason}], expected, met}`; `decision` is the strictest any registered policy returned.
+- `policies author "<intent>" [--kind regex|jev|both]` — the assistant authors a vetted policy grounded on your org's events (with coverage). Draft only — nothing is published. `--kind jev` asks for Jev checks, `--kind both` for JavaScript plus its checks; default regex.
+- `policies backtest [FILE_OR_ID] [--kind regex|jev|both] [--semantic checks.json] [--hours N] [--agent-id A] [--env E] [--run] [--sample N]` — replay a policy against calls your agents already made. A local `.mjs` (or `@path`, `-`) or a published **regex** id is replayed module-only, as always. A published `jev`/`both` id, or `--semantic` (alone = `jev`, with a source file = `both`), runs the every-kind backtest: by default a free **estimate**; `--run` actually asks Jev about up to `--sample` (≤50) stored calls and **spends the org's Jev allowance** — confirm with the user first. `--hours` defaults to 168 for jev/both. Needs `policies:write` and `events:read`.
+- `policies candidacy --issue <issue-id>` — "could a policy prevent this issue?"; read-only verdict with a suggested intent.
 - `policies compose "<description>" [--out FILE] [--publish ID]` — the assistant drafts policy source from plain English. Prints it and stops by default: a generated policy that deploys itself is one nobody read. `--publish` still syntax-checks first. Needs `policies:write` for BOTH the draft and the publish — `POST /api/agent/compose-policy` is `withAuth("policies:write")`; `agent:use` gates the assistant's other routes and is not checked on this one. The composer has a **30s server-side limit** — a long or vague description simply does not finish, and raising `--timeout` does not help because the cut is not client-side. Retry with something shorter and more specific.
 - `policies delete <id> [-y]` — archives. **A machine already carrying the policy keeps enforcing it** until redeployed; `disable` is what stops enforcement everywhere.
 
 ### fleet
 - `fleet list` — `machine · label · pol · intended · applied · seen · events · state`. `intended` is the generation deployed, `applied` what the machine last collected (they differ until it polls), and `seen` how long since it last reported anything — a machine can be in sync and dead, or alive and behind, which are different problems. `state` reads `N errors` when the machine reported policies it could not apply. JSON `{machines, deployments}` with raw epoch-ms timestamps plus the computed `drifted`; a machine carries `policyErrors`/`policyErrorsAt` and `jevMode` when the server has them.
 - `fleet show <machine>` — the set the machine is told to run, **and whether it has collected it**. Reads both the deployment and the machine record, so it reports `not yet collected` / `machine is on #N` / `collected` alongside who deployed it, when, and last-seen. A machine can be told to run a policy it has never picked up; the policy list alone cannot tell you which. Also the **Jev mode** FailproofAI Cloud derived for it from its policies (`local` when none) and the **policy errors** the machine last reported — `[{id, version, kind: regex|jev|both|daemon, message}]`: a policy that did not load, `jev_unconfigured` (a Jev mode, and the machine's key does not carry Jev), `transcripts_disabled` (a Jev mode on a machine connected with `--no-transcripts`, which never asks), `jev_budget: dropped <name>` (an installed pack's check FailproofAI Cloud left out of a request for the question budget). Whatever is listed there is not enforcing. JSON `{machine, deployment}` with raw timestamps and both label fields; `deployment: null` when nothing is deployed.
-- `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--create] [-y]`
+- `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--target POLICY=INTEGRATION[/agt_ID]]… [--all-agents POLICY]… [--create] [-y]`
 
   **A deploy REPLACES the whole set.** The endpoint takes the full list and does not merge. `--add`/`--remove` are a read-modify-write: the CLI reads the current set, applies the delta, prints the complete result, writes that. `--set` replaces everything and is refused alongside `--add`/`--remove`.
 
   REF is `id`, `id@version`, `id:effect`, or `id@version:effect`. Effect is `enforce` (default) or `observe`. A bare `--add` of an already-deployed policy **keeps its pinned version** — pass `id@version` to move it. Every kind deploys the same way (a `both` policy's JavaScript and its checks go together), and `observe` applies to every kind: a `jev` policy's checks, or both halves of a `both` policy, are asked and recorded and decide nothing.
 
   There is no Jev mode to set: FailproofAI Cloud turns Jev on for a machine while a `jev` or `both` policy is deployed to it, and off when none is. Jev checks run on FailproofAI Cloud; nothing is installed on the machine. The machine sends each checked tool call of an agent such a policy targets to FailproofAI Cloud on its Cloud Jev credential; without one it reports `jev_unconfigured`, and connected with `--no-transcripts` it never asks and reports `transcripts_disabled`.
+
+  **Agent targets.** By default an assignment covers every agent on the machine. `--target POLICY=INTEGRATION` scopes it to one integration (e.g. `no-prod-db=claude`), `--target POLICY=INTEGRATION/agt_ID` to one agent profile from `fleet show`'s roster; repeat `--target` for the same policy to OR several selectors. `--all-agents POLICY` clears a policy's scope back to every agent. The policy must be in the resulting set (add it in the same command if needed). Targets ride along in the plan, `fleet show`, `history`, `rollback` and the JSON.
 
   Deploying to an id that has never checked in is refused (a typo would mint a machine); `--create` allows it for pre-staging.
 
@@ -277,13 +312,13 @@ or model-authored source locally merely to inspect it.
 | `evaluators list` | `--key K`, `--all` (include disabled versions) |
 | `evaluators show K[@V]` | full source; specify version when ambiguous |
 | `evaluators create` | `--key K --name N`, optional `--version V` (default `1`), repeated `--label`, `--condition EXPR\|@file`, exactly one source below, repeated `--dry-run-on SESSION`, `--disabled`, explicit `--force` to override failed previews |
-| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; creates first, then disables predecessors; `--backfill 7d` code only; `--force` to override failed previews |
+| `evaluators deploy K` | same sources/metadata, optional `--version`; numeric versions auto-increment; keeps the previous version's `--condition`/`--label` unless given; creates first, then disables predecessors; `--backfill 7d` (1–90d, any kind — judge/Jev spend model budget); `--force` to override failed previews |
 | `evaluators draft "intent"` | session only; `--kind code\|judge\|jev`, `--out spec.json` (refuses to overwrite) |
 | `evaluators dry-run` | source flags or `--file`; repeated `--session` (max 10), none = compile only; judge refused, Jev spends budget |
 | `evaluators enable\|disable K[@V]` | toggle definition |
 | `evaluators label K[@V]` | repeated `--add` / `--remove` |
 | `evaluators instances\|schema\|jobs` | managed instances, event schema profile, jobs |
-| `evaluators backfill` | `--from T --to T`, optional `--key K`, `--dry-run`; increasing range ≤90 days; excludes judge/Jev |
+| `evaluators backfill` | `--from T --to T`, optional `--key K`, `--dry-run`; increasing range ≤90 days; code, judge and Jev; queues only missing (session, evaluator) pairs; `--dry-run` counts them first |
 
 Sources:
 
@@ -362,18 +397,20 @@ structures. CSV query export remains pipeable CSV.
 | `dashboards list\|show ID\|create\|update ID\|delete ID` | create `--name`, `--description`, optional `--file` definition; update selected fields |
 | `dashboards tiles ID list\|add\|update TILE\|remove TILE\|layout` | add `--query ID --chart line\|area\|bar\|stacked_bar\|pie\|kpi\|table`, `--title`; update supports same flags or `--file`; layout `--file` with `{tiles:[{id,pos_x,pos_y,pos_w,pos_h}]}` |
 | `sessions show\|export\|history\|re-evaluate ID` | export `--out`; show includes overview + event timeline |
+| `sessions import FILE...` | `--format auto\|failproofai\|claude\|codex`, `--env`, `--dry-run`; see [sessions](#sessions) |
 | `events latency` | `--since` |
 | `sentiment summary\|messages\|sessions\|session ID` | list reads accept `--since`; messages/sessions `--limit`; messages `--session-id` |
 | `query compose "question"` | session; `--run` |
 | `query export [ID]` | or `--sql TEXT\|@file`; `--format csv\|json`, `--out`; with `--json`, CSV is `{format,content}` |
 | `alerts recipients` / `alerts issues ID` | issues: optional `--create --title --summary` or `--create --file` |
 | `audits contracts list\|show ID\|create\|update ID` | `--agent-id`, `--body TEXT\|@file`, or `--file` API JSON; update `--enabled/--disabled` |
-| `policies author "intent"\|backtest FILE_OR_ID\|candidacy --issue ID` | session; drafts/replays only, never auto-publishes |
+| `policies author "intent" [--kind]`\|`backtest [FILE_OR_ID] [--kind --semantic --hours --agent-id --env --run --sample]`\|`candidacy --issue ID` | session; drafts/replays only, never auto-publishes; see [policies](#policies) |
+| `issues facets` | inbox filter values; see [issues](#issues) |
 | `agent ask "question"` / `agent brief` | session; ask renders artifacts and prompts for approval on a terminal; scripts/JSON decline unless `--approve`; brief `--range 24h\|7d` |
 | `orgs create --name N [--slug S]` | session; omitted slug derives from name; never auto-switches |
 | `roles list\|show NAME\|create\|update NAME\|delete NAME` | permission sets; create `--name --permission`; update `--permission` replaces or `--add/--remove` merges; `--description`, `--file`; builtins immutable |
 | `users delete ID` / `users defaults` | deletion is by id, not email |
-| `usage windows` / `plan` / `plan claim OFFER` | offers + trial; plan/claim are session-only (deny key mode before HTTP) |
+| `usage windows` / `plan` / `plan claim OFFER` | usage windows is API-key only; plan (offers + trial) and claim are session-only — each refuses the other mode before HTTP |
 | `settings context-windows list\|set MODEL TOKENS\|delete MODEL` | tokens 0–1000000; model names may contain `/` |
 | `otel status\|enable\|disable` | Cloud org switch `otel.ingest_enabled`, not local collector configuration |
 | `slack status\|disconnect` | session only |

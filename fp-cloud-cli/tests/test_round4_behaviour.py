@@ -23,7 +23,7 @@ def test_failed_preview_stops_unless_force(logged_in, runner, tmp_path, monkeypa
     old = {"id": "old", "eval_key": "tool_usage", "eval_version": "1", "enabled": True}
     preview = {
         "runs": [
-            {"session_id": "restack-check", "ok": True,
+            {"session_id": "run-check", "ok": True,
              "result": {"score": {"value": 0.7}, "reasoning": "Seven tool calls"}},
             {"session_id": "failed-check", "ok": False, "error_kind": "invalid_result",
              "error_message": "Missing result score"},
@@ -60,7 +60,7 @@ def test_failed_preview_stops_unless_force(logged_in, runner, tmp_path, monkeypa
         flags = ["--key", "tool_usage", "--name", "Tool usage"] if command == "create" else ["tool_usage"]
         result = runner.invoke(app, [
             *(["--json"] if json_mode else []), "evaluators", command, *flags,
-            "--code", str(file), "--dry-run-on", "restack-check", "--dry-run-on", "failed-check",
+            "--code", str(file), "--dry-run-on", "run-check", "--dry-run-on", "failed-check",
             *(["--force"] if force else []),
         ])
     assert result.exit_code == (0 if force else 1), result.output
@@ -93,12 +93,12 @@ def test_preview_skip_has_deliberate_outcome(logged_in, runner, tmp_path, monkey
     file.write_text(SOURCE)
     with respx.mock as mock:
         mock.post(BASE + "/api/evaluator-definitions/dry-run").respond(200, json={
-            "runs": [{"session_id": "restack-check", "ok": True, "applicable": False, "result": None}],
+            "runs": [{"session_id": "run-check", "ok": True, "applicable": False, "result": None}],
             "summary": {"succeeded": 0, "failed": 0, "skipped": 1},
         })
-        result = runner.invoke(app, ["evaluators", "dry-run", "--code", str(file), "--session", "restack-check"])
+        result = runner.invoke(app, ["evaluators", "dry-run", "--code", str(file), "--session", "run-check"])
     assert result.exit_code == 0, result.output
-    assert "○ restack-check · skipped" in result.stdout
+    assert "○ run-check · skipped" in result.stdout
 
 
 @pytest.mark.parametrize("key_mode", [False, True])

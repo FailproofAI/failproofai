@@ -4,14 +4,14 @@ description: |-
   The way to answer "how are my production AI agents doing?" and to run the team's agent-observability deployment — reach for it even on casual phrasing that names no tool.
 
   Trigger when the user wants to:
-  • inspect agent telemetry — did agents error/fail/go flaky; sessions, events, latency, token usage, slowest models; eval/quality scores and whether quality dropped;
-  • operate the deployment — ack/assign/resolve/mute/dismiss issues (alerts, reports, and audit findings) with notes; run and triage audits; see who has access and change roles (e.g. read-only); create or scope API keys (e.g. a push-only CI key); change settings; run saved or ad-hoc ClickHouse queries.
+  • inspect agent telemetry — did agents error/fail/go flaky; sessions, events, latency, token usage, slowest models, sentiment; eval/quality scores and whether quality dropped;
+  • operate the deployment — triage issues and audits; manage alerts, access, keys, settings, dashboards, and queries;
+  • manage Cloud enforcement — compose/test/backtest/publish policy versions (regex, Jev or both), deploy them to fleet machines or single agents, inspect guardrails, promote, or roll back;
+  • author, dry-run, deploy and backfill hosted code, LLM-judge or Jev evaluators (`fp evaluators`).
 
   Served by the `fp` CLI against FailproofAI Cloud.
 
-  Also use for authoring, testing and deploying hosted code, LLM-judge or Jev evaluators with fp evaluators, and inspecting dashboards, sentiment and OTEL status.
-
-  NOT for self-hosted evaluator services, SDK instrumentation, collector/daemon debugging, or unrelated dev work.
+  NOT for publishing reusable GitHub policy packs (`failproofai-policy-publish`), deciding what to evaluate (`failproofai-eval-brainstorm`), designing an evaluation's logic (`failproofai-eval-author`), instrumenting an app (`failproofai-sdk`), or debugging the local collector/daemon.
 ---
 
 # FailproofAI Cloud CLI
@@ -44,8 +44,8 @@ Throughout this skill, `fp` means "whichever form you resolved."
 
 - **Global options go BEFORE the command:** `fp --json events`, never
   `fp events --json`. Globals are `--base-url`, `--org`, `--token`,
-  `--api-key`, `--json`, `--insecure`/`--secure`. After the command they're a
-  usage error.
+  `--api-key`, `--json`, `--insecure`/`--secure`, `--timeout`, `--quiet`/`-q`,
+  `--no-color`. After the command they're a usage error.
 - **Two ways to authenticate, and they are not interchangeable:**
 
   | | How you supply it | What it is |
@@ -79,14 +79,17 @@ Throughout this skill, `fp` means "whichever form you resolved."
   a saved session (Click treats an empty env var as unset, so it falls to rung 4).
 
 - **Some commands need a signed-in user.** `login`, `logout`, `orgs *`, the whole
-  `agent` group, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, `keys update`, and all of `policies *` / `fleet *` /
+  `agent` group, `agent brief`, `orgs create`, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, `keys update`, every
+  `policies` subcommand except `test` (it runs locally and calls nothing), and all of `fleet *` /
   `guardrails *` refuse a key with a usage error (**exit 2**) and make **no
   network call at all** — there is no user to sign in, no saved active org to
   switch, no private assistant thread to own, and the enforcement write routes
   are root-only and deliberately absent from `/v1`. `keys update` is in that list
   rather than a special case: `keys:update` can never be granted to a key, so it
   is refused up front like the rest. The key is not the problem to fix — plan
-  around them rather than retrying or hunting for a flag.
+  around them rather than retrying or hunting for a flag. The one inverse case:
+  `usage windows` is served on the versioned API only, so it needs `--api-key`
+  and refuses a session with exit 2.
 - **Default to `--json` and parse it.** It prints clean JSON to stdout and
   nothing else. The plain output uses open Rich tables for human eyes. Use the
   rendered output only when the user explicitly wants to *look* at something.
@@ -164,11 +167,17 @@ ask** — don't rename-and-retry or rotate/regenerate the existing one. A
 
 State-changing commands: `keys create/update/disable/regenerate`,
 `users create/update/disable/enable`, `settings set`,
-`alerts create/update/delete/test`, the writing `issues` subcommands
-(`ack/assign/resolve/comment-add/comment-delete/subscribe/unsubscribe/open`),
-`audits create/edit/delete/run` and the finding-triage verbs
+`alerts create/update/delete/test` and `alerts issues --create`, the writing `issues` subcommands
+(`ack/assign/resolve/close/archive/unarchive/clear/comment-add/comment-delete/subscribe/unsubscribe/open`),
+`audits create/edit/delete/run`, `audits contracts create/update` and the finding-triage verbs
 (`ack/mute/dismiss/resolve/reopen/assign`),
-`query create/update/delete`, `agent rename/delete`, `orgs switch`, and — the
+`query create/update/delete`, `dashboards create/update/delete` and `dashboards tiles add/update/remove/layout`,
+`roles create/update/delete`, `users delete`, `settings context-windows set/delete`, `otel enable/disable`,
+`slack disconnect`, `orgs create`, `plan claim`, `sessions re-evaluate` and `sessions import`,
+`evaluators create/deploy/enable/disable/label/backfill` (an enabled evaluator scores every
+new session; judge/Jev evaluators and Jev dry-runs spend model budget),
+`policies backtest --run` (spends Jev allowance), `agent ask --approve`,
+`agent rename/delete`, `orgs switch`, and — the
 highest-consequence of the lot — `policies publish/enable/disable/delete` and
 `fleet deploy/rollback/rename`, which change what is ENFORCED on production
 machines. A `fleet deploy` replaces a machine's entire policy set, so name the
@@ -186,28 +195,34 @@ you need a flag you don't already know.
 - `evals` — evaluation results + scores; `--aggregate` for a health rollup; `--score key:min..max`.
 - `errors` — errored events; `--aggregate` for count / sessions / agents / last-seen.
 - `usage` — current org usage for its fixed 30-day metering window; needs `usage:read`.
-- `list <kind>` — **discover valid filter values first**: `envs agents event_types score_filters models hooks tools error_types`.
+- `list <kind>` — **discover valid filter values first**: `envs agents event_types score_filters models hooks tools error_types trigger_events eval_envs metric_keys`.
+- `sessions show|export|history|re-evaluate <id>` — one run in depth; `sessions import FILE...` uploads transcripts/JSONL.
+- `events latency` — latency/token aggregate. `sentiment summary|messages|sessions|session <id>` — conversation sentiment.
+- `dashboards list|show|create|update|delete` + `dashboards tiles <id> list|add|update|remove|layout` — org dashboards of saved-query tiles.
 
 **Manage (permission-gated, mutations):**
 - `keys list|show|create|update|disable|regenerate` — API keys; secret shown once.
 - `users list|show|create|update|disable|enable` — referenced by **email**.
 - `settings list|schema|set` — fixed registry; `schema` shows what each key accepts.
-- `alerts list|show|create|update|delete|test` — referenced by **name**.
-- `issues list|count|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
-- `audits list|show|create|edit|delete|run|runs` — scheduled sweeps, referenced by **name**; `audits findings|finding` + the triage verbs `ack|mute|dismiss|resolve|reopen|assign` act on a finding **id**. `audits run <name>` only *queues* a run (poll `audits runs <name>` for completion). See §8.
+- `users delete <id>|defaults`, `roles list|show|create|update|delete` (permission sets), `settings context-windows list|set|delete`, `otel status|enable|disable`, `slack status|disconnect`, `orgs create`, `plan [claim]`.
+- `alerts list|show|create|update|delete|test|recipients|issues` — referenced by **name** (`issues` takes the alert id); full flags in `references/commands.md#alerts`.
+- `issues list|count|facets|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). `list`/`count`/`facets` take the inbox filters (`--agent-id --env --machine --source --audit-id --assignee --archived --search --since`). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
+- `audits list|show|create|edit|delete|run|runs` — scheduled sweeps, referenced by **name**; `audits findings|finding` + the triage verbs `ack|mute|dismiss|resolve|reopen|assign` act on a finding **id**. `audits run <name>` only *queues* a run (poll `audits runs <name>` for completion). `audits contracts list|show|create|update` — per-agent contracts the audits read. See §8.
 
 **Enforce (cloud-managed policy, session-only — see §2):**
-- `policies list|show|publish|enable|disable|delete|test|compose` — policy versions. `publish` mints a version of a kind — `regex` (a local `.mjs`), `jev` (`--semantic checks.json`: Jev declarations, no JavaScript) or `both` (the two, the JavaScript reviewable by its own checks); list/show print the kind and the Jev check names; `test` runs one against a synthetic context locally (it applies each policy's `match` filter, so a policy that does not cover the `--event`/`--tool` you pass is reported `skipped`, not run). `enable`/`disable`/`delete` take `--yes`.
-- `fleet list|show|deploy|diff|history|rollback|rename` — which machines run which policies, and the policy errors each machine reports. **`deploy` REPLACES a machine's whole set** (`--add`/`--remove` amend it, `--set` replaces, `--create` mints a deployment). There is no Jev mode to set: FailproofAI Cloud turns Jev on for a machine while a `jev`/`both` policy is deployed to it (off otherwise); trial one with `:observe`. `deploy` prints the plan and asks **only on an interactive terminal without `--json`** — under `--json` or with stdin redirected it applies immediately, so read `fleet show` first if you want review.
+- `policies list|show|publish|enable|disable|delete|test|compose|author|backtest|candidacy` — policy versions. `author "<intent>" [--kind regex|jev|both]` drafts one from your org's events; `backtest` replays a file or published id against stored calls (jev/both: free estimate, `--run` spends Jev allowance); `candidacy --issue <id>` asks whether a policy could prevent an issue. None of the three publishes. `publish` mints a version of a kind — `regex` (a local `.mjs`), `jev` (`--semantic checks.json`: Jev declarations, no JavaScript) or `both` (the two, the JavaScript reviewable by its own checks); list/show print the kind and the Jev check names; `test` runs one against a synthetic context locally (it applies each policy's `match` filter, so a policy that does not cover the `--event`/`--tool` you pass is reported `skipped`, not run). `enable`/`disable`/`delete` take `--yes`.
+- `fleet list|show|deploy|diff|history|rollback|rename` — which machines run which policies, and the policy errors each machine reports. **`deploy` REPLACES a machine's whole set** (`--add`/`--remove` amend it, `--set` replaces, `--create` mints a deployment). `--target POLICY=INTEGRATION[/agt_ID]` scopes one assignment to an integration or a single agent (repeat to OR), `--all-agents POLICY` clears that scope. There is no Jev mode to set: FailproofAI Cloud turns Jev on for a machine while a `jev`/`both` policy is deployed to it (off otherwise); trial one with `:observe`. `deploy` prints the plan and asks **only on an interactive terminal without `--json`** — under `--json` or with stdin redirected it applies immediately, so read `fleet show` first if you want review.
 - `guardrails summary|timeline` — what enforcement actually did; `--since 1h|6h|24h|7d`, `--machine`.
 
 **Analytics & assistant:**
 - `query list|show|create|update|delete|run|schema` — saved ClickHouse SQL + ad-hoc runner (`query run <name>` or `query run --sql "…"`); `query schema [table]` for table layout.
-- `agent health|models|chats|ask|show|rename|delete` — built-in assistant; `agent ask "…"` starts a chat, `--chat <short-id>` continues one.
+- `query compose "<question>" [--run]` (AI SQL, session only) and `query export <id>|--sql … [--format csv|json] [--out FILE]`.
+- `agent health|models|chats|ask|show|rename|delete|brief` — built-in assistant; `agent ask "…"` starts a chat, `--chat <short-id>` continues one. Assistant writes are declined in scripts/`--json` unless `--approve` (only with the user's explicit OK).
+- `evaluators list|show|create|deploy|draft|dry-run|enable|disable|label|instances|schema|jobs|backfill` — hosted evaluator authoring (see "Author an evaluator" below); `evals` stays the results reader.
 
-**Identity:** `login`, `logout`, `whoami`, `orgs {list,switch,current,perms}`, `version`, `help`.
+**Identity:** `login`, `logout`, `whoami`, `orgs {list,switch,current,perms,create}`, `version`, `help`.
 All of `login` / `logout` / `orgs` — like the whole `agent` group, `keys update`, and
-every `policies` / `fleet` / `guardrails` subcommand — are **session-only**: with a key
+every `policies` (except `test`) / `fleet` / `guardrails` subcommand — are **session-only**: with a key
 they exit 2 without calling anything (§2). `whoami`, `version` and `help` work either way.
 
 ## 6. Translating plain-English requests
@@ -225,6 +240,12 @@ command (`list <kind>`, `whoami`, a `list` subcommand) before committing.
 | "how many events / how much traffic last week?" | `query schema` then `query run --sql "SELECT count() FROM events WHERE ts >= now() - INTERVAL 7 DAY"` |
 | "what has this org used this metering window?" | `usage` (or `--json usage` for the complete response) |
 | "is anything on fire?", "any alerts firing / open issues?" | `alerts list` + `issues list` (and `issues count`) |
+| "what's assigned to me?", "open issues for agent X" | `issues list --assignee me`, `issues list --agent-id X` (`issues facets` shows valid values) |
+| "alert me when errors spike" | `alerts create <name> --trigger-kind metric_threshold --trigger-spec '…' --severity warning` — **state it, then create** |
+| "would this policy have blocked anything?", "backtest it" | `policies backtest <file-or-id>` (jev/both: estimate first; `--run` only with the user's OK — it spends Jev allowance) |
+| "block X only for the Codex agent" | `fleet deploy <machine> --add <policy> --target <policy>=codex` — **confirm first** |
+| "add an evaluation for Y", "score sessions for Y" | `failproofai-eval-author` to design it, then `evaluators draft`/`create`/`deploy` (+ `--backfill 7d`) |
+| "upload these transcripts" | `sessions import <files> --dry-run`, then without `--dry-run` |
 | "ack / look at / resolve that issue" | `issues list` → `issues show <id>` → **confirm** → `issues ack`/`resolve <id>` |
 | "clear all our issues", "fresh start", "we changed the agents" | **settle the scope first** (`--all-audits` leaves alert and hand-opened issues alone; `--everything` does not; `--audit <id>` is one audit) → `issues clear <scope> --dry-run` → show the count → **confirm** → `issues clear <scope>` |
 | "we're not going to fix that one" | `issues close <id>` (NOT `resolve` — closed survives a recurrence) |
@@ -320,6 +341,9 @@ for the full write-up → **confirm with the user** → `audits resolve <id>`.
 ## Author an evaluator
 
 Use `fp evaluators` for hosted authoring; `fp evals` remains the results reader.
+To decide *what* to measure use `failproofai-eval-brainstorm`; to design the
+evaluation itself (code vs Jev vs LLM judge, the condition, the rubric) use
+`failproofai-eval-author` — then come back here to draft, dry-run and deploy it.
 Read [the evaluator command reference](references/commands.md#author-an-evaluator)
 for the full flags and API spec shape. Creation enables a definition by default;
 confirm the key, version, kind and budget before creating/deploying on a live org.
@@ -377,7 +401,10 @@ Use `--jev score` with 3–5 distinct `--level` values, ordered worst to best, f
 a rubric. `deploy` creates the new immutable version **before** disabling older
 enabled versions. A partial failure names the new id: inspect `list --all`,
 then disable any remaining old version; do not retry creation blindly.
-Backfill excludes judge/Jev and accepts at most 90 days.
+Backfill (`evaluators backfill`, or `deploy --backfill 7d`) covers code, judge
+and Jev evaluators, at most 90 days, and queues only the (session, evaluator)
+pairs not scored yet; judge/Jev backfills spend model budget, so run
+`backfill --dry-run` first and tell the user the count.
 
 Human mode displays dry-run outcomes before creation/deployment. Failed runs
 stop the write unless `--force` is explicitly authorized; do not add it merely

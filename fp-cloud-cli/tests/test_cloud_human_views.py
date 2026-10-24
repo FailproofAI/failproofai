@@ -26,13 +26,13 @@ DASHBOARD = {"id": "board1", "name": "Quality", "description": "Review productio
 TILE = {"id": "tile1", "query_id": "query1", "title": "Traffic", "chart_type": "bar",
         "chart_config": {"x": "agent", "y": "events"}, "param_bindings": {},
         "pos_x": 0, "pos_y": 0, "pos_w": 6, "pos_h": 4}
-DRY_RUN = {"runs": [{"session_id": "restack-check", "ok": True, "mode": "run",
+DRY_RUN = {"runs": [{"session_id": "run-check", "ok": True, "mode": "run",
                     "result": {"score": {"value": 0.7}, "reasoning": "Seven tool calls"},
                     "duration_ms": 8}],
            "summary": {"succeeded": 1, "failed": 0, "skipped": 0}}
 QUERY = {"columns": [{"name": "agent", "type": "String"}, {"name": "events", "type": "UInt64"}],
          "rows": [["support-bot", 7]], "elapsed_ms": 9, "truncated": False}
-SESSION = {"session_id": "restack-check", "agent_id": "support-bot", "environment": "prod",
+SESSION = {"session_id": "run-check", "agent_id": "support-bot", "environment": "prod",
            "event_count": 7, "status": "done"}
 CONTRACT = {"id": "contract1", "agent_id": "support-bot", "body": "# Purpose\nResolve requests",
             "enabled": True, "purpose": "Resolve requests"}
@@ -48,7 +48,7 @@ def response(request):
              "queued": 2, "id": "instance1"}]},
         "/api/evaluator-schema-profile": {"window_days": 7, "sampled_events": 100, "event_types": [
             {"event_type": "tool_use", "count": 100, "keys": [{"key": "tool_name", "type": "string", "presence": 1.0}]}]},
-        "/api/evaluation-jobs": {"jobs": [{"session_id": "restack-check", "eval_key": "tool_usage",
+        "/api/evaluation-jobs": {"jobs": [{"session_id": "run-check", "eval_key": "tool_usage",
                                         "status": "queued", "id": "job1"}]},
         "/api/evaluations/backfill": {"queued": True, "sessions": 12, "eval_key": "tool_usage"},
         "/api/permission-sets": [ROLE],
@@ -61,22 +61,22 @@ def response(request):
         "/api/sessions": {"sessions": [SESSION]},
         "/api/events/summary": {"events": [{"ts": "2026-10-14T05:26:14Z", "event_type": "tool_use",
                                           "agent_id": "support-bot", "summary": "Read customer request"}]},
-        "/api/sessions/restack-check/export": {**SESSION, "events": []},
-        "/api/sessions/restack-check/evaluation-history": {"evaluations": [
+        "/api/sessions/run-check/export": {**SESSION, "events": []},
+        "/api/sessions/run-check/evaluation-history": {"evaluations": [
             {"eval_key": "tool_usage", "eval_version": "1", "status": "done",
              "score": {"value": 0.7}, "finished_at": "2026-10-14T05:26:14Z"}]},
-        "/api/sessions/restack-check/re-evaluate": {
-            "session_id": "restack-check", "status": "queued", "v2_assignments_queued": 1,
+        "/api/sessions/run-check/re-evaluate": {
+            "session_id": "run-check", "status": "queued", "v2_assignments_queued": 1,
             "v2_assignment_ids": ["assignment-uuid"]},
         "/api/events/latency_aggregate": {"p50": 42, "p95": 145, "models": [
             {"model": "model1", "calls": 10, "p95_ms": 145}]},
         "/api/events/sentiment": {"totals": {"messages": 10, "flagged": 2, "sessions": 3},
                                  "averages": {"frustration": 0.2}, "timeline": [], "by_agent": []},
-        "/api/events/sentiment/messages": {"items": [{"session_id": "restack-check",
+        "/api/events/sentiment/messages": {"items": [{"session_id": "run-check",
             "text": "Please try again", "scores": {"frustration": 0.8, "satisfaction": 0.1}}]},
-        "/api/events/sentiment/sessions": {"sessions": [{"session_id": "restack-check",
+        "/api/events/sentiment/sessions": {"sessions": [{"session_id": "run-check",
             "negative_score": 0.8, "message_count": 10, "feeling": "frustration"}]},
-        "/api/events/sentiment/sessions/restack-check": {"session_id": "restack-check",
+        "/api/events/sentiment/sessions/run-check": {"session_id": "run-check",
             "scores": {"frustration": 0.8}, "messages": []},
         "/api/queries/run": QUERY,
         "/api/alerts/recipients": {"recipients": [{"email": "ops@example.test", "channel": "email"}]},
@@ -85,7 +85,7 @@ def response(request):
         "/api/audits/contracts": {"contracts": [CONTRACT]},
         "/api/audits/contracts/contract1": CONTRACT,
         "/api/agent/policy-backtest": {"matched": 4, "allowed": 6, "denied": 4,
-                                     "examples": [{"session_id": "restack-check", "reason": "Force push blocked"}]},
+                                     "examples": [{"session_id": "run-check", "reason": "Force push blocked"}]},
         "/api/agent/policy-candidacy": {"candidate": True, "reason": "Force push can be blocked", "intent": "Prevent force push"},
         "/api/issues/issue1": {"id": "issue1", "title": "Force push incident"},
         "/api/users/defaults": {"permission_set": "reviewer", "permissions": ROLE["permissions"]},
@@ -153,9 +153,9 @@ CASES = [
       "--instructions", "Read user messages", "--true", "Frustrated", "--false", "Calm"], "Jev noul"),
     (["evaluators", "create", "--key", "quality", "--name", "Quality", "--jev", "score",
       "--instructions", "Grade answer", "--level", "Wrong", "--level", "Partial", "--level", "Correct"], "level 3"),
-    (["evaluators", "deploy", "tool_usage", "--code", "{code}", "--dry-run-on", "restack-check"], "disabled v1"),
+    (["evaluators", "deploy", "tool_usage", "--code", "{code}", "--dry-run-on", "run-check"], "disabled v1"),
     (["evaluators", "draft", "Measure tools", "--out", "{draft}"], "create --file"),
-    (["evaluators", "dry-run", "--code", "{code}", "--session", "restack-check"], "Seven tool calls"),
+    (["evaluators", "dry-run", "--code", "{code}", "--session", "run-check"], "Seven tool calls"),
     (["evaluators", "enable", "tool_usage@1"], "● enabled"),
     (["evaluators", "disable", "tool_usage@1"], "○ disabled"),
     (["evaluators", "label", "tool_usage@1", "--add", "qa"], "qa"),
@@ -178,16 +178,16 @@ CASES = [
     (["roles", "create", "--name", "reviewer", "--permission", "events:read"], "events:read"),
     (["roles", "update", "reviewer", "--add", "users:read"], "users:read"),
     (["roles", "delete", "reviewer"], "members keep"),
-    (["sessions", "show", "restack-check"], "Read customer"),
-    (["sessions", "export", "restack-check", "--out", "{export}"], "file"),
-    (["sessions", "export", "restack-check"], "restack-check"),
-    (["sessions", "history", "restack-check"], "tool_usage"),
-    (["sessions", "re-evaluate", "restack-check"], "queued 1 evaluation for restack-check"),
+    (["sessions", "show", "run-check"], "Read customer"),
+    (["sessions", "export", "run-check", "--out", "{export}"], "file"),
+    (["sessions", "export", "run-check"], "run-check"),
+    (["sessions", "history", "run-check"], "tool_usage"),
+    (["sessions", "re-evaluate", "run-check"], "queued 1 evaluation for run-check"),
     (["events", "latency"], "145"),
     (["sentiment", "summary"], "frustration"),
     (["sentiment", "messages"], "Please try again"),
-    (["sentiment", "sessions"], "restack-check"),
-    (["sentiment", "session", "restack-check"], "frustration"),
+    (["sentiment", "sessions"], "run-check"),
+    (["sentiment", "session", "run-check"], "frustration"),
     (["query", "compose", "Count events"], "SELECT"),
     (["query", "compose", "Count events", "--run"], "support-bot"),
     (["query", "export", "--sql", "SELECT 1", "--format", "csv"], "support-bot"),
@@ -241,7 +241,7 @@ def test_deliberate_human_command_views(logged_in, runner, monkeypatch, tmp_path
     for raw in ('"eval_key":', '"created":', '"permissions":', "dashboards  []", "{'"):
         assert raw not in result.stdout, result.stdout
     if argv[:2] == ["evaluators", "deploy"]:
-        assert result.stdout.index("restack-check · passed") < result.stdout.index("deployed tool_usage v2")
+        assert result.stdout.index("run-check · passed") < result.stdout.index("deployed tool_usage v2")
     # Optional transcript capture for the manager, outside the repository.
     if os.environ.get("FP_HUMAN_ARTIFACTS"):
         directory = Path(os.environ["FP_HUMAN_ARTIFACTS"])

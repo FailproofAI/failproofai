@@ -1,6 +1,32 @@
 # Changelog
 
+## 1.0.12 — 2026-10-23
+
+The stable release of logging in to FailproofAI Cloud from `config` in your browser. Everything below in the `1.0.12-beta.*` sections ships here too.
+
+### Features
+
+- **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and Codex, which would list one in `~/.agents/skills` beside its own copy, is left to that one. `failproofai uninstall` removes only the ones `config` wrote (#920)
+
+### Fixes
+
+- `config` on a machine with no saved connection, whose browser login was approved but whose key could not be claimed, no longer says "This machine keeps its previous connection." and reports cloud mode with no key on disk; it finishes set up as open source (#920)
+- `config`, logging in again on a connected machine where the new key is created but can't be used, says the machine keeps its previous connection (which it does: nothing was written) instead of finishing as if it were open source (#920)
+- `config` on a machine whose saved key was refused, when logging in again creates no key, says the kept connection's key no longer works and to run `config` again, instead of reporting the old connection as if it were fine (#920)
+- `config` no longer sends the saved key to a saved cloud address it would refuse if typed (plain `http://` to another host) when checking that key (#920)
+- `config`'s browser login takes an expired or refused link off the screen when it prints a new one, so only the live link can be opened; and a cloud that answers the login route with a web page is treated as one without browser login (paste a key) instead of an error (#920)
+- `config` saves the org a browser login was approved into even when the follow-up check of the new key can't reach the server, instead of leaving the saved org empty or stale; and its completion event reports whether the machine actually connected, not whether it set out to (#920)
+
 ## 1.0.12-beta.0 — 2026-10-22
+
+### Features
+
+- **Log in to FailproofAI Cloud from `config`.** On a machine that is not connected (or whose saved key is refused), the connect step now starts a browser login straight away; Tab opens the other options: paste an API key, or use open source. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal notices on its own and shows who approved it and for which org. The machine's key is created only when setup finishes, after the daemon is installed, so a run you abandon leaves no key behind. A machine that is already connected with a working key gets a menu with "keep" first, so re-running setup never opens a browser by itself. Needs a FailproofAI Cloud with browser login; an older one says so and pasting a key still works (#920)
+
+### Fixes
+
+- `config`'s cloud login prints what the server sends — org, approver, key name, errors, the link — without terminal control or bidi characters, keeps the server's poll interval and expiry to a sane range, checks a saved cloud address like a typed one, and names the key to revoke if one was created but could not be used (#920)
+- `config` asks for your sudo password again before installing the daemon, or refreshing its service definition, when the one given at the start expired while you were answering (5 minutes on macOS by default), instead of failing after everything else was done (#920)
 
 ### Dependencies
 

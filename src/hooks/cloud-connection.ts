@@ -141,6 +141,10 @@ export interface ConnectInput {
    */
   sessions?: boolean;
   environment?: string;
+  /** The org the key is already known to report into — a browser login's
+   *  claim names it. Used only when introspect gives no answer (unreachable
+   *  just then, or an older server), so the saved org is not left stale. */
+  org?: { id?: string; slug?: string; name?: string };
   /** Injected by tests so nothing reaches the network. */
   verifyPolicy?: typeof verifyCloudCredentials;
   verifyIngest?: typeof validateIngestKey;
@@ -162,7 +166,8 @@ export interface ConnectOutcome {
    * server has no introspect endpoint to say whether the key carries it.
    */
   jev?: JevConnectOutcome;
-  /** Which organisation the key belongs to. Absent on a pre-introspect server. */
+  /** Which organisation the key belongs to. Absent when neither introspect nor
+   *  the caller (`ConnectInput.org`) named one. */
   org?: { id?: string; slug?: string; name?: string };
   /** True when at least one capability was configured. */
   anyConfigured: boolean;
@@ -264,6 +269,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
   // CLI ships independently of whatever server a customer runs, so a good key
   // on an older deployment must still connect.
   const known = identity.kind === "ok" ? identity.identity : null;
+  const org = known ? { id: known.orgId, slug: known.orgSlug, name: known.orgName } : input.org;
 
   // Skip a probe the key provably cannot pass. This is not an optimisation: a
   // permission failure surfaces from `/events` as a 403 whose message reads
@@ -294,9 +300,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
       : { ok: false, reason: policyResult.reason },
     ingest: ingestResult.ok ? { ok: true } : { ok: false, reason: ingestResult.reason },
     anyConfigured: false,
-    org: known
-      ? { id: known.orgId, slug: known.orgSlug, name: known.orgName }
-      : undefined,
+    org,
   };
 
   outcome.anyConfigured = policyResult.ok || ingestResult.ok;
@@ -317,8 +321,8 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     prev.jev ? { token: prev.jev.key, url: prev.jev.url } : undefined,
   ].some((slot) => slot && (slot.token !== input.token || !sameOrigin(slot.url)));
   const orgSwitch = hadConnection && (
-    (prev.org?.id && known?.orgId && prev.org.id !== known.orgId) ||
-    ((!prev.org?.id || !known?.orgId) && keyChanged) ||
+    (prev.org?.id && org?.id && prev.org.id !== org.id) ||
+    ((!prev.org?.id || !org?.id) && keyChanged) ||
     (previousPolicy && !sameOrigin(previousPolicy.url)) ||
     (prev.ingest && !sameOrigin(prev.ingest.url))
   );
@@ -329,7 +333,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
   if (orgSwitch) {
     rmSync(backfillRequestPath(), { force: true });
     const oldOrg = prev.org?.name ?? prev.org?.slug ?? prev.org?.id ?? "the previous org";
-    const newOrg = known?.orgName ?? known?.orgSlug ?? known?.orgId ?? "the new org";
+    const newOrg = org?.name ?? org?.slug ?? org?.id ?? "the new org";
     changes.push(`Switched from ${oldOrg} to ${newOrg}. Nothing recorded before now will be sent to ${newOrg}; ${oldOrg}'s cloud policies stop within ~30 s.`);
     // Remove local references, not the daemon's policy-floor state (#899).
     clearActiveCloudManagedPolicies();
@@ -362,8 +366,8 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
     if (prev.jev) changes.push(`Removed the previous Jev key ${maskToken(prev.jev.key)}: this key's ${PERMISSION_JEV} permission was not verified.`);
   }
   const since = boundary === undefined ? {} : { since: boundary };
-  if (known) {
-    next.org = { id: known.orgId, slug: known.orgSlug, name: known.orgName, ...since };
+  if (org) {
+    next.org = { ...org, ...since };
   } else {
     const { since: _drop, ...kept } = orgSwitch ? {} : (prev.org ?? {});
     next.org = { ...kept, ...since };
@@ -373,7 +377,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
   // a flush served before the daemon sees the new key retries these batches
   // with the key that was refused, re-parking them as definitive refusals.
   if (ingestResult.ok && prev.ingest && prev.ingest.key !== input.token) {
-    recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === known?.orgId && sameOrigin(prev.ingest.url)), prev.org?.id);
+    recoverCredentialRefusals(Boolean(prev.org?.id && prev.org.id === org?.id && sameOrigin(prev.ingest.url)), prev.org?.id);
   }
   // Legacy JSON override remains supported; the consolidated file above is
   // published once, never as a mixture of previous and replacement slots.

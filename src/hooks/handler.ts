@@ -505,6 +505,8 @@ async function startTwoTier(
       permissionMode: session.permissionMode,
       sessionId: session.sessionId,
       cli,
+      // The profile the intent store is read under: the one capture used.
+      agent,
       ...(loaded.cloud ? { cloud: loaded.cloud } : {}),
       // Cloud's checks are still asked; the installed packs' are not.
       ...(activePause ? { localPaused: true } : {}),
@@ -571,6 +573,15 @@ function jevTelemetry(activity: JevActivityFields | undefined): Record<string, u
  * marks that tell a human's prompt from a subagent's or an extension's are
  * elsewhere in it. `prompt` is §7's original field, still read by the
  * contract stub; T4's implementation reads `payload` and ignores it.
+ *
+ * The prompt is stored under the agent profile (`agent`, the runtime identity
+ * Cloud's targeting matches on) and read back by `startTwoTier` under the same
+ * one, so a prompt typed into one profile is never another's stated intent.
+ * Under a Cloud mode, a profile the deployment assigns no Cloud Jev check to,
+ * with no installed pack's check to review it either, has nothing that will
+ * ever read the prompt (`startTwoTier` returns before Jev for it), so nothing
+ * is kept: FailproofAI does not hold prompt text from a profile the
+ * deployment did not target.
  */
 async function captureJevIntent(
   canonicalEventType: string,
@@ -579,13 +590,20 @@ async function captureJevIntent(
   session: SessionMetadata,
   cli: IntegrationType,
   opts: EvaluateHookEventOptions | undefined,
+  agent: AgentIdentity | null,
 ): Promise<void> {
   if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
   try {
     // Same gate as `startTwoTier`: a Cloud mode that asks needs what the human
     // typed whatever the installed packs declare.
-    if (!cloudJevAsks(readCloudJevMode()) && !jevChecksInstalled()) return;
-    if (!(await readJevConfig())) return;
+    const cloudAsks = cloudJevAsks(readCloudJevMode());
+    if (!cloudAsks && !jevChecksInstalled()) return;
+    // ...but not for a profile no Cloud Jev check targets and no installed
+    // pack's check reviews: `startTwoTier`'s own skip, without the pause
+    // (a pause can end while the session goes on). An older deployment with
+    // no assignment list (`null`) captures as before.
+    if (cloudAsks && cloudJevAssignmentsFor(agent)?.length === 0 && !packJevChecksInstalled()) return;
+    if (!(await readJevConfig(agent))) return;
     if (decision === "deny") {
       const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");
       if (ENFORCEMENT_CAPABILITY[cli]?.UserPromptSubmit === "block") return;
@@ -599,6 +617,7 @@ async function captureJevIntent(
       cli,
       payload: parsed,
       prompt: parsed.prompt,
+      profile: { cli, agent },
     };
     captureIntent(event);
   } catch (err) {
@@ -1180,7 +1199,7 @@ export async function evaluateHookEvent(
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
-    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts);
+    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts, runtimeAgent);
 
     // Which policies actually ran for this event, regardless of how they
     // decided. `result.policyName` names only the decider — null on a plain

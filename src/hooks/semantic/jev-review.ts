@@ -111,7 +111,16 @@ const throttle: JevThrottle = jevThrottle;
  * for a call.
  */
 interface IntentStore {
-  readIntent(sessionId?: string): { userSaid: string[]; agentLastMessage: string | null };
+  /**
+   * `profile` is required here, unlike in `intent.ts`: the hook path always
+   * reads under the agent profile the prompt was captured under, never the
+   * flat store, so one profile's prompt can never be another's intent.
+   */
+  readIntent(
+    sessionId: string | undefined,
+    now: number | undefined,
+    profile: intentStore.IntentProfile,
+  ): { userSaid: string[]; agentLastMessage: string | null };
 }
 const intentReader: IntentStore = intentStore;
 
@@ -168,6 +177,13 @@ export interface JevCallContext {
   permissionMode?: string;
   sessionId?: string;
   cli: string;
+  /**
+   * The runtime agent identity of the profile making the call (the handler's
+   * `readRuntimeAgentIdentity`; null when it has none). With `cli`, it names
+   * the intent store slot the human's prompts are read from, so they are the
+   * prompts typed into this profile and no other. Absent is read as null.
+   */
+  agent?: AgentIdentity | null;
   /**
    * Set when FailproofAI Cloud's Jev mode asks (CONTRACT C10.2): the call goes
    * to Cloud with this machine's id, and the deployment it was made under
@@ -467,7 +483,10 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
 
   let intent: ReturnType<IntentStore["readIntent"]>;
   try {
-    intent = intentReader.readIntent(call.sessionId);
+    intent = intentReader.readIntent(call.sessionId, undefined, {
+      cli: call.cli,
+      agent: call.agent !== undefined ? call.agent : (call.cloud?.agent ?? null),
+    });
   } catch {
     intent = { userSaid: [], agentLastMessage: null };
   }

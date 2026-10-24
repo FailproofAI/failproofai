@@ -20,6 +20,7 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 - `config` saves the org a browser login was approved into even when the follow-up check of the new key can't reach the server, instead of leaving the saved org empty or stale; and its completion event reports whether the machine actually connected, not whether it set out to (#920)
 - Preserve entire credential-refused batches after a later upload chunk fails; replay is bounded, cancellable, and does not stall fresh deliveries (#928).
 - Include Jev-only Cloud assignments in enforcement status only when their effective Cloud mode enforces, counting hybrid policies once (#928).
+- Keep Jev's record of what the human asked for with the agent profile it was typed into: prompts are stored and read per profile and session ID, so a prompt typed into a profile a Cloud Jev deployment does not target can no longer clear a reviewable `both` policy's deny for one it does when both use the same session ID; and under a Cloud Jev mode nothing is recorded for a profile no Cloud Jev check targets. Prompts recorded before this change are not read (#933)
 
 ### Dependencies
 

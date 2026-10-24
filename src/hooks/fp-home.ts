@@ -410,7 +410,7 @@ export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "c
 /** Per-session enforcement pauses, keyed by a hash of the session id. */
 export const sessionPauseDir = () => resolve(stateDir(), "sessions");
 /**
- * The semantic (Jev) evaluator's local state: `sessions/<id>.json` holds the
+ * The semantic (Jev) evaluator's local state: `sessions/<profile>/<id>.json` holds the
  * human prompts recorded at `UserPromptSubmit`, and `verdicts.jsonl` one row
  * per semantic evaluation. Written only when a Jev config (BYOK) is present.
  */

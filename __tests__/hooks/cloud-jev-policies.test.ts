@@ -544,7 +544,7 @@ describe("C10.2 gating: jevMode × Cloud Jev credential × decisions-only × BYO
       JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "clean the build folder", session_id: "s1", cwd: project }),
     );
     const { readIntent } = await import("@/src/hooks/semantic/intent");
-    expect(readIntent("s1").userSaid).toEqual(captured ? ["clean the build folder"] : []);
+    expect(readIntent("s1", undefined, { cli: "claude", agent: null }).userSaid).toEqual(captured ? ["clean the build folder"] : []);
   });
 });
 
@@ -2085,4 +2085,140 @@ describe("Cloud Jev assignments on the machine (jevPolicies)", () => {
     expect(row.jevMode).toBeUndefined();
     store._resetForTest();
   });
+});
+
+// ── Review of #933: Jev intent stays with the agent profile it was typed into ─
+
+describe("Cloud Jev intent is isolated to the targeted agent profile", () => {
+  const WORK = "agt_1234567890abcdef";
+  const PERSONAL = "agt_abcdef1234567890";
+  const SHARED_SESSION = "same-session-id";
+  const ASK = "yes, query the prod db";
+  const both: CloudJs = {
+    id: "no-prod-db", version: 3, hooks: ["block-prod-db"], authority: "reviewable", reviewedBy: ["acme-x"], verdict: "deny",
+    agentTargets: [{ integration: "claude", instanceId: WORK }],
+  };
+  let workPath: string;
+  let personalPath: string;
+
+  /** Two rostered profiles of one harness, as the daemon writes them. */
+  function roster(): void {
+    workPath = join(home, "profiles", "work", "settings.json");
+    personalPath = join(home, "profiles", "personal", "settings.json");
+    mkdirSync(join(home, "agents"), { recursive: true });
+    const rosterPath = join(home, "agents", "roster.json");
+    writeFileSync(rosterPath, JSON.stringify({
+      schemaVersion: 1, generation: 1,
+      agents: [
+        { instanceId: WORK, integration: "claude", settingsPath: workPath },
+        { instanceId: PERSONAL, integration: "claude", settingsPath: personalPath },
+      ],
+    }), { mode: 0o600 });
+    chmodSync(rosterPath, 0o600);
+  }
+
+  /** A deployment whose `both` policy and its Cloud Jev check target the work profile only. */
+  function deployTargeted(jevPolicies: unknown[] | null = [{ id: "no-prod-db", version: 3, effect: "enforce", agentTargets: [{ integration: "claude", instanceId: WORK }] }]): void {
+    deploy({ policies: [both], jevMode: "enforce", extra: { schemaVersion: 3, ...(jevPolicies ? { jevPolicies } : {}) } });
+  }
+
+  /** Cloud as it behaves: its own check is cleared exactly when the human asked for the action. */
+  const cloudHonoursIntent: Reply = (call) => {
+    const said = (call.body.cloud?.userSaid as string[] | undefined) ?? [];
+    const asked = said.some((s) => s.includes(ASK));
+    return { body: { model: "jev-1.13.0", answers: answerAll(call), cloud: cloudBlock([cloudOutcome("acme-x", "no-prod-db", asked ? "overridden" : "deny")]) } };
+  };
+
+  async function prompt(settingsPath: string, text = ASK) {
+    const { evaluateHookEvent } = await import("@/src/hooks/handler");
+    return evaluateHookEvent(
+      "UserPromptSubmit",
+      "claude",
+      JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: text, session_id: SHARED_SESSION, cwd: project }),
+      { agentSettingsPath: settingsPath },
+    );
+  }
+
+  async function prodDbCall(settingsPath: string) {
+    const { evaluateHookEvent } = await import("@/src/hooks/handler");
+    return evaluateHookEvent(
+      "PreToolUse",
+      "claude",
+      JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "psql -h prod-db -c 'select 1'" }, session_id: SHARED_SESSION, cwd: project }),
+      { agentSettingsPath: settingsPath },
+    );
+  }
+
+  const intentOf = async (instanceId: string) => {
+    const { readIntent } = await import("@/src/hooks/semantic/intent");
+    return readIntent(SHARED_SESSION, undefined, { cli: "claude", agent: { integration: "claude", instanceId } }).userSaid;
+  };
+
+  beforeEach(async () => {
+    await connect();
+    roster();
+  });
+
+  it("control: the targeted profile's own prompt clears its reviewable deny", async () => {
+    deployTargeted();
+    const seen = stubFetch(cloudHonoursIntent);
+    await prompt(workPath);
+    expect(await intentOf(WORK)).toEqual([ASK]);
+    const result = await prodDbCall(workPath);
+    expect(seen.at(-1)?.body.cloud?.userSaid).toEqual([ASK]);
+    expect(result.evaluation?.decision).toBe("allow");
+  }, 60_000);
+
+  it("a non-targeted profile's prompt under the same session id cannot clear the targeted profile's deny", async () => {
+    deployTargeted();
+    const seen = stubFetch(cloudHonoursIntent);
+    await prompt(personalPath);
+    // Not kept at all: nothing on this machine reviews the personal profile.
+    expect(await intentOf(PERSONAL)).toEqual([]);
+    expect(await intentOf(WORK)).toEqual([]);
+    const result = await prodDbCall(workPath);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].body.cloud?.userSaid).toEqual([]);
+    expect(result.evaluation?.decision).toBe("deny");
+    expect(result.evaluation?.policyName).toBe("cloud/no-prod-db@3/block-prod-db");
+  }, 60_000);
+
+  it("even where the other profile's prompt IS kept (an installed pack reviews it), it is never the targeted profile's intent", async () => {
+    installPacks([{ id: "acme/pack", semantic: [decl("acme-local")] }]);
+    deployTargeted();
+    const seen = stubFetch(cloudHonoursIntent);
+    await prompt(personalPath);
+    expect(await intentOf(PERSONAL)).toEqual([ASK]);
+    expect(await intentOf(WORK)).toEqual([]);
+    const result = await prodDbCall(workPath);
+    expect(seen.at(-1)?.body.cloud?.userSaid).toEqual([]);
+    expect(result.evaluation?.decision).toBe("deny");
+  }, 60_000);
+
+  it("a pre-upgrade (flat) entry for the session id is not read by the targeted profile", async () => {
+    deployTargeted();
+    const seen = stubFetch(cloudHonoursIntent);
+    const { captureIntent } = await import("@/src/hooks/semantic/intent");
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: SHARED_SESSION, cli: "claude", payload: { prompt: ASK } });
+    const result = await prodDbCall(workPath);
+    expect(seen.at(-1)?.body.cloud?.userSaid).toEqual([]);
+    expect(result.evaluation?.decision).toBe("deny");
+  }, 60_000);
+
+  it.each([
+    ["the targeted profile is captured", () => workPath, WORK, true],
+    ["a profile no Cloud Jev check targets is not", () => personalPath, PERSONAL, false],
+  ] as const)("capture gate: %s", async (_why, path, instanceId, captured) => {
+    deployTargeted();
+    stubFetch(cloudHonoursIntent);
+    await prompt(path());
+    expect(await intentOf(instanceId)).toEqual(captured ? [ASK] : []);
+  }, 60_000);
+
+  it("capture gate: an older deployment with no Jev assignment list captures for every profile, as before", async () => {
+    deployTargeted(null);
+    stubFetch(cloudHonoursIntent);
+    await prompt(personalPath);
+    expect(await intentOf(PERSONAL)).toEqual([ASK]);
+  }, 60_000);
 });

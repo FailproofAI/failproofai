@@ -31,6 +31,7 @@ from .errors import (
     ApiError,
     AuthError,
     ForbiddenError,
+    FpCliError,
     KeyModeUnsupportedError,
     NetworkError,
     NotFoundError,
@@ -134,6 +135,14 @@ _V1_MECHANICAL_FAMILIES = frozenset(
         "alerts",
         "audits",
         "evaluations",
+        "evaluator-definitions",
+        "evaluator-instances",
+        "evaluator-schema-profile",
+        "evaluation-jobs",
+        "dashboards",
+        "otel",
+        "offers",
+        "team-trial",
         "events",
         "issues",
         "keys",
@@ -173,6 +182,8 @@ _V1_NO_EQUIVALENT = {
         "cloud-managed policies are an operator surface — the fleet routes are "
         "deliberately absent from /v1, which is internet-facing"
     ),
+    "integrations": "dashboard integration routes need a signed-in session",
+    "orgs": "organization creation needs a signed-in user",
 }
 
 
@@ -375,6 +386,40 @@ def _required_permission(response: httpx.Response) -> Optional[str]:
     return None
 
 
+def _unknown_route_response(response: httpx.Response) -> Optional[bool]:
+    """Use explicit 404 details first; an empty/generic reply is ambiguous."""
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code") or data.get("error_code") or data.get("error") or ""
+    if isinstance(code, dict):
+        code = code.get("code", "")
+    code = str(code).lower()
+    if code in ("unknown_route", "route_not_found", "unknown_endpoint", "endpoint_not_found"):
+        return True
+    if code in ("record_not_found", "resource_not_found", "entity_not_found", "session_not_found", "query_not_found"):
+        return False
+    message = _extract_error(response)
+    if not message:
+        return None
+    lower = message.lower().strip().rstrip(".")
+    if re.search(
+        r"\b(?:unknown|unrecognized|unsupported|missing|no such)\s+(?:api\s+)?(?:route|endpoint)\b"
+        r"|\b(?:route|endpoint)\b.*\b(?:not found|not available|does not exist|absent|unknown)\b"
+        r"|\bcannot (?:get|post|put|patch|delete)\s+/",
+        lower,
+    ):
+        return True
+    if lower in ("not found", "not_found", "404", "404 not found"):
+        return None
+    # A specific response ("session not found", "offer expired", etc.) came
+    # from a handler, rather than the router. Do not replace its useful detail.
+    return False
+
+
 def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
     key_mode = ctx.auth_mode is AuthMode.API_KEY
     if response.status_code < 400:
@@ -474,7 +519,9 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     request_id=request_id,
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
-        raise NotFoundError(message or "Not found.", request_id=request_id)
+        error = NotFoundError(message or "Not found.", request_id=request_id)
+        error.route_unknown = _unknown_route_response(response)
+        raise error
     if response.status_code == 429:
         retry_after = response.headers.get("retry-after")
         wait = f" Retry after {retry_after}s." if retry_after else " Please wait a moment and try again."
@@ -604,6 +651,94 @@ def _patch_json(ctx: ClientContext, path: str, json_body: Any = None) -> Any:
 
 def _delete(ctx: ClientContext, path: str) -> Any:
     return _request_json(ctx, "DELETE", path)
+
+
+def cloud_request(
+    ctx: ClientContext, method: str, path: str, *,
+    body: Any = None, params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """New Cloud capabilities, with a predictable older-deployment failure.
+
+    Existing callers retain their response and error contracts. Paths still pass
+    through the credential and identifier guards; this is not a second transport.
+    """
+    try:
+        if method == "GET":
+            return _get_json(ctx, path, params)
+        return _request_json(ctx, method, path, json_body=body, params=params)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise _cloud_not_found(exc, path, body=body, params=params) from exc
+
+
+def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> NotFoundError:
+    """Classify ambiguous 404s from the request; never claim a record is a route.
+
+    Top-level collections and named capability endpoints have no record segment.
+    Scoped collections (/dashboards/ID/tiles) and actions on records default to a
+    missing record unless the response explicitly says the route is unknown.
+    """
+    route_unknown = getattr(exc, "route_unknown", None)
+    if isinstance(exc, ApiError):
+        # The transport only raises HTTP 404 ApiError for an HTML front door.
+        route_unknown = True
+    if route_unknown is None:
+        segments = path.removeprefix("/api/").split("/")
+        family = segments[0]
+        capability = len(segments) == 1 or (
+            family == "agent" and len(segments) == 2
+            or family == "otel" and segments == ["otel", "status"]
+            or family == "offers" and segments[1:] in (["me"], ["claim"])
+            or family == "team-trial" and segments == ["team-trial", "me"]
+            or family == "integrations" and segments == ["integrations", "slack"]
+            or family == "events" and segments in (
+                ["events", "summary"], ["events", "latency_aggregate"],
+                ["events", "sentiment"], ["events", "sentiment", "messages"],
+                ["events", "sentiment", "sessions"],
+            )
+            or family == "evaluator-definitions" and segments == ["evaluator-definitions", "dry-run"]
+            or family == "evaluations" and segments == ["evaluations", "backfill"]
+            or family == "queries" and segments[1:] in (["run"], ["schema"])
+            or family == "audits" and segments == ["audits", "contracts"]
+            or family == "alerts" and segments == ["alerts", "recipients"]
+            or family == "users" and segments == ["users", "defaults"]
+            or family == "usage" and segments == ["usage", "windows"]
+            or family == "settings" and segments == ["settings", "model-context-windows"]
+            or family == "settings" and len(segments) == 2
+        )
+        # Some collection operations name their target in a query or body.
+        request_body = body if isinstance(body, dict) else {}
+        record_selected = (
+            (params or {}).get("session_id") or (params or {}).get("model")
+            or request_body.get("query_id") or request_body.get("callId")
+            or request_body.get("session_ids") or request_body.get("offer_key")
+            or request_body.get("conversationId")
+        )
+        route_unknown = capability and not record_selected
+    if route_unknown:
+        return NotFoundError(
+            "not available on this FailproofAI Cloud yet",
+            hint="upgrade your Cloud deployment to use this route",
+            request_id=exc.request_id,
+        )
+    message = exc.message
+    if message.lower().strip().rstrip(".") in (
+        "not found", "not_found", "record_not_found", "resource_not_found",
+        "entity_not_found", "session_not_found", "query_not_found",
+    ):
+        message = f"Record not found at {path}"
+    return NotFoundError(message, request_id=exc.request_id)
+
+
+def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+    """Dashboard SSE with the same additive-capability 404 contract."""
+    try:
+        yield from _stream_sse(ctx, path, body)
+    except (NotFoundError, ApiError) as exc:
+        if isinstance(exc, ApiError) and exc.status != 404:
+            raise
+        raise _cloud_not_found(exc, path, body=body) from exc
 
 
 # --- Auth / identity --------------------------------------------------------
@@ -1532,6 +1667,8 @@ def agent_chat_oneshot(
     conversation_id: Optional[str] = None,
     page_context: Optional[str] = None,
     model: Optional[str] = None,
+    on_ask_user: Optional[Callable[[Dict[str, Any]], None]] = None,
+    on_artifact: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """POST /api/agent/chat — accumulate the streamed answer.
 
@@ -1551,20 +1688,32 @@ def agent_chat_oneshot(
         body["pageContext"] = page_context
     if model:
         body["model"] = model
+    if on_artifact:
+        body["pageActions"] = [{"action": "open_artifact"}, {"action": "home"}]
     parts: List[str] = []
     tools: List[str] = []
     interrupted = False
     error: Optional[str] = None
-    for ev in _stream_sse(ctx, "/api/agent/chat", body):
+    for ev in cloud_stream(ctx, "/api/agent/chat", body):
         kind = ev.get("type")
         if kind == "text-delta":
             parts.append(str(ev.get("text", "")))
         elif kind == "tool-start":
             tools.append(str(ev.get("tool", "")))
         elif kind == "ask-user":
+            if on_ask_user and ev.get("callId"):
+                on_ask_user(ev)
+                continue
             interrupted = True
             error = str(ev.get("question") or "the assistant needs interactive input")
             break
+        elif kind == "ui-action" and on_artifact:
+            if ev.get("action") == "open_artifact" and isinstance(ev.get("artifact"), dict):
+                on_artifact(ev["artifact"])
+            elif ev.get("action") == "home" and isinstance(ev.get("home"), dict):
+                for block in ev["home"].get("blocks", []):
+                    if isinstance(block, dict):
+                        on_artifact(block)
         elif kind == "error":
             error = str(ev.get("message", "assistant error"))
         elif kind == "done":

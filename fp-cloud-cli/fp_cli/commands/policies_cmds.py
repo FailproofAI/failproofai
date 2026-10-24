@@ -22,7 +22,7 @@ from .. import _click_compat as click  # the Click Typer is running; see _click_
 from ..enforcement import RefError, RefUsageError, parse_semantic, read_source, resolve_kind
 from ..policy_check import SyntaxResult, check_syntax, run_policy
 from ..errors import ApiError, NotFoundError
-from . import _write
+from . import _cloud, _write
 
 #: Every command here is session-only. These endpoints are ROOT-ONLY on the
 #: server — deliberately absent from `/v1`, because `/v1` is internet-facing and
@@ -565,4 +565,49 @@ def register(app: typer.Typer) -> None:
     policies_app.command("delete", epilog=GLOBALS_EPILOG)(policies_delete)
     policies_app.command("test", epilog=GLOBALS_EPILOG)(policies_test)
     policies_app.command("compose", epilog=GLOBALS_EPILOG)(policies_compose)
+    policies_app.command("author", epilog=GLOBALS_EPILOG)(policies_author)
+    policies_app.command("backtest", epilog=GLOBALS_EPILOG)(policies_backtest)
+    policies_app.command("candidacy", epilog=GLOBALS_EPILOG)(policies_candidacy)
     app.add_typer(policies_app, name="policies")
+
+
+def policies_author(ctx: typer.Context, intent: str = typer.Argument(...)) -> None:
+    """Author a vetted policy from an intent (session; does not publish)."""
+    _cloud.session_only(ctx.obj, "policies author")
+    events = list(api.cloud_stream(require_auth(ctx.obj), "/api/agent/policy-author",
+        {"issue": {"title": intent, "source": "manual"}}))
+    for event in events:
+        if event.get("type") == "error":
+            raise ApiError(str(event.get("message") or event.get("error") or event.get("reason") or "Policy author failed"))
+    result = next((e.get("result", e) for e in reversed(events) if e.get("type") in ("result", "done")), None)
+    if result is None:
+        raise ApiError("Policy author returned no result; nothing was published")
+    _cloud.emit(ctx.obj, result, "Policy draft")
+
+
+def policies_backtest(ctx: typer.Context, file_or_id: str = typer.Argument(..., metavar="FILE_OR_ID")) -> None:
+    """Replay local or published policy source against stored events (session)."""
+    from pathlib import Path
+    _cloud.session_only(ctx.obj, "policies backtest")
+    cctx = require_auth(ctx.obj)
+    if file_or_id == "-" or file_or_id.startswith("@") or Path(file_or_id).is_file():
+        source = _write.read_text_arg(file_or_id.removeprefix("@"))
+    else:
+        data = api.cloud_request(cctx, "GET", "/api/enforcement/policies")
+        versions = [p for p in _cloud.rows(data, "policies") if p.get("id") == file_or_id]
+        if not versions:
+            raise NotFoundError(f"no policy named {file_or_id}")
+        source = max(versions, key=lambda p: p.get("version", 0)).get("source", "")
+    if not isinstance(source, str) or not source.strip():
+        raise click.UsageError("Policy source is empty")
+    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest",
+        body={"source": source}), "Policy backtest")
+
+
+def policies_candidacy(ctx: typer.Context, issue: str = typer.Option(..., "--issue")) -> None:
+    """Ask whether a policy could address an issue (session; read-only)."""
+    _cloud.session_only(ctx.obj, "policies candidacy")
+    cctx = require_auth(ctx.obj)
+    row = api.cloud_request(cctx, "GET", f"/api/issues/{issue}")
+    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-candidacy",
+        body={"issue": row}), "Policy candidacy")

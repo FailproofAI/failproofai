@@ -1,5 +1,27 @@
 # Changelog — `fp` CLI
 
+## 0.0.2b1 — 2026-10-13
+
+### Added
+
+- Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and code-only backfill.
+- Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.
+- Policy author/backtest/candidacy, assistant artifact tables, fail-closed interactive write approvals, and agent-curated home briefs.
+- Organization creation, permission-set roles, member deletion/defaults, usage windows, offers/trial, model context windows, OTEL and Slack controls.
+
+### Changed
+
+- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and unknown-route 404s exit 6 with an availability message.
+- Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
+- The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
+
+### Fixes
+
+- Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
+- Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).
+- New Cloud commands use deliberate human summaries/tables and actionable empty states at 80/140 columns without raw response blobs. Evaluator previews display before writes and require explicit `--force` after failures; plan/claim deny key mode, deploy specs can omit the positional key, and older settings-route 404s degrade clearly. Existing JSON payloads stay unchanged (#885).
+- `fp evaluators deploy` keeps the previous version's condition and labels unless `--condition`/`--label` change them, so a new version no longer silently widens to every session (#885).
+
 ## 0.0.2b0 — 2026-09-22
 
 ### Added

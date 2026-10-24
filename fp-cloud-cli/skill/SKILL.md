@@ -9,7 +9,9 @@ description: |-
 
   Served by the `fp` CLI against FailproofAI Cloud.
 
-  NOT for writing or designing an evaluator service / scoring logic (that's `agenteye-evaluator`), adding SDK/instrumentation to your app (that's `failproofai-sdk`, imported as `failproofai_sdk`), debugging the collector/daemon, or unrelated dev work (why a build/CI run failed, rotating non-FailproofAI Cloud secrets).
+  Also use for authoring, testing and deploying hosted code, LLM-judge or Jev evaluators with fp evaluators, and inspecting dashboards, sentiment and OTEL status.
+
+  NOT for self-hosted evaluator services, SDK instrumentation, collector/daemon debugging, or unrelated dev work.
 ---
 
 # FailproofAI Cloud CLI
@@ -77,7 +79,7 @@ Throughout this skill, `fp` means "whichever form you resolved."
   a saved session (Click treats an empty env var as unset, so it falls to rung 4).
 
 - **Some commands need a signed-in user.** `login`, `logout`, `orgs *`, the whole
-  `agent` group, `keys update`, and all of `policies *` / `fleet *` /
+  `agent` group, `evaluators draft`, `query compose`, `slack *`, `plan`, `plan claim`, `keys update`, and all of `policies *` / `fleet *` /
   `guardrails *` refuse a key with a usage error (**exit 2**) and make **no
   network call at all** — there is no user to sign in, no saved active org to
   switch, no private assistant thread to own, and the enforcement write routes
@@ -86,8 +88,7 @@ Throughout this skill, `fp` means "whichever form you resolved."
   is refused up front like the rest. The key is not the problem to fix — plan
   around them rather than retrying or hunting for a flag.
 - **Default to `--json` and parse it.** It prints clean JSON to stdout and
-  nothing else. The plain output is a boxed Rich UI meant for human eyes — it
-  burns context with box-drawing characters and is awkward to parse. Use the
+  nothing else. The plain output uses open Rich tables for human eyes. Use the
   rendered output only when the user explicitly wants to *look* at something.
 - **Data → stdout, status/errors/prompts → stderr.** So a `--json` stdout
   capture is pure JSON even when a status line is shown.
@@ -101,7 +102,7 @@ Throughout this skill, `fp` means "whichever form you resolved."
   | 3 | can't reach the dashboard | check base-url / connectivity |
   | 4 | no usable credential — not signed in, session expired, **or the API key was rejected** | session: user must run `fp login`. Key: it's missing, mistyped, disabled, or belongs to another deployment — don't retry, and don't fall back to a session |
   | 5 | authenticated but missing permission | message names the exact permission |
-  | 6 | resource not found | the named resource doesn't exist |
+  | 6 | resource not found / newer capability unavailable | check the id or Cloud version; do not retry blindly |
 
 ## 3. First call: confirm you're connected
 
@@ -315,3 +316,76 @@ Two things about the flow matter when driving it from the CLI:
 Typical end-to-end: `audits list` → `audits run <name>` → poll `audits runs <name>`
 → `audits findings --audit <name>` (highest priority first) → `audits finding <id>`
 for the full write-up → **confirm with the user** → `audits resolve <id>`.
+
+## Author an evaluator
+
+Use `fp evaluators` for hosted authoring; `fp evals` remains the results reader.
+Read [the evaluator command reference](references/commands.md#author-an-evaluator)
+for the full flags and API spec shape. Creation enables a definition by default;
+confirm the key, version, kind and budget before creating/deploying on a live org.
+
+Discover with `fp --json evaluators instances` and `fp --json evaluators schema`.
+The instance must be enabled. Authoring needs `evaluations:trigger`; session
+dry-runs and schema profiling also need `events:read`.
+
+Code workflow (write `error_free.py` as a single restricted Python expression,
+not a module with imports or a function):
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators draft "Measure the absence of error events with code" --kind code --out error-free.json
+fp --json evaluators create --file error-free.json --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+fp --json evals --since 24h
+```
+
+Review the draft before creating. It may choose a different `eval_key`: read
+the file and use its key later; the filename does not determine the key.
+
+Judge workflow (server selects the model; judge dry-runs are refused):
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge \
+  --criteria "Grade how directly the response answers the request" \
+  --step "Assess relevance and specificity on a continuous scale" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge \
+  --criteria "Grade relevance, accuracy and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Jev workflow (dry-runs spend model budget):
+
+```bash
+fp --json evaluators create --key resolution --name Resolution --jev noul \
+  --instructions "Did the assistant resolve the request?" \
+  --true "Resolved with supporting evidence" --false "Unresolved" --threshold 0.8
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" \
+  --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolution --version 2 --jev noul \
+  --instructions "Was the request resolved without unsupported claims?" \
+  --true "Resolved with evidence" --false "Unresolved or unsupported"
+fp --json evaluators show resolution@2
+```
+
+Use `--jev score` with 3–5 distinct `--level` values, ordered worst to best, for
+a rubric. `deploy` creates the new immutable version **before** disabling older
+enabled versions. A partial failure names the new id: inspect `list --all`,
+then disable any remaining old version; do not retry creation blindly.
+Backfill excludes judge/Jev and accepts at most 90 days.
+
+Human mode displays dry-run outcomes before creation/deployment. Failed runs
+stop the write unless `--force` is explicitly authorized; do not add it merely
+to get past a failed check. Plan offers and claims require `fp login`, not a key.
+
+AI drafting needs a signed-in session (`fp login`); evaluator API operations can
+use a scoped key. Unknown-route 404s exit 6 with “not available on this
+FailproofAI Cloud yet”; missing-record 404s report that the record was not found
+(also exit 6). An assistant approval is different from ordinary
+mutation confirmation: `agent ask` declines writes in scripts/`--json` unless
+`--approve` was explicitly authorized by the user.

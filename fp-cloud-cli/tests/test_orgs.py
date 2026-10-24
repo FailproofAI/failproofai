@@ -393,7 +393,7 @@ def test_orgs_perms_table(logged_in, runner):
     # identity header (name · slug · role) + the shared grouped permissions panel, with the
     # org NAME in the panel's border title.
     assert "Globex" in result.stdout and "globex" in result.stdout and "role admin" in result.stdout
-    assert "permissions · 2 · Globex" in result.stdout
+    assert "PERMISSIONS · 2 · Globex" in result.stdout
     assert "events" in result.stdout and "keys" in result.stdout
 
 

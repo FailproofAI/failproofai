@@ -10,7 +10,7 @@ on:
   # it produced was the daemon cross-compile, and only because it touched
   # `crates/`. A PR that cannot go red is not a reviewed PR.
   pull_request:
-    branches: [main, feat/fp-cli, feat/tui-ux]
+    branches: [main, staging, feat/fp-cli, feat/tui-ux]
 
 concurrency:
   group: ci-${{ github.ref }}

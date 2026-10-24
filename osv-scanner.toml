@@ -110,31 +110,6 @@ ignoreUntil = 2026-11-20
 reason = "nltk 3.10.3 (surfaced 2026-09-03, CVSS 8.3). No fixed version. Transitive via llama-index-core, dev/test lockfile only; the SDK ships zero runtime dependencies. Re-review by 2026-11-20."
 
 # ---------------------------------------------------------------------------
-# filelock 4.1.0 is the Python 3.10 slice of sdk/python/uv.lock. The fixed
-# 4.2.1 release does not support Python 3.10; uv resolves 4.2.4 for Python
-# 3.11 and newer. The SDK's runtime dependencies are empty, and filelock is
-# only transitive through the dev/test extras in this lockfile.
-#
-# Ignore only the three known advisories for this unfixable slice; a new
-# advisory still fails the scan. Remove these when Python 3.10 support ends.
-# ---------------------------------------------------------------------------
-
-[[IgnoredVulns]]
-id = "GHSA-567q-5qvw-pf92"
-ignoreUntil = 2026-11-20
-reason = "filelock 4.1.0 is the Python 3.10 dev/test lock slice; fixed 4.2.1 requires Python 3.11. Python 3.11+ uses 4.2.4, and the SDK has no runtime dependencies. Re-review by 2026-11-20."
-
-[[IgnoredVulns]]
-id = "GHSA-9vhv-jxww-xfm5"
-ignoreUntil = 2026-11-20
-reason = "filelock 4.1.0 is the Python 3.10 dev/test lock slice; fixed 4.2.1 requires Python 3.11. Python 3.11+ uses 4.2.4, and the SDK has no runtime dependencies. Re-review by 2026-11-20."
-
-[[IgnoredVulns]]
-id = "GHSA-v4x8-3wr5-3wq8"
-ignoreUntil = 2026-11-20
-reason = "filelock 4.1.0 is the Python 3.10 dev/test lock slice; fixed 4.2.1 requires Python 3.11. Python 3.11+ uses 4.2.4, and the SDK has no runtime dependencies. Re-review by 2026-11-20."
-
-# ---------------------------------------------------------------------------
 # pillow 12.3.0 — the Python 3.10 slice of sdk/python/uv.lock. A package
 # override rather than an id list, because this is the case SECURITY.md keeps
 # one for.
@@ -162,3 +137,20 @@ ecosystem = "PyPI"
 vulnerability.ignore = true
 effectiveUntil = 2026-11-20
 reason = "pillow 12.3.0 is only the Python 3.10 slice of sdk/python/uv.lock: every fix is in 13.0.0, which requires Python >= 3.11 and is what 3.11+ resolves. Transitive via crewai and llama-index-core, dev/test lockfile only. Re-review by 2026-11-20."
+
+# ---------------------------------------------------------------------------
+# filelock 4.1.0 is another Python 3.10-only dev/test lockfile slice. Its
+# fixed 4.2.1 release requires Python >= 3.11, while uv resolves 4.2.4 for
+# Python 3.11+. Six advisories affect 4.1.0 and none has a 3.10-compatible
+# fix. It is transitive via huggingface-hub; the SDK has no runtime deps.
+# Pin this override to 4.1.0 so newer versions and a changed 3.10 slice
+# remain scanned. Remove it when Python 3.10 support ends.
+# ---------------------------------------------------------------------------
+
+[[PackageOverrides]]
+name = "filelock"
+version = "4.1.0"
+ecosystem = "PyPI"
+vulnerability.ignore = true
+effectiveUntil = 2026-11-20
+reason = "filelock 4.1.0 is only the Python 3.10 slice of the SDK dev/test lockfile. All six current fixes require 4.2.1 and Python >= 3.11; newer Python uses 4.2.4. The SDK has no runtime dependencies. Re-review by 2026-11-20."

@@ -1,31 +1,18 @@
 # Changelog — `fp` CLI
 
-## 0.0.2b1 — 2026-10-13
-
-### Added
-
-- Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and code-only backfill.
-- Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.
-- Policy author/backtest/candidacy, assistant artifact tables, fail-closed interactive write approvals, and agent-curated home briefs.
-- Organization creation, permission-set roles, member deletion/defaults, usage windows, offers/trial, model context windows, OTEL and Slack controls.
-
-### Changed
-
-- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and unknown-route 404s exit 6 with an availability message.
-- Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
-- The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
-
-### Fixes
-
-- Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
-- Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).
-- New Cloud commands use deliberate human summaries/tables and actionable empty states at 80/140 columns without raw response blobs. Evaluator previews display before writes and require explicit `--force` after failures; plan/claim deny key mode, deploy specs can omit the positional key, and older settings-route 404s degrade clearly. Existing JSON payloads stay unchanged (#885).
-- `fp evaluators deploy` keeps the previous version's condition and labels unless `--condition`/`--label` change them, so a new version no longer silently widens to every session (#885).
-
 ## 0.0.2b0 — 2026-09-22
 
 ### Added
 
+- Hosted evaluator authoring for code, LLM judge and Jev: create/deploy, AI draft specs, dry-run, labels, toggles, instances, schema, jobs and backfill.
+- Dashboards and tiles; session overview/export/history/re-evaluate; latency and sentiment; query composition/export; alert recipients/issues and agent contracts.
+- Policy author/backtest/candidacy, assistant artifact tables, fail-closed interactive write approvals, and agent-curated home briefs.
+- Organization creation, permission-set roles, member deletion/defaults, usage windows, offers/trial, model context windows, OTEL and Slack controls.
+- `fp policies backtest` covers every policy kind: a published `jev`/`both` policy, or `--semantic checks.json` (with or without a source file), runs the dashboard's every-kind backtest — a free estimate by default, `--run [--sample N]` to spend Jev allowance. New `--kind --semantic --hours --agent-id --env --run --sample`; a regex file or id still uses the module backtest.
+- `fp policies author --kind regex|jev|both` asks the assistant for Jev checks or a hybrid policy.
+- `fp issues list|count` take the inbox filters (`--agent-id --env --machine --source --audit-id --assignee --archived --search --since`, and `count --alert-id`); new `fp issues facets` lists the values they can take.
+- `fp sessions import FILE...` imports Claude Code transcripts, Codex rollouts or event JSONL (`--format --env --dry-run`), as the dashboard's import dialog does.
+- `fp list trigger_events`, `fp list eval_envs` and `fp list metric_keys`.
 - `fp fleet deploy --target POLICY=INTEGRATION[/agt_ID]` scopes a machine's assignment; repeat the flag to include multiple alternatives. `--all-agents POLICY` explicitly clears its scope. Deploy plans, show, history, rollback and JSON readback retain assignment targets.
 - `fp policies publish <id> --kind regex|jev|both [--source f.mjs] [--semantic f.json]`: a
   FailproofAI Cloud policy can carry Jev checks — `jev` (declarations only, no JavaScript) or
@@ -63,6 +50,9 @@
 
 ### Changed
 
+- New Cloud API families work in key mode; unsupported session-only commands deny before HTTP and unknown-route 404s exit 6 with an availability message.
+- Shared screens use the mint/pink wordmark and grey labels, without boxes/rules or shortened ids; existing JSON contracts are unchanged.
+- The agent skill, command reference, README and Cloud CLI docs include end-to-end evaluator workflows. No version bump or release is performed.
 - `fp policies publish`'s refusal of Jev fields in the JavaScript now says where Jev checks go:
   the policy's own declarations, `--kind both --semantic checks.json`.
 - `fp guardrails summary` shows how many machines run Jev in each mode, reading the summary's
@@ -78,6 +68,13 @@
 
 ### Fixed
 
+- Remove the unused colour-keyed permission rank, document full-id rendering, emit UTC `Z` timestamps for deploy backfills, and report approval-answer failures without a traceback while restoring the terminal (#885).
+- Reject natural-language binary judge steps, distinguish unknown routes from missing records on 404, normalize standalone backfill ranges to UTC `Z`, expose all subcommands in help, and render artifact headers before titles with consistent session-only wording (#885).
+- New Cloud commands use deliberate human summaries/tables and actionable empty states at 80/140 columns without raw response blobs. Evaluator previews display before writes and require explicit `--force` after failures; plan/claim deny key mode, deploy specs can omit the positional key, and older settings-route 404s degrade clearly. Existing JSON payloads stay unchanged (#885).
+- `fp evaluators deploy` keeps the previous version's condition and labels unless `--condition`/`--label` change them, so a new version no longer silently widens to every session (#885).
+- Evaluation backfill covers code, LLM judge and Jev evaluators, as FailproofAI Cloud now does: `fp evaluators deploy --backfill` no longer refuses judge/Jev, and both commands warn that judge/Jev backfills spend model budget instead of saying they are skipped.
+- `fp usage windows` says it needs an API key (the dashboard has no session route for it) instead of reporting the route as unavailable.
+- `fp issues close --help` no longer claims exit 9 for an issue that already ended: it is exit 1, as it always was, and it names `fp audits dismiss` rather than a command that does not exist.
 - `fp fleet history` keeps `gen`, `when` and `jev` visible at 80 columns (rollback needs `gen`): the policy list is shortened, then dropped, and `change` wraps first.
 - `fp fleet show` and `fp fleet history` name an exact-profile target by the profile label the machine reports (`claude/.claude-work`, with the `agt_…` id kept in `show`), falling back to the bare id.
 

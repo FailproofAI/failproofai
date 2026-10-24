@@ -263,8 +263,18 @@ def test_backfill(logged_in, runner, frm, to, ok):
         result = runner.invoke(app, ["--json", "--api-key", "key", "evaluators", "backfill", "--from", frm, "--to", to, "--dry-run"])
     assert result.exit_code == (0 if ok else 2), result.output
     if ok:
-        assert "excludes judge/Jev" in result.stderr
+        assert "excludes judge/Jev" not in result.stderr
         assert json.loads(route.calls[0].request.content)["dry_run"] is True
+
+
+def test_backfill_warns_about_model_budget_without_dry_run(logged_in, runner):
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(f"{BASE}/v1/evaluations/backfill").respond(200, json={"enqueued": 3})
+        result = runner.invoke(app, ["--json", "--api-key", "key", "evaluators", "backfill",
+            "--from", "2026-10-01T00:00:00Z", "--to", "2026-10-08T00:00:00Z", "--key", "resolved"])
+    assert result.exit_code == 0, result.output
+    assert "model budget" in result.stderr
+    assert json.loads(route.calls[0].request.content)["eval_key"] == "resolved"
 
 
 @pytest.mark.parametrize("command", ["list", "instances", "schema", "jobs"])

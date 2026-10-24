@@ -578,7 +578,7 @@ _TOP_LEVEL_GROUPS = [
     ]),
     ("OBSERVE", [
         ("events", "List the raw per-step agent event trail.", "latency"),
-        ("sessions", "List agent runs — one row per run.", "show export history re-evaluate"),
+        ("sessions", "List agent runs — one row per run.", "show export history re-evaluate import"),
         ("evals", "List scored agent evaluations.", "--aggregate"),
         ("evaluators", "Author, test and deploy managed evaluators.", "list show create deploy draft dry-run enable disable label instances schema jobs backfill"),
         ("sentiment", "Inspect conversation sentiment.", "summary messages sessions session"),
@@ -603,7 +603,7 @@ _TOP_LEVEL_GROUPS = [
         # is one level down, in `fp audits --help`, which walks the real
         # Click tree.
         ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings finding ack mute dismiss resolve reopen assign context-* contracts"),
-        ("issues", "Triage and resolve issues.", "list count show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
+        ("issues", "Triage and resolve issues.", "list count facets show ack assign resolve close archive unarchive clear comment-* subscribe subscribers unsubscribe open"),
         ("settings", "View and change org settings.", "list schema set context-windows"),
         ("roles", "Manage permission sets.", "list show create update delete"),
         ("plan", "Inspect offers and team trial.", "claim"),
@@ -611,7 +611,7 @@ _TOP_LEVEL_GROUPS = [
         ("slack", "Manage Slack integration.", "status disconnect"),
     ]),
     ("TOOLS", [
-        ("list", "List distinct values behind the filter dropdowns.", "envs agents event_types score_filters models hooks tools error_types"),
+        ("list", "List distinct values behind the filter dropdowns.", "envs agents event_types score_filters models hooks tools error_types trigger_events eval_envs metric_keys"),
         ("agent", "Chat with the FailproofAI Cloud assistant.", "health models chats ask show rename delete brief"),
     ]),
 ]

@@ -142,7 +142,7 @@ def deploy(
     level: Optional[List[str]] = typer.Option(None, "--level"),
     file: Optional[str] = typer.Option(None, "--file"),
     dry_run_on: Optional[List[str]] = typer.Option(None, "--dry-run-on"),
-    backfill: Optional[str] = typer.Option(None, "--backfill", help="Code only; e.g. 7d (up to 90d)."),
+    backfill: Optional[str] = typer.Option(None, "--backfill", help="Score stored sessions too, e.g. 7d (up to 90d). Judge/Jev backfills spend model budget."),
     force: bool = typer.Option(False, "--force", help="Deploy despite failed --dry-run-on results (review the failures first)."),
 ) -> None:
     """Publish a NEW immutable version, then disable enabled predecessors.
@@ -165,8 +165,6 @@ def deploy(
         spec.dry_run_body(body, dry_run_on)
     backfill_body = None
     if backfill:
-        if spec.source_kind(body) != "code":
-            spec.fail("--backfill excludes judge/Jev evaluators; use code only")
         if not re.fullmatch(r"[1-9][0-9]*d", backfill) or int(backfill[:-1]) > 90:
             spec.fail("--backfill must be a duration in days from 1d to 90d")
         now = datetime.now(timezone.utc)
@@ -176,6 +174,8 @@ def deploy(
             "eval_key": key,
             "dry_run": False,
         }
+        if spec.source_kind(body) != "code":
+            output.warn("Backfilling a judge/Jev evaluator spends the org's model budget.")
     cctx = require_auth(ctx.obj)
     existing = [r for r in definitions(cctx) if r.get("eval_key") == key]
     if "eval_version" not in body:
@@ -346,7 +346,12 @@ def jobs(ctx: typer.Context) -> None:
 def backfill(ctx: typer.Context, frm: str = typer.Option(..., "--from"),
              to: str = typer.Option(..., "--to"), key: Optional[str] = typer.Option(None, "--key"),
              dry_run: bool = typer.Option(False, "--dry-run")) -> None:
-    """Backfill at most 90 days. Judge/Jev evaluators are excluded by Cloud."""
+    """Score stored sessions an evaluator has not scored yet (at most 90 days).
+
+    Covers code, LLM judge and Jev evaluators (every enabled one, or only --key).
+    Only missing (session, evaluator) pairs are queued; --dry-run counts them.
+    Needs evaluations:trigger.
+    """
     try:
         frm = dates._validate_iso(frm, "--from")
         to = dates._validate_iso(to, "--to")
@@ -356,7 +361,8 @@ def backfill(ctx: typer.Context, frm: str = typer.Option(..., "--from"),
         spec.fail(str(exc))
     if end <= start or end - start > timedelta(days=90):
         spec.fail("Backfill needs an increasing range of at most 90 days")
-    output.warn("Backfill excludes judge/Jev evaluators; only code evaluators are replayed.")
+    if not dry_run:
+        output.warn("Judge and Jev evaluators in the backfill spend the org's model budget; --dry-run counts the work first.")
     _write.confirm(ctx.obj, "Backfill evaluations", assume_yes=dry_run)
     _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST", "/api/evaluations/backfill",
         body={"from": dates._iso(start), "to": dates._iso(end), "eval_key": key, "dry_run": dry_run}), "Evaluation backfill")

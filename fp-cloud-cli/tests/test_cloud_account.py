@@ -42,6 +42,13 @@ SESSION = [
 @pytest.mark.parametrize("key_mode", [False, True])
 @pytest.mark.parametrize("argv,method,path,response", CASES)
 def test_commands(logged_in, runner, key_mode, argv, method, path, response):
+    if not key_mode and argv[:2] == ["usage", "windows"]:
+        with respx.mock as mock:
+            result = runner.invoke(app, ["--json", *argv])
+            assert not mock.calls
+        assert result.exit_code == 2
+        assert "needs an API key" in result.stdout
+        return
     if key_mode and argv[0] == "plan":
         with respx.mock as mock:
             result = runner.invoke(app, ["--json", "--api-key", "key", *argv])
@@ -90,9 +97,10 @@ def test_session_commands(logged_in, runner, argv, method, path, response):
 
 @pytest.mark.parametrize("argv,method,path,response", CASES + SESSION)
 def test_404(logged_in, runner, argv, method, path, response):
+    key = ["--api-key", "key"] if argv[:2] == ["usage", "windows"] else []
     with respx.mock as mock:
         mock.route().respond(404, json={"error": "unknown route"})
-        result = runner.invoke(app, ["--json", *argv])
+        result = runner.invoke(app, ["--json", *key, *argv])
     assert result.exit_code == 6, result.output
     assert "not available on this FailproofAI Cloud yet" in result.stdout
 

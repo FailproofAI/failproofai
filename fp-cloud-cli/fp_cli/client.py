@@ -161,6 +161,7 @@ _V1_MECHANICAL_FAMILIES = frozenset(
 # family rule, which is why this must stay exact-match.
 _V1_RENAMED = {
     "/api/evaluations/score-keys": "/v1/evaluations/score_keys",
+    "/api/evaluations/metric-keys": "/v1/evaluations/metric_keys",
 }
 
 # Families with no `/v1` route, and why — the message a user actually sees.
@@ -731,6 +732,33 @@ def _cloud_not_found(exc: FpCliError, path: str, *, body=None, params=None) -> N
     return NotFoundError(message, request_id=exc.request_id)
 
 
+def import_events_file(
+    ctx: ClientContext, data: bytes, params: Dict[str, Any],
+) -> Any:
+    """POST /api/events/import — one file's bytes (gzip accepted), as the dashboard's
+    import dialog sends it. ``params``: format, path, environment, dry_run, existing_before."""
+    clean = {k: v for k, v in params.items() if v is not None} or None
+    url = _path(ctx, "/api/events/import")
+    try:
+        with _client(ctx) as client:
+            response = client.request(
+                "POST", url, content=data, params=clean,
+                headers={"Content-Type": "application/octet-stream"},
+            )
+    except httpx.RequestError as exc:
+        raise NetworkError(
+            f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}",
+            request_id=_sent_request_id(exc),
+        )
+    _raise_for_status(response, ctx)
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError:
+        raise ApiError("The dashboard returned an invalid import response.")
+
+
 def cloud_stream(ctx: ClientContext, path: str, body: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
     """Dashboard SSE with the same additive-capability 404 contract."""
     try:
@@ -928,6 +956,10 @@ _FACET_PATHS = {
     # Evaluation score keys (a distinct endpoint, not /api/events) — the source for
     # the sessions-page score-filter dropdown; needs `evaluations:read`.
     "score_filters": "/api/evaluations/score-keys",
+    # Evaluation-side facets: environments with evaluation results, and metric
+    # keys (the server returns {name, unit, count}; `list` shows the names).
+    "eval_environments": "/api/evaluations/environments",
+    "metric_keys": "/api/evaluations/metric-keys",
 }
 FACET_KINDS = tuple(_FACET_PATHS.keys())
 
@@ -935,7 +967,9 @@ FACET_KINDS = tuple(_FACET_PATHS.keys())
 def list_facet(ctx: ClientContext, kind: str) -> List[str]:
     """GET /api/events/<kind> — distinct facet values (a bare JSON array)."""
     data = _get_json(ctx, _FACET_PATHS[kind])
-    return [str(x) for x in data] if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    return [str(x.get("name", "")) if isinstance(x, dict) else str(x) for x in data]
 
 
 def get_usage(ctx: ClientContext) -> Dict[str, Any]:
@@ -1330,20 +1364,28 @@ def list_incidents(
     state: Optional[str] = None,
     alert_id: Optional[str] = None,
     limit: Optional[int] = None,
+    filters: Optional[Dict[str, Any]] = None,
 ) -> List[Incident]:
     """GET /api/issues (or /api/alerts/{id}/issues when alert_id given). The
     alert-scoped path honours ``state``/``limit`` too — pass them so the filters aren't silently
     dropped on that path (``_get_json`` omits None params)."""
-    if alert_id:
+    extra = {k: v for k, v in (filters or {}).items() if v is not None}
+    if alert_id and not extra:
         data = _get_json(ctx, f"/api/alerts/{alert_id}/issues", {"state": state, "limit": limit})
+    elif alert_id:
+        # The board's own filters live on /issues, which takes alert_id as one of them.
+        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit, "alert_id": alert_id, **extra})
     else:
-        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit})
+        data = _get_json(ctx, "/api/issues", {"state": state, "limit": limit, **extra})
     return [Incident.from_dict(i) for i in (data if isinstance(data, list) else [])]
 
 
-def count_incidents(ctx: ClientContext, *, state: Optional[str] = None) -> int:
+def count_incidents(
+    ctx: ClientContext, *, state: Optional[str] = None, filters: Optional[Dict[str, Any]] = None,
+) -> int:
     """GET /api/issues/count — {count}."""
-    data = _get_json(ctx, "/api/issues/count", {"state": state})
+    extra = {k: v for k, v in (filters or {}).items() if v is not None}
+    data = _get_json(ctx, "/api/issues/count", {"state": state, **extra})
     if not isinstance(data, dict):
         return 0
     try:

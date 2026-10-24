@@ -571,11 +571,27 @@ def register(app: typer.Typer) -> None:
     app.add_typer(policies_app, name="policies")
 
 
-def policies_author(ctx: typer.Context, intent: str = typer.Argument(...)) -> None:
-    """Author a vetted policy from an intent (session; does not publish)."""
+def policies_author(
+    ctx: typer.Context,
+    intent: str = typer.Argument(...),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex | jev | both. Default: the assistant writes a regex (JavaScript) policy.",
+    ),
+) -> None:
+    """Author a vetted policy from an intent (session; does not publish).
+
+    `--kind jev` asks for Jev checks only, `--kind both` for JavaScript plus the
+    Jev checks that may clear it. Publish the result with `fp policies publish`.
+    """
     _cloud.session_only(ctx.obj, "policies author")
-    events = list(api.cloud_stream(require_auth(ctx.obj), "/api/agent/policy-author",
-        {"issue": {"title": intent, "source": "manual"}}))
+    if kind is not None and kind not in ("regex", "jev", "both"):
+        raise click.UsageError("--kind must be regex, jev or both")
+    body = {"issue": {"title": intent, "source": "manual"}}
+    if kind in ("jev", "both"):
+        # The dashboard proxy treats anything else as regex, exactly as before kinds.
+        body["kind"] = kind
+    events = list(api.cloud_stream(require_auth(ctx.obj), "/api/agent/policy-author", body))
     for event in events:
         if event.get("type") == "error":
             raise ApiError(str(event.get("message") or event.get("error") or event.get("reason") or "Policy author failed"))
@@ -585,23 +601,104 @@ def policies_author(ctx: typer.Context, intent: str = typer.Argument(...)) -> No
     _cloud.emit(ctx.obj, result, "Policy draft")
 
 
-def policies_backtest(ctx: typer.Context, file_or_id: str = typer.Argument(..., metavar="FILE_OR_ID")) -> None:
-    """Replay local or published policy source against stored events (session)."""
+def policies_backtest(
+    ctx: typer.Context,
+    file_or_id: Optional[str] = typer.Argument(None, metavar="FILE_OR_ID"),
+    kind: Optional[str] = typer.Option(
+        None, "--kind",
+        help="regex | jev | both. Default: a published policy's own kind; for a file, "
+             "regex, or jev/both when --semantic is given.",
+    ),
+    semantic_path: Optional[str] = typer.Option(
+        None, "--semantic", help="Jev checks JSON (the same file `policies publish --semantic` takes).",
+    ),
+    hours: Optional[float] = typer.Option(None, "--hours", help="How far back to replay (default 168 for jev/both)."),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Replay only this agent's calls."),
+    env: Optional[str] = typer.Option(None, "--env", help="Replay only this environment's calls."),
+    run: bool = typer.Option(
+        False, "--run",
+        help="jev/both: actually ask Jev (spends the org's Jev allowance). Default is a free estimate.",
+    ),
+    sample: Optional[int] = typer.Option(None, "--sample", help="jev/both with --run: calls to ask Jev about (max 50)."),
+) -> None:
+    """Replay local or published policy source against stored events (session).
+
+    A regex policy (a .mjs file or a published regex id) is replayed module-only,
+    as before. A jev/both policy — a published one, or `--semantic checks.json`
+    with or without a source file — runs the every-kind backtest: an estimate
+    by default, `--run` to spend Jev allowance on up to `--sample` calls.
+    Needs policies:write and events:read.
+    """
     from pathlib import Path
     _cloud.session_only(ctx.obj, "policies backtest")
+    if kind is not None and kind not in ("regex", "jev", "both"):
+        raise click.UsageError("--kind must be regex, jev or both")
+    if file_or_id is None and semantic_path is None:
+        raise click.UsageError("give a policy file or published id, or --semantic checks.json")
+    if hours is not None and not hours > 0:
+        raise click.UsageError("--hours must be a positive number")
+    if sample is not None and not 1 <= sample <= 50:
+        raise click.UsageError("--sample must be between 1 and 50")
+    if file_or_id == "-" and semantic_path == "-":
+        raise click.UsageError("only one of the source and --semantic can come from stdin")
     cctx = require_auth(ctx.obj)
-    if file_or_id == "-" or file_or_id.startswith("@") or Path(file_or_id).is_file():
-        source = _write.read_text_arg(file_or_id.removeprefix("@"))
-    else:
-        data = api.cloud_request(cctx, "GET", "/api/enforcement/policies")
-        versions = [p for p in _cloud.rows(data, "policies") if p.get("id") == file_or_id]
-        if not versions:
-            raise NotFoundError(f"no policy named {file_or_id}")
-        source = max(versions, key=lambda p: p.get("version", 0)).get("source", "")
-    if not isinstance(source, str) or not source.strip():
-        raise click.UsageError("Policy source is empty")
-    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest",
-        body={"source": source}), "Policy backtest")
+    source: Optional[str] = None
+    semantic = None
+    published_kind = None
+    if file_or_id is not None:
+        if file_or_id == "-" or file_or_id.startswith("@") or Path(file_or_id).is_file():
+            source = _write.read_text_arg(file_or_id.removeprefix("@"))
+        else:
+            data = api.cloud_request(cctx, "GET", "/api/enforcement/policies")
+            versions = [p for p in _cloud.rows(data, "policies") if p.get("id") == file_or_id]
+            if not versions:
+                raise NotFoundError(f"no policy named {file_or_id}")
+            newest = max(versions, key=lambda p: p.get("version", 0))
+            published_kind = newest.get("kind") or "regex"
+            source = newest.get("source") or None
+            if semantic_path is None and isinstance(newest.get("semantic"), list):
+                semantic = newest["semantic"]
+    if semantic_path is not None:
+        try:
+            semantic = parse_semantic(read_source(semantic_path, isatty=False))
+        except RefUsageError as exc:
+            raise click.UsageError(str(exc))
+        except RefError as exc:
+            raise ApiError(str(exc))
+    resolved = kind or published_kind or ("regex" if not semantic else ("both" if source else "jev"))
+    if resolved == "regex":
+        if semantic_path is not None:
+            raise click.UsageError("--semantic needs --kind jev or both")
+        if not isinstance(source, str) or not source.strip():
+            raise click.UsageError("Policy source is empty")
+        body = {"source": source}
+        if agent_id:
+            body["agentId"] = agent_id
+        if env:
+            body["environment"] = env
+        if hours is not None:
+            body["hours"] = hours
+        _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest",
+            body=body), "Policy backtest")
+        return
+    if resolved == "both" and not (source or "").strip():
+        raise click.UsageError("a both backtest needs the JavaScript source too")
+    if not semantic:
+        raise click.UsageError(f"a {resolved} backtest needs Jev checks: pass --semantic checks.json")
+    body = {"kind": resolved, "semantic": semantic, "hours": hours if hours is not None else 168,
+            "mode": "run" if run else "estimate"}
+    if resolved == "both":
+        body["source"] = source
+    if agent_id:
+        body["agentId"] = agent_id
+    if env:
+        body["environment"] = env
+    if sample is not None:
+        body["sample"] = sample
+    if run and not ctx.obj.json:
+        output.warn("--run asks Jev about stored calls and spends the org's Jev allowance.")
+    _cloud.emit(ctx.obj, api.cloud_request(cctx, "POST", "/api/agent/policy-backtest-all",
+        body=body), "Policy backtest")
 
 
 def policies_candidacy(ctx: typer.Context, issue: str = typer.Option(..., "--issue")) -> None:

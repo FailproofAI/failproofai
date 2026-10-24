@@ -207,7 +207,6 @@ CASES = [
     (["orgs", "create", "--name", "Reliability"], "orgs switch"),
     (["users", "delete", "user1"], "user1"),
     (["users", "defaults"], "queries:run"),
-    (["usage", "windows"], "300"),
     (["plan"], "team_offer"),
     (["plan", "claim", "team_offer"], "team_offer"),
     (["otel", "status"], "support-service"),

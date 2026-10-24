@@ -41,6 +41,15 @@ def register(app: typer.Typer) -> None:
 
 
 def usage_windows(ctx: typer.Context) -> None:
-    """List usage metering windows."""
+    """List usage metering windows. API key only (the dashboard has no session route)."""
     from .account_cmds import request
+    from ..client import AuthMode
+    from ..errors import KeyModeUnsupportedError
+    if ctx.obj.auth_mode is not AuthMode.API_KEY:
+        # GET /usage/windows is served on the versioned API only; a signed-in
+        # session would reach a dashboard 404 and print a misleading message.
+        raise KeyModeUnsupportedError(
+            "`fp usage windows` needs an API key — the dashboard has no session route for it.",
+            hint="pass --api-key (or FP_API_KEY) with a usage:read key",
+        )
     request(ctx, "GET", "/api/usage/windows")

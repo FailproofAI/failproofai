@@ -18,6 +18,7 @@ from .._context import (
     validate_choice,
     validate_limit,
 )
+from .. import _click_compat as click
 from ..models import Session
 from . import _cloud, _write
 
@@ -157,6 +158,51 @@ def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> No
         f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation", body=session_id)
 
 
+def import_sessions(
+    ctx: typer.Context,
+    files: List[str] = typer.Argument(..., metavar="FILE...", help="Event JSONL, Claude Code transcripts or Codex rollouts (.gz ok)."),
+    format: str = typer.Option("auto", "--format", help="auto | agenteye | claude | codex."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment for events that name none (server default: upload)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Convert and report; store nothing."),
+) -> None:
+    """Import sessions from files, as the dashboard's Import sessions dialog does.
+
+    Each file is gzipped and sent on its own. Sessions already in the org are skipped
+    whole; secrets are redacted the way the collector redacts them live. Claude Code
+    and Codex files take the session id from the file name, so pass the original files.
+    Needs events:add. With `--json`: `{"files": [{file, result}]}`.
+    """
+    import gzip
+    import time
+    from pathlib import Path
+    validate_choice(format, ("auto", "agenteye", "claude", "codex"), flag="--format")
+    payloads = []
+    for name in files:
+        path = Path(name)
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise click.BadParameter(f"cannot read '{name}': {exc.strerror or exc}", param_hint="FILE")
+        rel = "/".join(path.resolve().parts[-2:])
+        payloads.append((name, rel, raw if raw[:2] == b"\x1f\x8b" else gzip.compress(raw)))
+    if not dry_run:
+        _write.confirm(ctx.obj, f"Import {len(files)} file{'s' if len(files) != 1 else ''}", assume_yes=False)
+    cctx = require_auth(ctx.obj)
+    # One cutoff for the whole run, so a later file of a session this run created
+    # is not skipped as "already present".
+    before = int(time.time() * 1000)
+    results = []
+    for name, rel, data in payloads:
+        result = api.import_events_file(cctx, data, {
+            "format": format, "path": rel, "environment": env,
+            "dry_run": "true" if dry_run else None, "existing_before": before,
+        })
+        results.append({"file": name, "result": result})
+    if not dry_run:
+        _write.record_action("sessions_imported", resource="events", success=True)
+    _cloud.emit(ctx.obj, {"files": results}, "Session import")
+
+
 def show(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
     """Show a session overview and its event timeline."""
     cctx = require_auth(ctx.obj)
@@ -193,4 +239,5 @@ def register(app: typer.Typer) -> None:
     group.command("show", epilog=GLOBALS_EPILOG)(show)
     group.command("export", epilog=GLOBALS_EPILOG)(export)
     group.command("history", epilog=GLOBALS_EPILOG)(history)
+    group.command("import", epilog=GLOBALS_EPILOG)(import_sessions)
     app.add_typer(group, name="sessions")

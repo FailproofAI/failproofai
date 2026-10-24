@@ -8,6 +8,8 @@ The stable release of logging in to FailproofAI Cloud from `config` in your brow
 
 - **Every agent on the machine knows FailproofAI.** `config` adds a small `failproofai` skill to each agent it finds (and any you tick), in that agent's own skills folder: Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, every Hermes and OpenClaw profile, droid, Devin, Antigravity and Goose. It points the agent at the FailproofAI skills on GitHub, which it reads when a FailproofAI task comes up, so what it reads is always the current version with nothing to update. Each folder was checked against the agent itself. A `failproofai` skill you installed yourself (for example with `npx skills add FailproofAI/skills`) is left as it is, and Codex, which would list one in `~/.agents/skills` beside its own copy, is left to that one. `failproofai uninstall` removes only the ones `config` wrote (#920)
 
+- **`fp` can do what the Cloud dashboard does.** Author, draft, dry-run, deploy and backfill evaluations (code, LLM judge and Jev) with `fp evaluators`; manage dashboards and tiles; author, backtest and check candidacy for policies of every kind; read sentiment; import sessions; manage roles, agent contracts and context windows; filter issues by facets. Existing commands, flags, `--json` output and exit codes are unchanged; see `fp-cloud-cli/CHANGELOG.md` (#933)
+
 - `fpai-collect` can now build without SQLite: its SQLite pollers are behind a default-on `sqlite` Cargo feature. AgentEye uses `default-features = false` to import Claude Code and Codex transcripts with the daemon's converters and redaction, while the daemon's default build remains unchanged (#929)
 
 ### Fixes

@@ -1,6 +1,13 @@
 # Changelog — `fp` CLI
 
-## 0.0.2b0 — 2026-09-22
+## 0.0.2 — 2026-10-25
+
+**Stable release.** The `0.0.2b0` line the `bump` job opened after `0.0.1` is cut stable
+here rather than published, because the server endpoints these commands drive are now
+deployed to FailproofAI Cloud and the CLI should not trail them as a pre-release.
+
+Nothing about the command surface changes at the cut: the entries below are the entire
+diff from `0.0.1`, and the `bump` job opens `0.0.3b0` after the upload.
 
 ### Added
 

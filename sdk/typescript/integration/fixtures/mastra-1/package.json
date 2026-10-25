@@ -13,7 +13,8 @@
     "@types/node": "22.20.4"
   },
   "overrides": {
-    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/client": "2.3.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "argparse": "2.0.1"
   }
 }

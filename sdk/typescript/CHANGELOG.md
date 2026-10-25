@@ -21,6 +21,43 @@ section is missing or empty is refused before anything is built.
   dependencies. Each lockfile changes by those two packages and nothing else, and
   `npm audit` on both now reports no findings. (#904)
 
+- **`ai-4`, `langchain-0.3` and `llamaindex-0.11` test their own releases again.**
+  Dependabot's grouped security update (#931) reached the zod fix by moving all
+  three off the release they exist to hold: `ai@4.3.19` → `7.0.152`,
+  `@langchain/core@0.3.80` → `1.3.0` (with `@langchain/langgraph@0.4.10` →
+  `1.5.2`) and `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`.
+  `ai-4` and `langchain-0.3` still installed and passed while testing a
+  different major, so the matrix silently lost two supported floors. `llamaindex-0.11`
+  did not install: `@llamaindex/workflow@1.1.5` peers on `zod@^3.23.8`, so
+  `npm ci` failed `ERESOLVE`, and because the global setup installs every fixture
+  before any test runs, the `frameworks` and `runtimes` shards failed on `main`.
+  All three are back on their pre-#931 manifests and lockfiles. #931 also moved
+  the `runtimes` fixture to `zod@4.6.7` while `deno-npm.ts` still imported
+  `npm:zod@4.6.5`, which Deno resolves against the fixture's `node_modules` and
+  could no longer find; it imports `4.6.7` now. A root CI test,
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts`, fails on either move: a fixture named
+  for a release line pinning its framework off that line, or an `npm:` specifier
+  naming a version the fixture does not install. (#934)
+
+- **The remaining fixable fixture advisories clear, each with an override.** `ai-5`
+  moves `undici` 7.29.1 → 7.30.1 (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685,
+  GHSA-f72v-6w45-q472) and `llamaindex-0.11` moves `fast-uri` 3.1.8 → 3.1.9
+  (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+  GHSA-333x-w4r6-6crp). In `mastra-1`, `@mastra/mcp@2.0.0` pins
+  `@modelcontextprotocol/server` and `@modelcontextprotocol/client` exactly, so the
+  fixture overrides both to `2.3.0` (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453,
+  GHSA-rvq5-wwqv-78pq, GHSA-6prh-2h8m-c8cw); each brings its own
+  `@modelcontextprotocol/core@2.3.0` nested under it, as the client's earlier
+  `2.2.0` override did. Each lockfile changes by those packages alone, and
+  `npm audit` reports no findings in `ai-5` or `mastra-1`. (#934)
+
+- **zod GHSA-mrhx-c7xc-m3w5 stays in the five fixtures held to zod 3.** It is fixed
+  only in `zod@4.6.6`, and no zod 3 release carries the fix. `ai-4`, `langchain-0.3`
+  and `llamaindex-0.11` pin `zod@3.25.76` beside frameworks that require `^3`, and
+  `langchain-dup-core` and `mastra-0` carry a nested copy that the vendored
+  provider's `@langchain/core@0.3.80` and `zod-from-json-schema@0.0.5` require.
+  `SECURITY.md` records it with the two `ai@4` advisories. (#934)
+
 ## 0.0.1-beta.1 — 2026-10-15
 
 ### Features

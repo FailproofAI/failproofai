@@ -124,11 +124,15 @@ That splits an alert in one of these lockfiles into two cases:
 |---|---|---|---|
 | [GHSA-rwvc-j5jr-mgvh](https://github.com/advisories/GHSA-rwvc-j5jr-mgvh) (low, CVSS 3.7) | `ai@4.3.19` | `ai-4`, `mastra-0` | A filetype-whitelist bypass on **file upload**. Fixed in `ai@5.0.52` — the major the `ai-4` fixture exists to stay below, and one `@mastra/core@0.24.9` cannot take either (it requires `ai@^4`). Neither fixture uploads a file or exposes an upload surface; each runs one scripted agent against an in-process model. |
 | [GHSA-866g-f22w-33x8](https://github.com/advisories/GHSA-866g-f22w-33x8) (low, CVSS 4.3) | `@ai-sdk/provider-utils@2.2.8` | `ai-4`, `mastra-0` | Unbounded response-body reads in `createJsonResponseHandler` and its siblings. Fixed in `3.0.28`; `2.2.8` ships *inside* `ai@4.3.19`, which uses the v2 API, so the fix is the same blocked major as the row above. Exploiting it needs a hostile **model-provider HTTP response**; these fixtures never call one. |
+| [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (high, CVSS 7.5) | `zod@3.25.76` | `ai-4`, `langchain-0.3`, `llamaindex-0.11`; nested in `langchain-dup-core` and `mastra-0` | An array schema keeps every failing element's validation issues, uncapped, so one oversized input can exhaust memory. Fixed only in `4.6.6`: no zod 3 release carries the fix, and `3.25.76` is the newest. Each copy is held to `^3` by the release its fixture pins — `ai@4.3.19` and its `@ai-sdk/*` packages peer on `^3.23.8`, `@langchain/core@0.3.80` (in `langchain-dup-core`, the vendored provider's own copy) and `@langchain/langgraph@0.4.10` depend on `^3.25.32`, `@llamaindex/core@0.6.8` and `@llamaindex/workflow@1.1.5` need `^3.23.8`, and in `mastra-0`, `zod-from-json-schema-v3` (`zod-from-json-schema@0.0.5`, which builds zod 3 schemas for `@mastra/core` and `@mastra/mcp`) depends on `^3.24.2`. Exploiting it needs untrusted input validated against one of those schemas; each fixture validates only its own scripted tool arguments. |
 
-Both rows are bounded by the same facts: these are test fixtures — `"private": true`,
+Every row is bounded by the same facts: these are test fixtures — `"private": true`,
 never published, installed with `--ignore-scripts`, and run only in CI against
 scripted in-process models. Re-check them whenever the supported framework floor
-moves; dropping `ai` 4.x from the matrix is what actually retires them.
+moves. The first two rows retire once `ai` 4.x has left the matrix, which takes
+`mastra-0` as well as `ai-4`, because `@mastra/core@0.24.9` requires `ai@^4`. The
+zod row retires only once `ai` 4.x, LangChain 0.3, LlamaIndex 0.11 and Mastra 0.x
+have all left it.
 
 ## Maintainer setup (one-time)
 

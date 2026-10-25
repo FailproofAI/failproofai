@@ -2,6 +2,10 @@
 
 ## 1.0.13-beta.0 — 2026-10-25
 
+### Features
+
+- **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)
+
 ### Dependencies
 
 - Restore the `ai-4`, `langchain-0.3` and `llamaindex-0.11` SDK integration fixtures to the releases they exist to test: `ai@4.3.19`, `@langchain/core@0.3.80` with `@langchain/langgraph@0.4.10`, and `llamaindex@0.11.4`, each with `zod@3.25.76`. Dependabot's grouped security update (#931) reached the zod fix by moving them to `ai@7.0.152`, `@langchain/core@1.3.0` and `llamaindex@0.12.1`, the pin move `SECURITY.md` rules out, so the matrix silently stopped testing three supported floors. `llamaindex-0.11` then stopped installing (`@llamaindex/workflow@1.1.5` peers on `zod@^3.23.8`, so `npm ci` failed `ERESOLVE`), and because global setup installs every fixture first, the `frameworks` and `runtimes` integration shards failed on `main`. #931 also moved the `runtimes` fixture to `zod@4.6.7` while its Deno program still imported `npm:zod@4.6.5`, which Deno could no longer find; it now imports the installed version. `__tests__/ci/ts-sdk-fixture-pins.test.ts` fails on either move before anything installs (#934)

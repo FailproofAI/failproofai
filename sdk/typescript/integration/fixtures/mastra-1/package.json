@@ -7,7 +7,7 @@
     "@mastra/core": "1.68.0",
     "@mastra/mcp": "2.0.0",
     "@mastra/memory": "1.31.0",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "22.20.4"

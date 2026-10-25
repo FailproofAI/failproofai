@@ -37,8 +37,8 @@ import type { TwoTierReview } from "./semantic/combine";
 import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
-import { loadAllCustomHooks } from "./custom-hooks-loader";
-import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled } from "./effective-reviewers";
+import { loadAllCustomHooks, type LoadAllResult } from "./custom-hooks-loader";
+import { contestedReviewerNames, effectiveReviewerNames, jevChecksInstalled, packJevChecksInstalled } from "./effective-reviewers";
 import {
   authorityDeclarationFor,
   refusedAuthorityWarning,
@@ -56,13 +56,35 @@ import { resolveTranscriptPath } from "./resolve-transcript-path";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
-import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import {
+  cloudJevAsks,
+  cloudJevAssignmentsFor,
+  withCloudAuthority,
+  readActiveCloudManagedPolicies,
+  readCloudJevMode,
+  readCloudJevState,
+  readCloudAgentScopeRequired,
+  type CloudManagedPolicyArtifact,
+  type CloudPolicyError,
+} from "./cloud-managed-policies";
+import {
+  cloudPolicyErrorsPath,
+  collectCloudPolicyErrors,
+  installedPackIds,
+  jevBudgetPath,
+  readJevBudgetDrops,
+  writeCloudPolicyErrors,
+  recordCloudLoadChecked,
+} from "./cloud-policy-errors";
 import { hasInstalledRegexPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { jevConfigFile } from "./fp-home";
 import { layoutWarningForHook } from "./fp-reset";
 import { noteUntracedAgent } from "./untraced-note";
+import { isHealthProbe } from "./health-probe";
+import { readRuntimeAgentIdentity, runtimeAgentSettingsPath } from "./agent-roster";
+import type { AgentIdentity } from "./agent-targets";
 
 /**
  * Canonicalize an event name to PascalCase. Codex sends snake_case event names
@@ -169,6 +191,8 @@ export interface EvaluateHookEventOptions {
    * written for.
    */
   fallbackCwd?: string;
+  /** Config selected by the hook process (may differ from the worker's env). */
+  agentSettingsPath?: string;
   /**
    * The warm worker's hook into its request queue. Called at most once, and
    * only on the two-tier path, at the point this evaluation stops reading the
@@ -222,10 +246,20 @@ async function runObserved(
 //   package ships none: until `failproofai policies add FailproofAI/jev-policies`
 //   (or another pack declaring `semantic` checks) Jev is inert — no request, no
 //   intent capture — whether the config is BYOK or FailproofAI Cloud's;
+//
+// …or, in place of the first two, FailproofAI Cloud sets this machine's Jev
+// mode to `observe`/`enforce` (`active.json` `jevMode`, CONTRACT C10): then
+// EVERY gated call goes to FailproofAI Cloud on the Cloud Jev credential —
+// `jev.json` is not used — because the checks Cloud deployed to this machine
+// live there and this machine cannot know which apply. Cloud's `off` switches
+// Jev off whatever `jev.json` says. The remaining conditions hold either way:
 // - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
-// - this is not the fail-closed `forceDecision` path and no session pause is
+// - this is not the fail-closed `forceDecision` path, and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
-//   evaluate what the pause switched off;
+//   evaluate what the pause switched off. FailproofAI Cloud's checks are the
+//   exception, as Cloud JS assignments are: under a Cloud mode that asks, a
+//   paused session's calls still go to Cloud, with no installed pack's check
+//   in them;
 // - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool
 //   that the AGENT requested (see `isHumanAuthoredGate`).
 //
@@ -266,6 +300,16 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
   return process.env.FAILPROOFAI_EVALUATOR === "legacy" || !!opts?.forceDecision;
 }
 
+/** How a Cloud-mode review reaches FailproofAI Cloud (`semantic/cloud-jev.ts`). */
+interface CloudJevRoute {
+  machineId: string;
+  deployment: number | null;
+  mode: "observe" | "enforce";
+  agent: AgentIdentity | null;
+  /** Cloud policies whose Jev assignment here is `observe`: their answers are recorded, never applied. */
+  observedPolicies: string[];
+}
+
 /**
  * The BYOK config (with the build's default mode, D2), or null (Jev off). A
  * config that cannot be read is off, never a failure. Logged at info, like
@@ -283,8 +327,37 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
  * unreadable directory above it and a path that is not a file are all null
  * there too.
  */
-async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
+async function readJevConfig(agent?: AgentIdentity | null): Promise<{
+  config: JevConfig;
+  defaultMode: TwoTierReview["mode"];
+  /** Set when FailproofAI Cloud's mode asks: the review goes to Cloud. */
+  cloud?: CloudJevRoute;
+} | null> {
   try {
+    // FailproofAI Cloud's mode, when its deployment sets one, decides (CONTRACT
+    // C10.2): `off` is no Jev at all, whatever `jev.json` says; `observe` or
+    // `enforce` runs Jev on FailproofAI Cloud with the Cloud Jev credential —
+    // never `jev.json`'s provider — or not at all, when this machine cannot
+    // (`loadJevConfigForCloudMode` says why, for `errors.json`). Read off
+    // `active.json`, which is small and read on this path already.
+    const cloud = readCloudJevState();
+    if (cloud.jevMode === "off") return null;
+    if (cloudJevAsks(cloud.jevMode)) {
+      const { loadJevConfigForCloudMode, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
+      const resolved = loadJevConfigForCloudMode(cloud.jevMode);
+      if (!resolved.config || !resolved.machineId) return null;
+      return {
+        config: resolved.config,
+        defaultMode: DEFAULT_JEV_MODE,
+        cloud: {
+          machineId: resolved.machineId,
+          deployment: cloud.deployment,
+          mode: cloud.jevMode,
+          agent: agent ?? null,
+          observedPolicies: (cloudJevAssignmentsFor(agent ?? null) ?? []).filter((a) => a.effect === "observe").map((a) => a.id),
+        },
+      };
+    }
     if (!existsSync(jevConfigFile())) return null;
     const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
     const config = loadJevConfig();
@@ -301,6 +374,90 @@ async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTie
 }
 
 /**
+ * Where a Jev decision's check came from, as activity-row fields. A FailproofAI
+ * Cloud check's outcome arrives with `origin.cloudPolicyId`/`cloudVersion`,
+ * carried pack-shaped through the review (`cloud:<id>` / `<version>`, see
+ * `semantic/cloud-jev.ts`), and is filed here under the Cloud attribution pair
+ * a Cloud JS policy's decision uses — so the Cloud policy page counts it
+ * against the policy that was deployed.
+ */
+function jevAttribution(
+  origin: { packId: string; packVersion?: string } | undefined,
+): { packId?: string; packVersion?: string; cloudPolicyId?: string; cloudVersion?: number } {
+  if (!origin) return {};
+  if (origin.packId.startsWith("cloud:")) {
+    const version = Number(origin.packVersion);
+    return {
+      cloudPolicyId: origin.packId.slice("cloud:".length),
+      ...(Number.isSafeInteger(version) ? { cloudVersion: version } : {}),
+    };
+  }
+  return origin;
+}
+
+/**
+ * Compute and write `cloud-policies/errors.json` for this machine's Cloud
+ * deployment. A no-op off a Cloud-managed machine (`writeCloudPolicyErrors`
+ * skips without an `active.json`) and when nothing changed. Never throws.
+ */
+async function recordCloudPolicyErrors(input: {
+  manifestError: string | null;
+  jsPolicies: CloudManagedPolicyArtifact[];
+  jsFailures: LoadAllResult["cloudFailures"] | undefined;
+  agentScopeUnresolved?: boolean;
+}): Promise<void> {
+  try {
+    const jev = readCloudJevState();
+    const managed = input.manifestError !== null || input.jsPolicies.length > 0 || jev.jevMode !== null ||
+      jev.errors.length > 0 || input.agentScopeUnresolved === true;
+    // An unmanaged machine never reads further. A managed machine whose
+    // deployment just emptied still writes, so a stale report is cleared.
+    if (!managed && !existsSync(cloudPolicyErrorsPath())) return;
+    // Only while Cloud's mode ASKS (CONTRACT C10.2): why this machine cannot
+    // send its calls (`transcripts_disabled`, `jev_unconfigured…`), and the
+    // installed packs' checks Cloud dropped for the question budget under this
+    // deployment. The config answer is kept by its module until an input
+    // changes, so the second ask of a gate event reads no file.
+    let jevProblem: string | null = null;
+    let budgetDrops: CloudPolicyError[] = [];
+    let health: CloudPolicyError[] = [];
+    if (cloudJevAsks(jev.jevMode)) {
+      const { loadJevConfigForCloudMode } = await import("./semantic/jev-config");
+      const resolved = loadJevConfigForCloudMode(jev.jevMode);
+      jevProblem = resolved.problem;
+      if (resolved.machineId) {
+        // A drop of a pack uninstalled since is not reported (review m2);
+        // `installed.json` is read only when there is a record to filter.
+        budgetDrops = existsSync(jevBudgetPath())
+          ? readJevBudgetDrops({ machineId: resolved.machineId, deployment: jev.deployment, jevMode: jev.jevMode }, installedPackIds())
+          : [];
+      }
+      // Rate-limited or unavailable FailproofAI Cloud Jev, as this process has seen it (review M3).
+      const { cloudJevHealthErrors } = await import("./semantic/cloud-jev-health");
+      health = cloudJevHealthErrors();
+    }
+    writeCloudPolicyErrors(
+      collectCloudPolicyErrors({
+        manifestError: input.manifestError,
+        jsPolicies: input.jsPolicies,
+        jsFailures: input.jsFailures,
+        jev,
+        jevProblem,
+        budgetDrops,
+        health,
+        agentScopeUnresolved: input.agentScopeUnresolved,
+      }),
+    );
+    // After the report: what this hook load-checked (N4). A failure is in
+    // errors.json first, so the listing never sees a checked policy without
+    // its error.
+    if (input.jsPolicies.length > 0) recordCloudLoadChecked(input.jsPolicies[0].deployment, input.jsPolicies);
+  } catch (err) {
+    hookLogInfo(`could not record Cloud policy errors: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Start Jev's review of this call — before the regex policies run, so the two
  * proceed in parallel — or return null for the regex-only path.
  */
@@ -311,15 +468,32 @@ async function startTwoTier(
   cli: IntegrationType,
   opts: EvaluateHookEventOptions | undefined,
   activePause: ActivePause | null,
+  agent: AgentIdentity | null,
 ): Promise<TwoTierReview | null> {
   if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
   if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
-  if (jevForcedOff(opts) || activePause) return null;
-  // Read off the reviewer set registration just cached, so it is free.
-  if (!jevChecksInstalled()) return null;
-  const loaded = await readJevConfig();
+  if (jevForcedOff(opts)) return null;
+  // Read off the reviewer set registration just cached, so it is free. Under a
+  // Cloud mode that asks, every gated call goes to Cloud whether or not an
+  // installed pack declares a check: the Cloud checks are Cloud's to select.
+  const cloudAsks = cloudJevAsks(readCloudJevMode());
+  // A session pause suspends LOCAL policy only: installed packs' Jev checks
+  // with it, FailproofAI Cloud's Jev checks never — the same exemption Cloud
+  // JS assignments get below, for the same reason (a locally-issued command
+  // must not switch off what the org assigned centrally).
+  if (activePause && !cloudAsks) return null;
+  if (!cloudAsks && !jevChecksInstalled()) return null;
+  // No Cloud Jev check is assigned to this agent (the deployment says so) and
+  // no installed pack's check takes part: nothing to ask, so no Cloud call
+  // and no Jev fields on the row. An older deployment without the list
+  // (`null`) still sends every call, as before.
+  if (cloudAsks && cloudJevAssignmentsFor(agent)?.length === 0 && (activePause || !packJevChecksInstalled())) return null;
+  const loaded = await readJevConfig(agent);
   if (!loaded) return null;
+  // Paused, and the config is not Cloud's after all (read in between): the
+  // local path has nothing left to ask.
+  if (activePause && !loaded.cloud) return null;
   const cfg = loaded.config;
   try {
     const { startJevReview } = await import("./semantic/jev-review");
@@ -331,6 +505,11 @@ async function startTwoTier(
       permissionMode: session.permissionMode,
       sessionId: session.sessionId,
       cli,
+      // The profile the intent store is read under: the one capture used.
+      agent,
+      ...(loaded.cloud ? { cloud: loaded.cloud } : {}),
+      // Cloud's checks are still asked; the installed packs' are not.
+      ...(activePause ? { localPaused: true } : {}),
     });
   } catch (err) {
     // Configured but unable to start: that is a fallback, and it is recorded
@@ -394,6 +573,15 @@ function jevTelemetry(activity: JevActivityFields | undefined): Record<string, u
  * marks that tell a human's prompt from a subagent's or an extension's are
  * elsewhere in it. `prompt` is §7's original field, still read by the
  * contract stub; T4's implementation reads `payload` and ignores it.
+ *
+ * The prompt is stored under the agent profile (`agent`, the runtime identity
+ * Cloud's targeting matches on) and read back by `startTwoTier` under the same
+ * one, so a prompt typed into one profile is never another's stated intent.
+ * Under a Cloud mode, a profile the deployment assigns no Cloud Jev check to,
+ * with no installed pack's check to review it either, has nothing that will
+ * ever read the prompt (`startTwoTier` returns before Jev for it), so nothing
+ * is kept: FailproofAI does not hold prompt text from a profile the
+ * deployment did not target.
  */
 async function captureJevIntent(
   canonicalEventType: string,
@@ -402,11 +590,20 @@ async function captureJevIntent(
   session: SessionMetadata,
   cli: IntegrationType,
   opts: EvaluateHookEventOptions | undefined,
+  agent: AgentIdentity | null,
 ): Promise<void> {
   if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
   try {
-    if (!jevChecksInstalled()) return;
-    if (!(await readJevConfig())) return;
+    // Same gate as `startTwoTier`: a Cloud mode that asks needs what the human
+    // typed whatever the installed packs declare.
+    const cloudAsks = cloudJevAsks(readCloudJevMode());
+    if (!cloudAsks && !jevChecksInstalled()) return;
+    // ...but not for a profile no Cloud Jev check targets and no installed
+    // pack's check reviews: `startTwoTier`'s own skip, without the pause
+    // (a pause can end while the session goes on). An older deployment with
+    // no assignment list (`null`) captures as before.
+    if (cloudAsks && cloudJevAssignmentsFor(agent)?.length === 0 && !packJevChecksInstalled()) return;
+    if (!(await readJevConfig(agent))) return;
     if (decision === "deny") {
       const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");
       if (ENFORCEMENT_CAPABILITY[cli]?.UserPromptSubmit === "block") return;
@@ -420,6 +617,7 @@ async function captureJevIntent(
       cli,
       payload: parsed,
       prompt: parsed.prompt,
+      profile: { cli, agent },
     };
     captureIntent(event);
   } catch (err) {
@@ -462,6 +660,12 @@ export async function evaluateHookEvent(
           payload_size: stdinPayload.length,
         });
       }
+    }
+
+    // The daemon health probe: proof the worker answers, not an agent event.
+    // Answered before anything records scope errors or activity (B3).
+    if (isHealthProbe(eventType, parsed)) {
+      return { exitCode: 0, stdout: "", stderr: "" };
     }
 
     normalizeCliPayload(cli, parsed);
@@ -508,6 +712,9 @@ export async function evaluateHookEvent(
       rawHookEventName: eventType,
       cli,
     };
+    const runtimeAgent = readRuntimeAgentIdentity(
+      cli, opts?.agentSettingsPath ?? runtimeAgentSettingsPath(cli, session.cwd),
+    );
 
     let config: HooksConfig;
     let customHooksList: CustomHook[] = [];
@@ -554,7 +761,7 @@ export async function evaluateHookEvent(
     } else {
       // Load enabled policies (merge across project/local/global scopes)
       config = readMergedHooksConfig(session.cwd);
-      clearPolicies(cli);
+      clearPolicies(cli, runtimeAgent);
 
       // A session pause suspends LOCAL policy only, for a bounded time. Cloud
       // assignments are exempt below for the same reason `disabledCustomPolicies`
@@ -616,10 +823,13 @@ export async function evaluateHookEvent(
       // than the status quo, which already failed open on five of the twelve —
       // just accidentally, and without saying so.
       let cloudManagedPolicies: CloudManagedPolicyArtifact[] = [];
+      /** Why the Cloud JS half did not load at all, for `errors.json`. */
+      let cloudManifestError: string | null = null;
       try {
-        cloudManagedPolicies = readActiveCloudManagedPolicies();
+        cloudManagedPolicies = readActiveCloudManagedPolicies(runtimeAgent);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        cloudManifestError = msg;
         hookLogWarn(
           `[failproofai] cloud-managed policies could NOT be loaded and are not being enforced: ${msg}. ` +
             `Local policies are unaffected. Run \`failproofai config --status\` to check this machine's enrolment.`,
@@ -633,7 +843,9 @@ export async function evaluateHookEvent(
       // policy decided this event: "what was deployed here at the time" is a
       // separate question from "what decided", and only the former can tell a
       // rollout that changed nothing from one that never reached the machine.
-      cloudDeployment = cloudManagedPolicies[0]?.deployment;
+      // A machine whose deployment carries only a Jev mode has no JS policy to
+      // read it off.
+      cloudDeployment = cloudManagedPolicies[0]?.deployment ?? readCloudJevState().deployment ?? undefined;
       // Installed packs. `readInstalledPacks` never throws: a bad manifest or a
       // tampered artifact yields zero packs and a recorded reason, which is
       // sound ONLY because the builtins still ship compiled in and keep
@@ -661,11 +873,22 @@ export async function evaluateHookEvent(
               ...installedPacks.map((pack) => pack.path),
             ];
 
+      // A FailproofAI Cloud policy's `reviewedBy` names ITS OWN Cloud Jev
+      // checks, which run on FailproofAI Cloud (CONTRACT C10.5). Each is
+      // translated here to `cloud:<id>/<name>` — a reviewer only that policy's
+      // own Cloud outcomes can satisfy, never an installed pack's check of the
+      // same name (C9.4) — and only while Cloud's Jev mode asks. An `observe`
+      // assignment, or no mode that asks, is hard, without a warning: that is
+      // the org's choice, not a broken policy. Before the loader, so two
+      // assignments sharing one artifact merge names that still say whose.
+      const cloudJevMode = readCloudJevMode();
+      const cloudForLoading = cloudManagedPolicies.map((policy) => withCloudAuthority(policy, cloudJevMode));
+
       // Load and register custom hooks (layer 2, after builtins)
       const loadResult = await loadAllCustomHooks(allExplicitPaths, {
         sessionCwd: session.cwd,
         customPoliciesEnabled: config.customPoliciesEnabled,
-        ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
+        ...(cloudForLoading.length > 0 ? { cloudManagedPolicies: cloudForLoading } : {}),
         ...(installedPacks.length > 0 ? { packs: installedPacks } : {}),
       });
       customHooksList = loadResult.hooks;
@@ -812,6 +1035,7 @@ export async function evaluateHookEvent(
         // for the user's own files; anything unclear registers as hard. Said
         // aloud when a `reviewable` claim is refused and Jev is configured, so
         // an author is not left wondering why Jev never clears it.
+        // A Cloud record's authority was translated before loading (above).
         const authority = authorityDeclarationFor(hook, { cloudManaged, pack });
         // Against the same set `registerPolicy` judges it by, or this warning
         // describes a different machine than the registry does: a pack that
@@ -834,6 +1058,17 @@ export async function evaluateHookEvent(
           authority,
         );
       }
+
+      // What this machine could not load from its FailproofAI Cloud deployment,
+      // for the daemon to report on its next poll. Only on a managed machine,
+      // written only when it changes, and never able to cost this event its
+      // answer (see `cloud-policy-errors.ts`).
+      await recordCloudPolicyErrors({
+        manifestError: cloudManifestError,
+        jsPolicies: cloudManagedPolicies,
+        jsFailures: loadResult.cloudFailures,
+        agentScopeUnresolved: runtimeAgent === null && readCloudAgentScopeRequired(),
+      });
 
       // Fail closed on enforcement this machine was told it had and does not.
       //
@@ -924,7 +1159,7 @@ export async function evaluateHookEvent(
     // starts HERE, before any regex policy runs, and evaluatePolicies combines
     // the two (see semantic/combine.ts). Otherwise this is null and the call
     // below is exactly the regex-only evaluation it always was.
-    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause);
+    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause, runtimeAgent);
     // On the two-tier path the registry is read for the activity row BEFORE
     // evaluating, because evaluatePolicies may hand the registry back to the
     // warm worker's queue (`releaseRegistry`) while it waits on Jev, and the
@@ -956,10 +1191,15 @@ export async function evaluateHookEvent(
         reason: observeVerdict.reason,
       });
     }
+    // An `observe` Cloud Jev assignment's checks: filed under their Cloud
+    // policy, like an observe Cloud JS policy's verdict.
+    for (const o of result.twoTier?.observedCloud ?? []) {
+      observedResults.push({ policyId: o.cloudPolicyId, version: o.cloudVersion, decision: o.decision, reason: o.reason });
+    }
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 
-    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts);
+    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts, runtimeAgent);
 
     // Which policies actually ran for this event, regardless of how they
     // decided. `result.policyName` names only the decider — null on a plain
@@ -1001,7 +1241,7 @@ export async function evaluateHookEvent(
       // would be false — so it is attributed to Jev itself. Leaving it out
       // instead filed every Jev block under "unattributed" on FailproofAI
       // Cloud's policy page, beside rows written before attribution existed.
-      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevOrigin } : {}),
+      ...(result.policyName && result.twoTier?.decidedByJev ? { policySource: "jev" as const, ...jevAttribution(jevOrigin) } : {}),
       ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);
@@ -1015,6 +1255,14 @@ export async function evaluateHookEvent(
               ...(attribution?.packVersion ? { packVersion: attribution.packVersion } : {}),
             };
           })()
+        : {}),
+      // Observe mode, nothing else decided: the Jev check that would have is
+      // named on the row, with its Cloud policy (B12). Before, the row read
+      // policyName/cloudPolicyId null, so "would have" never reached a policy.
+      // No `policySource`: nothing decided this call, and the policy page
+      // counts a source as a decision; `observed` carries the "would have".
+      ...(!result.policyName && observeVerdict
+        ? { policyName: observeVerdict.policyName, ...jevAttribution(result.twoTier?.jevOrigin) }
         : {}),
       ...(cloudDeployment !== undefined ? { cloudDeployment } : {}),
       // The point of observe mode is this record. Without it the rollout is
@@ -1116,7 +1364,11 @@ export async function evaluateHookEvent(
  * kept unchanged so nothing about the one-shot (non-daemon) path regresses.
  * Internally now just a thin wrapper around `evaluateHookEvent`.
  */
-export async function handleHookEvent(eventType: string, cli: IntegrationType = "claude"): Promise<number> {
+export async function handleHookEvent(
+  eventType: string,
+  cli: IntegrationType = "claude",
+  agentSettingsPath?: string,
+): Promise<number> {
   const MAX_STDIN_BYTES = 1_048_576; // 1 MB
   const stdinRead = await readStdinPayload(MAX_STDIN_BYTES);
   if (stdinRead.readError) {
@@ -1148,7 +1400,10 @@ export async function handleHookEvent(eventType: string, cli: IntegrationType = 
     });
   }
 
-  const result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
+  const result = await evaluateHookEvent(
+    eventType, cli, stdinRead.payload,
+    agentSettingsPath === undefined ? undefined : { agentSettingsPath },
+  );
 
   // Say it out loud, once a session, when the collector is holding batches the
   // server definitively refused.

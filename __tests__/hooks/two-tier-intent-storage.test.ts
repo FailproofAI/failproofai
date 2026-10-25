@@ -99,6 +99,8 @@ import * as store from "../../src/hooks/hook-activity-store";
 
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32) };
 const SESSION = "intent-storage-session";
+// The profile the hook path stores and reads under: claude, no rostered identity.
+const PROFILE = { cli: "claude", agent: null };
 const ENV = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_PACK_DIR", "FAILPROOFAI_EVALUATOR", "CLAUDE_PROJECT_DIR"];
 const saved: Record<string, string | undefined> = {};
 let root: string;
@@ -165,7 +167,7 @@ const LONG_PROMPT =
 describe("the human's prompt, stored by the real intent store and read back for the next call", () => {
   it("control: a short prompt is recorded, read back, and the reviewable deny is cleared", async () => {
     await hook("UserPromptSubmit", { prompt: "summarise my notes" });
-    expect(readIntent(SESSION).userSaid).toEqual(["summarise my notes"]);
+    expect(readIntent(SESSION, undefined, PROFILE).userSaid).toEqual(["summarise my notes"]);
     const { outcome, row } = await outsideRead();
     expect(jevCalls).toHaveLength(1);
     expect(jevCalls[0].state.user_said).toEqual(["summarise my notes"]);
@@ -184,7 +186,7 @@ describe("the human's prompt, stored by the real intent store and read back for 
    */
   it("a long prompt is stored cut, and the verdict is identical to the short one", async () => {
     await hook("UserPromptSubmit", { prompt: LONG_PROMPT });
-    const stored = readIntent(SESSION).userSaid;
+    const stored = readIntent(SESSION, undefined, PROFILE).userSaid;
     // The premise: the store kept a cut version, marked as cut.
     expect(stored).toHaveLength(1);
     expect(stored[0].length).toBeLessThan(LONG_PROMPT.length);
@@ -213,7 +215,7 @@ describe("the human's prompt, stored by the real intent store and read back for 
     const padding = "Background the human pasted about this project. ";
     const around = Math.floor(MAX_USER_MESSAGE_CHARS / 3 / padding.length);
     await hook("UserPromptSubmit", { prompt: `${padding.repeat(around)}\n${ask}\n${padding.repeat(around)}` });
-    const [stored] = readIntent(SESSION).userSaid;
+    const [stored] = readIntent(SESSION, undefined, PROFILE).userSaid;
     expect(stored.length).toBeGreaterThan(1_200);
     // The point: the sentence the human typed survived the store's cap.
     expect(stored).toContain(ask);

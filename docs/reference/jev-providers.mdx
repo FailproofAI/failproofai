@@ -39,7 +39,7 @@ Jev is reachable through five routes. Bring a key for any one of them.
 | OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Requests are routed to zero-data-retention endpoints only, with no fallback to another provider. Reports a dated version such as `typesafe/jev-1.13-20260917`. |
 | Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Names Jev only by an alias, so the answering version is recorded as unverified. |
 | Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Needs `--account-id`. About six calls a second per key were measured before HTTP 429. |
-| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http://localhost` is accepted in observe mode only. |
+| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http` to a loopback host (`localhost`, `127.0.0.1`, `::1`) is accepted for local testing. |
 
 <Warning>
 With Vercel's own bring-your-own-key feature, a failed request is silently retried with Vercel's credentials. If you need every call billed to, and seen by, your own TypeSafe account only, use TypeSafe directly.
@@ -71,7 +71,7 @@ Three things follow from that:
 - **`--provider` still overrides the inference**, which is how you reach a proxy that speaks a provider's API from a host of your own: `--url https://jev-proxy.internal/v1 --provider typesafe`.
 - **A `--provider` that contradicts the host is refused**, not guessed at. `--provider openrouter --url https://api.typesafe.ai/v1` writes nothing and says why: the two spellings disagree about where your key is about to be sent. The same pair is refused from `jev setup --base-url` and from the dashboard's Jev settings. (`--provider custom` is not a contradiction — it means "treat this URL as itself" — except on Cloudflare's host, whose per-account endpoint a custom route cannot reach.)
 
-`--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http://localhost` in observe mode only.
+`--url` is validated exactly as the `baseUrl` in the config file is, and refused in the same words: `https`, or plain `http` to a loopback host (`localhost`, `127.0.0.1`, `::1`) in any mode. Risk: nothing authenticates a loopback server, so while it is down another local process could take its port and answer; use `https` outside local testing.
 
 ### The key
 

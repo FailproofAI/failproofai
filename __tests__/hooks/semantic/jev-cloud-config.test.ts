@@ -250,7 +250,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       const r = inspectJevConfig();
       expect(r.status).toBe("key-lacks-jev");
       if (r.status !== "key-lacks-jev") return;
-      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
+      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 5000 });
       expect(r.problem).toContain("no Jev key is stored");
       expect(r.problem).not.toMatch(/not connected/);
       expect(JSON.stringify(r)).not.toContain(KEY);
@@ -285,7 +285,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(r.status).toBe("ok");
       if (r.status !== "ok") return;
       expect(r.keySource).toBe("cloud");
-      expect(r.config).toMatchObject({ provider: "failproofai", apiKey: KEY, baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
+      expect(r.config).toMatchObject({ provider: "failproofai", apiKey: KEY, baseUrl: BASE, mode: "observe", timeoutMs: 5000 });
       expect(loadJevConfig()?.apiKey).toBe(KEY);
       // The route the transport will POST to.
       expect(jevRoute(r.config).endpoint).toBe(`${BASE}/systemone`);
@@ -391,7 +391,7 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       const r = inspectJevConfig();
       expect(r.status).toBe("not-connected");
       if (r.status !== "not-connected") return;
-      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 3000 });
+      expect(r.routing).toEqual({ provider: "failproofai", baseUrl: BASE, mode: "observe", timeoutMs: 5000 });
       expect(r.problem).toMatch(/not connected to FailproofAI Cloud/);
       expect(r.problem).toMatch(/config --token/);
       expect(loadJevConfig()).toBeNull();
@@ -428,13 +428,13 @@ describe("jev-config: the FailproofAI Cloud provider", () => {
       expect(JSON.stringify(r)).not.toContain(KEY);
     });
 
-    it("keeps plain http to localhost out of enforce mode, as for every provider", () => {
+    it("takes plain http to localhost in enforce mode too, as for every provider", () => {
       const local = "http://localhost:8080";
       connect(local);
       writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "observe" }));
       expect(loadJevConfig()?.baseUrl).toBe(`${local}/enforcement/v1/jev`);
       writeJev(cloudFile({ baseUrl: `${local}/enforcement/v1/jev`, mode: "enforce" }));
-      expect(inspectJevConfig()).toMatchObject({ status: "refused", reason: "invalid" });
+      expect(loadJevConfig()).toMatchObject({ baseUrl: `${local}/enforcement/v1/jev`, mode: "enforce" });
     });
 
     it("is never read from a project's .failproofai", () => {

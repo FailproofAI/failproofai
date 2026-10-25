@@ -18,7 +18,9 @@ from .._context import (
     validate_choice,
     validate_limit,
 )
+from .. import _click_compat as click
 from ..models import Session
+from . import _cloud, _write
 
 
 def sessions(
@@ -70,6 +72,8 @@ def sessions(
     * `fp sessions --agents` — expand each multi-agent session to its full agent roster
     * `fp --json sessions --all --fields session_id,agents | jq '.sessions'` — every session's full agent roster as JSON
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     cctx = require_auth(state)
     validate_limit(limit)
@@ -147,5 +151,95 @@ def sessions(
         output.recheck_filters_hint(active_filters)
 
 
+def re_evaluate(ctx: typer.Context, session_id: str = typer.Argument(...)) -> None:
+    """Re-run evaluators on one session. Needs evaluations:trigger."""
+    _write.confirm(ctx.obj, f"Re-evaluate session {session_id}", assume_yes=False)
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "POST",
+        f"/api/sessions/{session_id}/re-evaluate"), "Session re-evaluation", body=session_id)
+
+
+def import_sessions(
+    ctx: typer.Context,
+    files: List[str] = typer.Argument(..., metavar="FILE...", help="Event JSONL, Claude Code transcripts or Codex rollouts (.gz ok)."),
+    format: str = typer.Option("auto", "--format", help="auto | failproofai (FailproofAI event JSONL) | claude | codex."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment for events that name none (server default: upload)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Convert and report; store nothing."),
+) -> None:
+    """Import sessions from files, as the dashboard's Import sessions dialog does.
+
+    Each file is gzipped and sent on its own. Sessions already in the org are skipped
+    whole; secrets are redacted the way the collector redacts them live. Claude Code
+    and Codex files take the session id from the file name, so pass the original files.
+    Needs events:add. With `--json`: `{"files": [{file, result}]}`.
+    """
+    import gzip
+    import time
+    from pathlib import Path
+    validate_choice(format, ("auto", "failproofai", "agenteye", "claude", "codex"), flag="--format")
+    # The server names FailproofAI's own event JSONL `agenteye`; `failproofai` is its public name.
+    wire_format = "agenteye" if format == "failproofai" else format
+    payloads = []
+    for name in files:
+        path = Path(name)
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise click.BadParameter(f"cannot read '{name}': {exc.strerror or exc}", param_hint="FILE")
+        rel = "/".join(path.resolve().parts[-2:])
+        payloads.append((name, rel, raw if raw[:2] == b"\x1f\x8b" else gzip.compress(raw)))
+    if not dry_run:
+        _write.confirm(ctx.obj, f"Import {len(files)} file{'s' if len(files) != 1 else ''}", assume_yes=False)
+    cctx = require_auth(ctx.obj)
+    # One cutoff for the whole run, so a later file of a session this run created
+    # is not skipped as "already present".
+    before = int(time.time() * 1000)
+    results = []
+    for name, rel, data in payloads:
+        result = api.import_events_file(cctx, data, {
+            "format": wire_format, "path": rel, "environment": env,
+            "dry_run": "true" if dry_run else None, "existing_before": before,
+        })
+        results.append({"file": name, "result": result})
+    if not dry_run:
+        _write.record_action("sessions_imported", resource="events", success=True)
+    _cloud.emit(ctx.obj, {"files": results}, "Session import")
+
+
+def show(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
+    """Show a session overview and its event timeline."""
+    cctx = require_auth(ctx.obj)
+    overview = api.cloud_request(cctx, "GET", "/api/sessions", params={"session_id": id, "limit": 1})
+    items = _cloud.rows(overview, "sessions")
+    if not items:
+        from ..errors import NotFoundError
+        raise NotFoundError(f"no session {id}")
+    timeline = api.cloud_request(cctx, "GET", "/api/events/summary", params={"session_id": id, "limit": 200, "order": "asc"})
+    _cloud.emit(ctx.obj, {"overview": items[0], "timeline": timeline}, "Session")
+
+
+def export(ctx: typer.Context, id: str = typer.Argument(...),
+           out: Optional[str] = typer.Option(None, "--out")) -> None:
+    """Export a full session as JSON."""
+    import json
+    data = api.cloud_request(require_auth(ctx.obj), "GET", f"/api/sessions/{id}/export")
+    if out:
+        _cloud.write_file(out, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        _cloud.emit(ctx.obj, {"out": out}, "Session exported")
+    else:
+        _cloud.emit(ctx.obj, data, "Session")
+
+
+def history(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
+    """Show a session's evaluation history."""
+    _cloud.emit(ctx.obj, api.cloud_request(require_auth(ctx.obj), "GET", f"/api/sessions/{id}/evaluation-history"), "Evaluation history")
+
+
 def register(app: typer.Typer) -> None:
-    app.command("sessions", epilog=GLOBALS_EPILOG)(sessions)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(sessions)
+    group.command("re-evaluate", epilog=GLOBALS_EPILOG)(re_evaluate)
+    group.command("show", epilog=GLOBALS_EPILOG)(show)
+    group.command("export", epilog=GLOBALS_EPILOG)(export)
+    group.command("history", epilog=GLOBALS_EPILOG)(history)
+    group.command("import", epilog=GLOBALS_EPILOG)(import_sessions)
+    app.add_typer(group, name="sessions")

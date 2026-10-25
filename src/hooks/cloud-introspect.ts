@@ -33,6 +33,8 @@
  * second.
  */
 
+import { displayText } from "./cloud-login";
+
 /** The path introspect is served on, appended to the cloud origin. */
 export const INTROSPECT_PATH = "/v1/auth/introspect";
 
@@ -126,8 +128,9 @@ export async function introspectKey(
     identity: {
       keyId: typeof b.key_id === "string" ? b.key_id : undefined,
       orgId: typeof b.org_id === "string" ? b.org_id : undefined,
-      orgSlug: typeof b.org_slug === "string" ? b.org_slug : undefined,
-      orgName: typeof b.org_name === "string" ? b.org_name : undefined,
+      // Printed in "Connected as …": text only, never terminal controls.
+      orgSlug: displayText(b.org_slug),
+      orgName: displayText(b.org_name),
       permissions: b.permissions.filter((p): p is string => typeof p === "string"),
       expiresAt: typeof b.expires_at === "string" ? b.expires_at : null,
       otelIngest: typeof b.otel_ingest === "boolean" ? b.otel_ingest : undefined,

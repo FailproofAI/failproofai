@@ -411,6 +411,20 @@ describe("jev CLI: FailproofAI Cloud", () => {
       expect(text(on)).not.toContain("config --token <key>");
     });
 
+    it("a machine connected for policies: FailproofAI Cloud sets the mode, and nothing is written", async () => {
+      writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe" });
+      connect();
+      writeCredentials({ ...readCredentials(), cloud: { url: ORIGIN, machineId: "machine-1", token: KEY } });
+      const before = readFileSync(jevConfigPath(), "utf8");
+      for (const mode of ["enforce", "off"]) {
+        const r = await runJevCommand(["setup", "--mode", mode], RENDER);
+        expect(r.exitCode, text(r)).toBe(1);
+        expect(text(r)).toContain("Jev mode is managed by FailproofAI Cloud");
+        noKey(r);
+      }
+      expect(readFileSync(jevConfigPath(), "utf8")).toBe(before);
+    });
+
     it("drops a key someone put in a Cloud file, which is what makes it valid again", async () => {
       connect();
       writeJev({ provider: "failproofai", baseUrl: BASE, mode: "observe", apiKey: BYOK_KEY });

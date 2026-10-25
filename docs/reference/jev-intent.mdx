@@ -82,7 +82,7 @@ It is read from the end of the transcript, at most the last 4 MB. Supported tran
 
 | Property | Value |
 | --- | --- |
-| Location | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Location | `~/.failproofai/state/semantic/sessions/<profile>/<session-id>.json`, where `<profile>` is the agent profile the prompt was typed into: `<integration>.<instance-id>` for an agent FailproofAI knows (the identity Cloud policies target), or just `<integration>` otherwise |
 | Permissions | file `0600`, directory `0700`. Every directory above it, up to `~/.failproofai`, is held to the same rule `jev.json`'s directory is: one that anyone else can **write** to can be renamed away and replaced, so the read path takes those write bits off where it can, and reads **nothing** where it cannot. A recorded prompt is then absent rather than forged, and nothing is cleared |
 | Kept per session | the last 5 prompts; a prompt identical to the one before it replaces it rather than taking a new slot |
 | Window | prompts older than 6 hours are ignored |
@@ -93,7 +93,9 @@ A session ID containing anything but letters, digits, `.`, `_` and `-`, or longe
 
 A session file exists only once a prompt has been recorded in it. It holds prompts and nothing else — no origin state, no transcript mark — and it is deleted once it has been silent for longer than the six-hour window, the next time a new session writes its first prompt.
 
-Nothing is recorded unless a Jev endpoint is configured.
+A prompt is read back only for the same agent profile and session ID it was recorded under. Session IDs come from the agent, so two profiles can use the same one; keying by profile keeps one profile's words from ever counting as another's request. Files from before this layout (`sessions/<session-id>.json`) cannot say which profile wrote them, so they are never read, and expire with the six-hour window.
+
+Nothing is recorded unless a Jev endpoint is configured. Under a FailproofAI Cloud Jev mode, nothing is recorded for an agent profile that no Cloud Jev check is assigned to and no installed pack's check reviews.
 
 ### The project root
 

@@ -110,7 +110,7 @@ def serve_verdicts(socket_path: Path, responses: list[dict[str, object]], receiv
                     deadline = time.monotonic() + 2
                     length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
                     received.append(json.loads(client._read_exact(connection, length, deadline)))
-                    body = json.dumps({"type": "policyResult", "protocolVersion": 1, **response}).encode()
+                    body = json.dumps({"type": "policyResult", "protocolVersion": client.PROTOCOL_VERSION, **response}).encode()
                     connection.sendall(struct.pack(">I", len(body)) + body)
 
     thread = threading.Thread(target=server, daemon=True)
@@ -585,6 +585,24 @@ class HostCompatibilityTests(unittest.TestCase):
             self.assertEqual(first["action"], "block")
             self.assertIsNone(retry)
             self.assertEqual(instance.ledger.path.parent.stat().st_mode & 0o777, 0o700)
+
+    def test_the_profile_identity_follows_the_host_home_resolver(self) -> None:
+        # A per-task profile override must report that profile's config, so
+        # the daemon roster attributes the call to it and not to HERMES_HOME's.
+        with tempfile.TemporaryDirectory() as tmp:
+            env_home = Path(tmp) / "from-env"
+            env_home.mkdir()
+            (env_home / "config.yaml").write_text("plugins: {}\n")
+            override = Path(tmp) / "from-host"
+            override.mkdir()
+            (override / "config.yaml").write_text("plugins: {}\n")
+            with patch.dict("os.environ", {"HERMES_HOME": str(env_home)}):
+                with patch.dict(sys.modules, host_modules(home=override)):
+                    selected = plugin._profile_settings_path("default")
+                with patch.dict(sys.modules, host_modules()):
+                    fallback = plugin._profile_settings_path("default")
+            self.assertEqual(selected, str((override / "config.yaml").absolute()))
+            self.assertEqual(fallback, str((env_home / "config.yaml").absolute()))
 
     def test_the_host_home_resolver_wins_over_hermes_home(self) -> None:
         # hermes_constants.get_hermes_home() also honours a per-task profile
@@ -1553,7 +1571,7 @@ class ClientTests(unittest.TestCase):
                         body = json.dumps(
                             {
                                 "type": "policyResult",
-                                "protocolVersion": 1,
+                                "protocolVersion": 2,
                                 "decision": "instruct",
                                 "policyNames": ["custom/write-route"],
                                 "reason": "Use the approved route.",
@@ -1573,14 +1591,16 @@ class ClientTests(unittest.TestCase):
                     event="pre_tool_call",
                     payload={"tool_name": "write_file", "tool_input": {"path": "/tmp/a"}},
                     cwd="/tmp",
+                    agent_settings_path="/tmp/hermes-work/config.yaml",
                 )
             thread.join(timeout=2)
             self.assertEqual(received["type"], "policyEvaluation")
             self.assertEqual(received["integration"], "hermes")
+            self.assertEqual(received["agentSettingsPath"], "/tmp/hermes-work/config.yaml")
             self.assertEqual(verdict.decision, "instruct")
             self.assertEqual(verdict.tool_name, "Write")
 
-    def test_client_rejects_protocol_mismatch(self) -> None:
+    def test_client_rejects_a_v1_daemon_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             socket_path = Path(tmp) / "daemon.sock"
             ready = threading.Event()
@@ -1598,7 +1618,7 @@ class ClientTests(unittest.TestCase):
                         body = json.dumps(
                             {
                                 "type": "policyResult",
-                                "protocolVersion": 99,
+                                "protocolVersion": 1,
                                 "decision": "allow",
                                 "policyNames": [],
                                 "matchedPolicies": [],

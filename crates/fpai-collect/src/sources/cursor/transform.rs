@@ -17,7 +17,7 @@ use crate::filetail::Ctx;
 // Reused, not re-cloned: `sanitize_id_part` MUST agree with the hook source's
 // agent-id scheme, and `to_rfc3339_micros` is a pure epoch→RFC3339 formatter.
 use crate::sources::claude::transform::sanitize_id_part;
-use crate::sources::goose::transform::to_rfc3339_micros;
+use crate::sources::to_rfc3339_micros;
 
 /// Longest session goal (the first user prompt) kept.
 const MAX_GOAL_CHARS: usize = 500;

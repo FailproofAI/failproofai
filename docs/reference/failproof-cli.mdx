@@ -25,7 +25,9 @@ failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-`failproofai config` is the whole of setup: it installs the `failproofaid` service (root once, via `sudo -n` — never an interactive password prompt), wires hooks into every agent CLI it finds, and connects to Cloud when a key is available. With no terminal — CI, a container, an agent driving it — it applies rather than asking, and exits 1 if anything it was asked to do did not happen.
+`failproofai config` is the whole of setup: it installs the `failproofaid` service (root once — in a terminal it asks for your sudo password, and asks again if that expired before setup finished; with no terminal it uses `sudo -n` and never prompts), wires hooks into every agent CLI it finds, and connects to Cloud. With no terminal — CI, a container, an agent driving it — it applies rather than asking, and exits 1 if anything it was asked to do did not happen.
+
+In a terminal, the **Connect to cloud** step on a machine that is not connected yet starts **logging in to FailproofAI Cloud** straight away; press Tab for the other options, **Paste an API key** or **Use open source**. Logging in opens a link — or prints it over SSH or with no display, to open on any device — where you sign up or sign in, pick or create an org, and authorize the machine; the terminal picks up the approval by itself and shows who approved it and for which org. The key is minted only when setup finishes, after the daemon is installed. On a machine that is already connected with a working key, the step is a menu with **Keep current connection** first, so re-running setup never opens a browser by itself; a saved key that no longer works starts logging in again straight away, and says why. Logging in again makes a new key and leaves the old one working until you revoke it. A Cloud from before browser login says so and offers the other options.
 
 It chooses **no** policies. That is the second command's job, and without it a freshly configured machine enforces nothing but the always-on guard.
 
@@ -39,7 +41,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 
 | Command | Outcome |
 | --- | --- |
-| `failproofai config` | Set the machine up: agents, daemon, and Cloud when a key is present |
+| `failproofai config` | Set the machine up: agents, daemon, and Cloud — log in through the browser, paste a key, or stay open source. Every agent on the machine also gets a small `failproofai` skill that points it at the [FailproofAI skills](https://github.com/FailproofAI/skills) online |
 | `failproofai config --token <key>` | Set up and connect in one pass, asking nothing. A key that carries `jev:evaluate` also turns on [Jev through FailproofAI Cloud](/reference/jev-cloud) in observe mode, unless a `jev.json` already exists or `--no-transcripts` is given |
 | `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
@@ -73,7 +75,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai config --resume` | Resume one paused local session; add `--all` to clear all pauses |
 | `failproofai update` | Finish package migrations and update the daemon |
 | `failproofai migrate --dry-run` | Preview or run pending home-layout migrations |
-| `failproofai uninstall` | Remove hooks and the daemon before removing the package |
+| `failproofai uninstall` | Remove hooks, the `failproofai` skill and the daemon before removing the package |
 | `failproofai --version` | Print the installed package version |
 | `failproofai --help` | Show commands and global usage |
 
@@ -86,7 +88,7 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
 | `--machine-id <id>` | Set the stable machine ID |
 | `--machine-label <name>` | Rename a machine that is **already connected**. On its own it never runs setup, so give it after `failproofai config`, not during |
-| `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt |
+| `--no-transcripts` | Send decisions without transcript content, and do not turn on Cloud Jev, which would send each checked tool call and the recent prompt; a `jev.json` left running Jev through FailproofAI Cloud is removed |
 | `--disconnect` | Stop Cloud policy pulls and event delivery. Also removes the Cloud Jev key and a `jev.json` that names FailproofAI Cloud; your own Jev setup is left in place |
 | `--status` | Show current machine state |
 | `--pause [duration]` | Pause the newest session in the current directory; accepts seconds, minutes, or hours and defaults to 30 minutes |
@@ -183,5 +185,5 @@ npm rm -g failproofai
 Run `failproofai <command> --help` for version-specific details.
 
 <Warning>
-  Run `failproofai uninstall` before `npm rm -g failproofai`; npm does not remove installed agent hooks or the daemon service.
+  Run `failproofai uninstall` before `npm rm -g failproofai`; npm does not remove installed agent hooks, the `failproofai` skill or the daemon service.
 </Warning>

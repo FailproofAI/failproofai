@@ -23,6 +23,8 @@ def usage(ctx: typer.Context) -> None:
     * `fp usage`
     * `fp --json usage | jq '.usage.events_ingested'`
     """
+    if ctx.invoked_subcommand:
+        return
     state: AppState = ctx.obj
     data = api.get_usage(require_auth(state))
     if state.json:
@@ -32,4 +34,22 @@ def usage(ctx: typer.Context) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    app.command("usage", epilog=GLOBALS_EPILOG)(usage)
+    group = typer.Typer(invoke_without_command=True, rich_markup_mode="markdown", context_settings={"help_option_names": ["-h", "--help"]})
+    group.callback(epilog=GLOBALS_EPILOG)(usage)
+    group.command("windows", epilog=GLOBALS_EPILOG)(usage_windows)
+    app.add_typer(group, name="usage")
+
+
+def usage_windows(ctx: typer.Context) -> None:
+    """List usage metering windows. API key only (the dashboard has no session route)."""
+    from .account_cmds import request
+    from ..client import AuthMode
+    from ..errors import KeyModeUnsupportedError
+    if ctx.obj.auth_mode is not AuthMode.API_KEY:
+        # GET /usage/windows is served on the versioned API only; a signed-in
+        # session would reach a dashboard 404 and print a misleading message.
+        raise KeyModeUnsupportedError(
+            "`fp usage windows` needs an API key — the dashboard has no session route for it.",
+            hint="pass --api-key (or FP_API_KEY) with a usage:read key",
+        )
+    request(ctx, "GET", "/api/usage/windows")

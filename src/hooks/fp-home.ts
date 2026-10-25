@@ -165,6 +165,9 @@ export const credentialsFile = (home?: string) => atHome(home, "credentials.json
  */
 export const jevConfigFile = (home?: string) => atHome(home, "jev.json");
 
+/** Owner-only inventory maintained by failproofaid. Paths stay on this machine. */
+export const agentRosterFile = (home?: string) => atHome(home, "agents", "roster.json");
+
 // ── Daemon binaries ──────────────────────────────────────────────────────────
 
 export const binDir = (home?: string) => atHome(home, "bin");
@@ -407,7 +410,7 @@ export const collectorHealthFile = (home?: string) => resolve(stateDir(home), "c
 /** Per-session enforcement pauses, keyed by a hash of the session id. */
 export const sessionPauseDir = () => resolve(stateDir(), "sessions");
 /**
- * The semantic (Jev) evaluator's local state: `sessions/<id>.json` holds the
+ * The semantic (Jev) evaluator's local state: `sessions/<profile>/<id>.json` holds the
  * human prompts recorded at `UserPromptSubmit`, and `verdicts.jsonl` one row
  * per semantic evaluation. Written only when a Jev config (BYOK) is present.
  */
@@ -656,6 +659,9 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // history the user was already told about. Kept OUT of `auditSessionFile`
   // precisely so both survive a sign-out.
   { path: auditMachineFile, class: "identity" },
+  // Profile IDs are stable across restarts and renames. A reset that deleted
+  // this file would make Cloud's exact-profile assignments match nobody.
+  { path: agentRosterFile, class: "identity" },
 
   // ── May be dropped: rebuilt on demand ──
   // NOTE: `auditDir` itself is deliberately absent. Layout 4 made it MIXED — it

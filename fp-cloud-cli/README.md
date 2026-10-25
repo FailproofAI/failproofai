@@ -139,6 +139,46 @@ fp fleet deploy ci-runner-01 --add no-force-push
 fp guardrails summary --since 24h
 ```
 
+A policy has a **kind**: `regex` (JavaScript — the default, and what every
+earlier version is), `jev` (Jev checks only, from a JSON file of declarations —
+each exactly a failproofai pack manifest's semantic entry), or `both`
+(JavaScript whose verdict its own Jev checks may clear, deployed as one).
+Jev checks run on FailproofAI Cloud; nothing is installed on the machine.
+While a `jev` or `both` policy is deployed to a machine, FailproofAI Cloud
+turns Jev on there and the machine sends each checked tool call to it; with
+none, Jev is off. There is no Jev mode to set: trial a policy with `:observe`
+(its checks are recorded, never applied), then deploy it as `enforce`, where
+Jev's checks **block** calls as well as clearing the regex verdicts they
+review.
+
+```bash
+fp policies publish prod-db-intent --kind jev --semantic ./checks.json
+fp policies publish no-prod-db --kind both --source ./rule.mjs --semantic ./checks.json
+fp fleet deploy ci-runner-01 --add prod-db-intent:observe
+fp fleet show ci-runner-01    # its Jev mode, and any policy errors it reported
+```
+
+Published policy versions do not contain agent-routing code. Each assignment
+can instead target every agent (the default), an integration including future
+profiles, or a particular profile reported by that machine. The same target
+applies to the regex and Jev parts of a `both` policy:
+
+```bash
+fp fleet deploy ci-runner-01 --add no-prod-db --target no-prod-db=hermes
+fp fleet deploy ci-runner-01 --target no-prod-db=hermes/agt_1234567890abcdef
+fp fleet deploy ci-runner-01 --all-agents no-prod-db  # explicitly remove targeting
+```
+
+Repeat `--target` for multiple alternatives on one assignment. `fp fleet
+show` and `fp fleet history` display the assigned scope; `--json` includes
+`agentTargets` on each targeted policy. A machine must report agent-scoping
+support before accepting a new target. When its identity cannot be resolved,
+a targeted policy does not match; unscoped policy remains in force.
+Newly installed shell hooks carry their settings scope. Reinstall older hooks
+to add the hint; without it, or for an integration that cannot report the
+source of multiple installed scopes, the machine reports
+`agent_scope_unresolved` rather than guessing which profile ran the call.
+
 **A deploy REPLACES a machine's whole policy set.** The server takes the full
 list and does not merge, so `fleet deploy` reads what the machine currently runs,
 applies your `--add`/`--remove`, prints the complete resulting set, and writes
@@ -170,6 +210,126 @@ has reported under rather than rendering it as an empty fleet.
 These commands are **session-only** (`fp login`). They are absent from the
 versioned API an API key authenticates against, so `--api-key` exits 2 with the
 reason rather than failing at the request.
+
+## Author an evaluator
+
+`fp evaluators` authors hosted definitions; `fp evals` continues to read results.
+Creation enables a definition by default. Check `fp evaluators instances` first:
+Cloud needs an enabled managed instance. Writes need `evaluations:trigger`;
+session dry-runs and `evaluators schema` also need `events:read`.
+
+Write `error_free.py` as a restricted Python expression (no imports or functions):
+
+```python
+EvalResult(score=Score(1.0 if session.count("error") == 0 else 0.0), reasoning="Error-free session")
+```
+
+```bash
+fp --json evaluators create --key error_free --name "Error free" --code error_free.py \
+  --result-kind score --dry-run-on run-001
+fp --json evaluators dry-run --code error_free.py --session run-001
+fp --json evaluators deploy error_free --code error_free.py --version 2 --dry-run-on run-001
+fp --json evaluators list --key error_free --all
+```
+
+LLM judge (Cloud selects the model; judge dry-runs are refused):
+
+```bash
+fp --json evaluators create --key relevance --name Relevance --judge \
+  --criteria "Grade how directly the answer addresses the request" --threshold 0.7
+fp --json evaluators deploy relevance --version 2 --judge \
+  --criteria "Grade relevance and completeness" --threshold 0.8
+fp --json sessions re-evaluate run-001
+fp --json sessions history run-001
+```
+
+Jev binary or graded rubric:
+
+```bash
+fp --json evaluators create --key resolved --name Resolved --jev noul \
+  --instructions "Was the request resolved?" --true "Resolved" --false "Unresolved"
+fp --json evaluators dry-run --jev noul --instructions "Was the request resolved?" \
+  --true "Resolved" --false "Unresolved" --session run-001
+fp --json evaluators deploy resolved --version 2 --jev score \
+  --instructions "Grade resolution quality" \
+  --level "Unresolved" --level "Partly resolved" --level "Fully resolved"
+```
+
+Jev dry-runs spend model budget. Rubrics need 3–5 distinct levels, worst first.
+Thresholds are 0–1; judge/Jev always return a score. `deploy` creates the new
+immutable version before disabling older enabled versions. If disabling fails,
+the CLI names the published id; inspect `list --all` and recover explicitly.
+`--backfill 7d` works for every kind (judge/Jev spend model budget); `evaluators backfill --from T --to T` accepts ≤90 days and `--dry-run` counts the work first.
+
+Human output shows each `--dry-run-on` session's outcome before creation or
+deployment. Any failed run stops the write; after reviewing the failure, an
+explicit `--force` overrides this guard. Existing `--json` response shapes stay
+unchanged.
+
+AI drafting is session-only and writes an API spec that create/deploy accept:
+
+```bash
+fp login
+fp --json evaluators draft "Measure error-free sessions with code" --kind code --out evaluator.json
+# Review the spec, especially eval_key and evaluator_source, before enabling it.
+fp --json evaluators create --file evaluator.json --dry-run-on run-001
+fp --json evaluators dry-run --file evaluator.json
+```
+
+Spec fields: `eval_key`, `display_name`, `eval_version`, `result_kind`, `labels`,
+`condition_source`, `evaluator_source`, `timeout_seconds`. Judge/Jev sources are
+JSON envelope **strings**, not nested objects. `--file` is exclusive with discrete
+spec flags; deploy may override a file's version. Files written by the CLI are
+created exclusively, so existing files are never silently replaced.
+See [the command reference](skill/references/commands.md#author-an-evaluator).
+
+## Dashboard parity
+
+```text
+fp dashboards list|show|create|update|delete
+fp dashboards tiles <id> list|add|update|remove|layout
+fp sessions show|export|history|re-evaluate <id>
+fp events latency
+fp sentiment summary|messages|sessions|session <id>
+fp query compose "question" [--run]                  # session
+fp query export [<id>] [--sql SQL] --format csv|json [--out FILE]
+fp alerts recipients
+fp alerts issues <id> [--create --title ... --summary ...]
+fp audits contracts list|show|create|update
+fp policies author "intent"|backtest <file-or-id>|candidacy --issue <id>  # session
+fp agent brief [--range 24h|7d]                      # session
+fp orgs create --name N [--slug S]                   # session
+fp roles list|show|create|update|delete
+fp users delete <id>
+fp users defaults
+fp usage windows
+fp plan                                           # session
+fp plan claim <offer>                             # session
+fp settings context-windows list|set <model> <tokens>|delete <model>
+fp otel status|enable|disable
+fp slack status|disconnect                          # session
+```
+
+`fp agent ask` runs artifact SQL through the permission-gated query runner and
+renders tables/stats. It prompts before approving a write on a terminal.
+Scripts and `--json` **decline** unless you explicitly pass `--approve`.
+Normal create/update commands keep their existing non-interactive confirmation
+behavior; assistant approvals are a separate safety boundary.
+
+All new commands accept the global `--json` before the command. Session-only
+commands fail before HTTP in API-key mode, with exit 2 and a `fp login` hint.
+Unknown-route 404s exit 6 with “not available on this FailproofAI Cloud yet”.
+Missing-record 404s also exit 6 but report that the record was not found.
+`plan` and `plan claim` require a signed-in person and deny API-key mode before
+HTTP with the standard `fp login` message.
+Human screens use the mint/pink wordmark, grey labels, open tables and full ids;
+existing JSON shapes are unchanged.
+
+Human commands show summaries, tables and wrapped text rather than response
+objects. Use global `--json` for raw API results. For `sessions export` or
+`query export --format json`, use `--out FILE` to save the JSON; without either
+option, the terminal shows a readable session or query view. CSV exports remain
+plain CSV for piping.
 
 ## Configuration
 
@@ -256,4 +416,3 @@ working as an opt-out if it is ever switched back on. See
 cd fp-cloud-cli
 uv run --extra dev pytest
 ```
-

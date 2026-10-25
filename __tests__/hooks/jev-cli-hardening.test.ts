@@ -207,24 +207,20 @@ describe("failproofai jev — review hardening", () => {
     });
   });
 
-  describe("setup refuses plain-http loopback outside observe mode", () => {
-    it("enforce (the default) is refused with the reason; observe is saved", async () => {
+  describe("setup takes plain-http loopback in every mode (local testing)", () => {
+    it("enforce (the default) is saved, and so is a switch to observe", async () => {
       const enforce = await runJevCommand(["setup", "--provider", "custom", "--base-url", "http://localhost:8787/v1", "--key-stdin"], withKey(KEY));
-      expect(enforce.exitCode).toBe(1);
-      expect(text(enforce)).toContain("observe");
-      expect(existsSync(jevConfigPath())).toBe(false);
-
-      const observe = await runJevCommand(
-        ["setup", "--provider", "custom", "--base-url", "http://localhost:8787/v1", "--mode", "observe", "--key-stdin"],
-        withKey(KEY),
-      );
-      expect(observe.exitCode).toBe(0);
-      expect(readFile()).toMatchObject({ baseUrl: "http://localhost:8787/v1", mode: "observe" });
-
-      // And the mode cannot then be switched to enforce underneath it.
-      const flip = await runJevCommand(["setup", "--mode", "enforce"], noTty);
-      expect(flip.exitCode).toBe(1);
+      expect(enforce.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ baseUrl: "http://localhost:8787/v1" });
+      const flip = await runJevCommand(["setup", "--mode", "observe"], noTty);
+      expect(flip.exitCode).toBe(0);
       expect(readFile().mode).toBe("observe");
+    });
+
+    it("plain http to any other host is still refused", async () => {
+      const r = await runJevCommand(["setup", "--provider", "custom", "--base-url", "http://jev.example.com/v1", "--key-stdin"], withKey(KEY));
+      expect(r.exitCode).toBe(1);
+      expect(existsSync(jevConfigPath())).toBe(false);
     });
   });
 

@@ -129,9 +129,10 @@ That splits an alert in one of these lockfiles into two cases:
 Every row is bounded by the same facts: these are test fixtures — `"private": true`,
 never published, installed with `--ignore-scripts`, and run only in CI against
 scripted in-process models. Re-check them whenever the supported framework floor
-moves. Dropping `ai` 4.x from the matrix retires the first two rows; the zod row
-retires only once `ai` 4.x, LangChain 0.3, LlamaIndex 0.11 and Mastra 0.x have all
-left it.
+moves. The first two rows retire once `ai` 4.x has left the matrix, which takes
+`mastra-0` as well as `ai-4`, because `@mastra/core@0.24.9` requires `ai@^4`. The
+zod row retires only once `ai` 4.x, LangChain 0.3, LlamaIndex 0.11 and Mastra 0.x
+have all left it.
 
 ## Maintainer setup (one-time)
 

@@ -59,8 +59,10 @@ const specifiers = fixtures.flatMap((fixture) =>
 );
 
 describe("TS SDK integration fixtures named for a release line", () => {
-  it("finds them", () => {
-    expect(named.map((f) => f.fixture)).toEqual(expect.arrayContaining(["ai-4", "langchain-0.3", "mastra-0"]));
+  it("finds them, every framework's supported floor among them", () => {
+    expect(named.map((f) => f.fixture)).toEqual(
+      expect.arrayContaining(["ai-4", "langchain-0.3", "llamaindex-0.11", "mastra-0"]),
+    );
   });
 
   it("know which framework each name pins", () => {

@@ -6,6 +6,10 @@
 
 - **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)
 
+### Fixes
+
+- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#TBD)
+
 ### Dependencies
 
 - `failproofai-sdk` drops Python 3.10, which reached end of life this month, clearing the 47 Dependabot alerts against its dev/test lockfile. `pillow` (41) and `filelock` (6) are fixed only in releases that require Python 3.11 (13.0.0 and 4.2.1), so the lockfile's 3.10 slice was held on 12.3.0 and 4.1.0 behind two version-pinned OSV exceptions due to expire on 2026-11-20. `requires-python` is now `>=3.11`, the SDK's CI matrix runs 3.11–3.14, both exceptions are gone, and the 3.10-only `tomli` and `onnxruntime` entries leave the `dev` and `crewai` extras. On 3.10, pip keeps resolving `0.0.1b6`; `fp-cloud-cli` still supports 3.10 (#953)

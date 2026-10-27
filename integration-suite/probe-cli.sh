@@ -241,16 +241,14 @@ YAML
               mkdir -p "$HOME/node_modules"
               ln -sfn "$HOME/.npm-global/lib/node_modules/openclaw" "$HOME/node_modules/openclaw"
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.plugins=c.plugins||{};c.plugins.load=c.plugins.load||{};c.plugins.load.paths=[process.env.HOME+"/oc-plugin"];fs.writeFileSync(p,JSON.stringify(c,null,2));'
-              # 3. THE BINARY THE SHIM SPAWNS. It runs `node <override>`, and the
-              #    canary's override is a /bin/sh wrapper — `node …/bin/failproofai`
-              #    is a syntax error (the same trap pi hits, see its branch). The
-              #    old fix was to unset it, but that made the shim self-resolve to
-              #    `../dist/cli.mjs` relative to ITSELF, which after (1) is a copy
-              #    in HOME whose bundle cannot resolve its own imports. Point it at
-              #    the real one instead: node-runnable AND still inside /repo, so
-              #    it resolves and stays main HEAD. The shim fails OPEN on a spawn
-              #    error, so every one of these lands as a silent allow.
-              export FAILPROOFAI_BINARY_OVERRIDE=/repo/dist/cli.mjs
+              # 3. THE DAEMON. The plugin spawns nothing: like the Hermes plugin it
+              #    asks failproofaid over its socket (FAILPROOFAI_DAEMON_SOCKET,
+              #    inherited by the gateway below), and like Hermes its install
+              #    refuses unless that daemon answers — which, as for Hermes, it
+              #    does not yet here: daemon_cycle first runs after install/wire.
+              #    This used to export a CLI path for the old spawning shim, which
+              #    is exactly why the canary never saw that shim lose its CLI
+              #    under OpenClaw ≥ 2026.9.6's plugin capture.
               # (4. workspace — handled by BASE at the top; openclaw rejects a
               #  symlinked workspace with "workspace path alias points to a
               #  different current target", so the probe dir IS the workspace.)

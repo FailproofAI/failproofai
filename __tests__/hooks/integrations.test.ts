@@ -129,6 +129,7 @@ describe("integrations registry", () => {
   it("declares daemon-only installation requirements in registry metadata", () => {
     expect(listIntegrations().filter((integration) => integration.requiresHealthyDaemon)).toEqual([
       hermes,
+      openclaw,
     ]);
   });
 

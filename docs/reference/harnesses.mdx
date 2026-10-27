@@ -88,6 +88,16 @@ Run `failproofai config --status` to detect a disabled, incomplete, duplicated,
 or newly unconfigured profile, or one still on legacy shell hooks (reported as
 "Hermes cron jobs are not checked").
 
+### OpenClaw plugin
+
+OpenClaw loads FailproofAI as an in-process gateway plugin, registered in every
+profile's `openclaw.json`. Like the Hermes plugin, it asks the local
+`failproofaid` daemon for each verdict over its socket, so it needs a running
+daemon: installation refuses without one, and if the daemon cannot answer, tool
+calls and prompts are blocked and the reason is written to the gateway log.
+After `npm install -g failproofai@latest`, restart the OpenClaw gateway so it
+loads the updated plugin.
+
 ### Codex hook trust
 
 Codex 0.129 and later runs a hook from `~/.codex/hooks.json` only after you approve it in interactive `codex` ("Review hooks"); until then, every Codex session — headless `codex exec` included — skips it. Hooks in Codex's system config, `/etc/codex/config.toml` on Linux and macOS, run without that approval.

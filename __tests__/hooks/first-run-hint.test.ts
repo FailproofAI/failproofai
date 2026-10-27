@@ -27,7 +27,7 @@ afterAll(() => {
 function cli(...args: string[]): string {
   const r = spawnSync("bun", [BINARY, ...args], {
     // Run from a directory with no project config, so the listing is about the
-    // fresh machine and not about this repo's own dogfood hooks.
+    // fresh machine and not about any hooks in the repo checkout.
     cwd: HOME,
     env: {
       ...process.env,

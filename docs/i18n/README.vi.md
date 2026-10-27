@@ -250,8 +250,6 @@ MIT với [Commons Clause](https://commonsclause.com/) — miễn phí cho sử 
 
 Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Các chính sách mới, trường hợp đặc biệt và bản dịch đều được chào đón.
 
-> **Xây dựng trước khi bạn bắt đầu.** Chạy `bun install && bun run build` trước. Repo này chạy các hooks của failproofai trên chính nó, và chúng giải quyết import `failproofai` so với gói `dist/` được biên dịch — mà không có bản dựng bạn sẽ gặp các lỗi hook `Cannot find package 'failproofai'`. Xây dựng lại sau khi thay đổi `src/`. Xem [Xây dựng trước khi các dev hooks trong repo sẽ hoạt động](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
-
 ---
 
 Xây dựng với ❤️ bởi [befailproof.ai](https://befailproof.ai) tại SF và Bengaluru.

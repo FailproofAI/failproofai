@@ -14,6 +14,10 @@
 - Patch the fixable SDK integration fixture advisories with fixture-local `overrides`, moving no pin: `undici` 7.29.1 → 7.30.1 in `ai-5` (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472); `fast-uri` 3.1.8 → 3.1.9 in `llamaindex-0.11` (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp); and in `mastra-1`, `@modelcontextprotocol/server` 2.0.0 → 2.3.0 and `@modelcontextprotocol/client` 2.2.0 → 2.3.0 (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453, GHSA-rvq5-wwqv-78pq, GHSA-6prh-2h8m-c8cw), both pinned exactly by `@mastra/mcp@2.0.0`, each now with its own `@modelcontextprotocol/core@2.3.0` nested under it (#934)
 - `SECURITY.md` accepts zod GHSA-mrhx-c7xc-m3w5 in the five fixtures held to zod 3: `ai-4`, `langchain-0.3` and `llamaindex-0.11`, and the nested copies in `langchain-dup-core` and `mastra-0`. It is fixed only in zod 4.6.6, no zod 3 release carries the fix, and every copy is required at `^3` by the framework release its fixture pins (#934)
 
+### Chores
+
+- Remove this repo's own failproofai hooks: the project-scope agent CLI configs (`.claude/settings.json`, `.codex/`, `.cursor/`, `.factory/`, `.github/hooks/`, `.opencode/`, `.agents/`, `.devin/`, `.pi/`), the `.failproofai/` policies, `scripts/dev-hook.mjs` and their tests. The hook-sync container no longer relies on them to publish its PR: the prompt has the agent commit, push and open it, and the entrypoint pushes and opens it for any commit left unpublished (#954)
+
 ## 1.0.12 — 2026-10-23
 
 The stable release of logging in to FailproofAI Cloud from `config` in your browser, and of Cloud-managed Jev and hybrid policies scoped to agents. Everything below in the `1.0.12-beta.*` sections ships here too.

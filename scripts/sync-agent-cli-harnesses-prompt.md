@@ -13,11 +13,11 @@ pull request with the fix — or, if a sync PR is already open, comment on it in
   finish the work.
 - The entrypoint has **already cut a fresh branch** named `auto/sync-cli-harnesses-<UTC>`.
   Do all your work here; do **not** switch branches or work on `main`.
-- failproofai's own Stop hooks are active in this checkout. If you make commits, you
-  will not be allowed to stop until you have **committed**, **pushed**, and **opened a
-  PR** for them. If you make **no** commits (nothing to sync, or you only commented on
-  an already-open sync PR), a clean working tree stops fine — so on those paths, do
-  **not** edit any files.
+- **You publish your own work.** If you edit files, you must **commit**, **push**, and
+  **open a PR** for them (Phase 3) before you stop — no hook does it for you, and the
+  entrypoint fails the run if you leave uncommitted changes. If you make **no**
+  commits (nothing to sync, or you only commented on an already-open sync PR), do
+  **not** edit any files, so the working tree stays clean.
 - Use ultracode / multi-agent orchestration: in Phase 1, fan out **one subagent per
   CLI** so the seven harnesses are checked in parallel.
 
@@ -48,23 +48,17 @@ For each verified CLI, compare the upstream docs to this repo across three scope
    `src/hooks/integrations.ts` (matcher-wrapper vs flat-array vs packages-array vs
    plugin registration; field names like `command` vs `bash`/`powershell`;
    `timeout` vs `timeoutSec` and its **unit** seconds-vs-ms; presence of `version`
-   / `$schema` / `matcher`; the settings-file path) **and** the committed dogfood
-   fixture on disk. The canonical worked example is git history / PR #482, which
-   dropped an invalid top-level `version` field and fixed a `60000`ms→`60`s timeout
-   unit in `.codex/hooks.json` by editing the writer, the fixture, and the tests
-   together.
+   / `$schema` / `matcher`; the settings-file path). The canonical worked example is
+   git history / PR #482, which dropped an invalid top-level `version` field and
+   fixed a `60000`ms→`60`s timeout unit in the `.codex/hooks.json` writer by editing
+   the writer and the tests together.
 
 ## Reading rules
 
-- This run relaxed two policies (`require-ci-green-before-stop`,
-  `block-read-outside-cwd`) so you can read and edit the settings fixtures. Even so,
-  when you only need to **inspect** a committed fixture, prefer
-  `git show HEAD:<path>` (e.g. `git show HEAD:.codex/hooks.json`) — it is never
-  blocked and is the reliable way to read `.claude/settings.json`, `.codex/hooks.json`,
-  `.cursor/hooks.json`, `.github/hooks/failproofai.json`,
-  `.pi/settings.json`, and `.opencode/*`.
-- Do **NOT** run `failproofai policies --install` (or any `failproofai` subcommand)
-  to regenerate a fixture — it is blocked. Edit fixtures by hand.
+- Do **NOT** run `failproofai policies --install` (or any `failproofai` subcommand):
+  it would write hook configs into this clone, and those must never land in the PR.
+  The settings-file shape lives in the writer in `src/hooks/integrations.ts` and its
+  tests — read and edit those.
 
 ## Phase 1 — Fan out one subagent per CLI
 
@@ -80,7 +74,7 @@ Spawn one subagent per CLI (seven, in parallel). Each subagent, for its CLI:
 2. Compare against this repo: the CLI's `*HOOK_EVENT_TYPES` array + paired
    `*EVENT_MAP` (scope 1); its `*_TOOL_MAP` / `*_TOOL_INPUT_MAP` and its branch in
    `src/hooks/policy-evaluator.ts` (scope 2); its literals in
-   `src/hooks/integrations.ts` + its dogfood fixture read via `git show` (scope 3).
+   `src/hooks/integrations.ts` (scope 3).
 3. Return a structured report: `{ cli, status: up-to-date | drift | unverified,
    scope1: {added, removed}, scope2: {...}, scope3: {...}, sources: [...] }`.
 
@@ -102,7 +96,7 @@ surface is documented in the package source, not a clean enumeration).
 
 Merge the subagent reports into one list of detected drift. Then, **before you edit a
 single file**, decide which path you are on — editing first would leave uncommitted
-changes that block a clean stop on the comment / no-op paths below.
+changes behind on the comment / no-op paths below, which fails the run.
 
 1. **No drift in any verified CLI** → do nothing: make no edits, open no PR, post no
    comment. Stop. (`unverified` alone is not drift — the docs may just be unreachable
@@ -124,7 +118,7 @@ changes that block a clean stop on the comment / no-op paths below.
      > (hook-sync bot — please fold these into this PR rather than opening a second sync PR.)
 
      Never push commits to another PR's branch; only comment, and leave the working
-     tree clean so this run stops cleanly.
+     tree clean.
 
    - **If no open sync PR exists → go to Phase 3** to apply the fixes and open one.
 
@@ -155,7 +149,7 @@ requires.
   an invalid field to remove, a wrong timeout unit, or a renamed tool id (the PR
   #482 class). When you do, move the whole quartet together, exactly like #482:
   the writer in `src/hooks/integrations.ts` (+ a shared helper if it dedupes
-  logic), the committed dogfood fixture, the unit test in
+  logic), the unit test in
   `__tests__/hooks/integrations.test.ts`, and the e2e test in
   `__tests__/e2e/hooks/<cli>-integration.e2e.test.ts` — plus a `types.ts` comment
   if it documents the old shape.
@@ -176,11 +170,14 @@ version's section. There is no `## Unreleased` section. Use the `### Features` (
 ### Commit, push, open the PR
 1. Stage only the files you intentionally edited (never `git add -A`):
    `src/hooks/types.ts`, `src/hooks/integrations.ts`, `src/hooks/policy-evaluator.ts`,
-   the touched `__tests__/...` files, the touched dogfood fixtures, and
-   `CHANGELOG.md` — whichever actually changed.
+   the touched `__tests__/...` files, and `CHANGELOG.md` — whichever actually
+   changed.
 2. Commit (e.g. `feat: sync agent CLI harnesses with upstream docs`), then
    `git push -u origin "$(git branch --show-current)"`.
 3. `gh pr create --base main --title "[auto] sync agent CLI harnesses with upstream docs" --body "<body>"`.
+4. Confirm before you stop: `git status --porcelain` is empty, the branch is pushed,
+   and `gh pr list --head "$(git branch --show-current)"` shows the PR. If any of
+   these fails, fix it — nothing else will.
 
 The PR **body** must contain, in order:
 
@@ -205,12 +202,10 @@ The PR **body** must contain, in order:
 - **Only edit** these paths, and only where drift requires it: `src/hooks/types.ts`,
   `src/hooks/integrations.ts`, `src/hooks/policy-evaluator.ts`,
   `__tests__/hooks/manager.test.ts`, `__tests__/hooks/integrations.test.ts`,
-  `__tests__/e2e/hooks/<cli>-integration.e2e.test.ts`, the seven dogfood fixtures
-  (`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`,
-  `.github/hooks/failproofai.json`, `.opencode/opencode.json`,
-  `.opencode/plugins/failproofai.mjs`, `.pi/settings.json`),
-  and `CHANGELOG.md`.
-- Do **NOT** edit `.failproofai/policies-config.json` (the entrypoint manages it),
+  `__tests__/e2e/hooks/<cli>-integration.e2e.test.ts`, and `CHANGELOG.md`.
+- Do **NOT** create hook configs in this clone (`.claude/settings.json`,
+  `.codex/hooks.json`, `.cursor/hooks.json`, `.github/hooks/`, `.opencode/`,
+  `.pi/settings.json`, `.failproofai/`), and do **NOT** edit
   `src/hooks/handler.ts`, `src/hooks/manager.ts`, or any other source file.
 - Do **NOT** add entries to any `*EVENT_MAP`, `*_TOOL_MAP`, or `*_TOOL_INPUT_MAP`
   for newly-added items. Removing a key when its array entry is removed IS allowed

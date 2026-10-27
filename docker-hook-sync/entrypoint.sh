@@ -6,18 +6,18 @@
 #   1. Validate env (CLAUDE_CODE_OAUTH_TOKEN, GH_TOKEN).
 #   2. gh auth setup-git + git identity.
 #   3. Clone failproofai --depth=1; cut a fresh auto/sync-cli-harnesses-<UTC> branch.
-#   4. NEUTRALIZE two policies in the THROWAWAY clone's .failproofai config
-#      (require-ci-green-before-stop, block-read-outside-cwd) via jq, then
-#      `git update-index --skip-worktree` so the edit is invisible to
-#      git status/add and never enters the agent's commit/PR — while failproofai
-#      reads the edited WORKTREE file at runtime and sees them gone. The
-#      require-commit/push/pr-before-stop gates stay ACTIVE (dogfooding).
-#   5. exec `claude --effort ultracode -p <prompt>` wrapped in a PTY so
-#      --output-format stream-json line-flushes to `kubectl logs -f`.
+#   4. Run `claude --effort ultracode -p <prompt>` wrapped in a PTY so
+#      --output-format stream-json line-flushes to `kubectl logs -f`. The prompt
+#      has the agent commit, push and open the PR itself.
+#   5. Publish safety net: if the agent committed but left the branch unpushed or
+#      without a PR, push it and open the PR here. Uncommitted edits are never
+#      committed by this script — they are logged and fail the run.
 #   6. Exit with claude's return code (all output streams to stdout / the pod log).
 #
 # Exit codes: 0 = agent finished (claude's rc) · 64 = missing required env ·
-#             65 = prompt file missing in clone · 66 = unsafe WORKSPACE · else = claude's rc.
+#             65 = prompt file missing in clone · 66 = unsafe WORKSPACE ·
+#             67 = agent left uncommitted changes · 68 = push / PR creation failed ·
+#             else = claude's rc.
 set -euo pipefail
 
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
@@ -60,28 +60,13 @@ fi
 log "cloning $REPO_URL@$REPO_BRANCH_FROM -> $WORKSPACE"
 git clone --depth=1 --branch "$REPO_BRANCH_FROM" "$REPO_URL" "$WORKSPACE"
 cd "$WORKSPACE"
-# Fetch the base ref (shallow) so require-*-before-stop can diff against origin/<base>.
+# Fetch the base ref (shallow) so the publish step can count commits ahead of origin/<base>.
 git fetch --depth=1 origin "$REPO_BRANCH_FROM" >/dev/null 2>&1 || true
 BRANCH="auto/sync-cli-harnesses-$(date -u +%Y%m%dT%H%M%SZ)"
 git checkout -b "$BRANCH"
 log "working on branch $BRANCH"
 
-# ---------------- 4. policy-config neutralization ----------------
-# enabledPolicies is a UNION across scopes with no disable field, so a policy must
-# be removed from the file that lists it. --skip-worktree then hides that edit from
-# git status/add (so it never lands in the PR) while failproofai still reads the
-# edited worktree file at runtime. Keeps require-commit/push/pr-before-stop active.
-CFG=".failproofai/policies-config.json"
-if [ -f "$CFG" ]; then
-  cfg_tmp="$(mktemp)"
-  jq '.enabledPolicies |= map(select(. != "require-ci-green-before-stop" and . != "block-read-outside-cwd"))' "$CFG" > "$cfg_tmp" && mv "$cfg_tmp" "$CFG"
-  git update-index --skip-worktree "$CFG"
-  log "neutralized require-ci-green-before-stop + block-read-outside-cwd for this run (skip-worktree; not committed)"
-else
-  log "WARN: $CFG not found; running with the repo's default policy set"
-fi
-
-# ---------------- 5. invoke claude (ULTRACODE, headless, PTY-wrapped) ----------------
+# ---------------- 4. invoke claude (ULTRACODE, headless, PTY-wrapped) ----------------
 PROMPT_FILE="$WORKSPACE/$PROMPT_PATH"
 if [ ! -f "$PROMPT_FILE" ]; then log "ERROR: prompt missing at $PROMPT_FILE"; exit 65; fi
 
@@ -105,5 +90,33 @@ rc=$?
 set -e
 rm -f "$RUN_SH"
 log "claude exited $rc"
+
+# ---------------- 5. publish safety net ----------------
+# The prompt tells the agent to commit, push and open the PR. Nothing enforces
+# that inside the clone, so finish the job here for any commit it left behind.
+# The PR body the agent writes is the real one; the fallback body only points
+# reviewers at the commits.
+if [ -n "$(git status --porcelain)" ]; then
+  log "ERROR: agent left uncommitted changes (not committing them):"
+  git status --short
+  exit 67
+fi
+
+ahead="$(git rev-list --count "origin/$REPO_BRANCH_FROM..HEAD" 2>/dev/null || echo 0)"
+if [ "$ahead" -gt 0 ]; then
+  if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH" 2>/dev/null || true)" ]; then
+    log "pushing $ahead commit(s) on $BRANCH"
+    git push -u origin "$BRANCH" || { log "ERROR: push failed"; exit 68; }
+  fi
+  if [ -z "$(gh pr list --head "$BRANCH" --state all --json number --jq '.[].number')" ]; then
+    log "agent did not open a PR; opening one"
+    gh pr create --base "$REPO_BRANCH_FROM" --head "$BRANCH" \
+      --title "[auto] sync agent CLI harnesses with upstream docs" \
+      --body "$(printf 'Automated hook-sync run. The agent committed these changes but did not open the PR itself; see the commits and the run log for the drift report.\n\n%s\n\nCI must pass and this PR must be reviewed before merging.' "$(git log --format='- %s' "origin/$REPO_BRANCH_FROM..HEAD")")" \
+      || { log "ERROR: gh pr create failed"; exit 68; }
+  fi
+else
+  log "no commits on $BRANCH; nothing to publish"
+fi
 
 exit "$rc"

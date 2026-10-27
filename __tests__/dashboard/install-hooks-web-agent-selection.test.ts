@@ -8,7 +8,7 @@
  * The real server actions and the real manager, against a throwaway HOME,
  * FAILPROOFAI_HOME and pack directory. User scope only, which is the only scope
  * the panel uses: the actions pass no cwd, so a project-scope call here would
- * reach this repository's own dogfood configs.
+ * write hook configs into this repository's checkout.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

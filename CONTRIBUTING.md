@@ -6,8 +6,7 @@ Thanks for your interest in contributing! Here's how to get started.
 
 - Bun >= 1.3.0 — required, not optional. `bun install` runs `prepare` → `bun run build`,
   which shells out to `bun build`, so there is no Node-only setup path.
-- Node.js >= 20.9.0 — what the published package targets, and what runs the in-repo
-  dev hooks' launcher.
+- Node.js >= 20.9.0 — what the published package targets.
 
 ## Development Setup
 
@@ -19,38 +18,6 @@ bun run dev
 ```
 
 The dev server starts at `http://localhost:8020`.
-
-### Build before the in-repo dev hooks will work
-
-This repo **dogfoods failproofai on itself**: `.claude/settings.json` (and the
-sibling `.codex/`, `.cursor/`, `.github/hooks/`, … configs) register hooks that run
-`node scripts/dev-hook.mjs --hook <Event> --cli <cli>`. That launcher locates `bun`
-(across `PATH`, `$BUN_INSTALL/bin`, `~/.bun/bin`, Homebrew, and every
-`~/.nvm/versions/node/*/bin`), builds `dist/index.js` if it is missing, then hands off
-to `bin/failproofai.mjs`. See `scripts/dev-hook.mjs` for why node fronts a bun-only
-binary. Those hooks load the custom policies in `.failproofai/policies/*.mjs`, which
-`import` the `failproofai` package — resolved against the **compiled `dist/index.js`
-bundle**.
-
-If `dist/` is missing the launcher rebuilds it for you and says so on stderr. If it is
-**stale** — you changed `src/index.ts` and the bundle predates it — nothing detects that,
-and you'll get policies enforcing yesterday's code. When the bundle is missing *and* the
-launcher can't run, the errors look like:
-
-```
-[failproofai:hook] ERROR failed to load custom hooks from
-  .failproofai/policies/review-policies.mjs: Cannot find package 'failproofai' …
-```
-
-`bun install` builds `dist/` for you via its `prepare` script, so a clean clone
-just works. **Rebuild explicitly whenever you've changed `src/`** (the hooks load the
-compiled bundle, not your live `src/`):
-
-```bash
-bun run build   # full build (Next.js + dist/)
-# …or, just the hook bundle (much faster while iterating on policies):
-bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts
-```
 
 ## Available Scripts
 

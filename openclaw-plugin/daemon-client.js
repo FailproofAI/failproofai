@@ -87,10 +87,20 @@ function readHookResult(message) {
   if (message.type !== "hookResult") {
     return failed("invalid", `failproofaid returned an unexpected ${JSON.stringify(message.type)} response`);
   }
+  // The daemon always serializes all three (crates/fpai-ipc/src/envelope.rs);
+  // a frame missing one is not a hookResult, and must not read as an empty
+  // stdout — that is the allow.
+  if (
+    !Number.isInteger(message.exitCode) ||
+    typeof message.stdout !== "string" ||
+    typeof message.stderr !== "string"
+  ) {
+    return failed("invalid", "failproofaid returned an incomplete hookResult");
+  }
   if (message.exitCode !== 0) {
     return failed("evaluation", `failproofai exited ${String(message.exitCode)} without a verdict`);
   }
-  const stdout = typeof message.stdout === "string" ? message.stdout.trim() : "";
+  const stdout = message.stdout.trim();
   if (!stdout) return { ok: true, verdict: { permission: "allow" } };
   let verdict;
   try {
@@ -98,10 +108,26 @@ function readHookResult(message) {
   } catch {
     return failed("invalid", "failproofai returned a verdict that is not JSON");
   }
-  if (verdict === null || typeof verdict !== "object" || typeof verdict.permission !== "string") {
-    return failed("invalid", "failproofai returned a verdict without a permission");
+  return isVerdict(verdict)
+    ? { ok: true, verdict }
+    : failed("invalid", "failproofai returned a malformed verdict");
+}
+
+const PERMISSIONS = new Set(["allow", "deny", "instruct"]);
+
+/** The flat shape policy-evaluator.ts prints for `--cli openclaw`; unknown keys are ignored. */
+function isVerdict(verdict) {
+  if (verdict === null || typeof verdict !== "object" || Array.isArray(verdict)) return false;
+  if (!PERMISSIONS.has(verdict.permission)) return false;
+  if (verdict.reason !== undefined && typeof verdict.reason !== "string") return false;
+  if (verdict.policyName !== undefined && typeof verdict.policyName !== "string") return false;
+  if (
+    verdict.policyNames !== undefined &&
+    !(Array.isArray(verdict.policyNames) && verdict.policyNames.every((name) => typeof name === "string"))
+  ) {
+    return false;
   }
-  return { ok: true, verdict };
+  return true;
 }
 
 /**

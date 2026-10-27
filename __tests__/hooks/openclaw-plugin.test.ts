@@ -155,6 +155,23 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     }
   });
 
+  it("accepts the instruct verdict the evaluator prints", async () => {
+    // policy-evaluator.ts's `cli === "openclaw"` PreToolUse instruct shape.
+    const verdict = {
+      permission: "instruct",
+      reason: "Instruction from failproofai: re-read the ticket",
+      policyName: "custom/read-first",
+      policyNames: ["custom/read-first", "custom/cite-source"],
+    };
+    const daemon = await fakeDaemon(socketPath, () => hookResult(JSON.stringify(verdict)));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload: {}, socketPath });
+      expect(result).toEqual({ ok: true, verdict });
+    } finally {
+      await daemon.close();
+    }
+  });
+
   it("reads a frame that arrives in pieces", async () => {
     const whole = frame(hookResult(JSON.stringify({ permission: "instruct", reason: "slow down" })));
     const server = createServer((socket) => {
@@ -180,6 +197,14 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     ["a non-zero exit", hookResult("", 1), "evaluation"],
     ["stdout that is not JSON", hookResult("not json"), "invalid"],
     ["a verdict without a permission", hookResult(JSON.stringify({ reason: "x" })), "invalid"],
+    ["a hookResult with no stdout", { type: "hookResult", protocolVersion: 2, exitCode: 0, stderr: "" }, "invalid"],
+    ["a hookResult with no stderr", { type: "hookResult", protocolVersion: 2, exitCode: 0, stdout: "" }, "invalid"],
+    ["a hookResult with no exitCode", { type: "hookResult", protocolVersion: 2, stdout: "", stderr: "" }, "invalid"],
+    ["a non-string stdout", { type: "hookResult", protocolVersion: 2, exitCode: 0, stdout: 1, stderr: "" }, "invalid"],
+    ["an unknown permission", hookResult(JSON.stringify({ permission: "unknown" })), "invalid"],
+    ["a non-string reason", hookResult(JSON.stringify({ permission: "deny", reason: 7 })), "invalid"],
+    ["non-string policyNames", hookResult(JSON.stringify({ permission: "instruct", policyNames: [1] })), "invalid"],
+    ["a verdict that is an array", hookResult(JSON.stringify(["deny"])), "invalid"],
   ])("never reads %s as an allow", async (_label, reply, failure) => {
     const daemon = await fakeDaemon(socketPath, () => reply as Record<string, unknown>);
     try {
@@ -316,6 +341,22 @@ describe("openclaw-plugin hooks", () => {
     expect(await handlers.get("session_end")!({}, ctx)).toBeUndefined();
     expect(logged.length).toBe(4);
     expect(logged[0]).toContain("before_tool_call");
+  });
+
+  it.each([
+    ["an unknown permission", hookResult(JSON.stringify({ permission: "unknown" }))],
+    ["a hookResult with no stdout", { type: "hookResult", protocolVersion: 2, exitCode: 0, stderr: "" }],
+  ])("blocks the gates, through the real daemon client, on %s", async (_label, reply) => {
+    vi.stubEnv("FAILPROOFAI_DAEMON_SOCKET", socketPath);
+    const daemon = await fakeDaemon(socketPath, () => reply);
+    try {
+      const { api, handlers } = fakeApi();
+      registerFailproofaiHooks(api);
+      expect(await handlers.get("before_tool_call")!(toolCall, ctx)).toMatchObject({ block: true });
+      expect(await handlers.get("before_agent_run")!({ prompt: "hi" }, ctx)).toMatchObject({ outcome: "block" });
+    } finally {
+      await daemon.close();
+    }
   });
 
   it("blocks when the evaluator itself throws", async () => {

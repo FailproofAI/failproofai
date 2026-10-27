@@ -253,8 +253,6 @@ MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاست�
 
 انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة والحالات الحدودية والترجمات جميعها موضع ترحيب.
 
-> **قم بالبناء قبل أن تبدأ.** قم بتشغيل `bun install && bun run build` أولاً. يقوم هذا الريبو بتشغيل خطافات failproofai الخاصة به على نفسه، ويحل `failproofai` المستورد مقابل `dist/` المترجم — بدون بناء ستصل إلى أخطاء خطاف `Cannot find package 'failproofai'`. أعد البناء بعد تغيير `src/`. انظر [البناء قبل أن تعمل خطافات dev في الريبو](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
-
 ---
 
 تم البناء بـ ❤️ بواسطة [befailproof.ai](https://befailproof.ai) في SF و Bengaluru.

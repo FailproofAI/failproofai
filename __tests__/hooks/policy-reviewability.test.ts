@@ -187,7 +187,7 @@ describe("surveying a real machine", () => {
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "fpai-reviewability-home-"));
     // A directory with no `.failproofai/` anywhere above it, so the survey sees
-    // the seeded global config and not this repo's own dogfood one.
+    // the seeded global config and not one in the repo checkout.
     project = mkdtempSync(join(tmpdir(), "fpai-reviewability-project-"));
     packRoot = mkdtempSync(join(tmpdir(), "fpai-reviewability-packs-"));
     cloudRoot = mkdtempSync(join(tmpdir(), "fpai-reviewability-cloud-"));

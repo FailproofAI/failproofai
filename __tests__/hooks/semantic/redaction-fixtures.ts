@@ -1,10 +1,10 @@
 /**
  * Secret-shaped fixtures for the redaction tests, built at runtime.
  *
- * Nothing key-shaped appears literally in the test sources: this repo's own
- * dogfood hooks (and any secret scanner) would flag it, and a literal would be
- * one careless copy away from looking like a real credential. Generation is
- * seeded, so every run sees the same strings.
+ * Nothing key-shaped appears literally in the test sources: a secret scanner
+ * would flag it, and a literal would be one careless copy away from looking
+ * like a real credential. Generation is seeded, so every run sees the same
+ * strings.
  */
 
 /** mulberry32: small, fast, deterministic. */

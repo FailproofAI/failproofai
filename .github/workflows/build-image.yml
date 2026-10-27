@@ -8,7 +8,7 @@ name: build-image
 # docker-hook-sync/Dockerfile for the image and scripts/sync-agent-cli-harnesses-prompt.md for
 # what the agent does.
 #
-# The daily rebuild refreshes the @latest-pinned claude-code + failproofai npm globals.
+# The daily rebuild refreshes the @latest-pinned claude-code npm global.
 
 on:
   push:
@@ -17,7 +17,7 @@ on:
       - 'docker-hook-sync/**'
       - '.github/workflows/build-image.yml'
   schedule:
-    - cron: '0 8 * * *' # daily at 08:00 UTC — refresh claude-code@latest + failproofai@latest
+    - cron: '0 8 * * *' # daily at 08:00 UTC — refresh claude-code@latest
   workflow_dispatch:
     inputs:
       tag_suffix:

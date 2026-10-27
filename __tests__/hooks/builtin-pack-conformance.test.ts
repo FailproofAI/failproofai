@@ -89,8 +89,8 @@ async function loadPack() {
   clearCustomHooks();
   const entry = join(packDir, "failproofai-pack.mjs");
   // `customPoliciesEnabled: false` and a scratch cwd, together, because
-  // convention discovery would otherwise pick up THIS repo's own dogfood
-  // policies in .failproofai/policies/ — the first run of this test loaded 43
+  // convention discovery would otherwise pick up any policies in the repo
+  // checkout's .failproofai/policies/ — the first run of this test loaded 43
   // policies instead of 38 (the count at the time) and hung for 23s in a policy
   // that shells out to `gh`.
   // An explicit path is deliberately not gated by that flag, so the pack itself

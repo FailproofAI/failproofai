@@ -6,6 +6,10 @@
 
 - **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)
 
+### Fixes
+
+- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#PR)
+
 ### Dependencies
 
 - `failproofai-sdk` drops Python 3.10, which reached end of life this month, clearing the 47 Dependabot alerts against its dev/test lockfile. `pillow` (41) and `filelock` (6) are fixed only in releases that require Python 3.11 (13.0.0 and 4.2.1), so the lockfile's 3.10 slice was held on 12.3.0 and 4.1.0 behind two version-pinned OSV exceptions due to expire on 2026-11-20. `requires-python` is now `>=3.11`, the SDK's CI matrix runs 3.11–3.14, both exceptions are gone, and the 3.10-only `tomli` and `onnxruntime` entries leave the `dev` and `crewai` extras. On 3.10, pip keeps resolving `0.0.1b6`; `fp-cloud-cli` still supports 3.10 (#953)

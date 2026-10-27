@@ -926,10 +926,19 @@ Three consequences, all handled explicitly rather than assumed:
   and uninstall. It holds the same flock the new service needs, so leaving one behind means
   the system unit starts, loses the singleton race, and the machine sits fail-closed
   against a daemon that never came up.
+- **On Linux, systemd never starts a binary inside a home directory.** Fedora, RHEL, Rocky
+  and Alma run SELinux enforcing; a file under `/home` is `user_home_t`, and the targeted
+  policy gives systemd (`init_t`) no execute permission on it, so a unit pointing into
+  `~/.failproofai/bin` fails `203/EXEC` and `failproofai config` aborts at its last step.
+  `stageSystemBinary()` copies the binary as root to
+  `/opt/failproofai/<user>/bin/failproofaid-<version>` (labelled `bin_t` by the policy's
+  generic `/opt/(.*/)?bin` rule, re-applied with `restorecon`) and `ExecStart` points
+  there. The `~/.failproofai/bin` copy stays — version checks read it. Uninstall removes
+  the `/opt` copy; install prunes it to the current version plus one. macOS is unchanged.
 
 The unit is named per user (`failproofaid@alice`) so a second person on the same box cannot
 silently steal the first's service — every field in it is user-specific anyway (ExecStart
-under that user's `~/.failproofai/bin`, HOME, the worker command). Reading status needs no
+under that user's `/opt/failproofai/<user>/bin`, HOME, the worker command). Reading status needs no
 privileges: `systemctl status failproofaid@<user>`, exposed as `daemonStatusCommand()`.
 
 ### How the daemon binary reaches users
@@ -959,7 +968,9 @@ the CLI talking to it.
 Both channels land the file at `~/.failproofai/bin/failproofaid-<version>` through the same
 `installBinaryBytes()` — atomic rename, mode 0755, versioned filename (which avoids
 `ETXTBSY` against a running daemon and stops an upgrade from repointing a live service unit
-at a binary built from different source). **`ExecStart` never points into `node_modules`**:
+at a binary built from different source). On Linux the unit then runs a root-owned copy
+under `/opt/failproofai/<user>/bin` (see "How the daemon is supervised" — SELinux).
+**`ExecStart` never points into `node_modules`**:
 an `npm i -g failproofai@next` would silently swap the file under a running service, and an
 uninstall would delete it out from under an enabled unit that then crash-loops at every boot.
 

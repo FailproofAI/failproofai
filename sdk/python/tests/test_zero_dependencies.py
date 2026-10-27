@@ -27,19 +27,10 @@ from __future__ import annotations
 
 import ast
 import sys
+import tomllib
 
 import pytest
 from pathlib import Path
-
-try:  # Python 3.11+
-    import tomllib
-except ModuleNotFoundError:  # 3.10 — `tomli` is the same parser, from the dev extra
-    # Deliberately not a skip. The manifest assertions below are the enforcement
-    # of the zero-dependency promise, and a promise that stops being checked on
-    # the oldest interpreter we advertise is checked where it matters least.
-    # `tomli` is a TEST dependency; `[project.dependencies]` stays empty, which
-    # is the thing actually being promised.
-    import tomli as tomllib
 
 import failproofai_sdk
 
@@ -147,8 +138,6 @@ ALLOWED_DEV_DEPENDENCIES = {
     "pytest": "the test runner",
     "pytest-asyncio": "the adapters are half-async; their scopes are exercised "
                       "under `async with`, which needs an async test runner",
-    "tomli": "tomllib's backport; Python 3.10 has no stdlib TOML parser, and "
-             "test_zero_dependencies.py must not stop checking the manifest there",
 }
 
 #: Extras that exist only to pull a FRAMEWORK in, mapped to the distribution each
@@ -158,7 +147,7 @@ ALLOWED_DEV_DEPENDENCIES = {
 FRAMEWORK_EXTRAS = {
     "langchain": {"langchain-core"},
     "langgraph": {"langgraph"},
-    "crewai": {"crewai", "onnxruntime"},
+    "crewai": {"crewai"},
     "llamaindex": {"llama-index-core"},
     "pydantic-ai": {"pydantic-ai-slim"},
     "otel": {"opentelemetry-sdk"},

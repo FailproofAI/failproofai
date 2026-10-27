@@ -11,10 +11,14 @@ see `scripts/changelog-section.py`.
 
 ## 0.0.1b7 — 2026-10-16
 
-Open for the next release. `0.0.1b6` published on 2026-10-16 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b7` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Requires Python 3.11 or newer
+
+- **Python 3.10 is no longer supported.** It reached end of life in October 2026,
+  and the libraries the framework extras pull in have started leaving it: the
+  fixes for 47 advisories against Pillow and filelock ship only in releases that
+  require Python 3.11. `requires-python` is now `>=3.11`. On 3.10, pip keeps
+  installing `0.0.1b6`, the last release that supports it. The SDK still has no
+  runtime dependencies, and nothing else about it changes.
 
 ## 0.0.1b6 — 2026-10-15
 

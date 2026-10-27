@@ -1,12 +1,9 @@
 """Packaging contracts, read from `importlib.metadata` — never from pyproject.
 
-Two reasons this file never opens `pyproject.toml`:
-
-1. `tomllib` is 3.11+ and this SDK's floor is 3.10, so parsing it here would
-   make the packaging tests skip exactly on the leg that catches 3.10 problems.
-2. `pyproject.toml` is the *input*. What ships is the wheel's `METADATA`, and
-   the failure mode these tests exist to catch — an extra that silently drags
-   the wrong `failproofai_sdk` off PyPI — happens at install time, from METADATA.
+This file never opens `pyproject.toml`, because it is the *input*. What ships is
+the wheel's `METADATA`, and the failure mode these tests exist to catch — an extra
+that silently drags the wrong `failproofai_sdk` off PyPI — happens at install time,
+from METADATA.
 
 The rules being enforced:
 

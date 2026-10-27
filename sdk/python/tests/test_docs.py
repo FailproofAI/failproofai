@@ -172,10 +172,7 @@ def test_a_guide_only_names_event_methods_that_exist(guide):
 @pytest.mark.parametrize("guide", _guides() + [DOCS / "README.md"], ids=lambda p: str(p.parent.name or "index"))
 def test_a_guide_only_names_extras_that_exist(guide):
     """A wrong extra in an install line is a five-minute dead end."""
-    try:  # Python 3.11+
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
 
     manifest = tomllib.loads((DOCS.parent / "pyproject.toml").read_text(encoding="utf-8"))
     extras = set(manifest["project"]["optional-dependencies"])

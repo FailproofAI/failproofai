@@ -247,9 +247,9 @@ describe("the failproofai-sdk CI job", () => {
   });
 
   it("tests every Python version pyproject advertises", () => {
-    // Claiming >=3.10 and testing one of them is how a 3.10 user finds the break.
+    // Claiming >=3.11 and testing one of them is how a 3.11 user finds the break.
     // Kept in step with `requires-python` and the classifiers by hand.
-    expect(job.strategy.matrix["python-version"]).toEqual(["3.10", "3.11", "3.12", "3.13", "3.14"]);
+    expect(job.strategy.matrix["python-version"]).toEqual(["3.11", "3.12", "3.13", "3.14"]);
   });
 
   it("requires the spool contract rather than letting it skip", () => {

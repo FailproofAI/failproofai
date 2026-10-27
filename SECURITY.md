@@ -56,8 +56,9 @@ The gate above scans the lockfiles it is *given* (the `--lockfile` list in the
 workflow). GitHub's dependency graph reads **every** lockfile in the repository, so
 Dependabot alerts cover trees the gate does not — in particular the TypeScript SDK's
 integration fixtures, `sdk/typescript/integration/fixtures/*/package-lock.json`.
-Those are not in the scanner's list and are not a Dependabot *update* ecosystem in
-[`.github/dependabot.yml`](.github/dependabot.yml) either, so an alert is the only
+Those are not in the scanner's list and get no Dependabot *version* updates either
+(the four floor fixtures have entries in [`.github/dependabot.yml`](.github/dependabot.yml),
+but only to restrain its security updates; see below), so an alert is the only
 thing that will ever mention them. Treat the alert list as authoritative for those
 paths, and see *Triaging a Dependabot alert in an integration fixture* below for how
 to resolve one.
@@ -117,6 +118,17 @@ That splits an alert in one of these lockfiles into two cases:
    failed gate there is nothing to write in [`osv-scanner.toml`](osv-scanner.toml):
    the scanner does not read these lockfiles, so an `[[IgnoredVulns]]` entry for one
    would filter nothing and be reported as an unused ignore.
+
+Dependabot's own security updates know neither case. Given a case-2 advisory they
+reach the fix by moving the framework, which is how #838, #931 and #935 happened
+(#935 opened three minutes after #934 put the pins back). So each floor fixture —
+`ai-4`, `langchain-0.3`, `llamaindex-0.11`, `mastra-0` — has a security-updates-only
+entry in [`.github/dependabot.yml`](.github/dependabot.yml)
+(`open-pull-requests-limit: 0`) whose `ignore` ranges hold its framework on its
+line, and zod on 3 where that framework requires it; a fix that stays on the line
+still arrives. A new floor fixture needs its own entry, and
+`__tests__/ci/ts-sdk-fixture-pins.test.ts` fails without one. A Dependabot PR that
+moves a pin anyway fails that same test: close it rather than merge it.
 
 ### Accepted, with no fix available
 

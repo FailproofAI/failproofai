@@ -71,3 +71,73 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+
+  # The TypeScript SDK's integration fixtures that hold each framework's supported
+  # FLOOR. These four entries are for security updates alone —
+  # `open-pull-requests-limit: 0` turns version updates off — and exist to stop one
+  # move. Each floor carries an advisory whose only fix is a major its framework
+  # release cannot take (SECURITY.md, "Accepted, with no fix available"), and
+  # Dependabot's grouped security updates reach that fix by moving the framework off
+  # the line the fixture exists to test: #838, #931, and #935, which opened three
+  # minutes after #934 put the pins back. `ignore` applies to security updates too,
+  # so each range below keeps the framework on its line, and zod on 3 where the
+  # framework requires it; every fix that stays on the line still arrives. Ranges
+  # are `versions`, never `update-types`, which security updates do not read. A new
+  # floor fixture needs an entry here: __tests__/ci/ts-sdk-fixture-pins.test.ts
+  # fails without one.
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/ai-4
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: ai
+        versions: [">=5.0.0"]
+      # ai@4.3.19 peers on zod ^3.23.8.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/langchain-0.3
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "@langchain/core"
+        versions: [">=0.4.0"]
+      # @langchain/langgraph@0.4.10 peers on @langchain/core <0.4.0.
+      - dependency-name: "@langchain/langgraph"
+        versions: [">=0.5.0"]
+      # Both depend on zod ^3.25.32. A zod 4 here would still install, nested
+      # under them, so nothing but this range keeps the fixture's own zod on 3.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/llamaindex-0.11
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: llamaindex
+        versions: [">=0.12.0"]
+      # @llamaindex/core@0.6.8 and @llamaindex/workflow@1.1.5 need zod ^3.23.8.
+      - dependency-name: zod
+        versions: [">=4.0.0"]
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript/integration/fixtures/mastra-0
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      # @mastra/core, and the @mastra/memory and @mastra/mcp releases paired with it.
+      - dependency-name: "@mastra/*"
+        versions: [">=1.0.0"]
+      # @mastra/core@0.24.9 requires ai@^4. This fixture's own zod is already 4.
+      - dependency-name: ai
+        versions: [">=5.0.0"]

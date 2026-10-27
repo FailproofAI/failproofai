@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.13-beta.0 — 2026-10-25
+## 1.0.13-beta.0 — 2026-10-27
 
 ### Features
 
@@ -8,6 +8,7 @@
 
 ### Dependencies
 
+- Put the `ai-4`, `langchain-0.3`, `llamaindex-0.11` and `mastra-0` SDK integration fixtures back on the releases they exist to test, and stop Dependabot moving them. Its grouped security update #935, opened three minutes after #934 restored the first three, moved them again: `ai@4.3.19` → `5.0.52`, `@langchain/core@0.3.80` → `1.3.0`, `llamaindex@0.11.4` → `0.12.1` (each with `zod@3.25.76` → `4.6.7`), and `@mastra/core@0.24.9` → `1.79.0`. `__tests__/ci/ts-sdk-fixture-pins.test.ts` and the `frameworks` and `runtimes` integration shards have failed on `main` since, and so on every open PR. All four are back on their #934 manifests and lockfiles, and `.github/dependabot.yml` gives each a security-updates-only entry whose `ignore` ranges hold its framework on its line, and zod on 3 where the framework requires it, so the move is no longer proposed; the pin test now fails if a floor fixture loses that entry (#950)
 - Restore the `ai-4`, `langchain-0.3` and `llamaindex-0.11` SDK integration fixtures to the releases they exist to test: `ai@4.3.19`, `@langchain/core@0.3.80` with `@langchain/langgraph@0.4.10`, and `llamaindex@0.11.4`, each with `zod@3.25.76`. Dependabot's grouped security update (#931) reached the zod fix by moving them to `ai@7.0.152`, `@langchain/core@1.3.0` and `llamaindex@0.12.1`, the pin move `SECURITY.md` rules out, so the matrix silently stopped testing three supported floors. `llamaindex-0.11` then stopped installing (`@llamaindex/workflow@1.1.5` peers on `zod@^3.23.8`, so `npm ci` failed `ERESOLVE`), and because global setup installs every fixture first, the `frameworks` and `runtimes` integration shards failed on `main`. #931 also moved the `runtimes` fixture to `zod@4.6.7` while its Deno program still imported `npm:zod@4.6.5`, which Deno could no longer find; it now imports the installed version. `__tests__/ci/ts-sdk-fixture-pins.test.ts` fails on either move before anything installs (#934)
 - Patch the fixable SDK integration fixture advisories with fixture-local `overrides`, moving no pin: `undici` 7.29.1 → 7.30.1 in `ai-5` (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472); `fast-uri` 3.1.8 → 3.1.9 in `llamaindex-0.11` (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp); and in `mastra-1`, `@modelcontextprotocol/server` 2.0.0 → 2.3.0 and `@modelcontextprotocol/client` 2.2.0 → 2.3.0 (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453, GHSA-rvq5-wwqv-78pq, GHSA-6prh-2h8m-c8cw), both pinned exactly by `@mastra/mcp@2.0.0`, each now with its own `@modelcontextprotocol/core@2.3.0` nested under it (#934)
 - `SECURITY.md` accepts zod GHSA-mrhx-c7xc-m3w5 in the five fixtures held to zod 3: `ai-4`, `langchain-0.3` and `llamaindex-0.11`, and the nested copies in `langchain-dup-core` and `mastra-0`. It is fixed only in zod 4.6.6, no zod 3 release carries the fix, and every copy is required at `^3` by the framework release its fixture pins (#934)

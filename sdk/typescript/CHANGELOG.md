@@ -39,6 +39,21 @@ section is missing or empty is refused before anything is built.
   for a release line pinning its framework off that line, or an `npm:` specifier
   naming a version the fixture does not install. (#934)
 
+- **The four framework floors stay put.** Dependabot's grouped security update
+  #935, opened three minutes after #934 merged, moved `ai-4`, `langchain-0.3` and
+  `llamaindex-0.11` off their releases again (`ai@4.3.19` → `5.0.52`,
+  `@langchain/core@0.3.80` → `1.3.0` with `@langchain/langgraph@0.4.10` →
+  `1.5.2`, `llamaindex@0.11.4` → `0.12.1`, each with `zod@3.25.76` → `4.6.7`), and
+  `mastra-0` too (`@mastra/core@0.24.9` → `1.79.0`, `@mastra/memory@0.15.13` →
+  `1.39.0`). All four are back on their #934 manifests and lockfiles. So that the
+  move stops being proposed rather than being undone a fourth time,
+  `.github/dependabot.yml` gives each floor a security-updates-only entry
+  (`open-pull-requests-limit: 0`) whose `ignore` ranges hold its framework on its
+  line, and zod on 3 where that framework requires it; a fix that stays on the
+  line still arrives. `__tests__/ci/ts-sdk-fixture-pins.test.ts` now also fails
+  when a floor has no such entry, or one that would let the framework leave its
+  line. (#950)
+
 - **The remaining fixable fixture advisories clear, each with an override.** `ai-5`
   moves `undici` 7.29.1 → 7.30.1 (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685,
   GHSA-f72v-6w45-q472) and `llamaindex-0.11` moves `fast-uri` 3.1.8 → 3.1.9

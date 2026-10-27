@@ -8,7 +8,7 @@
 
 ### Fixes
 
-- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#PR)
+- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
 
 ### Dependencies
 

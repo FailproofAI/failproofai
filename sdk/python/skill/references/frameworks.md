@@ -117,21 +117,6 @@ you never touch.
 | `Command(resume=...)` | `agent_resume` + `human_input` |
 | intermediate chains | **nothing**, unless you name them in `include_chains` |
 
-**Python 3.10 async nodes must forward `RunnableConfig`.** LangGraph cannot
-automatically propagate callback context from an async node into a child
-`ainvoke()` on Python 3.10. Without this, the child model or tool appears as a
-separate root run:
-
-```python
-from langchain_core.runnables import RunnableConfig
-
-async def plan(state, config: RunnableConfig):
-    reply = await model.ainvoke(state["messages"], config=config)
-    return {"messages": [reply]}
-```
-
-Python 3.11 and later propagate this context automatically.
-
 `session_id` resolution, in order — the first that produces a value wins:
 
 1. `instrument("langchain", session_id=...)`;

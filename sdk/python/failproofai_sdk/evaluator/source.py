@@ -601,7 +601,7 @@ def _raw_eval(source: str, kind: str) -> Callable[[Any], Any]:
 
         def run(session: Any) -> Any:
             # `session` goes in the (fresh, per-call) GLOBALS, not locals: on
-            # CPython 3.10 a list/set/dict comprehension resolves a free name like
+            # CPython 3.11 a list/set/dict comprehension resolves a free name like
             # `session` from globals, so an allowed source such as
             # `all([session.event_count > 0 for _ in range(1)])` raises NameError
             # if `session` is only a local. Globals stay fresh per call for
@@ -618,7 +618,7 @@ def _raw_eval(source: str, kind: str) -> Callable[[Any], Any]:
 
         def run(session: Any) -> Any:
             # `session` goes in the (fresh, per-call) GLOBALS, not locals: on
-            # CPython 3.10 a list/set/dict comprehension resolves a free name like
+            # CPython 3.11 a list/set/dict comprehension resolves a free name like
             # `session` from globals, so an allowed source such as
             # `all([session.event_count > 0 for _ in range(1)])` raises NameError
             # if `session` is only a local. Globals stay fresh per call for

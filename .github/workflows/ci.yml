@@ -357,14 +357,14 @@ jobs:
   # component, sibling of fp-cloud-cli above, and deliberately its own job: it shares no
   # lockfile, no dependencies and no release cadence with the CLI.
   #
-  # The matrix is wider than fp-cloud-cli's two versions on purpose. This package declares
+  # The matrix spans the whole supported range on purpose. This package declares
   # no dependencies at all, so it has no third-party floor quietly constraining which
   # interpreters it is really exercised on — and it is installed into other people's
   # agent processes, whose Python version we do not choose. Every version
   # requires-python advertises is tested.
   failproofai-sdk:
     runs-on: ubuntu-latest
-    # the same, across five — every version requires-python advertises; the bound exists so a stalled
+    # the same, across four — every version requires-python advertises; the bound exists so a stalled
     # package mirror cannot hold a release for six hours (#726).
     timeout-minutes: 10
     defaults:
@@ -373,7 +373,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7.0.1
 

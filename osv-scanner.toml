@@ -11,12 +11,12 @@
 # Two mechanisms, and the reason to reach for each:
 #
 #   [[IgnoredVulns]] silences ONE advisory by id, and is what every entry below
-#   but the last uses. It is the narrowest thing that works: any OTHER advisory
+#   uses. It is the narrowest thing that works: any OTHER advisory
 #   against the same package still blocks, including a newly FIXABLE one — which
 #   is the signal worth keeping, because a fixable finding is one we would act on.
 #
-#   [[PackageOverrides]] silences every advisory against a package, and is used
-#   once, for the pillow entry at the bottom. It also suppresses fixable findings,
+#   [[PackageOverrides]] silences every advisory against a package, and no entry
+#   below uses it at present. It also suppresses fixable findings,
 #   so it costs exactly the signal above; see SECURITY.md for the narrow case that
 #   justifies it and the conditions attached. Note the different date key there —
 #   `effectiveUntil`, not `ignoreUntil`.
@@ -108,49 +108,3 @@ reason = "chromadb 1.5.9 (published 2026-06-12, surfaced 2026-08-24). No fixed v
 id = "GHSA-8mgp-746c-j5xp"
 ignoreUntil = 2026-11-20
 reason = "nltk 3.10.3 (surfaced 2026-09-03, CVSS 8.3). No fixed version. Transitive via llama-index-core, dev/test lockfile only; the SDK ships zero runtime dependencies. Re-review by 2026-11-20."
-
-# ---------------------------------------------------------------------------
-# pillow 12.3.0 — the Python 3.10 slice of sdk/python/uv.lock. A package
-# override rather than an id list, because this is the case SECURITY.md keeps
-# one for.
-#
-# Every fix for these advisories is in pillow 13.0.0, which requires Python
-# >= 3.11. The SDK still supports 3.10, so the lock forks: 13.0.0 for 3.11 and
-# up, and 12.3.0, the last release that installs on 3.10, for 3.10 alone. No
-# release fixes that slice and none will: Pillow has dropped 3.10, which reaches
-# end of life in October 2026 (PEP 619). The advisories are still arriving —
-# 9 on the 2026-10-20 scan, 28 by 2026-10-22 — so an id list would turn this
-# gate red on an unrelated PR with every new one.
-#
-# pillow is transitive via crewai (through pdfplumber) and llama-index-core, in
-# the dev/test lockfile only; the SDK declares no runtime dependencies. The
-# override is pinned to 12.3.0, so 13.0.0 — what every other supported Python
-# resolves — stays fully gated, and any change to the 3.10 slice re-opens it.
-# Dropping 3.10 from `requires-python` retires it. Same re-review date as the
-# entries above.
-# ---------------------------------------------------------------------------
-
-[[PackageOverrides]]
-name = "pillow"
-version = "12.3.0"
-ecosystem = "PyPI"
-vulnerability.ignore = true
-effectiveUntil = 2026-11-20
-reason = "pillow 12.3.0 is only the Python 3.10 slice of sdk/python/uv.lock: every fix is in 13.0.0, which requires Python >= 3.11 and is what 3.11+ resolves. Transitive via crewai and llama-index-core, dev/test lockfile only. Re-review by 2026-11-20."
-
-# ---------------------------------------------------------------------------
-# filelock 4.1.0 is another Python 3.10-only dev/test lockfile slice. Its
-# fixed 4.2.1 release requires Python >= 3.11, while uv resolves 4.2.4 for
-# Python 3.11+. Six advisories affect 4.1.0 and none has a 3.10-compatible
-# fix. It is transitive via huggingface-hub; the SDK has no runtime deps.
-# Pin this override to 4.1.0 so newer versions and a changed 3.10 slice
-# remain scanned. Remove it when Python 3.10 support ends.
-# ---------------------------------------------------------------------------
-
-[[PackageOverrides]]
-name = "filelock"
-version = "4.1.0"
-ecosystem = "PyPI"
-vulnerability.ignore = true
-effectiveUntil = 2026-11-20
-reason = "filelock 4.1.0 is only the Python 3.10 slice of the SDK dev/test lockfile. All six current fixes require 4.2.1 and Python >= 3.11; newer Python uses 4.2.4. The SDK has no runtime dependencies. Re-review by 2026-11-20."

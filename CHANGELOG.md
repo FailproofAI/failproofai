@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.13 — 2026-10-28
+
+The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, and of daemon setup on Fedora, RHEL, Rocky and Alma. Everything below in the `1.0.13-beta.*` sections ships here too.
+
+### Fixes
+
+- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
+- The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#958)
+
+## 1.0.13-beta.1 — 2026-10-28
+
+### Fixes
+
+- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#956)
+
+### Dependencies
+
+- Bump `nltk` 3.10.3 → 3.10.4 in `sdk/python/uv.lock`, the SDK's dev/test lockfile (transitive via `llama-index-core`), for GHSA-j456-xh4h-cpf2, published 2026-10-28, which turned OSV-Scanner red on every pull request. The SDK itself ships with zero runtime dependencies (#956)
+
 ## 1.0.13-beta.0 — 2026-10-27
 
 ### Features

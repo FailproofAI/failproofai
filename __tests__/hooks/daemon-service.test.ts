@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
 import { startedAtFromMonotonic, waitForDaemonRunning } from "../../src/hooks/daemon-service";
 import * as svc from "../../src/hooks/daemon-service";
+import { version as pkgVersion } from "../../package.json";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -441,6 +442,117 @@ describe("hooks/daemon-service", () => {
     );
   });
 
+  describe("system binary location (SELinux)", () => {
+    // Fedora/RHEL: systemd may not execute a `user_home_t` file, so a unit
+    // pointing into ~/.failproofai/bin fails 203/EXEC. The unit must start a
+    // root-owned copy under /opt/failproofai/<user>/bin instead.
+    function writeManagedBinary(): string {
+      process.env.FAILPROOFAI_SYSTEM_BIN_DIR = resolve(home, "opt");
+      const path = resolve(binDir(), `failproofaid-${pkgVersion}`);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, "#!/bin/sh\n", { mode: 0o755 });
+      return path;
+    }
+    afterEach(() => {
+      delete process.env.FAILPROOFAI_SYSTEM_BIN_DIR;
+    });
+
+    it("starts a per-user, versioned copy outside the home directory on linux", async () => {
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      useScratchHome();
+      const path = writeManagedBinary();
+      setPlatform("linux");
+      const { systemBinaryTarget, daemonSystemBinaryDir } = await import("../../src/hooks/daemon-service");
+      const root = resolve(home, "opt", userInfo().username);
+      expect(daemonSystemBinaryDir()).toBe(root);
+      expect(systemBinaryTarget(path)).toBe(resolve(root, "bin", `failproofaid-${pkgVersion}`));
+    });
+
+    it("defaults to a bin/ under /opt, which SELinux labels bin_t on every RHEL-family policy", async () => {
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      delete process.env.FAILPROOFAI_SYSTEM_BIN_DIR;
+      useScratchHome();
+      const path = resolve(binDir(), `failproofaid-${pkgVersion}`);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, "#!/bin/sh\n", { mode: 0o755 });
+      setPlatform("linux");
+      const { daemonSystemBinaryDir, systemBinaryTarget } = await import("../../src/hooks/daemon-service");
+      expect(daemonSystemBinaryDir()).toBe(`/opt/failproofai/${userInfo().username}`);
+      expect(systemBinaryTarget(path)).toBe(`/opt/failproofai/${userInfo().username}/bin/failproofaid-${pkgVersion}`);
+    });
+
+    it("starts an explicitly named binary as given — it may carry arguments", async () => {
+      useScratchHome();
+      const path = writeManagedBinary();
+      process.env.FAILPROOFAI_DAEMON_BINARY = path;
+      setPlatform("linux");
+      const { systemBinaryTarget } = await import("../../src/hooks/daemon-service");
+      expect(systemBinaryTarget(path)).toBeNull();
+      expect(systemBinaryTarget("/usr/bin/sleep infinity")).toBeNull();
+    });
+
+    it("copies nothing for a path that is not a file", async () => {
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      useScratchHome();
+      writeManagedBinary();
+      setPlatform("linux");
+      const { systemBinaryTarget } = await import("../../src/hooks/daemon-service");
+      expect(systemBinaryTarget(resolve(home, "missing"))).toBeNull();
+      expect(systemBinaryTarget(home)).toBeNull();
+    });
+
+    // Meaningless as root, where elevation always succeeds.
+    it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
+      "quotes every path in the manual recipe, so a home directory with a space still installs",
+      async () => {
+        delete process.env.FAILPROOFAI_DAEMON_BINARY;
+        useScratchHome();
+        // The home itself holds the space: that is where the managed binary lives.
+        process.env.HOME = resolve(home, "first last");
+        mkdirSync(process.env.HOME, { recursive: true });
+        process.env.FAILPROOFAI_SYSTEM_BIN_DIR = resolve(home, "op t");
+        const path = resolve(binDir(), `failproofaid-${pkgVersion}`);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, "#!/bin/sh\n", { mode: 0o755 });
+        setPlatform("linux");
+        vi.doMock("node:child_process", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("node:child_process")>()),
+          execFileSync: (cmd: string) => {
+            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
+          },
+        }));
+        try {
+          vi.resetModules();
+          const { installDaemonService, systemBinaryTarget, daemonSystemBinaryDir } = await import(
+            "../../src/hooks/daemon-service"
+          );
+          const target = systemBinaryTarget(path)!;
+          const result = await installDaemonService();
+
+          expect(result.installed).toBe(false);
+          expect(path).toContain(" ");
+          expect(result.reason).toContain(`sudo install -d -m 0755 '${dirname(target)}'`);
+          expect(result.reason).toContain(`sudo install -m 0755 '${path}' '${target}'`);
+          expect(result.reason).toContain(`sudo restorecon -R '${daemonSystemBinaryDir()}'`);
+        } finally {
+          vi.doUnmock("node:child_process");
+          vi.resetModules();
+        }
+      },
+    );
+
+    it("leaves macOS alone — launchd has no SELinux", async () => {
+      delete process.env.FAILPROOFAI_DAEMON_BINARY;
+      useScratchHome();
+      const path = writeManagedBinary();
+      setPlatform("darwin");
+      const { systemBinaryTarget, daemonSystemBinaryDir } = await import("../../src/hooks/daemon-service");
+      expect(systemBinaryTarget(path)).toBeNull();
+      expect(daemonSystemBinaryDir()).toBeNull();
+    });
+  });
+
   describe("daemonServiceStatus", () => {
     it("is unsupported-platform on win32", async () => {
       setPlatform("win32");
@@ -870,6 +982,50 @@ describe("hooks/daemon-service", () => {
         expect(readFileSync(unitPath, "utf8")).toBe(legacy);
         expect(daemonServiceStatus()).toBe("running");
       }, 40_000);
+
+      it("runs a managed binary from a root-owned copy outside HOME, and uninstall removes it", async () => {
+        // The SELinux fix, end to end: systemd on Fedora/RHEL refuses to
+        // execute anything labelled user_home_t, so the unit must start the
+        // copy under the system binary directory, never ~/.failproofai/bin.
+        const scratch = mkdtempSync(resolve(tmpdir(), "fpai-sysbin-"));
+        const originalFpHome = process.env.FAILPROOFAI_HOME;
+        process.env.FAILPROOFAI_HOME = resolve(scratch, "fp");
+        process.env.FAILPROOFAI_SYSTEM_BIN_DIR = resolve(scratch, "opt");
+        delete process.env.FAILPROOFAI_DAEMON_BINARY;
+        try {
+          const managed = resolve(scratch, "fp", "bin", `failproofaid-${pkgVersion}`);
+          mkdirSync(dirname(managed), { recursive: true });
+          writeFileSync(managed, "#!/bin/sh\nexec sleep infinity\n", { mode: 0o755 });
+          setPlatform("linux");
+          const { installDaemonService, daemonServiceStatus, uninstallDaemonService } = await import(
+            "../../src/hooks/daemon-service"
+          );
+          const sysDir = resolve(scratch, "opt", userInfo().username);
+          const sysBin = resolve(sysDir, "bin", `failproofaid-${pkgVersion}`);
+
+          expect(await installDaemonService()).toEqual({ installed: true });
+          expect(readFileSync(unitPath, "utf8")).toContain(`ExecStart=${sysBin}\n`);
+          const st = statSync(sysBin);
+          expect(st.uid).toBe(0);
+          expect(st.mode & 0o777).toBe(0o755);
+          expect(readFileSync(sysBin, "utf8")).toBe(readFileSync(managed, "utf8"));
+          expect(existsSync(managed)).toBe(true);
+          expect(daemonServiceStatus()).toBe("running");
+
+          await uninstallDaemonService();
+          expect(existsSync(unitPath)).toBe(false);
+          expect(existsSync(sysDir)).toBe(false);
+        } finally {
+          if (originalFpHome !== undefined) process.env.FAILPROOFAI_HOME = originalFpHome;
+          else delete process.env.FAILPROOFAI_HOME;
+          delete process.env.FAILPROOFAI_SYSTEM_BIN_DIR;
+          try {
+            run(["rm", "-rf", scratch]);
+          } catch {
+            rmSync(scratch, { recursive: true, force: true });
+          }
+        }
+      }, 30_000);
 
       it("installDaemonService fails cleanly when the binary cannot be resolved", async () => {
         // Scratch HOME + downloads off, or "cannot be resolved" is a lie:

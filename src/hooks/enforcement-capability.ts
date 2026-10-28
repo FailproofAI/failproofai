@@ -182,7 +182,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
 
   // ── openclaw ──────────────────────────────────────────────────────────────
   // openclaw/openclaw @f8ed8ecf (v2026.7.2) + our own shipped shim
-  // openclaw-plugin/index.js, which returns undefined for 5 of the 8 hooks.
+  // openclaw-plugin/hooks.js, which returns undefined for 5 of the 8 hooks.
   openclaw: {
     PreToolUse: "block",           // before_tool_call -> shim returns {block:true, blockReason}
     UserPromptSubmit: "block",     // before_agent_run -> shim returns {outcome:"block", reason}

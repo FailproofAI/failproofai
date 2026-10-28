@@ -438,8 +438,8 @@ OpenClaw has two extension surfaces: file-based **internal hooks**
 **plugin hooks** (`api.on(name, handler, {priority, timeoutMs})`) which have
 block/cancel semantics. So — like OpenCode — failproofai ships a **plugin**
 (`openclaw-plugin/`, a static package like `pi-extension/`, shipped in the npm
-tarball via `package.json` "files") that async-spawns the binary and translates
-the verdict. The install registers it in `~/.openclaw/openclaw.json` (JSON):
+tarball via `package.json` "files") that asks `failproofaid` for each verdict and
+translates it. The install registers it in `~/.openclaw/openclaw.json` (JSON):
 
 - `plugins.load.paths[]` ← the shipped `openclaw-plugin/` dir (absolute path)
 - `plugins.entries.failproofai = { enabled: true, hooks: { allowConversationAccess: true } }`
@@ -450,15 +450,29 @@ the verdict. The install registers it in `~/.openclaw/openclaw.json` (JSON):
 disabled by default), so `getSettingsPath` ignores scope/cwd. Uninstall only
 edits `openclaw.json`; it **never deletes the shipped plugin dir**.
 
-**Async spawn, never `spawnSync`.** OpenClaw is a long-running multi-channel
-gateway; a sync spawn on every hook would stall every channel. The shim
-(`openclaw-plugin/index.js`) uses async `spawn` + a 30s guard and **fails open**
-(any spawn/parse/timeout error → allow). It carries **no inline tool maps**
-(unlike the OpenCode/Pi shims) — it forwards raw event/tool names and a
-Claude-shaped stdin (`params→tool_input`, `toolName→tool_name`,
-`transcriptPath→transcript_path`, `stopHookActive→stop_hook_active`,
-`sessionKey→session_id`), and the binary canonicalizes via the `OPENCLAW_*`
-maps in `types.ts` (single source of truth).
+**The plugin talks to the daemon's socket; it never spawns the CLI.** OpenClaw ≥
+2026.9.6 imports plugins from a **captured copy**
+(`~/.openclaw/tmp/plugin-captures/<id>/…/node_modules/openclaw-plugin/`) holding only
+the plugin directory's files, so a CLI path derived from `import.meta.url`
+(`../dist/cli.mjs`) points at nothing there. The old shim spawned exactly that and
+read the spawn failure as allow — every tool call ran unchecked and no hook activity
+was recorded (verified live on 2026.10.5). So `openclaw-plugin/daemon-client.js`
+sends the same `hook` request `failproofai --hook <event> --cli openclaw` sends
+(crates/PROTOCOL.md: `hookEvent` = the raw OpenClaw event, `cli: "openclaw"`, the
+payload as `stdin`, the gateway profile's `openclaw.json` as `agentSettingsPath`)
+over the owner-only socket, like the Hermes plugin, and reads the same flat stdout
+verdict back. Every module in `openclaw-plugin/` imports only node built-ins and
+its siblings (a test copies the directory and loads it from the copy). Like Hermes
+it is **daemon-only** (`requiresHealthyDaemon`): install refuses without a daemon,
+and when no verdict comes back `before_tool_call` and `before_agent_run` **fail
+closed** (blocked, reason logged through `api.logger`) while `before_agent_finalize`
+does not force a revise — that cannot bring the daemon back and would only loop the
+turn. All I/O is async: the gateway is a long-running multi-channel process. It
+carries **no inline tool maps** (unlike the OpenCode/Pi shims) — it forwards raw
+event/tool names and a Claude-shaped stdin (`params→tool_input`,
+`toolName→tool_name`, `transcriptPath→transcript_path`,
+`stopHookActive→stop_hook_active`, `sessionKey→session_id`), and the worker
+canonicalizes via the `OPENCLAW_*` maps in `types.ts` (single source of truth).
 
 **Verdict mapping** (`policy-evaluator.ts` emits a flat Pi-style
 `{permission, reason}`; the shim maps per-hook):
@@ -926,10 +940,19 @@ Three consequences, all handled explicitly rather than assumed:
   and uninstall. It holds the same flock the new service needs, so leaving one behind means
   the system unit starts, loses the singleton race, and the machine sits fail-closed
   against a daemon that never came up.
+- **On Linux, systemd never starts a binary inside a home directory.** Fedora, RHEL, Rocky
+  and Alma run SELinux enforcing; a file under `/home` is `user_home_t`, and the targeted
+  policy gives systemd (`init_t`) no execute permission on it, so a unit pointing into
+  `~/.failproofai/bin` fails `203/EXEC` and `failproofai config` aborts at its last step.
+  `stageSystemBinary()` copies the binary as root to
+  `/opt/failproofai/<user>/bin/failproofaid-<version>` (labelled `bin_t` by the policy's
+  generic `/opt/(.*/)?bin` rule, re-applied with `restorecon`) and `ExecStart` points
+  there. The `~/.failproofai/bin` copy stays — version checks read it. Uninstall removes
+  the `/opt` copy; install prunes it to the current version plus one. macOS is unchanged.
 
 The unit is named per user (`failproofaid@alice`) so a second person on the same box cannot
 silently steal the first's service — every field in it is user-specific anyway (ExecStart
-under that user's `~/.failproofai/bin`, HOME, the worker command). Reading status needs no
+under that user's `/opt/failproofai/<user>/bin`, HOME, the worker command). Reading status needs no
 privileges: `systemctl status failproofaid@<user>`, exposed as `daemonStatusCommand()`.
 
 ### How the daemon binary reaches users
@@ -959,7 +982,9 @@ the CLI talking to it.
 Both channels land the file at `~/.failproofai/bin/failproofaid-<version>` through the same
 `installBinaryBytes()` — atomic rename, mode 0755, versioned filename (which avoids
 `ETXTBSY` against a running daemon and stops an upgrade from repointing a live service unit
-at a binary built from different source). **`ExecStart` never points into `node_modules`**:
+at a binary built from different source). On Linux the unit then runs a root-owned copy
+under `/opt/failproofai/<user>/bin` (see "How the daemon is supervised" — SELinux).
+**`ExecStart` never points into `node_modules`**:
 an `npm i -g failproofai@next` would silently swap the file under a running service, and an
 uninstall would delete it out from under an enabled unit that then crash-loops at every boot.
 

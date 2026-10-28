@@ -46,6 +46,7 @@ vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: () => true,
   daemonServiceFilePath: () => servicePath,
   daemonStatusCommand: () => "systemctl status failproofaid@tester",
+  daemonSystemBinaryDir: () => "/opt/failproofai/tester",
   daemonServiceStatus: () => "running",
   setDaemonConfigured: vi.fn((v: boolean) => {
     calls.push(`setDaemonConfigured(${v})`);
@@ -407,11 +408,13 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
 
     const at = res.lines.findIndex((l) => l.startsWith("✕ The failproofaid service is still there"));
     expect(at).toBeGreaterThanOrEqual(0);
-    expect(res.lines.slice(at + 1, at + 6)).toEqual([
+    expect(res.lines.slice(at + 1, at + 7)).toEqual([
       "  Remove it as root:",
       "    sudo systemctl disable --now failproofaid@tester.service",
-      `    sudo rm -f ${servicePath}`,
+      `    sudo rm -f '${servicePath}'`,
       "    sudo systemctl daemon-reload",
+      // The root-owned copy the unit ran, outside HOME for SELinux.
+      "    sudo rm -rf '/opt/failproofai/tester'",
       "  Check it with  systemctl status failproofaid@tester",
     ]);
   });

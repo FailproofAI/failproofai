@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.13-beta.1 — 2026-10-28
+
+### Fixes
+
+- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#956)
+
+### Dependencies
+
+- Bump `nltk` 3.10.3 → 3.10.4 in `sdk/python/uv.lock`, the SDK's dev/test lockfile (transitive via `llama-index-core`), for GHSA-j456-xh4h-cpf2, published 2026-10-28, which turned OSV-Scanner red on every pull request. The SDK itself ships with zero runtime dependencies (#956)
+
 ## 1.0.13-beta.0 — 2026-10-27
 
 ### Features

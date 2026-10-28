@@ -139,6 +139,25 @@ fi
 # against a marker with no daemon up yet. Daemon mode re-sets it after wire.
 bun -e 'const m=await import("/repo/src/hooks/fp-config.ts");m.updateConfig({daemon:{configured:false}})' 2>/dev/null || true
 
+# Hermes and OpenClaw enforce ONLY through failproofaid: their plugins ask the
+# daemon directly (no CLI process, no in-process path), and their installs
+# refuse unless it answers (requiresHealthyDaemon in src/hooks/integrations.ts).
+# So they are probed on the live daemon leg only. On any other leg nothing can
+# be hooked, and driving the CLI anyway would score its benign side effect as a
+# silent-allow FAIL — say why instead, as an INCONCLUSIVE that never gates.
+DAEMON_ONLY_CLIS="hermes openclaw"
+case " $DAEMON_ONLY_CLIS " in *" $CLI "*) DAEMON_ONLY=1 ;; *) DAEMON_ONLY=0 ;; esac
+if [ "$DAEMON_ONLY" = 1 ] && { [ "${CANARY_DAEMON:-0}" != 1 ] || [ "${CANARY_DAEMON_DEAD:-0}" = 1 ]; }; then
+  echo "=== $CLI live Tier-2 verdicts (DEFINITE benign-marker probes) ==="
+  echo "  not probed: $CLI enforces only through a live failproofaid, and this leg has none" \
+       "(CANARY_DAEMON=${CANARY_DAEMON:-0} CANARY_DAEMON_DEAD=${CANARY_DAEMON_DEAD:-0}) — see the daemon leg"
+  printf 'VERDICT_JSON {"cli":"%s","probes":{"bash":"INCONCLUSIVE","read":"INCONCLUSIVE"}}\n' "$CLI"
+  exit 0
+fi
+# Why a daemon-only CLI ended up unhooked, when its installer refused. Printed
+# with the verdicts: the install output itself is not kept.
+INSTALL_FAILED=""
+
 BASE="$HOME/probe-$CLI"
 # openclaw runs every tool inside its OWN workspace, not the cwd it is invoked
 # from: `[tools] read failed: File not found:
@@ -161,8 +180,15 @@ cp /opt/canary/canary-policies.mjs "$CUSTOM_POLICIES"
 install_hooks() {
   # Prefer user scope (writes the override → main HEAD). Fall back to project +
   # command-swap for CLIs without a user scope. `-c` loads the custom canary policies.
-  if bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope user -c "$CUSTOM_POLICIES" >/dev/null 2>&1; then
+  local out
+  if out="$(bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope user -c "$CUSTOM_POLICIES" 2>&1)"; then
     return 0
+  fi
+  # Hermes and OpenClaw are user-scope only: no project fallback, and the
+  # installer's refusal is the one thing that says why no hook will fire.
+  if [ "$DAEMON_ONLY" = 1 ]; then
+    INSTALL_FAILED="policies --install --cli $CLI: $(printf '%s' "$out" | tail -3 | tr '\n' ' ')"
+    return 1
   fi
   ( cd "$BASE" && bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli "$CLI" --scope project -c "$CUSTOM_POLICIES" >/dev/null 2>&1 )
   grep -rl "npx -y failproofai" "$BASE" 2>/dev/null | while read -r f; do
@@ -214,8 +240,13 @@ YAML
                 --custom-compatibility openai --custom-model-id "$CANARY_LLM_MODEL" --custom-text-input >/dev/null 2>&1
               # onboard rewrites openclaw.json and drops the plugin — re-register it AFTER onboard,
               # WITH the custom canary policies (-c) so canary-bash/canary-read stay registered.
-              bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user \
-                -c "$CUSTOM_POLICIES" >/dev/null 2>&1
+              # This is the install that counts, so it also decides INSTALL_FAILED.
+              if oc_out="$(bun /repo/bin/failproofai.mjs policies --install "${POLICIES[@]}" --cli openclaw --scope user \
+                  -c "$CUSTOM_POLICIES" 2>&1)"; then
+                INSTALL_FAILED=""
+              else
+                INSTALL_FAILED="policies --install --cli openclaw: $(printf '%s' "$oc_out" | tail -3 | tr '\n' ' ')"
+              fi
               # open exec approval (both layers) so the agent issues tool calls headlessly
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.tools=c.tools||{};c.tools.exec=Object.assign({},c.tools.exec,{security:"full",ask:"off",host:"gateway"});fs.writeFileSync(p,JSON.stringify(c,null,2));'
               # ── four things openclaw needs that no other CLI does ──────────
@@ -241,16 +272,14 @@ YAML
               mkdir -p "$HOME/node_modules"
               ln -sfn "$HOME/.npm-global/lib/node_modules/openclaw" "$HOME/node_modules/openclaw"
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.plugins=c.plugins||{};c.plugins.load=c.plugins.load||{};c.plugins.load.paths=[process.env.HOME+"/oc-plugin"];fs.writeFileSync(p,JSON.stringify(c,null,2));'
-              # 3. THE BINARY THE SHIM SPAWNS. It runs `node <override>`, and the
-              #    canary's override is a /bin/sh wrapper — `node …/bin/failproofai`
-              #    is a syntax error (the same trap pi hits, see its branch). The
-              #    old fix was to unset it, but that made the shim self-resolve to
-              #    `../dist/cli.mjs` relative to ITSELF, which after (1) is a copy
-              #    in HOME whose bundle cannot resolve its own imports. Point it at
-              #    the real one instead: node-runnable AND still inside /repo, so
-              #    it resolves and stays main HEAD. The shim fails OPEN on a spawn
-              #    error, so every one of these lands as a silent allow.
-              export FAILPROOFAI_BINARY_OVERRIDE=/repo/dist/cli.mjs
+              # 3. THE DAEMON. The plugin spawns nothing: like the Hermes plugin it
+              #    asks failproofaid over its socket (FAILPROOFAI_DAEMON_SOCKET,
+              #    inherited by the gateway below), and like Hermes its install
+              #    refuses unless that daemon answers — hence the setup daemon
+              #    started before install_hooks. This used to export a CLI path
+              #    for the old spawning shim, which is exactly why the canary never
+              #    saw that shim lose its CLI under OpenClaw ≥ 2026.9.6's plugin
+              #    capture.
               # (4. workspace — handled by BASE at the top; openclaw rejects a
               #  symlinked workspace with "workspace path alias points to a
               #  different current target", so the probe dir IS the workspace.)
@@ -347,6 +376,11 @@ fi
 MARKER_CONTENT='CANARY_LEAK_SENTINEL_q7k2'
 printf '%s\n' "$MARKER_CONTENT" > "$BASE/CANARY_MARKER.txt"
 
+# A daemon-only CLI's installer refuses unless failproofaid answers, so here
+# the daemon must be up BEFORE install/wire rather than first at probe A. It
+# logs to a setup dir of its own; each probe still cycles a fresh daemon into
+# its own oracle dir. (Only the live daemon leg gets this far — see above.)
+[ "$DAEMON_ONLY" = 1 ] && daemon_cycle "$BASE/log-setup"
 install_hooks
 wire
 
@@ -553,5 +587,8 @@ if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
   else
     echo "  daemon: routed, no fail-closed denies (verdicts reflect real daemon evaluation)"
   fi
+fi
+if [ -n "$INSTALL_FAILED" ]; then
+  echo "  ✗ INSTALL FAILED — nothing was hooked, so these verdicts measured an unhooked $CLI: $INSTALL_FAILED"
 fi
 printf 'VERDICT_JSON {"cli":"%s","probes":{"bash":"%s","read":"%s"}}\n' "$CLI" "$VA" "$VB"

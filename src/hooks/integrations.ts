@@ -2277,8 +2277,10 @@ export function unhookedHermesProfiles(): string[] {
 // OpenClaw is a self-hosted assistant gateway. Enforcement is via its in-process
 // PLUGIN hooks (file-based "internal hooks" are observation-only), so failproofai
 // ships a static plugin package (`openclaw-plugin/`, like Pi's pi-extension) that
-// async-spawns the binary and maps verdicts back. Install registers the plugin in
-// every profile's `openclaw.json` (JSON):
+// asks failproofaid for each verdict over its Unix socket — like the Hermes plugin,
+// and so likewise daemon-only — and maps verdicts back. It cannot spawn the CLI:
+// OpenClaw ≥ 2026.9.6 loads plugins from a copy that holds only the plugin dir.
+// Install registers the plugin in every profile's `openclaw.json` (JSON):
 //   • plugins.load.paths[]  → the shipped openclaw-plugin dir (absolute path)
 //   • plugins.entries.failproofai = { enabled: true, hooks: { allowConversationAccess: true } }
 //     (allowConversationAccess is required for the raw-conversation hooks
@@ -2318,6 +2320,7 @@ function isFailproofaiOpenClawPath(p: unknown): boolean {
 export const openclaw: Integration = {
   id: "openclaw",
   displayName: "OpenClaw",
+  requiresHealthyDaemon: true,
   scopes: OPENCLAW_HOOK_SCOPES,
   eventTypes: OPENCLAW_HOOK_EVENT_TYPES,
 

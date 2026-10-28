@@ -48,6 +48,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { shellQuote } from "./shell-quote";
 import { installedAgentSkillDirs, removeAgentSkill } from "./agent-skill";
 import { CODEX_MANAGED_BEGIN, CODEX_MANAGED_END, codexSystemConfigPath, codexSystemHooksPresent } from "./codex-system-hooks";
 import { optsFor, screenKit, type RenderOpts } from "./tui";
@@ -412,18 +413,20 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   return { exitCode: 0, lines, planLines, purged };
 }
 
-/** The exact commands to finish a service removal that could not elevate. */
+/** The exact commands to finish a service removal that could not elevate. The
+ *  paths are quoted: these are pasted into a root shell, and an unquoted path
+ *  holding a space would make `rm -rf` remove something else. */
 function manualServiceRemoval(servicePath: string): string[] {
   if (process.platform === "darwin") {
-    return [`sudo launchctl unload -w ${servicePath}`, `sudo rm -f ${servicePath}`];
+    return [`sudo launchctl unload -w ${shellQuote(servicePath)}`, `sudo rm -f ${shellQuote(servicePath)}`];
   }
   const unit = servicePath.split("/").pop() ?? servicePath;
   const binDir = daemonSystemBinaryDir();
   return [
     `sudo systemctl disable --now ${unit}`,
-    `sudo rm -f ${servicePath}`,
+    `sudo rm -f ${shellQuote(servicePath)}`,
     `sudo systemctl daemon-reload`,
-    ...(binDir ? [`sudo rm -rf ${binDir}`] : []),
+    ...(binDir ? [`sudo rm -rf ${shellQuote(binDir)}`] : []),
   ];
 }
 

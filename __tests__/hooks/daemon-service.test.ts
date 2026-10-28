@@ -501,6 +501,47 @@ describe("hooks/daemon-service", () => {
       expect(systemBinaryTarget(home)).toBeNull();
     });
 
+    // Meaningless as root, where elevation always succeeds.
+    it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
+      "quotes every path in the manual recipe, so a home directory with a space still installs",
+      async () => {
+        delete process.env.FAILPROOFAI_DAEMON_BINARY;
+        useScratchHome();
+        // The home itself holds the space: that is where the managed binary lives.
+        process.env.HOME = resolve(home, "first last");
+        mkdirSync(process.env.HOME, { recursive: true });
+        process.env.FAILPROOFAI_SYSTEM_BIN_DIR = resolve(home, "op t");
+        const path = resolve(binDir(), `failproofaid-${pkgVersion}`);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, "#!/bin/sh\n", { mode: 0o755 });
+        setPlatform("linux");
+        vi.doMock("node:child_process", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("node:child_process")>()),
+          execFileSync: (cmd: string) => {
+            if (cmd === "sudo") throw new Error("sudo: a password is required");
+            throw new Error(`nothing else should run before elevation succeeds, but got: ${cmd}`);
+          },
+        }));
+        try {
+          vi.resetModules();
+          const { installDaemonService, systemBinaryTarget, daemonSystemBinaryDir } = await import(
+            "../../src/hooks/daemon-service"
+          );
+          const target = systemBinaryTarget(path)!;
+          const result = await installDaemonService();
+
+          expect(result.installed).toBe(false);
+          expect(path).toContain(" ");
+          expect(result.reason).toContain(`sudo install -d -m 0755 '${dirname(target)}'`);
+          expect(result.reason).toContain(`sudo install -m 0755 '${path}' '${target}'`);
+          expect(result.reason).toContain(`sudo restorecon -R '${daemonSystemBinaryDir()}'`);
+        } finally {
+          vi.doUnmock("node:child_process");
+          vi.resetModules();
+        }
+      },
+    );
+
     it("leaves macOS alone — launchd has no SELinux", async () => {
       delete process.env.FAILPROOFAI_DAEMON_BINARY;
       useScratchHome();

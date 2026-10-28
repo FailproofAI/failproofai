@@ -25,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
+import { shellQuote } from "./shell-quote";
 import { version } from "../../package.json";
 import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
@@ -290,11 +291,6 @@ export function resolveCliCommand(): string | null {
   return `${shellQuote(process.execPath)} ${shellQuote(cliScript)}`;
 }
 
-/** POSIX single-quoting: everything is literal inside '…', and a literal
- *  quote is closed, escaped and reopened. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 /**
  * The raw, unquoted path to the worker script the service will run — the same
@@ -934,9 +930,12 @@ function daemonInstallCommands(
     const dir = systemBinaryDir();
     const stage = target
       ? [
-          `sudo install -d -m 0755 ${dir}`,
-          `sudo install -m 0755 ${binaryPath} ${target}`,
-          `{ sudo restorecon -R ${systemBinaryRoot()} 2>/dev/null || true; }`,
+          // Quoted: a home directory may hold a space, and an unquoted path
+          // splits into words that stop this `&&`-joined recipe before the
+          // unit is ever written.
+          `sudo install -d -m 0755 ${shellQuote(dir)}`,
+          `sudo install -m 0755 ${shellQuote(binaryPath)} ${shellQuote(target)}`,
+          `{ sudo restorecon -R ${shellQuote(systemBinaryRoot())} 2>/dev/null || true; }`,
         ]
       : [];
     return [

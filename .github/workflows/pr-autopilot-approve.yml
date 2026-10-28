@@ -13,8 +13,9 @@
 #   * hermes-exosphere started it;
 #   * the PR is hermes-exosphere's own, still open, and its head is the
 #     commit that was reviewed;
-#   * hermes-exosphere posted a review on that commit carrying the approve
-#     marker (pr-autopilot's report::approve_marker).
+#   * hermes-exosphere's LATEST review on that commit carries the approve
+#     marker (pr-autopilot's report::approve_marker). An older approving
+#     review does not count once a newer one on the commit says otherwise.
 # It merges nothing (a person does), never checks out the PR, and takes its
 # inputs through env only. A later push drops the approval: the ruleset
 # dismisses stale reviews.
@@ -61,11 +62,14 @@ jobs:
           [ "$(jq -r .state <<<"$pr")" = open ] || { echo "PR #$PR is not open"; exit 1; }
           [ "$(jq -r .user.login <<<"$pr")" = "$BOT" ] || { echo "only $BOT's own PRs"; exit 1; }
           [ "$(jq -r .head.sha <<<"$pr")" = "$SHA" ] || { echo "head moved since the review"; exit 1; }
-          marker="<!-- pr-autopilot:approve $SHA -->"
-          n="$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
-            --jq "[.[] | select(.user.login == env.BOT and .commit_id == env.SHA and (.body | contains(\"$marker\")))] | length" \
-            | awk '{s += $1} END {print s + 0}')"
-          [ "$n" -gt 0 ] || { echo "no pr-autopilot approval on $SHA"; exit 1; }
+          # Every page, then the newest of BOT's reviews on this commit.
+          latest="$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
+            --jq '.[] | select(.user.login == env.BOT and .commit_id == env.SHA)
+                  | [.submitted_at, (.body | contains("<!-- pr-autopilot:approve " + env.SHA + " -->"))]
+                  | @tsv' \
+            | sort | tail -n 1)"
+          [ -n "$latest" ] || { echo "no pr-autopilot review of $SHA"; exit 1; }
+          [ "${latest##*	}" = true ] || { echo "pr-autopilot's latest review of $SHA does not approve"; exit 1; }
           gh api -X POST "repos/$REPO/pulls/$PR/reviews" \
             -f commit_id="$SHA" -f event=APPROVE \
             -f body="Approved for pr-autopilot, which reviewed commit \`${SHA:0:7}\` (review above) but cannot approve its own account's PR. A person merges."

@@ -7,7 +7,7 @@ The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, and o
 ### Fixes
 
 - `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
-- The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#TBD)
+- The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#958)
 
 ## 1.0.13-beta.1 — 2026-10-28
 

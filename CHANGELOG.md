@@ -1,14 +1,16 @@
 # Changelog
 
+## 1.0.13-beta.1 — 2026-10-28
+
+### Fixes
+
+- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#956)
+
 ## 1.0.13-beta.0 — 2026-10-27
 
 ### Features
 
 - **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)
-
-### Fixes
-
-- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#956)
 
 ### Dependencies
 

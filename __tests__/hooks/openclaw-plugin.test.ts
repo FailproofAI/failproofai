@@ -155,6 +155,36 @@ describe("openclaw-plugin daemon-client: requestHookVerdict", () => {
     }
   });
 
+  it("sends a payload just under the CLI's 1 MiB stdin limit intact", async () => {
+    // Quotes escape twice on the way into the envelope (once in stdin, again
+    // in the envelope), so this envelope is about twice the payload's size.
+    const fill = '"'.repeat(524_150);
+    const payload = { tool_name: "write", tool_input: { content: fill } };
+    const stdin = JSON.stringify(payload);
+    expect(Buffer.byteLength(stdin)).toBeGreaterThan(1_048_000);
+    expect(Buffer.byteLength(stdin)).toBeLessThanOrEqual(1_048_576);
+    const daemon = await fakeDaemon(socketPath, () => hookResult(""));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload, socketPath });
+      expect(result).toEqual({ ok: true, verdict: { permission: "allow" } });
+      expect(daemon.requests[0].stdin).toBe(stdin);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("evaluates an over-limit payload as empty, as the CLI does, and says so", async () => {
+    const payload = { tool_input: { content: "x".repeat(1_048_577) } };
+    const daemon = await fakeDaemon(socketPath, () => hookResult(""));
+    try {
+      const result = await requestHookVerdict({ event: "before_tool_call", payload, socketPath });
+      expect(result).toEqual({ ok: true, verdict: { permission: "allow" }, oversized: true });
+      expect(daemon.requests[0].stdin).toBe("");
+    } finally {
+      await daemon.close();
+    }
+  });
+
   it("accepts the instruct verdict the evaluator prints", async () => {
     // policy-evaluator.ts's `cli === "openclaw"` PreToolUse instruct shape.
     const verdict = {
@@ -357,6 +387,16 @@ describe("openclaw-plugin hooks", () => {
     } finally {
       await daemon.close();
     }
+  });
+
+  it("logs a payload that was too large to evaluate", async () => {
+    const { api, handlers, logged } = fakeApi();
+    registerFailproofaiHooks(api, {
+      evaluate: async () => ({ ok: true, verdict: { permission: "allow" }, oversized: true }),
+    });
+    expect(await handlers.get("before_tool_call")!(toolCall, ctx)).toBeUndefined();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("exceeds 1 MiB");
   });
 
   it("blocks when the evaluator itself throws", async () => {

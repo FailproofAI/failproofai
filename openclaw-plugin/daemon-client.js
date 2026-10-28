@@ -20,8 +20,13 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 export const PROTOCOL_VERSION = 2;
+// The daemon's frame limit (crates/fpai-ipc/src/framing.rs), both ways.
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
-const MAX_REQUEST_BYTES = 1024 * 1024;
+// The payload limit the CLI applies to its stdin (handler.ts, read-stdin.ts).
+// It bounds the RAW payload: the envelope carries it as an escaped JSON
+// string plus routing fields, so it is larger, and only the frame limit
+// applies to the envelope.
+export const MAX_PAYLOAD_BYTES = 1_048_576;
 
 // The CLI's daemon client budgets these separately for the reason it gives:
 // connecting is the "is anything listening" probe, the response covers the
@@ -132,7 +137,12 @@ function isVerdict(verdict) {
 
 /**
  * One request, one connection, one frame each way. Never rejects: resolves to
- * `{ok: true, verdict}` or `{ok: false, failure, message}`.
+ * `{ok: true, verdict}` (plus `oversized: true`, see below) or
+ * `{ok: false, failure, message}`.
+ *
+ * A payload over MAX_PAYLOAD_BYTES is sent as an empty stdin, exactly as the
+ * CLI discards an oversized stdin and evaluates an empty payload;
+ * `oversized: true` lets the caller say so instead of discarding it silently.
  */
 export function requestHookVerdict({
   event,
@@ -145,14 +155,20 @@ export function requestHookVerdict({
 }) {
   return new Promise((done) => {
     let body;
+    let oversized = false;
     try {
+      let stdin = JSON.stringify(payload ?? {});
+      if (Buffer.byteLength(stdin, "utf8") > MAX_PAYLOAD_BYTES) {
+        stdin = "";
+        oversized = true;
+      }
       body = Buffer.from(
         JSON.stringify({
           type: "hook",
           protocolVersion: PROTOCOL_VERSION,
           hookEvent: event,
           cli: "openclaw",
-          stdin: JSON.stringify(payload ?? {}),
+          stdin,
           ...(typeof cwd === "string" && cwd ? { cwd } : {}),
           agentSettingsPath: agentSettingsPath || "",
         }),
@@ -162,8 +178,10 @@ export function requestHookVerdict({
       done(failed("invalid", `could not encode the hook request: ${err?.message ?? String(err)}`));
       return;
     }
-    if (body.length > MAX_REQUEST_BYTES) {
-      done(failed("invalid", "hook request exceeds the 1 MiB limit"));
+    // Unreachable for a payload within MAX_PAYLOAD_BYTES (escaping at most
+    // sextuples it); kept so nothing over the daemon's limit is ever sent.
+    if (body.length > MAX_FRAME_BYTES) {
+      done(failed("invalid", "hook request exceeds the daemon's 16 MiB frame limit"));
       return;
     }
 
@@ -215,7 +233,8 @@ export function requestHookVerdict({
         finish(failed("invalid", "failproofaid returned a response that is not JSON"));
         return;
       }
-      finish(readHookResult(message));
+      const result = readHookResult(message);
+      finish(result.ok && oversized ? { ...result, oversized: true } : result);
     });
     socket.on("error", (err) => {
       finish(

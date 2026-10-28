@@ -93,6 +93,11 @@ export function registerFailproofaiHooks(api, {
       result = { ok: false, message: `the failproofai plugin failed: ${err?.message ?? String(err)}` };
     }
     if (!result?.ok) logFailure(api, event, result?.message ?? "no verdict");
+    // Same outcome as the CLI's oversized stdin (warn, evaluate an empty
+    // payload), and said out loud for the same reason it is there.
+    else if (result.oversized) {
+      logFailure(api, event, "payload exceeds 1 MiB, so it was evaluated as an empty payload");
+    }
     return result ?? { ok: false, message: "no verdict" };
   };
 

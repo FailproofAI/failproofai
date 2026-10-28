@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.13 — 2026-10-28
+
+The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, and of daemon setup on Fedora, RHEL, Rocky and Alma. Everything below in the `1.0.13-beta.*` sections ships here too.
+
+### Fixes
+
+- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
+- The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#TBD)
+
 ## 1.0.13-beta.1 — 2026-10-28
 
 ### Fixes
@@ -15,10 +24,6 @@
 ### Features
 
 - **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)
-
-### Fixes
-
-- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
 
 ### Dependencies
 

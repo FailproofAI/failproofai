@@ -1,0 +1,106 @@
+# Kiln QA profile for failproofai (TypeScript CLI + Next.js dashboard + Rust failproofaid daemon).
+# Mirrors the PR jobs in .github/workflows/ci.yml that need no secrets:
+#   quality (lint + tsc), test (vitest unit), test-e2e (vitest e2e hooks),
+#   build (bun run build), rust-quality (cargo fmt / clippy / test).
+# Left to CI on purpose: the version-consistency step, the Python fp-cloud-cli / sdk/python
+# jobs (need uv), sdk/typescript jobs (own package, real-release integration shards),
+# docs (mintlify), build-daemon cross-compiles, and anything touching FailproofAI Cloud.
+version: 1
+
+extras:
+  # bun is REQUIRED: every package script shells out to `bun build` / `bun --bun next`,
+  # the e2e suite spawns `bun bin/failproofai.mjs`, and `cargo test` spawns
+  # `bun bin/failproofai-worker.mjs` (crates/failproofaid/src/paths.rs, server.rs).
+  npm: [bun]
+  # A non-empty cargo list is what installs rustup. cargo-nextest is optional for QA
+  # (`cargo nextest run -p failproofaid <filter>` for quicker targeted reruns);
+  # the checks below use plain `cargo test` like CI. rust-toolchain.toml pins
+  # 1.97.1 + rustfmt + clippy, which rustup downloads on the first cargo call.
+  cargo: [cargo-nextest]
+
+# Next.js production build + a cold Rust debug build (rusqlite bundled, rustls/ring)
+# + a 424-file vitest run all compete for CPU.
+resources: { cpus: 4, memory: 8g }
+
+boot:
+  # --ignore-scripts like every CI job: `prepare` would otherwise run the full `bun run build`.
+  - bun install --frozen-lockfile --ignore-scripts
+  # dist/index.js (policy-loader fixture for unit + e2e tests), dist/cli.mjs (the CLI
+  # under test), dist/worker.mjs (the TS worker the daemon spawns). Same as ci.yml test-e2e.
+  - bun build src/index.ts --outdir dist --target node --format cjs && bun run build:cli && bun run build:worker
+  # Fetches the pinned toolchain on first use, then builds target/debug/failproofaid
+  # (the same debug artifacts `cargo test --workspace` reuses).
+  - cargo build -p failproofaid
+  # Dashboard dev server for Playwright: http://127.0.0.1:8020 (`/` redirects; /policies, /projects,
+  # /settings, /audit are the main pages). Same as `bun run dev` minus its `predev` (`bun link`).
+  # Throwaway HOME so it never reads/writes the container user's real ~/.failproofai or ~/.claude.
+  # Server log: .dev.log (gitignored). Seed sessions for the UI by writing transcripts under
+  # /tmp/qa-dash-home/.claude/projects/ if a criterion needs them.
+  - mkdir -p /tmp/qa-dash-home && (HOME=/tmp/qa-dash-home FAILPROOFAI_TELEMETRY_DISABLED=1 NEXT_TELEMETRY_DISABLED=1 nohup bun scripts/dev.ts --port 8020 > .dev.log 2>&1 &)
+  - for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8020/policies && break; sleep 1; done; curl -fsS -o /dev/null http://127.0.0.1:8020/policies || { tail -50 .dev.log; exit 1; }
+
+# No database or fixtures: every test builds its own temp HOME / cwd.
+seed: []
+
+checks:
+  # ci.yml `test` job. Env vars match the job env; CI retries 3x, so a lone
+  # timeout under load is worth one rerun before calling it a failure.
+  unit: FAILPROOFAI_TELEMETRY_DISABLED=1 NEXT_TELEMETRY_DISABLED=1 bun run test:run --reporter=default --reporter=junit --outputFile.junit=coverage/qa/unit-junit.xml
+  # ci.yml `test-e2e` job: spawns the real bin/failproofai.mjs per hook event (needs boot's dist/).
+  e2e: FAILPROOFAI_TELEMETRY_DISABLED=1 bun run test:e2e --reporter=default --reporter=junit --outputFile.junit=coverage/qa/e2e-junit.xml
+  # End-to-end with THIS checkout's built CLI (dist/cli.mjs) and daemon (target/debug/failproofaid),
+  # never the globally installed failproofai 1.0.12. POSIX sh; run from the repo root. Steps:
+  #  1. install claude + codex hooks into a throwaway HOME; FAILPROOFAI_BINARY_OVERRIDE
+  #     (src/hooks/manager.ts resolveFailproofaiBinary) makes the hooks call dist/cli.mjs;
+  #  2. feed Claude's PreToolUse stdin JSON to the INSTALLED hook command: the default-on
+  #     block-failproofai-commands policy must deny `failproofai config --pause`, `ls -la` must allow (empty stdout);
+  #  3. mark the HOME daemon-configured: with no daemon the hook must fail closed;
+  #  4. start failproofaid and repeat 2 through the daemon socket.
+  # Prints CLI-OK on success. FAILPROOFAI_NO_DOWNLOAD stops any daemon download from GitHub.
+  cli: |
+    set -eu
+    export FAILPROOFAI_TELEMETRY_DISABLED=1 FAILPROOFAI_NO_DOWNLOAD=1 FAILPROOFAI_CODEX_SYSTEM_CONFIG=off
+    CLI="$PWD/dist/cli.mjs"; DAEMON="$PWD/target/debug/failproofaid"; T=$(mktemp -d)
+    export HOME="$T/home" FAILPROOFAI_HOME="$T/fp"; mkdir -p "$HOME" "$FAILPROOFAI_HOME"
+    node "$CLI" --version
+    FAILPROOFAI_BINARY_OVERRIDE="$CLI" node "$CLI" policies --install --cli claude codex --scope user </dev/null
+    HOOK=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$HOME/.claude/settings.json")
+    echo "installed hook: $HOOK"; echo "$HOOK" | grep -qF "$CLI"; echo "$HOOK" | grep -q -- '--hook PreToolUse'
+    jq -r '.hooks.PreToolUse[0].hooks[0].command' "$HOME/.codex/hooks.json" | grep -F "$CLI" | grep -q -- '--cli codex'
+    pay() { jq -nc --arg c "$1" --arg d "$T" '{session_id:"qa",transcript_path:"/dev/null",cwd:$d,permission_mode:"default",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}'; }
+    pay 'failproofai config --pause' | sh -c "$HOOK" | tee "$T/deny.json" | jq -e '.hookSpecificOutput.permissionDecision == "deny"'
+    [ -z "$(pay 'ls -la' | sh -c "$HOOK")" ]
+    echo '{"daemon":{"configured":true}}' > "$FAILPROOFAI_HOME/config.json"
+    pay 'ls -la' | sh -c "$HOOK" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("could not be reached")'
+    FAILPROOFAI_WORKER_CMD="node $PWD/dist/worker.mjs" "$DAEMON" > "$T/daemon.log" 2>&1 & DP=$!
+    trap 'kill $DP 2>/dev/null; wait $DP 2>/dev/null || true' EXIT
+    i=0; until [ -S "$FAILPROOFAI_HOME/run/failproofaid.sock" ]; do i=$((i+1)); [ $i -lt 150 ] || { cat "$T/daemon.log"; exit 1; }; sleep 0.2; done
+    pay 'failproofai config --pause' | sh -c "$HOOK" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | contains("could not be reached") | not)'
+    [ -z "$(pay 'ls -la' | sh -c "$HOOK")" ]
+    echo CLI-OK
+  extra:
+    # ci.yml `quality` job.
+    - bun run lint
+    - bunx tsc --noEmit
+    # ci.yml `rust-quality` job (fmt, both clippy configurations, workspace tests).
+    # cargo test spawns the TS worker via bun and starts real daemons on temp sockets.
+    - cargo fmt --all -- --check
+    - cargo clippy --workspace --all-targets -- -D warnings && cargo clippy -p fpai-collect --no-default-features --all-targets -- -D warnings
+    # Known noise, not a failure: a "Cannot find module .../crates/failproofaid/dist/worker.mjs" warm-up line.
+    - cargo test --workspace
+    # ci.yml `build` job: dist/ bundles + Next.js production build + standalone prune (~2 min).
+    # Safe while the dev server runs (Next 16 dev writes .next/dev). Rebuilds dist/cli.mjs too.
+    # Output tracing briefly copies target/ (several GB after the cargo steps) into .next/standalone
+    # before scripts/prune-standalone.mjs drops it, so it needs that much free disk.
+    - FAILPROOFAI_TELEMETRY_DISABLED=1 NEXT_TELEMETRY_DISABLED=1 bun run build
+
+artifacts:
+  # coverage/ and .dev.log are gitignored, so reports never end up in a commit.
+  # No playwright config/report in the repo; QA's own screenshots go in its artifacts dir.
+  - coverage/qa/**
+  - .dev.log
+
+loop_cap: 3
+
+# Cold start = rustup toolchain download + full Rust debug build + Next build + both vitest suites.
+timeouts: { builder: 90, qa: 90, reviewer: 30 }

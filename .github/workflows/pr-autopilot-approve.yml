@@ -1,0 +1,71 @@
+# Approve a PR that pr-autopilot reviewed but cannot approve itself.
+#
+# Copy to .github/workflows/pr-autopilot-approve.yml in every repo
+# pr-autopilot reviews, on the default branch (workflow_dispatch runs the
+# file from there).
+#
+# pr-autopilot acts as hermes-exosphere, the account that also opens Kiln's
+# and the other agents' PRs. GitHub lets no one approve their own PR, so for
+# those pr-autopilot posts its review as a comment and starts this workflow,
+# which approves as github-actions[bot]. The org ruleset counts that approval.
+#
+# It approves only when all of these hold:
+#   * hermes-exosphere started it;
+#   * the PR is hermes-exosphere's own, still open, and its head is the
+#     commit that was reviewed;
+#   * hermes-exosphere posted a review on that commit carrying the approve
+#     marker (pr-autopilot's report::approve_marker).
+# It merges nothing (a person does), never checks out the PR, and takes its
+# inputs through env only. A later push drops the approval: the ruleset
+# dismisses stale reviews.
+#
+# Needs Settings → Actions → General → "Allow GitHub Actions to create and
+# approve pull requests".
+
+name: pr-autopilot approve
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+      sha:
+        description: The head commit pr-autopilot reviewed
+        required: true
+
+permissions:
+  pull-requests: write
+
+concurrency: pr-autopilot-approve-${{ inputs.pr }}
+
+jobs:
+  approve:
+    name: Approve pr-autopilot's verdict
+    if: github.actor == 'hermes-exosphere'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Approve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+          BOT: hermes-exosphere
+        run: |
+          set -euo pipefail
+          case "$PR" in ''|*[!0-9]*) echo "not a PR number: $PR"; exit 1;; esac
+          case "$SHA" in ''|*[!0-9a-f]*) echo "not a commit: $SHA"; exit 1;; esac
+          pr="$(gh api "repos/$REPO/pulls/$PR")"
+          [ "$(jq -r .state <<<"$pr")" = open ] || { echo "PR #$PR is not open"; exit 1; }
+          [ "$(jq -r .user.login <<<"$pr")" = "$BOT" ] || { echo "only $BOT's own PRs"; exit 1; }
+          [ "$(jq -r .head.sha <<<"$pr")" = "$SHA" ] || { echo "head moved since the review"; exit 1; }
+          marker="<!-- pr-autopilot:approve $SHA -->"
+          n="$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
+            --jq "[.[] | select(.user.login == env.BOT and .commit_id == env.SHA and (.body | contains(\"$marker\")))] | length" \
+            | awk '{s += $1} END {print s + 0}')"
+          [ "$n" -gt 0 ] || { echo "no pr-autopilot approval on $SHA"; exit 1; }
+          gh api -X POST "repos/$REPO/pulls/$PR/reviews" \
+            -f commit_id="$SHA" -f event=APPROVE \
+            -f body="Approved for pr-autopilot, which reviewed commit \`${SHA:0:7}\` (review above) but cannot approve its own account's PR. A person merges."

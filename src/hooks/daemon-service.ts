@@ -13,12 +13,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  statSync,
   writeFileSync,
   unlinkSync,
   rmSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
@@ -414,6 +416,142 @@ function systemdUnitPath(user: string = serviceUser()): string {
 }
 
 /**
+ * Where a Linux install puts the copy of the daemon that systemd actually runs:
+ * `/opt/failproofai/<user>/bin/failproofaid-<version>`, root-owned.
+ *
+ * The binary is downloaded into `~/.failproofai/bin`, and a unit whose
+ * `ExecStart` points there works on Debian, Ubuntu and Mint — and on Fedora,
+ * RHEL, Rocky and Alma it never starts. Those ship SELinux enforcing, a file
+ * under a home directory is labelled `user_home_t`, and the targeted policy
+ * gives systemd (`init_t`) no execute permission on that type at all. The unit
+ * fails `203/EXEC Permission denied`, `waitForDaemonRunning()` times out, and
+ * `failproofai config` aborts at its very last step.
+ *
+ * The policy's generic `/opt/(.*\/)?bin(/.*)?` rule labels this path `bin_t`,
+ * which systemd may execute, and executing it moves the daemon into
+ * `unconfined_service_t` — the domain that may in turn run the worker's node
+ * from `~/.nvm` (also `user_home_t`) and accept hooks on the socket. So only
+ * the daemon binary moves; the worker command, the socket and the state under
+ * `~/.failproofai` stay where they are. Not `/usr/local/libexec`: both
+ * policies label that `usr_t`, which starts the daemon only through a
+ * secondary `init_t usr_t → unconfined_service_t` rule, where `bin_t` is the
+ * type the policy means for programs. Not `/usr/libexec` either: `/usr` is the
+ * package manager's, and read-only on Silverblue and CoreOS. All checked
+ * against the shipped policy on Fedora 41 and Rocky 9 with `matchpathcon` and
+ * `sesearch`.
+ *
+ * Per user for the same reason the unit name is: two people on one box may run
+ * different versions, and one's uninstall must not delete the other's binary.
+ * The `~/.failproofai/bin` copy is kept — `daemonVersionSkew()` and
+ * `refreshDaemonToCliVersion()` read the installed version from it.
+ *
+ * Redirectable for tests ONLY, like the unit directory.
+ */
+function systemBinaryRoot(user: string = serviceUser()): string {
+  return resolve(process.env.FAILPROOFAI_SYSTEM_BIN_DIR || "/opt/failproofai", user);
+}
+
+function systemBinaryDir(): string {
+  return resolve(systemBinaryRoot(), "bin");
+}
+
+/** The system binary directory on Linux, for the manual-removal instructions. */
+export function daemonSystemBinaryDir(): string | null {
+  return process.platform === "linux" ? systemBinaryRoot() : null;
+}
+
+/**
+ * The path systemd should start for `binaryPath`, or null when it should start
+ * `binaryPath` itself.
+ *
+ * Only a real file is copied. `FAILPROOFAI_DAEMON_BINARY` is "someone named a
+ * binary explicitly" and may be a command with arguments (this repo's own
+ * systemd tests use `/usr/bin/sleep infinity`), so it is started as given.
+ */
+export function systemBinaryTarget(binaryPath: string): string | null {
+  if (process.platform !== "linux" || process.env.FAILPROOFAI_DAEMON_BINARY) return null;
+  try {
+    if (!statSync(binaryPath).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return resolve(systemBinaryDir(), `failproofaid-${version}`);
+}
+
+/**
+ * Whether this kernel has SELinux enabled. `/sys/fs/selinux` is mounted only
+ * when it is, enforcing or permissive.
+ */
+function selinuxEnabled(): boolean {
+  return existsSync("/sys/fs/selinux/enforce");
+}
+
+/**
+ * Copies the daemon binary into the system directory and returns the path the
+ * unit should start. Privileged; throws when the copy fails, which the caller
+ * reports as a failed install before any unit is written.
+ *
+ * Staged under a temp name and renamed into place, so a reinstall of the same
+ * version never writes into the file a running daemon was started from.
+ *
+ * `restorecon` afterwards, because a new file inherits the label of the
+ * directory it is created in, not the one the policy assigns to its path: the
+ * directories `install -d` creates under `/opt` (`usr_t`) come out `usr_t`
+ * too, never the `bin_t` the policy names for them.
+ */
+function stageSystemBinary(binaryPath: string): string {
+  const target = systemBinaryTarget(binaryPath);
+  if (!target) return binaryPath;
+  const dir = systemBinaryDir();
+  const staging = `${target}.${process.pid}.tmp`;
+  runPrivileged("install", ["-d", "-m", "0755", dir]);
+  try {
+    runPrivileged("install", ["-m", "0755", binaryPath, staging]);
+    runPrivileged("mv", ["-f", staging, target]);
+  } catch (err) {
+    try {
+      runPrivileged("rm", ["-f", staging]);
+    } catch {
+      /* best-effort */
+    }
+    throw err;
+  }
+  if (selinuxEnabled()) {
+    const root = systemBinaryRoot();
+    try {
+      runPrivileged("restorecon", ["-R", root]);
+    } catch (err) {
+      // Not fatal here: a wrong label still surfaces as the daemon not
+      // reaching a running state, which fails the install with its status.
+      hookLogWarn(`restorecon on ${root} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return target;
+}
+
+/**
+ * Removes system copies other than `current` and the most recent one before
+ * it — the same keep-one-for-rollback rule `pruneOldDaemonBinaries()` applies
+ * to `~/.failproofai/bin`. Best-effort; only called once the service runs
+ * `current`.
+ */
+function pruneSystemBinaries(current: string): void {
+  try {
+    const dir = systemBinaryDir();
+    const stale = readdirSync(dir)
+      .filter((f) => f.startsWith("failproofaid-"))
+      .map((f) => resolve(dir, f))
+      .filter((p) => p !== current)
+      .map((p) => ({ p, mtime: statSync(p).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(1);
+    for (const { p } of stale) runPrivileged("rm", ["-f", p]);
+  } catch {
+    // Nothing to prune, or no elevation left — leaving a file costs disk only.
+  }
+}
+
+/**
  * The pre-1.0.0-beta.1 user-scope unit. Still removed on install and
  * uninstall: it holds the same flock the new service needs, so leaving one
  * behind means the system unit starts, loses the singleton race, and the
@@ -792,8 +930,18 @@ function daemonInstallCommands(
   cliCmd: string | null,
 ): string[] {
   if (process.platform === "linux") {
+    const target = systemBinaryTarget(binaryPath);
+    const dir = systemBinaryDir();
+    const stage = target
+      ? [
+          `sudo install -d -m 0755 ${dir}`,
+          `sudo install -m 0755 ${binaryPath} ${target}`,
+          `{ sudo restorecon -R ${systemBinaryRoot()} 2>/dev/null || true; }`,
+        ]
+      : [];
     return [
-      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(binaryPath, workerCmd, cliCmd)}EOF`,
+      ...stage,
+      `sudo tee ${systemdUnitPath()} <<'EOF'\n${systemdUnitContents(target ?? binaryPath, workerCmd, cliCmd)}EOF`,
       "sudo systemctl daemon-reload",
       `sudo systemctl enable ${systemdUnitName()}`,
       // `restart`, not `enable --now`, for the reason the install path gives:
@@ -865,9 +1013,13 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
   // never came up. Clear it first, every time.
   removeLegacyUserService();
 
+  let execPath = binaryPath;
   try {
     if (process.platform === "linux") {
-      writePrivilegedFile(systemdUnitPath(), systemdUnitContents(binaryPath, workerCmd, cliCmd));
+      // Before the unit is written, so a copy that fails leaves the previous
+      // unit and the daemon it runs untouched. See `systemBinaryDir()`.
+      execPath = stageSystemBinary(binaryPath);
+      writePrivilegedFile(systemdUnitPath(), systemdUnitContents(execPath, workerCmd, cliCmd));
       runPrivileged("systemctl", ["daemon-reload"]);
       // `enable` for boot persistence, then `restart` — NOT `enable --now`.
       //
@@ -927,6 +1079,7 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     hookLogWarn(`daemon service install failed: ${reason}`);
     return { installed: false, reason };
   }
+  if (execPath !== binaryPath) pruneSystemBinaries(execPath);
 
   // NOTE: this reports that the SERVICE is installed and running, which is all
   // it can honestly claim. Whether the daemon can actually evaluate a hook is a
@@ -1682,6 +1835,18 @@ export async function uninstallDaemonService(): Promise<void> {
         runPrivileged("systemctl", ["daemon-reload"]);
       } catch {
         // Best-effort.
+      }
+      // The copy systemd ran. After the unit is gone, so nothing enabled is
+      // left pointing at a deleted file. The shared parent goes only if no
+      // other user's directory is in it.
+      const binRoot = systemBinaryRoot();
+      if (existsSync(binRoot)) {
+        runPrivileged("rm", ["-rf", binRoot]);
+        try {
+          runPrivileged("rmdir", [dirname(binRoot)]);
+        } catch {
+          // Not empty — another user's daemon lives there.
+        }
       }
     } else {
       const plistPath = launchdPlistPath();

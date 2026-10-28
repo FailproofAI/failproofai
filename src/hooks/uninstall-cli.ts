@@ -39,6 +39,7 @@ import {
   daemonServiceFilePath,
   daemonServiceStatus,
   daemonStatusCommand,
+  daemonSystemBinaryDir,
   isDaemonSupportedPlatform,
   primeElevation,
   setDaemonConfigured,
@@ -417,10 +418,12 @@ function manualServiceRemoval(servicePath: string): string[] {
     return [`sudo launchctl unload -w ${servicePath}`, `sudo rm -f ${servicePath}`];
   }
   const unit = servicePath.split("/").pop() ?? servicePath;
+  const binDir = daemonSystemBinaryDir();
   return [
     `sudo systemctl disable --now ${unit}`,
     `sudo rm -f ${servicePath}`,
     `sudo systemctl daemon-reload`,
+    ...(binDir ? [`sudo rm -rf ${binDir}`] : []),
   ];
 }
 

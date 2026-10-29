@@ -1,4 +1,5 @@
-# Approve a PR that pr-autopilot reviewed but cannot approve itself.
+# Approve a PR that pr-autopilot reviewed but cannot approve itself, and
+# withdraw that approval when pr-autopilot's verdict turns.
 #
 # Copy to .github/workflows/pr-autopilot-approve.yml in every repo
 # pr-autopilot reviews, on the default branch (workflow_dispatch runs the
@@ -16,9 +17,20 @@
 #   * hermes-exosphere's LATEST review on that commit carries the approve
 #     marker (pr-autopilot's report::approve_marker). An older approving
 #     review does not count once a newer one on the commit says otherwise.
+# When the latest review does not approve, it dismisses github-actions[bot]'s
+# approvals instead, so a newer negative verdict on the same commit revokes
+# an earlier approval (pr-autopilot dispatches it for both verdicts). If the
+# head moves while the approval is posted, the new approval is dismissed.
 # It merges nothing (a person does), never checks out the PR, and takes its
 # inputs through env only. A later push drops the approval: the ruleset
 # dismisses stale reviews.
+#
+# What this does not stop: whoever holds hermes-exosphere's token can write
+# the marker review and dispatch this, or dispatch a modified copy from
+# another branch (the ref check below is only a guard against mistakes). It
+# keeps pr-autopilot's verdict honest; it is not a boundary against that
+# token, and no in-repo workflow can be one while "Allow GitHub Actions to
+# approve pull requests" is on.
 #
 # Needs Settings → Actions → General → "Allow GitHub Actions to create and
 # approve pull requests".
@@ -43,11 +55,13 @@ concurrency: pr-autopilot-approve-${{ inputs.pr }}
 jobs:
   approve:
     name: Approve pr-autopilot's verdict
-    if: github.actor == 'hermes-exosphere'
+    if: >-
+      github.actor == 'hermes-exosphere' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Approve
+      - name: Approve or withdraw
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -58,6 +72,16 @@ jobs:
           set -euo pipefail
           case "$PR" in ''|*[!0-9]*) echo "not a PR number: $PR"; exit 1;; esac
           case "$SHA" in ''|*[!0-9a-f]*) echo "not a commit: $SHA"; exit 1;; esac
+          # Dismiss github-actions[bot]'s standing approvals on this PR.
+          withdraw() {
+            gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED") | .id' |
+            while read -r id; do
+              gh api -X PUT "repos/$REPO/pulls/$PR/reviews/$id/dismissals" \
+                -f event=DISMISS -f message="$1" >/dev/null
+              echo "dismissed approval $id: $1"
+            done
+          }
           pr="$(gh api "repos/$REPO/pulls/$PR")"
           [ "$(jq -r .state <<<"$pr")" = open ] || { echo "PR #$PR is not open"; exit 1; }
           [ "$(jq -r .user.login <<<"$pr")" = "$BOT" ] || { echo "only $BOT's own PRs"; exit 1; }
@@ -72,7 +96,23 @@ jobs:
                   | @tsv' \
             | sort -k 1,1 -k 2,2n | tail -n 1)"
           [ -n "$latest" ] || { echo "no pr-autopilot review of $SHA"; exit 1; }
-          [ "${latest##*	}" = true ] || { echo "pr-autopilot's latest review of $SHA does not approve"; exit 1; }
-          gh api -X POST "repos/$REPO/pulls/$PR/reviews" \
+          if [ "${latest##*	}" != true ]; then
+            withdraw "pr-autopilot's latest review of ${SHA:0:7} does not approve"
+            exit 0
+          fi
+          have="$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED" and .commit_id == env.SHA) | .id' | head -n 1)"
+          [ -z "$have" ] || { echo "already approved ($have)"; exit 0; }
+          id="$(gh api -X POST "repos/$REPO/pulls/$PR/reviews" \
             -f commit_id="$SHA" -f event=APPROVE \
-            -f body="Approved for pr-autopilot, which reviewed commit \`${SHA:0:7}\` (review above) but cannot approve its own account's PR. A person merges."
+            -f body="Approved for pr-autopilot, which reviewed commit \`${SHA:0:7}\` (review above) but cannot approve its own account's PR. A person merges." \
+            --jq .id)"
+          # A push between the head check and the POST would leave this
+          # approval on an old commit, after the ruleset's stale dismissal ran.
+          head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)"
+          if [ "$head" != "$SHA" ]; then
+            gh api -X PUT "repos/$REPO/pulls/$PR/reviews/$id/dismissals" \
+              -f event=DISMISS -f message="head moved to ${head:0:7} while ${SHA:0:7} was approved" >/dev/null
+            echo "head moved while approving; approval $id dismissed"; exit 1
+          fi
+          echo "approved ${SHA:0:7} ($id)"

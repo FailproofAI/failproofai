@@ -2,8 +2,9 @@
 # withdraw that approval when pr-autopilot's verdict turns.
 #
 # Copy to .github/workflows/pr-autopilot-approve.yml in every repo
-# pr-autopilot reviews, on the default branch (workflow_dispatch runs the
-# file from there).
+# pr-autopilot reviews, on the default branch. It runs on repository_dispatch,
+# which GitHub always runs from the default branch's copy of this file: no
+# dispatcher can pick an edited copy on another branch.
 #
 # pr-autopilot acts as hermes-exosphere, the account that also opens Kiln's
 # and the other agents' PRs. GitHub lets no one approve their own PR, so for
@@ -26,38 +27,27 @@
 # dismisses stale reviews.
 #
 # What this does not stop: whoever holds hermes-exosphere's token can write
-# the marker review and dispatch this, or dispatch a modified copy from
-# another branch (the ref check below is only a guard against mistakes). It
-# keeps pr-autopilot's verdict honest; it is not a boundary against that
-# token, and no in-repo workflow can be one while "Allow GitHub Actions to
-# approve pull requests" is on.
-#
-# Needs Settings → Actions → General → "Allow GitHub Actions to create and
-# approve pull requests".
+# the marker review and send the dispatch. It keeps pr-autopilot's verdict
+# honest and the code that approves fixed; it is not a boundary against
+# that token. That would need a second identity (a GitHub App or account).
 
 name: pr-autopilot approve
 
 on:
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR number
-        required: true
-      sha:
-        description: The head commit pr-autopilot reviewed
-        required: true
+  # POST /repos/{owner}/{repo}/dispatches with
+  # {"event_type": "pr-autopilot-approve", "client_payload": {"pr": "N", "sha": "..."}}
+  repository_dispatch:
+    types: [pr-autopilot-approve]
 
 permissions:
   pull-requests: write
 
-concurrency: pr-autopilot-approve-${{ inputs.pr }}
+concurrency: pr-autopilot-approve-${{ github.event.client_payload.pr }}
 
 jobs:
   approve:
     name: Approve pr-autopilot's verdict
-    if: >-
-      github.actor == 'hermes-exosphere' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.actor == 'hermes-exosphere'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -65,8 +55,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ inputs.pr }}
-          SHA: ${{ inputs.sha }}
+          PR: ${{ github.event.client_payload.pr }}
+          SHA: ${{ github.event.client_payload.sha }}
           BOT: hermes-exosphere
         run: |
           set -euo pipefail

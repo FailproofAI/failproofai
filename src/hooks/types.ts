@@ -282,6 +282,20 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
   rg: "Grep",
   ls: "LS",
   web_fetch: "WebFetch",
+  // Copilot's sub-agent and web-search tools (documented). Without these a
+  // policy matching `Task` or `WebSearch` silently never fires on Copilot -
+  // the names pass through uncanonicalised, same failure mode the rest of
+  // this map exists to prevent. `ask_user` is deliberately unmapped: it has
+  // no filesystem or shell reach, so no builtin policy targets it.
+  task: "Task",
+  // PascalCase `PreToolUse` payloads (the shape failproofai registers) report
+  // `tool_name` as the Claude tool name, and the docs table maps the runtime
+  // `task` tool to `Agent` there. Without this entry a Task policy still
+  // never fires on Copilot's PascalCase payload - the more common of the two
+  // shapes for this integration.
+  // Ref: https://docs.github.com/en/copilot/reference/hooks-reference
+  Agent: "Task",
+  web_search: "WebSearch",
 };
 
 /**

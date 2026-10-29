@@ -112,8 +112,11 @@ jobs:
               -f event=DISMISS -f message="head moved to ${head:0:7} while ${SHA:0:7} was approved" >/dev/null
             echo "head moved while approving; approval $id dismissed"; exit 1
           fi
-          if [ "$(verdict || true)" != true ]; then
-            withdraw "pr-autopilot's verdict on ${SHA:0:7} changed while approving"
-            exit 0
+          # Any failure of the re-read (pipefail: a page that errors after an
+          # approving one too) dismisses this approval by id, without listing.
+          if ! now="$(verdict)" || [ "$now" != true ]; then
+            gh api -X PUT "repos/$REPO/pulls/$PR/reviews/$id/dismissals" \
+              -f event=DISMISS -f message="pr-autopilot's verdict on ${SHA:0:7} changed, or could not be re-read, while approving" >/dev/null
+            echo "verdict changed or unreadable while approving; approval $id dismissed"; exit 1
           fi
           echo "approved ${SHA:0:7} ($id)"

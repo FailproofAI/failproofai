@@ -99,7 +99,8 @@ jobs:
             --jq .id)"
           # A push between the head check and the POST would leave this
           # approval on an old commit, after the ruleset's stale dismissal ran.
-          head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)"
+          # A failed re-read counts as moved.
+          head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha || true)"
           if [ "$head" != "$SHA" ]; then
             gh api -X PUT "repos/$REPO/pulls/$PR/reviews/$id/dismissals" \
               -f event=DISMISS -f message="head moved to ${head:0:7} while ${SHA:0:7} was approved" >/dev/null

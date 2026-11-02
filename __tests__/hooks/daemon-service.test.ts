@@ -754,10 +754,22 @@ describe("hooks/daemon-service", () => {
   // Never against a machine's real daemon. Teardown uninstalls, which removes the
   // staged binary as well as the unit, so restoring the unit afterwards would leave
   // it pointing at a deleted file, and a daemon-configured machine then denies every
-  // tool call. Skipping is the only teardown that cannot get this wrong.
-  const realUnitInstalled = existsSync(resolve("/etc/systemd/system", `failproofaid@${userInfo().username}.service`));
+  // tool call. Skipping is the only teardown that cannot get this wrong. The unit
+  // file alone does not settle it: systemd keeps a running service after its file
+  // is deleted, and a failed install leaves a staged binary with neither.
+  const realDaemonPresent = (() => {
+    const name = `failproofaid@${userInfo().username}.service`;
+    if (existsSync(resolve("/etc/systemd/system", name))) return true;
+    if (existsSync(resolve("/opt/failproofai", userInfo().username))) return true;
+    try {
+      execFileSync("systemctl", ["is-active", "--quiet", name], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false; // Inactive, or no systemctl, which the check above already skips.
+    }
+  })();
 
-  (canInstallSystemService && !realUnitInstalled ? describe : describe.skip)(
+  (canInstallSystemService && !realDaemonPresent ? describe : describe.skip)(
     "real systemd system-scope lifecycle (linux only, requires root or passwordless sudo)",
     () => {
       const unitName = `failproofaid@${userInfo().username}.service`;

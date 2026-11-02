@@ -25,9 +25,9 @@ let serviceExists = true;
 let configured = true;
 let installedClis: string[] = ["claude", "codex"];
 let skillDirs: string[] = [];
-let stagedDir = "/opt/failproofai/tester";
-// Off by default so no other test's uninstall can delete the default path above,
-// which is a real location on a machine with a user named `tester`.
+// Always under the per-test scratch directory. uninstall-cli probes it with the
+// real existsSync, and the mock below really deletes it.
+let stagedDir = "";
 let stagedRemovable = false;
 
 vi.mock("../../src/hooks/manager", () => ({
@@ -96,6 +96,8 @@ beforeEach(() => {
   configured = true;
   installedClis = ["claude", "codex"];
   skillDirs = [];
+  stagedDir = join(home, "opt", "tester");
+  stagedRemovable = false;
 });
 
 afterEach(() => {
@@ -419,7 +421,7 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
       `    sudo rm -f '${servicePath}'`,
       "    sudo systemctl daemon-reload",
       // The root-owned copy the unit ran, outside HOME for SELinux.
-      "    sudo rm -rf '/opt/failproofai/tester'",
+      `    sudo rm -rf '${stagedDir}'`,
       "  Check it with  systemctl status failproofaid@tester",
     ]);
   });
@@ -441,8 +443,6 @@ describe("hooks/uninstall-cli — a staged daemon binary with no unit", () => {
   });
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
-    stagedDir = "/opt/failproofai/tester";
-    stagedRemovable = false;
   });
 
   it("removes it, and asks for sudo first, even with nothing else installed", async () => {

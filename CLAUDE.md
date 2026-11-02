@@ -707,7 +707,9 @@ mapped. A missed tool **name** raises no error and passes through unchecked. A m
 **key** on a known file tool is refused: `src/hooks/antigravity-path-guard.ts`, which
 `handler.ts` registers for this CLI whatever is enabled, denies a `Read`/`Write`/`Edit`
 with no `file_path`, because every path policy would otherwise have nothing to check
-and allow it. A session pause lifts it, as the way through until failproofai is updated.
+and allow it. A session pause lifts it, as the way through until failproofai is updated,
+unless an enforcing Cloud policy is deployed, because Cloud policies keep running under a
+pause and would see no path either.
 
 **Response shapes (Antigravity's OWN — `policy-evaluator.ts` `cli === "antigravity"`):**
 

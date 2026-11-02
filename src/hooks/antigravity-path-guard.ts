@@ -36,6 +36,22 @@ export const ANTIGRAVITY_PATH_GUARD_MATCH: PolicyMatcher = {
   toolNames: ["Read", "Write", "Edit"],
 };
 
+/**
+ * A pause is the way through: if Antigravity renames an argument, this refuses
+ * every file call until failproofai is updated, and the operator needs one. But a
+ * pause suspends local policy only, and Cloud policies keep running. A pathless
+ * call would slip past a Cloud path policy, so a local pause cannot lift this
+ * while one enforces. An `observe` Cloud policy decides nothing, so it does not
+ * count. Any enforcing policy counts, since a policy's source does not say
+ * whether it reads paths.
+ */
+export function antigravityPathGuardActive(
+  paused: boolean,
+  cloudPolicies: ReadonlyArray<{ effect?: string }>,
+): boolean {
+  return !paused || cloudPolicies.some((p) => p.effect !== "observe");
+}
+
 /** Whether this canonicalized call is a file tool with no path anything could check. */
 export function antigravityCallLacksPath(
   eventType: HookEventType | string,

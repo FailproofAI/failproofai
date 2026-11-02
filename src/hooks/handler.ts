@@ -36,6 +36,7 @@ import {
   ANTIGRAVITY_PATH_GUARD_NAME,
   antigravityCallLacksPath,
   antigravityPathGuard,
+  antigravityPathGuardActive,
 } from "./antigravity-path-guard";
 import { evaluatePolicies } from "./policy-evaluator";
 // Types only: the semantic (Jev) modules are loaded with a dynamic import, and
@@ -795,22 +796,6 @@ export async function evaluateHookEvent(
       // so an empty list still registers the guard — which is exactly what this
       // build should contribute once packs carry everything else.
       registerBuiltinPolicies(activePause ? [] : legacyNames);
-      // Outside the enabled set, because the policies it protects may be the
-      // ones that cannot see the path. A pause lifts it: if Antigravity renames
-      // an argument this refuses every file call until failproofai is updated,
-      // and the operator needs a way through in the meantime.
-      if (
-        cli === "antigravity" &&
-        !activePause &&
-        antigravityCallLacksPath(canonicalEventType, parsed.tool_name as string | undefined, parsed.tool_input)
-      ) {
-        registerPolicy(
-          ANTIGRAVITY_PATH_GUARD_NAME,
-          ANTIGRAVITY_PATH_GUARD_DESCRIPTION,
-          antigravityPathGuard,
-          ANTIGRAVITY_PATH_GUARD_MATCH,
-        );
-      }
       if (legacyNames.length > 0) {
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
@@ -861,6 +846,22 @@ export async function evaluateHookEvent(
           event_type: eventType,
           cli,
         });
+      }
+      // Outside the enabled set, because the policies it protects may be the
+      // ones that cannot see the path. After the Cloud read, because a pause
+      // lifts this only while no enforcing Cloud policy is deployed: see
+      // `antigravityPathGuardActive`.
+      if (
+        cli === "antigravity" &&
+        antigravityPathGuardActive(Boolean(activePause), cloudManagedPolicies) &&
+        antigravityCallLacksPath(canonicalEventType, parsed.tool_name as string | undefined, parsed.tool_input)
+      ) {
+        registerPolicy(
+          ANTIGRAVITY_PATH_GUARD_NAME,
+          ANTIGRAVITY_PATH_GUARD_DESCRIPTION,
+          antigravityPathGuard,
+          ANTIGRAVITY_PATH_GUARD_MATCH,
+        );
       }
       // Recorded on every row once a machine is managed, whether or not a cloud
       // policy decided this event: "what was deployed here at the time" is a

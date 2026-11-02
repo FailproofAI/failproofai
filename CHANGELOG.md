@@ -1,10 +1,12 @@
 # Changelog
 
-## 1.0.13-beta.0 — 2026-10-27
+## 1.0.13-beta.3 — 2026-11-02
 
 ### Fixes
 
 - **Path policies enforce on Antigravity's current file tools again.** agy delivers `read_file {Path}`, `write_file {Path, Content}` and `edit_file {Path, Target, Replacement}`, none of which were mapped, so every path-based policy and the always-on guard over failproofai's own state saw no path and allowed the call: live on agy 1.4.12, an agent printed `.env`, overwrote and edited it, created `id_rsa`, and overwrote `.failproofai/policies-config.json`. All are now denied, and the older spellings stay mapped (#961)
+
+## 1.0.13-beta.0 — 2026-10-27
 
 ### Features
 

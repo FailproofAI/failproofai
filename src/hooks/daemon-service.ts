@@ -1823,21 +1823,27 @@ export async function uninstallDaemonService(): Promise<void> {
   try {
     if (process.platform === "linux") {
       const unitPath = systemdUnitPath();
-      if (!existsSync(unitPath)) return;
-      try {
-        runPrivileged("systemctl", ["disable", "--now", systemdUnitName()]);
-      } catch {
-        // Already stopped/not enabled — removing the unit is still the point.
-      }
-      runPrivileged("rm", ["-f", unitPath]);
-      try {
-        runPrivileged("systemctl", ["daemon-reload"]);
-      } catch {
-        // Best-effort.
+      if (existsSync(unitPath)) {
+        try {
+          runPrivileged("systemctl", ["disable", "--now", systemdUnitName()]);
+        } catch {
+          // Already stopped/not enabled — removing the unit is still the point.
+        }
+        // Throws when it cannot elevate, which also skips the removal below:
+        // a unit still on disk may yet start the binary under it.
+        runPrivileged("rm", ["-f", unitPath]);
+        try {
+          runPrivileged("systemctl", ["daemon-reload"]);
+        } catch {
+          // Best-effort.
+        }
       }
       // The copy systemd ran. After the unit is gone, so nothing enabled is
-      // left pointing at a deleted file. The shared parent goes only if no
-      // other user's directory is in it.
+      // left pointing at a deleted file, and whether or not there was a unit to
+      // remove: an install that failed after staging, or a unit deleted by hand,
+      // leaves this behind with nothing else to clean it up. The directory is
+      // per user, so no other user's unit can reference it. The shared parent
+      // goes only if no other user's directory is in it.
       const binRoot = systemBinaryRoot();
       if (existsSync(binRoot)) {
         runPrivileged("rm", ["-rf", binRoot]);

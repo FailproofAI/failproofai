@@ -25,6 +25,8 @@ let serviceExists = true;
 let configured = true;
 let installedClis: string[] = ["claude", "codex"];
 let skillDirs: string[] = [];
+let stagedDir = "/opt/failproofai/tester";
+let stagedRemovable = true;
 
 vi.mock("../../src/hooks/manager", () => ({
   removeHooks: vi.fn(async () => {
@@ -46,7 +48,7 @@ vi.mock("../../src/hooks/daemon-service", () => ({
   isDaemonSupportedPlatform: () => true,
   daemonServiceFilePath: () => servicePath,
   daemonStatusCommand: () => "systemctl status failproofaid@tester",
-  daemonSystemBinaryDir: () => "/opt/failproofai/tester",
+  daemonSystemBinaryDir: () => stagedDir,
   daemonServiceStatus: () => "running",
   setDaemonConfigured: vi.fn((v: boolean) => {
     calls.push(`setDaemonConfigured(${v})`);
@@ -55,6 +57,7 @@ vi.mock("../../src/hooks/daemon-service", () => ({
   uninstallDaemonService: vi.fn(async () => {
     calls.push("uninstallDaemonService");
     if (serviceExists) rmSync(servicePath, { force: true });
+    if (stagedRemovable) rmSync(stagedDir, { recursive: true, force: true });
   }),
   // Recorded, so a test can assert the password prompt happens BEFORE the
   // removal rather than after it fails on `sudo -n`.
@@ -417,6 +420,66 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
       "    sudo rm -rf '/opt/failproofai/tester'",
       "  Check it with  systemctl status failproofaid@tester",
     ]);
+  });
+});
+
+describe("hooks/uninstall-cli — a staged daemon binary with no unit", () => {
+  // A failed install after staging, or a unit deleted by hand. `--purge` only
+  // deletes the home directory, so nothing else would ever remove this copy.
+  let tmp: string;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "fp-staged-"));
+    stagedDir = join(tmp, "opt dir", "tester");
+    mkdirSync(stagedDir, { recursive: true });
+    rmSync(servicePath, { force: true });
+    configured = false;
+    installedClis = [];
+    skillDirs = [];
+    stagedRemovable = true;
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+    stagedDir = "/opt/failproofai/tester";
+    stagedRemovable = true;
+  });
+
+  it("removes it, and asks for sudo first, even with nothing else installed", async () => {
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true });
+
+    expect(res.exitCode).toBe(0);
+    expect(calls.indexOf("primeElevation")).toBeLessThan(calls.indexOf("uninstallDaemonService"));
+    expect(existsSync(stagedDir)).toBe(false);
+    expect(res.lines.join("\n")).toContain(`Removed the failproofaid binary from ${stagedDir}.`);
+    expect(res.lines.join("\n")).not.toContain("Stopped and removed the failproofaid service");
+  });
+
+  it("removes it on --purge, the case that used to report success and keep it", async () => {
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true, purge: true });
+
+    expect(res.exitCode).toBe(0);
+    expect(res.purged).toBe(true);
+    expect(existsSync(stagedDir)).toBe(false);
+  });
+
+  it("names it in the plan, and a dry run leaves it", async () => {
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ dryRun: true });
+
+    expect(res.lines[0]).toContain(`the failproofaid binary in ${stagedDir} (needs sudo)`);
+    expect(calls).not.toContain("uninstallDaemonService");
+    expect(existsSync(stagedDir)).toBe(true);
+  });
+
+  it("exits 1 with a quoted command to run as root when it cannot be removed", async () => {
+    stagedRemovable = false;
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ yes: true });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.lines.join("\n")).toContain(`sudo rm -rf '${stagedDir}'`);
+    expect(res.lines.join("\n")).not.toContain("Removed the failproofaid binary");
   });
 });
 

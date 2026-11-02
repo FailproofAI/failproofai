@@ -119,6 +119,12 @@ interface Leftovers {
   codexSystemPath: string | null;
   servicePath: string | null;
   serviceInstalled: boolean;
+  /**
+   * The root-owned daemon copy, when it exists. Tracked apart from the service
+   * because it outlives the unit: a failed install or a unit removed by hand
+   * leaves it behind, and `--purge` only deletes the home directory.
+   */
+  stagedBinaryDir: string | null;
   daemonConfigured: boolean;
   homeExists: boolean;
 }
@@ -152,12 +158,14 @@ function survey(cwd?: string): Leftovers {
   }
 
   const servicePath = isDaemonSupportedPlatform() ? daemonServiceFilePath() : null;
+  const stagedBinaryDir = isDaemonSupportedPlatform() ? daemonSystemBinaryDir() : null;
   return {
     clis,
     skillDirs: installedAgentSkillDirs(),
     codexSystemPath: codexSystemHooksPresent() ? codexSystemConfigPath() : null,
     servicePath,
     serviceInstalled: !!servicePath && existsSync(servicePath),
+    stagedBinaryDir: stagedBinaryDir && existsSync(stagedBinaryDir) ? stagedBinaryDir : null,
     daemonConfigured,
     homeExists: existsSync(failproofaiHome()),
   };
@@ -172,7 +180,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   const lines: string[] = [];
 
   const nothingToDo =
-    found.clis.length === 0 && found.skillDirs.length === 0 && !found.serviceInstalled && !found.daemonConfigured &&
+    found.clis.length === 0 && found.skillDirs.length === 0 && !found.serviceInstalled && !found.stagedBinaryDir && !found.daemonConfigured &&
     !(opts.purge && found.homeExists);
   if (nothingToDo) {
     return {
@@ -199,6 +207,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   if (found.clis.length > 0) removals.push(`failproofai's hooks from ${many(found.clis.length, "agent")}`);
   if (found.skillDirs.length > 0) removals.push(`the failproofai skill from ${many(found.skillDirs.length, "agent folder")}`);
   if (found.serviceInstalled) removals.push("the failproofaid service (needs sudo)");
+  else if (found.stagedBinaryDir) removals.push(`the failproofaid binary in ${found.stagedBinaryDir} (needs sudo)`);
   if (purging) removals.push(home);
   const releasesDaemon = found.daemonConfigured && !found.serviceInstalled;
   const listed =
@@ -334,7 +343,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     else failures.push(`Could not remove the failproofai skill from ${many(left, "agent folder")}:\n${installedAgentSkillDirs().join("\n")}`);
   }
 
-  if (found.serviceInstalled) {
+  if (found.serviceInstalled || found.stagedBinaryDir) {
     // Every run that gets here agreed to the whole plan, and the plan names the
     // service: `--yes` is yes to the plan, an interactive yes is the same answer
     // to the same text (D17), and `--purge` cannot leave it behind anyway — it
@@ -358,15 +367,22 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     try {
       await uninstallDaemonService();
       // uninstallDaemonService is best-effort by contract — it warns and
-      // returns rather than throwing when it cannot elevate — so the unit file
-      // is what gets believed here, not the absence of an exception.
+      // returns rather than throwing when it cannot elevate — so the files are
+      // what get believed here, not the absence of an exception.
       if (found.servicePath && existsSync(found.servicePath)) {
         failures.push(
           "The failproofaid service is still there, most often because sudo was not available." +
             byHand(found.servicePath),
         );
-      } else {
+      } else if (found.stagedBinaryDir && existsSync(found.stagedBinaryDir)) {
+        failures.push(
+          `The failproofaid binary in ${found.stagedBinaryDir} is still there, most often because sudo was not available.` +
+            `\nRemove it as root:\n  \`sudo rm -rf ${shellQuote(found.stagedBinaryDir)}\``,
+        );
+      } else if (found.serviceInstalled) {
         lines.push(kit.ok("Stopped and removed the failproofaid service."));
+      } else {
+        lines.push(kit.ok(`Removed the failproofaid binary from ${found.stagedBinaryDir}.`));
       }
     } catch (err) {
       failures.push(

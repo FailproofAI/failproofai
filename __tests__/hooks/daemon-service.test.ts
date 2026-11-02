@@ -457,6 +457,80 @@ describe("hooks/daemon-service", () => {
       delete process.env.FAILPROOFAI_SYSTEM_BIN_DIR;
     });
 
+    describe("uninstall removes the staged copy", () => {
+      // The privileged commands that ran, without the sudo prefix, so the tests
+      // read the same as root or not.
+      async function runUninstall(opts: { failOn?: string } = {}): Promise<{ ran: string[]; root: string; unit: string }> {
+        const ran: string[] = [];
+        vi.doMock("node:child_process", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("node:child_process")>()),
+          execFileSync: (cmd: string, args: string[] = []) => {
+            const line = (cmd === "sudo" ? args.slice(1) : [cmd, ...args]).join(" ");
+            ran.push(line);
+            if (opts.failOn && line.startsWith(opts.failOn)) throw new Error("sudo: a password is required");
+            return "";
+          },
+        }));
+        try {
+          vi.resetModules();
+          const { uninstallDaemonService, daemonSystemBinaryDir, daemonServiceFilePath } = await import(
+            "../../src/hooks/daemon-service"
+          );
+          await uninstallDaemonService();
+          return { ran, root: daemonSystemBinaryDir()!, unit: daemonServiceFilePath()! };
+        } finally {
+          vi.doUnmock("node:child_process");
+          vi.resetModules();
+        }
+      }
+      function writeUnit(): void {
+        const dir = process.env.FAILPROOFAI_SYSTEMD_DIR!;
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(resolve(dir, `failproofaid@${userInfo().username}.service`), "[Unit]\n");
+      }
+      function stageCopy(): string {
+        const root = resolve(home, "opt", userInfo().username);
+        mkdirSync(resolve(root, "bin"), { recursive: true });
+        return root;
+      }
+
+      beforeEach(() => {
+        delete process.env.FAILPROOFAI_DAEMON_BINARY;
+        useScratchHome();
+        writeManagedBinary();
+        setPlatform("linux");
+      });
+
+      it("when the unit is already gone, touching no unit", async () => {
+        const staged = stageCopy();
+        const { ran } = await runUninstall();
+        expect(ran).toContain(`rm -rf ${staged}`);
+        expect(ran.some((l) => l.startsWith("systemctl disable"))).toBe(false);
+        expect(ran.some((l) => l.startsWith("rm -f"))).toBe(false);
+      });
+
+      it("only after the unit is removed, when there is one", async () => {
+        const staged = stageCopy();
+        writeUnit();
+        const { ran, unit } = await runUninstall();
+        expect(ran.indexOf(`rm -f ${unit}`)).toBeGreaterThanOrEqual(0);
+        expect(ran.indexOf(`rm -f ${unit}`)).toBeLessThan(ran.indexOf(`rm -rf ${staged}`));
+      });
+
+      it("never while the unit could not be removed, since it may still start that binary", async () => {
+        const staged = stageCopy();
+        writeUnit();
+        const { ran } = await runUninstall({ failOn: "rm -f" });
+        expect(ran).not.toContain(`rm -rf ${staged}`);
+      });
+
+      it("and asks for nothing when there is neither a unit nor a copy", async () => {
+        const { ran } = await runUninstall();
+        expect(ran.some((l) => l.startsWith("rm "))).toBe(false);
+        expect(ran.some((l) => l.startsWith("rmdir"))).toBe(false);
+      });
+    });
+
     it("starts a per-user, versioned copy outside the home directory on linux", async () => {
       delete process.env.FAILPROOFAI_DAEMON_BINARY;
       useScratchHome();

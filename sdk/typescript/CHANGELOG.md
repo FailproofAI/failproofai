@@ -12,6 +12,51 @@ section is missing or empty is refused before anything is built.
 
 ### Fixes
 
+- **`mastra-1` tests the current Mastra 1.x, on the fixed MCP packages.**
+  `@mastra/core` 1.68.0 → 1.81.0, `@mastra/mcp` 2.0.0 → 2.7.0 and `@mastra/memory`
+  1.31.0 → 1.40.0. That takes `@modelcontextprotocol/node` to 2.1.2
+  (GHSA-f897-62hf-6gxq) and `@hono/node-server` to 2.1.6 (GHSA-rmxm-3fg6-px4f, and
+  the fixes 2.1.6 itself ships: GHSA-jpvv-r467-5p4w, GHSA-7v5p-43qr-wch5,
+  GHSA-qv5m-9pm6-hqp3). Dependabot's #965 moved `@mastra/mcp` alone, which peers on
+  `@mastra/core >=1.79.0`, so `npm ci` failed `ERESOLVE` and every shard that
+  installs the fixture failed with it. The `@modelcontextprotocol/client` and
+  `@modelcontextprotocol/server` overrides from #934 retire, because `@mastra/mcp`
+  2.7.0 pins fixed releases of both. The `argparse` override from #904 retires too:
+  `@mastra/core` no longer reaches `gray-matter`, so neither this fixture nor
+  `nextjs` installs `argparse` 1 or `sprintf-js`. `nextjs` moves `@mastra/core` to
+  1.81.0 with it, because it compares each route's trace with this fixture's;
+  `__tests__/ci/ts-sdk-fixture-pins.test.ts` now fails when any `nextjs` framework
+  pin leaves its twin. (#966)
+
+- **`mastra-0` clears its transitive advisories and stays on Mastra 0.x.**
+  `@hono/node-server` 2.1.1 → 2.1.6 and `systeminformation` 5.33.13 → 5.33.19 are
+  in range (GHSA-rmxm-3fg6-px4f, GHSA-3f7j-7jwc-fxfj, GHSA-4vjg-vx72-qq4g). A
+  fixture-local override moves `gaxios` 7.1.3 → 7.3.1, which `gcp-metadata` pins
+  exactly and which no longer depends on `rimraf`, so `rimraf`, `glob`
+  (GHSA-3g3m-2fjr-6pw4), `minimatch` (GHSA-g3hv-75wg-m249) and 21 more packages leave
+  the tree. `@mastra/core`, `@mastra/mcp`, `@mastra/memory` and `ai` resolve exactly
+  as before. Dependabot's #955 reached the same alerts by moving `@mastra/core` to
+  1.80.0, off the floor this fixture holds, and `@mastra/mcp@0.14.5` cannot install
+  beside it. `.github/dependabot.yml` now gives `@ai-sdk/provider-utils`, the package
+  #955 was updating, its own range on `ai-4` and `mastra-0`: a range is read only for
+  the package being updated, so `@mastra/*` being ignored did not hold a parent moved
+  on its behalf. (#966)
+
+- **`deepmerge` leaves `llamaindex-0.11`, `llamaindex-0.12` and `nextjs`.**
+  GHSA-gcqx-w48m-w2h4 has no patched release, so the fix is to take it out of the
+  tree. Each fixture reached it only through `@llamaindex/node-parser` →
+  `html-to-text@9.0.5`, and a fixture-local override moves `html-to-text` to 10.0.1,
+  which replaced it with `deepmerge-ts`. `@llamaindex/node-parser` imports only
+  `htmlToText`, which 10.x still exports, from an HTML parser no fixture runs. (#966)
+
+- **`mastra-0` and `langchain-dup-core` drop their nested zod 3.** Both override zod
+  to their own zod 4 (GHSA-mrhx-c7xc-m3w5). `@mastra/mcp` and `@mastra/schema-compat`
+  call `zod-from-json-schema-v3` only when the root zod has no `toJSONSchema`, which
+  a zod 4 root does, and `@langchain/core@0.3.80` imports only `zod/v3` and
+  `zod/v4/core`, which zod 4 also ships. `langchain-dup-core` still nests its second
+  `@langchain/core`, which is what that fixture exists to test. `mastra-0` also moves
+  its own zod 4.6.6 → 4.6.7, the release every other fixture on zod 4 pins. (#966)
+
 - **`nextjs` and `mastra-1` drop `sprintf-js`.** Every release through `1.1.3`
   carries GHSA-hp3w-g68c-fv3c and none fixes it, so the fix is to take it out of
   the tree. Both fixtures reached it only through `@mastra/core@1.68.0` →
@@ -66,12 +111,10 @@ section is missing or empty is refused before anything is built.
   `2.2.0` override did. Each lockfile changes by those packages alone, and
   `npm audit` reports no findings in `ai-5` or `mastra-1`. (#934)
 
-- **zod GHSA-mrhx-c7xc-m3w5 stays in the five fixtures held to zod 3.** It is fixed
+- **zod GHSA-mrhx-c7xc-m3w5 stays in the three fixtures held to zod 3.** It is fixed
   only in `zod@4.6.6`, and no zod 3 release carries the fix. `ai-4`, `langchain-0.3`
-  and `llamaindex-0.11` pin `zod@3.25.76` beside frameworks that require `^3`, and
-  `langchain-dup-core` and `mastra-0` carry a nested copy that the vendored
-  provider's `@langchain/core@0.3.80` and `zod-from-json-schema@0.0.5` require.
-  `SECURITY.md` records it with the two `ai@4` advisories. (#934)
+  and `llamaindex-0.11` pin `zod@3.25.76` beside frameworks that require `^3`.
+  `SECURITY.md` records it with the two `ai@4` advisories. (#934, #966)
 
 ## 0.0.1-beta.1 — 2026-10-15
 

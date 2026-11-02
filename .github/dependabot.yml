@@ -85,6 +85,13 @@ updates:
   # are `versions`, never `update-types`, which security updates do not read. A new
   # floor fixture needs an entry here: __tests__/ci/ts-sdk-fixture-pins.test.ts
   # fails without one.
+  #
+  # A range is only read for the package being updated, not for a parent moved on
+  # its behalf. #955 removed @ai-sdk/provider-utils 2.x from mastra-0 by running
+  # `npm install @mastra/core@1.80.0` with `@mastra/*` ignored below; the ignore only
+  # took those names out of the PR's description. So a transitive package with an
+  # accepted advisory needs a range of its own, which ends the update before it
+  # reaches the parent.
   - package-ecosystem: npm
     directory: /sdk/typescript/integration/fixtures/ai-4
     schedule:
@@ -97,6 +104,9 @@ updates:
       # ai@4.3.19 peers on zod ^3.23.8.
       - dependency-name: zod
         versions: [">=4.0.0"]
+      # ai@4.3.19 uses the 2.x API; the fix is in 3.x.
+      - dependency-name: "@ai-sdk/provider-utils"
+        versions: [">=3.0.0"]
 
   - package-ecosystem: npm
     directory: /sdk/typescript/integration/fixtures/langchain-0.3
@@ -138,6 +148,10 @@ updates:
       # @mastra/core, and the @mastra/memory and @mastra/mcp releases paired with it.
       - dependency-name: "@mastra/*"
         versions: [">=1.0.0"]
-      # @mastra/core@0.24.9 requires ai@^4. This fixture's own zod is already 4.
+      # @mastra/core@0.24.9 requires ai@^4. This fixture's zod is already 4.
       - dependency-name: ai
         versions: [">=5.0.0"]
+      # The copies under ai@4.3.19 use the 2.x API; the fix is in 3.x. This is the
+      # package #955 moved @mastra/core to get rid of.
+      - dependency-name: "@ai-sdk/provider-utils"
+        versions: [">=3.0.0"]

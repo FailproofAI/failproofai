@@ -50,6 +50,12 @@ const readJson = (fixture: string, file: string) =>
     packages?: Record<string, { version?: string }>;
   };
 
+/** Every version of `name` a fixture's lockfile installs, nested copies included. */
+const lockedVersions = (fixture: string, name: string) =>
+  Object.entries(readJson(fixture, "package-lock.json").packages ?? {})
+    .filter(([path]) => path.endsWith(`node_modules/${name}`))
+    .map(([, entry]) => entry.version!);
+
 /** Every `npm:<name>@<version>` a fixture's top-level programs import, once each. */
 const NPM_SPECIFIER = /["']npm:((?:@[\w.-]+\/)?[\w.-]+)@([^"'/]+)/g;
 const specifiers = fixtures.flatMap((fixture) =>
@@ -157,8 +163,65 @@ describe("Dependabot security updates on the supported floors", () => {
     expect(holdsOnLine(entry, "zod", pinned, "3"), `${fixture}: ignore for zod`).toBe(true);
   });
 
+  // #955 moved `@mastra/core` to 1.80.0 to remove `@ai-sdk/provider-utils` 2.x with
+  // `@mastra/*` ignored: a range is only read for the package being updated, so the
+  // framework's own range never came into it. The package needs a range of its own.
+  const providerUtils2 = floors
+    .map((f) => ({ ...f, pinned: lockedVersions(f.fixture, "@ai-sdk/provider-utils").find((v) => v.startsWith("2.")) }))
+    .filter((f) => f.pinned !== undefined);
+
+  it("finds the floors that install @ai-sdk/provider-utils 2", () => {
+    expect(providerUtils2.map((f) => f.fixture).sort()).toEqual(["ai-4", "mastra-0"]);
+  });
+
+  it.each(providerUtils2)(
+    "$fixture holds @ai-sdk/provider-utils on 2, so updating it cannot move $framework",
+    ({ fixture, pinned }) => {
+      const entry = fixtureEntries.find((e) => e.fixture === fixture)!.update;
+      expect(holdsOnLine(entry, "@ai-sdk/provider-utils", pinned!, "2"), `${fixture}: ignore for @ai-sdk/provider-utils`).toBe(
+        true,
+      );
+    },
+  );
+
   it("names only fixtures that exist", () => {
     expect(fixtureEntries.map((e) => e.fixture).filter((f) => !fixtures.includes(f))).toEqual([]);
+  });
+});
+
+/**
+ * SECURITY.md accepts zod 3 in the floors that require it, and says which. Two more
+ * fixtures used to carry a nested copy whose consumers did not need that major; each
+ * now overrides it to its own zod 4. A copy arriving anywhere else is a new finding
+ * to fix or to write down, not one to inherit from the accepted row.
+ */
+describe("TS SDK integration fixtures that install zod 3", () => {
+  it("are the three SECURITY.md accepts", () => {
+    const withZod3 = fixtures.filter((fixture) => lockedVersions(fixture, "zod").some((v) => v.startsWith("3.")));
+    expect(withZod3.sort()).toEqual(["ai-4", "langchain-0.3", "llamaindex-0.11"]);
+  });
+});
+
+/**
+ * The `nextjs` fixture compares each route's trace with the same program's trace
+ * under plain Node, in the fixture its description names. Dependabot resolves one
+ * directory at a time, so nothing else keeps the two on one release: moving a twin
+ * alone would compare two different versions and still read as a parity result.
+ */
+describe("the nextjs fixture's framework pins", () => {
+  const nextjs = readJson("nextjs", "package.json").dependencies!;
+
+  it.each([
+    ["@langchain/core", "langchain-1"],
+    ["@langchain/langgraph", "langchain-1"],
+    ["ai", "ai-7"],
+    ["@mastra/core", "mastra-1"],
+    ["llamaindex", "llamaindex-0.12"],
+    ["@llamaindex/core", "llamaindex-0.12"],
+    ["@llamaindex/workflow", "llamaindex-0.12"],
+  ])("%s matches its twin in %s", (name, twin) => {
+    expect(nextjs[name], `nextjs: ${name}`).toBeDefined();
+    expect(nextjs[name], `nextjs: ${name}`).toBe(readJson(twin, "package.json").dependencies?.[name]);
   });
 });
 

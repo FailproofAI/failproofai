@@ -758,6 +758,18 @@ export const AntigravityPayloads = {
         },
       };
     },
+    // A native tool call, exactly as agy delivers it: `name` and `args` are the
+    // vendor's own, un-canonicalized.
+    tool(name: string, args: Record<string, unknown>, cwd: string): Record<string, unknown> {
+      return {
+        conversationId: ANTIGRAVITY_CONVERSATION_ID,
+        workspacePaths: [cwd],
+        transcriptPath: TRANSCRIPT_PATH,
+        modelName: "auto",
+        stepIdx: 19,
+        toolCall: { name, args },
+      };
+    },
   },
   postToolUse: {
     bash(command: string, cwd: string): Record<string, unknown> {

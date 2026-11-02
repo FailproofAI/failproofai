@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.13 — 2026-11-02
+
+The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, of daemon setup on Fedora, RHEL, Rocky and Alma, and of path policies on Antigravity's current file tools. Everything below in the `1.0.13-beta.*` sections ships here too.
+
+### Fixes
+
+- `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
+- The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#958)
+- **Path policies enforce on Antigravity's current file tools again.** agy delivers `read_file {Path}`, `write_file {Path, Content}` and `edit_file {Path, Target, Replacement}`, none of which were mapped, so every path-based policy and the always-on guard over failproofai's own state saw no path and allowed the call: live on agy 1.4.12, an agent printed `.env`, overwrote and edited it, created `id_rsa`, and overwrote `.failproofai/policies-config.json`. All are now denied, and the older spellings stay mapped (#958, fixes #961)
+- An Antigravity `read_file`, `write_file` or `edit_file` call with no path failproofai recognizes is now denied whatever policies are enabled, so if Antigravity renames these arguments again the tools stop with a message saying why, rather than every path policy silently allowing them (#958)
+- `failproofai uninstall` and `uninstall --purge` now remove the root-owned daemon copy under `/opt/failproofai/<user>` when the service unit is already gone. A failed install or a unit deleted by hand used to leave it behind while the command reported success (#958)
+
+### Dependencies
+
+- Override `minimatch` to 11.0.3 in the root and `sdk/typescript` lockfiles for GHSA-g3hv-75wg-m249, published 2026-10-30, which turned OSV-Scanner red on every branch. It is ESLint tooling only and ships in neither package (#958)
+
+## 1.0.13-beta.1 — 2026-10-28
+
+### Fixes
+
+- **OpenClaw enforcement works again on OpenClaw 2026.9.6 and later.** Those releases import plugins from a copy under `~/.openclaw/tmp/plugin-captures/` that holds only the plugin's own directory, so the plugin's CLI path, worked out relative to its own file (`../dist/cli.mjs`), pointed at nothing; it read the failed spawn as an allow, so every OpenClaw tool call ran unchecked and no hook activity was recorded, while session telemetry kept flowing. The plugin now asks `failproofaid` for each verdict over its Unix socket, as the Hermes plugin does, sending the request `failproofai --hook … --cli openclaw` sends, so policies and verdicts are unchanged. Like Hermes it now requires a running daemon: install refuses without one, and when no verdict comes back tool calls and prompts are blocked with the reason logged instead of being allowed. Restart the OpenClaw gateway after updating so it loads the new plugin (#956)
+
+### Dependencies
+
+- Bump `nltk` 3.10.3 → 3.10.4 in `sdk/python/uv.lock`, the SDK's dev/test lockfile (transitive via `llama-index-core`), for GHSA-j456-xh4h-cpf2, published 2026-10-28, which turned OSV-Scanner red on every pull request. The SDK itself ships with zero runtime dependencies (#956)
+
 ## 1.0.13-beta.0 — 2026-10-27
 
 ### Features

@@ -191,9 +191,9 @@ describe("Dependabot security updates on the supported floors", () => {
 
 /**
  * SECURITY.md accepts zod 3 in the floors that require it, and says which. Two more
- * fixtures used to carry a nested copy no code of theirs needed; each now overrides
- * it to its own zod 4. A copy arriving anywhere else is a new finding to fix or to
- * write down, not one to inherit from the accepted row.
+ * fixtures used to carry a nested copy whose consumers did not need that major; each
+ * now overrides it to its own zod 4. A copy arriving anywhere else is a new finding
+ * to fix or to write down, not one to inherit from the accepted row.
  */
 describe("TS SDK integration fixtures that install zod 3", () => {
   it("are the three SECURITY.md accepts", () => {

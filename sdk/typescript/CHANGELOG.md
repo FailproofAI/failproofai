@@ -51,7 +51,7 @@ section is missing or empty is refused before anything is built.
 
 - **`mastra-0` and `langchain-dup-core` drop their nested zod 3.** Both override zod
   to their own zod 4 (GHSA-mrhx-c7xc-m3w5). `@mastra/mcp` and `@mastra/schema-compat`
-  read `zod-from-json-schema-v3` only when the root zod has no `toJSONSchema`, which
+  call `zod-from-json-schema-v3` only when the root zod has no `toJSONSchema`, which
   a zod 4 root does, and `@langchain/core@0.3.80` imports only `zod/v3` and
   `zod/v4/core`, which zod 4 also ships. `langchain-dup-core` still nests its second
   `@langchain/core`, which is what that fixture exists to test. `mastra-0` also moves

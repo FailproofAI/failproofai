@@ -118,11 +118,12 @@ That splits an alert in one of these lockfiles into two cases:
    release that no longer needs the package, which takes it out of the tree:
    `html-to-text@10` replaced `deepmerge`, which has no patched release, and `gaxios`
    after 7.1.3 dropped `rimraf`, and with it the `glob` and `minimatch` that only a
-   major of each would have fixed. A nested copy that nothing in the fixture loads
-   can go the same way: `mastra-0` and `langchain-dup-core` override their nested zod
-   3 to their own zod 4, because `@mastra/mcp` and `@mastra/schema-compat` read
-   `zod-from-json-schema-v3` only under a zod 3 root, and `@langchain/core@0.3.80`
-   imports only `zod/v3` and `zod/v4/core`, which zod 4 also ships.
+   major of each would have fixed. A nested copy whose consumers do not need that
+   major can go the same way: `mastra-0` and `langchain-dup-core` override their
+   nested zod 3 to their own zod 4, because `@mastra/mcp` and `@mastra/schema-compat`
+   call `zod-from-json-schema-v3` only under a zod 3 root, and
+   `@langchain/core@0.3.80` imports only `zod/v3` and `zod/v4/core`, which zod 4 also
+   ships.
 2. **The advisory is against the pinned framework itself, or against a package whose
    only fix is a major that framework cannot take.** There is no fix that keeps the
    fixture, so record it in the table below rather than pretending it away. Unlike a

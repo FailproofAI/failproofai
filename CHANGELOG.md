@@ -10,6 +10,10 @@ The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, of da
 - The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#958)
 - **Path policies enforce on Antigravity's current file tools again.** agy delivers `read_file {Path}`, `write_file {Path, Content}` and `edit_file {Path, Target, Replacement}`, none of which were mapped, so every path-based policy and the always-on guard over failproofai's own state saw no path and allowed the call: live on agy 1.4.12, an agent printed `.env`, overwrote and edited it, created `id_rsa`, and overwrote `.failproofai/policies-config.json`. All are now denied, and the older spellings stay mapped (#958, fixes #961)
 
+### Dependencies
+
+- Override `minimatch` to 11.0.3 in the root and `sdk/typescript` lockfiles for GHSA-g3hv-75wg-m249, published 2026-10-30, which turned OSV-Scanner red on every branch. It is ESLint tooling only and ships in neither package (#958)
+
 ## 1.0.13-beta.1 — 2026-10-28
 
 ### Fixes

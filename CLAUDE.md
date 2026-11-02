@@ -698,8 +698,12 @@ No `local` scope. `timeout` is in **seconds** (30). Command: project
 After that the existing extraction works. `run_command`'s args are PascalCase
 (`CommandLine`/`Cwd`) → `ANTIGRAVITY_TOOL_INPUT_MAP` (keyed by canonical `Bash`)
 maps them to `command`/`cwd`. Tool names via `ANTIGRAVITY_TOOL_MAP`
-(`run_command→Bash` VERIFIED; `view_file→Read`, `edit_file→Edit`, … best-effort;
-unknown tools pass through).
+(`run_command→Bash`, `read_file→Read`, `write_file→Write`, `edit_file→Edit` VERIFIED
+live against agy 1.4.12; unknown tools pass through). The file tools have moved once:
+1.4.9 and 1.4.12 deliver `read_file {Path}`, `write_file {Path, Content}` and
+`edit_file {Path, Target, Replacement}`, where earlier builds delivered `view_file
+{AbsolutePath}` and `write_to_file {TargetFile, CodeContent}`. Both spellings stay
+mapped. A missed name or key raises no error: the policy sees no path and allows.
 
 **Response shapes (Antigravity's OWN — `policy-evaluator.ts` `cli === "antigravity"`):**
 

@@ -1,13 +1,14 @@
 # Changelog
 
-## 1.0.13 — 2026-10-28
+## 1.0.13 — 2026-11-02
 
-The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, and of daemon setup on Fedora, RHEL, Rocky and Alma. Everything below in the `1.0.13-beta.*` sections ships here too.
+The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, of daemon setup on Fedora, RHEL, Rocky and Alma, and of path policies on Antigravity's current file tools. Everything below in the `1.0.13-beta.*` sections ships here too.
 
 ### Fixes
 
 - `failproofai config` no longer fails at its last step on Fedora, RHEL, Rocky and Alma. Their SELinux policy does not let systemd execute files in a home directory, so the daemon's unit, which started `~/.failproofai/bin/failproofaid-<version>`, failed `203/EXEC` and never reached a running state. On Linux the install now copies the binary as root to `/opt/failproofai/<user>/bin/`, which the policy labels `bin_t`, runs `restorecon` on it, and points `ExecStart` there; uninstall removes the copy, and `update` and `config` move existing installs over (#957)
 - The commands `config` and `uninstall` print to run as root when sudo is not available now quote every path, so a home directory with a space in it no longer stops the install recipe before the service is written, and the removal recipe's `rm -rf` can no longer be pointed at the wrong path (#958)
+- **Path policies enforce on Antigravity's current file tools again.** agy delivers `read_file {Path}`, `write_file {Path, Content}` and `edit_file {Path, Target, Replacement}`, none of which were mapped, so every path-based policy and the always-on guard over failproofai's own state saw no path and allowed the call: live on agy 1.4.12, an agent printed `.env`, overwrote and edited it, created `id_rsa`, and overwrote `.failproofai/policies-config.json`. All are now denied, and the older spellings stay mapped (#958, fixes #961)
 
 ## 1.0.13-beta.1 — 2026-10-28
 

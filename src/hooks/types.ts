@@ -863,16 +863,19 @@ export const ANTIGRAVITY_EVENT_MAP: Record<AntigravityHookEventType, HookEventTy
 /**
  * Antigravity's tool names → Claude PascalCase canonical names so existing
  * builtin policies (which match `toolName === "Bash"`, etc.) fire unchanged.
- * Tool names VERIFIED against the agy binary's tool registry + live transcripts:
- * the file tool is `write_to_file` (NOT `write_file`), listing is `list_dir`
- * (NOT `list_directory`), and glob is `find_by_name` (NOT `find_filepath`) — the
- * earlier best-effort names were wrong, so `block-env-files`/`block-secrets-write`
- * silently no-op'd on Antigravity file writes. Unknown tools pass through via the
- * `?? raw` fallback.
+ * Tool names VERIFIED against live recorder-hook captures, and they have moved
+ * once: agy 1.4.9 and 1.4.12 deliver `read_file`/`write_file`/`edit_file`, with
+ * listing and search reached through `read_file` on a directory and `run_command`.
+ * Earlier builds delivered `view_file`/`write_to_file`/`replace_file_content`/
+ * `list_dir`/`find_by_name`/`grep_search`; those stay mapped for installs that
+ * have not updated. A file tool missing here is not an error anywhere: every
+ * policy matching on the canonical name silently allows it. Unknown tools pass
+ * through via the `?? raw` fallback.
  */
 export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
   run_command: "Bash",
   write_to_file: "Write",
+  write_file: "Write",
   read_file: "Read",
   view_file: "Read",
   edit_file: "Edit",
@@ -886,20 +889,20 @@ export const ANTIGRAVITY_TOOL_MAP: Record<string, string> = {
 
 /**
  * Antigravity tool args are PascalCase. Keyed by the CANONICAL tool name
- * (canonicalizeToolInput runs after canonicalizeToolName). VERIFIED live:
- * `run_command` delivers `CommandLine`/`Cwd`; `write_to_file` delivers the path
- * as `TargetFile` and body as `CodeContent`. Without the Write/Edit/Read entries
- * the path/content builtins (`block-env-files`, `block-secrets-write`,
- * `block-read-outside-cwd`) never saw a `file_path` and silently no-op'd on
- * Antigravity file operations. Read/Edit path keys are best-effort within the
- * same tool family (all file tools operate on `TargetFile`); extra keys are
- * harmless (only remapped when present).
+ * (canonicalizeToolInput runs after canonicalizeToolName). VERIFIED live against
+ * agy 1.4.12: `run_command` delivers `CommandLine`; `read_file` delivers `Path`;
+ * `write_file` delivers `Path`/`Content`; `edit_file` delivers
+ * `Path`/`Target`/`Replacement`. Earlier builds delivered `AbsolutePath` on
+ * `view_file` and `TargetFile`/`CodeContent` on `write_to_file`, kept because
+ * extra keys are harmless (only remapped when present). Without these entries
+ * the path/content builtins, and the always-on guard over failproofai's own
+ * state, never see a `file_path` and silently allow the call.
  */
 export const ANTIGRAVITY_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Bash: { CommandLine: "command", Cwd: "cwd" },
-  Write: { TargetFile: "file_path", CodeContent: "content" },
-  Edit: { TargetFile: "file_path" },
-  Read: { TargetFile: "file_path", AbsolutePath: "file_path", File: "file_path" },
+  Write: { Path: "file_path", Content: "content", TargetFile: "file_path", CodeContent: "content" },
+  Edit: { Path: "file_path", Target: "old_string", Replacement: "new_string", TargetFile: "file_path" },
+  Read: { Path: "file_path", TargetFile: "file_path", AbsolutePath: "file_path", File: "file_path" },
 };
 
 // ── Goose (codename goose, Block) ────────────────────────────────────────────

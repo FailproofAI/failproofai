@@ -45,6 +45,7 @@ describe("Antigravity tool-name canonicalization", () => {
   it("canonicalizes agy tool ids to Claude builtins", () => {
     expect(canonicalizeToolName("run_command", "antigravity")).toBe("Bash");
     expect(canonicalizeToolName("write_to_file", "antigravity")).toBe("Write");
+    expect(canonicalizeToolName("write_file", "antigravity")).toBe("Write");
     expect(canonicalizeToolName("read_file", "antigravity")).toBe("Read");
     expect(canonicalizeToolName("view_file", "antigravity")).toBe("Read");
     expect(canonicalizeToolName("edit_file", "antigravity")).toBe("Edit");
@@ -98,6 +99,47 @@ describe("Antigravity tool-input canonicalization", () => {
   it("maps a file tool's TargetFile to file_path on Edit", () => {
     const out = canonicalizeToolInput("Edit", { TargetFile: "/repo/.env" }, "antigravity") as Record<string, unknown>;
     expect(out.file_path).toBe("/repo/.env");
+  });
+
+  // The tool set agy delivers now, captured live from 1.4.9 and 1.4.12 (#961).
+  it("maps read_file's Path to file_path on Read, keeping its range args", () => {
+    const out = canonicalizeToolInput(
+      "Read",
+      { Path: "/repo/.env", StartLine: 1, EndLine: 9, ByteOffset: 0 },
+      "antigravity",
+    ) as Record<string, unknown>;
+    expect(out.file_path).toBe("/repo/.env");
+    expect(out.Path).toBeUndefined();
+    expect(out.StartLine).toBe(1);
+  });
+
+  it("maps write_file's Path/Content to file_path/content on Write", () => {
+    const out = canonicalizeToolInput(
+      "Write",
+      { Path: "/repo/.env", Content: "SECRET=x", Overwrite: true, Append: false },
+      "antigravity",
+    ) as Record<string, unknown>;
+    expect(out.file_path).toBe("/repo/.env");
+    expect(out.content).toBe("SECRET=x");
+    expect(out.Overwrite).toBe(true);
+  });
+
+  it("maps edit_file's Path/Target/Replacement to file_path/old_string/new_string on Edit", () => {
+    const out = canonicalizeToolInput(
+      "Edit",
+      { Path: "/repo/.env", Target: "alpha", Replacement: "gamma" },
+      "antigravity",
+    ) as Record<string, unknown>;
+    expect(out.file_path).toBe("/repo/.env");
+    expect(out.old_string).toBe("alpha");
+    expect(out.new_string).toBe("gamma");
+  });
+
+  it("keeps the older aliases, which agy versions still in the wild deliver", () => {
+    for (const key of ["TargetFile", "AbsolutePath", "File"]) {
+      const out = canonicalizeToolInput("Read", { [key]: "/repo/a" }, "antigravity") as Record<string, unknown>;
+      expect(out.file_path, key).toBe("/repo/a");
+    }
   });
 
   it("leaves a tool with no map entry untouched (reference-equal)", () => {

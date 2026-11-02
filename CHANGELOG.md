@@ -2,6 +2,10 @@
 
 ## 1.0.13-beta.0 — 2026-10-27
 
+### Fixes
+
+- **Path policies enforce on Antigravity's current file tools again.** agy delivers `read_file {Path}`, `write_file {Path, Content}` and `edit_file {Path, Target, Replacement}`, none of which were mapped, so every path-based policy and the always-on guard over failproofai's own state saw no path and allowed the call: live on agy 1.4.12, an agent printed `.env`, overwrote and edited it, created `id_rsa`, and overwrote `.failproofai/policies-config.json`. All are now denied, and the older spellings stay mapped (#961)
+
 ### Features
 
 - **`fp-cloud-cli` cuts `0.0.2` stable.** The `0.0.2b0` line opened after `0.0.1` was never published; it is cut stable rather than published, so `pipx install fp-cloud-cli` resolves the `fp` that drives what FailproofAI Cloud now serves (entries in `fp-cloud-cli/CHANGELOG.md`). This is the PyPI package's own line and does not move the npm version, which stays at `1.0.13-beta.0` (#936)

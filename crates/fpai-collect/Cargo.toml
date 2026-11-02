@@ -50,7 +50,7 @@ notify = "8"
 # the file-tailer converters can leave it out. AgentEye's server imports Claude
 # Code / Codex transcripts with these converters, and its sqlx links a different
 # libsqlite3-sys — two crates linking `sqlite3` cannot share one build.
-rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+rusqlite = { version = "0.41", features = ["bundled"], optional = true }
 # OpenClaw 2026.9.6+ stores a large transcript event zstd-compressed in
 # `event_zstd` and leaves `event_json` NULL. A pure-Rust decoder, for the same
 # reason rustls is chosen above: no C toolchain on the four cross-compiled legs.

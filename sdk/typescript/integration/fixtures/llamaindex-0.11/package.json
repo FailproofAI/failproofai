@@ -13,6 +13,7 @@
     "@types/node": "22.20.4"
   },
   "overrides": {
-    "fast-uri": "3.1.9"
+    "fast-uri": "3.1.9",
+    "html-to-text": "10.0.1"
   }
 }

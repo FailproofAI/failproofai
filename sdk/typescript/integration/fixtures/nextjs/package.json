@@ -12,7 +12,7 @@
     "@langchain/langgraph": "1.4.17",
     "@llamaindex/core": "0.6.22",
     "@llamaindex/workflow": "1.1.24",
-    "@mastra/core": "1.68.0",
+    "@mastra/core": "1.81.0",
     "ai": "7.0.111",
     "llamaindex": "0.12.1",
     "next": "16.4.1",
@@ -26,6 +26,6 @@
     "typescript": "5.9.3"
   },
   "overrides": {
-    "argparse": "2.0.1"
+    "html-to-text": "10.0.1"
   }
 }

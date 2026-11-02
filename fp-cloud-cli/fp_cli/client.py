@@ -176,7 +176,7 @@ _V1_NO_EQUIVALENT = {
     ),
     # ROOT-ONLY on the server, and deliberately so: `/v1` is published on the
     # dashboard host by the ingress, and publish/deploy/rollback are operator
-    # writes gated on `policies:write`. Exposing them there would put fleet
+    # writes gated on `fixes:write`. Exposing them there would put fleet
     # mutation on the open internet. See the ROOT-ONLY block in
     # `server/src/routes/mod.rs`.
     "enforcement": (

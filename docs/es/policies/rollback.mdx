@@ -37,7 +37,7 @@ Una versión de política publicada nunca cambia. Editar una política y volver 
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` genera una nueva generación que contiene el conjunto anterior en lugar de retroceder el contador, por lo que el historial permanece solo de adición, y rechaza una generación que nombre una política desactivada o eliminada. Requiere una sesión iniciada con `policies:write`. `fp fleet diff <machine-id>` muestra lo que se pretendía aplicar frente a lo que la máquina efectivamente aplicó — aparece como `behind` hasta que la máquina vuelva a sondear — y en la propia máquina, `failproofai policies` lista el despliegue que está ejecutando.
+    `rollback` genera una nueva generación que contiene el conjunto anterior en lugar de retroceder el contador, por lo que el historial permanece solo de adición, y rechaza una generación que nombre una política desactivada o eliminada. Requiere una sesión iniciada con `fixes:write`. `fp fleet diff <machine-id>` muestra lo que se pretendía aplicar frente a lo que la máquina efectivamente aplicó — aparece como `behind` hasta que la máquina vuelva a sondear — y en la propia máquina, `failproofai policies` lista el despliegue que está ejecutando.
   </Tab>
 </Tabs>
 

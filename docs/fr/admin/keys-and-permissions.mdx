@@ -62,7 +62,7 @@ Les secrets de clé sont affichés lors de leur création ou régénération. St
 | Alertes | `alerts:read`, `alerts:write` |
 | Problèmes | `issues:read`, `issues:create`, `issues:close` |
 | Audits | `audits:read`, `audits:write` |
-| Politiques | `policies:read`, `policies:write`, `policies:pull` |
+| Politiques | `fixes:read`, `fixes:write`, `policies:pull` |
 | Utilisation | `usage:read` |
 
 `orgs:admin` est réservé à l'opérateur de l'instance et ne peut pas être accordé à une clé d'organisation ou à un membre ordinaire. Les jetons `incidents:*` et `alerts:ack` retirés sont acceptés pour des raisons de compatibilité et sont normalisés vers les permissions `issues:*` actuelles.

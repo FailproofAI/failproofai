@@ -78,7 +78,7 @@ def guardrails_summary(
     no policy objected to, and the row keeps the denominator on screen — "14
     blocked" means little without the 933 it came from.
 
-    Needs `policies:read`. With `--json`: the server summary plus the timeline.
+    Needs `fixes:read`. With `--json`: the server summary plus the timeline.
 
     Examples:
 
@@ -113,7 +113,7 @@ def guardrails_timeline(
     Times are UTC, and the label follows the bucket size the server chose — a
     clock for hourly buckets, a date for daily ones.
 
-    Needs `policies:read`. With `--json`: the server's timeline verbatim.
+    Needs `fixes:read`. With `--json`: the server's timeline verbatim.
 
     Example:
 

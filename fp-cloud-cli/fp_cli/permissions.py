@@ -44,8 +44,8 @@ ALL_PERMISSIONS: List[str] = [
     "issues:close",
     "audits:read",
     "audits:write",
-    "policies:read",
-    "policies:write",
+    "fixes:read",
+    "fixes:write",
     "policies:pull",
     "usage:read",
     # Jev through FailproofAI Cloud, charged to the org's plan. The built-in
@@ -71,6 +71,9 @@ RETIRED_PERMISSION_ALIASES = {
     "incidents:write": ["issues:create"],
     "incidents:ack": ["issues:read", "issues:create", "issues:close"],
     "alerts:ack": ["issues:read", "issues:create", "issues:close"],
+    # Renamed when these came to cover every kind of fix, not only policies.
+    "policies:read": ["fixes:read"],
+    "policies:write": ["fixes:write"],
 }
 
 

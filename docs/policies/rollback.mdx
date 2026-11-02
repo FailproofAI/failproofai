@@ -37,7 +37,7 @@ A published policy version never changes. Editing a policy and publishing again 
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` mints a new generation carrying the old set rather than rewinding the counter, so history stays append-only, and it refuses a generation that names a policy since disabled or deleted. It needs a signed-in session with `policies:write`. `fp fleet diff <machine-id>` shows what was intended against what the machine applied — it reads as `behind` until the machine next polls — and on the machine itself, `failproofai policies` lists the deployment it is running.
+    `rollback` mints a new generation carrying the old set rather than rewinding the counter, so history stays append-only, and it refuses a generation that names a policy since disabled or deleted. It needs a signed-in session with `fixes:write`. `fp fleet diff <machine-id>` shows what was intended against what the machine applied — it reads as `behind` until the machine next polls — and on the machine itself, `failproofai policies` lists the deployment it is running.
   </Tab>
 </Tabs>
 

@@ -37,7 +37,7 @@ icon: "rotate-ccw"
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback`은 카운터를 되감는 것이 아니라 이전 정책 세트를 담은 새로운 세대를 생성하므로, 기록은 항상 추가 전용(append-only)으로 유지됩니다. 비활성화되거나 삭제된 정책을 참조하는 세대로의 롤백은 거부됩니다. `policies:write` 권한이 있는 로그인 세션이 필요합니다. `fp fleet diff <machine-id>`는 의도된 배포와 머신이 실제로 적용한 배포의 차이를 보여주며, 머신이 다음 번에 폴링할 때까지는 `behind`로 표시됩니다. 머신 자체에서는 `failproofai policies`를 실행하면 현재 실행 중인 배포를 확인할 수 있습니다.
+    `rollback`은 카운터를 되감는 것이 아니라 이전 정책 세트를 담은 새로운 세대를 생성하므로, 기록은 항상 추가 전용(append-only)으로 유지됩니다. 비활성화되거나 삭제된 정책을 참조하는 세대로의 롤백은 거부됩니다. `fixes:write` 권한이 있는 로그인 세션이 필요합니다. `fp fleet diff <machine-id>`는 의도된 배포와 머신이 실제로 적용한 배포의 차이를 보여주며, 머신이 다음 번에 폴링할 때까지는 `behind`로 표시됩니다. 머신 자체에서는 `failproofai policies`를 실행하면 현재 실행 중인 배포를 확인할 수 있습니다.
   </Tab>
 </Tabs>
 

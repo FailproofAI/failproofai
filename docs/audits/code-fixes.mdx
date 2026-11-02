@@ -1,0 +1,25 @@
+---
+title: "Code fixes"
+description: "Turn an insight into a GitHub issue or a pull request, from the insight itself."
+icon: "git-pull-request"
+---
+
+A policy stops an agent doing the wrong thing. Sometimes the problem is how the agent is built, and the fix belongs in its code. Code fixes finish that loop from the same place you found the problem.
+
+## From insight to pull request
+
+When an audit reads the cause of an insight in your agent's code, the insight says a code change can fix it, and why. From **what to do** on any insight, you can:
+
+- **Create a pull request.** Codex works on a copy of your repository, makes the change and runs what tests it can, then opens a draft pull request for your team to review.
+- **Raise a GitHub issue.** The insight's findings go to your repository's issues, for someone on your team to pick up.
+
+## You review first
+
+Both start with a draft built from the insight: what went wrong, the likely cause, the rule it breaks and the code involved. You can edit it and add what only you know. Nothing reaches GitHub, and no model runs, until you approve it.
+
+A pull request is always yours to review, and nothing merges by itself. Follow every fix under **fix › code fixes**.
+
+## What it needs
+
+- GitHub connected, with the agent linked to the folder that runs it.
+- The `fixes:write` permission to draft and approve, and `fixes:read` to see fixes. These permissions also cover cloud policies.

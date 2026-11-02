@@ -462,7 +462,7 @@ Cloud-managed policy versions. **Session-only** — every command here exits `2`
 | `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
 | `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
+| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `fixes:write`. | — |
 
 ### Fleet
 

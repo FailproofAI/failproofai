@@ -329,7 +329,7 @@ fp audits create checkout-reliability \
 | `fp policies disable POLICY_ID` | Удалить из каждого развертывания, которое ее содержит, создав новое поколение в каждом. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Удалить версию политики. | `--yes`, `-y` |
 | `fp policies test PATH` | Запустить политику локально против синтетического контекста. Применяет фильтр `match` каждой политики, поэтому та, которая не охватывает данное событие/инструмент, сообщается как `skipped` вместо запуска. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Разработать политику с помощью помощника. Требует `policies:write`. | — |
+| `fp policies compose PROMPT` | Разработать политику с помощью помощника. Требует `fixes:write`. | — |
 
 ### Флот
 

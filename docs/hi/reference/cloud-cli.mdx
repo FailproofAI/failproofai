@@ -329,7 +329,7 @@ Cloud-managed policy versions। **Session-only** — यहां हर comman
 | `fp policies disable POLICY_ID` | इसे हर deployment से remove करें जो इसे carry कर रहा है, हर एक पर एक नई generation को mint करते हुए। | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | एक policy version को delete करें। | `--yes`, `-y` |
 | `fp policies test PATH` | एक synthetic context के against एक policy को locally run करें। हर policy के `match` filter को apply करता है, तो एक जो given event/tool को cover नहीं करता है `skipped` के रूप में rather than run किया जाता है। | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Assistant के साथ एक policy को draft करें। `policies:write` की जरूरत है। | — |
+| `fp policies compose PROMPT` | Assistant के साथ एक policy को draft करें। `fixes:write` की जरूरत है। | — |
 
 ### Fleet
 

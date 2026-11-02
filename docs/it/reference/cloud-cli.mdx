@@ -329,7 +329,7 @@ Versioni di politica gestite dal cloud. **Solo sessione** — ogni comando qui e
 | `fp policies disable POLICY_ID` | Rimuovila da ogni distribuzione che la contiene, creando una nuova generazione su ciascuna. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Elimina una versione di politica. | `--yes`, `-y` |
 | `fp policies test PATH` | Esegui una politica localmente contro un contesto sintetico. Applica il filtro `match` di ogni politica, quindi una che non copre l'evento/tool dato è segnalata come `skipped` piuttosto che eseguita. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | Bozza una politica con l'assistente. Richiede `policies:write`. | — |
+| `fp policies compose PROMPT` | Bozza una politica con l'assistente. Richiede `fixes:write`. | — |
 
 ### Flotta
 

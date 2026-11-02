@@ -69,7 +69,7 @@ def fleet_list(ctx: typer.Context) -> None:
 
     A machine appears from its very first check-in, including the poll that
     finds nothing deployed — that is exactly the machine you are usually looking
-    for. Needs `policies:read`. With `--json`: `{machines, deployments}`, where
+    for. Needs `fixes:read`. With `--json`: `{machines, deployments}`, where
     each machine carries raw timestamps plus the computed `drifted`.
 
     Example:
@@ -116,7 +116,7 @@ def fleet_show(
     because an organization Cloud check has its name (`jev_name_clash`).
     Anything listed there is not enforcing, whatever the deployment says.
 
-    Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
+    Needs `fixes:read`. With `--json`: `{machine, deployment}` — the machine
     record (including `appliedDeployment`, `drifted`, `lastSeen`, both label
     fields, `jevMode` and `policyErrors`/`policyErrorsAt` when reported, with raw
     timestamps) and the deployment, or `deployment: null` when nothing is
@@ -196,7 +196,7 @@ def fleet_deploy(
     **Concurrency.** The write is a full replace with no server-side lock, so the
     CLI records the generation it read and refuses if the result is not exactly
     one higher: that means somebody else deployed in between and a replace does
-    not merge. Needs `policies:write`. With `--json`: the plan plus the resulting
+    not merge. Needs `fixes:write`. With `--json`: the plan plus the resulting
     deployment.
 
     Examples:
@@ -265,7 +265,7 @@ def fleet_deploy(
     #   * `applied: false` in --json is the only way to tell "I changed it" from
     #     "it already matched" — the exit code is 0 either way, on purpose.
     #   * the short-circuit happens BEFORE the write, so a reader without
-    #     `policies:write` also gets 0 here. They have not gained anything (the
+    #     `fixes:write` also gets 0 here. They have not gained anything (the
     #     state already held and nothing was written), but the exit code alone
     #     is not proof of write access.
     if plan.is_noop:
@@ -311,7 +311,7 @@ def fleet_diff(
 
     The gap is the interesting part: a machine that has not collected its latest
     deployment is not enforcing what the dashboard says it is, and nothing else
-    surfaces that as a single number. Needs `policies:read`. With `--json`:
+    surfaces that as a single number. Needs `fixes:read`. With `--json`:
     `{machines:[{machineId, intended, delivered, drifted}]}` — `drifted` is the
     field the CLI computes, so a harness need not derive it.
 
@@ -355,7 +355,7 @@ def fleet_history(
     — appears as an ordinary entry, and so does a Jev mode change. Each
     generation shows the Jev mode FailproofAI Cloud set with it (`local` when it
     set none), which is the mode a rollback to it restores. Needs
-    `policies:read`. With `--json`: `{machineId, history:[{deployment, policies,
+    `fixes:read`. With `--json`: `{machineId, history:[{deployment, policies,
     updatedAt, jevMode}]}`.
 
     Example:
@@ -389,7 +389,7 @@ def fleet_rollback(
     It restores that generation's Jev mode too, `local` included: the prompt
     and the result say `jev mode <now> → <then>` when that changes it.
 
-    Needs `policies:write`. With `--json`: the resulting deployment plus
+    Needs `fixes:write`. With `--json`: the resulting deployment plus
     `jevModeBefore` (the mode it replaced), or `{"cancelled": true}` if you
     decline.
 
@@ -443,7 +443,7 @@ def fleet_rename(
 ) -> None:
     """Give a machine a human label. The id itself never changes.
 
-    Needs `policies:write`. With `--json`: `{machineId, labelOverride}` — the
+    Needs `fixes:write`. With `--json`: `{machineId, labelOverride}` — the
     server stores the label as an override beside the machine's self-asserted
     one rather than replacing it.
 

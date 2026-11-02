@@ -37,7 +37,7 @@ Eine veröffentlichte Richtlinienversion ändert sich nie. Das Bearbeiten einer 
     fp fleet rollback <machine-id> <generation>
     ```
 
-    `rollback` erstellt eine neue Generation mit dem alten Satz, anstatt den Zähler zurückzusetzen, sodass der Verlauf nur erweiterbar bleibt. Es lehnt eine Generation ab, die eine inzwischen deaktivierte oder gelöschte Richtlinie benennt. Der Befehl benötigt eine angemeldete Sitzung mit `policies:write`. `fp fleet diff <machine-id>` zeigt den Unterschied zwischen dem Beabsichtigten und dem, was die Maschine tatsächlich angewendet hat — der Status erscheint als `behind`, bis die Maschine das nächste Mal abfragt. Auf der Maschine selbst listet `failproofai policies` das aktuell laufende Deployment auf.
+    `rollback` erstellt eine neue Generation mit dem alten Satz, anstatt den Zähler zurückzusetzen, sodass der Verlauf nur erweiterbar bleibt. Es lehnt eine Generation ab, die eine inzwischen deaktivierte oder gelöschte Richtlinie benennt. Der Befehl benötigt eine angemeldete Sitzung mit `fixes:write`. `fp fleet diff <machine-id>` zeigt den Unterschied zwischen dem Beabsichtigten und dem, was die Maschine tatsächlich angewendet hat — der Status erscheint als `behind`, bis die Maschine das nächste Mal abfragt. Auf der Maschine selbst listet `failproofai policies` das aktuell laufende Deployment auf.
   </Tab>
 </Tabs>
 

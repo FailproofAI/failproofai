@@ -329,7 +329,7 @@ fp audits create checkout-reliability \
 | `fp policies disable POLICY_ID` | 이를 포함하는 모든 배포에서 제거하고, 각 배포에서 새 세대를 생성합니다. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | 정책 버전을 삭제합니다. | `--yes`, `-y` |
 | `fp policies test PATH` | 합성 컨텍스트에 대해 로컬에서 정책을 실행합니다. 각 정책의 `match` 필터를 적용하므로, 주어진 이벤트/도구를 다루지 않는 정책은 실행되지 않고 `skipped`로 보고됩니다. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
-| `fp policies compose PROMPT` | 어시스턴트로 정책 초안을 작성합니다. `policies:write`가 필요합니다. | — |
+| `fp policies compose PROMPT` | 어시스턴트로 정책 초안을 작성합니다. `fixes:write`가 필요합니다. | — |
 
 ### 플릿
 

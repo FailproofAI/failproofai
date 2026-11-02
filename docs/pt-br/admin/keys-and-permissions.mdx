@@ -62,7 +62,7 @@ Os segredos das chaves são exibidos quando criados ou regenerados. Armazene-os 
 | Alerts | `alerts:read`, `alerts:write` |
 | Issues | `issues:read`, `issues:create`, `issues:close` |
 | Audits | `audits:read`, `audits:write` |
-| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Policies | `fixes:read`, `fixes:write`, `policies:pull` |
 | Usage | `usage:read` |
 
 `orgs:admin` é reservado para o operador da instância e não pode ser concedido a uma chave de organização ou a um membro comum. Tokens `incidents:*` e `alerts:ack` descontinuados são aceitos por compatibilidade e são normalizados para as permissões `issues:*` atuais.

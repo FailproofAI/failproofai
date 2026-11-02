@@ -160,7 +160,8 @@
                   "audits/cadence",
                   "audits/findings-and-issues",
                   "audits/alerts",
-                  "audits/recipes"
+                  "audits/recipes",
+                  "audits/code-fixes"
                 ]
               }
             ]

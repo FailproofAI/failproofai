@@ -27,11 +27,11 @@ def test_audit_permissions_are_assignable_and_in_presets():
 def test_policy_permissions_are_assignable_and_in_presets():
     from fp_cli.permissions import ALL_PERMISSIONS, PRESETS
 
-    assert "policies:read" in ALL_PERMISSIONS
-    assert "policies:write" in ALL_PERMISSIONS
+    assert "fixes:read" in ALL_PERMISSIONS
+    assert "fixes:write" in ALL_PERMISSIONS
     assert "policies:pull" in ALL_PERMISSIONS
-    assert "policies:read" in PRESETS["read-only"]
-    assert "policies:read" in PRESETS["standard"]
+    assert "fixes:read" in PRESETS["read-only"]
+    assert "fixes:read" in PRESETS["standard"]
     assert "policies:pull" in PRESETS["admin"]
 
 

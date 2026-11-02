@@ -751,35 +751,22 @@ describe("hooks/daemon-service", () => {
       stdio: "ignore",
     });
 
-  (canInstallSystemService ? describe : describe.skip)(
+  // Never against a machine's real daemon. Teardown uninstalls, which removes the
+  // staged binary as well as the unit, so restoring the unit afterwards would leave
+  // it pointing at a deleted file, and a daemon-configured machine then denies every
+  // tool call. Skipping is the only teardown that cannot get this wrong.
+  const realUnitInstalled = existsSync(resolve("/etc/systemd/system", `failproofaid@${userInfo().username}.service`));
+
+  (canInstallSystemService && !realUnitInstalled ? describe : describe.skip)(
     "real systemd system-scope lifecycle (linux only, requires root or passwordless sudo)",
     () => {
       const unitName = `failproofaid@${userInfo().username}.service`;
       const unitPath = resolve("/etc/systemd/system", unitName);
-      let preexistingUnit: string | null = null;
-
-      beforeEach(() => {
-        // Never clobber a real installed daemon if this sandbox happens to
-        // have one — capture and restore it rather than assuming a clean
-        // slate.
-        preexistingUnit = existsSync(unitPath) ? readFileSync(unitPath, "utf8") : null;
-      });
 
       afterEach(async () => {
         setPlatform("linux");
         const { uninstallDaemonService } = await import("../../src/hooks/daemon-service");
         await uninstallDaemonService();
-        if (preexistingUnit !== null) {
-          const staging = resolve(tmpdir(), `failproofaid-restore-${process.pid}`);
-          writeFileSync(staging, preexistingUnit, "utf8");
-          try {
-            run(["install", "-m", "0644", staging, unitPath]);
-            run(["systemctl", "daemon-reload"]);
-          } catch {
-            /* best-effort restore */
-          }
-          rmSync(staging, { force: true });
-        }
       });
 
       it("installs a real user unit, reports it running, then fully removes it on uninstall", async () => {

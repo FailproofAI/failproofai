@@ -26,7 +26,9 @@ let configured = true;
 let installedClis: string[] = ["claude", "codex"];
 let skillDirs: string[] = [];
 let stagedDir = "/opt/failproofai/tester";
-let stagedRemovable = true;
+// Off by default so no other test's uninstall can delete the default path above,
+// which is a real location on a machine with a user named `tester`.
+let stagedRemovable = false;
 
 vi.mock("../../src/hooks/manager", () => ({
   removeHooks: vi.fn(async () => {
@@ -440,7 +442,7 @@ describe("hooks/uninstall-cli — a staged daemon binary with no unit", () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
     stagedDir = "/opt/failproofai/tester";
-    stagedRemovable = true;
+    stagedRemovable = false;
   });
 
   it("removes it, and asks for sudo first, even with nothing else installed", async () => {

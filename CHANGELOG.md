@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.14-beta.0 — 2026-11-02
+
+### Dependencies
+
+- Replace Dependabot's #965 and #955, neither of which could install, and clear every fixable Dependabot alert in the TypeScript SDK's integration fixtures. `mastra-1` takes `@mastra/mcp` 2.7.0 with the `@mastra/core` 1.81.0 and `@mastra/memory` 1.40.0 it needs, `mastra-0` stays on Mastra 0.x and clears `@hono/node-server`, `systeminformation`, `glob` and `minimatch`, `deepmerge` leaves three fixtures through `html-to-text` 10.0.1, and the nested zod 3 leaves two. None of these lockfiles ship in a published package (#966)
+- Stop Dependabot moving `@mastra/core` off the `mastra-0` floor to remove `@ai-sdk/provider-utils`. `.github/dependabot.yml` gives that package its own `ignore` range on `ai-4` and `mastra-0`, because a range is read only for the package being updated, not for a parent moved on its behalf (#966)
+
 ## 1.0.13 — 2026-11-02
 
 The stable release of OpenClaw enforcement on OpenClaw 2026.9.6 and later, of daemon setup on Fedora, RHEL, Rocky and Alma, and of path policies on Antigravity's current file tools. Everything below in the `1.0.13-beta.*` sections ships here too.

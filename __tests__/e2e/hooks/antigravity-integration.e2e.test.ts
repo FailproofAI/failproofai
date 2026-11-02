@@ -10,6 +10,7 @@
  * The camelCase `toolCall:{name,args}` payload is normalized to snake_case by
  * the handler before policies run. hooks.json uses a NAMED-hook schema.
  */
+import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -175,6 +176,65 @@ describe("E2E: Antigravity integration — native file tools", () => {
     ["write_file over failproofai's own config", [], "write_file", (cwd) => ({ Path: `${cwd}/.failproofai/policies-config.json`, Content: "{}" })],
     ["edit_file on failproofai's own config", [], "edit_file", (cwd) => ({ Path: `${cwd}/.failproofai/policies-config.json`, Target: "a", Replacement: "b" })],
   ];
+
+  // A renamed path key: nothing can check the call, so the always-on guard refuses
+  // it with no policy enabled. This is how the bypass in #961 would look next time.
+  const noPathCases: Array<[string, string, Record<string, unknown>]> = [
+    ["read_file with an unknown path key", "read_file", { FilePath: "/etc/passwd" }],
+    ["write_file with an unknown path key", "write_file", { FilePath: "/tmp/x", Content: "x" }],
+    ["edit_file with no path", "edit_file", { Target: "a", Replacement: "b" }],
+    ["read_file with an empty Path", "read_file", { Path: "" }],
+    ["view_file with no arguments", "view_file", {}],
+  ];
+
+  it.each(noPathCases)("denies %s", (_label, tool, args) => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook("PreToolUse", AntigravityPayloads.preToolUse.tool(tool, args, env.cwd), {
+        homeDir: env.home,
+        cli: "antigravity",
+      });
+      assertAntigravityDeny(result);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("lifts the refusal during a session pause, the way through until failproofai is updated", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const payload = AntigravityPayloads.preToolUse.tool("read_file", { FilePath: "/etc/passwd" }, env.cwd);
+      const sessionId = String((payload as { conversationId: string }).conversationId);
+      const dir = join(env.home, ".failproofai", "state", "sessions");
+      mkdirSync(dir, { recursive: true });
+      const digest = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+      const now = Date.now();
+      writeFileSync(
+        join(dir, `${digest}.json`),
+        JSON.stringify({ schemaVersion: 1, sessionId, pausedAt: now, firstPausedAt: now, expiresAt: now + 60_000 }),
+      );
+      const result = runHook("PreToolUse", payload, { homeDir: env.home, cli: "antigravity" });
+      expect(result.stdout).not.toContain('"decision":"deny"');
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("does not refuse a pathless call to a tool that is not a file tool", () => {
+    const env = createAntigravityEnv();
+    try {
+      writeConfig(env.cwd, []);
+      const result = runHook("PreToolUse", AntigravityPayloads.preToolUse.tool("ask_question", { Question: "ok?" }, env.cwd), {
+        homeDir: env.home,
+        cli: "antigravity",
+      });
+      expect(result.stdout).not.toContain('"decision":"deny"');
+    } finally {
+      env.cleanup();
+    }
+  });
 
   it.each(deniedCases)("denies %s", (_label, policies, tool, args) => {
     const env = createAntigravityEnv();

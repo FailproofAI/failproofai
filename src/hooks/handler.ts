@@ -30,6 +30,13 @@ import { normalizeCliPayload } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
+import {
+  ANTIGRAVITY_PATH_GUARD_DESCRIPTION,
+  ANTIGRAVITY_PATH_GUARD_MATCH,
+  ANTIGRAVITY_PATH_GUARD_NAME,
+  antigravityCallLacksPath,
+  antigravityPathGuard,
+} from "./antigravity-path-guard";
 import { evaluatePolicies } from "./policy-evaluator";
 // Types only: the semantic (Jev) modules are loaded with a dynamic import, and
 // only once a Jev config exists, so an unconfigured machine never loads them.
@@ -788,6 +795,22 @@ export async function evaluateHookEvent(
       // so an empty list still registers the guard — which is exactly what this
       // build should contribute once packs carry everything else.
       registerBuiltinPolicies(activePause ? [] : legacyNames);
+      // Outside the enabled set, because the policies it protects may be the
+      // ones that cannot see the path. A pause lifts it: if Antigravity renames
+      // an argument this refuses every file call until failproofai is updated,
+      // and the operator needs a way through in the meantime.
+      if (
+        cli === "antigravity" &&
+        !activePause &&
+        antigravityCallLacksPath(canonicalEventType, parsed.tool_name as string | undefined, parsed.tool_input)
+      ) {
+        registerPolicy(
+          ANTIGRAVITY_PATH_GUARD_NAME,
+          ANTIGRAVITY_PATH_GUARD_DESCRIPTION,
+          antigravityPathGuard,
+          ANTIGRAVITY_PATH_GUARD_MATCH,
+        );
+      }
       if (legacyNames.length > 0) {
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +

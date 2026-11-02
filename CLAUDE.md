@@ -703,7 +703,11 @@ live against agy 1.4.12; unknown tools pass through). The file tools have moved 
 1.4.9 and 1.4.12 deliver `read_file {Path}`, `write_file {Path, Content}` and
 `edit_file {Path, Target, Replacement}`, where earlier builds delivered `view_file
 {AbsolutePath}` and `write_to_file {TargetFile, CodeContent}`. Both spellings stay
-mapped. A missed name or key raises no error: the policy sees no path and allows.
+mapped. A missed tool **name** raises no error and passes through unchecked. A missed
+**key** on a known file tool is refused: `src/hooks/antigravity-path-guard.ts`, which
+`handler.ts` registers for this CLI whatever is enabled, denies a `Read`/`Write`/`Edit`
+with no `file_path`, because every path policy would otherwise have nothing to check
+and allow it. A session pause lifts it, as the way through until failproofai is updated.
 
 **Response shapes (Antigravity's OWN — `policy-evaluator.ts` `cli === "antigravity"`):**
 
